@@ -16,6 +16,7 @@ import SwiftUI
 import ImageIO
 import SwiftData
 import CoreLocation
+import MapKit
 
 /// One saved photo, as Memories lists it.
 struct MemoryPhoto: Identifiable, Hashable {
@@ -905,6 +906,9 @@ struct MemoriesDeck: View {
     @State private var score: Double?
     /// Where it was prayed: the masjid, else the place's name (always on the view page — owner).
     @State private var place: String?
+    /// The prayer behind the top photo (its spot opens the map sheet).
+    @State private var facts: PrayerPhotos.Facts?
+    @State private var showingPlace = false
     @State private var note: String?
     @State private var editingNote = false
     @State private var noteDraft = ""
@@ -1046,6 +1050,12 @@ struct MemoriesDeck: View {
             .presentationDetents([.medium, .large])
         }
         .task(id: "\(shownIndex)|\(showPlace)") { await loadDetail() }
+        .sheet(isPresented: $showingPlace) {
+            if let spot = facts?.spot, photos.indices.contains(shownIndex) {
+                PrayerPlaceMapSheet(caption: PrayerPhotos.caption(photos[shownIndex].key), place: place ?? "",
+                                    spot: spot, score: facts?.score, atMasjid: facts?.masjid != nil)
+            }
+        }
         .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
         .sensoryFeedback(.selection, trigger: shownIndex)
         .onChange(of: shownIndex) { _, i in
@@ -1246,7 +1256,16 @@ struct MemoriesDeck: View {
                     .lineLimit(1)
                 Group {
                     if let place {
-                        Label(place, systemImage: "mappin.and.ellipse")
+                        // A tap shows it on a map (owner).
+                        Button { if facts?.spot != nil { showingPlace = true } } label: {
+                            HStack(spacing: 4) {
+                                Label(place, systemImage: "mappin.and.ellipse")
+                                if facts?.spot != nil {
+                                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
                     } else {
                         Text(" ")
                     }
@@ -1318,7 +1337,19 @@ struct MemoriesDeck: View {
         guard photos.indices.contains(shownIndex) else { return }
         let key = photos[shownIndex].key
         note = PrayerPhotos.note(key)
-        guard let facts = PrayerPhotos.facts(for: key, in: context) else { prayed = nil; score = nil; place = nil; return }
+        var found = PrayerPhotos.facts(for: key, in: context)
+        #if DEBUG
+        // `-demoPlace`: a marked time, a score and a spot in Manhattan for the stand-in photos (no prayer rows).
+        if found == nil, ProcessInfo.processInfo.arguments.contains("-demoPlace") {
+            found = PrayerPhotos.Facts(markedAt: Date(), score: 0.86, masjid: nil,
+                                       spot: CLLocationCoordinate2D(latitude: 40.7536, longitude: -73.9832))
+        }
+        #endif
+        guard let facts = found else {
+            prayed = nil; score = nil; place = nil; self.facts = nil
+            return
+        }
+        self.facts = facts
         prayed = facts.markedAt.map { "Prayed \($0.formatted(date: .omitted, time: .shortened))" }
         score = facts.score
         // The masjid at once; else the place's name, remembered or looked up once (`PrayerPlaceNames`).
@@ -1829,5 +1860,87 @@ private struct BottomChrome: ViewModifier {
                 if page.hasPhotos { page.bottomBar }
             }
         }
+    }
+}
+
+/// Where a prayer was prayed, on a map (owner: "clicking on the location should open a sheet with a map … toggle for
+/// satellite view … the same UI style as in the map that we have already"): the prayer's pin as the app map draws it
+/// (its grade colour; a masjid or the hands), the app map's glass capsule — Standard ⇄ Satellite (the same remembered
+/// setting) and back to the pin (green while it's centred); drag and zoom freely.
+struct PrayerPlaceMapSheet: View {
+    let caption: String
+    let place: String
+    let spot: CLLocationCoordinate2D
+    let score: Double?
+    let atMasjid: Bool
+    @AppStorage(MapModes.satelliteKey) private var satellite = false
+    @State private var camera: MapCameraPosition
+    @State private var awayFromPin = false
+    @Environment(\.dismiss) private var dismiss
+
+    init(caption: String, place: String, spot: CLLocationCoordinate2D, score: Double?, atMasjid: Bool) {
+        self.caption = caption
+        self.place = place
+        self.spot = spot
+        self.score = score
+        self.atMasjid = atMasjid
+        _camera = State(initialValue: .region(Self.region(spot)))
+    }
+
+    private static func region(_ spot: CLLocationCoordinate2D) -> MKCoordinateRegion {
+        MKCoordinateRegion(center: spot, latitudinalMeters: 700, longitudinalMeters: 700)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Map(position: $camera) {
+                Marker(place.isEmpty ? caption : place,
+                       systemImage: atMasjid ? "building.columns.fill" : "hands.and.sparkles.fill",
+                       coordinate: spot)
+                    .tint(PrayerScoring.color(for: score))
+                UserAnnotation()
+            }
+            .mapStyle(satellite ? .hybrid(elevation: .realistic) : .standard(elevation: .realistic))
+            .mapControls { MapScaleView() }
+            .onMapCameraChange(frequency: .continuous) { context in
+                let centre = CLLocation(latitude: context.region.center.latitude, longitude: context.region.center.longitude)
+                let metresAcross = context.region.span.latitudeDelta * 111_000
+                awayFromPin = centre.distance(from: CLLocation(latitude: spot.latitude, longitude: spot.longitude))
+                    > max(metresAcross * 0.15, 25)
+            }
+            .overlay(alignment: .topTrailing) {
+                // The app map's capsule: map style, then back to the pin.
+                VStack(spacing: 0) {
+                    Button { satellite.toggle() } label: {
+                        Image(systemName: MapModes.globeSymbol(longitude: spot.longitude)).mapControlIcon()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(satellite ? "Standard map" : "Satellite map")
+                    Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.4)) { camera = .region(Self.region(spot)) }
+                    } label: {
+                        Image(systemName: awayFromPin ? "mappin" : "mappin.and.ellipse")
+                            .mapControlIcon(tint: awayFromPin ? nil : .green)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to the prayer")
+                }
+                .mapGlass(Capsule())
+                .padding(10)
+            }
+            .navigationTitle(place.isEmpty ? caption : place)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 0) {
+                        Text(place.isEmpty ? caption : place).font(.headline).lineLimit(1)
+                        if !place.isEmpty { Text(caption).font(.caption).foregroundStyle(.secondary) }
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }

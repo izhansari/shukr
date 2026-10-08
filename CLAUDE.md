@@ -321,7 +321,10 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (positions measured in the strip's own named space — `.scrollView` space reported a stale 50). DEBUG `-logDayStrip`.
   Under the pile the prayer's name, "Prayed 1:12 PM", the place on its own line (always: the masjid, else
   `PrayerPlaceNames`, looked up once), then the score as a ring in its grade colour + the grade word (fixed heights, so
-  nothing moves); the caption follows a horizontal drag (0.35 × drag, ±90, fading) and hands over to the next on landing
+  nothing moves); the caption follows a horizontal drag (0.35 × drag, ±90, fading) and hands over to the next on landing;
+  a tap on the place opens `PrayerPlaceMapSheet` (SwiftUI Map: the prayer's Marker in its grade colour, masjid / hands
+  glyph as on the app map; the app map's glass capsule — globe = Standard ⇄ Satellite on the shared `MapModes.satelliteKey`,
+  then back to the pin, green while centred; DEBUG `-demoPlace` gives stand-ins a Manhattan spot)
   (+ the place with Show where; `PrayerPhotos.facts` / `placeText`) and the note (tap → edit in an alert; notes are
   `<key>-note.txt` beside the photos, written from the camera's review — "Add a note" — or the pile; the pile shows 3 lines in
   a fixed 58 pt box so nothing moves from photo to photo, a tap opens a TextEditor sheet) — the three slide
