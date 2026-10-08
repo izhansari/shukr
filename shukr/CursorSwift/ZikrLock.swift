@@ -531,5 +531,7 @@ enum ZikrLockWords {
     /// The narration's thread carried on (it ends on walking towards Him): the step, then what the tour will do.
     static let firstStep = "So take the first step, however small."
     static let bridge = "We'll set up one daily zikr and count it together. It takes about two minutes."
-    static let beginButton = "Take the first step"
+    /// Their first intention, answering the verse's call (owner, 2026-10-08: "a stronger button … the user making their
+    /// first intention or promise").
+    static let beginButton = "Remember my Lord"
 }
