@@ -411,6 +411,7 @@ struct TourCallout: View {
     var onSkipQibla: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
+    @Environment(SharedStateClass.self) private var sharedState
     @State private var shown = false
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -442,6 +443,22 @@ struct TourCallout: View {
             // read as "tap here"; no buzz either).
             // Where to touch, and how: a grey thumbprint on the thing to touch (user testing: beside it misled).
             if let hint { TouchHint(spec: hint).transition(.opacity) }
+            // A step to do: the slim strip at an edge, clear of its target (decision tour-hint-style A); its explanation
+            // first, once, as the card with "Got it".
+            let key = page.guideKey(step.rawValue)
+            let mode = TourGuideMode.of(page, key: key)
+            if mode == .strip {
+                TourCoachStrip(chapter: page.headline, lead: page.shortLead, todos: page.currentTodos, ticked: ticked, locked: page.locked,
+                               progress: page.activeSection?.progress,
+                               onDetails: page.explains ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.again(key) } } : nil,
+                               onBack: showsBack ? onBack : nil,
+                               extra: qiblaSkip ? (TourCopy.Circle.noCompass, onSkipQibla) : nil)
+                    .tourStripPlaced(top: TourStripPlace.top(target: hole, height: size.height, keepBottom: aboveY != nil),
+                                     size: size, topInset: typeSize.isAccessibilitySize ? 158 : 112,
+                                     bottomInset: sharedState.horizontalPage == .main ? 40 : 104)
+                    .opacity(shown ? 1 : 0)
+                    .transition(.opacity)
+            } else {
             // Measured and placed in one layout pass (`TourBubblePlacement`).
             TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
                                 // Nothing to point at (Settings' learn): low, clear of what it talks about.
@@ -452,7 +469,9 @@ struct TourCallout: View {
                                 // under its target — under it covered the swipe up on a 13 Pro Max (owner); it overlaps
                                 // the target's top instead.
                                 mayFlip: openSection == nil && aboveY == nil) {
-                bubble(below: below, tail: tail)
+                bubble(below: below, tail: tail,
+                       page: mode == .cardThenStrip ? page.withGotIt : page,
+                       primary: mode == .cardThenStrip ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.gotIt(key) } } : onPrimary)
                     .frame(width: width)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // taller couldn't clear its target (Sami, AX XXXL)
                     .scaleEffect(shown || reduceMotion ? 1 : 0.96)
@@ -462,6 +481,7 @@ struct TourCallout: View {
             // The drift: the one bubble moves to the card's new place (owner: "visually moves or drifts smoothly").
             .animation(reduceMotion ? .easeOut(duration: 0.2) : Self.drift,
                        value: "\(hole.map { "\(Int($0.minX)),\(Int($0.minY)),\(Int($0.width)),\(Int($0.height))" } ?? "-")|\(aboveY.map { Int($0) } ?? -1)|\(below)")
+            }
         }
         .task {
             // Reduce Motion (audit C14): the bubble fades in.
@@ -482,13 +502,13 @@ struct TourCallout: View {
         return below ? hole.maxY + 14 : hole.minY - 14
     }
 
-    private func bubble(below: Bool, tail: CGFloat) -> some View {
+    private func bubble(below: Bool, tail: CGFloat, page: TourPage, primary: @escaping () -> Void) -> some View {
         // The page turns inside the bubble: each card's content is its own view, sliding out one side and in the
         // other (owner: "it pages over inside of the tooltip"); the bubble itself stays.
         ZStack(alignment: .topLeading) {
             TourPageView(step: step, page: page, place: place, ticked: ticked, lit: lit, openSection: openSection,
                          showsBack: showsBack, qiblaSkip: qiblaSkip,
-                         onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack,
+                         onPrimary: primary, onSecondary: onSecondary, onBack: onBack,
                          onToggle: onToggle, onSkipQibla: onSkipQibla)
                 .id(step)
                 .transition(reduceMotion ? .opacity : .asymmetric(

@@ -274,16 +274,31 @@ struct CountTipCard: View {
 
     var body: some View {
         let page = tips.page(for: tip)
-        TourPageView(step: .zikr, page: page, place: nil, ticked: tips.completing ? [0] : [], lit: [],
-                     openSection: tips.openSection, showsBack: false, qiblaSkip: false,
-                     onPrimary: { tips.next() }, onSecondary: {}, onBack: {},
-                     onToggle: { tips.toggle($0) }, onSkipQibla: {})
-            .padding(16)
-            .frame(width: 330)
-            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            .accessibilityElement(children: .contain)
-            .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
-                        look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        let key = page.guideKey("countTips-\(tip.rawValue)")
+        let mode = TourGuideMode.of(page, key: key)
+        // The slim strip while a tip is something to do; its explanation first, once (decision tour-hint-style A).
+        if mode == .strip {
+            TourCoachStrip(chapter: page.headline, lead: page.shortLead, todos: page.currentTodos, ticked: tips.completing ? [0] : [],
+                           locked: page.locked, progress: page.activeSection?.progress,
+                           onDetails: page.explains ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.again(key) } } : nil)
+                .frame(width: 360)
+        } else {
+            TourPageView(step: .zikr, page: mode == .cardThenStrip ? page.withGotIt : page, place: nil,
+                         ticked: tips.completing ? [0] : [], lit: [],
+                         openSection: tips.openSection, showsBack: false, qiblaSkip: false,
+                         onPrimary: {
+                             if mode == .cardThenStrip { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.gotIt(key) } }
+                             else { tips.next() }
+                         },
+                         onSecondary: {}, onBack: {},
+                         onToggle: { tips.toggle($0) }, onSkipQibla: {})
+                .padding(16)
+                .frame(width: 330)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .accessibilityElement(children: .contain)
+                .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
+                            look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        }
     }
 }
 

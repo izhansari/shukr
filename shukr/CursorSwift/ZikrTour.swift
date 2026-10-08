@@ -381,17 +381,39 @@ struct ZikrTourBubble: View {
     @Environment(\.circleTheme) private var theme
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
 
+    /// The slim strip while a step is something to do; its explanation first, once, as the card (decision
+    /// tour-hint-style A, TourStrip.swift).
+    static var mode: TourGuideMode {
+        let page = ZikrTour.shared.page
+        return TourGuideMode.of(page, key: page.guideKey("zikrTour"))
+    }
+
     var body: some View {
-        TourPageView(step: .zikr, page: tour.page, place: nil, ticked: tour.completing ? [0] : [], lit: [],
-                     openSection: tour.openSection, showsBack: false, qiblaSkip: false,
-                     onPrimary: { tour.step == .offer ? showMe() : tour.next() }, onSecondary: onSecondary, onBack: {},
-                     onToggle: { tour.toggle($0) }, onSkipQibla: {})
-            .padding(16)
-            .frame(width: 330)
-            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-            .accessibilityElement(children: .contain)
-            .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
-                        look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        let page = tour.page
+        let key = page.guideKey("zikrTour")
+        let mode = TourGuideMode.of(page, key: key)
+        if mode == .strip {
+            TourCoachStrip(chapter: page.headline, lead: page.shortLead, todos: page.currentTodos, ticked: tour.completing ? [0] : [],
+                           locked: page.locked, progress: page.activeSection?.progress,
+                           onDetails: page.explains ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.again(key) } } : nil)
+                .frame(maxWidth: 400)
+        } else {
+            TourPageView(step: .zikr, page: mode == .cardThenStrip ? page.withGotIt : page, place: nil,
+                         ticked: tour.completing ? [0] : [], lit: [],
+                         openSection: tour.openSection, showsBack: false, qiblaSkip: false,
+                         onPrimary: {
+                             if mode == .cardThenStrip { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.gotIt(key) } }
+                             else if tour.step == .offer { showMe() } else { tour.next() }
+                         },
+                         onSecondary: onSecondary, onBack: {},
+                         onToggle: { tour.toggle($0) }, onSkipQibla: {})
+                .padding(16)
+                .frame(width: 330)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                .accessibilityElement(children: .contain)
+                .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
+                            look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        }
     }
 }
 
@@ -475,6 +497,12 @@ struct ZikrTourLayer: View {
                     predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
                 tour.showMe(existing: task, doneToday: task.map { $0.isCompleted(with: $0.progress(in: today)) } ?? false)
             })
+        if ZikrTourBubble.mode == .strip {
+            let target = openings(t).first.map { $0.offsetBy(dx: -origin.x, dy: -origin.y) }
+            bubble.tourStripPlaced(top: TourStripPlace.top(target: target, height: height),
+                                   size: CGSize(width: UIScreen.main.bounds.width, height: height),
+                                   topInset: 112, bottomInset: 104)
+        } else {
         switch tour.step {
         // Over the wheel (the line under it and the doors stay clear).
         case .offer, .kinds, .start:
@@ -488,6 +516,7 @@ struct ZikrTourLayer: View {
         default:
             bubble.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, max(0, height - ((t.frame("zikrSummary")?.minY ?? 600) - origin.y) + 12))
+        }
         }
     }
 
