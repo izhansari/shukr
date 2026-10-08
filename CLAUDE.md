@@ -296,15 +296,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - **Memories** (briefly "Journal" — the owner went back to Memories and its photo.stack icon; PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo — PUSHED like 99 Names via `MemoriesPresenter.open` → navigationDestination, so it swipes back (decision swipe-back-pages A); the pile is a clear cover over it
   exists — `PrayerPhotoRevision.hasPhotos`; ⚙ top right = `MemoriesSettings`: Show where, Space used — not in Settings
   any more). Opens on Days. A tap on a day's stack (its newest) or a prayer's square opens `MemoriesDeck` in the page's
-  own overlay over a frosted backdrop (owner: "only take the image back into that square … frosted"; the system zoom
-  scaled the whole page): ONE `PrayerPhotoFace` flies — `Flight`, a rect animated with `scaleEffect` + `position`, global
-  frames from `FrameBook` (not observed: scrolling never redraws) — from the square to the pile's top card (hidden
-  meanwhile; it reports its frame, the first report is empty — ignored — and each report while opening re-aims the
-  spring) and back to the top photo's square on close (its day's on Days; off screen → shrinks and fades). The top card
-  is straight so nothing twists on landing; the pile's other parts fade with `deckShown`; the share page is pushed on the
-  overlay's own NavigationStack (`.containerBackground(.clear, for: .navigation)`). Earlier tries: a matchedGeometry hero
-  (laggy), the system zoom (whole page)
-  was laggy). **One day's pile at a time** (owner): within a day swipe left = the day's next one comes in from the right
+  own clear `fullScreenCover` over a frosted backdrop; it FADES in and out (owner 2026-10-08: "get rid of zoom in zoom out … just make it fade"; the flying photo, a matchedGeometry hero and the system zoom were all tried and dropped). The share page is pushed on the cover's own NavigationStack (`.containerBackground(.clear, for: .navigation)`). **One day's pile at a time** (owner): within a day swipe left = the day's next one comes in from the right
   onto the top, swipe right = the top one goes back off to the right; past the day's last (first) photo the whole pile
   changes day like pages, in the strip's order (owner: forward must move the pile left): the previous day's pile waits off
   the left edge, the next day's off the right (`neighbour`, drawn exactly as they'll be — `restingPile`, lies picked for
@@ -340,12 +332,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `PrayerShareButton` for this page and the viewer's panel — edit them once; Location and Prayer score — a ring,
   `score:` — as toggles; the place as City (default — owner) or Address — `PrayerSpotAddress.city`, "Cary, NC"; the pile's line uses the masjid, else the city; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
   on a card swaps the pictures; a drag down follows the finger anywhere (`freeDrag`), the cards under the top gathering in (`fold`), and closes;
-  closing folds the pile first (`folding`) and starts the flight a turn later (set and moved in one turn it never flew) (the deck's own drag
+  closing fades the pile out where it is (the deck's own drag
   picks the axis on its first move). **Finding** (decision memories-finding C): a heart in the pile
-  (`PrayerPhotoFavorites`, UserDefaults); the bottom bar: on iOS 26+ the system bottom toolbar (Liquid Glass) — `levelSwitch`
-  + a magnifying-glass button; searching, our own `searchField` + ✕ as bottom-bar items (NO `.searchable`: pushed onto the
-  app's stack, the search controller drew a second, open search bar under the toolbar — owner's screenshot); before 26
-  the page's own bar. The pile is a clear `fullScreenCover` (no slide) so the bars are never hidden / re-shown. Searching shows a
+  (`PrayerPhotoFavorites`, UserDefaults); the bottom bar (see **The bars**). The pile is a clear `fullScreenCover` (no slide) so the bars are never hidden / re-shown. Searching shows a
   results LIST (`resultsList`: chips Favorites · Jumu'ah · At a masjid · With a note on top, rows = photo, prayer, date,
   the note / masjid / place; a tap opens the pile over the results only); words (all must match, folded: no case / accents /
   apostrophes) search `buildIndex`'s text per photo — prayer, note, masjid, Gregorian + Hijri (`islamicUmmAlQura`) dates,
@@ -356,17 +345,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   grouped once per change (`FrameBook.months`); piles under 60 pt get a 2 pt shadow. "On this day" cards (earlier years, today's date) under today's month (DEBUG `-demoOnThisDay` with
   `-demoMemories`). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
   calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number; up to today only)
-  · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the bars
-  are the system's, declared once, never swapped or gated on a later load (owner: "playing by Apple's rules"; `photos`
-  is read in the property's initialiser so the bottom bar exists on the push's first frame — loaded in `.task` it
-  vanished mid-push): ⚙ top right; bottom = the system segmented `Picker` (a plain change — `go(animated: false)`; the levels animate on `level`;
-  its item `.sharedBackgroundVisibility(.hidden)`: the control has its own glass, the bar's second capsule left ghost
-  bubbles) + `ToolbarSpacer` +
-  `DefaultToolbarItem(kind: .search)`, `.searchable(isPresented: $searching, placement: .toolbar)` +
-  `.searchToolbarBehavior(.minimize)` (no own field, no custom pill; DEBUG `-demoMemoriesSearch [words]`); a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month
-  on screen; `tops` / `pinned`). `matchedGeometryEffect` in `pinch` flies the squares into the stacks (each stack = its
-  newest three). Each level has its own ScrollView, swapped whole (one shared ScrollView scrolled under the change and
-  nothing flew). DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`, `-demoShareScore 0.86` (a score, a place and both share options on for stand-ins), `-heicSelfTest` (encode + decode
+  · Months (a stack per month). No pinch and no flying squares (owner: dropped with the zoom); **The bars** (owner: "playing by Apple's rules"): ⚙ top right; bottom = the system segmented `Picker` (plain change through `go`; its item `.sharedBackgroundVisibility(.hidden)` — the bar's glass round the control's own made a ghost capsule) + `ToolbarSpacer` + `DefaultToolbarItem(kind: .search)`, `.searchable(isPresented: $searching)` with the DEFAULT placement + `.searchToolbarBehavior(.minimize)` (`placement: .toolbar` too drew a second search circle); declared once, `photos` read in its initialiser so the bar is there from the push's first frame. A TabView with a search tab was tried: pushed (not the app's root), search folded into the tabs and never opened. the levels change from the bar; a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month on screen; `tops` / `pinned`). Each level has its own ScrollView, swapped whole. DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`, `-demoShareScore 0.86` (a score, a place and both share options on for stand-ins), `-heicSelfTest` (encode + decode
   times, run on a phone with `devicectl … process launch --console`). **Sim trap:** the simulator hangs decoding HEIC
   (never returns, starving the task pool so even JPEGs stop loading), so `encoded` writes JPEG there; phones decode it in ~30 ms.
 

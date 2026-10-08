@@ -80,41 +80,21 @@ extension PrayerPhotos {
 
 /// Pushed like 99 Names (decision swipe-back-pages A: a full-screen cover never swiped back), the system's back button.
 struct MemoriesPage: View {
-    /// The squares that fly into their day's or month's stack on a pinch, and back.
-    @Namespace private var pinch
     /// Read as the page is made (a directory listing), so its bars are right on the push's first frame — loaded in
     /// `.task`, the bottom bar arrived mid-push and was lost (owner's video).
     @State private var photos: [MemoryPhoto] = PrayerPhotos.all()
     /// The pile, open from this photo.
     @State private var deckStart: MemoryPhoto?
-    /// What it zoomed out of (a day's stack or a prayer's square), and back into on close — fixed while it's open
-    /// (owner: "prioritize being clean … apple documented apis": the system's zoom transition, nothing hand-made).
-    /// The pile's backdrop and its other parts, faded in after the photo starts flying out.
+    /// The pile fades in over the page and out again (owner: "get rid of zoom in zoom out … just make it fade in to
+    /// that page and back out"); the photo no longer flies from its square.
     @State private var deckShown = false
-    /// Closing: the pile gathers into its top card before that card flies home.
-    @State private var folding = false
-    /// The one photo in flight between its square and the pile (owner: "only take the image back into that square"):
-    /// a single face moved and scaled, the page frosted behind it like the hold editor's photo.
-    @State private var flight: Flight?
-    /// Where the squares and the day piles sit on screen, and the pile's top card — not observed, so scrolling the page
-    /// never redraws it.
-    @State private var frames = FrameBook()
-
-    struct Flight {
-        var key: String
-        var rect: CGRect
-        var images: (back: UIImage?, front: UIImage?)
-        var opacity: Double = 1
-    }
 
     final class FrameBook {
-        var frames: [String: CGRect] = [:]
-        var deckTop: CGRect?
-        var opening = false
         var months: (signature: String, value: [Month])?
-        /// The newest flight animation; an older one's completion leaves the flight alone.
-        var flightToken = UUID()
     }
+    /// Cached work that mustn't redraw the page.
+    @State private var frames = FrameBook()
+
     @State private var showSettings = false
 
     // MARK: Search (decision memories-finding C): a magnifying glass beside the levels opens a field at the bottom, like
@@ -210,18 +190,15 @@ struct MemoriesPage: View {
         PrayerPlaceNames.fill(spots) { placeNamesLearned += 1 }
     }
 
-    /// Months · Days · Prayers, the system's segmented control. A plain change (the control animates itself); the
-    /// levels below animate on `level` (`levelMotion`), so the squares still fly into their stacks.
+    /// Months · Days · Prayers, the system's segmented control; a plain change.
     private var levelPicker: some View {
-        Picker("Show", selection: Binding(get: { level }, set: { go($0, animated: false) })) {
+        Picker("Show", selection: Binding(get: { level }, set: { go($0) })) {
             ForEach(Level.allCases) { Text($0.title).tag($0) }
         }
         .pickerStyle(.segmented)
         .fixedSize()
         .disabled(!hasPhotos)
     }
-
-    static let levelMotion = Animation.spring(response: 0.55, dampingFraction: 0.86)
 
     // MARK: Search results, as a list (owner: "display the search results as a list")
 
@@ -277,7 +254,6 @@ struct MemoriesPage: View {
         HStack(spacing: 12) {
             MemoryThumb(key: photo.key)
                 .frame(width: 52, height: 52)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.frames["result-" + photo.key] = $0 }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Image(systemName: prayerIcon(for: photo.name)).font(.system(size: 13))
@@ -299,7 +275,7 @@ struct MemoriesPage: View {
 
     private func openFromResults(_ photo: MemoryPhoto) {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        openDeck(photo, from: "result-" + photo.key)
+        openDeck(photo)
     }
 
     // MARK: On this day (decision memories-finding C)
@@ -316,15 +292,11 @@ struct MemoriesPage: View {
         let dayKey = dayPhotos.first?.dayKey ?? ""
         let years = Calendar.current.component(.year, from: Date()) - (Int(dayKey.prefix(4)) ?? 0)
         return Button {
-            if let newest = dayPhotos.last { openDeck(newest, from: "otd-" + dayKey) }
+            if let newest = dayPhotos.last { openDeck(newest) }
         } label: {
             HStack(spacing: 14) {
                 stack(dayPhotos, side: 52, corner: 13)
                     .frame(width: 66, height: 66)
-                    .onGeometryChange(for: CGRect.self) { proxy in
-                        let f = proxy.frame(in: .global)
-                        return CGRect(x: f.midX - 26, y: f.midY - 26, width: 52, height: 52)
-                    } action: { frames.frames["otd-" + dayKey] = $0 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("On this day").font(.system(size: 17, weight: .semibold, design: .rounded))
                     Text("\(years == 1 ? "1 year" : "\(years) years") ago · "
@@ -379,103 +351,76 @@ struct MemoriesPage: View {
 
     var body: some View {
         Group {
-            // One scroll view per level, swapped whole: a shared one scrolled under the change and the squares never
-            // flew into their stacks.
-            Group {
-                if photos.isEmpty {
-                    ScrollView {
-                        VStack(spacing: 10) {
-                            Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
-                            Text("No photos yet").font(.headline)
-                            Text("After you mark a prayer, take a photo from the pill; it shows up here.")
-                                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        }
-                        .padding(.top, 140).padding(.horizontal, 40)
+            if photos.isEmpty {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
+                        Text("No photos yet").font(.headline)
+                        Text("After you mark a prayer, take a photo from the pill; it shows up here.")
+                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
-                } else if searching {
-                    resultsList
-                } else {
-                    switch level {
-                    case .months: levelScroll(.months) { monthStacks }
-                    case .days: levelScroll(.days) { dayStacks }
-                    case .prayers: levelScroll(.prayers) { prayerStrips }
-                    }
+                    .padding(.top, 140).padding(.horizontal, 40)
+                }
+            } else if searching {
+                resultsList
+            } else {
+                switch level {
+                case .months: levelScroll(.months) { monthStacks }
+                case .days: levelScroll(.days) { dayStacks }
+                case .prayers: levelScroll(.prayers) { prayerStrips }
                 }
             }
-            .animation(Self.levelMotion, value: level)
-            // The bars are Apple's own, declared once and never swapped (owner: "we're playing by Apple's rules for
-            // this page"): the gear top right; at the bottom the system segmented control and the system search
-            // button (Photos' layout) — tapping it opens the search field in the bar; the results list replaces the
-            // levels while it's open.
-            .searchable(text: $query, isPresented: $searching, placement: .toolbar,
-                        prompt: "Notes, places, prayers, months")
-            .modifier(MinimizedSearch())
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel("Photo settings")
-                }
-                if #available(iOS 26.0, *) {
-                    ToolbarItem(placement: .bottomBar) { levelPicker }
-                        // The segmented control brings its own glass; the bar's shared one round it drew a second
-                        // capsule (the owner's ghost bubble).
-                        .sharedBackgroundVisibility(.hidden)
-                    ToolbarSpacer(.flexible, placement: .bottomBar)
-                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                } else {
-                    ToolbarItem(placement: .bottomBar) { levelPicker }
-                }
-            }
-            .simultaneousGesture(
-                MagnifyGesture().onEnded { value in
-                    if value.magnification < 0.8, let up = Level(rawValue: level.rawValue - 1) { go(up) }
-                    if value.magnification > 1.25, let down = Level(rawValue: level.rawValue + 1) { go(down) }
-                }
-            )
-            .onChange(of: searching) { _, on in
-                if on {
-                    pinned.remove(level)
-                    tops[level] = nil
-                    buildIndex()
-                } else {
-                    query = ""
-                    filters = []
-                }
-            }
-            .onChange(of: placeNamesLearned) { _, _ in if searching { buildIndex() } }
-            .sensoryFeedback(.selection, trigger: level)
-            .navigationTitle("Memories")
-            .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showSettings) { MemoriesSettings() }
         }
+        // Apple's bottom bar for a pushed page (Memories isn't the app's root, so it has no tab bar of its own — as a
+        // TabView here, search folded into the tabs and never opened): the system segmented control, then the system
+        // search button (`DefaultToolbarItem` + `.searchable`, minimized to a button — WWDC25's pattern). Search is
+        // asked for ONCE: `.searchable(placement: .toolbar)` as well drew a second search circle behind the first.
+        .searchable(text: $query, isPresented: $searching, prompt: "Notes, places, prayers, months")
+        .modifier(MinimizedSearch())
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel("Photo settings")
+            }
+            if #available(iOS 26.0, *) {
+                // The segmented control has its own glass; the bar's shared one round it drew a second capsule.
+                ToolbarItem(placement: .bottomBar) { levelPicker }
+                    .sharedBackgroundVisibility(.hidden)
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            } else {
+                ToolbarItem(placement: .bottomBar) { levelPicker }
+            }
+        }
+        .onChange(of: searching) { _, on in
+            if on {
+                buildIndex()
+            } else {
+                query = ""
+                filters = []
+            }
+        }
+        .onChange(of: placeNamesLearned) { _, _ in if searching { buildIndex() } }
+        .navigationTitle("Memories")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showSettings) { MemoriesSettings() }
         // The pile in its own clear layer over everything, presented without a slide (like a prayer photo from the hold
         // editor): the page's bars stay as they are underneath. Hiding them for the pile and bringing them back left a
         // second, ghost bottom bar with an empty search field (owner's screenshot) once Memories was pushed.
         .fullScreenCover(item: $deckStart) { start in
-                ZStack {
-                    Rectangle().fill(.ultraThinMaterial)
-                        .overlay(Color.black.opacity(0.12))
-                        .ignoresSafeArea()
-                        .opacity(deckShown ? 1 : 0)
-                    // Its own stack, so Share pushes its page inside the layer.
-                    NavigationStack {
-                        MemoriesDeck(photos: visible, start: start, shown: deckShown, hideTop: flight != nil,
-                                     folded: folding, onTopFrame: deckTopMoved, onClose: closeDeck)
-                            .containerBackground(.clear, for: .navigation)
-                    }
-                    if let flight {
-                        let base = flight.rect.width > 0 ? Self.cardWidth : 1
-                        PrayerPhotoFace(back: flight.images.back, front: flight.images.front, width: base)
-                            .shadow(color: .black.opacity(0.18 * flight.opacity), radius: 14, y: 8)
-                            .scaleEffect(flight.rect.width / base)
-                            .position(x: flight.rect.midX, y: flight.rect.midY)
-                            .opacity(flight.opacity)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .ignoresSafeArea()
-                            .allowsHitTesting(false)
-                    }
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.12))
+                    .ignoresSafeArea()
+                // Its own stack, so Share pushes its page inside the layer.
+                NavigationStack {
+                    MemoriesDeck(photos: visible, start: start, shown: true, hideTop: false, folded: false,
+                                 onTopFrame: { _ in }, onClose: closeDeck)
+                        .containerBackground(.clear, for: .navigation)
                 }
-                .presentationBackground(.clear)
+            }
+            .opacity(deckShown ? 1 : 0)
+            .presentationBackground(.clear)
         }
         .task(id: PrayerPhotoRevision.shared.value) {
             let now = PrayerPhotos.all()
@@ -505,7 +450,7 @@ struct MemoriesPage: View {
     }
 
     /// To another level, opening at `id` (a tapped stack), else at the month that's on screen now.
-    private func go(_ new: Level, at id: String? = nil, animated: Bool = true) {
+    private func go(_ new: Level, at id: String? = nil) {
         guard new != level else { return }
         if let target = id ?? tops[level].map({ String($0.prefix(7)) }) {
             tops[new] = target
@@ -514,85 +459,34 @@ struct MemoriesPage: View {
             tops[new] = nil
             pinned.remove(new)
         }
-        if animated { withAnimation(Self.levelMotion) { level = new } } else { level = new }
+        level = new
     }
 
     /// The pile's card width (`MemoriesDeck` uses the same).
     static var cardWidth: CGFloat { min(UIScreen.main.bounds.width - 72, 360) }
 
-    /// The photo leaves its square: the pile mounts with its top card hidden, and once the pile has laid out the photo
-    /// flies onto it while the page frosts over.
-    private func openDeck(_ photo: MemoryPhoto, from source: String) {
+    /// The pile fades in over the page.
+    private func openDeck(_ photo: MemoryPhoto) {
         triggerSomeVibration(type: .light)
-        let from = frames.frames[source]
-        Task {
-            let images = await PrayerPhotos.load(photo.key)
-            frames.opening = true
-            flight = Flight(key: photo.key, rect: from ?? .zero, images: images, opacity: from == nil ? 0 : 1)
-            deckShown = false
-            folding = false
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            withTransaction(quiet) { deckStart = photo }
-        }
-    }
-
-    /// The pile reports its top card. While opening, every report (re)aims the photo at it — the pile settles over a
-    /// frame or two, and its first report is empty (aimed at that, the photo flew into nothing).
-    private func deckTopMoved(_ rect: CGRect) {
-        guard rect.width > 1 else { return }
-        frames.deckTop = rect
-        guard frames.opening, flight != nil else { return }
-        let token = UUID()
-        frames.flightToken = token
-        if flight?.rect == .zero { flight?.rect = rect.insetBy(dx: rect.width * 0.1, dy: rect.height * 0.1) }
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
-            flight?.rect = rect
-            flight?.opacity = 1
-            deckShown = true
-        } completion: {
-            guard frames.flightToken == token else { return }
-            frames.opening = false
-            flight = nil
-        }
-    }
-
-    /// The photo on top flies back into its square (its day's pile on Days, its own square on Prayers) — or, when that
-    /// isn't on screen, shrinks and fades where it is — while the frost lifts.
-    private func closeDeck(_ key: String, _ dayKey: String, _ scale: CGFloat) {
-        triggerSomeVibration(type: .light)
+        deckShown = false
         var quiet = Transaction()
         quiet.disablesAnimations = true
-        guard let top = frames.deckTop else { withTransaction(quiet) { deckStart = nil }; return }
-        let screen = UIScreen.main.bounds
-        let onScreen: (CGRect) -> Bool = { $0.minY > 90 && $0.maxY < screen.height - 70 && $0.minX >= 0 && $0.maxX <= screen.width }
-        let target = (searching ? ["result-" + key] : ["otd-" + dayKey, level == .prayers ? key : dayKey])
-            .compactMap { frames.frames[$0] }.first(where: onScreen)
-        // The pile gathers into its top card at once, so only that photo is left to fly.
-        withAnimation(.easeOut(duration: 0.18)) { folding = true }
-        // Where the top card is now, shrunk as the drag left it.
-        let start = CGRect(x: top.midX - top.width * scale / 2, y: top.midY - top.height * scale / 2,
-                           width: top.width * scale, height: top.height * scale)
+        withTransaction(quiet) { deckStart = photo }
         Task {
-            let images = await PrayerPhotos.load(key)
-            flight = Flight(key: key, rect: start, images: images)
-            // A turn later, so the flight is drawn where it starts (set and moved in one turn, it never showed moving).
             await Task.yield()
-            try? await Task.sleep(for: .milliseconds(16))
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.9)) {
-                if let target {
-                    flight?.rect = target
-                } else {
-                    flight?.rect = start.insetBy(dx: start.width * 0.12, dy: start.height * 0.12)
-                    flight?.opacity = 0
-                }
-                deckShown = false
-            } completion: {
-                withTransaction(quiet) {
-                    deckStart = nil
-                    flight = nil
-                }
-            }
+            withAnimation(.easeOut(duration: 0.25)) { deckShown = true }
+        }
+    }
+
+    /// The pile fades out where it is.
+    private func closeDeck(_ key: String, _ dayKey: String, _ scale: CGFloat) {
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeOut(duration: 0.22)) {
+            deckShown = false
+        } completion: {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { deckStart = nil }
         }
     }
 
@@ -660,13 +554,9 @@ struct MemoriesPage: View {
                 number.foregroundStyle(.tertiary)
             }
         } else {
-            Button { if let newest = dayPhotos.last { openDeck(newest, from: dayKey) } } label: {
+            Button { if let newest = dayPhotos.last { openDeck(newest) } } label: {
                 VStack(spacing: 4) {
                     stack(dayPhotos, side: 38, corner: 10).frame(height: 40)
-                        .onGeometryChange(for: CGRect.self) { proxy in
-                            let f = proxy.frame(in: .global)
-                            return CGRect(x: f.midX - 19, y: f.midY - 19, width: 38, height: 38)
-                        } action: { frames.frames[dayKey] = $0 }
                     number.foregroundStyle(.primary)
                 }
             }
@@ -717,14 +607,13 @@ struct MemoriesPage: View {
         .padding(.vertical, 24)
     }
 
-    /// The newest three, loose, the newest straight on top; the squares fly in and out of it (`pinch`).
+    /// The newest three, loose, the newest straight on top.
     private func stack(_ photos: [MemoryPhoto], side: CGFloat, corner: CGFloat) -> some View {
         let shown = Array(photos.suffix(3))
         return ZStack {
             ForEach(Array(shown.enumerated()), id: \.element.key) { n, photo in
                 let onTop = n == shown.count - 1
                 MemoryThumb(key: photo.key, side: Int(side * 3), corner: corner)
-                    .matchedGeometryEffect(id: photo.key, in: pinch)
                     .frame(width: side, height: side)
                     // Small piles get a small shadow (dozens of 8 pt blurs were the costliest thing to draw mid-switch).
                     .shadow(color: .black.opacity(side < 60 ? 0.12 : 0.16), radius: side < 60 ? 2 : 8, y: side < 60 ? 1 : 4)
@@ -754,11 +643,9 @@ struct MemoriesPage: View {
                 ForEach(0..<5, id: \.self) { slot in
                     if let photo = dayPhotos.first(where: { $0.slot == slot }) {
                         MemoryThumb(key: photo.key)
-                            .matchedGeometryEffect(id: photo.key, in: pinch)
-                            .frame(width: 52, height: 52)
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.frames[photo.key] = $0 }
+                                    .frame(width: 52, height: 52)
                             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .onTapGesture { openDeck(photo, from: photo.key) }
+                            .onTapGesture { openDeck(photo) }
                     } else {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
@@ -1883,7 +1770,7 @@ struct PrayerPlaceMapSheet: View {
     }
 }
 
-/// The search as a button in the bottom bar until tapped (Photos' layout), on iOS 26+.
+/// The search as a button in the bottom bar until tapped, on iOS 26+.
 private struct MinimizedSearch: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) { content.searchToolbarBehavior(.minimize) } else { content }
