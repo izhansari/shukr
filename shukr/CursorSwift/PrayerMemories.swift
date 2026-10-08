@@ -966,8 +966,8 @@ struct MemoriesDeck: View {
                 .padding(.bottom, 6)
             }
             .frame(width: geo.size.width)
-            // A tap on the frosted page around the pile closes, as on a photo opened from the hold editor.
-            .background(Color.clear.contentShape(Rectangle()).onTapGesture(perform: close))
+            // No tap-to-close on the frosted page: a missed tap on the note or a prayer symbol closed it (owner) —
+            // ✕ or a drag down closes.
         }
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $editingNote) {
