@@ -492,7 +492,9 @@ struct PrayerPhotoViewer: View {
                         }
                     HStack(spacing: 18) {
                         Button { setSharing(!sharing) } label: {
-                            circleIcon(sharing ? "square.and.arrow.up.fill" : "square.and.arrow.up")
+                            // One symbol (swapping to the filled one crossfaded two glyphs — the ghost, owner); on = a
+                            // sage circle.
+                            circleIcon("square.and.arrow.up", on: sharing)
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Share")
@@ -550,12 +552,17 @@ struct PrayerPhotoViewer: View {
         .task(id: "\(sharing)|\(share.signature)|\(images.back?.hash ?? 0)") { if sharing { share.render(images) } }
     }
 
-    private func circleIcon(_ symbol: String) -> some View {
+    private func circleIcon(_ symbol: String, on: Bool = false) -> some View {
         Image(systemName: symbol)
             .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(.primary)
+            .foregroundStyle(on ? Color.white : Color.primary)
             .frame(width: 50, height: 50)
-            .background(Circle().fill(.regularMaterial))
+            .background {
+                ZStack {
+                    Circle().fill(.regularMaterial)
+                    Circle().fill(Color.sage).opacity(on ? 1 : 0)
+                }
+            }
             .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
     }
 
