@@ -104,6 +104,8 @@ struct ZikrLockCover: View {
     @State private var itemsShown = 0
     /// Page 2's parts shown: 1 the heading, 2…5 the narration's lines, 6 the source, 7 the bridge to shukr, 8 Begin.
     @State private var linesShown = 0
+    /// The quote's lines wiped in so far, left to right, one at a time (each narration part is two lines).
+    @State private var quoteShown = 0
     /// Begin was tapped: everything fades away before the tour comes in.
     @State private var leaving = false
     /// Page 3: the first zikr, its task already made (owner: "show it as a task ring … that they then click on to start
@@ -294,15 +296,17 @@ struct ZikrLockCover: View {
     private var quote: some View {
         VStack(spacing: 16) {
             VStack(spacing: 12) {
-                ForEach(Array(ZikrLockWords.narration.enumerated()), id: \.offset) { i, line in
-                    Text(line)
-                        .font(.system(size: 16, weight: .light, design: .rounded))
-                        .foregroundStyle(Color.primary.opacity(0.75))
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .opacity(linesShown >= i + 2 ? 1 : 0)
-                        .offset(y: linesShown >= i + 2 || reduceMotion ? 0 : 6)
+                ForEach(Array(ZikrLockWords.quoteParts.enumerated()), id: \.offset) { _, part in
+                    VStack(spacing: 4) {
+                        ForEach(part, id: \.index) { line in
+                            Text(line.text)
+                                .font(.system(size: 16, weight: .light, design: .rounded))
+                                .foregroundStyle(Color.primary.opacity(0.75))
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .modifier(WipeIn(progress: quoteShown > line.index ? 1 : 0))
+                        }
+                    }
                 }
             }
             Text(ZikrLockWords.narrationSource.uppercased())
@@ -429,6 +433,7 @@ struct ZikrLockCover: View {
             withAnimation(.easeInOut(duration: 0.9)) {
                 lock.focus = false
                 linesShown = 0
+                quoteShown = 0
                 third = false
                 thirdShown = 0
             }
@@ -623,6 +628,7 @@ struct ZikrLockCover: View {
         withAnimation(.easeInOut(duration: 1.1)) { lock.focus = true }
         let lines = ZikrLockWords.narration.count + 4   // heading, the lines, the source, the bridge, Begin
         if reduceMotion {
+            quoteShown = ZikrLockWords.quoteLineCount
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) { linesShown = lines }
             return
         }
@@ -630,9 +636,24 @@ struct ZikrLockCover: View {
             try? await Task.sleep(for: .milliseconds(1100))
             for i in 1...lines {
                 guard !Task.isCancelled else { return }
+                // 2…(parts + 1) are the quote: the well comes in, then its lines wipe in left to right, one after
+                // another (owner), at one reading speed; a breath between the parts, a pause before the source.
+                if (3...ZikrLockWords.narration.count + 1).contains(i) { continue }
+                if i == 2 {
+                    withAnimation(.easeInOut(duration: 0.9)) { linesShown = ZikrLockWords.narration.count + 1 }
+                    try? await Task.sleep(for: .milliseconds(450))
+                    for line in ZikrLockWords.quoteParts.joined() {
+                        guard !Task.isCancelled else { return }
+                        let wipe = 0.5 + Double(line.text.count) * 0.02
+                        withAnimation(.easeInOut(duration: wipe)) { quoteShown = line.index + 1 }
+                        try? await Task.sleep(for: .seconds(wipe * 0.8 + (line.endsPart ? 0.35 : 0)))
+                    }
+                    try? await Task.sleep(for: .milliseconds(700))
+                    continue
+                }
                 withAnimation(.easeInOut(duration: 0.9)) { linesShown = i }
-                // The first line held a beat longer; a pause before the bridge to shukr.
-                try? await Task.sleep(for: .milliseconds(i == 2 ? 1600 : i == lines - 2 ? 1500 : 1050))
+                // A pause before the bridge to shukr.
+                try? await Task.sleep(for: .milliseconds(i == lines - 2 ? 1500 : 1050))
             }
         }
     }
@@ -661,6 +682,19 @@ enum ZikrLockWords {
         "If he comes to Me walking,\nI come to him running.",
     ]
     static let narrationSource = "Sahih al-Bukhari 7405"
+    /// The narration as the lines it's shown in, numbered through (each part's own lines, split at "\n").
+    struct QuoteLine { let index: Int; let text: String; let endsPart: Bool }
+    static let quoteParts: [[QuoteLine]] = {
+        var n = 0
+        return narration.map { part in
+            let lines = part.components(separatedBy: "\n")
+            return lines.enumerated().map { i, text in
+                defer { n += 1 }
+                return QuoteLine(index: n, text: text, endsPart: i == lines.count - 1)
+            }
+        }
+    }()
+    static let quoteLineCount = quoteParts.joined().count
     /// The narration's thread carried on (it ends on walking towards Him): the step, then what the tour will do.
     static let firstStep = "So take the first step, however small."
     static let bridge = "We'll set up one daily zikr and count it together. It takes about two minutes."
@@ -700,5 +734,24 @@ extension FirstZikr {
         context.insert(task)
         try? context.save()
         return task
+    }
+}
+
+/// A line written in from left to right: a soft edge sweeps across it as `progress` goes 0 → 1.
+struct WipeIn: ViewModifier, Animatable {
+    var progress: CGFloat
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let soft: CGFloat = 0.3
+        let edge = progress * (1 + soft) - soft
+        content.mask {
+            LinearGradient(stops: [.init(color: .black, location: min(max(edge, 0), 1)),
+                                   .init(color: .clear, location: min(max(edge + soft, 0), 1))],
+                           startPoint: .leading, endPoint: .trailing)
+        }
     }
 }
