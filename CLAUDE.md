@@ -359,7 +359,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the bars
   are the system's, declared once, never swapped or gated on a later load (owner: "playing by Apple's rules"; `photos`
   is read in the property's initialiser so the bottom bar exists on the push's first frame — loaded in `.task` it
-  vanished mid-push): ⚙ top right; bottom = segmented `Picker` bound through `go` + `ToolbarSpacer` +
+  vanished mid-push): ⚙ top right; bottom = the system segmented `Picker` (a plain change — `go(animated: false)`; the levels animate on `level`;
+  its item `.sharedBackgroundVisibility(.hidden)`: the control has its own glass, the bar's second capsule left ghost
+  bubbles) + `ToolbarSpacer` +
   `DefaultToolbarItem(kind: .search)`, `.searchable(isPresented: $searching, placement: .toolbar)` +
   `.searchToolbarBehavior(.minimize)` (no own field, no custom pill; DEBUG `-demoMemoriesSearch [words]`); a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month
   on screen; `tops` / `pinned`). `matchedGeometryEffect` in `pinch` flies the squares into the stacks (each stack = its

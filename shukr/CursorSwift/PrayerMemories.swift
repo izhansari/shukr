@@ -210,6 +210,19 @@ struct MemoriesPage: View {
         PrayerPlaceNames.fill(spots) { placeNamesLearned += 1 }
     }
 
+    /// Months · Days · Prayers, the system's segmented control. A plain change (the control animates itself); the
+    /// levels below animate on `level` (`levelMotion`), so the squares still fly into their stacks.
+    private var levelPicker: some View {
+        Picker("Show", selection: Binding(get: { level }, set: { go($0, animated: false) })) {
+            ForEach(Level.allCases) { Text($0.title).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        .fixedSize()
+        .disabled(!hasPhotos)
+    }
+
+    static let levelMotion = Animation.spring(response: 0.55, dampingFraction: 0.86)
+
     // MARK: Search results, as a list (owner: "display the search results as a list")
 
     private var resultsList: some View {
@@ -389,6 +402,7 @@ struct MemoriesPage: View {
                     }
                 }
             }
+            .animation(Self.levelMotion, value: level)
             // The bars are Apple's own, declared once and never swapped (owner: "we're playing by Apple's rules for
             // this page"): the gear top right; at the bottom the system segmented control and the system search
             // button (Photos' layout) — tapping it opens the search field in the bar; the results list replaces the
@@ -401,18 +415,15 @@ struct MemoriesPage: View {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Photo settings")
                 }
-                ToolbarItem(placement: .bottomBar) {
-                    // Through `go`, like the pinch, so the squares fly into their stacks.
-                    Picker("Show", selection: Binding(get: { level }, set: { go($0) })) {
-                        ForEach(Level.allCases) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .fixedSize()
-                    .disabled(!hasPhotos)
-                }
                 if #available(iOS 26.0, *) {
+                    ToolbarItem(placement: .bottomBar) { levelPicker }
+                        // The segmented control brings its own glass; the bar's shared one round it drew a second
+                        // capsule (the owner's ghost bubble).
+                        .sharedBackgroundVisibility(.hidden)
                     ToolbarSpacer(.flexible, placement: .bottomBar)
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                } else {
+                    ToolbarItem(placement: .bottomBar) { levelPicker }
                 }
             }
             .simultaneousGesture(
@@ -494,7 +505,7 @@ struct MemoriesPage: View {
     }
 
     /// To another level, opening at `id` (a tapped stack), else at the month that's on screen now.
-    private func go(_ new: Level, at id: String? = nil) {
+    private func go(_ new: Level, at id: String? = nil, animated: Bool = true) {
         guard new != level else { return }
         if let target = id ?? tops[level].map({ String($0.prefix(7)) }) {
             tops[new] = target
@@ -503,7 +514,7 @@ struct MemoriesPage: View {
             tops[new] = nil
             pinned.remove(new)
         }
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { level = new }
+        if animated { withAnimation(Self.levelMotion) { level = new } } else { level = new }
     }
 
     /// The pile's card width (`MemoriesDeck` uses the same).
