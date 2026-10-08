@@ -489,7 +489,8 @@ struct tasbeehView: View {
                     .offset(entryOffset)
                     .modifier(SessionAppear(shown: countIn, style: openingStyle))
                     .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed || ringAwayForPause))
-                    .animation(.easeOut(duration: CircleMotion.quick), value: ringAwayForPause)
+                    .blur(radius: ringAwayForPause ? CircleMotion.pauseBlur : 0)
+                    .animation(CircleMotion.pauseFade, value: ringAwayForPause)
                 
                 GeometryReader { geometry in
                     VStack {
@@ -584,7 +585,8 @@ struct tasbeehView: View {
                     .compositingGroup()
                     .opacity((pageIn || ringHeld) && !ringOut ? 1 : 0)
                     .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed || ringAwayForPause))
-                    .animation(.easeOut(duration: CircleMotion.quick), value: ringAwayForPause)
+                    .blur(radius: ringAwayForPause ? CircleMotion.pauseBlur : 0)
+                    .animation(CircleMotion.pauseFade, value: ringAwayForPause)
             }
             // Soft look: centred on the whole screen (the circles it opens out of are), not the safe area.
             .ignoresSafeArea(.container, edges: softLook ? .all : [])
@@ -2171,7 +2173,7 @@ struct tasbeehView: View {
                     .sheet(isPresented: $showZikrPage) {
                         if let mantra { MantraEditorView(mantra: mantra, inSession: true) }
                     }
-                    .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
+                    .modifier(PauseLayerFade(shown: pauseShown, finishing: results != nil, resultsDelay: 0.22))
                     .allowsHitTesting(pauseShown)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.notes", $0) }
                     // The room left over, between the card and the tiles.
@@ -2236,13 +2238,17 @@ struct tasbeehView: View {
                 Spacer(minLength: 4)
                 // The session between them (never over them: centred on the page it ran into ‹ Resume on a 6.1"
                 // phone); out of the way while Finish asks for its second tap.
-                Text(sharedState.isDoingPostNamazZikr ? "Tasbih Fatimah" : sessionLabel)
-                    .font(.subheadline.weight(.light))
-                    .foregroundStyle(.secondary)
+                // A task's streak and best under it (owner: moved up here from under "from your task").
+                VStack(spacing: 1) {
+                    Text(sharedState.isDoingPostNamazZikr ? "Tasbih Fatimah" : sessionLabel)
+                        .font(.subheadline.weight(.light))
+                        .foregroundStyle(.secondary)
+                    taskStreakLine(.caption2)
+                }
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                     .opacity(finishArmed ? 0 : 1)
-                    .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
+                    .modifier(PauseLayerFade(shown: pauseShown, finishing: results != nil, resultsDelay: 0.22))
                     .allowsHitTesting(false)
                     .layoutPriority(-1)
                 Spacer(minLength: 4)
@@ -2290,7 +2296,6 @@ struct tasbeehView: View {
                         Label("from your task", systemImage: "checklist")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        taskStreakLine(.caption)
                     }
                     if let mantra, !sharedState.isDoingPostNamazZikr {
                         ZikrMediaStrip(mantra: mantra, paused: paused, compact: true)
@@ -2334,7 +2339,6 @@ struct tasbeehView: View {
                             Label("from your task", systemImage: "checklist")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
-                            taskStreakLine(.caption2)
                         }
                     }
                     .contentShape(Rectangle())
@@ -2528,7 +2532,7 @@ struct tasbeehView: View {
                 ZStack {
                     if !sharedState.isDoingPostNamazZikr {
                         chipsRow
-                            .modifier(SoftCardsFade(shown: pauseShown, delay: 0))
+                            .modifier(PauseLayerFade(shown: pauseShown, finishing: results != nil))
                             .allowsHitTesting(pauseShown)
                     }
                     if let results {
@@ -2595,7 +2599,7 @@ struct tasbeehView: View {
                 // (Resume, Finish and Done are up top now, where the counter's ⏸ is — decision top-bar-finish A.)
                 gap(12)
             }
-            .modifier(SoftCardsFade(shown: cardsShown, delay: 0.12))
+            .modifier(PauseLayerFade(shown: cardsShown, finishing: results != nil, resultsDelay: 0.12))
             .animation(.snappy(duration: 0.25), value: toggleInactivityTimer)
         }
 
@@ -2789,7 +2793,6 @@ struct tasbeehView: View {
                                 Label("from your task", systemImage: "checklist")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                taskStreakLine(.caption)
                             }
                         }
                         .contentShape(Rectangle())
@@ -3618,6 +3621,24 @@ struct RingLift: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+/// The pause screen over the counter (owner, 2026-10-08: "make the pause screen overlay fade over the counter page
+/// nicely"): its parts come and go together, one fade, as the counter's ring softens away under them
+/// (`CircleMotion.pauseFade`). Finishing keeps the results' timing: out quick, in a beat late, as the ring moves.
+struct PauseLayerFade: ViewModifier {
+    let shown: Bool
+    let finishing: Bool
+    var resultsDelay: Double = 0
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .animation(finishing ? (shown ? .easeOut(duration: CircleMomentTiming.in).delay(resultsDelay)
+                                          : .easeOut(duration: CircleMotion.cardsOutDuration))
+                                 : CircleMotion.pauseFade,
+                       value: shown)
     }
 }
 

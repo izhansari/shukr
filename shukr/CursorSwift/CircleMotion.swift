@@ -111,6 +111,10 @@ enum CircleMotion {
     /// The results' ✓: a beat after the card, then a spring with a little bounce.
     static let resultsCheckBeat: Double = 0.15
     static let resultsCheck = Animation.spring(response: 0.45, dampingFraction: 0.6)
+    /// Pause ⇄ counter: the pause screen fades in over the counter as its ring fades and softens away, together
+    /// (owner, 2026-10-08), and back the same way on Resume.
+    static let pauseFade = Animation.easeInOut(duration: 0.32)
+    static let pauseBlur: CGFloat = 8
     /// The soft session cards' words going (out quick, so the next ones come in clean).
     static let cardsOutDuration: Double = 0.12
     static let sessionRingOverDuration: Double = 0.15
