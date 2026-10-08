@@ -82,20 +82,13 @@ struct DayRing: View {
                             .stroke(color.opacity(picked == i ? 1 : 0.72), style: style)
                         if let share = p.share {
                             let angle = 360 * (from + (to - from) * share)
-                            if let key = p.photoKey {
-                                // A prayer with a photo: the dot is the photo, tiny and upright (tap the fifth to see it).
-                                PrayerPhotoThumb(key: key, size: picked == i ? 24 : 20, edge: color)
-                                    .rotationEffect(.degrees(90 - angle))
-                                    .offset(x: 100)
-                                    .rotationEffect(.degrees(angle))
-                            } else {
-                                // When in its window it was prayed.
-                                Circle().fill(color)
-                                    .frame(width: picked == i ? 13 : 9, height: picked == i ? 13 : 9)
-                                    .overlay(Circle().stroke(theme.backdrop, lineWidth: 2.5))
-                                    .offset(x: 100)
-                                    .rotationEffect(.degrees(angle))
-                            }
+                            // When in its window it was prayed — a dot, photo or not (owner: the photos on the ring went
+                            // back to dots; tapping the fifth still shows its photo in the centre).
+                            Circle().fill(color)
+                                .frame(width: picked == i ? 13 : 9, height: picked == i ? 13 : 9)
+                                .overlay(Circle().stroke(theme.backdrop, lineWidth: 2.5))
+                                .offset(x: 100)
+                                .rotationEffect(.degrees(angle))
                         }
                     } else {
                         // Not marked: the fifth stays a faint track.

@@ -284,8 +284,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   name and day on a glass tag inside the photo, a shukr pill top right, and the place (masjid, else the spot's address) when Memories' ⚙ (`MemoriesSettings`) → Show where is on —
   `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). **The main picture**
   (`PrayerPhotoMain`, UserDefaults `prayerPhotos.selfieMain`): the last swap is kept — a tap in the camera's review, the
-  hold editor's photo, Memories' pile or the share page; `load` / `mainURL` / thumbnails follow it. Day ring: a
-  photographed prayer's dot is `PrayerPhotoThumb` (upright); its fifth tapped shows the photo in the centre (the circle's own tap layer steps aside: `DayPageState.photoInCentre`) (the strip
+  hold editor's photo, Memories' pile or the share page; `load` / `mainURL` / thumbnails follow it. Day ring: dots
+  only (photos on the ring went back to dots — owner); a photographed prayer's fifth tapped shows the photo in the centre (the circle's own tap layer steps aside: `DayPageState.photoInCentre`) (the strip
   under the line was dropped — it fought the list card). Map: the prayer's page shows it. DEBUG
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
 - **Memories** (briefly "Journal" — the owner went back to Memories and its photo.stack icon; PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo
