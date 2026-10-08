@@ -339,9 +339,15 @@ struct PrayerPhotoCard: View {
     var opens = true
     @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
     @State private var open = false
+    /// Where it sits on screen: the opened card zooms out of here and back (owner: "the zoom effect for the photo in the
+    /// center of the ring").
+    @State private var frame: CGRect = .zero
 
     var body: some View {
         PrayerPhotoFace(back: images.back, front: images.front, width: width)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+            // Out in the viewer while it's open, so it's never there twice.
+            .opacity(open ? 0 : 1)
             .contentShape(RoundedRectangle(cornerRadius: width * 0.22, style: .continuous))
             .onTapGesture {
                 guard opens, images.back != nil else { return }
@@ -351,7 +357,7 @@ struct PrayerPhotoCard: View {
                 withTransaction(quiet) { open = true }
             }
             .fullScreenCover(isPresented: $open) {
-                PrayerPhotoViewer(key: key) {
+                PrayerPhotoViewer(key: key, from: frame.width > 0 ? frame : nil, initial: images) {
                     var quiet = Transaction()
                     quiet.disablesAnimations = true
                     withTransaction(quiet) { open = false }
@@ -417,8 +423,20 @@ struct PrayerPhotoThumb: View {
 /// a tap outside or a swipe down closes it.
 struct PrayerPhotoViewer: View {
     let key: String
+    /// The small photo it was opened from: the card zooms out of it and back into it (one view, scaled and moved).
+    var from: CGRect? = nil
     let onClose: () -> Void
-    @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
+    @State private var images: (back: UIImage?, front: UIImage?)
+    /// The card's own place, measured once; until then it isn't drawn (it would flash full size).
+    @State private var cardFrame: CGRect?
+
+    init(key: String, from: CGRect? = nil, initial: (back: UIImage?, front: UIImage?) = (nil, nil),
+         onClose: @escaping () -> Void) {
+        self.key = key
+        self.from = from
+        self.onClose = onClose
+        _images = State(initialValue: initial)
+    }
     @State private var place: String?
     @State private var shown = false
     @State private var closing = false
@@ -442,8 +460,16 @@ struct PrayerPhotoViewer: View {
                     .onTapGesture { close() }
                 VStack(spacing: 22) {
                     PrayerPhotoFramed(back: images.back, front: images.front,
-                                      key: key, place: place, width: width)
-                        .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
+                                      key: key, place: place, tagOpacity: shown ? 1 : 0, width: width)
+                        .shadow(color: .black.opacity(shown ? 0.35 : 0), radius: 30, y: 14)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
+                            guard cardFrame == nil, rect.width > 1 else { return }
+                            cardFrame = rect
+                            zoomIn()
+                        }
+                        .scaleEffect(zoom.scale)
+                        .offset(x: zoom.dx, y: zoom.dy)
+                        .opacity(from != nil && cardFrame == nil ? 0 : 1)
                         .onTapGesture {
                             guard images.front != nil else { return }
                             triggerSomeVibration(type: .light)
@@ -463,11 +489,12 @@ struct PrayerPhotoViewer: View {
                             .buttonStyle(.plain)
                             .accessibilityLabel("Close")
                     }
-                    .opacity(drag > 10 ? 0 : 1)
+                    .opacity(drag > 10 || !shown ? 0 : 1)
                 }
                 .offset(y: drag)
-                .scaleEffect(shown ? 1 : 0.86)
-                .opacity(shown ? 1 : 0)
+                // Opened from a small photo: the card zooms (above); else the old spring-in.
+                .scaleEffect(from == nil && !shown ? 0.86 : 1)
+                .opacity(from == nil && !shown ? 0 : 1)
                 .gesture(DragGesture()
                     .onChanged { drag = max(0, $0.translation.height) }
                     .onEnded { value in
@@ -482,7 +509,7 @@ struct PrayerPhotoViewer: View {
             print("PHOTOCARD open \(key)")
             #endif
             PrayerPhotoViewing.shared.opened()
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true }
+            if from == nil { withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true } }
         }
         .onDisappear {
             #if DEBUG
@@ -503,9 +530,30 @@ struct PrayerPhotoViewer: View {
             .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
     }
 
+    /// While hidden, the card sits exactly on the small photo (its size and place); shown, where it belongs.
+    private var zoom: (scale: CGFloat, dx: CGFloat, dy: CGFloat) {
+        guard !shown, let from, let card = cardFrame, card.width > 0 else { return (1, 0, 0) }
+        return (from.width / card.width, from.midX - card.midX, from.midY - card.midY)
+    }
+
+    private func zoomIn() {
+        guard from != nil else { return }
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { shown = true }
+        }
+    }
+
     private func close() {
         closing = true
         triggerSomeVibration(type: .light)
+        if from != nil, cardFrame != nil {
+            // Back into the small photo, then the cover goes (and the small photo shows again in the same moment).
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.92)) {
+                shown = false
+                drag = 0
+            } completion: { onClose() }
+            return
+        }
         withAnimation(.easeIn(duration: 0.2)) { shown = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onClose() }
     }
@@ -532,6 +580,8 @@ struct PrayerPhotoFramed: View {
     var place: String? = nil
     /// The prayer's score as a ring in the tag (the share page's option).
     var score: Double? = nil
+    /// The tag and the shukr pill fade in as an opened photo zooms out of its small square.
+    var tagOpacity: Double = 1
     let width: CGFloat
 
     var body: some View {
@@ -568,6 +618,7 @@ struct PrayerPhotoFramed: View {
                 .environment(\.colorScheme, .dark)
                 .frame(maxWidth: width * 0.8, alignment: .leading)
                 .padding(width * 0.06)
+                .opacity(tagOpacity)
             }
             .overlay(alignment: .topTrailing) {
                 Text("shukr")
@@ -577,6 +628,7 @@ struct PrayerPhotoFramed: View {
                     .background(Capsule().fill(.ultraThinMaterial))
                     .environment(\.colorScheme, .dark)
                     .padding(width * 0.06)
+                    .opacity(tagOpacity)
             }
     }
 }

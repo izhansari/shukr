@@ -280,7 +280,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (`PrayerPhotoStorageRow`). Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
   and marked; seen any time. **Unmarking deletes the photo** (`PrayerPhotos.discard(for:)` on every unmark path — the app's
   list, the widget's alert, the watch's unmark and undo; both prompts add "Its photo will be deleted too." when there is one). `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
-  over the blurred page (a clear `fullScreenCover`, no system slide; springs in; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
+  over the blurred page (a clear `fullScreenCover`, no system slide; zooms out of the small photo and back — the card is
+  scaled / moved from the small photo's global frame, the small photo hidden while it's out, the tag fading in; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
   name and day on a glass tag inside the photo, a shukr pill top right, and the place (masjid, else the spot's address) when Memories' ⚙ (`MemoriesSettings`) → Show where is on —
   `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). **The main picture**
   (`PrayerPhotoMain`, UserDefaults `prayerPhotos.selfieMain`): the last swap is kept — a tap in the camera's review, the
