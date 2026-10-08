@@ -82,7 +82,9 @@ extension PrayerPhotos {
 struct MemoriesPage: View {
     /// The squares that fly into their day's or month's stack on a pinch, and back.
     @Namespace private var pinch
-    @State private var photos: [MemoryPhoto] = []
+    /// Read as the page is made (a directory listing), so its bars are right on the push's first frame — loaded in
+    /// `.task`, the bottom bar arrived mid-push and was lost (owner's video).
+    @State private var photos: [MemoryPhoto] = PrayerPhotos.all()
     /// The pile, open from this photo.
     @State private var deckStart: MemoryPhoto?
     /// What it zoomed out of (a day's stack or a prayer's square), and back into on close — fixed while it's open
@@ -123,7 +125,6 @@ struct MemoriesPage: View {
     @State private var filters: Set<SearchFilter> = []
     @State private var searchIndex: [String: SearchEntry] = [:]
     @State private var placeNamesLearned = 0
-    @FocusState private var searchFocused: Bool
 
     enum SearchFilter: String, CaseIterable, Identifiable {
         case favorites = "Favorites", jumuah = "Jumu'ah", masjid = "At a masjid", note = "With a note"
@@ -141,27 +142,6 @@ struct MemoriesPage: View {
     struct SearchEntry { var text: String; var jumuah: Bool; var masjid: Bool; var note: Bool; var snippet: String? }
 
     var hasPhotos: Bool { !photos.isEmpty }
-
-    private static var glassBar: Bool {
-        if #available(iOS 26.0, *) { return true } else { return false }
-    }
-
-    /// The search field in the glass bottom bar.
-    private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Notes, places, prayers, months", text: $query)
-                .focused($searchFocused)
-                .submitLabel(.search)
-                .autocorrectionDisabled()
-            if !query.isEmpty {
-                Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
-                    .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 6)
-        .frame(width: max(UIScreen.main.bounds.width - 130, 180))
-    }
 
     private var filtering: Bool {
         searching && (!query.trimmingCharacters(in: .whitespaces).isEmpty || !filters.isEmpty)
@@ -228,107 +208,6 @@ struct MemoriesPage: View {
         }
         searchIndex = index
         PrayerPlaceNames.fill(spots) { placeNamesLearned += 1 }
-    }
-
-    private func openSearch() {
-        pinned.remove(level)
-        tops[level] = nil
-        buildIndex()
-        withAnimation(.snappy(duration: 0.3)) { searching = true }
-        searchFocused = true
-    }
-
-    private func closeSearch() {
-        searchFocused = false
-        pinned.remove(level)
-        tops[level] = nil
-        withAnimation(.snappy(duration: 0.3)) {
-            searching = false
-            query = ""
-            filters = []
-        }
-    }
-
-    /// The bar at the bottom: the levels and a magnifying glass; searching, the field and the filters instead.
-    @ViewBuilder
-    var bottomBar: some View {
-        if searching {
-            VStack(spacing: 8) {
-                HStack(spacing: 10) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                        TextField("Notes, places, prayers, months", text: $query)
-                            .focused($searchFocused)
-                            .submitLabel(.search)
-                            .autocorrectionDisabled()
-                        if !query.isEmpty {
-                            Button { query = "" } label: {
-                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 14).frame(height: 44)
-                    .background(.regularMaterial, in: Capsule())
-                    Button(action: closeSearch) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
-                            .frame(width: 44, height: 44)
-                            .background(.regularMaterial, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Close search")
-                }
-                .padding(.horizontal, 16)
-            }
-            .padding(.bottom, 4)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else {
-            HStack(spacing: 10) {
-                levelSwitch(glass: false)
-                Button(action: openSearch) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 17, weight: .medium))
-                        .frame(width: 44, height: 44)
-                        .background(.regularMaterial, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Search")
-            }
-            .padding(.bottom, 4)
-            .transition(.opacity)
-        }
-    }
-
-    /// Months · Days · Prayers — for anyone who never finds the pinch. Plain buttons through the same `go` as the pinch,
-    /// so the squares fly into their stacks the same way (the system segmented control changed the level un-animated).
-    /// In the iOS 26 toolbar the system draws its glass; before that it sits on its own material capsule.
-    func levelSwitch(glass: Bool) -> some View {
-        HStack(spacing: 0) {
-            ForEach(Level.allCases) { l in
-                Button { go(l) } label: {
-                    Text(l.title)
-                        .font(.system(size: 14, weight: level == l ? .semibold : .medium, design: .rounded))
-                        .foregroundStyle(level == l ? Color.primary : Color.secondary)
-                        .frame(maxWidth: .infinity).frame(height: 32)
-                        .background {
-                            if level == l {
-                                Capsule().fill(Color.primary.opacity(glass ? 0.1 : 0))
-                                    .background(Capsule().fill(Color(.systemBackground).opacity(glass ? 0 : 0.9)))
-                                    .shadow(color: .black.opacity(glass ? 0 : 0.08), radius: 3, y: 1)
-                                    .matchedGeometryEffect(id: "levelPill", in: pinch)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .frame(width: 250)
-        .padding(glass ? 0 : 6)
-        .background {
-            if !glass { Capsule().fill(.regularMaterial) }
-        }
     }
 
     // MARK: Search results, as a list (owner: "display the search results as a list")
@@ -510,31 +389,31 @@ struct MemoriesPage: View {
                     }
                 }
             }
-            // The bottom bar: on iOS 26+ the system's bottom toolbar (Liquid Glass) — the level switch and a search
-            // button, or, searching, the field and a close button. The system search controller (.searchable) was
-            // dropped here: pushed onto the app's stack it drew a second, open search bar under the toolbar.
+            // The bars are Apple's own, declared once and never swapped (owner: "we're playing by Apple's rules for
+            // this page"): the gear top right; at the bottom the system segmented control and the system search
+            // button (Photos' layout) — tapping it opens the search field in the bar; the results list replaces the
+            // levels while it's open.
+            .searchable(text: $query, isPresented: $searching, placement: .toolbar,
+                        prompt: "Notes, places, prayers, months")
+            .modifier(MinimizedSearch())
             .toolbar {
-                if #available(iOS 26.0, *), hasPhotos {
-                    if searching {
-                        ToolbarItem(placement: .bottomBar) { searchField }
-                        ToolbarSpacer(.fixed, placement: .bottomBar)
-                        ToolbarItem(placement: .bottomBar) {
-                            Button(action: closeSearch) { Image(systemName: "xmark") }
-                                .accessibilityLabel("Close search")
-                        }
-                    } else {
-                        ToolbarItem(placement: .bottomBar) { levelSwitch(glass: true) }
-                        ToolbarSpacer(.flexible, placement: .bottomBar)
-                        ToolbarItem(placement: .bottomBar) {
-                            Button(action: openSearch) { Image(systemName: "magnifyingglass") }
-                                .accessibilityLabel("Search")
-                        }
-                    }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Photo settings")
                 }
-            }
-            .safeAreaInset(edge: .bottom) {
-                // Before iOS 26 (no Liquid Glass): the page's own bar.
-                if !Self.glassBar, hasPhotos { bottomBar }
+                ToolbarItem(placement: .bottomBar) {
+                    // Through `go`, like the pinch, so the squares fly into their stacks.
+                    Picker("Show", selection: Binding(get: { level }, set: { go($0) })) {
+                        ForEach(Level.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    .disabled(!hasPhotos)
+                }
+                if #available(iOS 26.0, *) {
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                }
             }
             .simultaneousGesture(
                 MagnifyGesture().onEnded { value in
@@ -556,12 +435,6 @@ struct MemoriesPage: View {
             .sensoryFeedback(.selection, trigger: level)
             .navigationTitle("Memories")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                        .accessibilityLabel("Photo settings")
-                }
-            }
             .sheet(isPresented: $showSettings) { MemoriesSettings() }
         }
         // The pile in its own clear layer over everything, presented without a slide (like a prayer photo from the hold
@@ -593,7 +466,23 @@ struct MemoriesPage: View {
                 }
                 .presentationBackground(.clear)
         }
-        .task(id: PrayerPhotoRevision.shared.value) { photos = PrayerPhotos.all() }
+        .task(id: PrayerPhotoRevision.shared.value) {
+            let now = PrayerPhotos.all()
+            if now != photos { photos = now }
+        }
+        #if DEBUG
+        .task {
+            // `-demoMemoriesSearch [words]`: search opens (and types the words) — the simulator's look at it.
+            let args = ProcessInfo.processInfo.arguments
+            guard let i = args.firstIndex(of: "-demoMemoriesSearch") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            searching = true
+            if args.indices.contains(i + 1), !args[i + 1].hasPrefix("-") {
+                try? await Task.sleep(for: .seconds(1))
+                query = args[i + 1]
+            }
+        }
+        #endif
     }
 
     private func levelScroll<Content: View>(_ l: Level, @ViewBuilder content: () -> Content) -> some View {
@@ -1956,5 +1845,12 @@ struct PrayerPlaceMapSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// The search as a button in the bottom bar until tapped (Photos' layout), on iOS 26+.
+private struct MinimizedSearch: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) { content.searchToolbarBehavior(.minimize) } else { content }
     }
 }
