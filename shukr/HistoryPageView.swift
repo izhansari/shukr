@@ -53,7 +53,7 @@ struct HistoryPageView: View {
         let q = search.trimmingCharacters(in: .whitespaces)
         for session in sessions {
             if !q.isEmpty,
-               !(session.mantra?.name ?? session.title).localizedCaseInsensitiveContains(q) { continue }
+               !session.displayTitle.localizedCaseInsensitiveContains(q) { continue }
             let day = calendar.startOfDay(for: session.startTime)
             if byDay[day] == nil { order.append(day) }
             byDay[day, default: []].append(session)
@@ -454,7 +454,7 @@ struct SessionRow: View {
                 if tourPractice {
                     Text("Practice").font(.body.weight(.medium))
                 } else if showsMantraName {
-                    Text(session.mantra?.name ?? session.title)
+                    Text(session.displayTitle)
                         .font(.body.weight(.medium))
                 } else {
                     Text(session.startTime, style: .time)
@@ -664,7 +664,7 @@ struct DayView: View {
                             //                            SessionRowView(session: session)
                             //                                .padding(.horizontal)
                             SessionCardView(
-                                title: session.title,
+                                title: session.displayTitle,
                                 sessionMode: session.sessionMode,
                                 totalCount: session.totalCount,
                                 sessionDuration: session.timeDurationString,

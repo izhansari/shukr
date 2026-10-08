@@ -741,3 +741,12 @@ enum QuickAddSteps {
         return moved
     }
 }
+
+extension SessionDataModel {
+    /// What a session is called on screen: its zikr's name, else its saved title — "Freestyle" for one with no zikr
+    /// (owner, 2026-10-08: not "Untitled"). The stored title stays as saved.
+    var displayTitle: String {
+        if let name = mantra?.name { return name }
+        return title.isEmpty || title == "Untitled" ? "Freestyle" : title
+    }
+}

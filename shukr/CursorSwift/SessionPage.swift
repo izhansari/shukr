@@ -21,7 +21,7 @@ struct SessionPage: View {
     private var mantra: MantraModel? { session.mantra }
     private var name: String {
         if let m = mantra?.name { return m }
-        return session.title.isEmpty || session.title == "Untitled" ? "Freestyle" : session.title
+        return session.displayTitle
     }
     private var kind: String {
         switch session.sessionMode {
