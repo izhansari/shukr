@@ -319,8 +319,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   photo days only), and at rest an empty day snaps to the nearest (`onRest`); a tap jumps; a tick per day. Month name + "N photos" over each 1st; the month of the earliest
   visible day (`onScrollTargetVisibilityChange`) is pinned at the left edge and pushed out by the next month's 1st
   (positions measured in the strip's own named space — `.scrollView` space reported a stale 50). DEBUG `-logDayStrip`.
-  Under the pile the prayer's name, "Prayed 1:12 PM" (+ place), then the score as a ring in its grade colour + the grade
-  word (fixed heights, so nothing moves)
+  Under the pile the prayer's name, "Prayed 1:12 PM", the place on its own line (always: the masjid, else
+  `PrayerPlaceNames`, looked up once), then the score as a ring in its grade colour + the grade word (fixed heights, so
+  nothing moves); the caption follows a horizontal drag (0.35 × drag, ±90, fading) and hands over to the next on landing
   (+ the place with Show where; `PrayerPhotos.facts` / `placeText`) and the note (tap → edit in an alert; notes are
   `<key>-note.txt` beside the photos, written from the camera's review — "Add a note" — or the pile; the pile shows 3 lines in
   a fixed 58 pt box so nothing moves from photo to photo, a tap opens a TextEditor sheet) — the three slide

@@ -903,6 +903,8 @@ struct MemoriesDeck: View {
     /// "Prayed 1:12 PM · Masjid Al-Noor" for the top photo, and its score (the badge under it).
     @State private var prayed: String?
     @State private var score: Double?
+    /// Where it was prayed: the masjid, else the place's name (always on the view page — owner).
+    @State private var place: String?
     @State private var note: String?
     @State private var editingNote = false
     @State private var noteDraft = ""
@@ -1243,6 +1245,16 @@ struct MemoriesDeck: View {
                     .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
                     .lineLimit(1)
                 Group {
+                    if let place {
+                        Label(place, systemImage: "mappin.and.ellipse")
+                    } else {
+                        Text(" ")
+                    }
+                }
+                .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.horizontal, 36)
+                Group {
                     if let score {
                         HStack(spacing: 6) {
                             ZStack {
@@ -1290,6 +1302,9 @@ struct MemoriesDeck: View {
                 .padding(.horizontal, 36)
                 .padding(.top, 6)
             }
+            // Follows the finger while a photo is dragged, then the next one's slides in as it lands.
+            .offset(x: max(-90, min(90, drag * 0.35)))
+            .opacity(1 - min(abs(drag) / 320, 0.6))
             .id(current.key)
             .transition(slide(36))
         }
@@ -1303,15 +1318,20 @@ struct MemoriesDeck: View {
         guard photos.indices.contains(shownIndex) else { return }
         let key = photos[shownIndex].key
         note = PrayerPhotos.note(key)
-        guard let facts = PrayerPhotos.facts(for: key, in: context) else { prayed = nil; score = nil; return }
-        var parts: [String] = []
-        if let at = facts.markedAt { parts.append("Prayed \(at.formatted(date: .omitted, time: .shortened))") }
+        guard let facts = PrayerPhotos.facts(for: key, in: context) else { prayed = nil; score = nil; place = nil; return }
+        prayed = facts.markedAt.map { "Prayed \($0.formatted(date: .omitted, time: .shortened))" }
         score = facts.score
-        prayed = parts.isEmpty ? nil : parts.joined(separator: " · ")
-        if showPlace, let place = await (facts.masjid != nil ? facts.masjid : PrayerPhotos.placeText(facts, cityOnly: true)),
-           key == photos[shownIndex].key {
-            parts.append(place)
-            prayed = parts.joined(separator: " · ")
+        // The masjid at once; else the place's name, remembered or looked up once (`PrayerPlaceNames`).
+        if let masjid = facts.masjid {
+            place = masjid
+        } else if let spot = facts.spot {
+            place = PrayerPlaceNames.name(spot)
+            if place == nil {
+                let looked = await PrayerPhotos.placeText(facts, cityOnly: true)
+                if photos.indices.contains(shownIndex), key == photos[shownIndex].key { place = looked }
+            }
+        } else {
+            place = nil
         }
     }
 
@@ -1772,7 +1792,7 @@ struct MemoriesSettings: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(footer: Text("Show where adds the place under your photos, and to the ones you share.")) {
+                Section(footer: Text("Show where puts the place on the photos you share, and on a photo opened from a prayer.")) {
                     Toggle("Show where", isOn: $showPlace)
                 }
                 Section(footer: Text("Your photos stay on your iPhone, and in its backup.")) {
