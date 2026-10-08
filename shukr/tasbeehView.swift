@@ -2021,6 +2021,32 @@ struct tasbeehView: View {
         /// Task and post-salah sessions keep their mantra; only free sessions can switch.
         private var mantraLocked: Bool { isTaskSession || sharedState.isDoingPostNamazZikr }
 
+        /// The task's streak and best (owner, 2026-10-08: "if we have a streak and max streak display it"), in the
+        /// results' words: a sage flame once today is done, a grey one while it's still to keep. Nothing without one.
+        private var shownTaskStreak: TaskStreak? {
+            #if DEBUG
+            // -demoTaskStreak "current,best,kept" (e.g. "7,21,0") fakes the line for a look check.
+            if let fake = UserDefaults.standard.string(forKey: "demoTaskStreak") {
+                let n = fake.split(separator: ",").compactMap { Int($0) }
+                if n.count == 3 { return TaskStreak(current: n[0], best: n[1], keptToday: n[2] == 1) }
+            }
+            #endif
+            return sharedState.selectedTask?.streak()
+        }
+        @ViewBuilder private func taskStreakLine(_ font: Font) -> some View {
+            if isTaskSession, let streak = shownTaskStreak, streak.current > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: streak.keptToday ? "flame.fill" : "flame")
+                        .foregroundStyle(streak.keptToday ? Color.sage : Color.secondary)
+                    Text(streak.current >= streak.best ? "\(streak.current)-day streak · your best"
+                                                       : "\(streak.current)-day streak · best \(streak.best)")
+                        .foregroundStyle(.secondary)
+                }
+                .font(font)
+                .accessibilityElement(children: .combine)
+            }
+        }
+
         private var cardShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
         /// The pause card's scroll view height: its content fills it, so empty space there resumes.
         @State private var scrollHeight: CGFloat = 0
@@ -2264,6 +2290,7 @@ struct tasbeehView: View {
                         Label("from your task", systemImage: "checklist")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        taskStreakLine(.caption)
                     }
                     if let mantra, !sharedState.isDoingPostNamazZikr {
                         ZikrMediaStrip(mantra: mantra, paused: paused, compact: true)
@@ -2307,6 +2334,7 @@ struct tasbeehView: View {
                             Label("from your task", systemImage: "checklist")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
+                            taskStreakLine(.caption2)
                         }
                     }
                     .contentShape(Rectangle())
@@ -2761,6 +2789,7 @@ struct tasbeehView: View {
                                 Label("from your task", systemImage: "checklist")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                taskStreakLine(.caption)
                             }
                         }
                         .contentShape(Rectangle())
