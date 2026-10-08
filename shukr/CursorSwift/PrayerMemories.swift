@@ -552,19 +552,20 @@ struct MemoriesPage: View {
         withTransaction(quiet) { deckStart = photo }
         Task {
             await Task.yield()
-            withAnimation(.easeOut(duration: 0.2)) { backdropShown = true }
-            try? await Task.sleep(for: .milliseconds(140))
-            withAnimation(.easeOut(duration: 0.22)) { deckShown = true }
+            // Slow, eased and overlapping (owner: the 0.2 s fades were abrupt).
+            withAnimation(.easeInOut(duration: 0.4)) { backdropShown = true }
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.easeInOut(duration: 0.45)) { deckShown = true }
         }
     }
 
     /// The pile fades out where it is.
     private func closeDeck(_ key: String, _ dayKey: String, _ scale: CGFloat) {
         triggerSomeVibration(type: .light)
-        withAnimation(.easeOut(duration: 0.18)) {
-            deckShown = false
-        } completion: {
-            withAnimation(.easeOut(duration: 0.18)) {
+        withAnimation(.easeInOut(duration: 0.35)) { deckShown = false }
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.easeInOut(duration: 0.4)) {
                 backdropShown = false
             } completion: {
                 var quiet = Transaction()
