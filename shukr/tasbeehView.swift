@@ -567,6 +567,7 @@ struct tasbeehView: View {
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                         if frame.width > 0 { ringSize = frame.size }   // its place moves with the lift; the anchor has that
                         placeEntry(at: frame)
+                        TourTargets.shared.set("ct.ring", frame)   // the counting lessons' ghost finger stays above it
                     }
                     // Finished (soft look): the task's title in the ring, "Saved to your history" over it, after the
                     // count has gone (out, then in). On the ring itself, so it is wherever the ring is mid-move (a view

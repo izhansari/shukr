@@ -532,12 +532,24 @@ struct ZikrTourSessionLayer: View {
     let results: Bool
     @State private var tour = ZikrTour.shared
 
+    private var hintKind: GestureHint.Kind? {
+        guard !tour.completing, tour.progress == 0 else { return nil }
+        switch tour.step {
+        case .taps: return .tap
+        case .drags: return .drag
+        case .stroke: return .stroke
+        default: return nil
+        }
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let origin = proxy.frame(in: .global).origin
             let t = TourTargets.shared
             ZStack {
                 if tour.place == .session, !paused, !results {
+                    // A ghost finger showing the move (owner, 2026-10-08), until they've done it once.
+                    CounterGestureHint(kind: hintKind)
                     ZikrTourBubble()
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                         .padding(.bottom, 56)

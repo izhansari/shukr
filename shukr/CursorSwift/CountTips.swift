@@ -305,12 +305,24 @@ struct CountTipsLayer: View {
     let chips: CGRect
     @State private var tips = CountTips.shared
 
+    private var hintKind: GestureHint.Kind? {
+        guard clear, !paused, !results, !tips.completing, tips.progress == 0 else { return nil }
+        switch tips.tip {
+        case .tap: return .tap
+        case .drags: return .drag
+        case .stroke: return .stroke
+        default: return nil
+        }
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let origin = proxy.frame(in: .global).origin
             let size = proxy.size
             let finish = TourTargets.shared.frame("ct.finish")
             ZStack {
+                // A ghost finger showing the move (owner, 2026-10-08), until they've done it once.
+                CounterGestureHint(kind: hintKind)
                 if clear, let tip = tips.tip {
                     Group {
                         switch tip {
