@@ -2120,6 +2120,8 @@ struct tasbeehView: View {
                     // the clock).
                     // No ring here any more (owner, 2026-10-08): the zikr's card sits in the open space, as far from
                     // the top row as from the tiles — the page breathes.
+                    // The card, the tiles and the switches as one group in the middle of the page, the room left over
+                    // split above and below it (owner: "too much empty space" — no gap opened in the middle of it).
                     Spacer(minLength: 16)
                     VStack(spacing: 10) {
                         if sharedState.isDoingPostNamazZikr {
@@ -2135,6 +2137,7 @@ struct tasbeehView: View {
                             // A zikr: its header row alone — name, "from your task", ▶︎ and the photo (owner: the full
                             // text and the notes are on its page, a tap away).
                             softHeaderCard
+                                .layoutPriority(1)
                         }
                     }
                     // A tap among the zikr's name, its media and its text never resumes (only the page round them does):
@@ -2152,11 +2155,12 @@ struct tasbeehView: View {
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.notes", $0) }
-                    // The other half of the open space: the card floats between the top row and the tiles.
-                    Spacer(minLength: 24)
+                    gap(24)
                     softBottom
                         // The session tour's stats tip sits above the tiles (their top is this block's top).
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.stats", $0) }
+                    // The other half of the room left over (Tasbih Fatimah's card is tall: the group fills the page).
+                    Spacer(minLength: 16)
                 }
                 .frame(maxWidth: 420)
                 .padding(.horizontal, 20)
@@ -2326,13 +2330,67 @@ struct tasbeehView: View {
             .padding(.vertical, 10)
         }
 
-        /// The pause screen's zikr card: the well's name header alone, a little roomier, in the same pressed shape.
+        /// The pause screen's zikr card (owner, 2026-10-08: the nickname centred, the note symbol, memo and photo
+        /// centred below it): the name large, "from your task" under it, then what the zikr holds — its full text (ع)
+        /// and notes as marks (a tap opens its page), the memo's ▶︎ and the photo as they are.
         private var softHeaderCard: some View {
-            let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
-            return wellNameHeader
-                .padding(.vertical, 6)
-                .background(ThemedPressed(shape: shape))
-                .clipShape(shape)
+            let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+            let title = sharedState.titleForSession
+            let full = !(mantra?.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let notes = !(mantra?.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            return VStack(spacing: 14) {
+                VStack(spacing: 4) {
+                    Button { showMantraPicker = true } label: {
+                        HStack(spacing: 6) {
+                            Text(title.isEmpty ? "choose a zikr" : title)
+                                .font(.system(size: 28, weight: .light, design: .rounded))
+                                .foregroundStyle(title.isEmpty ? .secondary : .primary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.7)
+                                .multilineTextAlignment(.center)
+                            if !mantraLocked {
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .allowsHitTesting(!mantraLocked)   // not .disabled: that grayed the name out
+                    if isTaskSession {
+                        Label("from your task", systemImage: "checklist")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if full || notes || mantra?.audioData != nil || mantra?.imageData != nil {
+                    HStack(spacing: 12) {
+                        if full { holdsMark { Text("ع").font(.custom("KFGQPCUthmanTahaNaskh", size: 18)) }
+                            .accessibilityLabel("Has its full text") }
+                        if notes { holdsMark { Image(systemName: "doc.text").font(.system(size: 13, weight: .medium)) }
+                            .accessibilityLabel("Has notes") }
+                        if let mantra { ZikrMediaStrip(mantra: mantra, paused: paused, compact: true) }
+                    }
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 26)
+            .frame(maxWidth: .infinity)
+            .background(ThemedPressed(shape: shape))
+            .clipShape(shape)
+        }
+
+        /// A 34 pt mark, the memo's ▶︎ size and ring: something the zikr holds, its page a tap away.
+        private func holdsMark<Glyph: View>(@ViewBuilder _ glyph: () -> Glyph) -> some View {
+            Button { showZikrPage = true } label: {
+                glyph()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, height: 34)
+                    .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 2.5))
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
         }
 
         private var wellRule: some View {
