@@ -111,13 +111,20 @@ struct ZikrLockCover: View {
     @State private var armedWidth: CGFloat = 0
     @State private var restWidth: CGFloat = 0
     @State private var verseHeight: CGFloat = 0
+    /// Page 1's content under the verse (what's inside, Unlock now), laid out from the start.
+    @State private var pageOneHeight: CGFloat = 0
+    /// The verse's place, kept while page 2 is up (the verse never moves between the pages).
+    @State private var frozenTop: CGFloat?
     @State private var run: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geo in
-            let topPad = max(60, geo.size.height * 0.15)
-            // The verse's lift from the middle of the page to its place.
-            let fromMiddle = geo.size.height * 0.45 - (topPad + verseHeight / 2)
+            // Page 1 whole — the verse, what's inside, Unlock now — centred on the page (owner: "the whole stack is
+            // centered vertically"); page 2 keeps the verse where page 1 left it.
+            let centred = max(24, (geo.size.height - verseHeight - pageOneHeight) / 2)
+            let topPad = frozenTop ?? centred
+            // The verse alone starts in the very middle, then rises to its place.
+            let fromMiddle = geo.size.height / 2 - (topPad + verseHeight / 2)
             ZStack {
                 // The page's own colour over the blurred wheel; plain (opaque) once the narration is up.
                 theme.backdrop.opacity(lock.focus ? 1 : 0.5)
@@ -134,6 +141,7 @@ struct ZikrLockCover: View {
                         .opacity(stage >= 1 ? 1 : 0)
                     ZStack(alignment: .top) {
                         pageOne
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageOneHeight = $0 }
                             .opacity(lock.focus ? 0 : 1)
                             .allowsHitTesting(!lock.focus)
                         if lock.focus {
@@ -148,6 +156,7 @@ struct ZikrLockCover: View {
                 if lock.focus { close }
             }
         }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageHeight = $0 }
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .fontDesign(.rounded)
         .onChange(of: sharedState.horizontalPage == .zikr, initial: true) { _, here in
@@ -290,6 +299,7 @@ struct ZikrLockCover: View {
                 lock.focus = false
                 linesShown = 0
             }
+            frozenTop = nil
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 14, weight: .semibold))
@@ -366,6 +376,10 @@ struct ZikrLockCover: View {
 
     // MARK: the moves
 
+    @State private var pageHeight: CGFloat = 0
+    /// Page 1's centred place for the verse (what page 2 keeps).
+    private var currentTop: CGFloat { max(24, (pageHeight - verseHeight - pageOneHeight) / 2) }
+
     /// Arriving on the Zikr page: page 1 builds itself up (Reduce Motion: it's all there, faded in).
     private func arrive() {
         run?.cancel()
@@ -376,29 +390,32 @@ struct ZikrLockCover: View {
             return
         }
         run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(150))
+            // Slow and gradual (owner: "fade in more gradual. hold on the verse for a while. and the position change also
+            // more gradual"): the verse fades in alone, stays a while, then drifts up; the rest comes in after it.
+            try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.6)) { stage = 1 }                                // the verse alone
-            try? await Task.sleep(for: .milliseconds(1300))
+            withAnimation(.easeInOut(duration: 1.6)) { stage = 1 }                             // the verse alone
+            try? await Task.sleep(for: .milliseconds(3600))
             guard !Task.isCancelled else { return }
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.9)) { stage = 2 }          // it rises
-            try? await Task.sleep(for: .milliseconds(600))
+            withAnimation(.easeInOut(duration: 1.8)) { stage = 2 }                             // it drifts up
+            try? await Task.sleep(for: .milliseconds(1500))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.45)) { stage = 3 }                              // what's inside
+            withAnimation(.easeInOut(duration: 1.0)) { stage = 3 }                             // what's inside
             for i in 1...ZikrLockWords.inside.count {
-                withAnimation(.easeOut(duration: 0.45)) { itemsShown = i }
-                try? await Task.sleep(for: .milliseconds(180))
+                withAnimation(.easeInOut(duration: 0.9)) { itemsShown = i }
+                try? await Task.sleep(for: .milliseconds(380))
                 guard !Task.isCancelled else { return }
             }
-            try? await Task.sleep(for: .milliseconds(350))
+            try? await Task.sleep(for: .milliseconds(700))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.5)) { stage = 4 }                               // Unlock now
+            withAnimation(.easeInOut(duration: 1.0)) { stage = 4 }                             // Unlock now
         }
     }
 
     /// Leaving the page: ready to build again next time.
     private func leave() {
         run?.cancel()
+        frozenTop = nil
         withAnimation(.easeIn(duration: 0.15)) { stage = 0; itemsShown = 0 }
         armed = false
     }
@@ -408,6 +425,7 @@ struct ZikrLockCover: View {
         triggerSomeVibration(type: .medium)
         run?.cancel()
         armed = false
+        frozenTop = currentTop
         withAnimation(.easeInOut(duration: 0.5)) { lock.focus = true }
         let lines = ZikrLockWords.narration.count + 3   // heading, the lines, the source, Begin
         if reduceMotion {
