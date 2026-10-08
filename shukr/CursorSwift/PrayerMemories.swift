@@ -118,7 +118,11 @@ struct MemoriesPage: View {
         }
     }
 
-    struct SearchEntry { var text: String; var jumuah: Bool; var masjid: Bool; var note: Bool }
+    struct SearchEntry { var text: String; var jumuah: Bool; var masjid: Bool; var note: Bool; var snippet: String? }
+
+    var queryBinding: Binding<String> { $query }
+    var searchingBinding: Binding<Bool> { $searching }
+    var hasPhotos: Bool { !photos.isEmpty }
 
     private var filtering: Bool {
         searching && (!query.trimmingCharacters(in: .whitespaces).isEmpty || !filters.isEmpty)
@@ -177,8 +181,11 @@ struct MemoriesPage: View {
                 spots.append(spot)
                 if let place = PrayerPlaceNames.name(spot) { parts.append(place) }
             }
+            let place = row.flatMap { r in r.latPrayedAt.flatMap { lat in r.longPrayedAt.flatMap {
+                PrayerPlaceNames.name(CLLocationCoordinate2D(latitude: lat, longitude: $0)) } } }
             index[photo.key] = SearchEntry(text: Self.fold(parts.joined(separator: " ")), jumuah: jumuah,
-                                           masjid: masjid != nil, note: note != nil)
+                                           masjid: masjid != nil, note: note != nil,
+                                           snippet: note.map { $0.replacingOccurrences(of: "\n", with: " ") } ?? masjid ?? place)
         }
         searchIndex = index
         PrayerPlaceNames.fill(spots) { placeNamesLearned += 1 }
@@ -205,30 +212,9 @@ struct MemoriesPage: View {
 
     /// The bar at the bottom: the levels and a magnifying glass; searching, the field and the filters instead.
     @ViewBuilder
-    private var bottomBar: some View {
+    var bottomBar: some View {
         if searching {
             VStack(spacing: 8) {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 8) {
-                        ForEach(SearchFilter.allCases) { filter in
-                            let on = filters.contains(filter)
-                            Button {
-                                withAnimation(.snappy(duration: 0.25)) {
-                                    if on { filters.remove(filter) } else { filters.insert(filter) }
-                                }
-                            } label: {
-                                Label(filter.rawValue, systemImage: filter.symbol)
-                                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                                    .padding(.horizontal, 12).frame(height: 32)
-                                    .foregroundStyle(on ? Color.white : Color.primary)
-                                    .background(Capsule().fill(on ? AnyShapeStyle(Color.sage) : AnyShapeStyle(.regularMaterial)))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                .scrollIndicators(.hidden)
                 HStack(spacing: 10) {
                     HStack(spacing: 6) {
                         Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -260,30 +246,7 @@ struct MemoriesPage: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
         } else {
             HStack(spacing: 10) {
-                // For anyone who never finds the pinch. Plain buttons through the same `go` as the pinch, so the squares
-                // fly into their stacks the same way (the system segmented control changed the level un-animated).
-                HStack(spacing: 0) {
-                    ForEach(Level.allCases) { l in
-                        Button { go(l) } label: {
-                            Text(l.title)
-                                .font(.system(size: 14, weight: level == l ? .semibold : .medium, design: .rounded))
-                                .foregroundStyle(level == l ? Color.primary : Color.secondary)
-                                .frame(maxWidth: .infinity).frame(height: 32)
-                                .background {
-                                    if level == l {
-                                        Capsule().fill(Color(.systemBackground).opacity(0.9))
-                                            .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
-                                            .matchedGeometryEffect(id: "levelPill", in: pinch)
-                                    }
-                                }
-                                .contentShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .frame(width: 250)
-                .padding(6)
-                .background(.regularMaterial, in: Capsule())
+                levelSwitch(glass: false)
                 Button(action: openSearch) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 17, weight: .medium))
@@ -296,6 +259,116 @@ struct MemoriesPage: View {
             .padding(.bottom, 4)
             .transition(.opacity)
         }
+    }
+
+    /// Months · Days · Prayers — for anyone who never finds the pinch. Plain buttons through the same `go` as the pinch,
+    /// so the squares fly into their stacks the same way (the system segmented control changed the level un-animated).
+    /// In the iOS 26 toolbar the system draws its glass; before that it sits on its own material capsule.
+    func levelSwitch(glass: Bool) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Level.allCases) { l in
+                Button { go(l) } label: {
+                    Text(l.title)
+                        .font(.system(size: 14, weight: level == l ? .semibold : .medium, design: .rounded))
+                        .foregroundStyle(level == l ? Color.primary : Color.secondary)
+                        .frame(maxWidth: .infinity).frame(height: 32)
+                        .background {
+                            if level == l {
+                                Capsule().fill(Color.primary.opacity(glass ? 0.1 : 0))
+                                    .background(Capsule().fill(Color(.systemBackground).opacity(glass ? 0 : 0.9)))
+                                    .shadow(color: .black.opacity(glass ? 0 : 0.08), radius: 3, y: 1)
+                                    .matchedGeometryEffect(id: "levelPill", in: pinch)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .frame(width: 250)
+        .padding(glass ? 0 : 6)
+        .background {
+            if !glass { Capsule().fill(.regularMaterial) }
+        }
+    }
+
+    // MARK: Search results, as a list (owner: "display the search results as a list")
+
+    private var resultsList: some View {
+        let results = filtering ? Array(visible.reversed()) : []
+        return List {
+            Section {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(SearchFilter.allCases) { filter in
+                            let on = filters.contains(filter)
+                            Button {
+                                withAnimation(.snappy(duration: 0.25)) {
+                                    if on { filters.remove(filter) } else { filters.insert(filter) }
+                                }
+                            } label: {
+                                Label(filter.rawValue, systemImage: filter.symbol)
+                                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                                    .padding(.horizontal, 12).frame(height: 32)
+                                    .foregroundStyle(on ? Color.white : Color.primary)
+                                    .background(Capsule().fill(on ? AnyShapeStyle(Color.sage) : AnyShapeStyle(Color(.secondarySystemGroupedBackground))))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .scrollIndicators(.hidden)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            }
+            if !filtering {
+                Text("Search your notes, masjids, places, prayers and months — Ramadan works too.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .listRowBackground(Color.clear)
+            } else if results.isEmpty {
+                ContentUnavailableView.search(text: query)
+                    .listRowBackground(Color.clear)
+            } else {
+                Section(results.count == 1 ? "1 photo" : "\(results.count) photos") {
+                    ForEach(results) { photo in
+                        Button { openFromResults(photo) } label: { resultRow(photo) }
+                            .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollDismissesKeyboard(.immediately)
+    }
+
+    private func resultRow(_ photo: MemoryPhoto) -> some View {
+        HStack(spacing: 12) {
+            MemoryThumb(key: photo.key)
+                .frame(width: 52, height: 52)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.frames["result-" + photo.key] = $0 }
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Image(systemName: prayerIcon(for: photo.name)).font(.system(size: 13))
+                    Text(photo.name).font(.system(size: 16, weight: .semibold, design: .rounded))
+                    if PrayerPhotoFavorites.shared.contains(photo.key) {
+                        Image(systemName: "heart.fill").font(.system(size: 11)).foregroundStyle(.pink)
+                    }
+                }
+                Text(Self.parse(photo.dayKey)?.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()) ?? "")
+                    .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                if let snippet = searchIndex[photo.key]?.snippet {
+                    Text(snippet).font(.system(size: 13, design: .rounded)).foregroundStyle(.tertiary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func openFromResults(_ photo: MemoryPhoto) {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        openDeck(photo, from: "result-" + photo.key)
     }
 
     // MARK: On this day (decision memories-finding C)
@@ -381,6 +454,8 @@ struct MemoriesPage: View {
                         }
                         .padding(.top, 140).padding(.horizontal, 40)
                     }
+                } else if searching {
+                    resultsList
                 } else {
                     switch level {
                     case .months: levelScroll(.months) { monthStacks }
@@ -389,18 +464,21 @@ struct MemoriesPage: View {
                     }
                 }
             }
+            .modifier(BottomChrome(page: self))
             .simultaneousGesture(
                 MagnifyGesture().onEnded { value in
                     if value.magnification < 0.8, let up = Level(rawValue: level.rawValue - 1) { go(up) }
                     if value.magnification > 1.25, let down = Level(rawValue: level.rawValue + 1) { go(down) }
                 }
             )
-            .safeAreaInset(edge: .bottom) {
-                if !photos.isEmpty { bottomBar }
-            }
-            .overlay {
-                if filtering && visible.isEmpty {
-                    ContentUnavailableView.search(text: query)
+            .onChange(of: searching) { _, on in
+                if on {
+                    pinned.remove(level)
+                    tops[level] = nil
+                    buildIndex()
+                } else {
+                    query = ""
+                    filters = []
                 }
             }
             .onChange(of: placeNamesLearned) { _, _ in if searching { buildIndex() } }
@@ -513,7 +591,7 @@ struct MemoriesPage: View {
         guard let top = frames.deckTop else { deckStart = nil; return }
         let screen = UIScreen.main.bounds
         let onScreen: (CGRect) -> Bool = { $0.minY > 90 && $0.maxY < screen.height - 70 && $0.minX >= 0 && $0.maxX <= screen.width }
-        let target = ["otd-" + dayKey, level == .prayers ? key : dayKey]
+        let target = (searching ? ["result-" + key] : ["otd-" + dayKey, level == .prayers ? key : dayKey])
             .compactMap { frames.frames[$0] }.first(where: onScreen)
         Task {
             let images = await PrayerPhotos.load(key)
@@ -1612,5 +1690,30 @@ struct MemoriesSettings: View {
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
         }
         .presentationDetents([.medium])
+    }
+}
+
+/// Memories' bottom bar. iOS 26: the system's bottom toolbar — Liquid Glass — with the level switch and the search
+/// button that opens into the field, as in Photos (owner: "using liquid glass api … the same way search works in the
+/// photos app"). Before iOS 26: the page's own bar.
+private struct BottomChrome: ViewModifier {
+    let page: MemoriesPage
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .toolbar {
+                    ToolbarItem(placement: .bottomBar) { page.levelSwitch(glass: true) }
+                    ToolbarSpacer(.flexible, placement: .bottomBar)
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                }
+                .searchable(text: page.queryBinding, isPresented: page.searchingBinding,
+                            prompt: "Notes, places, prayers, months")
+                .searchToolbarBehavior(.minimize)
+        } else {
+            content.safeAreaInset(edge: .bottom) {
+                if page.hasPhotos { page.bottomBar }
+            }
+        }
     }
 }

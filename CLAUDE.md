@@ -328,8 +328,11 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `score:` — as toggles; the place as City (default — owner) or Address — `PrayerSpotAddress.city`, "Cary, NC"; the pile's line uses the masjid, else the city; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
   on a card swaps the pictures; drag down closes (the deck's own drag
   picks the axis on its first move). **Finding** (decision memories-finding C): a heart in the pile
-  (`PrayerPhotoFavorites`, UserDefaults); 🔍 beside the levels at the bottom opens the search field there (Apple Music
-  style) with chips Favorites · Jumu'ah · At a masjid · With a note; words (all must match, folded: no case / accents /
+  (`PrayerPhotoFavorites`, UserDefaults); the bottom bar (`BottomChrome`): on iOS 26+ the system bottom toolbar (Liquid
+  Glass) — `levelSwitch` + `DefaultToolbarItem(kind: .search)` with `.searchable` + `.searchToolbarBehavior(.minimize)`,
+  the search button opening into the field as in Photos (owner); before 26 the page's own bar. Searching shows a
+  results LIST (`resultsList`: chips Favorites · Jumu'ah · At a masjid · With a note on top, rows = photo, prayer, date,
+  the note / masjid / place; a tap opens the pile over the results only); words (all must match, folded: no case / accents /
   apostrophes) search `buildIndex`'s text per photo — prayer, note, masjid, Gregorian + Hijri (`islamicUmmAlQura`) dates,
   the place's name (`PrayerPlaceNames`: the prayer's own spot named once per ~1 km and kept as words only — no location
   copied, owner); results feed `visible` (levels and pile); toggling search re-ids the level's ScrollView so it starts at
