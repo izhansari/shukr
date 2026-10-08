@@ -560,41 +560,29 @@ struct DailyAyahView: View {
                 .allowsHitTesting(false)
             }
 
-            // Top: back, the countdown to the next verse, share.
-            VStack {
-                HStack(alignment: .center) {
-                    Button { presentationMode.wrappedValue.dismiss() } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.title2)
-                            .padding()
-                    }
-                    Spacer()
-                    DailyAyahCountdownView(viewModel: viewModel)
-                        .font(.footnote)
-                    Spacer()
+        }
+        .background(Color(UIColor.systemBackground))
+        // The system's own top bar, see-through (decision swipe-back-pages A: hiding it switched off iOS's swipe
+        // back): its back button, the countdown to the next verse in the middle, Share on the right.
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                DailyAyahCountdownView(viewModel: viewModel)
+                    .font(.footnote)
+                    .opacity(isUnlocked ? 1 : 0)
+            }
+            // Only once the verse is revealed (hidden, its empty glass circle still showed).
+            if isUnlocked && viewModel.currentAyah != nil {
+                ToolbarItem(placement: .topBarTrailing) {
                     // Its sheet hangs off the page's root (see showShareOptions).
                     Button { showShareOptions = true } label: {
                         Image(systemName: "square.and.arrow.up")
-                            .font(.title2)
-                            .padding()
                     }
-                    .buttonStyle(.plain)
-                    .opacity(viewModel.currentAyah != nil ? 1 : 0)
+                    .accessibilityLabel("Share")
                 }
-                .foregroundColor(.primary)
-                .padding(.top, 10)
-                .background(
-                    LinearGradient(colors: [Color(UIColor.systemBackground), Color(UIColor.systemBackground).opacity(0)],
-                                   startPoint: .top, endPoint: .bottom)
-                        .padding(.bottom, -30)
-                        .ignoresSafeArea()
-                )
-                .opacity(isUnlocked ? 1 : 0)
-                Spacer()
             }
         }
-        .background(Color(UIColor.systemBackground))
-        .toolbar(.hidden, for:.navigationBar)
         .sheet(isPresented: $showingSettings) {
             AyahTranslationView(selectedTranslation: $viewModel.selectedTranslation, showingSettings: $showingSettings)
                 .presentationDetents([.fraction(0.3)])

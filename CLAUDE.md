@@ -293,7 +293,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   only (photos on the ring went back to dots — owner); a photographed prayer's fifth tapped shows the photo in the centre (the circle's own tap layer steps aside: `DayPageState.photoInCentre`) (the strip
   under the line was dropped — it fought the list card). Map: the prayer's page shows it. DEBUG
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
-- **Memories** (briefly "Journal" — the owner went back to Memories and its photo.stack icon; PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo
+- **Memories** (briefly "Journal" — the owner went back to Memories and its photo.stack icon; PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo — PUSHED like 99 Names via `MemoriesPresenter.open` → navigationDestination, so it swipes back (decision swipe-back-pages A); the pile sits on that stack and hides its bars while up
   exists — `PrayerPhotoRevision.hasPhotos`; ⚙ top right = `MemoriesSettings`: Show where, Space used — not in Settings
   any more). Opens on Days. A tap on a day's stack (its newest) or a prayer's square opens `MemoriesDeck` in the page's
   own overlay over a frosted backdrop (owner: "only take the image back into that square … frosted"; the system zoom
@@ -493,7 +493,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Three pages: scoring (hero + five rings at the usual moment), consistency (streaks, 14-day grid), getting better.
 
 **Daily Ayah, 99 Names, welcome**
-- Ayah: tap to reveal once a day, share card in three looks, widget payload. 99 Names: list (All / Learning / Known), page, flashcards, `namesKnown`.
+- Ayah: tap to reveal once a day, share card in three looks, widget payload; the system top bar, see-through (back, the
+  countdown, Share after the reveal) — a hidden bar switched off swipe-back (decision swipe-back-pages A). 99 Names: list (All / Learning / Known), page, flashcards, `namesKnown`.
 - Welcome (WelcomeAnimation.swift): cold launch only; the ring grows into the circle (`WelcomeTarget`).
 
 ## Open items

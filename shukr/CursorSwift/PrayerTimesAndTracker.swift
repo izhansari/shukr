@@ -1278,6 +1278,10 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
         .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }
+        // Memories (PrayerMemories.swift), from the ☰ menu or the day page's link: pushed like the others, so it swipes
+        // back (decision swipe-back-pages A; it was a full-screen cover).
+        .navigationDestination(isPresented: Binding(get: { MemoriesPresenter.shared.open },
+                                                    set: { MemoriesPresenter.shared.open = $0 })) { MemoriesPage() }
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
@@ -1951,11 +1955,6 @@ struct PrayerTimesView: View {
             // The pill's camera: a photo of the prayer just marked (PrayerPhotos.swift).
             .fullScreenCover(item: $prayerPhoto) { target in
                 PrayerPhotoCapture(target: target) { prayerPhoto = nil }
-            }
-            // Memories (PrayerMemories.swift): from the ☰ menu or the day page's link.
-            .fullScreenCover(isPresented: Binding(get: { MemoriesPresenter.shared.open },
-                                                  set: { MemoriesPresenter.shared.open = $0 })) {
-                MemoriesPage { MemoriesPresenter.shared.open = false }
             }
             #if DEBUG
             // `-demoPhotoViewer`: the newest saved prayer photo, full screen (the simulator's look at the viewer).

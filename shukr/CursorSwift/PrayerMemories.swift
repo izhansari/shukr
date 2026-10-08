@@ -78,8 +78,8 @@ extension PrayerPhotos {
 
 // MARK: - The page
 
+/// Pushed like 99 Names (decision swipe-back-pages A: a full-screen cover never swiped back), the system's back button.
 struct MemoriesPage: View {
-    let onClose: () -> Void
     /// The squares that fly into their day's or month's stack on a pinch, and back.
     @Namespace private var pinch
     @State private var photos: [MemoryPhoto] = []
@@ -465,7 +465,7 @@ struct MemoriesPage: View {
     }
 
     var body: some View {
-        NavigationStack {
+        Group {
             // One scroll view per level, swapped whole: a shared one scrolled under the change and the squares never
             // flew into their stacks.
             Group {
@@ -511,10 +511,6 @@ struct MemoriesPage: View {
             .navigationTitle("Memories")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: onClose) { Image(systemName: "chevron.left") }
-                        .accessibilityLabel("Back")
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("Photo settings")
@@ -529,11 +525,10 @@ struct MemoriesPage: View {
                         .overlay(Color.black.opacity(0.12))
                         .ignoresSafeArea()
                         .opacity(deckShown ? 1 : 0)
-                    NavigationStack {
-                        MemoriesDeck(photos: visible, start: start, shown: deckShown, hideTop: flight != nil,
-                                     onTopFrame: deckTopMoved, onClose: closeDeck)
-                            .containerBackground(.clear, for: .navigation)
-                    }
+                    // On the app's own navigation stack (Memories is pushed): Share pushes its page over it, and the
+                    // page's top and bottom bars step aside while a pile is up (`MemoriesDeck`'s .toolbar(.hidden)).
+                    MemoriesDeck(photos: visible, start: start, shown: deckShown, hideTop: flight != nil,
+                                 onTopFrame: deckTopMoved, onClose: closeDeck)
                     if let flight {
                         let base = flight.rect.width > 0 ? Self.cardWidth : 1
                         PrayerPhotoFace(back: flight.images.back, front: flight.images.front, width: base)
@@ -1026,6 +1021,7 @@ struct MemoriesDeck: View {
             // ✕ or a drag down closes.
         }
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .bottomBar)
         .sheet(isPresented: $editingNote) {
             // The whole note, to read and edit (the pile shows three lines of it).
             NavigationStack {
