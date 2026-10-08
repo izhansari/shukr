@@ -81,8 +81,8 @@ import SwiftData
     #endif
 }
 
-/// Glass over the Zikr page (owner, 2026-10-08: "it should look like it's hiding things. Maybe liquid glass"): the
-/// wheel under it is blurred (ZikrPageView), so its circles show as soft shapes through one glass pane; on it a small
+/// Over the Zikr page (owner, 2026-10-08: "it should look like it's hiding things"): the wheel under it is blurred
+/// (ZikrPageView), so its circles show as soft shapes through a wash of the page's colour; on it a small
 /// lock, two short lines, and "Unlock now" as coloured words — a tap turns them into a bordered "Tap again to start the
 /// tour", the second tap starts it (owner: "a double confirmation tap … or maybe it turns into a bordered button").
 /// Inside the page, so a swipe still pages past it; a tap on the glass only wiggles the lock.
@@ -90,6 +90,7 @@ struct ZikrLockCover: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(SharedStateClass.self) private var sharedState
+    @Environment(\.circleTheme) private var theme
     @State private var nudge = 0
     /// The words come in as the page arrives (owner: "transition the text in when we come to this page").
     @State private var wordsIn = false
@@ -140,18 +141,12 @@ struct ZikrLockCover: View {
         }
     }
 
-    /// Glass over the whole page, edge to edge, no border (owner: "i don't like we can see the border. just make it over
-    /// the whole page") — liquid glass; a material before iOS 26.
-    @ViewBuilder private var pane: some View {
-        Group {
-            if #available(iOS 26.0, *) {
-                // The clear glass: what's under it reads as shapes (the regular one whitened it out).
-                Color.clear.glassEffect(.clear, in: Rectangle())
-            } else {
-                Rectangle().fill(.ultraThinMaterial.opacity(0.85))
-            }
-        }
-        .ignoresSafeArea()
+    /// Over the whole page: a wash of the page's own colour on the blurred wheel (owner: "i don't like we can see the
+    /// border … still see this disconnect at the top"). Glass whitened the page while the strip under the status bar
+    /// kept its colour; the page's own colour has no edge to show, and the blurred circles still come through.
+    private var pane: some View {
+        theme.backdrop.opacity(0.5)
+            .ignoresSafeArea()
     }
 
     /// "Unlock now" in the app's green; the first tap turns it into a bordered "Tap again to start the tour" (for 3 s),
