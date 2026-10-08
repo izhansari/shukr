@@ -1952,6 +1952,9 @@ struct tasbeehView: View {
         // UI state
         @State private var showHistory = false
         @State private var wellRoom: CGFloat = 148
+        /// The well's words' own height: the well is no taller than them (the space under it is the page's, not an
+        /// empty well), and shrinks to scroll them where the page is short.
+        @State private var wellTextHeight: CGFloat = 0
         /// The well's scroll: at the top for a new zikr or a new height.
         @State private var wellScroll = ScrollPosition(edge: .top)
         /// The zikr's own page, opened by a tap on its card.
@@ -2115,30 +2118,20 @@ struct tasbeehView: View {
 
                 VStack(spacing: 0) {
                     pauseTopRow
-                    // A little air under the top row (the beads round the ring's top go while paused, so no room is kept
-                    // for them — owner); on a small phone it gives way first (Sami's B2 / B3: the SE pushed it under
-                    // the clock).
-                    // No ring here any more (owner, 2026-10-08): the zikr's card sits in the open space, as far from
-                    // the top row as from the tiles — the page breathes.
-                    // The card, the tiles and the switches as one group in the middle of the page, the room left over
-                    // split above and below it (owner: "too much empty space" — no gap opened in the middle of it).
-                    Spacer(minLength: 16)
+                    // The zikr's whole card at the top (owner, 2026-10-08: "show the full thing … push it to the top. then
+                    // spacer. then the other stuff at the bottom") — the ring's room is now the card's and the space.
+                    gap(12)
                     VStack(spacing: 10) {
-                        if sharedState.isDoingPostNamazZikr {
-                            // Tasbih Fatimah keeps its name row and its three phrases' card (its progress).
-                            softNameRow
-                            softWell
-                                .opacity(wellShows ? 1 : 0)
-                                .allowsHitTesting(wellShows)
-                                .frame(minHeight: 0, maxHeight: 240)
-                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
-                                .layoutPriority(1)
-                        } else {
-                            // A zikr: its header row alone — name, "from your task", ▶︎ and the photo (owner: the full
-                            // text and the notes are on its page, a tap away).
-                            softHeaderCard
-                                .layoutPriority(1)
-                        }
+                        // Out of sight, the well can't hold the name: it sits above it then (Bradley's review of b496df7).
+                        if !wellHoldsName || !wellShows { softNameRow }
+                        // As tall as its words, up to most of the page (long ones scroll inside it); with too little
+                        // room for its text (a small phone, the largest text) it stays out of sight rather than
+                        // squeezed — and takes no taps then.
+                        softWell
+                            .opacity(wellShows ? 1 : 0)
+                            .allowsHitTesting(wellShows)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
+                            .layoutPriority(1)
                     }
                     // A tap among the zikr's name, its media and its text never resumes (only the page round them does):
                     // a near-miss on ▶︎ resumed the session (owner). A tap on the card opens the zikr's own page to edit
@@ -2155,12 +2148,11 @@ struct tasbeehView: View {
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.notes", $0) }
-                    gap(24)
+                    // The room left over, between the card and the tiles.
+                    Spacer(minLength: 24)
                     softBottom
                         // The session tour's stats tip sits above the tiles (their top is this block's top).
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.stats", $0) }
-                    // The other half of the room left over (Tasbih Fatimah's card is tall: the group fills the page).
-                    Spacer(minLength: 16)
                 }
                 .frame(maxWidth: 420)
                 .padding(.horizontal, 20)
@@ -2330,69 +2322,6 @@ struct tasbeehView: View {
             .padding(.vertical, 10)
         }
 
-        /// The pause screen's zikr card (owner, 2026-10-08: the nickname centred, the note symbol, memo and photo
-        /// centred below it): the name large, "from your task" under it, then what the zikr holds — its full text (ع)
-        /// and notes as marks (a tap opens its page), the memo's ▶︎ and the photo as they are.
-        private var softHeaderCard: some View {
-            let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
-            let title = sharedState.titleForSession
-            let full = !(mantra?.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-            let notes = !(mantra?.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
-            return VStack(spacing: 14) {
-                VStack(spacing: 4) {
-                    Button { showMantraPicker = true } label: {
-                        HStack(spacing: 6) {
-                            Text(title.isEmpty ? "choose a zikr" : title)
-                                .font(.system(size: 28, weight: .light, design: .rounded))
-                                .foregroundStyle(title.isEmpty ? .secondary : .primary)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.7)
-                                .multilineTextAlignment(.center)
-                            if !mantraLocked {
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.tertiary)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .allowsHitTesting(!mantraLocked)   // not .disabled: that grayed the name out
-                    if isTaskSession {
-                        Label("from your task", systemImage: "checklist")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if full || notes || mantra?.audioData != nil || mantra?.imageData != nil {
-                    HStack(spacing: 12) {
-                        if full { holdsMark { Text("ع").font(.custom("KFGQPCUthmanTahaNaskh", size: 18)) }
-                            .accessibilityLabel("Has its full text") }
-                        if notes { holdsMark { Image(systemName: "doc.text").font(.system(size: 13, weight: .medium)) }
-                            .accessibilityLabel("Has notes") }
-                        if let mantra { ZikrMediaStrip(mantra: mantra, paused: paused, compact: true) }
-                    }
-                }
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 26)
-            .frame(maxWidth: .infinity)
-            .background(ThemedPressed(shape: shape))
-            .clipShape(shape)
-        }
-
-        /// A 34 pt mark, the memo's ▶︎ size and ring: something the zikr holds, its page a tap away.
-        private func holdsMark<Glyph: View>(@ViewBuilder _ glyph: () -> Glyph) -> some View {
-            Button { showZikrPage = true } label: {
-                glyph()
-                    .foregroundStyle(.secondary)
-                    .frame(width: 34, height: 34)
-                    .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 2.5))
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-        }
-
         private var wellRule: some View {
             Rectangle()
                 .fill(Color.primary.opacity(0.08))
@@ -2422,7 +2351,11 @@ struct tasbeehView: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded(.up) } action: { h in
+                        if abs(h - wellTextHeight) >= 1 { wellTextHeight = h }
+                    }
                 }
+                .frame(maxHeight: wellTextHeight > 0 ? min(wellTextHeight, 380) : nil)   // longer: it scrolls
                 .scrollIndicators(.automatic)
                 .scrollBounceBehavior(.basedOnSize)
                 // The well keeps its room (owner: "still make the sunken well take up all the space"); its parts stack from
@@ -2563,7 +2496,7 @@ struct tasbeehView: View {
 
                 // The chips while paused; after a sleep finish, Keep counting in their place. More air above them than
                 // the other gaps (owner: "more space to breathe between time text and feature buttons").
-                gap(18)   // tighter to the tiles (owner)
+                gap(28)   // a little more air between the stats and the switches (owner, 2026-10-08)
                 ZStack {
                     if !sharedState.isDoingPostNamazZikr {
                         chipsRow
