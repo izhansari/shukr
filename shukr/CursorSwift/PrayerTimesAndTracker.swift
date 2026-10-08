@@ -494,9 +494,12 @@ struct PrayerTimesView: View {
                     switch sharedState.navPosition {
                     case .main:
                         if draggedUp { sharedState.navPosition = .bottom; triggerSomeVibration(type: .light) }
-                        // Pull down: the location and the times again, shown in the top bar (LocationRefresh).
-                        // Not during the tour: only its step's move (Sami: a swipe down on the list step refreshed).
-                        if draggedDown && !TourRuntime.shared.active { LocationRefresh.shared.run(viewModel); triggerSomeVibration(type: .light) }
+                        // Pull down: the ☰ menu (owner: "instead of doing a refresh, it opens the hamburger menu";
+                        // refreshing the location stays in Settings). Not during the tour: only its step's move.
+                        if draggedDown && !TourRuntime.shared.active {
+                            NotificationCenter.default.post(name: SalahSheetDrag.openMenu, object: nil)
+                            triggerSomeVibration(type: .light)
+                        }
                     case .bottom:
                         if draggedDown { sharedState.navPosition = .main; triggerSomeVibration(type: .light) }
                     default:
@@ -1593,10 +1596,9 @@ struct PrayerTimesView: View {
                     let offset = context.geometry.contentOffset.y + context.geometry.contentInsets.top - dead
                     if new == .interacting { sheetScroll.stop() }   // a finger takes it, mid-spring or not
                     if old == .interacting, new != .interacting {
-                        // Pulled down past the closed rest and let go: the location and the times again
-                        // (LocationRefresh, shown in the top bar).
-                        if !showBottom, offset < -SalahSheetDrag.refreshPull {
-                            LocationRefresh.shared.run(viewModel)
+                        // Pulled down past the closed rest and let go: the ☰ menu (owner; the refresh is in Settings).
+                        if !showBottom, offset < -SalahSheetDrag.refreshPull, !TourRuntime.shared.active {
+                            NotificationCenter.default.post(name: SalahSheetDrag.openMenu, object: nil)
                             triggerSomeVibration(type: .light)
                         }
                         if live.pull != 0 { withAnimation(CircleMotion.page) { live.pull = 0 } }
@@ -1837,6 +1839,10 @@ struct PrayerTimesView: View {
                             .presentationCompactAdaptation(.popover)
                             .stageCover("menu")
                         }
+                        // A pull down on the Salah page opens it (SalahSheetDrag.openMenu).
+                        .onReceive(NotificationCenter.default.publisher(for: SalahSheetDrag.openMenu)) { _ in
+                            showMenu = true
+                        }
                         .onChange(of: showMenu) { _, open in
                             // The chosen row runs once the popover has faded (its push isn't attempted while the
                             // presentation is still going). Not at its onDisappear: that comes ~0.4 s after it's gone
@@ -2043,8 +2049,8 @@ struct PrayerTimesView: View {
         }
     }
 
-    /// The chevron hint, nudged by the pull-to-refresh drag; while the closed page is pulled down it gives way to a small
-    /// quiet line, "Keep pulling to refresh", then "Let go to refresh location" (owner, round 3: "small, simple, subtle text").
+    /// The chevron hint, nudged by the pull-down drag; while the closed page is pulled down it gives way to a small quiet
+    /// line, "Keep pulling for the menu", then "Let go for the menu" (the pull opens ☰ now — owner; it used to refresh).
     private struct ChevronHint: View {
         let live: PagerLiveState
         var body: some View {
@@ -2066,7 +2072,7 @@ struct PrayerTimesView: View {
                 .opacity(pulling ? 0 : 1)
                 // An overlay, so the chevron's place is exactly as it was.
                 .overlay {
-                    Text(live.refreshReach >= 1 ? "Let go to refresh location" : "Keep pulling to refresh")
+                    Text(live.refreshReach >= 1 ? "Let go for the menu" : "Keep pulling for the menu")
                         .font(.footnote).fontDesign(.rounded).fontWeight(.light)
                         .foregroundStyle(Color(.tertiaryLabel))   // explicit: in the Button's label .tertiary took the tint
                         .fixedSize()

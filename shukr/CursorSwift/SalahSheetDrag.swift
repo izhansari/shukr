@@ -13,8 +13,11 @@ enum SalahSheetDrag {
     /// feel right"). A new key, so an "on" saved by the test builds doesn't carry over. The palette menu still switches it.
     static let key = "salahSheetFollows.v2"
     static let defaultOn = false
-    /// Pull-to-refresh from closed: a release this far past the closed rest (decision salah-drag-tradeoffs B).
+    /// Pull-down from closed: a release this far past the closed rest opens the ☰ menu (was the refresh — owner moved it
+    /// to Settings; decision salah-drag-tradeoffs B set the distance).
     static let refreshPull: CGFloat = 60
+    /// Posted by the pull-down; the top bar's ☰ opens.
+    static let openMenu = Notification.Name("SalahSheetDrag.openMenu")
     /// The scroll between the rests, as a share of the page's height: the list moves exactly this far with the finger,
     /// from under the page's bottom edge (a full list; a short one starts a little higher, faded out) to its open place.
     /// Fixed per page, so the range never changes under a finger or when "N done" folds.
