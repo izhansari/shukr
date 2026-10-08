@@ -373,8 +373,8 @@ struct MemoriesPage: View {
         }
         // Apple's bottom bar for a pushed page (Memories isn't the app's root, so it has no tab bar of its own — as a
         // TabView here, search folded into the tabs and never opened): the system segmented control, then the system
-        // search button (`DefaultToolbarItem` + `.searchable`, minimized to a button — WWDC25's pattern). Search is
-        // asked for ONCE: `.searchable(placement: .toolbar)` as well drew a second search circle behind the first.
+        // search button — iOS's own (`.searchable` minimized to a button, put in the bottom bar by
+        // `DefaultToolbarItem`; without it iOS puts it top right). Each brings its own glass, so neither gets the bar's.
         .searchable(text: $query, isPresented: $searching, prompt: "Notes, places, prayers, months")
         .modifier(MinimizedSearch())
         .toolbar {
@@ -387,7 +387,10 @@ struct MemoriesPage: View {
                 ToolbarItem(placement: .bottomBar) { levelPicker }
                     .sharedBackgroundVisibility(.hidden)
                 ToolbarSpacer(.flexible, placement: .bottomBar)
+                // The search button brings its own glass too: the bar's shared one behind it was the second circle on the
+                // owner's phone (holding one grew both — one button, two layers).
                 DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                    .sharedBackgroundVisibility(.hidden)
             } else {
                 ToolbarItem(placement: .bottomBar) { levelPicker }
             }
