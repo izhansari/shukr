@@ -89,7 +89,10 @@ import SwiftData
 struct ZikrLockCover: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(SharedStateClass.self) private var sharedState
     @State private var nudge = 0
+    /// The words come in as the page arrives (owner: "transition the text in when we come to this page").
+    @State private var wordsIn = false
     @State private var armed = false
     @State private var token = 0
     @State private var edge = false
@@ -121,25 +124,34 @@ struct ZikrLockCover: View {
                     .padding(.top, 2)
             }
             .padding(.horizontal, 32)
+            .opacity(wordsIn ? 1 : 0)
+            .offset(y: wordsIn || reduceMotion ? 0 : 10)
         }
-        .onAppear { if !reduceMotion { nudge += 1 } }
+        // Each arrival on the page: the words rise in (and the lock wiggles); leaving, they go, ready for the next time.
+        .onChange(of: sharedState.horizontalPage == .zikr, initial: true) { _, here in
+            if here {
+                withAnimation(.easeOut(duration: 0.5).delay(0.15)) { wordsIn = true }
+                if !reduceMotion {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { nudge += 1 }
+                }
+            } else {
+                withAnimation(.easeIn(duration: 0.15)) { wordsIn = false }
+            }
+        }
     }
 
-    /// One glass pane over the page, inset from its edges (liquid glass; a material before iOS 26).
+    /// Glass over the whole page, edge to edge, no border (owner: "i don't like we can see the border. just make it over
+    /// the whole page") — liquid glass; a material before iOS 26.
     @ViewBuilder private var pane: some View {
-        let shape = RoundedRectangle(cornerRadius: 36, style: .continuous)
         Group {
             if #available(iOS 26.0, *) {
                 // The clear glass: what's under it reads as shapes (the regular one whitened it out).
-                Color.clear.glassEffect(.clear, in: shape)
+                Color.clear.glassEffect(.clear, in: Rectangle())
             } else {
-                shape.fill(.ultraThinMaterial.opacity(0.85))
+                Rectangle().fill(.ultraThinMaterial.opacity(0.85))
             }
         }
-        .overlay(shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 0.75))
-        .padding(.horizontal, 14)
-        .padding(.top, 6)
-        .padding(.bottom, 12)
+        .ignoresSafeArea()
     }
 
     /// "Unlock now" in the app's green; the first tap turns it into a bordered "Tap again to start the tour" (for 3 s),

@@ -2237,6 +2237,16 @@ struct PrayerTimesView: View {
                             VStack(spacing: 6){
                                 Image(systemName: "circle.hexagonpath")
                                     .font(.system(size: 20))
+                                    // Still locked (ZikrLock): the green dot — something to do here (owner).
+                                    .overlay(alignment: .topTrailing) {
+                                        Circle()
+                                            .fill(TourInk.green)
+                                            .frame(width: 8, height: 8)
+                                            .offset(x: 4, y: -2)
+                                            .opacity(ZikrLock.shared.locked ? 1 : 0)
+                                            .animation(.easeInOut(duration: 0.3), value: ZikrLock.shared.locked)
+                                            .accessibilityHidden(true)
+                                    }
                                 Text("Zikr")
                                     .font(.system(size: 12))
                                     .fontWeight(.light)
