@@ -56,9 +56,12 @@ struct tasbeehView: View {
             let tilesTop = cardsBottomTop - resultsTilesLift   // they rise on the results
             return min(0, tilesTop - Self.resultsRingClearance - (ringHomeMid.y + ringSize.height / 2))
         }
-        if paused && pauseSlot.height > 0 { return pauseSlot.midY - ringHomeMid.y }
-        return 0
+        return 0   // paused: it stays where it is and fades (`ringAwayForPause`) — no trip up the page
     }
+    /// The pause screen has no ring (owner, 2026-10-08: "get rid of keeping the ring in it … no need to do the transition
+    /// of moving the ring"): the ring and its count fade where they stand while paused and come back on Resume. A close
+    /// or a finish from the pause brings it back first (the close lands it on the wheel; the results raise it).
+    private var ringAwayForPause: Bool { ringAbove && paused && savedSession == nil && !ringToCentre }
     @Environment(\.modelContext) private var context
     @Environment(SharedStateClass.self) var sharedState
     
@@ -485,7 +488,8 @@ struct tasbeehView: View {
                                  beadsShown: !paused)
                     .offset(entryOffset)
                     .modifier(SessionAppear(shown: countIn, style: openingStyle))
-                    .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed))
+                    .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed || ringAwayForPause))
+                    .animation(.easeOut(duration: CircleMotion.quick), value: ringAwayForPause)
                 
                 GeometryReader { geometry in
                     VStack {
@@ -579,7 +583,8 @@ struct tasbeehView: View {
                     // as it handed over (a 2-frame dip, circle-ring-handover).
                     .compositingGroup()
                     .opacity((pageIn || ringHeld) && !ringOut ? 1 : 0)
-                    .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed))
+                    .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed || ringAwayForPause))
+                    .animation(.easeOut(duration: CircleMotion.quick), value: ringAwayForPause)
             }
             // Soft look: centred on the whole screen (the circles it opens out of are), not the safe area.
             .ignoresSafeArea(.container, edges: softLook ? .all : [])
@@ -2113,27 +2118,25 @@ struct tasbeehView: View {
                     // A little air under the top row (the beads round the ring's top go while paused, so no room is kept
                     // for them — owner); on a small phone it gives way first (Sami's B2 / B3: the SE pushed it under
                     // the clock).
-                    Spacer(minLength: 8)
-                        .frame(maxHeight: 18)
-                    // Where the ring stands while paused: as low as the cards under it allow, so it travels as little
-                    // as it can (owner: "so then the ring doesn't have to travel so far up the page").
-                    Color.clear
-                        .frame(width: 206, height: 206)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onRingSlot($0) }
+                    // No ring here any more (owner, 2026-10-08): the zikr's card sits in the open space, as far from
+                    // the top row as from the tiles — the page breathes.
+                    Spacer(minLength: 16)
                     VStack(spacing: 10) {
-                        // Out of sight, the well can't hold the name: it sits above it then (Bradley's review of b496df7).
-                        if !wellHoldsName || !wellShows { softNameRow }
-                        // It takes its height before the space above the ring does; with too little room for its text
-                        // (a small phone, the largest text) it stays out of sight rather than squeezed — and takes no
-                        // taps then (its name, picker, memo and photo were hidden but still tappable).
-                        softWell
-                            .opacity(wellShows ? 1 : 0)
-                            .allowsHitTesting(wellShows)
-                            .frame(minHeight: 0, maxHeight: 240)   // the name now inside it, not more room (owner)
-                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
-                            .layoutPriority(1)
+                        if sharedState.isDoingPostNamazZikr {
+                            // Tasbih Fatimah keeps its name row and its three phrases' card (its progress).
+                            softNameRow
+                            softWell
+                                .opacity(wellShows ? 1 : 0)
+                                .allowsHitTesting(wellShows)
+                                .frame(minHeight: 0, maxHeight: 240)
+                                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
+                                .layoutPriority(1)
+                        } else {
+                            // A zikr: its header row alone — name, "from your task", ▶︎ and the photo (owner: the full
+                            // text and the notes are on its page, a tap away).
+                            softHeaderCard
+                        }
                     }
-                    .padding(.top, 12)
                     // A tap among the zikr's name, its media and its text never resumes (only the page round them does):
                     // a near-miss on ▶︎ resumed the session (owner). A tap on the card opens the zikr's own page to edit
                     // it (decision pause-zikr-edit A); its name, ▶︎ and photo keep their own taps.
@@ -2149,12 +2152,8 @@ struct tasbeehView: View {
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.notes", $0) }
-                    // Whatever room is left over on a tall phone sits here, between the card and the tiles — only after
-                    // everything else has its height (lowest priority). Without it the page was centred in the screen
-                    // and its top row sat ~18 pt under ‹ Resume / Finish (owner: "a bit off the top").
-                    Spacer(minLength: 0)
-                        .layoutPriority(-1)
-                    gap(20)
+                    // The other half of the open space: the card floats between the top row and the tiles.
+                    Spacer(minLength: 24)
                     softBottom
                         // The session tour's stats tip sits above the tiles (their top is this block's top).
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.stats", $0) }
@@ -2325,6 +2324,15 @@ struct tasbeehView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
+        }
+
+        /// The pause screen's zikr card: the well's name header alone, a little roomier, in the same pressed shape.
+        private var softHeaderCard: some View {
+            let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+            return wellNameHeader
+                .padding(.vertical, 6)
+                .background(ThemedPressed(shape: shape))
+                .clipShape(shape)
         }
 
         private var wellRule: some View {
