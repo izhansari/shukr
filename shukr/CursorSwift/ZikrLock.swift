@@ -268,16 +268,21 @@ struct ZikrLockCover: View {
             Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 36, height: 1)
                 .padding(.top, 30)
                 .opacity(linesShown >= ZikrLockWords.narration.count + 3 ? 1 : 0)
-            Text(ZikrLockWords.bridge)
-                .font(.system(size: 15, weight: .light, design: .rounded))
-                .foregroundStyle(Color.primary.opacity(0.6))
-                .multilineTextAlignment(.center)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: 300)
-                .padding(.top, 30)
-                .opacity(linesShown >= ZikrLockWords.narration.count + 3 ? 1 : 0)
-                .offset(y: linesShown >= ZikrLockWords.narration.count + 3 || reduceMotion ? 0 : 6)
+            VStack(spacing: 8) {
+                Text(ZikrLockWords.firstStep)
+                    .font(.system(size: 17, weight: .light, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.88))
+                Text(ZikrLockWords.bridge)
+                    .font(.system(size: 15, weight: .light, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.6))
+                    .lineSpacing(3)
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: 300)
+            .padding(.top, 30)
+            .opacity(linesShown >= ZikrLockWords.narration.count + 3 ? 1 : 0)
+            .offset(y: linesShown >= ZikrLockWords.narration.count + 3 || reduceMotion ? 0 : 6)
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
@@ -293,7 +298,7 @@ struct ZikrLockCover: View {
             startTour()
         } label: {
             HStack(spacing: 6) {
-                Text("Begin")
+                Text(ZikrLockWords.beginButton)
                 Image(systemName: "arrow.right").font(.system(size: 14, weight: .semibold))
             }
             .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -483,7 +488,8 @@ enum ZikrLockWords {
     ]
     /// Ibn Kathir's tafsir of 2:152 cites this hadith qudsi to explain the verse; the hadith itself wasn't said about it,
     /// so the heading doesn't claim it was.
-    static let narrationHeading = "And in a hadith qudsi, Allah says"
+    /// "Through His Prophet ﷺ": what a hadith qudsi is, in words anyone follows (decision zikr-lock-bridge A).
+    static let narrationHeading = "And through His Prophet ﷺ, Allah says"
     static let narration = [
         "I am as My servant thinks I am,\nand I am with him when he remembers Me.",
         "If he remembers Me in himself,\nI remember him in Myself.",
@@ -491,5 +497,8 @@ enum ZikrLockWords {
         "If he comes to Me walking,\nI come to him running.",
     ]
     static let narrationSource = "Sahih al-Bukhari 7405"
-    static let bridge = "shukr helps you keep it: one zikr a day, counted, with a streak that grows. Let's set up your first one together."
+    /// The narration's thread carried on (it ends on walking towards Him): the step, then what the tour will do.
+    static let firstStep = "So take the first step, however small."
+    static let bridge = "We'll set up one daily zikr and count it together. It takes about two minutes."
+    static let beginButton = "Take the first step"
 }

@@ -156,10 +156,12 @@ enum TourCopy {
         static let skipToSettings = "Skip to Settings"   // in the app tour
         static let notNow = "Not now"                    // on its own
 
-        static let kindsStep = "Freestyle or a task"
-        static let kindsLead = "Freestyle: any zikr, any time, no goal. Tasks: a daily goal for one zikr."
+        // The first step carries on from the lock's narration ("take the first step" — decision zikr-lock-bridge A); the
+        // freestyle / task difference is learned on the page later, not explained up front.
+        static let kindsStep = "Your first step"
+        static let kindsLead = "Your first step: one zikr, every day."
         static let kindsTodo = "Tap New task"
-        static let reuseLead = "You already have an Astaghfirullah task — let’s use it."
+        static let reuseLead = "Your first step is already here."
         static let reuseDoneLead = "You already have an Astaghfirullah task, and today’s is done."
 
         static let taskStep = "Your first task"
