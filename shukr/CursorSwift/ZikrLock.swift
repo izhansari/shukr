@@ -96,7 +96,8 @@ struct ZikrLockCover: View {
     @State private var wordsIn = false
     @State private var armed = false
     @State private var token = 0
-    @State private var edge = false
+    @State private var armedWidth: CGFloat = 0
+    @State private var restWidth: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -150,27 +151,57 @@ struct ZikrLockCover: View {
     }
 
     /// "Unlock now" in the app's green; the first tap turns it into a bordered "Tap again to start the tour" (for 3 s),
-    /// the second starts it. Its width changes at once, never animated (an animated width kept the old tap area —
-    /// the Skip button's trap); the border fades.
+    /// the second starts it. It moves both ways (owner: "make it transition to that bordered button and transition
+    /// back"): the border grows out from the words to the capsule (and back), the words cross-fade. The tap area is a
+    /// fixed box the size of the capsule, never the moving shape (an animated frame kept the old tap area — the Skip
+    /// button's trap).
     private var unlock: some View {
-        HStack(spacing: 6) {
-            Image(systemName: armed ? "checkmark" : "lock.open.fill")
-                .font(.system(size: 13, weight: .bold))
-            Text(armed ? "Tap again to start the tour" : "Unlock now")
+        ZStack {
+            // The border and its faint fill, sized to the words shown (measured below), the change animated.
+            Capsule()
+                .fill(Color.sage.opacity(armed ? 0.08 : 0))
+                .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5).opacity(armed ? 1 : 0))
+                .frame(width: (armed ? armedWidth : restWidth) + 32, height: 38)
+            ZStack {
+                if armed {
+                    label("Tap again to start the tour", symbol: "checkmark")
+                        .transition(.blurReplace)
+                } else {
+                    label("Unlock now", symbol: "lock.open.fill")
+                        .transition(.blurReplace)
+                }
+            }
         }
-        .font(.system(size: 15, weight: .semibold, design: .rounded))
-        .foregroundStyle(Color.sage)
-        .padding(.horizontal, 16)
-        .frame(height: 38)
-        .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5).opacity(edge ? 1 : 0))
-        .fixedSize()
-        .contentShape(Capsule())
+        // The fixed box: both labels' widths measured from hidden copies, the box always the wider one.
+        .frame(width: max(armedWidth, restWidth) + 32, height: 38)
+        .background {
+            ZStack {
+                label("Tap again to start the tour", symbol: "checkmark").fixedSize()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { armedWidth = $0 }
+                label("Unlock now", symbol: "lock.open.fill").fixedSize()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { restWidth = $0 }
+            }
+            .hidden()
+        }
+        .contentShape(Rectangle())
         .onTapGesture(perform: tap)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(armed ? "Tap again to start the tour" : "Unlock now")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default) { begin() }
     }
+
+    private func label(_ words: String, symbol: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: 13, weight: .bold))
+            Text(words)
+        }
+        .font(.system(size: 15, weight: .semibold, design: .rounded))
+        .foregroundStyle(Color.sage)
+        .lineLimit(1)
+    }
+
+    private static let change = Animation.spring(response: 0.38, dampingFraction: 0.82)
 
     private func tap() {
         if armed {
@@ -179,14 +210,10 @@ struct ZikrLockCover: View {
             triggerSomeVibration(type: .light)
             token += 1
             let mine = token
-            var instant = Transaction()
-            instant.disablesAnimations = true
-            withTransaction(instant) { armed = true }
-            withAnimation(.easeIn(duration: 0.18)) { edge = true }
+            withAnimation(Self.change) { armed = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {   // an input timeout
                 guard mine == token else { return }
-                withTransaction(instant) { armed = false }
-                withAnimation(.easeOut(duration: 0.15)) { edge = false }
+                withAnimation(Self.change) { armed = false }
             }
         }
     }
@@ -194,7 +221,6 @@ struct ZikrLockCover: View {
     private func begin() {
         triggerSomeVibration(type: .medium)
         armed = false
-        edge = false
         ZikrTour.shared.begin(in: context)
     }
 }

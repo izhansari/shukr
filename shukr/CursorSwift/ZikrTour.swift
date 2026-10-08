@@ -512,33 +512,6 @@ extension EnvironmentValues {
     }
 }
 
-/// ☰ → Zikr Tour, until it's taken to its end.
-struct ZikrTourMenuRow: View {
-    @AppStorage(ZikrTour.completedKey) private var completed = false
-    let action: () -> Void
-    var body: some View {
-        if !completed {
-            Button(action: action) {
-                Label {
-                    Text(TourCopy.ZikrTour.menuRow)
-                } icon: {
-                    Image(systemName: "circle.hexagongrid")
-                        .overlay(alignment: .topTrailing) {
-                            Circle().fill(TourInk.green).frame(width: 7, height: 7).offset(x: 3, y: -2)
-                        }
-                }
-                .fontDesign(.rounded)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-    }
-}
-
 /// The Zikr Tour over its session: counting low on the screen (not on the pause screen), the results over Done; Skip top
 /// right, left of −.
 struct ZikrTourSessionLayer: View {

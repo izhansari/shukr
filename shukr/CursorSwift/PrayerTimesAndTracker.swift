@@ -1836,17 +1836,7 @@ struct PrayerTimesView: View {
                                     pendingMenuAction = { NotificationCenter.default.post(name: TourRuntime.start, object: nil) }
                                     showMenu = false
                                 }
-                                // The Zikr Tour, until it's taken to its end (ZikrTour.swift): its offer on the Zikr page.
-                                ZikrTourMenuRow {
-                                    pendingMenuAction = {
-                                        sharedState.go(to: .zikr)
-                                        Task { @MainActor in
-                                            try? await Task.sleep(for: .seconds(0.5))
-                                            ZikrTour.shared.offer(inAppTour: false)
-                                        }
-                                    }
-                                    showMenu = false
-                                }
+                                // (No "Zikr Tour" row any more: the Zikr page's lock is its way in — owner, 2026-10-08.)
                                 // Which build this is (BuildInfo): when it was built + the commit.
                                 // Tap → What's new (DEBUG / TestFlight).
                                 BuildLineButton {

@@ -2767,13 +2767,12 @@ struct TourSheetTip: View {
 /// compass's red dot sits over it when that's needed too.
 struct TourMenuBadge: View {
     @AppStorage(TourRuntime.completedKey) private var completed = false
-    @AppStorage(ZikrTour.completedKey) private var zikrCompleted = false
     var body: some View {
         Circle()
             .fill(TourInk.green)
             .frame(width: 8, height: 8)
-            // Either tour not yet taken to its end (the app tour, the Zikr Tour).
-            .opacity((completed && zikrCompleted) || TourRuntime.shared.active || ZikrTour.shared.active ? 0 : 1)
+            // The app tour not yet taken to its end (the Zikr Tour's dot is on the Zikr tab now, with its lock).
+            .opacity(completed || TourRuntime.shared.active || ZikrTour.shared.active ? 0 : 1)
             .animation(.easeInOut(duration: 0.3), value: completed)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
