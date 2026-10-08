@@ -467,8 +467,8 @@ struct PrayerPhotoViewer: View {
                     .overlay(Color.black.opacity(0.25))
                     .ignoresSafeArea()
                     .opacity(shown ? 1 - min(dragDistance / 400, 0.6) : 0)
-                    // A tap on the page around it always closes, share options open or not (owner).
-                    .onTapGesture { close() }
+                    // A tap on the page around it: with the share options up it puts them away; else it closes (owner).
+                    .onTapGesture { if sharing { setSharing(false) } else { close() } }
                 VStack(spacing: 22) {
                     // Sharing: the card shows what will be sent.
                     PrayerPhotoFramed(back: images.back, front: images.front, key: key,
