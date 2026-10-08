@@ -136,6 +136,9 @@ enum FirstZikr {
     static let note = "“Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great.” Two phrases, light on the tongue, heavy on the Scale, beloved to the Most Merciful. (Bukhari 7563, 6406)"
     static let source = "Light on the tongue, heavy on the Scale\nSahih al-Bukhari 7563"
     static let goal = 33
+    /// The task's own short English name (owner: "our nicknames are usually english"; the zikr's full name doesn't fit a
+    /// circle) — from the hadith.
+    static let taskName = "Light on the Tongue"
     /// For display: one phrase a line.
     static let arabicLines = "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ\nسُبْحَانَ ٱللَّٰهِ ٱلْعَظِيمِ"
     static let meaningLines = "Glory be to Allah, and praise be to Him.\nGlory be to Allah, the Most Great."

@@ -339,37 +339,27 @@ struct ZikrLockCover: View {
                 .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
                 .foregroundStyle(Color.sage)
                 .opacity(thirdShown >= 1 ? 1 : 0)
+            // The task's own circle, as the wheel draws it (owner: "the task should look like our task rings"): its
+            // English name, "0 of 33", how long it takes.
             Button(action: startCounting) {
-                ZStack {
-                    Circle().fill(Color.primary.opacity(0.035))
-                    Circle().strokeBorder(Color.sage.opacity(0.55), lineWidth: 2)
-                    VStack(spacing: 8) {
-                        Text(FirstZikr.arabicLines)
-                            .font(.custom("KFGQPCUthmanTahaNaskh", size: 21))
-                            .foregroundStyle(Color.primary.opacity(0.88))
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(4)
-                            .minimumScaleFactor(0.7)
-                        Text("0 of \(FirstZikr.goal)")
-                            .font(.system(size: 12, weight: .regular, design: .rounded))
-                            .foregroundStyle(Color.primary.opacity(0.45))
-                    }
-                    .padding(26)
-                }
-                .frame(width: 210, height: 210)
-                .contentShape(Circle())
-                .scaleEffect(breathe ? 1.025 : 1)
+                ZikrCircleFace(title: firstTask?.title ?? FirstZikr.name, icon: nil,
+                               subtitle: "0 of \(FirstZikr.goal)", ring: .progress(0),
+                               mantraLine: firstTask?.mantraLine,
+                               note: firstTask?.estimateNote(TaskProgress(count: 0, seconds: 0)))
+                    .contentShape(Circle())
+                    .scaleEffect(breathe ? 1.025 : 1)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Start \(FirstZikr.name), \(FirstZikr.goal) times")
             .padding(.top, 18)
             .opacity(thirdShown >= 1 ? 1 : 0)
             .scaleEffect(thirdShown >= 1 || reduceMotion ? 1 : 0.94)
-            VStack(spacing: 8) {
-                Text(FirstZikr.name)
-                    .font(.system(size: 16, weight: .regular, design: .rounded))
-                    .foregroundStyle(Color.primary.opacity(0.85))
-                // What it means (owner: "make sure they know the translation of what it means").
+            VStack(spacing: 10) {
+                // What to say, then what it means (owner: "make sure they know the translation of what it means").
+                Text(FirstZikr.arabicLines)
+                    .font(.custom("KFGQPCUthmanTahaNaskh", size: 24))
+                    .foregroundStyle(Color.primary.opacity(0.88))
+                    .lineSpacing(6)
                 Text("“\(FirstZikr.meaningLines)”")
                     .font(.system(size: 16, weight: .light, design: .rounded))
                     .foregroundStyle(Color.primary.opacity(0.7))
@@ -377,7 +367,7 @@ struct ZikrLockCover: View {
             }
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 24)
+            .padding(.top, 26)
             .opacity(thirdShown >= 2 ? 1 : 0)
             .offset(y: thirdShown >= 2 || reduceMotion ? 0 : 6)
             Text(FirstZikr.source.uppercased())
@@ -689,6 +679,7 @@ extension FirstZikr {
             return task
         }
         let task = TaskModel(mantra: zikr, isCountMode: true, goal: goal, sortOrder: TaskModel.nextSortOrder(in: context))
+        task.customName = taskName
         context.insert(task)
         try? context.save()
         return task
