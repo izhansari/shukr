@@ -561,7 +561,7 @@ struct ZikrPhotoPanel: View {
             if image != nil, decoded == nil {
                 Color.primary.opacity(0.04)               // decoding (a moment)
             } else if image != nil, let ui = decoded {
-                Button { viewing = true } label: {
+                Button { ZikrPhotoViewer.open { viewing = true } } label: {
                     // The whole photo, shrunk to fit the box at its own shape (owner, note 3CA19C68).
                     Image(uiImage: ui).resizable().scaledToFit()
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -697,67 +697,148 @@ struct CameraPicker: UIViewControllerRepresentable {
     }
 }
 
-/// Full screen, pinch / double-tap to zoom, ✕ to close.
+/// A zikr's photo, in Memories' feel (owner, 2026-10-08: "isn't the same feel as what we have for our memories"): a
+/// frosted backdrop fades in first, then the photo with rounded corners; it follows a drag in any direction, shrinking
+/// a little, and past 120 pt (or flung) fades away; ✕ and Share below it, as on the pile. Pinch or double-tap zooms
+/// (a written dua wants reading); zoomed, a drag moves the photo instead. Present it without the system's slide:
+/// `ZikrPhotoViewer.open { viewing = true }`.
 struct ZikrPhotoViewer: View {
     let image: UIImage
     @Environment(\.dismiss) private var dismiss
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.black.ignoresSafeArea()
-            ZoomableImage(image: image).ignoresSafeArea()
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(.white.opacity(0.18)))
-            }
-            .padding(16)
-            .accessibilityLabel("Close")
-        }
-        .statusBarHidden()
-    }
-}
+    @State private var backdropShown = false
+    @State private var shown = false
+    @State private var drag: CGSize = .zero
+    @State private var zoom: CGFloat = 1
+    @State private var steadyZoom: CGFloat = 1
+    @State private var pan: CGSize = .zero
+    @State private var steadyPan: CGSize = .zero
+    @State private var closing = false
 
-private struct ZoomableImage: UIViewRepresentable {
-    let image: UIImage
-    func makeUIView(context: Context) -> UIScrollView {
-        let scroll = UIScrollView()
-        scroll.minimumZoomScale = 1
-        scroll.maximumZoomScale = 5
-        scroll.delegate = context.coordinator
-        scroll.showsHorizontalScrollIndicator = false
-        scroll.showsVerticalScrollIndicator = false
-        scroll.backgroundColor = .clear
-        let view = UIImageView(image: image)
-        view.contentMode = .scaleAspectFit
-        view.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(view)
-        NSLayoutConstraint.activate([
-            view.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
-            view.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
-            view.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
-            view.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
-            view.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-        ])
-        context.coordinator.imageView = view
-        let double = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.doubleTap(_:)))
-        double.numberOfTapsRequired = 2
-        scroll.addGestureRecognizer(double)
-        return scroll
+    /// Sets the cover's flag without the slide (the viewer fades itself in).
+    static func open(_ present: () -> Void) {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet, present)
     }
-    func updateUIView(_ uiView: UIScrollView, context: Context) {}
-    func makeCoordinator() -> Coordinator { Coordinator() }
-    final class Coordinator: NSObject, UIScrollViewDelegate {
-        weak var imageView: UIImageView?
-        func viewForZooming(in scrollView: UIScrollView) -> UIView? { imageView }
-        @objc func doubleTap(_ g: UITapGestureRecognizer) {
-            guard let scroll = g.view as? UIScrollView else { return }
-            if scroll.zoomScale > 1.01 { scroll.setZoomScale(1, animated: true); return }
-            let p = g.location(in: imageView)
-            let size = CGSize(width: scroll.bounds.width / 2.5, height: scroll.bounds.height / 2.5)
-            scroll.zoom(to: CGRect(x: p.x - size.width / 2, y: p.y - size.height / 2, width: size.width, height: size.height), animated: true)
+
+    private var down: CGFloat { hypot(drag.width, drag.height) }
+    private var dragScale: CGFloat { 1 - min(down / 1600, 0.2) }
+    private var zoomed: Bool { zoom > 1.01 }
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+                .overlay(Color.black.opacity(0.12))
+                .ignoresSafeArea()
+                .opacity(backdropShown ? 1 - min(down / 400, 0.5) : 0)
+
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.18), radius: 18, y: 8)
+                    .scaleEffect(zoom * dragScale)
+                    .offset(x: pan.width + drag.width, y: pan.height + drag.height)
+                    .padding(.horizontal, 20)
+                    .gesture(dragGesture)
+                    .simultaneousGesture(pinch)
+                    .onTapGesture(count: 2) { toggleZoom() }
+                    .accessibilityLabel("Photo")
+                    .accessibilityAddTraits(.isImage)
+                Spacer(minLength: 0)
+                HStack(spacing: 18) {
+                    ShareLink(item: Image(uiImage: image), preview: SharePreview("Photo", image: Image(uiImage: image))) {
+                        circleIcon("square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share")
+                    Button(action: close) { circleIcon("xmark") }
+                        .accessibilityLabel("Close")
+                }
+                .buttonStyle(.plain)
+                .opacity(down > 10 || zoomed ? 0 : 1)
+                .animation(.easeInOut(duration: 0.2), value: down > 10 || zoomed)
+                .padding(.top, 22)
+                .padding(.bottom, 12)
+            }
+            .compositingGroup()
+            .opacity(shown ? 1 : 0)
+        }
+        .presentationBackground(.clear)
+        .statusBarHidden()
+        .task {
+            // The backdrop first, then the photo — slow, eased and overlapping, as Memories' pile.
+            withAnimation(.easeInOut(duration: 0.4)) { backdropShown = true }
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.easeInOut(duration: 0.45)) { shown = true }
+        }
+    }
+
+    private func circleIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(Color.primary)
+            .frame(width: 50, height: 50)
+            .background(Circle().fill(.regularMaterial))
+            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in
+                guard !closing else { return }
+                if zoomed {
+                    pan = CGSize(width: steadyPan.width + value.translation.width, height: steadyPan.height + value.translation.height)
+                } else {
+                    drag = value.translation
+                }
+            }
+            .onEnded { value in
+                guard !closing else { return }
+                if zoomed { steadyPan = pan; return }
+                let flung = hypot(value.predictedEndTranslation.width, value.predictedEndTranslation.height)
+                if down > 120 || flung > 320 {
+                    close()
+                } else {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = .zero }
+                }
+            }
+    }
+
+    private var pinch: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in zoom = min(max(steadyZoom * value.magnification, 1), 5) }
+            .onEnded { _ in
+                steadyZoom = zoom
+                if !zoomed { withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { reset() } }
+            }
+    }
+
+    private func toggleZoom() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            if zoomed { reset() } else { zoom = 2.5; steadyZoom = 2.5 }
+        }
+    }
+
+    private func reset() {
+        zoom = 1; steadyZoom = 1; pan = .zero; steadyPan = .zero
+    }
+
+    /// Fades out where it is: the photo, then the backdrop; then the cover goes without a slide.
+    private func close() {
+        guard !closing else { return }
+        closing = true
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeInOut(duration: 0.35)) { shown = false }
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.easeInOut(duration: 0.4)) { backdropShown = false } completion: {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { dismiss() }
+            }
         }
     }
 }
@@ -799,7 +880,7 @@ struct ZikrMediaStrip: View {
                 }
                 Spacer(minLength: 0)
                 if mantra.imageData != nil, let ui = thumbnail {
-                    Button { viewing = true } label: {
+                    Button { ZikrPhotoViewer.open { viewing = true } } label: {
                         Image(uiImage: ui).resizable().scaledToFill()
                             .frame(width: 56, height: 56)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -833,7 +914,7 @@ struct ZikrMediaStrip: View {
                     .accessibilityLabel(engine.state == .playing ? "Pause" : "Play voice memo")
                 }
                 if mantra.imageData != nil, let ui = thumbnail {
-                    Button { viewing = true } label: {
+                    Button { ZikrPhotoViewer.open { viewing = true } } label: {
                         Image(uiImage: ui).resizable().scaledToFill()
                             .frame(width: 34, height: 34)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
