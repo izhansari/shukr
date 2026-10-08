@@ -293,7 +293,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   only (photos on the ring went back to dots — owner); a photographed prayer's fifth tapped shows the photo in the centre (the circle's own tap layer steps aside: `DayPageState.photoInCentre`) (the strip
   under the line was dropped — it fought the list card). Map: the prayer's page shows it. DEBUG
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
-- **Memories** (briefly "Journal" — the owner went back to Memories and its photo.stack icon; PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo — PUSHED like 99 Names via `MemoriesPresenter.open` → navigationDestination, so it swipes back (decision swipe-back-pages A); the pile sits on that stack and hides its bars while up
+- **Memories** (briefly "Journal" — the owner went back to Memories and its photo.stack icon; PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo — PUSHED like 99 Names via `MemoriesPresenter.open` → navigationDestination, so it swipes back (decision swipe-back-pages A); the pile is a clear cover over it
   exists — `PrayerPhotoRevision.hasPhotos`; ⚙ top right = `MemoriesSettings`: Show where, Space used — not in Settings
   any more). Opens on Days. A tap on a day's stack (its newest) or a prayer's square opens `MemoriesDeck` in the page's
   own overlay over a frosted backdrop (owner: "only take the image back into that square … frosted"; the system zoom
@@ -340,9 +340,10 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `score:` — as toggles; the place as City (default — owner) or Address — `PrayerSpotAddress.city`, "Cary, NC"; the pile's line uses the masjid, else the city; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
   on a card swaps the pictures; drag down closes (the deck's own drag
   picks the axis on its first move). **Finding** (decision memories-finding C): a heart in the pile
-  (`PrayerPhotoFavorites`, UserDefaults); the bottom bar (`BottomChrome`): on iOS 26+ the system bottom toolbar (Liquid
-  Glass) — `levelSwitch` + `DefaultToolbarItem(kind: .search)` with `.searchable` + `.searchToolbarBehavior(.minimize)`,
-  the search button opening into the field as in Photos (owner); before 26 the page's own bar. Searching shows a
+  (`PrayerPhotoFavorites`, UserDefaults); the bottom bar: on iOS 26+ the system bottom toolbar (Liquid Glass) — `levelSwitch`
+  + a magnifying-glass button; searching, our own `searchField` + ✕ as bottom-bar items (NO `.searchable`: pushed onto the
+  app's stack, the search controller drew a second, open search bar under the toolbar — owner's screenshot); before 26
+  the page's own bar. The pile is a clear `fullScreenCover` (no slide) so the bars are never hidden / re-shown. Searching shows a
   results LIST (`resultsList`: chips Favorites · Jumu'ah · At a masjid · With a note on top, rows = photo, prayer, date,
   the note / masjid / place; a tap opens the pile over the results only); words (all must match, folded: no case / accents /
   apostrophes) search `buildIndex`'s text per photo — prayer, note, masjid, Gregorian + Hijri (`islamicUmmAlQura`) dates,

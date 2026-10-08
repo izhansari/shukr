@@ -138,9 +138,28 @@ struct MemoriesPage: View {
 
     struct SearchEntry { var text: String; var jumuah: Bool; var masjid: Bool; var note: Bool; var snippet: String? }
 
-    var queryBinding: Binding<String> { $query }
-    var searchingBinding: Binding<Bool> { $searching }
     var hasPhotos: Bool { !photos.isEmpty }
+
+    private static var glassBar: Bool {
+        if #available(iOS 26.0, *) { return true } else { return false }
+    }
+
+    /// The search field in the glass bottom bar.
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Notes, places, prayers, months", text: $query)
+                .focused($searchFocused)
+                .submitLabel(.search)
+                .autocorrectionDisabled()
+            if !query.isEmpty {
+                Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 6)
+        .frame(width: max(UIScreen.main.bounds.width - 130, 180))
+    }
 
     private var filtering: Bool {
         searching && (!query.trimmingCharacters(in: .whitespaces).isEmpty || !filters.isEmpty)
@@ -489,7 +508,32 @@ struct MemoriesPage: View {
                     }
                 }
             }
-            .modifier(BottomChrome(page: self))
+            // The bottom bar: on iOS 26+ the system's bottom toolbar (Liquid Glass) — the level switch and a search
+            // button, or, searching, the field and a close button. The system search controller (.searchable) was
+            // dropped here: pushed onto the app's stack it drew a second, open search bar under the toolbar.
+            .toolbar {
+                if #available(iOS 26.0, *), hasPhotos {
+                    if searching {
+                        ToolbarItem(placement: .bottomBar) { searchField }
+                        ToolbarSpacer(.fixed, placement: .bottomBar)
+                        ToolbarItem(placement: .bottomBar) {
+                            Button(action: closeSearch) { Image(systemName: "xmark") }
+                                .accessibilityLabel("Close search")
+                        }
+                    } else {
+                        ToolbarItem(placement: .bottomBar) { levelSwitch(glass: true) }
+                        ToolbarSpacer(.flexible, placement: .bottomBar)
+                        ToolbarItem(placement: .bottomBar) {
+                            Button(action: openSearch) { Image(systemName: "magnifyingglass") }
+                                .accessibilityLabel("Search")
+                        }
+                    }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                // Before iOS 26 (no Liquid Glass): the page's own bar.
+                if !Self.glassBar, hasPhotos { bottomBar }
+            }
             .simultaneousGesture(
                 MagnifyGesture().onEnded { value in
                     if value.magnification < 0.8, let up = Level(rawValue: level.rawValue - 1) { go(up) }
@@ -518,17 +562,21 @@ struct MemoriesPage: View {
             }
             .sheet(isPresented: $showSettings) { MemoriesSettings() }
         }
-        .overlay {
-            if let start = deckStart {
+        // The pile in its own clear layer over everything, presented without a slide (like a prayer photo from the hold
+        // editor): the page's bars stay as they are underneath. Hiding them for the pile and bringing them back left a
+        // second, ghost bottom bar with an empty search field (owner's screenshot) once Memories was pushed.
+        .fullScreenCover(item: $deckStart) { start in
                 ZStack {
                     Rectangle().fill(.ultraThinMaterial)
                         .overlay(Color.black.opacity(0.12))
                         .ignoresSafeArea()
                         .opacity(deckShown ? 1 : 0)
-                    // On the app's own navigation stack (Memories is pushed): Share pushes its page over it, and the
-                    // page's top and bottom bars step aside while a pile is up (`MemoriesDeck`'s .toolbar(.hidden)).
-                    MemoriesDeck(photos: visible, start: start, shown: deckShown, hideTop: flight != nil,
-                                 onTopFrame: deckTopMoved, onClose: closeDeck)
+                    // Its own stack, so Share pushes its page inside the layer.
+                    NavigationStack {
+                        MemoriesDeck(photos: visible, start: start, shown: deckShown, hideTop: flight != nil,
+                                     onTopFrame: deckTopMoved, onClose: closeDeck)
+                            .containerBackground(.clear, for: .navigation)
+                    }
                     if let flight {
                         let base = flight.rect.width > 0 ? Self.cardWidth : 1
                         PrayerPhotoFace(back: flight.images.back, front: flight.images.front, width: base)
@@ -541,7 +589,7 @@ struct MemoriesPage: View {
                             .allowsHitTesting(false)
                     }
                 }
-            }
+                .presentationBackground(.clear)
         }
         .task(id: PrayerPhotoRevision.shared.value) { photos = PrayerPhotos.all() }
     }
@@ -580,7 +628,9 @@ struct MemoriesPage: View {
             frames.opening = true
             flight = Flight(key: photo.key, rect: from ?? .zero, images: images, opacity: from == nil ? 0 : 1)
             deckShown = false
-            deckStart = photo
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { deckStart = photo }
         }
     }
 
@@ -608,7 +658,9 @@ struct MemoriesPage: View {
     /// isn't on screen, shrinks and fades where it is — while the frost lifts.
     private func closeDeck(_ key: String, _ dayKey: String) {
         triggerSomeVibration(type: .light)
-        guard let top = frames.deckTop else { deckStart = nil; return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        guard let top = frames.deckTop else { withTransaction(quiet) { deckStart = nil }; return }
         let screen = UIScreen.main.bounds
         let onScreen: (CGRect) -> Bool = { $0.minY > 90 && $0.maxY < screen.height - 70 && $0.minX >= 0 && $0.maxX <= screen.width }
         let target = (searching ? ["result-" + key] : ["otd-" + dayKey, level == .prayers ? key : dayKey])
@@ -625,8 +677,10 @@ struct MemoriesPage: View {
                 }
                 deckShown = false
             } completion: {
-                deckStart = nil
-                flight = nil
+                withTransaction(quiet) {
+                    deckStart = nil
+                    flight = nil
+                }
             }
         }
     }
@@ -1021,7 +1075,6 @@ struct MemoriesDeck: View {
             // ✕ or a drag down closes.
         }
         .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .bottomBar)
         .sheet(isPresented: $editingNote) {
             // The whole note, to read and edit (the pile shows three lines of it).
             NavigationStack {
@@ -1756,30 +1809,6 @@ struct MemoriesSettings: View {
     }
 }
 
-/// Memories' bottom bar. iOS 26: the system's bottom toolbar — Liquid Glass — with the level switch and the search
-/// button that opens into the field, as in Photos (owner: "using liquid glass api … the same way search works in the
-/// photos app"). Before iOS 26: the page's own bar.
-private struct BottomChrome: ViewModifier {
-    let page: MemoriesPage
-
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .toolbar {
-                    ToolbarItem(placement: .bottomBar) { page.levelSwitch(glass: true) }
-                    ToolbarSpacer(.flexible, placement: .bottomBar)
-                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                }
-                .searchable(text: page.queryBinding, isPresented: page.searchingBinding,
-                            prompt: "Notes, places, prayers, months")
-                .searchToolbarBehavior(.minimize)
-        } else {
-            content.safeAreaInset(edge: .bottom) {
-                if page.hasPhotos { page.bottomBar }
-            }
-        }
-    }
-}
 
 /// Where a prayer was prayed, on a map (owner: "clicking on the location should open a sheet with a map … toggle for
 /// satellite view … the same UI style as in the map that we have already"): the prayer's pin as the app map draws it
