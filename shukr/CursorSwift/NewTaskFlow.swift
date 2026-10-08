@@ -624,16 +624,61 @@ private struct NewZikrCardPresenter: ViewModifier {
                 withTransaction(quiet) { cover = on }
             }
             .fullScreenCover(isPresented: $cover) {
-                NewZikrCard(isPresented: $isPresented, initialName: initialName, onCreate: onCreate)
+                ZikrCardEditor(mantra: nil, initialName: initialName, close: { isPresented = false }, onCreate: onCreate)
                     .presentationBackground(.clear)
             }
     }
 }
 
-private struct NewZikrCard: View {
-    @Binding var isPresented: Bool
-    let initialName: String
-    let onCreate: (MantraModel) -> Void
+/// Which zikr the card edits, and the tab it opens on.
+struct ZikrCardRequest: Identifiable {
+    let id = UUID()
+    let mantra: MantraModel
+    var pane: MantraCardFields.Pane = .words
+}
+
+extension View {
+    /// An existing zikr's card over everything (decision zikr-card-edit B): its page only shows it; this is where it
+    /// changes. `onDelete`: Delete zikr was confirmed in the card's footer — the page asks and deletes.
+    func zikrCardEditor(_ request: Binding<ZikrCardRequest?>, allowDelete: Bool = true,
+                        onDelete: @escaping (MantraModel) -> Void = { _ in }) -> some View {
+        modifier(ZikrCardEditorPresenter(request: request, allowDelete: allowDelete, onDelete: onDelete))
+    }
+}
+
+private struct ZikrCardEditorPresenter: ViewModifier {
+    @Binding var request: ZikrCardRequest?
+    let allowDelete: Bool
+    let onDelete: (MantraModel) -> Void
+    @State private var cover: ZikrCardRequest?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: request?.id) { _, _ in
+                var quiet = Transaction(); quiet.disablesAnimations = true
+                withTransaction(quiet) { cover = request }
+            }
+            .fullScreenCover(item: $cover) { r in
+                ZikrCardEditor(mantra: r.mantra, startPane: r.pane, allowDelete: allowDelete,
+                               close: { request = nil }, onDelete: onDelete)
+                    .presentationBackground(.clear)
+            }
+    }
+}
+
+/// The zikr card on its own over a dimmed screen — the one place a zikr is made or changed (owner, 2026-10-08,
+/// decision zikr-card-edit B: "i really like how it looks when adding a zikr and the modal pops up on its own").
+/// Every change waits in the card — words, memo, photo, sets — until ✓; ✕ drops them (asking first when there are
+/// some). A built-in keeps its name and full text.
+struct ZikrCardEditor: View {
+    let mantra: MantraModel?
+    var initialName = ""
+    var startPane: MantraCardFields.Pane = .words
+    var allowDelete = true
+    /// Called once the card has faded: the presenter's flag goes back.
+    let close: () -> Void
+    var onCreate: (MantraModel) -> Void = { _ in }
+    var onDelete: (MantraModel) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var context
     @Query private var allMantras: [MantraModel]
@@ -644,29 +689,40 @@ private struct NewZikrCard: View {
     @State private var quickAdd = 0
     @State private var image: Data?
     @State private var audio: Data?
+    @State private var loaded = false
     @State private var shown = false
     @State private var confirmDiscard = false
+    @State private var confirmDelete = false
 
     private var trimmed: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isDuplicate: Bool {
         let key = BuiltInAzkar.key(trimmed)
-        return !trimmed.isEmpty && allMantras.contains { BuiltInAzkar.key($0.name) == key }
+        return !trimmed.isEmpty && allMantras.contains {
+            BuiltInAzkar.key($0.name) == key && $0.persistentModelID != mantra?.persistentModelID
+        }
     }
-    private var canSave: Bool { !trimmed.isEmpty && !isDuplicate }
-    private var hasContent: Bool {
-        !trimmed.isEmpty || !fullText.isEmpty || !notes.isEmpty || image != nil || audio != nil || quickAdd != 0
+    /// Something differs from the zikr (a new one: anything in it).
+    private var hasChanges: Bool {
+        guard loaded else { return false }
+        guard let mantra else {
+            return !trimmed.isEmpty || !fullText.isEmpty || !notes.isEmpty || image != nil || audio != nil || quickAdd != 0
+        }
+        return name != mantra.name || fullText != mantra.fullText || notes != mantra.notes || quickAdd != mantra.quickAddStep
+            || image != mantra.imageData || audio != mantra.audioData
     }
+    private var canSave: Bool { !trimmed.isEmpty && !isDuplicate && (mantra == nil || hasChanges) }
 
     var body: some View {
         ZStack {
             Color.black.opacity(shown ? 0.72 : 0)
                 .ignoresSafeArea()
-                .onTapGesture { close() }
-            VStack {
+                .onTapGesture { cancel() }
+            VStack(spacing: 14) {
                 Spacer(minLength: 60)
                 MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: $quickAdd,
                                  imageData: $image, audioData: $audio, isDuplicate: isDuplicate,
-                                 editable: true, nameAccessory: AnyView(controls))
+                                 identityLocked: mantra?.isBuiltIn ?? false, startPane: startPane,
+                                 nameAccessory: AnyView(controls))
                     .padding(16)
                     .background(RoundedRectangle(cornerRadius: 26, style: .continuous)
                         .fill(Color(.secondarySystemGroupedBackground)))
@@ -674,25 +730,49 @@ private struct NewZikrCard: View {
                         .strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
                     .shadow(color: .black.opacity(0.25), radius: 24, y: 8)
                     .padding(.horizontal, 16)
-                    .scaleEffect(shown || reduceMotion ? 1 : 0.94)
-                    .opacity(shown ? 1 : 0)
+                if let mantra, allowDelete, !mantra.isBuiltIn {
+                    Button("Delete zikr", role: .destructive) { confirmDelete = true }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, 18)
+                        .frame(height: 40)
+                        .background(Capsule().fill(.regularMaterial))
+                        .buttonStyle(.plain)
+                }
                 Spacer(minLength: 60)
             }
+            .scaleEffect(shown || reduceMotion ? 1 : 0.94)
+            .opacity(shown ? 1 : 0)
         }
         .fontDesign(.rounded)
         .onAppear {
-            name = initialName
+            if let mantra {
+                name = mantra.name; fullText = mantra.fullText; notes = mantra.notes
+                quickAdd = mantra.quickAddStep; image = mantra.imageData; audio = mantra.audioData
+            } else {
+                name = initialName
+            }
+            loaded = true
             withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { shown = true }
         }
-        .alert("Discard this zikr?", isPresented: $confirmDiscard) {
-            Button("Discard", role: .destructive) { dismiss() }
+        .alert(mantra == nil ? "Discard this zikr?" : "Discard your changes?", isPresented: $confirmDiscard) {
+            Button("Discard", role: .destructive) { fadeOut(then: close) }
             Button("Keep editing", role: .cancel) {}
+        }
+        .alert(mantra.map { "Delete “\($0.name)”?" } ?? "", isPresented: $confirmDelete) {
+            Button("Delete", role: .destructive) {
+                guard let mantra else { return }
+                fadeOut { close(); onDelete(mantra) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let mantra { Text(MantraModel.deleteMessage(mantra)) }
         }
     }
 
     private var controls: some View {
         HStack(spacing: 6) {
-            Button { close() } label: {
+            Button { cancel() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.secondary)
@@ -713,34 +793,47 @@ private struct NewZikrCard: View {
         .buttonStyle(.plain)
     }
 
-    private func close() {
-        if hasContent { confirmDiscard = true } else { dismiss() }
+    private func cancel() {
+        ZikrAudio.stopAll()   // a take in progress lands in the draft first, so it counts as a change
+        if hasChanges { confirmDiscard = true } else { fadeOut(then: close) }
     }
 
-    private func dismiss() {
+    private func fadeOut(then done: @escaping () -> Void) {
         ZikrAudio.stopAll()
         Task { @MainActor in
             await CircleMotion.animate(.easeOut(duration: CircleMotion.quick)) { shown = false }   // then the cover goes
-            isPresented = false
+            done()
         }
     }
 
     private func save() {
         ZikrAudio.stopAll()
         guard canSave else { return }
-        let new = MantraModel(name: trimmed,
-                              fullText: fullText.trimmingCharacters(in: .whitespacesAndNewlines),
-                              notes: notes.trimmingCharacters(in: .whitespacesAndNewlines))
-        new.quickAddStep = quickAdd
-        new.imageData = image
-        new.audioData = audio
-        context.insert(new)
-        try? context.save()
-        triggerSomeVibration(type: .success)
-        Task { @MainActor in
-            await CircleMotion.animate(.easeOut(duration: CircleMotion.quick)) { shown = false }   // then the cover goes
-            isPresented = false
-            onCreate(new)
+        let full = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let mantra {
+            if !mantra.isBuiltIn {
+                mantra.name = trimmed
+                mantra.fullText = full
+                // Tasks read the live name; their snapshot keeps up so a later deletion still shows it.
+                for task in mantra.tasks { task.mantraName = trimmed }
+            }
+            mantra.notes = note
+            mantra.quickAddStep = quickAdd
+            if image != mantra.imageData { mantra.imageData = image }
+            if audio != mantra.audioData { mantra.audioData = audio }
+            try? context.save()
+            triggerSomeVibration(type: .success)
+            fadeOut(then: close)
+        } else {
+            let new = MantraModel(name: trimmed, fullText: full, notes: note)
+            new.quickAddStep = quickAdd
+            new.imageData = image
+            new.audioData = audio
+            context.insert(new)
+            try? context.save()
+            triggerSomeVibration(type: .success)
+            fadeOut { close(); onCreate(new) }
         }
     }
 }

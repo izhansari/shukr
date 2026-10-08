@@ -1306,7 +1306,7 @@ struct PrayerTimesView: View {
         .whatsNewReturnPill()   // after What's new → "Open in shukr" to a pager page
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
-        .sheet(isPresented: $demoNewZikr) { MantraEditorView(mantra: nil) }
+        .newZikrCard(isPresented: $demoNewZikr)
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
         #if DEBUG
         // `-whatsNewPerf`: close and open it again, to time a warm open (no launch work around it).

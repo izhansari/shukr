@@ -929,7 +929,6 @@ struct MantraPickerView: View {
     @State private var creatingNew = false
     /// The zikr just made on the card; selected (which closes this picker) only once the card
     /// has gone, so two stacked sheets never close in one pass.
-    @State private var pendingNew: MantraModel?
 
     private var presentation: Set<PresentationDetent>
     /// Zikr left out of the list (Freestyle's pick leaves out Tasbih Fatimah — its own session after a prayer).
@@ -1097,11 +1096,8 @@ struct MantraPickerView: View {
                 }
             }
         }
-        .sheet(isPresented: $creatingNew, onDismiss: {
-            if let new = pendingNew { pendingNew = nil; select(new) }
-        }) {
-            MantraEditorView(mantra: nil, initialName: uniqueItem ? trimmedQuery : "") { pendingNew = $0 }
-        }
+        // The new zikr card over the picker (decision zikr-card-edit B); the new one is picked once it's saved.
+        .newZikrCard(isPresented: $creatingNew, initialName: uniqueItem ? trimmedQuery : "") { select($0) }
         .onDisappear {
             searchQuery = ""
         }
