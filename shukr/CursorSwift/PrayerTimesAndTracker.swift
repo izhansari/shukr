@@ -692,6 +692,10 @@ struct PrayerTimesView: View {
                 showInsightsPage: $showInsightsPage, showOldInsights: $showOldInsights,
                 showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage
             )
+            // The locked Zikr page's narration is the whole app for a moment: the bars step away (ZikrLock.focus).
+            .opacity(ZikrLock.shared.focus ? 0 : 1)
+            .allowsHitTesting(!ZikrLock.shared.focus)
+            .animation(.easeInOut(duration: 0.5), value: ZikrLock.shared.focus)
 
             // "shukr lost your location" (circle step 3b): its buttons, and what runs it — the circle shows the rest.
             LostPageLayer()
@@ -1794,7 +1798,7 @@ struct PrayerTimesView: View {
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("historyDoor", $0) }
                             .modifier(follow(.zikr(push: 0)))
                             // Locked with the page (ZikrLock): faint and shut.
-                            .opacity(ZikrLock.shared.locked ? 0.25 : 1)
+                            .opacity(ZikrLock.shared.locked ? 0 : 1)
                             .allowsHitTesting(!ZikrLock.shared.locked)
 
                         Button { showMenu = true } label: {
@@ -1897,7 +1901,7 @@ struct PrayerTimesView: View {
                         ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("azkarDoor", $0) }
                             .modifier(follow(.zikr(push: 0)))
-                            .opacity(TourRuntime.shared.active && !TourRuntime.showsAzkarDoor ? 0 : ZikrLock.shared.locked ? 0.25 : 1)
+                            .opacity(TourRuntime.shared.active && !TourRuntime.showsAzkarDoor ? 0 : ZikrLock.shared.locked ? 0 : 1)
                             // The Zikr Tour's Azkar step opens it (its guard lets only that through); shut while locked.
                             .allowsHitTesting((!TourRuntime.shared.active || ZikrTour.shared.step == .azkar) && !ZikrLock.shared.locked)
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
@@ -3167,7 +3171,7 @@ struct PagerLock: ViewModifier {
     func body(content: Content) -> some View {
         // The tour holds the page too: only its swipe step pages (audit E17).
         content.scrollDisabled(live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating
-                               || TourRuntime.shared.locksPager)
+                               || TourRuntime.shared.locksPager || ZikrLock.shared.focus)
     }
 }
 
