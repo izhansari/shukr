@@ -39,6 +39,8 @@ enum BuiltInAzkar {
         Zikr(name: "SubhanAllahi wa bihamdihi",
              arabic: "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ",
              note: "“Glory be to Allah, and praise be to Him.” Said 100 times a day, sins are forgiven even if they are like the foam of the sea. (Bukhari 6405, Muslim 2691)"),
+        // The Zikr Tour's first zikr (owner, 2026-10-08), the words of the last hadith in Sahih al-Bukhari (7563).
+        Zikr(name: FirstZikr.name, arabic: FirstZikr.arabic, note: FirstZikr.note),
         Zikr(name: "Allahumma salli 'ala Muhammad",
              arabic: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
              note: "“O Allah, send blessings upon Muhammad.” Whoever sends one blessing on the Prophet ﷺ, Allah sends ten on them. (Muslim 408)"),
@@ -47,7 +49,8 @@ enum BuiltInAzkar {
              note: "“Allah is sufficient for us, and He is the best Disposer of affairs.” (Quran 3:173)"),
     ]
 
-    static let doneKey = "builtInAzkar.v1"
+    /// v2 (2026-10-08): the Zikr Tour's first zikr joins them (existing rows only get empty fields filled).
+    static let doneKey = "builtInAzkar.v2"
     /// The original four's own seed-once flag (the V2 data pass used to re-seed one every launch).
     static let originalsSeededKey = "builtInAzkar.originalsSeeded"
 
@@ -121,4 +124,19 @@ enum BuiltInAzkar {
             return nil
         }
     }
+}
+
+/// The Zikr Tour's first zikr (owner, 2026-10-08: "SubhanAllahi wa bihamdihi, SubhanAllahil-'Azim … full arabic text,
+/// notes/meaning, voice memo … 33 count goal"): a built-in (BuiltInAzkar), its words those of Sahih al-Bukhari 7563 —
+/// the book's last hadith — checked on sunnah.com. Its recording ships in the app as `first-zikr.m4a` once it's in (ZikrLock.swift).
+enum FirstZikr {
+    static let name = "SubhanAllahi wa bihamdihi, SubhanAllahil-'Azim"
+    static let arabic = "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ، سُبْحَانَ ٱللَّٰهِ ٱلْعَظِيمِ"
+    static let meaning = "Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great."
+    static let note = "“Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great.” Two phrases, light on the tongue, heavy on the Scale, beloved to the Most Merciful. (Bukhari 7563, 6406)"
+    static let source = "Light on the tongue, heavy on the Scale\nSahih al-Bukhari 7563"
+    static let goal = 33
+    /// For display: one phrase a line.
+    static let arabicLines = "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ\nسُبْحَانَ ٱللَّٰهِ ٱلْعَظِيمِ"
+    static let meaningLines = "Glory be to Allah, and praise be to Him.\nGlory be to Allah, the Most Great."
 }

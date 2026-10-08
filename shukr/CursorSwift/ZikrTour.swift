@@ -81,6 +81,18 @@ import SwiftData
         showMe(existing: task, doneToday: task.map { $0.isCompleted(with: $0.progress(in: today)) } ?? false)
     }
 
+    /// The lock's page 3 (owner, 2026-10-08: "we should just go ahead and create a task for them … show it as a task ring
+    /// … they then click on to start the counter"): the first zikr's task is made already; its ring's tap opens the
+    /// counter straight into the counting lessons — no task-making in the tour.
+    func startFirst(_ task: TaskModel) {
+        UserDefaults.standard.set(true, forKey: Self.offeredKey)
+        inAppTour = false
+        taskID = task.id
+        reused = true
+        skippedCount = false
+        go(.taps)
+    }
+
     /// Show me: their Astaghfirullah task if they have one (no duplicate), else making it.
     /// Already done for today: it's off the wheel and there's nothing left to count, so straight to how long tasks take.
     func showMe(existing: TaskModel?, doneToday: Bool = false) {
@@ -241,7 +253,9 @@ import SwiftData
             case .kinds: go(.pick)          // New task opens (the wheel's tap)
             case .start: go(.taps)
             case .stroke: go(.keepGoing)
-            case .results: go(.timeLeft)   // Done closes the session onto the Zikr page
+            // Done closes the session onto the Zikr page and the tour ends there (owner: what's needed is the counter;
+            // History and Azkar are easy to find later).
+            case .results: go(.done)
             case .timeLeft: go(.yourTasks)
             default: if let n = Step(rawValue: step.rawValue + 1) { go(n) }
             }
@@ -338,9 +352,11 @@ import SwiftData
             reused ? nil : section("zt.task", C.taskStep, from: .pick, to: .review, lead: taskLead, todo: taskTodo),
             skippedCount ? nil : section("zt.count", C.countStep, from: .start, to: .keepGoing, lead: countLead, todo: countTodo, needed: countNeeded),
             skippedCount ? nil : section("zt.streak", C.streakStep, from: .results, to: .results, lead: streakLead, todo: C.streakTodo),
-            section("zt.time", C.timeStep, from: .timeLeft, to: .yourTasks, lead: timeLead,
-                    todo: step == .timeLeft ? C.timeTodo : nil),
-            section("zt.where", C.whereStep, from: .history, to: .azkarPage, lead: whereLead, todo: whereTodo),
+            // How long tasks take, History, Azkar: only when today's count was already done (nothing to count, so the
+            // tour shows those instead); otherwise it ends at the results (owner, 2026-10-08).
+            skippedCount ? section("zt.time", C.timeStep, from: .timeLeft, to: .yourTasks, lead: timeLead,
+                                   todo: step == .timeLeft ? C.timeTodo : nil) : nil,
+            skippedCount ? section("zt.where", C.whereStep, from: .history, to: .azkarPage, lead: whereLead, todo: whereTodo) : nil,
         ].compactMap { $0 }
         // Reused task: the kinds line shows straight away, as done.
         if reused, step >= .start, let i = sections.firstIndex(where: { $0.id == "zt.kinds" }) { sections[i].done = true }

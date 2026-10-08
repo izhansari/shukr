@@ -76,11 +76,9 @@ import SwiftData
     var focus = false
 
     #if DEBUG
-    /// `-zikrLockReset`: locked again (the simulator's walk).
-    func debugReset() {
-        UserDefaults.standard.set(false, forKey: ZikrTour.completedKey)
-        UserDefaults.standard.set(false, forKey: ZikrTour.offeredKey)
-        unlocked = false
+    /// `-zikrLocked`: locked again at launch, as a new person sees it (the simulator's walk).
+    private init() {
+        if ProcessInfo.processInfo.arguments.contains("-zikrLocked") { setLockedForTesting(true) }
     }
     #endif
 }
@@ -108,6 +106,14 @@ struct ZikrLockCover: View {
     @State private var linesShown = 0
     /// Begin was tapped: everything fades away before the tour comes in.
     @State private var leaving = false
+    /// Page 3: the first zikr, its task already made (owner: "show it as a task ring … that they then click on to start
+    /// the counter"), with its meaning and a listen before they start.
+    @State private var third = false
+    /// Its parts shown: 1 the heading and the ring, 2 the name and its meaning, 3 the source and Listen, 4 the prompt.
+    @State private var thirdShown = 0
+    @State private var firstTask: TaskModel?
+    @State private var audio = ZikrAudio()
+    @State private var breathe = false
     @State private var armed = false
     @State private var token = 0
     @State private var armedWidth: CGFloat = 0
@@ -144,7 +150,7 @@ struct ZikrLockCover: View {
                     verse
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { verseHeight = $0 }
                         .offset(y: stage <= 1 ? fromMiddle : 0)
-                        .opacity(stage >= 1 && !leaving ? 1 : 0)
+                        .opacity(stage >= 1 && !leaving && !third ? 1 : 0)
                     ZStack(alignment: .top) {
                         pageOne
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageOneHeight = $0 }
@@ -152,13 +158,20 @@ struct ZikrLockCover: View {
                             .allowsHitTesting(!lock.focus && !leaving)
                         pageTwo
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageTwoHeight = $0 }
-                            .opacity(lock.focus && !leaving ? 1 : 0)
+                            .opacity(lock.focus && !leaving && !third ? 1 : 0)
                             .allowsHitTesting(false)
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
                     begin
                 }
                 .padding(.horizontal, 28)
+
+                if third {
+                    pageThree
+                        .padding(.horizontal, 28)
+                        .opacity(leaving ? 0 : 1)
+                        .transition(.opacity)
+                }
 
                 if lock.focus { close }
             }
@@ -299,7 +312,7 @@ struct ZikrLockCover: View {
         Button {
             triggerSomeVibration(type: .medium)
             run?.cancel()
-            startTour()
+            toFirstZikr()
         } label: {
             HStack(spacing: 6) {
                 Text(ZikrLockWords.beginButton)
@@ -313,8 +326,91 @@ struct ZikrLockCover: View {
         }
         .buttonStyle(.plain)
         .padding(.bottom, 24)
-        .opacity(lock.focus && !leaving && pageTwoDone ? 1 : 0)
-        .allowsHitTesting(lock.focus && !leaving && pageTwoDone)
+        .opacity(lock.focus && !leaving && !third && pageTwoDone ? 1 : 0)
+        .allowsHitTesting(lock.focus && !leaving && !third && pageTwoDone)
+    }
+
+    /// Page 3: the first zikr, ready. Its ring (tap → the counter), the zikr's name and what it means, its source, Listen
+    /// (once its recording is in the app), and the prompt. Centred on the page.
+    private var pageThree: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            Text("YOUR FIRST ZIKR")
+                .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
+                .foregroundStyle(Color.sage)
+                .opacity(thirdShown >= 1 ? 1 : 0)
+            Button(action: startCounting) {
+                ZStack {
+                    Circle().fill(Color.primary.opacity(0.035))
+                    Circle().strokeBorder(Color.sage.opacity(0.55), lineWidth: 2)
+                    VStack(spacing: 8) {
+                        Text(FirstZikr.arabicLines)
+                            .font(.custom("KFGQPCUthmanTahaNaskh", size: 21))
+                            .foregroundStyle(Color.primary.opacity(0.88))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(4)
+                            .minimumScaleFactor(0.7)
+                        Text("0 of \(FirstZikr.goal)")
+                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                            .foregroundStyle(Color.primary.opacity(0.45))
+                    }
+                    .padding(26)
+                }
+                .frame(width: 210, height: 210)
+                .contentShape(Circle())
+                .scaleEffect(breathe ? 1.025 : 1)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Start \(FirstZikr.name), \(FirstZikr.goal) times")
+            .padding(.top, 18)
+            .opacity(thirdShown >= 1 ? 1 : 0)
+            .scaleEffect(thirdShown >= 1 || reduceMotion ? 1 : 0.94)
+            VStack(spacing: 8) {
+                Text(FirstZikr.name)
+                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.85))
+                // What it means (owner: "make sure they know the translation of what it means").
+                Text("“\(FirstZikr.meaningLines)”")
+                    .font(.system(size: 16, weight: .light, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.7))
+                    .lineSpacing(3)
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 24)
+            .opacity(thirdShown >= 2 ? 1 : 0)
+            .offset(y: thirdShown >= 2 || reduceMotion ? 0 : 6)
+            Text(FirstZikr.source.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded)).tracking(1.2)
+                .foregroundStyle(Color.primary.opacity(0.35))
+                .multilineTextAlignment(.center)
+                .padding(.top, 14)
+                .opacity(thirdShown >= 3 ? 1 : 0)
+            if let memo = firstTask?.mantra?.audioData {
+                Button { audio.togglePlay(memo) } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: audio.state == .playing ? "pause.fill" : "play.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(audio.state == .playing ? "Pause" : "Listen")
+                    }
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                    .padding(.horizontal, 16)
+                    .frame(height: 36)
+                    .background(Capsule().fill(Color.sage.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 18)
+                .opacity(thirdShown >= 3 ? 1 : 0)
+            }
+            Spacer(minLength: 0)
+            Text("Tap the circle when you're ready")
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.sage)
+                .padding(.bottom, 36)
+                .opacity(thirdShown >= 4 ? 1 : 0)
+        }
+        .padding(.top, 70)
     }
 
     /// ✕: back to page 1, still locked.
@@ -322,9 +418,12 @@ struct ZikrLockCover: View {
         Button {
             triggerSomeVibration(type: .light)
             run?.cancel()
+            ZikrAudio.stopAll()
             withAnimation(.easeInOut(duration: 0.9)) {
                 lock.focus = false
                 linesShown = 0
+                third = false
+                thirdShown = 0
             }
         } label: {
             Image(systemName: "xmark")
@@ -406,7 +505,7 @@ struct ZikrLockCover: View {
     private func arrive() {
         run?.cancel()
         guard !lock.focus else { return }
-        stage = 0; itemsShown = 0; armed = false; leaving = false
+        stage = 0; itemsShown = 0; armed = false; leaving = false; third = false; thirdShown = 0
         if reduceMotion {
             withAnimation(.easeOut(duration: 0.3)) { stage = 4; itemsShown = ZikrLockWords.inside.count }
             return
@@ -434,19 +533,6 @@ struct ZikrLockCover: View {
         }
     }
 
-    /// Begin: everything here fades away, the bars come back, and then — a beat later, not all at once — the tour.
-    private func startTour() {
-        withAnimation(.easeInOut(duration: 0.7)) {
-            leaving = true
-            lock.focus = false
-        }
-        run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(750))
-            guard !Task.isCancelled else { return }
-            ZikrTour.shared.begin(in: context)
-        }
-    }
-
     /// A tap mid-build: the rest of page 1 quickly — the verse in (if it isn't), up, what's inside, Unlock now — about a
     /// second in all, from wherever it had got to.
     private func hurry() {
@@ -471,6 +557,46 @@ struct ZikrLockCover: View {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.35)) { stage = 4 }
+        }
+    }
+
+    /// "Remember my Lord": their first zikr's task is made (the intention), and the view turns, in place, into page 3.
+    private func toFirstZikr() {
+        firstTask = FirstZikr.ensureTask(in: context)
+        withAnimation(.easeInOut(duration: 0.8)) { third = true }
+        let parts = 4
+        if reduceMotion {
+            withAnimation(.easeOut(duration: 0.4).delay(0.3)) { thirdShown = parts }
+            return
+        }
+        run = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(700))
+            for i in 1...parts {
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.9)) { thirdShown = i }
+                try? await Task.sleep(for: .milliseconds(i == 2 ? 1400 : 900))
+            }
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) { breathe = true }
+        }
+    }
+
+    /// The ring's tap: everything here fades, the tour starts at its counting lessons, and the counter opens on the task.
+    private func startCounting() {
+        guard let task = firstTask, thirdShown >= 1 else { return }
+        triggerSomeVibration(type: .medium)
+        ZikrAudio.stopAll()
+        run?.cancel()
+        withAnimation(.easeInOut(duration: 0.6)) {
+            leaving = true
+            lock.focus = false
+        }
+        let id = task.id.uuidString
+        run = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(650))
+            guard !Task.isCancelled else { return }
+            ZikrTour.shared.startFirst(task)
+            ZikrFocus.start(id, resume: false)
         }
     }
 
@@ -534,4 +660,37 @@ enum ZikrLockWords {
     /// Their first intention, answering the verse's call (owner, 2026-10-08: "a stronger button … the user making their
     /// first intention or promise").
     static let beginButton = "Remember my Lord"
+}
+
+/// The first zikr's app-side parts: its bundled recording and its task (the words live with the built-ins).
+extension FirstZikr {
+    static let memoResource = "first-zikr"
+
+    /// The recording bundled with the app, when there is one.
+    static var bundledMemo: Data? {
+        Bundle.main.url(forResource: memoResource, withExtension: "m4a").flatMap { try? Data(contentsOf: $0) }
+    }
+
+    /// Its zikr (seeded as a built-in, or made now) and its task, 33 a day — made once; an existing one is reused.
+    @MainActor static func ensureTask(in context: ModelContext) -> TaskModel? {
+        let key = BuiltInAzkar.key(name)
+        let azkar = (try? context.fetch(FetchDescriptor<MantraModel>())) ?? []
+        let zikr: MantraModel
+        if let found = azkar.first(where: { $0.builtInID == key }) ?? azkar.first(where: { BuiltInAzkar.key($0.name) == key }) {
+            zikr = found
+        } else {
+            zikr = MantraModel(name: name, fullText: arabic, notes: note)
+            zikr.builtInID = key
+            context.insert(zikr)
+        }
+        if zikr.audioData == nil, let memo = bundledMemo { zikr.audioData = memo }
+        if let task = zikr.tasks.first {
+            try? context.save()
+            return task
+        }
+        let task = TaskModel(mantra: zikr, isCountMode: true, goal: goal, sortOrder: TaskModel.nextSortOrder(in: context))
+        context.insert(task)
+        try? context.save()
+        return task
+    }
 }

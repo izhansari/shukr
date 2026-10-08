@@ -176,7 +176,7 @@ enum TourCopy {
 
         static let countStep = "Count it"
         static let startLead = "Your task is on the wheel."
-        static let startTodo = "Tap Astaghfirullah"
+        static let startTodo = "Tap your zikr to carry on"
         static let tapLead = "The whole screen counts."
         static let tapTodo = "Tap anywhere, 3 times"
         static let dragLead = "Drag down anywhere, then lift."
@@ -206,7 +206,7 @@ enum TourCopy {
         static let azkarTodo = "Open Azkar, top right"
         static let azkarPageLead = "The built-in ones, and your own — ＋ adds one."
 
-        static let doneLine = "That’s Zikr. Your Astaghfirullah is waiting for you tomorrow."
+        static let doneLine = "That’s your first day of remembrance. Your zikr will be waiting for you tomorrow."
         static let doneButton = "Done"
     }
 
