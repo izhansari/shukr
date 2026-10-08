@@ -24,7 +24,10 @@ struct ZikrPageView: View {
     var body: some View {
         ZikrCircleWheel(showTasbeehPage: $showTasbeehPage)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Locked until the Zikr Tour is done (ZikrLock.swift): frosted glass and the way in.
+            // Locked until the Zikr Tour is done (ZikrLock.swift): the wheel blurred under a glass pane — something's
+            // there — and the way in.
+            .blur(radius: ZikrLock.shared.locked ? 12 : 0)
+            .allowsHitTesting(!ZikrLock.shared.locked)
             .overlay {
                 if ZikrLock.shared.locked {
                     ZikrLockCover().transition(.opacity)

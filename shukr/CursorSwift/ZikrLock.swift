@@ -46,61 +46,113 @@ import SwiftData
     #endif
 }
 
-/// Frosted glass over the Zikr page and the card on it. Inside the page, so a swipe still pages past it; a tap on the
-/// glass does nothing.
+/// Glass over the Zikr page (owner, 2026-10-08: "it should look like it's hiding things. Maybe liquid glass"): the
+/// wheel under it is blurred (ZikrPageView), so its circles show as soft shapes through one glass pane; on it a small
+/// lock, two short lines, and "Unlock now" as coloured words — a tap turns them into a bordered "Tap again to start the
+/// tour", the second tap starts it (owner: "a double confirmation tap … or maybe it turns into a bordered button").
+/// Inside the page, so a swipe still pages past it; a tap on the glass only wiggles the lock.
 struct ZikrLockCover: View {
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var nudge = 0
+    @State private var armed = false
+    @State private var token = 0
+    @State private var edge = false
 
     var body: some View {
         ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .ignoresSafeArea()
+            pane
                 .contentShape(Rectangle())
                 .onTapGesture { nudge += 1 }   // the lock wiggles: here's the way in
 
-            VStack(spacing: 18) {
-                ZStack {
-                    Circle()
-                        .fill(Color.sage.opacity(0.16))
-                        .frame(width: 84, height: 84)
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 32, weight: .medium))
-                        .foregroundStyle(Color.sage)
-                        .symbolEffect(.wiggle, options: .nonRepeating, value: nudge)
-                }
-                VStack(spacing: 8) {
+            VStack(spacing: 14) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 54, height: 54)
+                    .background(Circle().fill(Color.sage.opacity(0.14)))
+                    .symbolEffect(.wiggle, options: .nonRepeating, value: nudge)
+                VStack(spacing: 5) {
                     Text("Zikr is locked")
-                        .font(.system(size: 28, weight: .light, design: .rounded))
-                    Text("A two-minute tour unlocks it: you'll make your first task and count it.")
-                        .font(.system(size: 15, design: .rounded))
+                        .font(.system(size: 19, weight: .regular, design: .rounded))
+                    Text("Take the two-minute tour to open your counter, tasks and azkar.")
+                        .font(.system(size: 14, weight: .light, design: .rounded))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 250)
                 }
-                Button {
-                    triggerSomeVibration(type: .medium)
-                    ZikrTour.shared.begin(in: context)
-                } label: {
-                    Label("Unlock with the tour", systemImage: "lock.open.fill")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 26)
-                        .frame(height: 52)
-                        .background(Capsule().fill(Color.sage))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 4)
-                Text("Your counter, daily tasks, history and azkar are behind it.")
-                    .font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
+                unlock
+                    .padding(.top, 2)
             }
-            .padding(.horizontal, 36)
-            .accessibilityElement(children: .contain)
+            .padding(.horizontal, 32)
         }
         .onAppear { if !reduceMotion { nudge += 1 } }
+    }
+
+    /// One glass pane over the page, inset from its edges (liquid glass; a material before iOS 26).
+    @ViewBuilder private var pane: some View {
+        let shape = RoundedRectangle(cornerRadius: 36, style: .continuous)
+        Group {
+            if #available(iOS 26.0, *) {
+                // The clear glass: what's under it reads as shapes (the regular one whitened it out).
+                Color.clear.glassEffect(.clear, in: shape)
+            } else {
+                shape.fill(.ultraThinMaterial.opacity(0.85))
+            }
+        }
+        .overlay(shape.strokeBorder(Color.white.opacity(0.35), lineWidth: 0.75))
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
+        .padding(.bottom, 12)
+    }
+
+    /// "Unlock now" in the app's green; the first tap turns it into a bordered "Tap again to start the tour" (for 3 s),
+    /// the second starts it. Its width changes at once, never animated (an animated width kept the old tap area —
+    /// the Skip button's trap); the border fades.
+    private var unlock: some View {
+        HStack(spacing: 6) {
+            Image(systemName: armed ? "checkmark" : "lock.open.fill")
+                .font(.system(size: 13, weight: .bold))
+            Text(armed ? "Tap again to start the tour" : "Unlock now")
+        }
+        .font(.system(size: 15, weight: .semibold, design: .rounded))
+        .foregroundStyle(Color.sage)
+        .padding(.horizontal, 16)
+        .frame(height: 38)
+        .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5).opacity(edge ? 1 : 0))
+        .fixedSize()
+        .contentShape(Capsule())
+        .onTapGesture(perform: tap)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(armed ? "Tap again to start the tour" : "Unlock now")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default) { begin() }
+    }
+
+    private func tap() {
+        if armed {
+            begin()
+        } else {
+            triggerSomeVibration(type: .light)
+            token += 1
+            let mine = token
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) { armed = true }
+            withAnimation(.easeIn(duration: 0.18)) { edge = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {   // an input timeout
+                guard mine == token else { return }
+                withTransaction(instant) { armed = false }
+                withAnimation(.easeOut(duration: 0.15)) { edge = false }
+            }
+        }
+    }
+
+    private func begin() {
+        triggerSomeVibration(type: .medium)
+        armed = false
+        edge = false
+        ZikrTour.shared.begin(in: context)
     }
 }
