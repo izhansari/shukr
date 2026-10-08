@@ -264,24 +264,8 @@ struct ZikrLockCover: View {
                 .foregroundStyle(Color.sage)
                 .padding(.top, 34)
                 .opacity(linesShown >= 1 ? 1 : 0)
-            VStack(spacing: 12) {
-                ForEach(Array(ZikrLockWords.narration.enumerated()), id: \.offset) { i, line in
-                    Text(line)
-                        .font(.system(size: 16, weight: .light, design: .rounded))
-                        .foregroundStyle(Color.primary.opacity(0.75))
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(4)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .opacity(linesShown >= i + 2 ? 1 : 0)
-                        .offset(y: linesShown >= i + 2 || reduceMotion ? 0 : 6)
-                }
-            }
-            .padding(.top, 16)
-            Text(ZikrLockWords.narrationSource.uppercased())
-                .font(.system(size: 10, weight: .semibold, design: .rounded)).tracking(1.2)
-                .foregroundStyle(Color.primary.opacity(0.35))
+            quote
                 .padding(.top, 16)
-                .opacity(linesShown >= ZikrLockWords.narration.count + 2 ? 1 : 0)
             Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 36, height: 1)
                 .padding(.top, 30)
                 .opacity(linesShown >= ZikrLockWords.narration.count + 3 ? 1 : 0)
@@ -303,6 +287,70 @@ struct ZikrLockCover: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
+    }
+
+    /// The narration and its source, set as a quote (owner: "visually shows its a quote … maybe box it in a container?";
+    /// decision zikr-lock-quote-box, options tried with `-zikrQuoteStyle`).
+    @ViewBuilder private var quote: some View {
+        let style = ZikrQuoteStyle.current
+        let leading = style == .bar
+        let lines = VStack(alignment: leading ? .leading : .center, spacing: 12) {
+            ForEach(Array(ZikrLockWords.narration.enumerated()), id: \.offset) { i, line in
+                Text(line)
+                    .font(.system(size: 16, weight: .light, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .multilineTextAlignment(leading ? .leading : .center)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: leading ? .leading : .center)
+                    .opacity(linesShown >= i + 2 ? 1 : 0)
+                    .offset(y: linesShown >= i + 2 || reduceMotion ? 0 : 6)
+            }
+        }
+        let source = Text((leading ? "— " : "") + ZikrLockWords.narrationSource.uppercased())
+            .font(.system(size: 10, weight: .semibold, design: .rounded)).tracking(1.2)
+            .foregroundStyle(Color.primary.opacity(0.35))
+            .frame(maxWidth: .infinity, alignment: leading ? .leading : .center)
+            .opacity(linesShown >= ZikrLockWords.narration.count + 2 ? 1 : 0)
+        let box = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        switch style {
+        case .plain:
+            VStack(spacing: 16) { lines; source }
+        case .well:
+            VStack(spacing: 16) { lines; source }
+                .padding(.horizontal, 20).padding(.vertical, 22)
+                .background(NeuPressed(shape: box, radius: 6, offset: 4))
+                .padding(.horizontal, -12)
+                .opacity(linesShown >= 2 ? 1 : 0)
+        case .card:
+            VStack(spacing: 16) { lines; source }
+                .padding(.horizontal, 20).padding(.vertical, 22)
+                .background(NeuRaised(shape: box, radius: 12, offset: 6))
+                .padding(.horizontal, -12)
+                .opacity(linesShown >= 2 ? 1 : 0)
+        case .bar:
+            HStack(alignment: .top, spacing: 16) {
+                Capsule().fill(Color.sage.opacity(0.7)).frame(width: 3)
+                    .opacity(linesShown >= 2 ? 1 : 0)
+                VStack(alignment: .leading, spacing: 16) { lines; source }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, 8)
+        case .marks:
+            VStack(spacing: 0) {
+                Image(systemName: "quote.opening")
+                    .font(.system(size: 24, weight: .light))
+                    .foregroundStyle(Color.sage.opacity(0.75))
+                    .opacity(linesShown >= 2 ? 1 : 0)
+                lines.padding(.top, 14)
+                Image(systemName: "quote.closing")
+                    .font(.system(size: 24, weight: .light))
+                    .foregroundStyle(Color.sage.opacity(0.75))
+                    .padding(.top, 12)
+                    .opacity(linesShown >= ZikrLockWords.narration.count + 1 ? 1 : 0)
+                source.padding(.top, 4)
+            }
+        }
     }
 
     private var pageTwoDone: Bool { linesShown >= ZikrLockWords.narration.count + 4 }
@@ -624,6 +672,15 @@ struct ZikrLockCover: View {
 /// The page's words. The verse is the app's own Quran text and translation (quran.sqlite, english_hilali.sqlite) without
 /// the translation's bracketed notes; the narration is sunnah.com's English of Sahih al-Bukhari 7405 with its one
 /// bracketed note left out and the hand-span lines skipped.
+/// How page 2 sets the narration apart as a quote (decision zikr-lock-quote-box; `-zikrQuoteStyle well|card|bar|marks`).
+enum ZikrQuoteStyle: String {
+    case plain, well, card, bar, marks
+    static let key = "zikrQuoteStyle"
+    static var current: ZikrQuoteStyle {
+        UserDefaults.standard.string(forKey: key).flatMap(ZikrQuoteStyle.init(rawValue:)) ?? .plain
+    }
+}
+
 enum ZikrLockWords {
     static let verseArabic = "فَاذكُرونى أَذكُركُم"
     static let verseEnglish = "“Remember Me; I will remember you.”"
