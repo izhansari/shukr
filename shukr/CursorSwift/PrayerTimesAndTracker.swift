@@ -804,6 +804,8 @@ struct PrayerTimesView: View {
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openSharedTask() }
         .onChange(of: showTasbeehPage) { _, open in if !open { openSharedTask() } }
         .onAppear { openSharedTask() }
+        // Zikr's lock: anyone who already used Zikr keeps it open (once per install; ZikrLock).
+        .onAppear { ZikrLock.shared.checkExisting(in: context) }
         // A zikr's page asked to start one of its tasks: close what covers the pager, then the
         // Zikr page's wheel starts it.
         .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.startNotification)) { _ in

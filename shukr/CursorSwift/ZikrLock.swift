@@ -16,8 +16,43 @@ import SwiftData
 @MainActor @Observable final class ZikrLock {
     static let shared = ZikrLock()
 
-    /// The Zikr Tour has been taken to its end (its own key, so an earlier finish counts).
+    /// The Zikr Tour has been taken to its end (its own key, so an earlier finish counts), or Zikr was already theirs
+    /// when the lock arrived (decision zikr-lock-existing B).
     private(set) var unlocked = UserDefaults.standard.bool(forKey: ZikrTour.completedKey)
+        || UserDefaults.standard.bool(forKey: ZikrLock.alreadyUsedKey)
+
+    /// Had Zikr history (tasks or sessions) the first time this version ran: never locked.
+    static let alreadyUsedKey = "zikrLock.alreadyUsed"
+    /// That first look has been taken (once per install).
+    static let checkedKey = "zikrLock.checkedExisting"
+
+    /// Once, the first time the app runs with the lock (owner, decision zikr-lock-existing B: "only new people"): anyone
+    /// with a task or a session already keeps Zikr open. A new install has neither, so it starts locked.
+    func checkExisting(in context: ModelContext) {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: Self.checkedKey) else { return }
+        d.set(true, forKey: Self.checkedKey)
+        let tasks = (try? context.fetchCount(FetchDescriptor<TaskModel>())) ?? 0
+        let sessions = (try? context.fetchCount(FetchDescriptor<SessionDataModel>())) ?? 0
+        guard tasks + sessions > 0 else { return }
+        d.set(true, forKey: Self.alreadyUsedKey)
+        unlocked = true
+    }
+
+    /// Settings' test switch (dev builds, owner: "i wanna be able to test in my dev build"): locked as a new person
+    /// would see it (the tour not taken), or open.
+    func setLockedForTesting(_ on: Bool) {
+        let d = UserDefaults.standard
+        if on {
+            d.set(false, forKey: ZikrTour.completedKey)
+            d.set(false, forKey: ZikrTour.offeredKey)
+            d.set(false, forKey: Self.alreadyUsedKey)
+            unlocked = false
+        } else {
+            d.set(true, forKey: Self.alreadyUsedKey)
+            unlocked = true
+        }
+    }
 
     /// Locked now: not unlocked, and no tour is running on the page.
     var locked: Bool {

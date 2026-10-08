@@ -391,6 +391,14 @@ struct SettingsView: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("tourAgainRow", $0) }
                         // The first freestyle session's tips again (owner: a way to see them without the whole tour).
                         CountingTipsAgainRow()
+                        #if DEBUG
+                        // Dev builds: Zikr locked as a new person sees it, or open (ZikrLock; owner: "i wanna be able to
+                        // test in my dev build").
+                        Toggle(isOn: Binding(get: { !ZikrLock.shared.unlocked },
+                                             set: { ZikrLock.shared.setLockedForTesting($0) })) {
+                            Label("Zikr locked (test)", systemImage: "lock")
+                        }
+                        #endif
                     }
                     .id("tourAgainRow")
                     // The tour's Settings card (v2): the top on arrival — the page has come to rest by then (scrolling
