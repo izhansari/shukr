@@ -614,6 +614,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             } else {
                 triggerSomeVibration(type: .medium)
                 prayer.resetPrayer()
+                PrayerPhotos.discard(for: prayer)
             }
             calculatePrayerStreak()
             calculateDayScore(for: prayer.startTime)

@@ -369,6 +369,7 @@ enum WatchZikrSync {
                 context.rollback()
                 return
             }
+            done.forEach(PrayerPhotos.discard(for:))
             tombstone([markID, original])
             unmarkApplied(name, day: startDate)
             print("⌚️ \(name) unmarked from the watch")
@@ -393,6 +394,7 @@ enum WatchZikrSync {
             context.rollback()
             return
         }
+        carrying.forEach(PrayerPhotos.discard(for:))
         tombstone([markID])
         unmarkApplied(name, day: startDate)
         print("⌚️ \(name) unmarked from the watch (undo)")

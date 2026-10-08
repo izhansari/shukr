@@ -953,6 +953,9 @@ struct MemoriesDeck: View {
                 .opacity(down > 10 || !shown ? 0 : 1)
                 .padding(.top, 22)
                 Spacer(minLength: 0)
+                prayerMarks
+                    .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
+                    .padding(.bottom, 10)
                 VStack(spacing: 8) {
                     // The strip is its own bar (owner: "put a separator for that new bottom bar"; the system Divider was too
                     // faint on the frosted page).
@@ -1039,15 +1042,24 @@ struct MemoriesDeck: View {
         lie = Self.lies(around: top, in: photos, keeping: lie)
         let token = UUID()
         pagingToken = token
-        withAnimation(.spring(response: response, dampingFraction: 0.9)) {
-            wentBack = !fromRight
-            pendingTop = top
-            paging = fromRight ? -screen : screen
-            drag = 0
-        } completion: {
-            guard pagingToken == token else { return }
-            land(top)
+        moving(back: !fromRight) {
+            withAnimation(.spring(response: response, dampingFraction: 0.9)) {
+                pendingTop = top
+                paging = fromRight ? -screen : screen
+                drag = 0
+            } completion: {
+                guard pagingToken == token else { return }
+                land(top)
+            }
         }
+    }
+
+    /// The caption's slide takes its side from `wentBack` as the leaving name last drew it, so a flip of direction is
+    /// drawn a turn before the move (in the same turn the old name left the wrong way: 7th → 6th, both from the left).
+    private func moving(back: Bool, _ change: @escaping () -> Void) {
+        guard wentBack != back else { change(); return }
+        wentBack = back
+        DispatchQueue.main.async(execute: change)
     }
 
     /// The day that slid in becomes the current one where it is (no movement, no fade).
@@ -1076,6 +1088,36 @@ struct MemoriesDeck: View {
         guard photos.indices.contains(shownIndex), dayKey != photos[shownIndex].dayKey,
               let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) else { return }
         page(to: newest, fromRight: dayKey > photos[shownIndex].dayKey, jump: true, response: 0.3)
+    }
+
+    /// The day's five prayers as their symbols, above the strip (owner: "so user can see visually which part of the day
+    /// they are in as they swipe"): the one on top bright and a little bigger, the others with a photo dimmer, those
+    /// without faint; a tap goes to that prayer's photo.
+    private var prayerMarks: some View {
+        let range = dayRange(of: shownIndex)
+        return HStack(spacing: 26) {
+            ForEach(["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"], id: \.self) { name in
+                let i = range.first { photos[$0].name == name }
+                let current = i == shownIndex
+                Button {
+                    guard let i, i != index, pendingTop == nil else { return }
+                    moving(back: i < index) {
+                        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { index = i; drag = 0 }
+                        pickLies()
+                    }
+                } label: {
+                    Image(systemName: prayerIcon(for: name))
+                        .font(.system(size: 17, weight: current ? .semibold : .regular))
+                        .foregroundStyle(current ? AnyShapeStyle(.primary) : i != nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
+                        .scaleEffect(current ? 1.2 : 1)
+                        .frame(width: 30, height: 30)
+                }
+                .buttonStyle(.plain)
+                .disabled(i == nil)
+                .accessibilityLabel(name)
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: shownIndex)
     }
 
     /// A short slide with a fade, from the side the cards came from (owner: "more subtle … instead of going the whole
@@ -1299,9 +1341,10 @@ struct MemoriesDeck: View {
                         page(to: index + 1, fromRight: true, jump: false)
                     } else {
                         // The day's next one lands on top.
-                        wentBack = false
-                        withAnimation(settle) { index += 1; drag = 0 }
-                        pickLies()
+                        moving(back: false) {
+                            withAnimation(settle) { index += 1; drag = 0 }
+                            pickLies()
+                        }
                     }
                 } else if (far > 90 || flung > 240), index > 0 {
                     if index == range.lowerBound {
@@ -1309,9 +1352,10 @@ struct MemoriesDeck: View {
                         page(to: index - 1, fromRight: false, jump: false)
                     } else {
                         // The top one goes back off to the right.
-                        wentBack = true
-                        withAnimation(settle) { index -= 1; drag = 0 }
-                        pickLies()
+                        moving(back: true) {
+                            withAnimation(settle) { index -= 1; drag = 0 }
+                            pickLies()
+                        }
                     }
                 } else {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { drag = 0 }

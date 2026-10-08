@@ -278,7 +278,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   1200 / 700 px since decision prayer-photo-storage A, ~210 KB a prayer; older .jpg ones still read — go through `url` /
   `key(fromFile:)`, never a fixed extension); private, never synced, in the phone's backup; Memories' ⚙ → Space used
   (`PrayerPhotoStorageRow`). Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
-  and marked; seen any time. `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
+  and marked; seen any time. **Unmarking deletes the photo** (`PrayerPhotos.discard(for:)` on every unmark path — the app's
+  list, the widget's alert, the watch's unmark and undo; both prompts add "Its photo will be deleted too." when there is one). `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
   over the blurred page (a clear `fullScreenCover`, no system slide; springs in; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
   name and day on a glass tag inside the photo, a shukr pill top right, and the place (masjid, else the spot's address) when Memories' ⚙ (`MemoriesSettings`) → Show where is on —
   `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). **The main picture**
@@ -323,7 +324,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (+ the place with Show where; `PrayerPhotos.facts` / `placeText`) and the note (tap → edit in an alert; notes are
   `<key>-note.txt` beside the photos, written from the camera's review — "Add a note" — or the pile; the pile shows 3 lines in
   a fixed 58 pt box so nothing moves from photo to photo, a tap opens a TextEditor sheet) — the three slide
-  sideways together with every photo (`wentBack` picks the side), then Share and ✕ (grey circles, no nav bar) → `PrayerPhotoShareComposer`
+  sideways together with every photo (`wentBack` picks the side, flipped a turn before the move — `moving(back:)` — or the leaving name took the old side),
+  above the strip the day's five prayer symbols (`prayerMarks`: the top one bright, others with a photo dim, without faint; tap → it), then Share and ✕ (grey circles, no nav bar) → `PrayerPhotoShareComposer`
   (pushed): the framed card (`PrayerPhotoFramed`: shukr + prayer + day always; Location and Prayer score — a ring,
   `score:` — as toggles; the place as City (default — owner) or Address — `PrayerSpotAddress.city`, "Cary, NC"; the pile's line uses the masjid, else the city; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
   on a card swaps the pictures; drag down closes (the deck's own drag

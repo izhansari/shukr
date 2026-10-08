@@ -204,6 +204,16 @@ enum PrayerPhotos {
         await PrayerPhotoRevision.shared.bump()
     }
 
+    /// The photo of an unmarked prayer goes with its mark (owner: "if we unmark a prayer, we should also get rid of that
+    /// image"); every unmark path calls this after it resets the row.
+    static func discard(for row: PrayerModel) {
+        let key = key(dayKey: row.dayKey, name: row.name)
+        if has(key) { delete(key) }
+    }
+
+    /// A prayer row has a photo (its unmark prompts say it will be deleted).
+    static func exists(for row: PrayerModel) -> Bool { has(key(dayKey: row.dayKey, name: row.name)) }
+
     static func delete(_ key: String) {
         Task { @MainActor in
             PrayerPhotoMain.shared.set(key, selfie: false)
@@ -396,7 +406,8 @@ struct PrayerPhotoThumb: View {
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).stroke(edge, lineWidth: 2))
-        .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { image = await PrayerPhotos.load(key).back }
+        // A small cached thumbnail (decoding the full photo for a 20 pt dot, five times over, was wasted work).
+        .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { image = await PrayerPhotos.thumbnail(key, side: Int(size * 3)) }
     }
 }
 

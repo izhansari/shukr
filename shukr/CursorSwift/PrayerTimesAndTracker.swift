@@ -242,7 +242,7 @@ struct PrayerTimesView: View {
             !TourRuntime.isPracticeAnywhere($0) && $0.isCompleted && $0.name == request.name && Calendar.current.isDate($0.startTime, inSameDayAs: request.start)
         }
         let others = completedRows(request).filter { $0.persistentModelID != shown?.persistentModelID }
-        others.forEach { $0.resetPrayer() }
+        others.forEach { $0.resetPrayer(); PrayerPhotos.discard(for: $0) }
         if let shown {
             viewModel.togglePrayerCompletion(for: shown)   // rescores the day and the streak, pushes the widget
         } else if !others.isEmpty {
@@ -303,8 +303,10 @@ struct PrayerTimesView: View {
         var shown = request
         shown.displayName = rows.contains(where: \.isJumuah) ? "Jumu'ah" : request.name
         widgetUnmark = shown
+        let photo = rows.contains(where: PrayerPhotos.exists(for:))
         let alert = UIAlertController(title: "Unmark \(shown.displayName)?",
-                                      message: "Are you sure you want to mark this prayer as incomplete?",
+                                      message: "Are you sure you want to mark this prayer as incomplete?"
+                                        + (photo ? " Its photo will be deleted too." : ""),
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
             widgetUnmark = nil
@@ -2933,7 +2935,8 @@ struct PrayerButton: View {
             .alert(isPresented: $showMarkIncompleteAlert) {
                         Alert(
                             title: Text("Confirm Action"),
-                            message: Text("Are you sure you want to mark this prayer as incomplete?"),
+                            message: Text("Are you sure you want to mark this prayer as incomplete?"
+                                          + (PrayerPhotos.exists(for: prayerObject) ? " Its photo will be deleted too." : "")),
                             primaryButton: .destructive(Text("Yes")) {
                                 isMarkingIncomplete = true
                                 // A 0.1 s spring snapped the whole page (score → prayer, the list 5 rows → 1); an
