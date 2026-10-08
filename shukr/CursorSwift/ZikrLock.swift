@@ -136,7 +136,7 @@ struct ZikrLockCover: View {
                 theme.backdrop.opacity(lock.focus ? 1 : 0.5)
                     .ignoresSafeArea()
                     .contentShape(Rectangle())
-                    .onTapGesture {}
+                    .onTapGesture { hurry() }
                     .animation(.easeInOut(duration: 0.6), value: lock.focus)
 
                 VStack(spacing: 0) {
@@ -162,6 +162,10 @@ struct ZikrLockCover: View {
 
                 if lock.focus { close }
             }
+            // A tap anywhere while page 1 is still building hurries it along (owner: "some people may not have
+            // patience … if they tap it, it speeds it up"); Unlock now keeps its own tap.
+            .contentShape(Rectangle())
+            .onTapGesture { hurry() }
         }
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .fontDesign(.rounded)
@@ -440,6 +444,33 @@ struct ZikrLockCover: View {
             try? await Task.sleep(for: .milliseconds(750))
             guard !Task.isCancelled else { return }
             ZikrTour.shared.begin(in: context)
+        }
+    }
+
+    /// A tap mid-build: the rest of page 1 quickly — the verse in (if it isn't), up, what's inside, Unlock now — about a
+    /// second in all, from wherever it had got to.
+    private func hurry() {
+        guard !lock.focus, !leaving, stage < 4 else { return }
+        run?.cancel()
+        run = Task { @MainActor in
+            if stage < 1 {
+                withAnimation(.easeOut(duration: 0.3)) { stage = 1 }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            if stage < 2 {
+                withAnimation(.easeInOut(duration: 0.55)) { stage = 2 }
+                try? await Task.sleep(for: .milliseconds(350))
+            }
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.35)) { stage = 3 }
+            for i in max(itemsShown, 0)..<ZikrLockWords.inside.count {
+                withAnimation(.easeOut(duration: 0.35)) { itemsShown = i + 1 }
+                try? await Task.sleep(for: .milliseconds(90))
+                guard !Task.isCancelled else { return }
+            }
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.35)) { stage = 4 }
         }
     }
 
