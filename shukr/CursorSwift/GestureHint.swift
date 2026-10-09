@@ -14,7 +14,10 @@ struct GestureHint: View {
     let kind: Kind
     /// The room it has (between the top bar and the ring); the finger travels most of it.
     var height: CGFloat = 200
+    /// Held on its still frame (the practice page's boxes that aren't the one to try now).
+    var still = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var frozen: Bool { reduceMotion || still }
 
     private static let dot: CGFloat = 22        // the touch's radius
     private static let top: CGFloat = 32        // the dot's centre, clear of the room's edge
@@ -25,9 +28,9 @@ struct GestureHint: View {
     }
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { ctx in
-            // Reduce Motion: one still frame mid-move (the dot, its trail).
-            let t = reduceMotion ? stillFrame : ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: loop)
+        TimelineView(.animation(paused: frozen)) { ctx in
+            // Reduce Motion (or held still): one frame mid-move (the dot, its trail).
+            let t = frozen ? stillFrame : ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: loop)
             Canvas { gc, size in draw(&gc, size: size, t: t) }
         }
         .frame(width: 120, height: max(height, Self.top * 2 + 40))

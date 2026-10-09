@@ -126,6 +126,9 @@ struct ZikrLockCover: View {
     /// their selection, then show the task ring").
     @State private var choice: Int?
     private var picked: Int { choice ?? 0 }
+    /// After the first pick, the task's parts one at a time (owner: "move up and bring in the other stuff not all at one
+    /// time. in an order that makes sense"): 1 the arrow, 2 its title and circle, 3 the line, 4 the prompt.
+    @State private var reveal = 0
     /// Page 3's circle opening into the session: everything else on the page fades, the circle stays.
     @State private var launching = false
     /// The practice page (the three ways to count), between page 2 and the first zikr (owner: "make this page come before
@@ -498,30 +501,54 @@ struct ZikrLockCover: View {
                 sectionLabel("Choose your first zikr")
                 VStack(spacing: 10) {
                     ForEach(FirstZikr.options.indices, id: \.self) { i in
-                        optionCard(FirstZikr.options[i], picked: choice == i) {
-                            triggerSomeVibration(type: .light)
-                            // The first pick brings the task in at the pages' pace; later picks just switch.
-                            withAnimation(choice == nil ? .easeInOut(duration: 0.9) : .easeInOut(duration: 0.25)) { choice = i }
-                        }
+                        optionCard(FirstZikr.options[i], picked: choice == i) { pick(i) }
                     }
                 }
             }
             .opacity(thirdShown >= 1 && !launching ? 1 : 0)
             .offset(y: thirdShown >= 1 || reduceMotion ? 0 : 6)
-            Spacer(minLength: 12)
-            choiceArrow.opacity(thirdShown >= 3 && choice != nil && !launching ? 1 : 0)
-            Spacer(minLength: 12)
-            VStack(spacing: 0) {
-                sectionLabel("Your daily task").opacity(launching ? 0 : 1)
-                choiceRing.padding(.top, 6)
-                taskLine(FirstZikr.options[picked].goal).padding(.top, 8).opacity(launching ? 0 : 1)
+            // Nothing picked: the choice alone, in the middle of the page. The first pick brings the rest into the
+            // layout (the choice glides up to make room), then each part comes in on its turn (`reveal`).
+            if choice != nil {
+                Spacer(minLength: 12)
+                choiceArrow.opacity(reveal >= 1 && !launching ? 1 : 0)
+                Spacer(minLength: 12)
+                VStack(spacing: 0) {
+                    sectionLabel("Your daily task").opacity(launching ? 0 : 1)
+                    choiceRing.padding(.top, 6)
+                }
+                .opacity(reveal >= 2 ? 1 : 0)
+                .allowsHitTesting(reveal >= 2)
+                taskLine(FirstZikr.options[picked].goal)
+                    .padding(.top, 8)
+                    .opacity(reveal >= 3 && !launching ? 1 : 0)
             }
-            .opacity(thirdShown >= 3 && choice != nil ? 1 : 0)
-            .allowsHitTesting(choice != nil)
             Spacer(minLength: 12)
-            prompt.opacity(choice != nil ? 1 : 0)
+            prompt.opacity(reveal >= 4 ? 1 : 0)
         }
         .padding(.top, 70)
+    }
+
+    /// A card picked: the first time, the choice glides up and the task comes in a part at a time; after that, a switch.
+    private func pick(_ i: Int) {
+        triggerSomeVibration(type: .light)
+        guard choice == nil else {
+            withAnimation(.easeInOut(duration: 0.25)) { choice = i }
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.8)) { choice = i }
+        if reduceMotion {
+            withAnimation(.easeOut(duration: 0.4).delay(0.3)) { reveal = 4 }
+            return
+        }
+        run = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(650))
+            for step in 1...4 {
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeInOut(duration: 0.7)) { reveal = step }
+                try? await Task.sleep(for: .milliseconds(step == 2 ? 750 : 550))
+            }
+        }
     }
 
     private func optionCard(_ o: FirstZikrOption, picked: Bool, action: @escaping () -> Void) -> some View {
@@ -540,8 +567,9 @@ struct ZikrLockCover: View {
                     Text(o.source.uppercased())
                         .font(.system(size: 9, weight: .semibold, design: .rounded)).tracking(1)
                         .foregroundStyle(Color.primary.opacity(0.35))
-                    // The picked one opens: its Arabic and what it means (owner: "make sure they know the translation").
-                    if picked {
+                    // The picked one opens: its Arabic and what it means (owner: "make sure they know the translation") —
+                    // the first time once the choice has glided up (opening mid-glide, it showed at its end place early).
+                    if picked && reveal >= 1 {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(o.arabicLines.replacingOccurrences(of: "\n", with: " "))
                                 .font(.custom("KFGQPCUthmanTahaNaskh", size: 21))
@@ -577,7 +605,7 @@ struct ZikrLockCover: View {
             Spacer(minLength: 0)
             sectionLabel("Choose your first zikr")
                 .opacity(thirdShown >= 1 && !launching ? 1 : 0)
-            TabView(selection: Binding(get: { picked }, set: { choice = $0 })) {
+            TabView(selection: Binding(get: { picked }, set: { choice = $0; reveal = 4 })) {
                 ForEach(FirstZikr.options.indices, id: \.self) { i in
                     optionWell(FirstZikr.options[i])
                         .padding(.horizontal, 2)
@@ -662,7 +690,7 @@ struct ZikrLockCover: View {
                 TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 48,
                                                                       y: geo.size.height / 2 + 44)))
             }
-            .opacity(thirdShown >= 4 && !launching ? 1 : 0)
+            .opacity(thirdShown >= 4 && reveal >= 4 && !launching ? 1 : 0)
         }
     }
 
@@ -770,6 +798,7 @@ struct ZikrLockCover: View {
                 launching = false
                 practicing = false
                 choice = nil
+                reveal = 0
                 launchOffset = .zero
                 launchScale = 1
                 unlockStage = 0

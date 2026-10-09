@@ -696,10 +696,13 @@ struct CounterWelcome: View {
                     .frame(maxWidth: 320)
                     .padding(.top, 14)
                     .rowIn(shown >= 2, reduceMotion)
+                // One ghost finger moving at a time — the first box still to do; the others hold their move still, faint
+                // (owner: "they all show up at one time and it's like woah").
+                let next = [GestureHint.Kind.tap, .drag, .stroke].first { !done.contains($0) }
                 HStack(alignment: .top, spacing: 10) {
-                    PracticeBox(kind: .tap, caption: C.practiceTap) { done.insert(.tap) }
-                    PracticeBox(kind: .drag, caption: C.practiceDrag) { done.insert(.drag) }
-                    PracticeBox(kind: .stroke, caption: C.practiceStroke) { done.insert(.stroke) }
+                    PracticeBox(kind: .tap, caption: C.practiceTap, active: next == .tap) { done.insert(.tap) }
+                    PracticeBox(kind: .drag, caption: C.practiceDrag, active: next == .drag) { done.insert(.drag) }
+                    PracticeBox(kind: .stroke, caption: C.practiceStroke, active: next == .stroke) { done.insert(.stroke) }
                 }
                 .padding(.top, 30)
                 .rowIn(shown >= 3, reduceMotion)
@@ -763,6 +766,8 @@ private extension View {
 private struct PracticeBox: View {
     let kind: GestureHint.Kind
     let caption: String
+    /// Its ghost finger moves (the box to try now); otherwise it's held still and faint.
+    var active = true
     let onDone: () -> Void
     @State private var count = 0
     @State private var flash: Color?
@@ -786,10 +791,11 @@ private struct PracticeBox: View {
         VStack(spacing: 10) {
             ZStack {
                 NeuPressed(shape: box, radius: 5, offset: 3)
-                GestureHint(kind: kind, height: 150)
+                GestureHint(kind: kind, height: 150, still: !active)
                     .frame(maxWidth: .infinity)
                     .clipped()
-                    .opacity(isDone ? 0.2 : (pressed ? 0 : 1))
+                    .opacity(isDone ? 0.2 : (pressed ? 0 : (active ? 1 : 0.35)))
+                    .animation(.easeInOut(duration: 0.4), value: active)
                 // Held: the next move.
                 if pressed, !isDone, kind == .stroke || (kind == .drag && strokes == 0) {
                     Image(systemName: armed ? "arrow.down" : "arrow.up")
