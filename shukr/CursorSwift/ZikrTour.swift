@@ -364,6 +364,13 @@ import SwiftData
                                    todo: step == .timeLeft ? C.timeTodo : nil) : nil,
             skippedCount ? section("zt.where", C.whereStep, from: .history, to: .azkarPage, lead: whereLead, todo: whereTodo) : nil,
         ].compactMap { $0 }
+        // The counter's welcome: on the first lesson, until it's read ("Got it"), the count section explains itself as
+        // a card — the three ways — then the strip takes over (TourStrip).
+        if step == .taps, !TourGuideState.shared.read.contains("zikrTour|zt.count"),
+           let i = sections.firstIndex(where: { $0.id == "zt.count" }) {
+            sections[i].lead = C.countIntroLead
+            sections[i].blocks = [TourBlock(items: C.countWays, numbered: true)]
+        }
         // Reused task: the kinds line shows straight away, as done.
         if reused, step >= .start, let i = sections.firstIndex(where: { $0.id == "zt.kinds" }) { sections[i].done = true }
         if step == .done { sections.append(TourSection(id: "zt.done", note: C.doneLine)) }
@@ -569,6 +576,9 @@ struct ZikrTourSessionLayer: View {
     let paused: Bool
     let results: Bool
     @State private var tour = ZikrTour.shared
+    /// The session's ring has landed (it glides in from the circle it opened out of): only then the card, the hint
+    /// and Skip come in — over the ring, the card hid the opening's move.
+    @State private var settled = false
 
     private var hintKind: GestureHint.Kind? {
         guard !tour.completing, tour.progress == 0 else { return nil }
@@ -585,7 +595,7 @@ struct ZikrTourSessionLayer: View {
             let origin = proxy.frame(in: .global).origin
             let t = TourTargets.shared
             ZStack {
-                if tour.place == .session, !paused, !results {
+                if tour.place == .session, !paused, !results, settled {
                     // A ghost finger showing the move (owner, 2026-10-08), until they've done it once.
                     CounterGestureHint(kind: hintKind)
                     ZikrTourBubble()
@@ -612,5 +622,9 @@ struct ZikrTourSessionLayer: View {
             .animation(.easeInOut(duration: CircleMotion.quick), value: tour.step)
         }
         .ignoresSafeArea()
+        .task {
+            try? await Task.sleep(for: .seconds(0.8))
+            withAnimation(.easeOut(duration: 0.35)) { settled = true }
+        }
     }
 }

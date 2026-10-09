@@ -175,6 +175,10 @@ enum TourCopy {
         static let reviewTodo = "Tap Add to my day"
 
         static let countStep = "Count it"
+        // The counter's welcome, before the first lesson (owner: "a little intro to the counting session like a
+        // 'welcome to the tasbeeh screen. let's teach you how to use it. there are three ways to count'").
+        static let countIntroLead = "Welcome to your tasbeeh counter. There are three ways to count — let's try each one."
+        static let countWays = ["Tap anywhere", "Drag down, then lift", "Drag down and up, without lifting"]
         static let startLead = "Your task is on the wheel."
         static let startTodo = "Tap your zikr to carry on"
         static let tapLead = "The whole screen counts."

@@ -26,10 +26,10 @@ struct ZikrPageView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             // Locked until the Zikr Tour is done (ZikrLock.swift): the wheel blurred under a glass pane — something's
             // there — and the way in.
-            .blur(radius: ZikrLock.shared.locked ? 12 : 0)
-            .allowsHitTesting(!ZikrLock.shared.locked)
+            .blur(radius: ZikrLock.shared.covering ? 12 : 0)
+            .allowsHitTesting(!ZikrLock.shared.covering)
             .overlay {
-                if ZikrLock.shared.locked {
+                if ZikrLock.shared.covering {
                     ZikrLockCover().transition(.opacity)
                 }
             }
@@ -65,10 +65,15 @@ enum ZikrFocus {
     static let startNotification = Notification.Name("zikrStartTask")
     static let wheelStartNotification = Notification.Name("zikrWheelStartTask")
     private(set) static var pendingStart: (id: String, resume: Bool)?
-    static func start(_ taskID: String, resume: Bool) {
+    /// Where on screen the session opens out of, when it isn't the wheel's own ring (the Zikr lock's page 3 circle;
+    /// owner: "start the counting session straight from this page using the task ring").
+    private(set) static var startFrame: CGRect?
+    static func start(_ taskID: String, resume: Bool, from frame: CGRect? = nil) {
         pendingStart = (taskID, resume)
+        startFrame = frame
         NotificationCenter.default.post(name: startNotification, object: nil)
     }
+    static func takeStartFrame() -> CGRect? { defer { startFrame = nil }; return startFrame }
     static func takeStart() -> (id: String, resume: Bool)? { defer { pendingStart = nil }; return pendingStart }
     /// A deleted task can't be focused later.
     static func forget(_ ids: [String]) { if let p = pendingID, ids.contains(p) { pendingID = nil } }
@@ -241,6 +246,13 @@ struct ZikrCircleWheel: View {
               let task = tasks.first(where: { $0.id.uuidString == request.id }) else { return }
         _ = ZikrFocus.takeStart()
         wheelTask?.cancel()
+        // Opening out of a ring elsewhere (the lock's page 3): no turn of the wheel under it, straight in from there.
+        if let frame = ZikrFocus.takeStartFrame() {
+            var quiet = Transaction(); quiet.disablesAnimations = true
+            withTransaction(quiet) { centered = request.id }
+            start(task, resume: request.resume, from: frame)
+            return
+        }
         wheelTask = Task { @MainActor in
             // Centred first (a finished task isn't on the wheel: started without centring), then started once the
             // wheel has got there — it read the ring's place 0.45 s into the spring, a guess (audit E5).
@@ -663,7 +675,7 @@ struct ZikrCircleWheel: View {
     }
 
     /// `resume`: begin with today's progress on the ring (only new counts are saved).
-    private func start(_ task: TaskModel, resume: Bool = false) {
+    private func start(_ task: TaskModel, resume: Bool = false, from entryFrame: CGRect? = nil) {
         wheelTask?.cancel()   // a landing still waiting must not clear this session's held task
         sessionTaskID = task.id
         heldTaskID = task.id
@@ -671,7 +683,7 @@ struct ZikrCircleWheel: View {
         let p = progress(task)
         sharedState.resumeCount = resume && task.isCountMode ? p.count : 0
         sharedState.resumeSeconds = resume && !task.isCountMode ? p.seconds : 0
-        openSession(from: task.id.uuidString, base: fraction(task), rewind: !resume)
+        openSession(from: task.id.uuidString, base: fraction(task), rewind: !resume, entryFrame: entryFrame)
     }
 
     /// The task's share done today, as its ring shows it.
@@ -692,8 +704,9 @@ struct ZikrCircleWheel: View {
     /// cover comes up with no animation and the session takes it from the ring's place; otherwise the usual sheet.
     /// `base`: the ring's share as it stands; `rewind`: the session starts from nothing, so the arc rewinds to empty
     /// first (decision zikr-ring-progress B).
-    private func openSession(from id: String, base: Double, rewind: Bool) {
-        guard theme.sessionLayout == .ringAbove, id == centered, let frame = circleFrames.byID[id], frame.width > 100,
+    private func openSession(from id: String, base: Double, rewind: Bool, entryFrame: CGRect? = nil) {
+        guard theme.sessionLayout == .ringAbove, id == centered,
+              let frame = entryFrame ?? circleFrames.byID[id], frame.width > 100,
               UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(frame) else {
             showTasbeehPage = true
             return
