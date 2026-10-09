@@ -430,7 +430,7 @@ struct ZikrLockCover: View {
             Spacer(minLength: 0)
             sectionLabel("Choose your first zikr")
                 .opacity(thirdShown >= 1 ? 1 : 0)
-            VStack(spacing: 10) {
+            VStack(spacing: 14) {
                 ForEach(FirstZikr.options.indices, id: \.self) { i in
                     optionCard(FirstZikr.options[i], picked: choice == i) {
                         triggerSomeVibration(type: .light)
@@ -438,13 +438,13 @@ struct ZikrLockCover: View {
                     }
                 }
             }
-            .padding(.top, 14)
+            .padding(.top, 16)
             .opacity(thirdShown >= 1 ? 1 : 0)
             .offset(y: thirdShown >= 1 || reduceMotion ? 0 : 6)
-            choiceArrow.padding(.top, 12).opacity(thirdShown >= 3 ? 1 : 0)
-            sectionLabel("Your daily task").padding(.top, 10).opacity(thirdShown >= 3 ? 1 : 0)
-            choiceRing.padding(.top, 2).opacity(thirdShown >= 3 ? 1 : 0)
-            taskLine(FirstZikr.options[choice].goal).padding(.top, 6).opacity(thirdShown >= 3 ? 1 : 0)
+            choiceArrow.padding(.top, 16).opacity(thirdShown >= 3 ? 1 : 0)
+            sectionLabel("Your daily task").padding(.top, 12).opacity(thirdShown >= 3 ? 1 : 0)
+            choiceRing.padding(.top, 8).opacity(thirdShown >= 3 ? 1 : 0)
+            taskLine(FirstZikr.options[choice].goal).padding(.top, 12).opacity(thirdShown >= 3 ? 1 : 0)
             Spacer(minLength: 0)
             prompt
         }
@@ -457,25 +457,26 @@ struct ZikrLockCover: View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(o.sayLines.replacingOccurrences(of: "\n", with: " "))
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
                         .foregroundStyle(Color.primary.opacity(0.88))
                         .lineLimit(2)
                     Text(o.benefit)
-                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .font(.system(size: 14.5, weight: .regular, design: .rounded))
                         .foregroundStyle(Color.primary.opacity(0.55))
                         .lineLimit(2)
                     Text(o.source.uppercased())
-                        .font(.system(size: 9, weight: .semibold, design: .rounded)).tracking(1)
+                        .font(.system(size: 10, weight: .semibold, design: .rounded)).tracking(1)
+                        .padding(.top, 1)
                         .foregroundStyle(Color.primary.opacity(0.35))
                     // The picked one opens: its Arabic and what it means (owner: "make sure they know the translation").
                     if picked {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(o.arabicLines.replacingOccurrences(of: "\n", with: " "))
-                                .font(.custom("KFGQPCUthmanTahaNaskh", size: 21))
+                                .font(.custom("KFGQPCUthmanTahaNaskh", size: 25))
                                 .foregroundStyle(Color.primary.opacity(0.85))
                                 .environment(\.layoutDirection, .rightToLeft)
                             Text("“\(o.meaningLines.replacingOccurrences(of: "\n", with: " "))”")
-                                .font(.system(size: 14, weight: .light, design: .rounded))
+                                .font(.system(size: 15, weight: .light, design: .rounded))
                                 .foregroundStyle(Color.primary.opacity(0.7))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -489,7 +490,7 @@ struct ZikrLockCover: View {
                     .font(.system(size: 20))
                     .foregroundStyle(picked ? Color.sage : Color.primary.opacity(0.25))
             }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            .padding(.horizontal, 18).padding(.vertical, 16)
             .background(NeuPressed(shape: box, radius: 5, offset: 3).opacity(picked ? 1 : 0.55))
             .overlay(box.strokeBorder(Color.sage.opacity(picked ? 0.9 : 0), lineWidth: 1.5))
             .contentShape(box)
@@ -579,12 +580,11 @@ struct ZikrLockCover: View {
                 .transition(.opacity)
         }
         .buttonStyle(.plain)
-        .scaleEffect(0.8)
-        .frame(height: 166)
+        .frame(height: 206)
         .overlay {
             GeometryReader { geo in
-                TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 48,
-                                                                      y: geo.size.height / 2 + 44)))
+                TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 58,
+                                                                      y: geo.size.height / 2 + 54)))
             }
             .opacity(thirdShown >= 4 ? 1 : 0)
         }
@@ -1008,15 +1008,15 @@ extension FirstZikr {
     /// benefit from their notes.
     static let options: [FirstZikrOption] = [
         FirstZikrOption(taskName: taskName, goal: goal, arabicLines: arabicLines, sayLines: sayLines,
-                        meaningLines: meaningLines, benefit: "100 a day: sins forgiven, even if like the foam of the sea",
+                        meaningLines: meaningLines, benefit: "Sins forgiven, even if like the foam of the sea",
                         source: "Sahih al-Bukhari 6405"),
-        FirstZikrOption(taskName: "Ten Blessings", goal: 33, arabicLines: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
+        FirstZikrOption(taskName: "Ten Blessings", goal: 100, arabicLines: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
                         sayLines: "Allahumma salli 'ala Muhammad", meaningLines: "O Allah, send blessings upon Muhammad.",
                         benefit: "For each one, Allah sends ten blessings on you", source: "Sahih Muslim 408"),
         // Owner, 2026-10-09: SubhanAllah in place of Astaghfirullah ("easy and has clear benefit with authentic source").
         FirstZikrOption(taskName: "A Thousand Good Deeds", goal: 100, arabicLines: "سُبْحَانَ ٱللَّٰهِ",
                         sayLines: "SubhanAllah", meaningLines: "Glory be to Allah.",
-                        benefit: "100 a day: 1,000 good deeds written, or 1,000 sins wiped away", source: "Sahih Muslim 2698"),
+                        benefit: "1,000 good deeds written, or 1,000 sins wiped away", source: "Sahih Muslim 2698"),
     ]
     /// How to say it, one phrase a line (under the Arabic on page 3).
     static let sayLines = "SubhanAllahi wa bihamdihi"
