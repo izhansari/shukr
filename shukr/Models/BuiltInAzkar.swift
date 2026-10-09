@@ -10,8 +10,8 @@
 //  - an existing one only gets a field that's empty — the user's edits are never overwritten.
 //  Once done it never runs again, so a deleted zikr or cleared note stays that way.
 //
-//  ⚠️ The sources were written from memory (owner + agent). They need a knowledgeable check
-//  before release, like the Tasbih Fatimah reminders.
+//  Sources checked against sunnah.com's text (2026-10-09): Muslim 223, 2698, 2137, 408; Bukhari 6307,
+//  3293, 6405, 128, 7563. Still for a scholar's eye before release, like the Tasbih Fatimah reminders.
 //
 
 import Foundation
