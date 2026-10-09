@@ -717,7 +717,7 @@ struct ZikrLockCover: View {
                     for line in ZikrLockWords.quoteParts.joined() {
                         guard !Task.isCancelled else { return }
                         let wipe = 0.5 + Double(line.text.count) * 0.02
-                        withAnimation(.linear(duration: wipe)) { quoteShown = line.index + 1 }   // one speed across (owner: no easing)
+                        withAnimation(.easeInOut(duration: wipe)) { quoteShown = line.index + 1 }
                         try? await Task.sleep(for: .seconds(wipe * 0.8 + (line.endsPart ? 0.35 : 0)))
                     }
                     try? await Task.sleep(for: .milliseconds(700))
