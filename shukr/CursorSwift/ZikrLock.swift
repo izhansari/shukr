@@ -134,6 +134,8 @@ struct ZikrLockCover: View {
     @State private var launchScale: CGFloat = 1
     /// The circle's place on screen (as drawn, 0.8 ×).
     @State private var ringFrame: CGRect = .zero
+    /// The end on the wheel: 1 the lock over the circle, 2 it opens with its words.
+    @State private var unlockStage = 0
     @State private var armed = false
     @State private var token = 0
     @State private var armedWidth: CGFloat = 0
@@ -193,11 +195,43 @@ struct ZikrLockCover: View {
                         .transition(.opacity)
                 }
                 if practicing {
-                    CounterWelcome {
+                    CounterWelcome(buttonTitle: FirstZikrChoiceLayout.current == nil ? "Continue to my zikr"
+                                                                                      : "Continue to pick my zikr") {
                         withAnimation(.easeInOut(duration: 0.45)) { practicing = false }
                         toFirstZikr()
                     }
                     .transition(.opacity)
+                }
+
+                // The end: a lock over the circle opens — the tab is theirs, the zikr is on their wheel.
+                if launching {
+                    GeometryReader { g in
+                        let screen = UIScreen.main.bounds
+                        let origin = g.frame(in: .global).origin
+                        VStack(spacing: 12) {
+                            Image(systemName: unlockStage >= 2 ? "lock.open.fill" : "lock.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundStyle(Color.sage)
+                                .contentTransition(.symbolEffect(.replace))
+                                .frame(width: 50, height: 50)
+                                .background(Circle().fill(Color.sage.opacity(0.12)))
+                            Text("Zikr is unlocked")
+                                .font(.system(size: 20, weight: .light, design: .rounded))
+                                .foregroundStyle(Color.primary.opacity(0.9))
+                                .opacity(unlockStage >= 2 ? 1 : 0)
+                        }
+                        .position(x: screen.midX - origin.x, y: screen.midY - origin.y - 170)
+                        Text("\(firstTask?.title ?? FirstZikr.taskName) is on your wheel.\nCome back and finish it anytime.")
+                            .font(.system(size: 15, weight: .light, design: .rounded))
+                            .foregroundStyle(Color.primary.opacity(0.65))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .opacity(unlockStage >= 2 ? 1 : 0)
+                            .position(x: screen.midX - origin.x, y: screen.midY - origin.y + 152)
+                    }
+                    .ignoresSafeArea()
+                    .opacity(unlockStage >= 1 ? 1 : 0)
+                    .allowsHitTesting(false)
                 }
 
                 if lock.focus { close.opacity(launching ? 0 : 1) }
@@ -604,7 +638,7 @@ struct ZikrLockCover: View {
     /// The picked zikr's circle (the trial layouts draw it from the option; the real task is made on start).
     private var choiceRing: some View {
         let o = FirstZikr.options[choice]
-        return Button(action: startCounting) {
+        return Button(action: addToWheel) {
             ZikrCircleFace(title: o.taskName, icon: nil, subtitle: "0 of \(o.goal)", ring: .progress(0),
                            mantraLine: o.sayLines.replacingOccurrences(of: "\n", with: " "))
                 .contentShape(Circle())
@@ -635,7 +669,7 @@ struct ZikrLockCover: View {
 
     /// The task's own circle, as the wheel draws it (owner: "the task should look like our task rings").
     private var firstRing: some View {
-        Button(action: startCounting) {
+        Button(action: addToWheel) {
             ZikrCircleFace(title: firstTask?.title ?? FirstZikr.taskName, icon: nil,
                            subtitle: "0 of \(FirstZikr.goal)", ring: .progress(0),
                            mantraLine: firstTask?.mantraLine,
@@ -708,7 +742,7 @@ struct ZikrLockCover: View {
     }
 
     private var prompt: some View {
-        Text("Tap the circle when you're ready")
+        Text("Tap the circle to add it to your wheel")
             .font(.system(size: 15, weight: .medium, design: .rounded))
             .foregroundStyle(Color.sage)
             .padding(.bottom, 36)
@@ -732,6 +766,7 @@ struct ZikrLockCover: View {
                 practicing = false
                 launchOffset = .zero
                 launchScale = 1
+                unlockStage = 0
             }
         } label: {
             Image(systemName: "xmark")
@@ -918,17 +953,21 @@ struct ZikrLockCover: View {
     /// page using the task ring like how we transition from the task wheel"): the rest of the page fades, the tour
     /// starts, and the session opens out of the circle's place (ZikrFocus.start(from:) → the wheel's SessionHandoff);
     /// the page stays under the session until it covers it, then goes without a trace.
-    private func startCounting() {
+    /// The tour ends on the wheel, not in a session (owner: "we end it after they choose the zikr and show them the task
+    /// on the wheel … the whole tab is unlocked now, and they can come back and finish that zikr whenever. So the actual
+    /// counting session is not part of the tour"): the circle glides to the wheel's centre as the page goes, a lock over
+    /// it opens — "Zikr is unlocked" — then the page fades away onto the wheel, their task in the middle where the circle
+    /// was, the bars back.
+    private func addToWheel() {
         guard let task = firstTask, thirdShown >= 1, !launching else { return }
         triggerSomeVibration(type: .medium)
         ZikrAudio.stopAll()
         run?.cancel()
-        lock.handingOff = true
-        // To the centre, where a wheel task sits when it opens (the counter's ring is centred on the whole screen),
-        // at the wheel's size; the rest of the page goes.
         let screen = UIScreen.main.bounds
         let centre = CGPoint(x: screen.midX, y: screen.midY)
         let from = ringFrame
+        // The wheel under the page turns to the task now, so it's there, in the same place, when the page goes.
+        ZikrFocus.request(task.id.uuidString, instant: true)
         withAnimation(CircleMotion.wheelCentre) {
             launching = true
             breathe = false
@@ -937,22 +976,21 @@ struct ZikrLockCover: View {
                 launchScale = 1 / 0.8
             }
         }
-        let id = task.id.uuidString
-        let face = CGRect(x: centre.x - 100, y: centre.y - 100, width: 200, height: 200)
         run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(550))
+            try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled else { return }
-            ZikrTour.shared.startFirst(task)
-            ZikrTour.shared.practiced()   // the three ways were practised before page 3: straight to counting
-            ZikrFocus.start(id, resume: false, from: from.width > 100 ? face : nil)
-            try? await Task.sleep(for: .seconds(CircleMotion.wheelOpenDuration + 0.8))
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            withTransaction(quiet) {
-                leaving = true
-                lock.focus = false
-                lock.handingOff = false
-            }
+            withAnimation(.easeOut(duration: 0.35)) { unlockStage = 1 }
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            triggerSomeVibration(type: .success)
+            withAnimation(.snappy(duration: 0.4)) { unlockStage = 2 }
+            try? await Task.sleep(for: .seconds(2.4))
+            guard !Task.isCancelled else { return }
+            // Theirs now: the tour counts as done, the page goes (ZikrPageView fades the cover, lifts the blur).
+            UserDefaults.standard.set(true, forKey: ZikrTour.completedKey)
+            UserDefaults.standard.set(true, forKey: ZikrTour.offeredKey)
+            withAnimation(.easeInOut(duration: 0.6)) { lock.focus = false }
+            lock.unlock()
         }
     }
 

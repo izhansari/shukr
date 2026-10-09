@@ -661,9 +661,11 @@ struct ZikrTourSessionLayer: View {
 /// the counter, three practice boxes, "Let's begin" once all three are done. It takes every touch, so nothing counts
 /// under it; the boxes' moves are practice only.
 struct CounterWelcome: View {
-    let onBegin: () -> Void
     /// "Let's begin" once this many are done (owner: "if they go ahead and satisfy one of them, they can skip forward").
     var minimumDone = 1
+    /// The button's words (the lock's practice leads on to their zikr: "continue to pick my zikr. or something like that").
+    var buttonTitle = TourCopy.ZikrTour.welcomeButton
+    let onBegin: () -> Void
     @Environment(\.circleTheme) private var theme
     @State private var done: Set<GestureHint.Kind> = []
     private typealias C = TourCopy.ZikrTour
@@ -698,7 +700,7 @@ struct CounterWelcome: View {
                 .padding(.top, 30)
                 Button(action: onBegin) {
                     HStack(spacing: 6) {
-                        Text(C.welcomeButton)
+                        Text(buttonTitle)
                         Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold))
                     }
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
