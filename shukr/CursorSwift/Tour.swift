@@ -2371,7 +2371,9 @@ extension TourLayer {
             return f("doneFold") + rows
         case (.zikr, .go): return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
         // Scroll the wheel, hold a task: the page under the bubble (taps start nothing — the wheel's own guard).
-        case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("zikrSlot").map { $0.minY - 20 }) : []
+        // From the wheel's top (under the top bar and its doors), not the centre circle's: a drag on the wheel's upper
+        // half was taken (owner: "my drags a bit to the side don't seem to work").
+        case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("historyDoor").map { $0.maxY + 12 } ?? 120) : []
         case (.settings, .go): return sharedState.horizontalPage == .settings ? [] : f("settingsTab")
         default: return []
         }

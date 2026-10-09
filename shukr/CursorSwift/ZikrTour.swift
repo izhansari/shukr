@@ -658,6 +658,8 @@ struct ZikrTourSessionLayer: View {
 /// under it; the boxes' moves are practice only.
 struct CounterWelcome: View {
     let onBegin: () -> Void
+    /// "Let's begin" once this many are done (owner: "if they go ahead and satisfy one of them, they can skip forward").
+    var minimumDone = 1
     @Environment(\.circleTheme) private var theme
     @State private var done: Set<GestureHint.Kind> = []
     private typealias C = TourCopy.ZikrTour
@@ -703,8 +705,8 @@ struct CounterWelcome: View {
                     .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
-                .opacity(done.count == 3 ? 1 : 0.3)
-                .disabled(done.count < 3)
+                .opacity(done.count >= minimumDone ? 1 : 0.3)
+                .disabled(done.count < minimumDone)
                 .animation(.easeInOut(duration: 0.3), value: done.count)
                 .padding(.top, 30)
             }
