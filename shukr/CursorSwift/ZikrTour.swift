@@ -715,18 +715,25 @@ struct CounterWelcome: View {
 }
 
 /// One way to count, to try: its ghost finger looping inside, three of the move to fill it. Each right move flashes the
-/// border; three, and the border stays green, the caption crossed out. A stroke's three are in one touch (lifting early
-/// starts it again).
+/// border green; three, and the border stays green, the caption crossed out. A stroke's three are in one touch.
+/// While a finger is down the box presses in, the ghost steps aside and an arrow shows the next move; a wrong move
+/// flashes the border red and says why in a few words (owner: "it doesn't tell you if you're wrong … show me what to
+/// do now that I'm holding the box down … minimal").
 private struct PracticeBox: View {
     let kind: GestureHint.Kind
     let caption: String
     let onDone: () -> Void
     @State private var count = 0
-    @State private var flash = false
+    @State private var flash: Color?
+    @State private var why: String?
+    @State private var pressed = false
+    @State private var pressedAt = Date()
     // A drag's way, as the counter reads it: down past `step` counts, back up half of it re-arms.
     @State private var highest: CGFloat = 0
     @State private var lowest: CGFloat = 0
     @State private var armed = true
+    @State private var strokes = 0
+    @State private var whyTask: Task<Void, Never>?
     private static let needed = 3
     private static let step: CGFloat = 40
     private var isDone: Bool { count >= Self.needed }
@@ -739,7 +746,15 @@ private struct PracticeBox: View {
                 GestureHint(kind: kind, height: 150)
                     .frame(maxWidth: .infinity)
                     .clipped()
-                    .opacity(isDone ? 0.2 : 1)
+                    .opacity(isDone ? 0.2 : (pressed ? 0 : 1))
+                // Held: the next move.
+                if pressed, !isDone, kind != .tap {
+                    Image(systemName: armed ? "arrow.down" : "arrow.up")
+                        .font(.system(size: 30, weight: .medium))
+                        .foregroundStyle(Color.sage)
+                        .id(armed)
+                        .transition(.opacity)
+                }
                 if isDone {
                     Image(systemName: "checkmark")
                         .font(.system(size: 26, weight: .semibold))
@@ -748,7 +763,10 @@ private struct PracticeBox: View {
                 }
             }
             .frame(height: 170)
-            .overlay(box.strokeBorder(Color.sage.opacity(isDone || flash ? 1 : 0), lineWidth: flash ? 3 : 2))
+            .overlay(box.strokeBorder(border, lineWidth: flash != nil ? 3 : (isDone ? 2 : 1.5)))
+            .scaleEffect(pressed && !isDone ? 0.97 : 1)
+            .animation(.easeOut(duration: 0.15), value: pressed)
+            .animation(.easeOut(duration: 0.15), value: armed)
             .contentShape(box)
             .gesture(practice)
             .allowsHitTesting(!isDone)
@@ -758,59 +776,105 @@ private struct PracticeBox: View {
                 .foregroundStyle(isDone ? Color.sage : Color.primary.opacity(0.75))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 5) {
-                ForEach(0..<Self.needed, id: \.self) { i in
-                    Circle().fill(i < count ? Color.sage : Color.primary.opacity(0.15)).frame(width: 6, height: 6)
+            ZStack {
+                HStack(spacing: 5) {
+                    ForEach(0..<Self.needed, id: \.self) { i in
+                        Circle().fill(i < count ? Color.sage : Color.primary.opacity(0.15)).frame(width: 6, height: 6)
+                    }
+                }
+                .opacity(why == nil ? 1 : 0)
+                if let why {
+                    Text(why)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.red.opacity(0.85))
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .transition(.opacity)
                 }
             }
+            .frame(minHeight: 16)
         }
         .frame(maxWidth: .infinity)
         .animation(.easeOut(duration: 0.25), value: isDone)
+        .animation(.easeOut(duration: 0.2), value: why)
     }
 
+    /// Green flashing a right move, red a wrong one; green to stay once done; a quiet edge while held.
+    private var border: Color {
+        if let flash { return flash }
+        if isDone { return .sage }
+        return pressed ? Color.primary.opacity(0.3) : .clear
+    }
+
+    /// One gesture for every box: it sees the press, the way, and the lift, so a wrong move can be told apart.
     private var practice: some Gesture {
-        switch kind {
-        case .tap:
-            return AnyGesture(TapGesture().onEnded { hit() })
-        case .drag:
-            return AnyGesture(DragGesture(minimumDistance: 8).onEnded { v in
-                if v.translation.height > Self.step { hit() }
-            }.map { _ in () })
-        case .stroke:
-            return AnyGesture(DragGesture(minimumDistance: 0)
-                .onChanged { v in
-                    let y = v.translation.height
-                    highest = min(highest, y)
-                    lowest = max(lowest, y)
-                    if armed && y - highest > Self.step {
-                        armed = false
-                        lowest = y
-                        hit()
-                    } else if !armed && lowest - y > Self.step / 2 {
-                        armed = true
-                        highest = y
-                    }
+        DragGesture(minimumDistance: 0)
+            .onChanged { v in
+                if !pressed { pressed = true; pressedAt = Date(); strokes = 0 }
+                guard kind == .stroke else { return }
+                let y = v.translation.height
+                highest = min(highest, y)
+                lowest = max(lowest, y)
+                if armed && y - highest > Self.step {
+                    armed = false
+                    lowest = y
+                    strokes += 1
+                    hit()
+                } else if !armed && lowest - y > Self.step / 2 {
+                    armed = true
+                    highest = y
                 }
-                .onEnded { _ in
-                    highest = 0; lowest = 0; armed = true
-                    if !isDone { withAnimation(.easeOut(duration: 0.2)) { count = 0 } }   // lifted early: again
+            }
+            .onEnded { v in
+                let dx = v.translation.width, dy = v.translation.height
+                let moved = max(abs(dx), abs(dy)) > 10
+                let held = Date().timeIntervalSince(pressedAt)
+                pressed = false
+                highest = 0; lowest = 0; armed = true
+                guard !isDone else { return }
+                switch kind {
+                case .tap:
+                    if moved { wrong("Just tap") } else if held > 0.6 { wrong("A quick tap") } else { hit() }
+                case .drag:
+                    if !moved { wrong("Drag down") }
+                    else if dy < 0 { wrong("Down, not up") }
+                    else if dy < Self.step { wrong("A bit further") }
+                    else { hit() }
+                case .stroke:
+                    if strokes == 0 { wrong(moved ? "Down, then up" : "Hold and drag") }
+                    else { wrong("Keep your finger down"); withAnimation(.easeOut(duration: 0.2)) { count = 0 } }
                 }
-                .map { _ in () })
-        }
+            }
     }
 
     private func hit() {
         guard !isDone else { return }
-        withAnimation(.easeOut(duration: 0.15)) { count += 1; flash = true }
+        withAnimation(.easeOut(duration: 0.15)) { count += 1; flash = .sage; why = nil }
         if isDone {
             triggerSomeVibration(type: .success)
             onDone()
         } else {
             triggerSomeVibration(type: .light)
         }
+        clearFlash()
+    }
+
+    private func wrong(_ reason: String) {
+        triggerSomeVibration(type: .warning)
+        withAnimation(.easeOut(duration: 0.15)) { flash = .red; why = reason }
+        clearFlash()
+        whyTask?.cancel()
+        whyTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.8))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.3)) { why = nil }
+        }
+    }
+
+    private func clearFlash() {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(320))
-            withAnimation(.easeIn(duration: 0.3)) { flash = false }
+            withAnimation(.easeIn(duration: 0.3)) { flash = nil }
         }
     }
 }
