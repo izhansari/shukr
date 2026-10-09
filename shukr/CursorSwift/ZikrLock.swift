@@ -713,6 +713,22 @@ extension FirstZikr {
     }
 
     /// Its zikr (seeded as a built-in, or made now) and its task, 33 a day — made once; an existing one is reused.
+    /// Once: the recording into the built-in zikr when it was seeded without it (the built-ins v2 seed has no audio;
+    /// someone already past the lock never runs `ensureTask`). Left alone after that, so a memo removed stays removed.
+    @MainActor static func fillMemo(in context: ModelContext) {
+        let d = UserDefaults.standard
+        let filledKey = "firstZikr.memoFilled"
+        guard !d.bool(forKey: filledKey), let memo = bundledMemo else { return }
+        let key = BuiltInAzkar.key(name)
+        let azkar = (try? context.fetch(FetchDescriptor<MantraModel>())) ?? []
+        guard let zikr = azkar.first(where: { $0.builtInID == key }) else { return }
+        if zikr.audioData == nil {
+            zikr.audioData = memo
+            try? context.save()
+        }
+        d.set(true, forKey: filledKey)
+    }
+
     @MainActor static func ensureTask(in context: ModelContext) -> TaskModel? {
         let key = BuiltInAzkar.key(name)
         let azkar = (try? context.fetch(FetchDescriptor<MantraModel>())) ?? []
