@@ -122,7 +122,10 @@ struct ZikrLockCover: View {
     @State private var audio = ZikrAudio()
     @State private var breathe = false
     /// Which of the three first zikr is picked (the choice layouts, decision first-zikr-choice).
-    @State private var choice = 0
+    /// The first zikr picked on page 3's cards — none at first (owner: "make them all unselected, and then when they make
+    /// their selection, then show the task ring").
+    @State private var choice: Int?
+    private var picked: Int { choice ?? 0 }
     /// Page 3's circle opening into the session: everything else on the page fades, the circle stays.
     @State private var launching = false
     /// The practice page (the three ways to count), between page 2 and the first zikr (owner: "make this page come before
@@ -198,7 +201,7 @@ struct ZikrLockCover: View {
                     CounterWelcome(buttonTitle: FirstZikrChoiceLayout.current == nil ? "Continue to my zikr"
                                                                                       : "Continue to pick my zikr") {
                         toFirstZikr()
-                        withAnimation(.easeInOut(duration: 0.45)) { practicing = false }
+                        withAnimation(.easeInOut(duration: 0.8)) { practicing = false }
                     }
                     .transition(.opacity)
                 }
@@ -388,7 +391,7 @@ struct ZikrLockCover: View {
         Button {
             triggerSomeVibration(type: .medium)
             run?.cancel()
-            withAnimation(.easeInOut(duration: 0.5)) { practicing = true }
+            withAnimation(.easeInOut(duration: 0.8)) { practicing = true }   // as page 2 → page 3 went
         } label: {
             // Unlock's armed look (owner: the bordered button from page 1's second tap).
             HStack(spacing: 6) {
@@ -497,7 +500,8 @@ struct ZikrLockCover: View {
                     ForEach(FirstZikr.options.indices, id: \.self) { i in
                         optionCard(FirstZikr.options[i], picked: choice == i) {
                             triggerSomeVibration(type: .light)
-                            withAnimation(.easeInOut(duration: 0.25)) { choice = i }
+                            // The first pick brings the task in at the pages' pace; later picks just switch.
+                            withAnimation(choice == nil ? .easeInOut(duration: 0.9) : .easeInOut(duration: 0.25)) { choice = i }
                         }
                     }
                 }
@@ -505,16 +509,17 @@ struct ZikrLockCover: View {
             .opacity(thirdShown >= 1 && !launching ? 1 : 0)
             .offset(y: thirdShown >= 1 || reduceMotion ? 0 : 6)
             Spacer(minLength: 12)
-            choiceArrow.opacity(thirdShown >= 3 && !launching ? 1 : 0)
+            choiceArrow.opacity(thirdShown >= 3 && choice != nil && !launching ? 1 : 0)
             Spacer(minLength: 12)
             VStack(spacing: 0) {
                 sectionLabel("Your daily task").opacity(launching ? 0 : 1)
                 choiceRing.padding(.top, 6)
-                taskLine(FirstZikr.options[choice].goal).padding(.top, 8).opacity(launching ? 0 : 1)
+                taskLine(FirstZikr.options[picked].goal).padding(.top, 8).opacity(launching ? 0 : 1)
             }
-            .opacity(thirdShown >= 3 ? 1 : 0)
+            .opacity(thirdShown >= 3 && choice != nil ? 1 : 0)
+            .allowsHitTesting(choice != nil)
             Spacer(minLength: 12)
-            prompt
+            prompt.opacity(choice != nil ? 1 : 0)
         }
         .padding(.top, 70)
     }
@@ -572,7 +577,7 @@ struct ZikrLockCover: View {
             Spacer(minLength: 0)
             sectionLabel("Choose your first zikr")
                 .opacity(thirdShown >= 1 && !launching ? 1 : 0)
-            TabView(selection: $choice) {
+            TabView(selection: Binding(get: { picked }, set: { choice = $0 })) {
                 ForEach(FirstZikr.options.indices, id: \.self) { i in
                     optionWell(FirstZikr.options[i])
                         .padding(.horizontal, 2)
@@ -586,14 +591,14 @@ struct ZikrLockCover: View {
             .opacity(thirdShown >= 1 && !launching ? 1 : 0)
             HStack(spacing: 7) {
                 ForEach(FirstZikr.options.indices, id: \.self) { i in
-                    Circle().fill(choice == i ? Color.sage : Color.primary.opacity(0.18)).frame(width: 7, height: 7)
+                    Circle().fill(picked == i ? Color.sage : Color.primary.opacity(0.18)).frame(width: 7, height: 7)
                 }
             }
             .padding(.top, 4)
             .opacity(thirdShown >= 1 && !launching ? 1 : 0)
             sectionLabel("Your daily task").padding(.top, 16).opacity(thirdShown >= 3 && !launching ? 1 : 0)
             choiceRing.padding(.top, 2).opacity(thirdShown >= 3 ? 1 : 0)
-            taskLine(FirstZikr.options[choice].goal).padding(.top, 6).opacity(thirdShown >= 3 && !launching ? 1 : 0)
+            taskLine(FirstZikr.options[picked].goal).padding(.top, 6).opacity(thirdShown >= 3 && !launching ? 1 : 0)
             Spacer(minLength: 0)
             prompt
         }
@@ -637,14 +642,14 @@ struct ZikrLockCover: View {
 
     /// The picked zikr's circle (the trial layouts draw it from the option; the real task is made on start).
     private var choiceRing: some View {
-        let o = FirstZikr.options[choice]
+        let o = FirstZikr.options[picked]
         return Button(action: addToWheel) {
             ZikrCircleFace(title: o.taskName, icon: nil, subtitle: "0 of \(o.goal)", ring: .progress(0),
                            mantraLine: o.sayLines.replacingOccurrences(of: "\n", with: " "))
                 .contentShape(Circle())
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ringFrame = Self.drawn($0) }
                 .scaleEffect(breathe ? 1.025 : 1)
-                .id(choice)
+                .id(picked)
                 .transition(.opacity)
         }
         .buttonStyle(.plain)
@@ -764,6 +769,7 @@ struct ZikrLockCover: View {
                 thirdShown = 0
                 launching = false
                 practicing = false
+                choice = nil
                 launchOffset = .zero
                 launchScale = 1
                 unlockStage = 0
@@ -932,14 +938,14 @@ struct ZikrLockCover: View {
         // Page 3 first, then the task: making it saves, and a save can draw a frame in between — with page 3 not on yet,
         // page 2 came back for a moment on the way from the practice.
         withAnimation(.easeInOut(duration: 0.8)) { third = true }
-        firstTask = FirstZikr.ensureTask(in: context)
+        if FirstZikrChoiceLayout.current == nil { firstTask = FirstZikr.ensureTask(in: context) }
         let parts = 4
         if reduceMotion {
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) { thirdShown = parts }
             return
         }
         run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(350))   // the practice's fade, then page 3 straight on
+            try? await Task.sleep(for: .milliseconds(700))
             for i in 1...parts {
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.9)) { thirdShown = i }
@@ -961,7 +967,13 @@ struct ZikrLockCover: View {
     /// it opens — "Zikr is unlocked" — then the page fades away onto the wheel, their task in the middle where the circle
     /// was, the bars back.
     private func addToWheel() {
-        guard let task = firstTask, thirdShown >= 1, !launching else { return }
+        guard thirdShown >= 1, !launching else { return }
+        // A pick: its task now (the same zikr's task if they have one).
+        if FirstZikrChoiceLayout.current != nil {
+            guard let choice else { return }
+            firstTask = FirstZikr.ensureTask(in: context, option: FirstZikr.options[choice])
+        }
+        guard let task = firstTask else { return }
         triggerSomeVibration(type: .medium)
         ZikrAudio.stopAll()
         run?.cancel()
@@ -1052,6 +1064,8 @@ struct ZikrLockCover: View {
 /// the translation's bracketed notes; the narration is sunnah.com's English of Sahih al-Bukhari 7405 with its one
 /// bracketed note left out and the hand-span lines skipped.
 struct FirstZikrOption {
+    /// The built-in zikr it's a task for (BuiltInAzkar's name).
+    let zikrName: String
     let taskName: String
     let goal: Int
     let arabicLines: String
@@ -1064,8 +1078,9 @@ struct FirstZikrOption {
 /// Page 3 with a choice of three, while the owner looks (decision first-zikr-choice; `-firstZikrChoice cards|swipe`).
 enum FirstZikrChoiceLayout: String {
     case cards, swipe
+    /// The cards unless the dev picker says otherwise ("one" = the one-zikr page).
     static var current: FirstZikrChoiceLayout? {
-        UserDefaults.standard.string(forKey: "firstZikrChoice").flatMap(FirstZikrChoiceLayout.init(rawValue:))
+        FirstZikrChoiceLayout(rawValue: UserDefaults.standard.string(forKey: "firstZikrChoice") ?? "cards")
     }
 }
 
@@ -1119,14 +1134,14 @@ extension FirstZikr {
     /// The three to choose from (the choice layouts): forgiveness, blessings on the Prophet ﷺ, good deeds — built-ins, their
     /// benefit from their notes.
     static let options: [FirstZikrOption] = [
-        FirstZikrOption(taskName: taskName, goal: goal, arabicLines: arabicLines, sayLines: sayLines,
+        FirstZikrOption(zikrName: name, taskName: taskName, goal: goal, arabicLines: arabicLines, sayLines: sayLines,
                         meaningLines: meaningLines, benefit: "Sins forgiven, even if like the foam of the sea",
                         source: "Sahih al-Bukhari 6405"),
-        FirstZikrOption(taskName: "Ten Blessings", goal: 100, arabicLines: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
+        FirstZikrOption(zikrName: "Allahumma salli 'ala Muhammad", taskName: "Ten Blessings", goal: 100, arabicLines: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
                         sayLines: "Allahumma salli 'ala Muhammad", meaningLines: "O Allah, send blessings upon Muhammad.",
                         benefit: "For each one, Allah sends ten blessings on you", source: "Sahih Muslim 408"),
         // Owner, 2026-10-09: SubhanAllah in place of Astaghfirullah ("easy and has clear benefit with authentic source").
-        FirstZikrOption(taskName: "A Thousand Good Deeds", goal: 100, arabicLines: "سُبْحَانَ ٱللَّٰهِ",
+        FirstZikrOption(zikrName: "Subhanallah", taskName: "A Thousand Good Deeds", goal: 100, arabicLines: "سُبْحَانَ ٱللَّٰهِ",
                         sayLines: "SubhanAllah", meaningLines: "Glory be to Allah.",
                         benefit: "1,000 good deeds written, or 1,000 sins wiped away", source: "Sahih Muslim 2698"),
     ]
@@ -1162,26 +1177,31 @@ extension FirstZikr {
         if allFound { d.set(true, forKey: filledKey) }
     }
 
-    @MainActor static func ensureTask(in context: ModelContext) -> TaskModel? {
-        let key = BuiltInAzkar.key(name)
+    /// Their first task: the option's built-in zikr (made only if the seed hasn't run yet) with its recording when one
+    /// ships, and a task for it — the zikr's own if it has one, else a new one with the option's goal and English name.
+    @MainActor static func ensureTask(in context: ModelContext, option: FirstZikrOption? = nil) -> TaskModel? {
+        let o = option ?? options[0]
+        let key = BuiltInAzkar.key(o.zikrName)
         let azkar = (try? context.fetch(FetchDescriptor<MantraModel>())) ?? []
         let zikr: MantraModel
         if let found = azkar.first(where: { $0.builtInID == key }) ?? azkar.first(where: { BuiltInAzkar.key($0.name) == key }) {
             zikr = found
         } else {
-            // Seeded as a built-in already (BuiltInAzkar); made here only if that hasn't run yet.
-            let note = BuiltInAzkar.all.first { BuiltInAzkar.key($0.name) == key }?.note ?? ""
-            zikr = MantraModel(name: name, fullText: arabic, notes: note)
+            let seed = BuiltInAzkar.all.first { BuiltInAzkar.key($0.name) == key }
+            zikr = MantraModel(name: o.zikrName, fullText: seed?.arabic ?? o.arabicLines, notes: seed?.note ?? "")
             zikr.builtInID = key
             context.insert(zikr)
         }
-        if zikr.audioData == nil, let memo = bundledMemo { zikr.audioData = memo }
+        if zikr.audioData == nil, let memo = bundledMemos.first(where: { BuiltInAzkar.key($0.name) == key }),
+           let data = Bundle.main.url(forResource: memo.resource, withExtension: "m4a").flatMap({ try? Data(contentsOf: $0) }) {
+            zikr.audioData = data
+        }
         if let task = zikr.tasks.first {
             try? context.save()
             return task
         }
-        let task = TaskModel(mantra: zikr, isCountMode: true, goal: goal, sortOrder: TaskModel.nextSortOrder(in: context))
-        task.customName = taskName
+        let task = TaskModel(mantra: zikr, isCountMode: true, goal: o.goal, sortOrder: TaskModel.nextSortOrder(in: context))
+        task.customName = o.taskName
         context.insert(task)
         try? context.save()
         return task

@@ -5,7 +5,7 @@ import WidgetKit
 
 struct SettingsView: View {
     #if DEBUG
-    @AppStorage("firstZikrChoice") private var firstZikrChoice = ""
+    @AppStorage("firstZikrChoice") private var firstZikrChoice = "cards"
     #endif
     @EnvironmentObject var viewModel: PrayerViewModel
     /// The header's back chevron. Passed in rather than read from `sharedState`, so this big
@@ -403,7 +403,7 @@ struct SettingsView: View {
                         }
                         // Page 3's trial layouts, to see on the phone (decision first-zikr-choice).
                         Picker(selection: $firstZikrChoice) {
-                            Text("One zikr").tag("")
+                            Text("One zikr").tag("one")
                             Text("Choose: cards").tag("cards")
                             Text("Choose: swipe").tag("swipe")
                         } label: {

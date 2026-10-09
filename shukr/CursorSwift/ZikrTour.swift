@@ -738,9 +738,11 @@ struct CounterWelcome: View {
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .task {
             if reduceMotion { shown = 4; return }
+            // At the pages' pace (page 3's parts): after the page before has gone, a part every 0.9 s, each 0.9 s in.
+            try? await Task.sleep(for: .milliseconds(700))
             for row in 1...4 {
-                try? await Task.sleep(for: .milliseconds(row == 1 ? 150 : 380))
-                withAnimation(.easeOut(duration: 0.5)) { shown = row }
+                withAnimation(.easeInOut(duration: 0.9)) { shown = row }
+                try? await Task.sleep(for: .milliseconds(900))
             }
         }
     }
