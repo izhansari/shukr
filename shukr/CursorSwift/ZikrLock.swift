@@ -444,7 +444,7 @@ struct ZikrLockCover: View {
             choiceArrow.padding(.top, 12).opacity(thirdShown >= 3 ? 1 : 0)
             sectionLabel("Your daily task").padding(.top, 10).opacity(thirdShown >= 3 ? 1 : 0)
             choiceRing.padding(.top, 2).opacity(thirdShown >= 3 ? 1 : 0)
-            taskLine.padding(.top, 6).opacity(thirdShown >= 3 ? 1 : 0)
+            taskLine(FirstZikr.options[choice].goal).padding(.top, 6).opacity(thirdShown >= 3 ? 1 : 0)
             Spacer(minLength: 0)
             prompt
         }
@@ -464,6 +464,9 @@ struct ZikrLockCover: View {
                         .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundStyle(Color.primary.opacity(0.55))
                         .lineLimit(2)
+                    Text(o.source.uppercased())
+                        .font(.system(size: 9, weight: .semibold, design: .rounded)).tracking(1)
+                        .foregroundStyle(Color.primary.opacity(0.35))
                     // The picked one opens: its Arabic and what it means (owner: "make sure they know the translation").
                     if picked {
                         VStack(alignment: .leading, spacing: 4) {
@@ -522,7 +525,7 @@ struct ZikrLockCover: View {
             .opacity(thirdShown >= 1 ? 1 : 0)
             sectionLabel("Your daily task").padding(.top, 16).opacity(thirdShown >= 3 ? 1 : 0)
             choiceRing.padding(.top, 2).opacity(thirdShown >= 3 ? 1 : 0)
-            taskLine.padding(.top, 6).opacity(thirdShown >= 3 ? 1 : 0)
+            taskLine(FirstZikr.options[choice].goal).padding(.top, 6).opacity(thirdShown >= 3 ? 1 : 0)
             Spacer(minLength: 0)
             prompt
         }
@@ -568,7 +571,7 @@ struct ZikrLockCover: View {
     private var choiceRing: some View {
         let o = FirstZikr.options[choice]
         return Button(action: startCounting) {
-            ZikrCircleFace(title: o.taskName, icon: nil, subtitle: "0 of \(FirstZikr.goal)", ring: .progress(0),
+            ZikrCircleFace(title: o.taskName, icon: nil, subtitle: "0 of \(o.goal)", ring: .progress(0),
                            mantraLine: o.sayLines.replacingOccurrences(of: "\n", with: " "))
                 .contentShape(Circle())
                 .scaleEffect(breathe ? 1.025 : 1)
@@ -637,8 +640,10 @@ struct ZikrLockCover: View {
     }
 
     /// The circle explained in one line: it's a daily task we made, and how it fills.
-    private var taskLine: some View {
-        Text(ZikrLockWords.firstTaskLine)
+    private var taskLine: some View { taskLine(FirstZikr.goal) }
+
+    private func taskLine(_ goal: Int) -> some View {
+        Text(ZikrLockWords.firstTaskLine(goal))
             .font(.system(size: 15, weight: .light, design: .rounded))
             .foregroundStyle(Color.primary.opacity(0.65))
             .multilineTextAlignment(.center)
@@ -936,6 +941,7 @@ struct ZikrLockCover: View {
 /// bracketed note left out and the hand-span lines skipped.
 struct FirstZikrOption {
     let taskName: String
+    let goal: Int
     let arabicLines: String
     let sayLines: String
     let meaningLines: String
@@ -987,7 +993,7 @@ enum ZikrLockWords {
     /// The narration's thread carried on (it ends on Him coming running): remembering Him, then what the tour will do.
     static let firstStep = "So remember Him often, however small."
     /// Page 3, under the circle: what the circle is, said once.
-    static let firstTaskLine = "We set it up for you: \(FirstZikr.goal) times a day.\nThe circle fills as you count."
+    static func firstTaskLine(_ goal: Int) -> String { "We set it up for you: \(goal) times a day.\nThe circle fills as you count." }
     static let bridge = "We'll set up one daily zikr and count it together. It takes about two minutes."
     /// Their first intention, answering the verse's call (owner, 2026-10-08: "a stronger button … the user making their
     /// first intention or promise").
@@ -998,18 +1004,19 @@ enum ZikrLockWords {
 extension FirstZikr {
     static let memoResource = "first-zikr"
 
-    /// The three to choose from (the choice layouts): praise, blessings on the Prophet ﷺ, forgiveness — built-ins, their
+    /// The three to choose from (the choice layouts): forgiveness, blessings on the Prophet ﷺ, good deeds — built-ins, their
     /// benefit from their notes.
     static let options: [FirstZikrOption] = [
-        FirstZikrOption(taskName: taskName, arabicLines: arabicLines, sayLines: sayLines,
-                        meaningLines: meaningLines, benefit: "Sins forgiven, even if like the foam of the sea",
+        FirstZikrOption(taskName: taskName, goal: goal, arabicLines: arabicLines, sayLines: sayLines,
+                        meaningLines: meaningLines, benefit: "100 a day: sins forgiven, even if like the foam of the sea",
                         source: "Sahih al-Bukhari 6405"),
-        FirstZikrOption(taskName: "Ten Blessings", arabicLines: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
+        FirstZikrOption(taskName: "Ten Blessings", goal: 33, arabicLines: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
                         sayLines: "Allahumma salli 'ala Muhammad", meaningLines: "O Allah, send blessings upon Muhammad.",
-                        benefit: "Send one blessing, and Allah sends ten on you", source: "Sahih Muslim 408"),
-        FirstZikrOption(taskName: "Seeking Forgiveness", arabicLines: "أَسْتَغْفِرُ ٱللَّٰهَ",
-                        sayLines: "Astaghfirullah", meaningLines: "I seek Allah’s forgiveness.",
-                        benefit: "The Prophet ﷺ said it more than 70 times a day", source: "Sahih al-Bukhari 6307"),
+                        benefit: "For each one, Allah sends ten blessings on you", source: "Sahih Muslim 408"),
+        // Owner, 2026-10-09: SubhanAllah in place of Astaghfirullah ("easy and has clear benefit with authentic source").
+        FirstZikrOption(taskName: "A Thousand Good Deeds", goal: 100, arabicLines: "سُبْحَانَ ٱللَّٰهِ",
+                        sayLines: "SubhanAllah", meaningLines: "Glory be to Allah.",
+                        benefit: "100 a day: 1,000 good deeds written, or 1,000 sins wiped away", source: "Sahih Muslim 2698"),
     ]
     /// How to say it, one phrase a line (under the Arabic on page 3).
     static let sayLines = "SubhanAllahi wa bihamdihi"
