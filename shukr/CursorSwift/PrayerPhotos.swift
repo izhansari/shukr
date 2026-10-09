@@ -130,9 +130,12 @@ enum PrayerPhotos {
         let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
         let symbols = ["sunrise.fill", "sun.max.fill", "cloud.sun.fill", "sunset.fill", "moon.stars.fill"]
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
-        for d in 0..<21 {
+        // `-demoMemoriesDays N`: that many days back (fewer photos a day past three weeks), else three weeks.
+        let args = ProcessInfo.processInfo.arguments
+        let days = args.firstIndex(of: "-demoMemoriesDays").flatMap { args.indices.contains($0 + 1) ? Int(args[$0 + 1]) : nil } ?? 21
+        for d in 0..<days {
             guard let day = Calendar.current.date(byAdding: .day, value: -d, to: Date()) else { continue }
-            for (i, name) in names.enumerated() where Int.random(in: 0..<10) < 6 {
+            for (i, name) in names.enumerated() where Int.random(in: 0..<10) < (d < 21 ? 6 : 2) {
                 let key = PrayerPhotos.key(dayKey: f.string(from: day), name: name)
                 guard !has(key) else { continue }
                 let hue = Double.random(in: 0...1)

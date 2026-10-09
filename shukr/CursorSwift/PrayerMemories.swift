@@ -620,11 +620,16 @@ struct MemoriesPage: View {
                         }
                     }
                 }
+                // Named by its month too: with only the headers named, a calendar scrolled past its header left the
+                // top unnamed, and a switch to another level then opened at today (owner: "it takes me to say oct 7
+                // 2026 or something random"). `go` reads the month off the id's first 7 characters.
+                .id("\(month.id)~days")
             }
             // Under today's month, where the page opens: earlier years' photos from today's date.
             if !filtering {
                 ForEach(onThisDay, id: \.first?.key) { dayPhotos in
                     onThisDayCard(dayPhotos).padding(.top, 6)
+                        .id("\(months.last?.id ?? "")~onthisday~\(dayPhotos.first?.key ?? "")")
                 }
             }
         }
