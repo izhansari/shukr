@@ -390,6 +390,15 @@ struct ZikrLockCover: View {
             firstRing
                 .scaleEffect(0.8)
                 .frame(height: 166)
+                // The tour's thumbprint tapping the circle (owner: "a ghost tap graphic on the task ring"), off the
+                // name, with the prompt.
+                .overlay {
+                    GeometryReader { geo in
+                        TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 48,
+                                                                              y: geo.size.height / 2 + 44)))
+                    }
+                    .opacity(thirdShown >= 4 ? 1 : 0)
+                }
                 .padding(.top, 2)
                 .opacity(thirdShown >= 3 ? 1 : 0)
                 .scaleEffect(thirdShown >= 3 || reduceMotion ? 1 : 0.94)
