@@ -49,7 +49,7 @@ import SwiftData
     /// The session's pace, seconds a count.
     private(set) var pace: Double?
     /// How the session went (the results' streak line says it as it is — finished early, no streak yet).
-    struct Outcome { let counted: Int; let goal: Int; let streak: Int; let met: Bool }
+    struct Outcome { let counted: Int; let goal: Int; let streak: Int; let met: Bool; let task: String }
     private(set) var outcome: Outcome?
     /// Bumped to close the page the tour is on (Your tasks, History, Azkar).
     private(set) var popPage = 0
@@ -240,8 +240,12 @@ import SwiftData
         pace = session.avgTimePerClick > 0 ? session.avgTimePerClick : nil
         let streak = session.task?.streak()
         let met = (streak?.keptToday ?? false) || (session.targetCount > 0 && session.totalCount >= session.targetCount)
-        outcome = Outcome(counted: session.totalCount, goal: session.targetCount,
-                          streak: max(streak?.current ?? 0, met ? 1 : 0), met: met)
+        // Today's count for the task (what its ring shows), not just this session's.
+        let dayStart = PrayerDay.sessionDayStart()
+        let today = session.task.map { $0.progress(in: $0.sessions.filter { $0.startTime >= dayStart }).count } ?? session.totalCount
+        outcome = Outcome(counted: max(today, session.totalCount), goal: session.targetCount,
+                          streak: max(streak?.current ?? 0, met ? 1 : 0), met: met,
+                          task: session.task?.title ?? "Your zikr")
         go(.results)
     }
     func resultsDone() { if step == .results { complete() } }
@@ -371,8 +375,8 @@ import SwiftData
             default: C.goTodo(countGoal)
         }
         let countNeeded = switch step { case .taps, .drags, .stroke: 3; case .keepGoing: countGoal; default: 0 }
-        let streakText = outcome.map { C.streakLead(counted: $0.counted, goal: $0.goal, streak: $0.streak, met: $0.met) }
-            ?? C.streakLead(counted: 0, goal: 0, streak: 0, met: false)
+        let streakText = outcome.map { C.streakLead(counted: $0.counted, goal: $0.goal, streak: $0.streak, met: $0.met, task: $0.task) }
+            ?? "Every day you meet your goal, your streak grows."
         let streakLead = streakText   // the results page shows the pace itself
         let timeLead = step == .yourTasks ? C.tasksLead : skippedCount ? "\(C.reuseDoneLead) \(C.timeLead)" : C.timeLead
         let whereLead: String = switch step {
@@ -400,7 +404,7 @@ import SwiftData
         ].compactMap { $0 }
         // Reused task: the kinds line shows straight away, as done.
         if reused, step >= .start, let i = sections.firstIndex(where: { $0.id == "zt.kinds" }) { sections[i].done = true }
-        if step == .done { sections.append(TourSection(id: "zt.done", note: C.doneLine(met: outcome?.met ?? true))) }
+        if step == .done { sections.append(TourSection(id: "zt.done", note: C.doneLine(met: outcome?.met ?? true, counted: outcome?.counted ?? 0, goal: outcome?.goal ?? 0))) }
         let units = 6.0
         let finished = Double([Step.kinds, .review, .keepGoing, .results, .yourTasks, .azkarPage].filter { $0 < step }.count)
         let primary: String? = switch step {

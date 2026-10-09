@@ -197,14 +197,14 @@ enum TourCopy {
         static func goTodo(_ goal: Int) -> String { "Reach \(goal)" }
 
         static let streakStep = "Your streak and pace"
-        /// The results' line, as it went (owner: "user can finish early so write that streak phrase dynamically").
-        static func streakLead(counted: Int, goal: Int, streak: Int, met: Bool) -> String {
+        /// The results' line, as it went (owner: "user can finish early so write that streak phrase dynamically"; then
+        /// "they don't gotta do the 100. they can end it and it'll show how we save tasks with progress in their tab").
+        static func streakLead(counted: Int, goal: Int, streak: Int, met: Bool, task: String) -> String {
             if met {
                 return streak <= 1 ? "Goal met — that’s day 1 of your streak. Every day you meet it, your streak grows."
                                    : "Goal met — that’s day \(streak) of your streak. Every day you meet it, it grows."
             }
-            guard goal > 0 else { return "Every day you meet your goal, your streak grows." }
-            return "You counted \(counted) of \(goal). Reach \(goal) in a day to start your streak — every day you do, it grows."
+            return "\(counted) done — \(task) is waiting on your wheel to finish today."
         }
         static func paceLine(_ seconds: Double) -> String {
             "Your pace: \(String(format: "%.1f", seconds))s a count — shukr learns it as you go."
@@ -224,9 +224,9 @@ enum TourCopy {
         static let azkarTodo = "Open Azkar, top right"
         static let azkarPageLead = "The built-in ones, and your own — ＋ adds one."
 
-        static func doneLine(met: Bool) -> String {
+        static func doneLine(met: Bool, counted: Int, goal: Int) -> String {
             met ? "That’s your first day of remembrance. Your zikr will be waiting for you tomorrow."
-                : "That’s your first remembrance today. Your zikr stays on the wheel for today."
+                : "Your \(counted) are saved — its ring shows \(counted) of \(goal). Finish it here anytime today."
         }
         static let doneButton = "Done"
     }

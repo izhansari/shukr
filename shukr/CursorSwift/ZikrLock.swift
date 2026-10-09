@@ -125,9 +125,15 @@ struct ZikrLockCover: View {
     @State private var choice = 0
     /// Page 3's circle opening into the session: everything else on the page fades, the circle stays.
     @State private var launching = false
-    /// Page 3's circle tapped: the practice page (the three ways to count), before the session (owner: "make this page
-    /// come before actually entering the active session").
+    /// The practice page (the three ways to count), between page 2 and the first zikr (owner: "make this page come before
+    /// actually entering the active session … move the counting practice before the zikr selection").
     @State private var practicing = false
+    /// Page 3's circle on its way to the wheel's centre (where every task's session opens out of its ring): moved there
+    /// and grown to the wheel's size, then the wheel's own handoff (SessionHandoff) takes it.
+    @State private var launchOffset: CGSize = .zero
+    @State private var launchScale: CGFloat = 1
+    /// The circle's place on screen (as drawn, 0.8 ×).
+    @State private var ringFrame: CGRect = .zero
     @State private var armed = false
     @State private var token = 0
     @State private var armedWidth: CGFloat = 0
@@ -164,7 +170,7 @@ struct ZikrLockCover: View {
                     verse
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { verseHeight = $0 }
                         .offset(y: stage <= 1 ? fromMiddle : 0)
-                        .opacity(stage >= 1 && !leaving && !third ? 1 : 0)
+                        .opacity(stage >= 1 && !leaving && !third && !practicing ? 1 : 0)
                     ZStack(alignment: .top) {
                         pageOne
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageOneHeight = $0 }
@@ -172,7 +178,7 @@ struct ZikrLockCover: View {
                             .allowsHitTesting(!lock.focus && !leaving)
                         pageTwo
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageTwoHeight = $0 }
-                            .opacity(lock.focus && !leaving && !third ? 1 : 0)
+                            .opacity(lock.focus && !leaving && !third && !practicing ? 1 : 0)
                             .allowsHitTesting(false)
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
@@ -183,30 +189,15 @@ struct ZikrLockCover: View {
                 if third {
                     pageThree
                         .padding(.horizontal, 28)
-                        .opacity(leaving || practicing ? 0 : 1)
-                        .allowsHitTesting(!practicing)
+                        .opacity(leaving ? 0 : 1)
                         .transition(.opacity)
                 }
                 if practicing {
-                    CounterWelcome(onBegin: beginCounting)
-                        .opacity(launching ? 0 : 1)
-                        .allowsHitTesting(!launching)
-                        .transition(.opacity)
-                }
-                // "Let's begin": the task's circle comes in where a wheel task sits when it opens (the screen's centre),
-                // and the wheel's own handoff opens the session out of it.
-                if launching {
-                    GeometryReader { g in
-                        let screen = UIScreen.main.bounds
-                        let origin = g.frame(in: .global).origin
-                        ZikrCircleFace(title: firstTask?.title ?? FirstZikr.taskName, icon: nil,
-                                       subtitle: "0 of \(firstTask?.goal ?? FirstZikr.goal)", ring: .progress(0),
-                                       mantraLine: firstTask?.mantraLine)
-                            .position(x: screen.midX - origin.x, y: screen.midY - origin.y)
+                    CounterWelcome {
+                        withAnimation(.easeInOut(duration: 0.45)) { practicing = false }
+                        toFirstZikr()
                     }
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                    .transition(.opacity)
                 }
 
                 if lock.focus { close.opacity(launching ? 0 : 1) }
@@ -357,12 +348,13 @@ struct ZikrLockCover: View {
 
     private var pageTwoDone: Bool { linesShown >= ZikrLockWords.narration.count + 4 }
 
-    /// Begin → the Zikr Tour, once everything here has faded.
+    /// Begin → the practice (the three ways to count), then their first zikr (owner: "move the counting practice before
+    /// the zikr selection").
     private var begin: some View {
         Button {
             triggerSomeVibration(type: .medium)
             run?.cancel()
-            toFirstZikr()
+            withAnimation(.easeInOut(duration: 0.5)) { practicing = true }
         } label: {
             // Unlock's armed look (owner: the bordered button from page 1's second tap).
             HStack(spacing: 6) {
@@ -381,8 +373,8 @@ struct ZikrLockCover: View {
         }
         .buttonStyle(.plain)
         .padding(.bottom, 24)
-        .opacity(lock.focus && !leaving && !third && pageTwoDone ? 1 : 0)
-        .allowsHitTesting(lock.focus && !leaving && !third && pageTwoDone)
+        .opacity(lock.focus && !leaving && !third && !practicing && pageTwoDone ? 1 : 0)
+        .allowsHitTesting(lock.focus && !leaving && !third && !practicing && pageTwoDone)
     }
 
     /// Page 3: the first zikr, ready (owner: "they don't know what a task is … they might not even know this zikr …
@@ -431,6 +423,8 @@ struct ZikrLockCover: View {
                 .opacity(thirdShown >= 3 && !launching ? 1 : 0)
             firstRing
                 .scaleEffect(0.8)
+                .scaleEffect(launchScale)
+                .offset(launchOffset)
                 .frame(height: 166)
                 // The tour's thumbprint tapping the circle (owner: "a ghost tap graphic on the task ring"), off the
                 // name, with the prompt.
@@ -614,12 +608,15 @@ struct ZikrLockCover: View {
             ZikrCircleFace(title: o.taskName, icon: nil, subtitle: "0 of \(o.goal)", ring: .progress(0),
                            mantraLine: o.sayLines.replacingOccurrences(of: "\n", with: " "))
                 .contentShape(Circle())
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ringFrame = Self.drawn($0) }
                 .scaleEffect(breathe ? 1.025 : 1)
                 .id(choice)
                 .transition(.opacity)
         }
         .buttonStyle(.plain)
         .scaleEffect(0.8)
+        .scaleEffect(launchScale)
+        .offset(launchOffset)
         .frame(height: 166)
         .overlay {
             GeometryReader { geo in
@@ -644,6 +641,7 @@ struct ZikrLockCover: View {
                            mantraLine: firstTask?.mantraLine,
                            note: firstTask?.estimateNote(TaskProgress(count: 0, seconds: 0)))
                 .contentShape(Circle())
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ringFrame = Self.drawn($0) }
                 .scaleEffect(breathe ? 1.025 : 1)
         }
         .buttonStyle(.plain)
@@ -732,6 +730,8 @@ struct ZikrLockCover: View {
                 thirdShown = 0
                 launching = false
                 practicing = false
+                launchOffset = .zero
+                launchScale = 1
             }
         } label: {
             Image(systemName: "xmark")
@@ -919,31 +919,32 @@ struct ZikrLockCover: View {
     /// starts, and the session opens out of the circle's place (ZikrFocus.start(from:) → the wheel's SessionHandoff);
     /// the page stays under the session until it covers it, then goes without a trace.
     private func startCounting() {
-        guard firstTask != nil, thirdShown >= 1, !practicing else { return }
+        guard let task = firstTask, thirdShown >= 1, !launching else { return }
         triggerSomeVibration(type: .medium)
         ZikrAudio.stopAll()
         run?.cancel()
-        breathe = false
-        withAnimation(.easeInOut(duration: 0.45)) { practicing = true }
-    }
-
-    /// "Let's begin" on the practice page: it fades, the circle comes in at the centre, the tour starts at counting
-    /// (the three ways done here), and the session opens out of the circle as a wheel task's does (ZikrFocus.start(from:)
-    /// → SessionHandoff); the lock page stays under the session until it covers it.
-    private func beginCounting() {
-        guard let task = firstTask, !launching else { return }
-        triggerSomeVibration(type: .medium)
         lock.handingOff = true
-        withAnimation(.easeInOut(duration: 0.4)) { launching = true }
-        let id = task.id.uuidString
+        // To the centre, where a wheel task sits when it opens (the counter's ring is centred on the whole screen),
+        // at the wheel's size; the rest of the page goes.
         let screen = UIScreen.main.bounds
-        let face = CGRect(x: screen.midX - 100, y: screen.midY - 100, width: 200, height: 200)
+        let centre = CGPoint(x: screen.midX, y: screen.midY)
+        let from = ringFrame
+        withAnimation(CircleMotion.wheelCentre) {
+            launching = true
+            breathe = false
+            if from.width > 100 {
+                launchOffset = CGSize(width: centre.x - from.midX, height: centre.y - from.midY)
+                launchScale = 1 / 0.8
+            }
+        }
+        let id = task.id.uuidString
+        let face = CGRect(x: centre.x - 100, y: centre.y - 100, width: 200, height: 200)
         run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(700))
+            try? await Task.sleep(for: .milliseconds(550))
             guard !Task.isCancelled else { return }
             ZikrTour.shared.startFirst(task)
-            ZikrTour.shared.practiced()
-            ZikrFocus.start(id, resume: false, from: face)
+            ZikrTour.shared.practiced()   // the three ways were practised before page 3: straight to counting
+            ZikrFocus.start(id, resume: false, from: from.width > 100 ? face : nil)
             try? await Task.sleep(for: .seconds(CircleMotion.wheelOpenDuration + 0.8))
             var quiet = Transaction()
             quiet.disablesAnimations = true
@@ -954,6 +955,9 @@ struct ZikrLockCover: View {
             }
         }
     }
+
+    /// The circle as drawn on page 3 (0.8 × its 200 pt face, about its centre).
+    private static func drawn(_ r: CGRect) -> CGRect { r.insetBy(dx: r.width * 0.1, dy: r.height * 0.1) }
 
     /// Leaving the page: ready to build again next time.
     private func leave() {
