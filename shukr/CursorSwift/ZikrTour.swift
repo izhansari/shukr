@@ -683,15 +683,10 @@ struct CounterWelcome: View {
                 .contentShape(Rectangle())
                 .onTapGesture {}
             VStack(spacing: 0) {
-                VStack(spacing: 12) {
-                    Text(C.welcomeKicker.uppercased())
-                        .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
-                        .foregroundStyle(Color.sage)
-                    Text(C.welcomeTitle)
-                        .font(.system(size: 30, weight: .light, design: .rounded))
-                        .foregroundStyle(Color.primary.opacity(0.9))
-                }
-                .rowIn(shown >= 1, reduceMotion)
+                Text(C.welcomeKicker.uppercased())
+                    .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
+                    .foregroundStyle(Color.sage)
+                    .rowIn(shown >= 1, reduceMotion)
                 Text(C.welcomeBody)
                     .font(.system(size: 17, weight: .light, design: .rounded))
                     .foregroundStyle(Color.primary.opacity(0.7))
@@ -771,8 +766,8 @@ private struct PracticeBox: View {
     @State private var flash: Color?
     @State private var why: String?
     @State private var pressed = false
-    @State private var pressedAt = Date()
-    // A drag's way, as the counter reads it: down past `step` counts, back up half of it re-arms.
+    // A drag's way, read exactly as the counter reads it (tasbeehView: incrementThreshold 50): down 50 pt from the
+    // highest point counts — at once, mid-drag — and back up 25 pt re-arms; a tap is a touch that doesn't move.
     @State private var highest: CGFloat = 0
     @State private var lowest: CGFloat = 0
     @State private var armed = true
@@ -781,7 +776,7 @@ private struct PracticeBox: View {
     /// The dot just filled pops (owner: "turn green with like a short pulse so it's clearer the count was registered").
     @State private var pop = false
     private static let needed = 3
-    private static let step: CGFloat = 40
+    private static let step: CGFloat = 50   // the counter's incrementThreshold
     private var isDone: Bool { count >= Self.needed }
 
     var body: some View {
@@ -794,7 +789,7 @@ private struct PracticeBox: View {
                     .clipped()
                     .opacity(isDone ? 0.2 : (pressed ? 0 : 1))
                 // Held: the next move.
-                if pressed, !isDone, kind != .tap {
+                if pressed, !isDone, kind == .stroke || (kind == .drag && strokes == 0) {
                     Image(systemName: armed ? "arrow.down" : "arrow.up")
                         .font(.system(size: 30, weight: .medium))
                         .foregroundStyle(Color.sage)
@@ -858,8 +853,8 @@ private struct PracticeBox: View {
     private var practice: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { v in
-                if !pressed { pressed = true; pressedAt = Date(); strokes = 0 }
-                guard kind == .stroke else { return }
+                if !pressed { pressed = true; strokes = 0 }
+                guard kind != .tap else { return }
                 let y = v.translation.height
                 highest = min(highest, y)
                 lowest = max(lowest, y)
@@ -867,7 +862,8 @@ private struct PracticeBox: View {
                     armed = false
                     lowest = y
                     strokes += 1
-                    hit()
+                    // The drag box: its one count per touch, as it happens (a second stroke is the next box's move).
+                    if kind == .stroke || strokes == 1 { hit() }
                 } else if !armed && lowest - y > Self.step / 2 {
                     armed = true
                     highest = y
@@ -876,18 +872,18 @@ private struct PracticeBox: View {
             .onEnded { v in
                 let dx = v.translation.width, dy = v.translation.height
                 let moved = max(abs(dx), abs(dy)) > 10
-                let held = Date().timeIntervalSince(pressedAt)
                 pressed = false
                 highest = 0; lowest = 0; armed = true
                 guard !isDone else { return }
                 switch kind {
                 case .tap:
-                    if moved { wrong("Just tap") } else if held > 0.6 { wrong("A quick tap") } else { hit() }
+                    if moved { wrong("Just tap") } else { hit() }
                 case .drag:
+                    // Counted already if it went far enough (mid-drag, like the counter).
+                    if strokes > 0 { break }
                     if !moved { wrong("Drag down") }
                     else if dy < 0 { wrong("Down, not up") }
-                    else if dy < Self.step { wrong("A bit further") }
-                    else { hit() }
+                    else { wrong("A bit further") }
                 case .stroke:
                     if strokes == 0 { wrong(moved ? "Down, then up" : "Hold and drag") }
                     else { wrong("Keep your finger down"); withAnimation(.easeOut(duration: 0.2)) { count = 0 } }

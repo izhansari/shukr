@@ -197,8 +197,8 @@ struct ZikrLockCover: View {
                 if practicing {
                     CounterWelcome(buttonTitle: FirstZikrChoiceLayout.current == nil ? "Continue to my zikr"
                                                                                       : "Continue to pick my zikr") {
-                        withAnimation(.easeInOut(duration: 0.45)) { practicing = false }
                         toFirstZikr()
+                        withAnimation(.easeInOut(duration: 0.45)) { practicing = false }
                     }
                     .transition(.opacity)
                 }
@@ -929,15 +929,17 @@ struct ZikrLockCover: View {
 
     /// "Remember my Lord": their first zikr's task is made (the intention), and the view turns, in place, into page 3.
     private func toFirstZikr() {
-        firstTask = FirstZikr.ensureTask(in: context)
+        // Page 3 first, then the task: making it saves, and a save can draw a frame in between — with page 3 not on yet,
+        // page 2 came back for a moment on the way from the practice.
         withAnimation(.easeInOut(duration: 0.8)) { third = true }
+        firstTask = FirstZikr.ensureTask(in: context)
         let parts = 4
         if reduceMotion {
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) { thirdShown = parts }
             return
         }
         run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(700))
+            try? await Task.sleep(for: .milliseconds(350))   // the practice's fade, then page 3 straight on
             for i in 1...parts {
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.9)) { thirdShown = i }
