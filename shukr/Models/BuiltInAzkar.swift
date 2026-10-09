@@ -36,6 +36,10 @@ enum BuiltInAzkar {
         Zikr(name: "La ilaha illallahu wahdahu",
              arabic: "لَا إِلَٰهَ إِلَّا ٱللَّٰهُ وَحْدَهُ لَا شَرِيكَ لَهُ، لَهُ ٱلْمُلْكُ وَلَهُ ٱلْحَمْدُ، وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ",
              note: "“None has the right to be worshipped but Allah alone, without partner. His is the dominion and His is the praise, and He is over all things capable.” Said 100 times a day: like freeing ten slaves, 100 good deeds written, 100 sins erased, and protection from Shaytan until evening. (Bukhari 3293, Muslim 2691)"),
+        // The shahada (owner, 2026-10-08); the note checked against sunnah.com's Bukhari 128.
+        Zikr(name: "La ilaha illallah, Muhammadur Rasulullah",
+             arabic: "لَا إِلَٰهَ إِلَّا ٱللَّٰهُ مُحَمَّدٌ رَسُولُ ٱللَّٰهِ",
+             note: "“None has the right to be worshipped but Allah, and Muhammad is the Messenger of Allah.” The Prophet ﷺ told Mu'adh: no one testifies to it sincerely from the heart except that Allah saves them from the Fire. (Bukhari 128)"),
         Zikr(name: "SubhanAllahi wa bihamdihi",
              arabic: "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ",
              note: "“Glory be to Allah, and praise be to Him.” Said 100 times a day, sins are forgiven even if they are like the foam of the sea. (Bukhari 6405, Muslim 2691)"),
@@ -49,8 +53,9 @@ enum BuiltInAzkar {
              note: "“Allah is sufficient for us, and He is the best Disposer of affairs.” (Quran 3:173)"),
     ]
 
-    /// v2 (2026-10-08): the Zikr Tour's first zikr joins them (existing rows only get empty fields filled).
-    static let doneKey = "builtInAzkar.v2"
+    /// v2 (2026-10-08): the Zikr Tour's first zikr joins them; v3 (2026-10-08): the shahada (existing rows only get
+    /// empty fields filled).
+    static let doneKey = "builtInAzkar.v3"
     /// The original four's own seed-once flag (the V2 data pass used to re-seed one every launch).
     static let originalsSeededKey = "builtInAzkar.originalsSeeded"
 
