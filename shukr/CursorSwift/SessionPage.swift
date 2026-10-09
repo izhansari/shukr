@@ -116,7 +116,7 @@ struct SessionPage: View {
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.05)))
             }
             if let notes = mantra?.notes, !notes.isEmpty {
-                Label(notes, systemImage: "doc.text")
+                Label { BulletedNotes(text: notes) } icon: { Image(systemName: "doc.text") }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

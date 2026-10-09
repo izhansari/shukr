@@ -23,39 +23,54 @@ enum BuiltInAzkar {
     static let all: [Zikr] = [
         Zikr(name: "Alhamdulillah",
              arabic: "ٱلْحَمْدُ لِلَّٰهِ",
-             note: "“All praise is for Allah.” It fills the Scale. (Muslim 223)"),
+             note: "• “All praise is for Allah.”\n• It fills the Scale. (Muslim 223)"),
         Zikr(name: "Subhanallah",
              arabic: "سُبْحَانَ ٱللَّٰهِ",
-             note: "“Glory be to Allah.” Said 100 times, a thousand good deeds are written or a thousand sins wiped away. (Muslim 2698)"),
+             note: "• “Glory be to Allah.”\n• Said 100 times: a thousand good deeds are written, or a thousand sins wiped away. (Muslim 2698)"),
         Zikr(name: "Allahu Akbar",
              arabic: "ٱللَّٰهُ أَكْبَرُ",
-             note: "“Allah is the Greatest.” Among the four words most beloved to Allah. (Muslim 2137)"),
+             note: "• “Allah is the Greatest.”\n• Among the four words most beloved to Allah. (Muslim 2137)"),
         Zikr(name: "Astaghfirullah",
              arabic: "أَسْتَغْفِرُ ٱللَّٰهَ",
-             note: "“I seek Allah’s forgiveness.” The Prophet ﷺ sought forgiveness more than 70 times a day. (Bukhari 6307)"),
+             note: "• “I seek Allah’s forgiveness.”\n• The Prophet ﷺ sought forgiveness more than 70 times a day. (Bukhari 6307)"),
         Zikr(name: "La ilaha illallahu wahdahu",
              arabic: "لَا إِلَٰهَ إِلَّا ٱللَّٰهُ وَحْدَهُ لَا شَرِيكَ لَهُ، لَهُ ٱلْمُلْكُ وَلَهُ ٱلْحَمْدُ، وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ",
-             note: "“None has the right to be worshipped but Allah alone, without partner. His is the dominion and His is the praise, and He is over all things capable.” Said 100 times a day: like freeing ten slaves, 100 good deeds written, 100 sins erased, and protection from Shaytan until evening. (Bukhari 3293, Muslim 2691)"),
+             note: "• “None has the right to be worshipped but Allah alone, without partner. His is the dominion and His is the praise, and He is over all things capable.”\n• Said 100 times a day: like freeing ten slaves, 100 good deeds written, 100 sins erased.\n• Protection from Shaytan until evening. (Bukhari 3293, Muslim 2691)"),
         // The shahada (owner, 2026-10-08); the note checked against sunnah.com's Bukhari 128.
         Zikr(name: "La ilaha illallah, Muhammadur Rasulullah",
              arabic: "لَا إِلَٰهَ إِلَّا ٱللَّٰهُ مُحَمَّدٌ رَسُولُ ٱللَّٰهِ",
-             note: "“None has the right to be worshipped but Allah, and Muhammad is the Messenger of Allah.” The Prophet ﷺ told Mu'adh: no one testifies to it sincerely from the heart except that Allah saves them from the Fire. (Bukhari 128)"),
+             note: "• “None has the right to be worshipped but Allah, and Muhammad is the Messenger of Allah.”\n• The Prophet ﷺ told Mu'adh: no one testifies to it sincerely from the heart except that Allah saves them from the Fire. (Bukhari 128)"),
         Zikr(name: "SubhanAllahi wa bihamdihi",
              arabic: "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ",
-             note: "“Glory be to Allah, and praise be to Him.” Said 100 times a day, sins are forgiven even if they are like the foam of the sea. (Bukhari 6405, Muslim 2691)"),
+             note: "• “Glory be to Allah, and praise be to Him.”\n• Said 100 times a day, sins are forgiven even if they are like the foam of the sea. (Bukhari 6405, Muslim 2691)"),
         // The Zikr Tour's first zikr (owner, 2026-10-08), the words of the last hadith in Sahih al-Bukhari (7563).
         Zikr(name: FirstZikr.name, arabic: FirstZikr.arabic, note: FirstZikr.note),
         Zikr(name: "Allahumma salli 'ala Muhammad",
              arabic: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
-             note: "“O Allah, send blessings upon Muhammad.” Whoever sends one blessing on the Prophet ﷺ, Allah sends ten on them. (Muslim 408)"),
+             note: "• “O Allah, send blessings upon Muhammad.”\n• Whoever sends one blessing on the Prophet ﷺ, Allah sends ten on them. (Muslim 408)"),
         Zikr(name: "Hasbunallahu wa ni'mal-wakil",
              arabic: "حَسْبُنَا ٱللَّٰهُ وَنِعْمَ ٱلْوَكِيلُ",
-             note: "“Allah is sufficient for us, and He is the best Disposer of affairs.” (Quran 3:173)"),
+             note: "• “Allah is sufficient for us, and He is the best Disposer of affairs.” (Quran 3:173)"),
     ]
 
-    /// v2 (2026-10-08): the Zikr Tour's first zikr joins them; v3 (2026-10-08): the shahada (existing rows only get
-    /// empty fields filled).
-    static let doneKey = "builtInAzkar.v3"
+    /// v2 (2026-10-08): the Zikr Tour's first zikr joins them; v3 (2026-10-08): the shahada; v4 (2026-10-08): the notes
+    /// as bullet points (owner) — a note still exactly as we shipped it (`shippedNotes`) takes the new one; an edited
+    /// note is left alone. Existing rows otherwise only get empty fields filled.
+    static let doneKey = "builtInAzkar.v4"
+
+    /// The notes as shipped before v4 (one sentence each, no bullets), to tell an untouched note from the user's own.
+    static let shippedNotes: [String] = [
+        "“All praise is for Allah.” It fills the Scale. (Muslim 223)",
+        "“Glory be to Allah.” Said 100 times, a thousand good deeds are written or a thousand sins wiped away. (Muslim 2698)",
+        "“Allah is the Greatest.” Among the four words most beloved to Allah. (Muslim 2137)",
+        "“I seek Allah’s forgiveness.” The Prophet ﷺ sought forgiveness more than 70 times a day. (Bukhari 6307)",
+        "“None has the right to be worshipped but Allah alone, without partner. His is the dominion and His is the praise, and He is over all things capable.” Said 100 times a day: like freeing ten slaves, 100 good deeds written, 100 sins erased, and protection from Shaytan until evening. (Bukhari 3293, Muslim 2691)",
+        "“None has the right to be worshipped but Allah, and Muhammad is the Messenger of Allah.” The Prophet ﷺ told Mu'adh: no one testifies to it sincerely from the heart except that Allah saves them from the Fire. (Bukhari 128)",
+        "“Glory be to Allah, and praise be to Him.” Said 100 times a day, sins are forgiven even if they are like the foam of the sea. (Bukhari 6405, Muslim 2691)",
+        "“O Allah, send blessings upon Muhammad.” Whoever sends one blessing on the Prophet ﷺ, Allah sends ten on them. (Muslim 408)",
+        "“Allah is sufficient for us, and He is the best Disposer of affairs.” (Quran 3:173)",
+        "“Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great.” Two phrases, light on the tongue, heavy on the Scale, beloved to the Most Merciful. (Bukhari 7563, 6406)",
+    ]
     /// The original four's own seed-once flag (the V2 data pass used to re-seed one every launch).
     static let originalsSeededKey = "builtInAzkar.originalsSeeded"
 
@@ -112,6 +127,9 @@ enum BuiltInAzkar {
                     var touched = false
                     if m.fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { m.fullText = z.arabic; touched = true }
                     if m.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { m.notes = z.note; touched = true }
+                    else if m.notes != z.note, shippedNotes.contains(m.notes.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                        m.notes = z.note; touched = true
+                    }
                     if touched { filled += 1 }
                 } else {
                     let m = MantraModel(name: z.name, fullText: z.arabic, notes: z.note)
@@ -138,7 +156,7 @@ enum FirstZikr {
     static let name = "SubhanAllahi wa bihamdihi, SubhanAllahil-'Azim"
     static let arabic = "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ، سُبْحَانَ ٱللَّٰهِ ٱلْعَظِيمِ"
     static let meaning = "Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great."
-    static let note = "“Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great.” Two phrases, light on the tongue, heavy on the Scale, beloved to the Most Merciful. (Bukhari 7563, 6406)"
+    static let note = "• “Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great.”\n• Two phrases, light on the tongue, heavy on the Scale, beloved to the Most Merciful. (Bukhari 7563, 6406)"
     static let source = "Light on the tongue, heavy on the Scale\nSahih al-Bukhari 7563"
     static let goal = 33
     /// The task's own short English name (owner: "our nicknames are usually english"; the zikr's full name doesn't fit a

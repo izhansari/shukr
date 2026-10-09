@@ -319,6 +319,8 @@ struct MantraCardFields: View {
     /// Beside the name, top right: the card's ✕ and ✓.
     var nameAccessory: AnyView? = nil
     @FocusState private var focus: Field?
+    /// The notes field's cursor, so a bullet put in as you type leaves it after what you typed.
+    @State private var notesSelection: TextSelection?
     private enum Field { case name, fullText, notes }
     /// Which part the box shows. The box keeps one size for all three (owner, 2026-09-27: nothing on the card may move
     /// when switching).
@@ -467,10 +469,26 @@ struct MantraCardFields: View {
                     Image(systemName: "doc.text")
                         .font(.caption)
                         .foregroundStyle(.tertiary)
-                    TextField("Notes — where you heard it, who taught you, why you read it", text: $notes, axis: .vertical)
+                    TextField("Notes — where you heard it, who taught you, why you read it", text: $notes,
+                              selection: $notesSelection, axis: .vertical)
                         .font(.subheadline)
                         .lineLimit(2...)
                         .focused($focus, equals: .notes)
+                        // Bullets as you type (NoteBullets), applied after the edit (a field doesn't show a value its
+                        // own binding's setter changed while it's being typed in), the cursor moved with them.
+                        .onChange(of: notes) { old, new in
+                            guard focus == .notes else { return }
+                            var cursor = new.count
+                            if case .selection(let range) = notesSelection?.indices,
+                               range.lowerBound >= new.startIndex, range.lowerBound <= new.endIndex {
+                                cursor = new.distance(from: new.startIndex, to: range.lowerBound)
+                            }
+                            let (bulleted, at) = NoteBullets.edit(old: old, new: new, cursor: cursor)
+                            guard bulleted != new else { return }
+                            notes = bulleted
+                            notesSelection = TextSelection(insertionPoint: bulleted.index(bulleted.startIndex,
+                                                                                         offsetBy: min(at, bulleted.count)))
+                        }
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
@@ -882,10 +900,9 @@ struct ZikrReadCard: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Image(systemName: "doc.text")
                                 .foregroundStyle(.tertiary)
-                            Text(notes)
+                            BulletedNotes(text: notes)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                .multilineTextAlignment(.leading)
                         }
                         .font(.footnote)
                     }
@@ -1138,5 +1155,81 @@ struct SelectableRow<Content: View>: View {
                 if on { selected.remove(id) } else { selected.insert(id) }
             }
         }
+    }
+}
+
+/// Zikr notes are bullet points (owner, 2026-10-08: "i want the notes to be in bullet points from now on … typing from
+/// now on makes it bullet points on new lines"). Stored as plain text, one "• " line each.
+enum NoteBullets {
+    static let mark = "• "
+
+    /// The notes field's edits: every line starts with a bullet, a new line gets one at once, and backspacing a bullet
+    /// away joins its line to the one above. `cursor` is where the cursor is in `new` (characters); the result says where
+    /// it goes in the returned text. (Empty bullets are dropped on save, `clean`.)
+    static func edit(old: String, new: String, cursor: Int) -> (String, Int) {
+        guard !new.isEmpty else { return (new, 0) }
+        var lines = new.components(separatedBy: "\n")
+        let starts = lines.indices.map { i in lines[..<i].reduce(0) { $0 + $1.count + 1 } }
+        if new.count < old.count {
+            // A bullet backspaced into ("•", "•text"): the line joins the one above (the first line keeps its bullet).
+            guard let i = lines.firstIndex(where: { $0.hasPrefix("•") && !$0.hasPrefix(mark) }) else { return (new, cursor) }
+            let rest = String(lines[i].dropFirst())
+            if i == 0 {
+                if rest.isEmpty && lines.count == 1 { return ("", 0) }
+                lines[0] = mark + rest
+                return (lines.joined(separator: "\n"), mark.count)
+            }
+            let joinAt = starts[i - 1] + lines[i - 1].count
+            lines[i - 1] += rest
+            lines.remove(at: i)
+            return (lines.joined(separator: "\n"), joinAt)
+        }
+        var at = cursor
+        for i in lines.indices.reversed() where !lines[i].hasPrefix(mark) {
+            // Someone's own "- " / "* " / "•" start becomes the bullet.
+            var body = Substring(lines[i])
+            if let first = body.first, "•-*".contains(first) { body = body.dropFirst() }
+            body = body.drop(while: { $0 == " " })
+            let removed = lines[i].count - body.count
+            lines[i] = mark + body
+            if cursor >= starts[i] { at += mark.count - min(removed, cursor - starts[i]) }
+        }
+        return (lines.joined(separator: "\n"), at)
+    }
+
+    static func edit(old: String, new: String) -> String { edit(old: old, new: new, cursor: new.count).0 }
+
+    /// What's saved: no empty bullets, nothing trailing.
+    static func clean(_ text: String) -> String {
+        text.components(separatedBy: "\n")
+            .filter { $0.trimmingCharacters(in: .whitespaces) != "•" }
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+/// Notes as they're shown: each "• " line with its bullet hanging, so a wrapped line lines up under its words; any
+/// other line (notes written before bullets) as it was.
+struct BulletedNotes: View {
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(text.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                if line.hasPrefix("•") {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("•")
+                        Text(line.dropFirst().trimmingCharacters(in: .whitespaces))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                } else if !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Text(line)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .multilineTextAlignment(.leading)
     }
 }

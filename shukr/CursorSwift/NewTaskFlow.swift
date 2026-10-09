@@ -810,7 +810,7 @@ struct ZikrCardEditor: View {
         ZikrAudio.stopAll()
         guard canSave else { return }
         let full = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let note = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let note = NoteBullets.clean(notes)
         if let mantra {
             if !mantra.isBuiltIn {
                 mantra.name = trimmed

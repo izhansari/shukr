@@ -2438,7 +2438,7 @@ struct tasbeehView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Image(systemName: "doc.text")
                                 .foregroundStyle(.tertiary)
-                            Text(notes)
+                            BulletedNotes(text: notes)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
@@ -2850,7 +2850,7 @@ struct tasbeehView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Image(systemName: "doc.text")
                                 .foregroundStyle(.tertiary)
-                            Text(notes)
+                            BulletedNotes(text: notes)
                                 .foregroundStyle(.secondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
