@@ -4,6 +4,9 @@ import UIKit
 import WidgetKit
 
 struct SettingsView: View {
+    #if DEBUG
+    @AppStorage("firstZikrChoice") private var firstZikrChoice = ""
+    #endif
     @EnvironmentObject var viewModel: PrayerViewModel
     /// The header's back chevron. Passed in rather than read from `sharedState`, so this big
     /// Form doesn't re-render on every page turn (it only ever wrote `horizontalPage`).
@@ -397,6 +400,14 @@ struct SettingsView: View {
                         Toggle(isOn: Binding(get: { !ZikrLock.shared.unlocked },
                                              set: { ZikrLock.shared.setLockedForTesting($0) })) {
                             Label("Zikr locked (test)", systemImage: "lock")
+                        }
+                        // Page 3's trial layouts, to see on the phone (decision first-zikr-choice).
+                        Picker(selection: $firstZikrChoice) {
+                            Text("One zikr").tag("")
+                            Text("Choose: cards").tag("cards")
+                            Text("Choose: swipe").tag("swipe")
+                        } label: {
+                            Label("First zikr page (test)", systemImage: "rectangle.stack")
                         }
                         #endif
                     }
