@@ -875,16 +875,8 @@ struct ZikrReadCard: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // No ✎ (owner: "tapping the note field opens it anyways"): the name and the words open the editor.
                 ZikrMediaStrip(mantra: mantra, paused: true, compact: true)
-                Button { onEdit(.words) } label: {
-                    Image(systemName: "pencil")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color.sage)
-                        .frame(width: 34, height: 34)
-                        .background(Circle().fill(Color.sage.opacity(0.14)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit zikr")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)

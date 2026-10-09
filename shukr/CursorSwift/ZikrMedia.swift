@@ -394,6 +394,10 @@ struct VoiceMemoPanel: View {
     @State private var length: TimeInterval = 0
     /// When it was recorded, from the file itself (nil for a memo without one).
     @State private var recorded: Date?
+    /// A memo from a video (ZikrMemoFromVideo.swift): Photos' picker, then the clip sheet.
+    @State private var pickingVideo = false
+    @State private var videoItem: PhotosPickerItem?
+    @State private var videoPick: VideoPick?
 
     var body: some View {
         Group {
@@ -406,6 +410,15 @@ struct VoiceMemoPanel: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .photosPicker(isPresented: $pickingVideo, selection: $videoItem, matching: .videos)
+        .onChange(of: videoItem) { _, item in
+            guard let item else { return }
+            videoItem = nil
+            videoPick = VideoPick(item: item)
+        }
+        .sheet(item: $videoPick) { pick in
+            MemoFromVideoSheet(pick: pick) { audio = $0 }
+        }
         // Once per memo, off the main thread; keyed by a cheap fingerprint, not the whole blob.
         .task(id: blobKey(audio)) {
             length = await audio.asyncMap(ZikrAudio.length(of:)) ?? 0
@@ -414,30 +427,47 @@ struct VoiceMemoPanel: View {
         }
     }
 
+    /// Record, or take it from a video (owner: "screen record something and then take the audio out of it").
     private var empty: some View {
-        Button {
-            Task { await engine.startRecording() }
-        } label: {
-            VStack(spacing: 8) {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(Color.sage)
-                    .frame(width: 48, height: 48)
-                    .background(Circle().fill(Color.sage.opacity(0.14)))
-                Text(engine.micDenied ? "Microphone is off · Settings" : "Tap to record")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text("how it's said — you, a teacher, a friend")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        VStack(spacing: 10) {
+            HStack(spacing: 36) {
+                Button {
+                    if engine.micDenied, let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    } else {
+                        Task { await engine.startRecording() }
+                    }
+                } label: {
+                    source("mic.fill", engine.micDenied ? "Mic is off" : "Record")
+                }
+                .buttonStyle(.plain)
+                Button {
+                    engine.stopPlaying()
+                    pickingVideo = true
+                } label: {
+                    source("film", "From a video")
+                }
+                .buttonStyle(.plain)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .contentShape(Rectangle())
+            Text("how it's said — you, a teacher, a friend")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
-        .buttonStyle(.plain)
-        .simultaneousGesture(TapGesture().onEnded {
-            if engine.micDenied, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-        })
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func source(_ symbol: String, _ words: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 19))
+                .foregroundStyle(Color.sage)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(Color.sage.opacity(0.14)))
+            Text(words)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
     }
 
     private var recording: some View {
@@ -485,6 +515,10 @@ struct VoiceMemoPanel: View {
                         Button("Record again", systemImage: "mic") {
                             engine.stopPlaying()
                             Task { await engine.startRecording() }
+                        }
+                        Button("Replace from a video", systemImage: "film") {
+                            engine.stopPlaying()
+                            pickingVideo = true
                         }
                         Button("Delete voice memo", systemImage: "trash", role: .destructive) {
                             engine.stopPlaying()
