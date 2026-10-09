@@ -19,6 +19,7 @@
 		365AC49B2D532658002DDCE7 /* english_hilali.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 365AC48F2D532658002DDCE7 /* english_hilali.sqlite */; };
 		365AC49C2D532658002DDCE7 /* quran.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 365AC4912D532658002DDCE7 /* quran.sqlite */; };
 		F1A5E0010000000000000001 /* first-zikr.m4a in Resources */ = {isa = PBXBuildFile; fileRef = F1A5E0010000000000000002 /* first-zikr.m4a */; };
+		F1A5E0010000000000000003 /* azim-zikr.m4a in Resources */ = {isa = PBXBuildFile; fileRef = F1A5E0010000000000000004 /* azim-zikr.m4a */; };
 		36867E392C9DE3F000A981EB /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E382C9DE3ED00A981EB /* Utils.swift */; };
 		369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05C72C5E8616002CD697 /* shukrApp.swift */; };
 		369A05CE2C5E8617002CD697 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
@@ -143,6 +144,7 @@
 		365AC4902D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = KFGQPCUthmanTahaNaskh.ttf; sourceTree = "<group>"; };
 		365AC4912D532658002DDCE7 /* quran.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = quran.sqlite; sourceTree = "<group>"; };
 		F1A5E0010000000000000002 /* first-zikr.m4a */ = {isa = PBXFileReference; lastKnownFileType = file; path = "first-zikr.m4a"; sourceTree = "<group>"; };
+		F1A5E0010000000000000004 /* azim-zikr.m4a */ = {isa = PBXFileReference; lastKnownFileType = file; path = "azim-zikr.m4a"; sourceTree = "<group>"; };
 		365AC4922D532658002DDCE7 /* Surahs.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Surahs.json; sourceTree = "<group>"; };
 		36867E382C9DE3ED00A981EB /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
 		369A05C42C5E8616002CD697 /* shukr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shukr.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -305,6 +307,7 @@
 				365AC4902D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf */,
 				365AC4912D532658002DDCE7 /* quran.sqlite */,
 				F1A5E0010000000000000002 /* first-zikr.m4a */,
+				F1A5E0010000000000000004 /* azim-zikr.m4a */,
 				365AC4922D532658002DDCE7 /* Surahs.json */,
 				369BE9232CA48B88003A58B7 /* HistoryPageView.swift */,
 				369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */,
@@ -584,6 +587,7 @@
 				365AC49B2D532658002DDCE7 /* english_hilali.sqlite in Resources */,
 				365AC49C2D532658002DDCE7 /* quran.sqlite in Resources */,
 				F1A5E0010000000000000001 /* first-zikr.m4a in Resources */,
+				F1A5E0010000000000000003 /* azim-zikr.m4a in Resources */,
 				A1B2C3D40000000000000002 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

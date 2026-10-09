@@ -987,7 +987,7 @@ enum ZikrLockWords {
     /// The narration's thread carried on (it ends on Him coming running): remembering Him, then what the tour will do.
     static let firstStep = "So remember Him often, however small."
     /// Page 3, under the circle: what the circle is, said once.
-    static let firstTaskLine = "We set it up for you: 33 times a day.\nThe circle fills as you count."
+    static let firstTaskLine = "We set it up for you: \(FirstZikr.goal) times a day.\nThe circle fills as you count."
     static let bridge = "We'll set up one daily zikr and count it together. It takes about two minutes."
     /// Their first intention, answering the verse's call (owner, 2026-10-08: "a stronger button … the user making their
     /// first intention or promise").
@@ -1002,8 +1002,8 @@ extension FirstZikr {
     /// benefit from their notes.
     static let options: [FirstZikrOption] = [
         FirstZikrOption(taskName: taskName, arabicLines: arabicLines, sayLines: sayLines,
-                        meaningLines: meaningLines, benefit: "Light on the tongue, heavy on the Scale",
-                        source: "Sahih al-Bukhari 7563"),
+                        meaningLines: meaningLines, benefit: "Sins forgiven, even if like the foam of the sea",
+                        source: "Sahih al-Bukhari 6405"),
         FirstZikrOption(taskName: "Ten Blessings", arabicLines: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
                         sayLines: "Allahumma salli 'ala Muhammad", meaningLines: "O Allah, send blessings upon Muhammad.",
                         benefit: "Send one blessing, and Allah sends ten on you", source: "Sahih Muslim 408"),
@@ -1012,7 +1012,7 @@ extension FirstZikr {
                         benefit: "The Prophet ﷺ said it more than 70 times a day", source: "Sahih al-Bukhari 6307"),
     ]
     /// How to say it, one phrase a line (under the Arabic on page 3).
-    static let sayLines = "SubhanAllahi wa bihamdihi,\nSubhanAllahil-'Azim"
+    static let sayLines = "SubhanAllahi wa bihamdihi"
 
     /// The recording bundled with the app, when there is one.
     static var bundledMemo: Data? {
@@ -1020,20 +1020,27 @@ extension FirstZikr {
     }
 
     /// Its zikr (seeded as a built-in, or made now) and its task, 33 a day — made once; an existing one is reused.
-    /// Once: the recording into the built-in zikr when it was seeded without it (the built-ins v2 seed has no audio;
-    /// someone already past the lock never runs `ensureTask`). Left alone after that, so a memo removed stays removed.
+    /// The recordings that ship with the app, by built-in: the first zikr's (the first phrase of the owner's recording)
+    /// and the 'Azim zikr's (all of it).
+    static let bundledMemos: [(name: String, resource: String)] = [(name, memoResource), (BuiltInAzkar.azimName, "azim-zikr")]
+
+    /// Once: each recording into its built-in when it has none (the seed has no audio; someone already past the lock
+    /// never runs `ensureTask`). Left alone after that, so a memo removed stays removed. v2: the first zikr changed.
     @MainActor static func fillMemo(in context: ModelContext) {
         let d = UserDefaults.standard
-        let filledKey = "firstZikr.memoFilled"
-        guard !d.bool(forKey: filledKey), let memo = bundledMemo else { return }
-        let key = BuiltInAzkar.key(name)
+        let filledKey = "firstZikr.memoFilled.v2"
+        guard !d.bool(forKey: filledKey) else { return }
         let azkar = (try? context.fetch(FetchDescriptor<MantraModel>())) ?? []
-        guard let zikr = azkar.first(where: { $0.builtInID == key }) else { return }
-        if zikr.audioData == nil {
-            zikr.audioData = memo
-            try? context.save()
+        var allFound = true
+        for memo in bundledMemos {
+            guard let zikr = azkar.first(where: { $0.builtInID == BuiltInAzkar.key(memo.name) }) else { allFound = false; continue }
+            if zikr.audioData == nil,
+               let data = Bundle.main.url(forResource: memo.resource, withExtension: "m4a").flatMap({ try? Data(contentsOf: $0) }) {
+                zikr.audioData = data
+            }
         }
-        d.set(true, forKey: filledKey)
+        try? context.save()
+        if allFound { d.set(true, forKey: filledKey) }
     }
 
     @MainActor static func ensureTask(in context: ModelContext) -> TaskModel? {
@@ -1043,6 +1050,8 @@ extension FirstZikr {
         if let found = azkar.first(where: { $0.builtInID == key }) ?? azkar.first(where: { BuiltInAzkar.key($0.name) == key }) {
             zikr = found
         } else {
+            // Seeded as a built-in already (BuiltInAzkar); made here only if that hasn't run yet.
+            let note = BuiltInAzkar.all.first { BuiltInAzkar.key($0.name) == key }?.note ?? ""
             zikr = MantraModel(name: name, fullText: arabic, notes: note)
             zikr.builtInID = key
             context.insert(zikr)

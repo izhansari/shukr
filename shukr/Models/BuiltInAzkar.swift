@@ -43,8 +43,11 @@ enum BuiltInAzkar {
         Zikr(name: "SubhanAllahi wa bihamdihi",
              arabic: "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ",
              note: "• “Glory be to Allah, and praise be to Him.”\n• Said 100 times a day, sins are forgiven even if they are like the foam of the sea. (Bukhari 6405, Muslim 2691)"),
-        // The Zikr Tour's first zikr (owner, 2026-10-08), the words of the last hadith in Sahih al-Bukhari (7563).
-        Zikr(name: FirstZikr.name, arabic: FirstZikr.arabic, note: FirstZikr.note),
+        // The words of the last hadith in Sahih al-Bukhari (7563); the Zikr Tour's first zikr until decision
+        // first-zikr-virtue C (2026-10-09).
+        Zikr(name: azimName,
+             arabic: "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ، سُبْحَانَ ٱللَّٰهِ ٱلْعَظِيمِ",
+             note: "• “Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great.”\n• Two phrases, light on the tongue, heavy on the Scale, beloved to the Most Merciful. (Bukhari 7563, 6406)"),
         Zikr(name: "Allahumma salli 'ala Muhammad",
              arabic: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
              note: "• “O Allah, send blessings upon Muhammad.”\n• Whoever sends one blessing on the Prophet ﷺ, Allah sends ten on them. (Muslim 408)"),
@@ -57,6 +60,7 @@ enum BuiltInAzkar {
     /// as bullet points (owner) — a note still exactly as we shipped it (`shippedNotes`) takes the new one; an edited
     /// note is left alone. Existing rows otherwise only get empty fields filled.
     static let doneKey = "builtInAzkar.v4"
+    static let azimName = "SubhanAllahi wa bihamdihi, SubhanAllahil-'Azim"
 
     /// The notes as shipped before v4 (one sentence each, no bullets), to tell an untouched note from the user's own.
     static let shippedNotes: [String] = [
@@ -149,20 +153,19 @@ enum BuiltInAzkar {
     }
 }
 
-/// The Zikr Tour's first zikr (owner, 2026-10-08: "SubhanAllahi wa bihamdihi, SubhanAllahil-'Azim … full arabic text,
-/// notes/meaning, voice memo … 33 count goal"): a built-in (BuiltInAzkar), its words those of Sahih al-Bukhari 7563 —
-/// the book's last hadith — checked on sunnah.com. Its recording ships in the app as `first-zikr.m4a` once it's in (ZikrLock.swift).
+/// The Zikr Tour's first zikr (owner, 2026-10-09, decision first-zikr-virtue C: "Said 100 times, sins forgiven even if
+/// like the foam of the sea" — the 'Azim zikr's "light on the tongue, heavy on the Scale" didn't land): SubhanAllahi wa
+/// bihamdihi, the built-in, 100 a day. Its words checked on sunnah.com (Bukhari 6405). Its recording ships as
+/// `first-zikr.m4a` (ZikrLock.swift).
 enum FirstZikr {
-    static let name = "SubhanAllahi wa bihamdihi, SubhanAllahil-'Azim"
-    static let arabic = "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ، سُبْحَانَ ٱللَّٰهِ ٱلْعَظِيمِ"
-    static let meaning = "Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great."
-    static let note = "• “Glory be to Allah, and praise be to Him. Glory be to Allah, the Most Great.”\n• Two phrases, light on the tongue, heavy on the Scale, beloved to the Most Merciful. (Bukhari 7563, 6406)"
-    static let source = "Light on the tongue, heavy on the Scale\nSahih al-Bukhari 7563"
-    static let goal = 33
-    /// The task's own short English name (owner: "our nicknames are usually english"; the zikr's full name doesn't fit a
-    /// circle) — from the hadith.
-    static let taskName = "Light on the Tongue"
-    /// For display: one phrase a line.
-    static let arabicLines = "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ\nسُبْحَانَ ٱللَّٰهِ ٱلْعَظِيمِ"
-    static let meaningLines = "Glory be to Allah, and praise be to Him.\nGlory be to Allah, the Most Great."
+    static let name = "SubhanAllahi wa bihamdihi"
+    static let arabic = "سُبْحَانَ ٱللَّٰهِ وَبِحَمْدِهِ"
+    static let meaning = "Glory be to Allah, and praise be to Him."
+    static let source = "Sins forgiven, even if like the foam of the sea\nSahih al-Bukhari 6405"
+    static let goal = 100
+    /// The task's own short English name (owner: "our nicknames are usually english").
+    static let taskName = "Sea of Forgiveness"
+    /// For display (one phrase a line once there's more than one).
+    static let arabicLines = arabic
+    static let meaningLines = meaning
 }

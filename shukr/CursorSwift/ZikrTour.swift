@@ -71,7 +71,11 @@ import SwiftData
 
     /// The lock card's "Unlock with the tour" (ZikrLock): straight into the steps, as Show me — their Astaghfirullah task
     /// if they have one (done today: straight to how long tasks take), else making it.
+    /// What "Keep going" counts to: the first zikr's own goal (100 a day since decision first-zikr-virtue C), else 33.
+    private(set) var countGoal = 33
+
     func begin(in context: ModelContext) {
+        countGoal = 33
         UserDefaults.standard.set(true, forKey: Self.offeredKey)
         inAppTour = false
         let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
@@ -85,6 +89,7 @@ import SwiftData
     /// … they then click on to start the counter"): the first zikr's task is made already; its ring's tap opens the
     /// counter straight into the counting lessons — no task-making in the tour.
     func startFirst(_ task: TaskModel) {
+        countGoal = task.isCountMode ? task.goal : 33
         UserDefaults.standard.set(true, forKey: Self.offeredKey)
         inAppTour = false
         taskID = task.id
@@ -96,6 +101,7 @@ import SwiftData
     /// Show me: their Astaghfirullah task if they have one (no duplicate), else making it.
     /// Already done for today: it's off the wheel and there's nothing left to count, so straight to how long tasks take.
     func showMe(existing: TaskModel?, doneToday: Bool = false) {
+        countGoal = 33
         if let existing {
             taskID = existing.id
             reused = true
@@ -323,16 +329,16 @@ import SwiftData
             case .taps: C.tapLead
             case .drags: C.dragLead
             case .stroke: C.strokeLead
-            default: C.goLead
+            default: C.goLead(countGoal)
         }
         let countTodo: String = switch step {
             case .start: C.startTodo
             case .taps: C.tapTodo
             case .drags: C.dragTodo
             case .stroke: C.strokeTodo
-            default: C.goTodo
+            default: C.goTodo(countGoal)
         }
-        let countNeeded = switch step { case .taps, .drags, .stroke: 3; case .keepGoing: 33; default: 0 }
+        let countNeeded = switch step { case .taps, .drags, .stroke: 3; case .keepGoing: countGoal; default: 0 }
         let streakLead = [C.streakLead, pace.map(C.paceLine)].compactMap { $0 }.joined(separator: " ")
         let timeLead = step == .yourTasks ? C.tasksLead : skippedCount ? "\(C.reuseDoneLead) \(C.timeLead)" : C.timeLead
         let whereLead: String = switch step {

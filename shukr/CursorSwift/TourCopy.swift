@@ -183,8 +183,8 @@ enum TourCopy {
         static let dragTodo = "3 separate drags"
         static let strokeLead = "Keep your finger down and move it down and up."
         static let strokeTodo = "3 drags without lifting"
-        static let goLead = "Keep going — it ends by itself at 33."
-        static let goTodo = "Reach 33"
+        static func goLead(_ goal: Int) -> String { "Keep going — it ends by itself at \(goal)." }
+        static func goTodo(_ goal: Int) -> String { "Reach \(goal)" }
 
         static let streakStep = "Your streak and pace"
         static let streakLead = "Every day you meet it, your streak grows."
