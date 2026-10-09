@@ -66,7 +66,7 @@ struct SessionPage: View {
                         dismiss()
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: onOpenZikr)
                     } label: {
-                        Label("Open zikr", systemImage: "text.quote")
+                        Label("Zikr stats", systemImage: "chart.bar")
                             .font(.system(size: 17, weight: .medium, design: .rounded))
                             .foregroundStyle(Color.sage)
                             .frame(width: 210, height: 52)

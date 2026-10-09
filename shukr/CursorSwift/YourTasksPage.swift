@@ -250,13 +250,25 @@ struct TaskMenu: View {
     var onStart: (() -> Void)? = nil
     let onEdit: () -> Void
     var onOpenZikr: (() -> Void)? = nil
+    /// The wheel's: Your tasks, to drag them into order (owner: "add a reorder tasks option when long pressed").
+    var onReorder: (() -> Void)? = nil
     let onDelete: () -> Void
 
     var body: some View {
         if let onStart { Button(action: onStart) { Label("Start", systemImage: "play.fill") } }
         Button(action: onEdit) { Label("Edit task", systemImage: "pencil") }
+        // The zikr's page: its lifetime count, pace and sessions (owner: "change open zikr to instead say zikr stats").
         if let onOpenZikr, task.mantra != nil {
-            Button(action: onOpenZikr) { Label("Open zikr", systemImage: "text.quote") }
+            Button(action: onOpenZikr) { Label("Zikr stats", systemImage: "chart.bar") }
+        }
+        if let onReorder {
+            Button {
+                // After the menu has gone: a page pushed while it closes can be refused.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.35))
+                    onReorder()
+                }
+            } label: { Label("Reorder tasks", systemImage: "arrow.up.arrow.down") }
         }
         // Sends the task and its zikr whole (TaskSharing); not on the tour's example tasks.
         if TourExamples.shared.tasks == nil {

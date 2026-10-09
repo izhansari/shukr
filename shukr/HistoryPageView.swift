@@ -388,7 +388,7 @@ struct SessionRow: View {
                 .contextMenu {
                     Button { onOpen?() } label: { Label("Open session", systemImage: "rectangle.portrait.on.rectangle.portrait") }
                     if let onMantra {
-                        Button { onMantra() } label: { Label("Open zikr", systemImage: "text.quote") }
+                        Button { onMantra() } label: { Label("Zikr stats", systemImage: "chart.bar") }
                     }
                     if let pace {
                         Button { startFeelingPace(pace) } label: { Label("Feel the pace", systemImage: "metronome") }

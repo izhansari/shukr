@@ -577,11 +577,16 @@ struct ZikrCircleWheel: View {
                 .contentShape(Circle())
                 .contentShape(.contextMenuPreview, Circle())
                 .contextMenu {
+                    // Only the circle in focus (owner: "only allow long press on a task ring that's in focus"): an
+                    // off-centre one's hold does nothing (no items, no menu) — its tap brings it to the middle.
                     // An example's options change nothing: picking one is the tour's to-do (Tour.swift).
-                    TaskMenu(task: task,
-                             onEdit: { example ? TourRuntime.shared.event(.exampleOption) : (tasksSheetOn = task) },
-                             onOpenZikr: { example ? TourRuntime.shared.event(.exampleOption) : (wheelOpenZikr = task.mantra) },
-                             onDelete: { example ? TourRuntime.shared.event(.exampleOption) : (wheelDelete = task) })
+                    if centered == task.id.uuidString {
+                        TaskMenu(task: task,
+                                 onEdit: { example ? TourRuntime.shared.event(.exampleOption) : (tasksSheetOn = task) },
+                                 onOpenZikr: { example ? TourRuntime.shared.event(.exampleOption) : (wheelOpenZikr = task.mantra) },
+                                 onReorder: example ? nil : { showTasksPage = true },
+                                 onDelete: { example ? TourRuntime.shared.event(.exampleOption) : (wheelDelete = task) })
+                    }
                 }
         }
     }
