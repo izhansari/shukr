@@ -371,7 +371,7 @@ struct MemoriesPage: View {
             if let newest = dayPhotos.last { openDeck(newest) }
         } label: {
             HStack(spacing: 14) {
-                stack(dayPhotos, side: 52, corner: 13)
+                stack(dayPhotos, side: 52, corner: 13, flies: false)
                     .frame(width: 66, height: 66)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("On this day").font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -695,14 +695,27 @@ struct MemoriesPage: View {
         .padding(.vertical, 24)
     }
 
-    /// The newest three, loose, the newest straight on top; the squares fly in and out of it (`pinch`).
-    private func stack(_ photos: [MemoryPhoto], side: CGFloat, corner: CGFloat) -> some View {
+    /// The newest three, loose, the newest straight on top; the squares fly in and out of it (`pinch`). Every other
+    /// photo of the pile has an empty spot under the top card too, so on a switch ALL its squares gather into the pile
+    /// and come back out of it (owner: "why does the transition not pile all the pics in that month together?" — only
+    /// the three drawn had a partner; the rest just faded where they were).
+    /// `flies: false` for a pile that repeats photos shown elsewhere on the same level ("On this day" — two views
+    /// claiming one photo's flight is undefined).
+    private func stack(_ photos: [MemoryPhoto], side: CGFloat, corner: CGFloat, flies: Bool = true) -> some View {
         let shown = Array(photos.suffix(3))
         return ZStack {
+            if flies {
+                ForEach(photos.dropLast(shown.count), id: \.key) { photo in
+                    Color.clear
+                        .matchedGeometryEffect(id: photo.key, in: pinch)
+                        .frame(width: side, height: side)
+                        .allowsHitTesting(false)
+                }
+            }
             ForEach(Array(shown.enumerated()), id: \.element.key) { n, photo in
                 let onTop = n == shown.count - 1
                 MemoryThumb(key: photo.key, side: Int(side * 3), corner: corner)
-                    .matchedGeometryEffect(id: photo.key, in: pinch)
+                    .modifier(FliesBetweenLevels(id: photo.key, namespace: pinch, on: flies))
                     .frame(width: side, height: side)
                     // Small piles get a small shadow (dozens of 8 pt blurs were the costliest thing to draw mid-switch).
                     .shadow(color: .black.opacity(side < 60 ? 0.12 : 0.16), radius: side < 60 ? 2 : 8, y: side < 60 ? 1 : 4)
@@ -1885,5 +1898,16 @@ private extension View {
         } else {
             background(.regularMaterial, in: shape)
         }
+    }
+}
+
+/// A square's flight between Memories' levels (`matchedGeometryEffect`), or none.
+private struct FliesBetweenLevels: ViewModifier {
+    let id: String
+    let namespace: Namespace.ID
+    let on: Bool
+
+    func body(content: Content) -> some View {
+        if on { content.matchedGeometryEffect(id: id, in: namespace) } else { content }
     }
 }
