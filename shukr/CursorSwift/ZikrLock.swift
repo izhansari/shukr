@@ -767,8 +767,8 @@ enum ZikrLockWords {
         }
     }()
     static let quoteLineCount = quoteParts.joined().count
-    /// The narration's thread carried on (it ends on walking towards Him): the step, then what the tour will do.
-    static let firstStep = "So take the first step, however small."
+    /// The narration's thread carried on (it ends on Him coming running): remembering Him, then what the tour will do.
+    static let firstStep = "So remember Him often, however small."
     /// Page 3, under the circle: what the circle is, said once.
     static let firstTaskLine = "We set it up for you: 33 times a day.\nThe circle fills as you count."
     static let bridge = "We'll set up one daily zikr and count it together. It takes about two minutes."
