@@ -116,6 +116,8 @@ struct ZikrLockCover: View {
     @State private var firstTask: TaskModel?
     @State private var audio = ZikrAudio()
     @State private var breathe = false
+    /// Which of the three first zikr is picked (the choice layouts, decision first-zikr-choice).
+    @State private var choice = 0
     @State private var armed = false
     @State private var token = 0
     @State private var armedWidth: CGFloat = 0
@@ -355,7 +357,15 @@ struct ZikrLockCover: View {
     /// enough context where it feels comfortable and not over explaining"; "segment it so it shows the logic clear of how
     /// we built the task from the zikr"). Two parts joined by a line: THE ZIKR in the pressed well (what to say, how to
     /// say it, what it means, its source, Listen), then YOUR DAILY TASK — its circle and one line on what it is.
-    private var pageThree: some View {
+    @ViewBuilder private var pageThree: some View {
+        switch FirstZikrChoiceLayout.current {
+        case .cards: pageThreeCards
+        case .swipe: pageThreeSwipe
+        case nil: pageThreeOne
+        }
+    }
+
+    private var pageThreeOne: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             sectionLabel("The zikr")
@@ -409,6 +419,172 @@ struct ZikrLockCover: View {
             prompt
         }
         .padding(.top, 70)
+    }
+
+    // MARK: Page 3 with a choice of three (owner: "give them an option of choosing from 3 different zikr's so they get
+    // some feeling of personalization"; trial layouts, `-firstZikrChoice cards|swipe`, decision first-zikr-choice)
+
+    /// A: three cards to pick from, the task's circle under them following the pick.
+    private var pageThreeCards: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            sectionLabel("Choose your first zikr")
+                .opacity(thirdShown >= 1 ? 1 : 0)
+            VStack(spacing: 10) {
+                ForEach(FirstZikr.options.indices, id: \.self) { i in
+                    optionCard(FirstZikr.options[i], picked: choice == i) {
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.easeInOut(duration: 0.25)) { choice = i }
+                    }
+                }
+            }
+            .padding(.top, 14)
+            .opacity(thirdShown >= 1 ? 1 : 0)
+            .offset(y: thirdShown >= 1 || reduceMotion ? 0 : 6)
+            choiceArrow.padding(.top, 12).opacity(thirdShown >= 3 ? 1 : 0)
+            sectionLabel("Your daily task").padding(.top, 10).opacity(thirdShown >= 3 ? 1 : 0)
+            choiceRing.padding(.top, 2).opacity(thirdShown >= 3 ? 1 : 0)
+            taskLine.padding(.top, 6).opacity(thirdShown >= 3 ? 1 : 0)
+            Spacer(minLength: 0)
+            prompt
+        }
+        .padding(.top, 70)
+    }
+
+    private func optionCard(_ o: FirstZikrOption, picked: Bool, action: @escaping () -> Void) -> some View {
+        let box = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        return Button(action: action) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(o.sayLines.replacingOccurrences(of: "\n", with: " "))
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.primary.opacity(0.88))
+                        .lineLimit(2)
+                    Text(o.benefit)
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .foregroundStyle(Color.primary.opacity(0.55))
+                        .lineLimit(2)
+                    // The picked one opens: its Arabic and what it means (owner: "make sure they know the translation").
+                    if picked {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(o.arabicLines.replacingOccurrences(of: "\n", with: " "))
+                                .font(.custom("KFGQPCUthmanTahaNaskh", size: 21))
+                                .foregroundStyle(Color.primary.opacity(0.85))
+                                .environment(\.layoutDirection, .rightToLeft)
+                            Text("“\(o.meaningLines.replacingOccurrences(of: "\n", with: " "))”")
+                                .font(.system(size: 14, weight: .light, design: .rounded))
+                                .foregroundStyle(Color.primary.opacity(0.7))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 6)
+                        .transition(.opacity)
+                    }
+                }
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundStyle(picked ? Color.sage : Color.primary.opacity(0.25))
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(NeuPressed(shape: box, radius: 5, offset: 3).opacity(picked ? 1 : 0.55))
+            .overlay(box.strokeBorder(Color.sage.opacity(picked ? 0.9 : 0), lineWidth: 1.5))
+            .contentShape(box)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, -8)
+    }
+
+    /// B: the zikr's well, three of them to swipe through (dots under), the circle under them following.
+    private var pageThreeSwipe: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            sectionLabel("Choose your first zikr")
+                .opacity(thirdShown >= 1 ? 1 : 0)
+            TabView(selection: $choice) {
+                ForEach(FirstZikr.options.indices, id: \.self) { i in
+                    optionWell(FirstZikr.options[i])
+                        .padding(.horizontal, 2)
+                        .tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .frame(height: 262)
+            .padding(.horizontal, -12)
+            .padding(.top, 8)
+            .opacity(thirdShown >= 1 ? 1 : 0)
+            HStack(spacing: 7) {
+                ForEach(FirstZikr.options.indices, id: \.self) { i in
+                    Circle().fill(choice == i ? Color.sage : Color.primary.opacity(0.18)).frame(width: 7, height: 7)
+                }
+            }
+            .padding(.top, 4)
+            .opacity(thirdShown >= 1 ? 1 : 0)
+            sectionLabel("Your daily task").padding(.top, 16).opacity(thirdShown >= 3 ? 1 : 0)
+            choiceRing.padding(.top, 2).opacity(thirdShown >= 3 ? 1 : 0)
+            taskLine.padding(.top, 6).opacity(thirdShown >= 3 ? 1 : 0)
+            Spacer(minLength: 0)
+            prompt
+        }
+        .padding(.top, 70)
+    }
+
+    private func optionWell(_ o: FirstZikrOption) -> some View {
+        VStack(spacing: 8) {
+            Text(o.arabicLines)
+                .font(.custom("KFGQPCUthmanTahaNaskh", size: 25))
+                .foregroundStyle(Color.primary.opacity(0.88))
+                .lineSpacing(6)
+            Text(o.sayLines)
+                .font(.system(size: 14, weight: .regular, design: .rounded)).italic()
+                .foregroundStyle(Color.primary.opacity(0.5))
+            Text("“\(o.meaningLines)”")
+                .font(.system(size: 16, weight: .light, design: .rounded))
+                .foregroundStyle(Color.primary.opacity(0.75))
+                .padding(.top, 4)
+            Text((o.benefit + "\n" + o.source).uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded)).tracking(1.2)
+                .foregroundStyle(Color.primary.opacity(0.35))
+                .padding(.top, 6)
+        }
+        .multilineTextAlignment(.center)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 16)
+        .background(NeuPressed(shape: RoundedRectangle(cornerRadius: 22, style: .continuous), radius: 6, offset: 4))
+        .padding(8)
+    }
+
+    private var choiceArrow: some View {
+        VStack(spacing: 3) {
+            Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 1, height: 18)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.primary.opacity(0.3))
+        }
+    }
+
+    /// The picked zikr's circle (the trial layouts draw it from the option; the real task is made on start).
+    private var choiceRing: some View {
+        let o = FirstZikr.options[choice]
+        return Button(action: startCounting) {
+            ZikrCircleFace(title: o.taskName, icon: nil, subtitle: "0 of \(FirstZikr.goal)", ring: .progress(0),
+                           mantraLine: o.sayLines.replacingOccurrences(of: "\n", with: " "))
+                .contentShape(Circle())
+                .scaleEffect(breathe ? 1.025 : 1)
+                .id(choice)
+                .transition(.opacity)
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(0.8)
+        .frame(height: 166)
+        .overlay {
+            GeometryReader { geo in
+                TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 48,
+                                                                      y: geo.size.height / 2 + 44)))
+            }
+            .opacity(thirdShown >= 4 ? 1 : 0)
+        }
     }
 
     private func sectionLabel(_ words: String) -> some View {
@@ -620,7 +796,8 @@ struct ZikrLockCover: View {
     /// A tap mid-build: the rest of page 1 quickly — the verse in (if it isn't), up, what's inside, Unlock now — about a
     /// second in all, from wherever it had got to.
     private func hurry() {
-        guard !lock.focus, !leaving, stage < 4 else { return }
+        if lock.focus { hurryPageTwo(); return }
+        guard !leaving, stage < 4 else { return }
         run?.cancel()
         run = Task { @MainActor in
             if stage < 1 {
@@ -641,6 +818,29 @@ struct ZikrLockCover: View {
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.35)) { stage = 4 }
+        }
+    }
+
+    /// A tap while page 2 is still building hurries it too (owner: "make it so i can tap on page 2 to make it move
+    /// faster"): the well, the rest of the quote's lines a beat apart, then the source, the bridge and the button.
+    private func hurryPageTwo() {
+        let lines = ZikrLockWords.narration.count + 4
+        guard !leaving, !third, linesShown < lines else { return }
+        run?.cancel()
+        run = Task { @MainActor in
+            if linesShown < ZikrLockWords.narration.count + 1 {
+                withAnimation(.easeOut(duration: 0.3)) { linesShown = ZikrLockWords.narration.count + 1 }
+            }
+            for line in ZikrLockWords.quoteParts.joined() where line.index >= quoteShown {
+                withAnimation(.easeInOut(duration: 0.3)) { quoteShown = line.index + 1 }
+                try? await Task.sleep(for: .milliseconds(90))
+                guard !Task.isCancelled else { return }
+            }
+            for n in (ZikrLockWords.narration.count + 2)...lines {
+                withAnimation(.easeOut(duration: 0.35)) { linesShown = max(linesShown, n) }
+                try? await Task.sleep(for: .milliseconds(150))
+                guard !Task.isCancelled else { return }
+            }
         }
     }
 
@@ -734,6 +934,23 @@ struct ZikrLockCover: View {
 /// The page's words. The verse is the app's own Quran text and translation (quran.sqlite, english_hilali.sqlite) without
 /// the translation's bracketed notes; the narration is sunnah.com's English of Sahih al-Bukhari 7405 with its one
 /// bracketed note left out and the hand-span lines skipped.
+struct FirstZikrOption {
+    let taskName: String
+    let arabicLines: String
+    let sayLines: String
+    let meaningLines: String
+    let benefit: String
+    let source: String
+}
+
+/// Page 3 with a choice of three, while the owner looks (decision first-zikr-choice; `-firstZikrChoice cards|swipe`).
+enum FirstZikrChoiceLayout: String {
+    case cards, swipe
+    static var current: FirstZikrChoiceLayout? {
+        UserDefaults.standard.string(forKey: "firstZikrChoice").flatMap(FirstZikrChoiceLayout.init(rawValue:))
+    }
+}
+
 enum ZikrLockWords {
     static let verseArabic = "فَاذكُرونى أَذكُركُم"
     static let verseEnglish = "“Remember Me; I will remember you.”"
@@ -780,6 +997,20 @@ enum ZikrLockWords {
 /// The first zikr's app-side parts: its bundled recording and its task (the words live with the built-ins).
 extension FirstZikr {
     static let memoResource = "first-zikr"
+
+    /// The three to choose from (the choice layouts): praise, blessings on the Prophet ﷺ, forgiveness — built-ins, their
+    /// benefit from their notes.
+    static let options: [FirstZikrOption] = [
+        FirstZikrOption(taskName: taskName, arabicLines: arabicLines, sayLines: sayLines,
+                        meaningLines: meaningLines, benefit: "Light on the tongue, heavy on the Scale",
+                        source: "Sahih al-Bukhari 7563"),
+        FirstZikrOption(taskName: "Ten Blessings", arabicLines: "ٱللَّٰهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ",
+                        sayLines: "Allahumma salli 'ala Muhammad", meaningLines: "O Allah, send blessings upon Muhammad.",
+                        benefit: "Send one blessing, and Allah sends ten on you", source: "Sahih Muslim 408"),
+        FirstZikrOption(taskName: "Seeking Forgiveness", arabicLines: "أَسْتَغْفِرُ ٱللَّٰهَ",
+                        sayLines: "Astaghfirullah", meaningLines: "I seek Allah’s forgiveness.",
+                        benefit: "The Prophet ﷺ said it more than 70 times a day", source: "Sahih al-Bukhari 6307"),
+    ]
     /// How to say it, one phrase a line (under the Arabic on page 3).
     static let sayLines = "SubhanAllahi wa bihamdihi,\nSubhanAllahil-'Azim"
 
