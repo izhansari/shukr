@@ -661,14 +661,20 @@ struct ZikrTourSessionLayer: View {
 /// the counter, three practice boxes, "Let's begin" once all three are done. It takes every touch, so nothing counts
 /// under it; the boxes' moves are practice only.
 struct CounterWelcome: View {
-    /// "Let's begin" once this many are done (owner: "if they go ahead and satisfy one of them, they can skip forward").
+    /// "Skip this step" once this many are done (owner: "if there's only one satisfied, just put a secondary button");
+    /// the main button lights up only with all three.
     var minimumDone = 1
     /// The button's words (the lock's practice leads on to their zikr: "continue to pick my zikr. or something like that").
     var buttonTitle = TourCopy.ZikrTour.welcomeButton
     let onBegin: () -> Void
     @Environment(\.circleTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var done: Set<GestureHint.Kind> = []
+    /// The rows come in one at a time (owner: "fade in each hstack one by one"): 1 the title, 2 the line, 3 the boxes,
+    /// 4 the buttons.
+    @State private var shown = 0
     private typealias C = TourCopy.ZikrTour
+    private var allDone: Bool { done.count == 3 }
 
     var body: some View {
         ZStack {
@@ -677,13 +683,15 @@ struct CounterWelcome: View {
                 .contentShape(Rectangle())
                 .onTapGesture {}
             VStack(spacing: 0) {
-                Text(C.welcomeKicker.uppercased())
-                    .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
-                    .foregroundStyle(Color.sage)
-                Text(C.welcomeTitle)
-                    .font(.system(size: 30, weight: .light, design: .rounded))
-                    .foregroundStyle(Color.primary.opacity(0.9))
-                    .padding(.top, 12)
+                VStack(spacing: 12) {
+                    Text(C.welcomeKicker.uppercased())
+                        .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
+                        .foregroundStyle(Color.sage)
+                    Text(C.welcomeTitle)
+                        .font(.system(size: 30, weight: .light, design: .rounded))
+                        .foregroundStyle(Color.primary.opacity(0.9))
+                }
+                .rowIn(shown >= 1, reduceMotion)
                 Text(C.welcomeBody)
                     .font(.system(size: 17, weight: .light, design: .rounded))
                     .foregroundStyle(Color.primary.opacity(0.7))
@@ -692,33 +700,61 @@ struct CounterWelcome: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 320)
                     .padding(.top, 14)
+                    .rowIn(shown >= 2, reduceMotion)
                 HStack(alignment: .top, spacing: 10) {
                     PracticeBox(kind: .tap, caption: C.practiceTap) { done.insert(.tap) }
                     PracticeBox(kind: .drag, caption: C.practiceDrag) { done.insert(.drag) }
                     PracticeBox(kind: .stroke, caption: C.practiceStroke) { done.insert(.stroke) }
                 }
                 .padding(.top, 30)
-                Button(action: onBegin) {
-                    HStack(spacing: 6) {
-                        Text(buttonTitle)
-                        Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold))
+                .rowIn(shown >= 3, reduceMotion)
+                .allowsHitTesting(shown >= 3)
+                VStack(spacing: 6) {
+                    Button(action: onBegin) {
+                        HStack(spacing: 6) {
+                            Text(buttonTitle)
+                            Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold))
+                        }
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.sage)
+                        .padding(.horizontal, 18)
+                        .frame(height: 40)
+                        .background(Capsule().fill(Color.sage.opacity(0.08)))
+                        .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5))
                     }
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.sage)
-                    .padding(.horizontal, 18)
-                    .frame(height: 40)
-                    .background(Capsule().fill(Color.sage.opacity(0.08)))
-                    .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5))
+                    .buttonStyle(.plain)
+                    .opacity(allDone ? 1 : 0.3)
+                    .disabled(!allDone)
+                    // Not all three yet, but some: allowed on, quietly (they know they've skipped some).
+                    Button("Skip this step", action: onBegin)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.primary.opacity(0.45))
+                        .frame(height: 32)
+                        .opacity(!allDone && done.count >= minimumDone ? 1 : 0)
+                        .allowsHitTesting(!allDone && done.count >= minimumDone)
                 }
-                .buttonStyle(.plain)
-                .opacity(done.count >= minimumDone ? 1 : 0.3)
-                .disabled(done.count < minimumDone)
                 .animation(.easeInOut(duration: 0.3), value: done.count)
-                .padding(.top, 30)
+                .padding(.top, 28)
+                .rowIn(shown >= 4, reduceMotion)
             }
             .padding(.horizontal, 18)
         }
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .task {
+            if reduceMotion { shown = 4; return }
+            for row in 1...4 {
+                try? await Task.sleep(for: .milliseconds(row == 1 ? 150 : 380))
+                withAnimation(.easeOut(duration: 0.5)) { shown = row }
+            }
+        }
+    }
+}
+
+private extension View {
+    /// A row of the practice page coming in: faded and a touch lower until it's its turn.
+    func rowIn(_ on: Bool, _ reduceMotion: Bool) -> some View {
+        opacity(on ? 1 : 0).offset(y: on || reduceMotion ? 0 : 8)
     }
 }
 
@@ -742,6 +778,8 @@ private struct PracticeBox: View {
     @State private var armed = true
     @State private var strokes = 0
     @State private var whyTask: Task<Void, Never>?
+    /// The dot just filled pops (owner: "turn green with like a short pulse so it's clearer the count was registered").
+    @State private var pop = false
     private static let needed = 3
     private static let step: CGFloat = 40
     private var isDone: Bool { count >= Self.needed }
@@ -772,6 +810,7 @@ private struct PracticeBox: View {
             }
             .frame(height: 170)
             .overlay(box.strokeBorder(border, lineWidth: flash != nil ? 3 : (isDone ? 2 : 1.5)))
+            .shadow(color: (flash ?? .clear).opacity(0.55), radius: flash != nil ? 10 : 0)
             .scaleEffect(pressed && !isDone ? 0.97 : 1)
             .animation(.easeOut(duration: 0.15), value: pressed)
             .animation(.easeOut(duration: 0.15), value: armed)
@@ -788,6 +827,7 @@ private struct PracticeBox: View {
                 HStack(spacing: 5) {
                     ForEach(0..<Self.needed, id: \.self) { i in
                         Circle().fill(i < count ? Color.sage : Color.primary.opacity(0.15)).frame(width: 6, height: 6)
+                            .scaleEffect(pop && i == count - 1 ? 1.9 : 1)
                     }
                 }
                 .opacity(why == nil ? 1 : 0)
@@ -858,6 +898,11 @@ private struct PracticeBox: View {
     private func hit() {
         guard !isDone else { return }
         withAnimation(.easeOut(duration: 0.15)) { count += 1; flash = .sage; why = nil }
+        withAnimation(.spring(response: 0.18, dampingFraction: 0.5)) { pop = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { pop = false }
+        }
         if isDone {
             triggerSomeVibration(type: .success)
             onDone()
