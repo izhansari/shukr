@@ -126,7 +126,7 @@ struct TourCoachStrip: View {
                     Text(lead)
                         .font(.system(.caption, design: .rounded, weight: .regular))
                         .foregroundStyle(Color.primary.opacity(0.55))
-                        .lineLimit(2)
+                        .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 } else if let chapter {
                     Text(chapter)

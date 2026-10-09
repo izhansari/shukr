@@ -499,6 +499,8 @@ struct tasbeehView: View {
                                 .frame(width: geometry.size.width, height: geometry.size.height) // Fill the entire geometry
                                 .onTapGesture {
                                     //                                            print("Tap gesture detected")
+                                    // The Zikr Tour's lessons let only their own move count (ZikrTour.allows).
+                                    guard ZikrTour.shared.allows(byDrag: false, total: sessionCount) else { return }
                                     incrementTasbeeh() // Increment on tap
                                     CountTips.shared.counted(byDrag: false)
                                     ZikrTour.shared.counted(byDrag: false, inTouch: 0, total: sessionCount)
@@ -521,10 +523,12 @@ struct tasbeehView: View {
                                             // Check if dragged down from highest point by a value of incrementThreshold
                                             if dragToIncrementBool && offsetY - highestPoint > incrementThreshold {
                                                 dragToIncrementBool = false
-                                                incrementTasbeeh()
-                                                strokesThisTouch += 1
-                                                CountTips.shared.counted(byDrag: true, inTouch: strokesThisTouch)
-                                                ZikrTour.shared.counted(byDrag: true, inTouch: strokesThisTouch, total: sessionCount)
+                                                if ZikrTour.shared.allows(byDrag: true, total: sessionCount) {
+                                                    incrementTasbeeh()
+                                                    strokesThisTouch += 1
+                                                    CountTips.shared.counted(byDrag: true, inTouch: strokesThisTouch)
+                                                    ZikrTour.shared.counted(byDrag: true, inTouch: strokesThisTouch, total: sessionCount)
+                                                }
                                                 lowestPoint = value.translation.height // need to set it otherwise it will always be the lowest point of the entire drag sesh
                                                 // Check if dragged up from lowest point by a value of incrementThreshold/2
                                             } else if !dragToIncrementBool && lowestPoint - offsetY > incrementThreshold/2 {

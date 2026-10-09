@@ -74,6 +74,22 @@ import SwiftData
 
     /// The lock card's "Unlock with the tour" (ZikrLock): straight into the steps, as Show me — their Astaghfirullah task
     /// if they have one (done today: straight to how long tasks take), else making it.
+    /// The counter's welcome has been seen ("Let's begin"): the lessons start (ZikrTourSessionLayer).
+    var welcomed = true
+
+    /// The guard (owner: "there's no guard for finishing by tapping the whole thing and never dragging"; a guided flow
+    /// lets through only the step's own move): while a lesson runs only its move counts — taps in the first, drags in the
+    /// next two — and nothing reaches the goal before the last lesson. Outside the lessons everything counts.
+    func allows(byDrag: Bool, total: Int) -> Bool {
+        guard active, let step else { return true }
+        switch step {
+        case .taps: if byDrag { return false }
+        case .drags, .stroke: if !byDrag { return false }
+        default: return true
+        }
+        return total + 1 < countGoal
+    }
+
     /// What "Keep going" counts to: the first zikr's own goal (100 a day since decision first-zikr-virtue C), else 33.
     private(set) var countGoal = 33
 
@@ -93,6 +109,7 @@ import SwiftData
     /// counter straight into the counting lessons — no task-making in the tour.
     func startFirst(_ task: TaskModel) {
         countGoal = task.isCountMode ? task.goal : 33
+        welcomed = false
         UserDefaults.standard.set(true, forKey: Self.offeredKey)
         inAppTour = false
         taskID = task.id
@@ -349,7 +366,7 @@ import SwiftData
         let countNeeded = switch step { case .taps, .drags, .stroke: 3; case .keepGoing: countGoal; default: 0 }
         let streakText = outcome.map { C.streakLead(counted: $0.counted, goal: $0.goal, streak: $0.streak, met: $0.met) }
             ?? C.streakLead(counted: 0, goal: 0, streak: 0, met: false)
-        let streakLead = [streakText, pace.map(C.paceLine)].compactMap { $0 }.joined(separator: " ")
+        let streakLead = streakText   // the results page shows the pace itself
         let timeLead = step == .yourTasks ? C.tasksLead : skippedCount ? "\(C.reuseDoneLead) \(C.timeLead)" : C.timeLead
         let whereLead: String = switch step {
             case .history: C.historyLead
@@ -374,13 +391,6 @@ import SwiftData
                                    todo: step == .timeLeft ? C.timeTodo : nil) : nil,
             skippedCount ? section("zt.where", C.whereStep, from: .history, to: .azkarPage, lead: whereLead, todo: whereTodo) : nil,
         ].compactMap { $0 }
-        // The counter's welcome: on the first lesson, until it's read ("Got it"), the count section explains itself as
-        // a card — the three ways — then the strip takes over (TourStrip).
-        if step == .taps, !TourGuideState.shared.read.contains("zikrTour|zt.count"),
-           let i = sections.firstIndex(where: { $0.id == "zt.count" }) {
-            sections[i].lead = C.countIntroLead
-            sections[i].blocks = [TourBlock(items: C.countWays, numbered: true)]
-        }
         // Reused task: the kinds line shows straight away, as done.
         if reused, step >= .start, let i = sections.firstIndex(where: { $0.id == "zt.kinds" }) { sections[i].done = true }
         if step == .done { sections.append(TourSection(id: "zt.done", note: C.doneLine(met: outcome?.met ?? true))) }
@@ -420,38 +430,24 @@ struct ZikrTourBubble: View {
     @Environment(\.circleTheme) private var theme
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
 
-    /// The slim strip while a step is something to do; its explanation first, once, as the card (decision
-    /// tour-hint-style A, TourStrip.swift).
-    static var mode: TourGuideMode {
-        let page = ZikrTour.shared.page
-        return TourGuideMode.of(page, key: page.guideKey("zikrTour"))
-    }
+    /// Always the slim strip in the Zikr tab (owner, 2026-10-09: "i dont want the tooltip bubble anywhere in the zikr
+    /// tab"); a step with a button (the end, Continue) carries it in the strip.
+    static var mode: TourGuideMode { .strip }
 
     var body: some View {
         let page = tour.page
-        let key = page.guideKey("zikrTour")
-        let mode = TourGuideMode.of(page, key: key)
-        if mode == .strip {
-            TourCoachStrip(chapter: page.headline, lead: page.shortLead, todos: page.currentTodos, ticked: tour.completing ? [0] : [],
-                           locked: page.locked, progress: page.activeSection?.progress,
-                           onDetails: page.explains ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.again(key) } } : nil)
+        if let primary = page.primary {
+            // A step to read, with its button: its line, the button under it.
+            let section = page.activeSection
+            let line = section?.lead ?? section?.note ?? page.subline ?? ""
+            TourCoachStrip(chapter: section?.title ?? page.headline, todos: [line], ticked: [],
+                           extra: (primary, { tour.step == .offer ? showMe() : tour.next() }))
                 .frame(maxWidth: 400)
         } else {
-            TourPageView(step: .zikr, page: mode == .cardThenStrip ? page.withGotIt : page, place: nil,
-                         ticked: tour.completing ? [0] : [], lit: [],
-                         openSection: tour.openSection, showsBack: false, qiblaSkip: false,
-                         onPrimary: {
-                             if mode == .cardThenStrip { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.gotIt(key) } }
-                             else if tour.step == .offer { showMe() } else { tour.next() }
-                         },
-                         onSecondary: onSecondary, onBack: {},
-                         onToggle: { tour.toggle($0) }, onSkipQibla: {})
-                .padding(16)
-                .frame(width: 330)
-                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                .accessibilityElement(children: .contain)
-                .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
-                            look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+            TourCoachStrip(chapter: page.headline, lead: tour.step == .results ? page.activeSection?.lead : page.shortLead,
+                           todos: page.currentTodos,
+                           ticked: tour.completing ? [0] : [], locked: page.locked, progress: page.activeSection?.progress)
+                .frame(maxWidth: 400)
         }
     }
 }
@@ -538,7 +534,7 @@ struct ZikrTourLayer: View {
             })
         if ZikrTourBubble.mode == .strip {
             let target = openings(t).first.map { $0.offsetBy(dx: -origin.x, dy: -origin.y) }
-            bubble.tourStripPlaced(top: TourStripPlace.top(target: target, height: height),
+            bubble.tourStripPlaced(top: tour.step == .done || TourStripPlace.top(target: target, height: height),
                                    size: CGSize(width: UIScreen.main.bounds.width, height: height),
                                    topInset: 112, bottomInset: 104)
         } else {
@@ -605,7 +601,12 @@ struct ZikrTourSessionLayer: View {
             let origin = proxy.frame(in: .global).origin
             let t = TourTargets.shared
             ZStack {
-                if tour.place == .session, !paused, !results, settled {
+                // The counter's welcome first (its own moment, not a bubble): the lessons wait for "Let's begin".
+                if tour.step == .taps, !tour.welcomed, !paused, !results, settled {
+                    CounterWelcome { withAnimation(.easeInOut(duration: 0.45)) { tour.welcomed = true } }
+                        .transition(.opacity)
+                }
+                if tour.place == .session, !paused, !results, settled, tour.welcomed || tour.step != .taps {
                     // A ghost finger showing the move (owner, 2026-10-08), until they've done it once.
                     CounterGestureHint(kind: hintKind)
                     ZikrTourBubble()
@@ -622,10 +623,13 @@ struct ZikrTourSessionLayer: View {
                     .padding(.top, (t.frame("ct.finish").map { $0.midY - origin.y } ?? 76) - 16)
                     .padding(.trailing, t.frame("ct.finish").map { proxy.size.width - ($0.minX - origin.x) + 10 } ?? 72)
                 }
-                if tour.place == .results, results, let done = t.frame("ct.done") {
+                // At the top, where the results page is empty (owner: "the strip is still obstructing. move the strips
+                // to the top when applicable").
+                if tour.place == .results, results {
                     ZikrTourBubble()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        .padding(.bottom, proxy.size.height - (done.minY - origin.y) + 14)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        .padding(.top, proxy.safeAreaInsets.top + 62)
                         .transition(.opacity)
                 }
             }
@@ -636,5 +640,56 @@ struct ZikrTourSessionLayer: View {
             try? await Task.sleep(for: .seconds(0.8))
             withAnimation(.easeOut(duration: 0.35)) { settled = true }
         }
+    }
+}
+
+/// The counter's welcome in the Zikr Tour (owner, 2026-10-09: "a nice welcome and just explains we gonna show them the
+/// different ways to count and we'll do it together"; no bubble in the Zikr tab): the page's own colour over the
+/// counter, a few calm words in the lock pages' type, and one button. It takes every touch, so nothing counts under it.
+struct CounterWelcome: View {
+    let onBegin: () -> Void
+    @Environment(\.circleTheme) private var theme
+    private typealias C = TourCopy.ZikrTour
+
+    var body: some View {
+        ZStack {
+            theme.backdrop.opacity(0.94)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {}
+            VStack(spacing: 0) {
+                Text(C.welcomeKicker.uppercased())
+                    .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
+                    .foregroundStyle(Color.sage)
+                Text(C.welcomeTitle)
+                    .font(.system(size: 30, weight: .light, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.9))
+                    .padding(.top, 12)
+                Text(C.welcomeBody)
+                    .font(.system(size: 17, weight: .light, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 300)
+                    .padding(.top, 14)
+                Button(action: onBegin) {
+                    HStack(spacing: 6) {
+                        Text(C.welcomeButton)
+                        Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold))
+                    }
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                    .padding(.horizontal, 18)
+                    .frame(height: 40)
+                    .background(Capsule().fill(Color.sage.opacity(0.08)))
+                    .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 34)
+            }
+            .padding(.horizontal, 28)
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 }

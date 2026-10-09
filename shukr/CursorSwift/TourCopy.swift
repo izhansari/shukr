@@ -175,17 +175,19 @@ enum TourCopy {
         static let reviewTodo = "Tap Add to my day"
 
         static let countStep = "Count it"
-        // The counter's welcome, before the first lesson (owner: "a little intro to the counting session like a
-        // 'welcome to the tasbeeh screen. let's teach you how to use it. there are three ways to count'").
-        static let countIntroLead = "Welcome to your tasbeeh counter. There are three ways to count — let's try each one."
-        static let countWays = ["Tap anywhere", "Drag down, then lift", "Drag down and up, without lifting"]
+        // The counter's welcome, before the first lesson — its own moment, no bubble (owner: "a nice welcome and just
+        // explains we gonna show them the different ways to count and we'll do it together").
+        static let welcomeKicker = "Your counter"
+        static let welcomeTitle = "Welcome"
+        static let welcomeBody = "There are a few ways to count here. We’ll show you each one, and do it together."
+        static let welcomeButton = "Let’s begin"
         static let startLead = "Your task is on the wheel."
         static let startTodo = "Tap your zikr to carry on"
         static let tapLead = "The whole screen counts."
         static let tapTodo = "Tap anywhere, 3 times"
         static let dragLead = "Drag down anywhere, then lift."
         static let dragTodo = "3 separate drags"
-        static let strokeLead = "Keep your finger down and move it down and up."
+        static let strokeLead = "You can keep your finger pressed and drag up and down."
         static let strokeTodo = "3 drags without lifting"
         static func goLead(_ goal: Int) -> String { "Keep going — it ends by itself at \(goal)." }
         static func goTodo(_ goal: Int) -> String { "Reach \(goal)" }
