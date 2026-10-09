@@ -128,8 +128,6 @@ struct ZikrLockCover: View {
     /// Page 3's circle tapped: the practice page (the three ways to count), before the session (owner: "make this page
     /// come before actually entering the active session").
     @State private var practicing = false
-    /// The circle's place on screen (as drawn, 0.8 ×), handed to the session to open out of.
-    @State private var ringFrame: CGRect = .zero
     @State private var armed = false
     @State private var token = 0
     @State private var armedWidth: CGFloat = 0
@@ -616,7 +614,6 @@ struct ZikrLockCover: View {
             ZikrCircleFace(title: o.taskName, icon: nil, subtitle: "0 of \(o.goal)", ring: .progress(0),
                            mantraLine: o.sayLines.replacingOccurrences(of: "\n", with: " "))
                 .contentShape(Circle())
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ringFrame = Self.drawn($0) }
                 .scaleEffect(breathe ? 1.025 : 1)
                 .id(choice)
                 .transition(.opacity)
@@ -647,7 +644,6 @@ struct ZikrLockCover: View {
                            mantraLine: firstTask?.mantraLine,
                            note: firstTask?.estimateNote(TaskProgress(count: 0, seconds: 0)))
                 .contentShape(Circle())
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ringFrame = Self.drawn($0) }
                 .scaleEffect(breathe ? 1.025 : 1)
         }
         .buttonStyle(.plain)
@@ -727,6 +723,7 @@ struct ZikrLockCover: View {
             triggerSomeVibration(type: .light)
             run?.cancel()
             ZikrAudio.stopAll()
+            armed = false
             withAnimation(.easeInOut(duration: 0.9)) {
                 lock.focus = false
                 linesShown = 0
@@ -958,9 +955,6 @@ struct ZikrLockCover: View {
         }
     }
 
-    /// The circle as drawn on page 3 (0.8 × its 200 pt face, about its centre).
-    private static func drawn(_ r: CGRect) -> CGRect { r.insetBy(dx: r.width * 0.1, dy: r.height * 0.1) }
-
     /// Leaving the page: ready to build again next time.
     private func leave() {
         run?.cancel()
@@ -972,7 +966,9 @@ struct ZikrLockCover: View {
     private func enterFocus() {
         triggerSomeVibration(type: .medium)
         run?.cancel()
-        armed = false
+        // Unlock keeps its second look while page 1 fades (owner: it reverted to the first tap's look at once); the
+        // input timeout is called off, and ✕ resets it under page 1.
+        token += 1
         // Page 1 fades, the bars step away, and the verse glides to page 2's centred place.
         withAnimation(.easeInOut(duration: 1.1)) { lock.focus = true }
         let lines = ZikrLockWords.narration.count + 4   // heading, the lines, the source, the bridge, Begin
