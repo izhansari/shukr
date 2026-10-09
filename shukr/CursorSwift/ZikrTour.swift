@@ -48,6 +48,9 @@ import SwiftData
     private(set) var skippedCount = false
     /// The session's pace, seconds a count.
     private(set) var pace: Double?
+    /// How the session went (the results' streak line says it as it is — finished early, no streak yet).
+    struct Outcome { let counted: Int; let goal: Int; let streak: Int; let met: Bool }
+    private(set) var outcome: Outcome?
     /// Bumped to close the page the tour is on (Your tasks, History, Azkar).
     private(set) var popPage = 0
     /// Asks the wheel to centre an item ("add", a task's id).
@@ -143,6 +146,7 @@ import SwiftData
         inAppTour = false
         taskID = nil
         pace = nil
+        outcome = nil
     }
 
     // MARK: What the wheel and the pages may do
@@ -210,6 +214,10 @@ import SwiftData
     func sessionSaved(_ session: SessionDataModel) {
         guard let step, step >= .taps, step <= .keepGoing else { return }
         pace = session.avgTimePerClick > 0 ? session.avgTimePerClick : nil
+        let streak = session.task?.streak()
+        let met = (streak?.keptToday ?? false) || (session.targetCount > 0 && session.totalCount >= session.targetCount)
+        outcome = Outcome(counted: session.totalCount, goal: session.targetCount,
+                          streak: max(streak?.current ?? 0, met ? 1 : 0), met: met)
         go(.results)
     }
     func resultsDone() { if step == .results { complete() } }
@@ -339,7 +347,9 @@ import SwiftData
             default: C.goTodo(countGoal)
         }
         let countNeeded = switch step { case .taps, .drags, .stroke: 3; case .keepGoing: countGoal; default: 0 }
-        let streakLead = [C.streakLead, pace.map(C.paceLine)].compactMap { $0 }.joined(separator: " ")
+        let streakText = outcome.map { C.streakLead(counted: $0.counted, goal: $0.goal, streak: $0.streak, met: $0.met) }
+            ?? C.streakLead(counted: 0, goal: 0, streak: 0, met: false)
+        let streakLead = [streakText, pace.map(C.paceLine)].compactMap { $0 }.joined(separator: " ")
         let timeLead = step == .yourTasks ? C.tasksLead : skippedCount ? "\(C.reuseDoneLead) \(C.timeLead)" : C.timeLead
         let whereLead: String = switch step {
             case .history: C.historyLead
@@ -373,7 +383,7 @@ import SwiftData
         }
         // Reused task: the kinds line shows straight away, as done.
         if reused, step >= .start, let i = sections.firstIndex(where: { $0.id == "zt.kinds" }) { sections[i].done = true }
-        if step == .done { sections.append(TourSection(id: "zt.done", note: C.doneLine)) }
+        if step == .done { sections.append(TourSection(id: "zt.done", note: C.doneLine(met: outcome?.met ?? true))) }
         let units = 6.0
         let finished = Double([Step.kinds, .review, .keepGoing, .results, .yourTasks, .azkarPage].filter { $0 < step }.count)
         let primary: String? = switch step {
