@@ -352,40 +352,49 @@ struct ZikrLockCover: View {
     }
 
     /// Page 3: the first zikr, ready (owner: "they don't know what a task is … they might not even know this zikr …
-    /// enough context where it feels comfortable and not over explaining"). Two ways to try (decision
-    /// first-zikr-page, `-firstZikrLayout a|b`): A meets the zikr first — what to say, how to say it, what it means, its
-    /// source, Listen — then its circle with one line on the daily task; B keeps the circle on top with that line under it.
-    @ViewBuilder private var pageThree: some View {
-        switch FirstZikrLayout.current {
-        case .today: pageThreeCurrent
-        case .zikrFirst: pageThreeZikrFirst
-        case .circleFirst: pageThreeCircleFirst
-        }
-    }
-
-    private var pageThreeZikrFirst: some View {
+    /// enough context where it feels comfortable and not over explaining"; "segment it so it shows the logic clear of how
+    /// we built the task from the zikr"). Two parts joined by a line: THE ZIKR in the pressed well (what to say, how to
+    /// say it, what it means, its source, Listen), then YOUR DAILY TASK — its circle and one line on what it is.
+    private var pageThree: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            thirdHeading
+            sectionLabel("The zikr")
                 .opacity(thirdShown >= 1 ? 1 : 0)
-            zikrWords
-                .padding(.top, 18)
-                .opacity(thirdShown >= 1 ? 1 : 0)
-                .offset(y: thirdShown >= 1 || reduceMotion ? 0 : 6)
-            thirdSource
-                .padding(.top, 14)
-                .opacity(thirdShown >= 2 ? 1 : 0)
-            listen
-                .padding(.top, 14)
-                .opacity(thirdShown >= 2 ? 1 : 0)
+            VStack(spacing: 14) {
+                zikrWords
+                    .opacity(thirdShown >= 1 ? 1 : 0)
+                thirdSource
+                    .opacity(thirdShown >= 2 ? 1 : 0)
+                listen
+                    .opacity(thirdShown >= 2 ? 1 : 0)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20).padding(.vertical, 20)
+            .background(NeuPressed(shape: RoundedRectangle(cornerRadius: 22, style: .continuous), radius: 6, offset: 4))
+            .padding(.horizontal, -12)
+            .padding(.top, 12)
+            .opacity(thirdShown >= 1 ? 1 : 0)
+            .offset(y: thirdShown >= 1 || reduceMotion ? 0 : 6)
+            // The zikr → its task.
+            VStack(spacing: 3) {
+                Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 1, height: 22)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.3))
+            }
+            .padding(.top, 12)
+            .opacity(thirdShown >= 3 ? 1 : 0)
+            sectionLabel("Your daily task")
+                .padding(.top, 10)
+                .opacity(thirdShown >= 3 ? 1 : 0)
             firstRing
-                .scaleEffect(0.85)
-                .frame(height: 176)
-                .padding(.top, 26)
+                .scaleEffect(0.8)
+                .frame(height: 166)
+                .padding(.top, 2)
                 .opacity(thirdShown >= 3 ? 1 : 0)
                 .scaleEffect(thirdShown >= 3 || reduceMotion ? 1 : 0.94)
             taskLine
-                .padding(.top, 10)
+                .padding(.top, 6)
                 .opacity(thirdShown >= 3 ? 1 : 0)
             Spacer(minLength: 0)
             prompt
@@ -393,36 +402,8 @@ struct ZikrLockCover: View {
         .padding(.top, 70)
     }
 
-    private var pageThreeCircleFirst: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            thirdHeading
-                .opacity(thirdShown >= 1 ? 1 : 0)
-            firstRing
-                .padding(.top, 18)
-                .opacity(thirdShown >= 1 ? 1 : 0)
-                .scaleEffect(thirdShown >= 1 || reduceMotion ? 1 : 0.94)
-            taskLine
-                .padding(.top, 12)
-                .opacity(thirdShown >= 1 ? 1 : 0)
-            zikrWords
-                .padding(.top, 26)
-                .opacity(thirdShown >= 2 ? 1 : 0)
-                .offset(y: thirdShown >= 2 || reduceMotion ? 0 : 6)
-            thirdSource
-                .padding(.top, 14)
-                .opacity(thirdShown >= 3 ? 1 : 0)
-            listen
-                .padding(.top, 14)
-                .opacity(thirdShown >= 3 ? 1 : 0)
-            Spacer(minLength: 0)
-            prompt
-        }
-        .padding(.top, 70)
-    }
-
-    private var thirdHeading: some View {
-        Text("YOUR FIRST ZIKR")
+    private func sectionLabel(_ words: String) -> some View {
+        Text(words.uppercased())
             .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
             .foregroundStyle(Color.sage)
     }
@@ -504,79 +485,6 @@ struct ZikrLockCover: View {
             .foregroundStyle(Color.sage)
             .padding(.bottom, 36)
             .opacity(thirdShown >= 4 ? 1 : 0)
-    }
-
-    /// Page 3: the first zikr, ready. Its ring (tap → the counter), the zikr's name and what it means, its source, Listen
-    /// (once its recording is in the app), and the prompt. Centred on the page.
-    private var pageThreeCurrent: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            Text("YOUR FIRST ZIKR")
-                .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
-                .foregroundStyle(Color.sage)
-                .opacity(thirdShown >= 1 ? 1 : 0)
-            // The task's own circle, as the wheel draws it (owner: "the task should look like our task rings"): its
-            // English name, "0 of 33", how long it takes.
-            Button(action: startCounting) {
-                ZikrCircleFace(title: firstTask?.title ?? FirstZikr.name, icon: nil,
-                               subtitle: "0 of \(FirstZikr.goal)", ring: .progress(0),
-                               mantraLine: firstTask?.mantraLine,
-                               note: firstTask?.estimateNote(TaskProgress(count: 0, seconds: 0)))
-                    .contentShape(Circle())
-                    .scaleEffect(breathe ? 1.025 : 1)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Start \(FirstZikr.name), \(FirstZikr.goal) times")
-            .padding(.top, 18)
-            .opacity(thirdShown >= 1 ? 1 : 0)
-            .scaleEffect(thirdShown >= 1 || reduceMotion ? 1 : 0.94)
-            VStack(spacing: 10) {
-                // What to say, then what it means (owner: "make sure they know the translation of what it means").
-                Text(FirstZikr.arabicLines)
-                    .font(.custom("KFGQPCUthmanTahaNaskh", size: 24))
-                    .foregroundStyle(Color.primary.opacity(0.88))
-                    .lineSpacing(6)
-                Text("“\(FirstZikr.meaningLines)”")
-                    .font(.system(size: 16, weight: .light, design: .rounded))
-                    .foregroundStyle(Color.primary.opacity(0.7))
-                    .lineSpacing(3)
-            }
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 26)
-            .opacity(thirdShown >= 2 ? 1 : 0)
-            .offset(y: thirdShown >= 2 || reduceMotion ? 0 : 6)
-            Text(FirstZikr.source.uppercased())
-                .font(.system(size: 10, weight: .semibold, design: .rounded)).tracking(1.2)
-                .foregroundStyle(Color.primary.opacity(0.35))
-                .multilineTextAlignment(.center)
-                .padding(.top, 14)
-                .opacity(thirdShown >= 3 ? 1 : 0)
-            if let memo = firstTask?.mantra?.audioData {
-                Button { audio.togglePlay(memo) } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: audio.state == .playing ? "pause.fill" : "play.fill")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(audio.state == .playing ? "Pause" : "Listen")
-                    }
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.sage)
-                    .padding(.horizontal, 16)
-                    .frame(height: 36)
-                    .background(Capsule().fill(Color.sage.opacity(0.1)))
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 18)
-                .opacity(thirdShown >= 3 ? 1 : 0)
-            }
-            Spacer(minLength: 0)
-            Text("Tap the circle when you're ready")
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(Color.sage)
-                .padding(.bottom, 36)
-                .opacity(thirdShown >= 4 ? 1 : 0)
-        }
-        .padding(.top, 70)
     }
 
     /// ✕: back to page 1, still locked.
@@ -817,14 +725,6 @@ struct ZikrLockCover: View {
 /// The page's words. The verse is the app's own Quran text and translation (quran.sqlite, english_hilali.sqlite) without
 /// the translation's bracketed notes; the narration is sunnah.com's English of Sahih al-Bukhari 7405 with its one
 /// bracketed note left out and the hand-span lines skipped.
-/// Page 3's layout while the owner chooses (decision first-zikr-page; `-firstZikrLayout a|b`).
-enum FirstZikrLayout: String {
-    case today, zikrFirst = "a", circleFirst = "b"
-    static var current: FirstZikrLayout {
-        UserDefaults.standard.string(forKey: "firstZikrLayout").flatMap(FirstZikrLayout.init(rawValue:)) ?? .today
-    }
-}
-
 enum ZikrLockWords {
     static let verseArabic = "فَاذكُرونى أَذكُركُم"
     static let verseEnglish = "“Remember Me; I will remember you.”"
@@ -861,7 +761,7 @@ enum ZikrLockWords {
     /// The narration's thread carried on (it ends on walking towards Him): the step, then what the tour will do.
     static let firstStep = "So take the first step, however small."
     /// Page 3, under the circle: what the circle is, said once.
-    static let firstTaskLine = "We've made it your first daily task:\n33 times a day. The circle fills as you count."
+    static let firstTaskLine = "We set it up for you: 33 times a day.\nThe circle fills as you count."
     static let bridge = "We'll set up one daily zikr and count it together. It takes about two minutes."
     /// Their first intention, answering the verse's call (owner, 2026-10-08: "a stronger button … the user making their
     /// first intention or promise").
