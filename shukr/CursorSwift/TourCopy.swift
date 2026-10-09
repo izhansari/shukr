@@ -179,7 +179,11 @@ enum TourCopy {
         // explains we gonna show them the different ways to count and we'll do it together").
         static let welcomeKicker = "Your counter"
         static let welcomeTitle = "Welcome"
-        static let welcomeBody = "There are a few ways to count here. We’ll show you each one, and do it together."
+        static let welcomeBody = "There are three ways to count. Try each one here first — we’ll do it together."
+        /// The practice boxes (owner: "three different boxed areas in an hstack that has each ghost finger graphic").
+        static let practiceTap = "Tap"
+        static let practiceDrag = "Drag down, then lift"
+        static let practiceStroke = "Keep pressed, drag up and down"
         static let welcomeButton = "Let’s begin"
         static let startLead = "Your task is on the wheel."
         static let startTodo = "Tap your zikr to carry on"

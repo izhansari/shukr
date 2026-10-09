@@ -86,6 +86,8 @@ struct TourCoachStrip: View {
     var onBack: (() -> Void)? = nil
     /// A way past the step that the phone can't do (the qibla's "no compass"), as quiet words.
     var extra: (label: String, action: () -> Void)? = nil
+    /// The extra as the strip's button (bordered, trailing) — a step whose only move is it (the Zikr Tour's end).
+    var extraProminent = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
@@ -138,12 +140,12 @@ struct TourCoachStrip: View {
                 Text(todos.indices.contains(current) ? todos[current] : "")
                     .font(.system(.subheadline, design: .rounded, weight: .medium))
                     .foregroundStyle(Color.primary.opacity(currentDone ? 0.5 : 0.9))
-                    .lineLimit(2)
+                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .id(current)
                     .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
                                             removal: .move(edge: .top).combined(with: .opacity)))
-                if let extra {
+                if let extra, !extraProminent {
                     Button(extra.label, action: extra.action)
                         .buttonStyle(.plain)
                         .font(.system(.caption, design: .rounded, weight: .medium))
@@ -156,7 +158,18 @@ struct TourCoachStrip: View {
 
             Spacer(minLength: 6)
 
-            if let progress {
+            if let extra, extraProminent {
+                Button(action: extra.action) {
+                    Text(extra.label)
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(TourInk.green)
+                        .padding(.horizontal, 16)
+                        .frame(height: 34)
+                        .background(Capsule().fill(TourInk.green.opacity(0.1)))
+                        .overlay(Capsule().strokeBorder(TourInk.green, lineWidth: 1.5))
+                }
+                .buttonStyle(.plain)
+            } else if let progress {
                 Text("\(progress.0) of \(progress.1)")
                     .font(.system(.caption, design: .rounded, weight: .medium))
                     .monospacedDigit()

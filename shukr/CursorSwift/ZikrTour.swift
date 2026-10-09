@@ -74,8 +74,15 @@ import SwiftData
 
     /// The lock card's "Unlock with the tour" (ZikrLock): straight into the steps, as Show me — their Astaghfirullah task
     /// if they have one (done today: straight to how long tasks take), else making it.
-    /// The counter's welcome has been seen ("Let's begin"): the lessons start (ZikrTourSessionLayer).
+    /// The counter's welcome has been seen ("Let's begin"): the counting starts (ZikrTourSessionLayer).
     var welcomed = true
+
+    /// The three ways practised in the welcome's boxes: straight on to counting it ("Keep going"), the in-counter
+    /// lessons done there.
+    func practiced() {
+        welcomed = true
+        go(.keepGoing)
+    }
 
     /// The guard (owner: "there's no guard for finishing by tapping the whole thing and never dragging"; a guided flow
     /// lets through only the step's own move): while a lesson runs only its move counts — taps in the first, drags in the
@@ -441,7 +448,7 @@ struct ZikrTourBubble: View {
             let section = page.activeSection
             let line = section?.lead ?? section?.note ?? page.subline ?? ""
             TourCoachStrip(chapter: section?.title ?? page.headline, todos: [line], ticked: [],
-                           extra: (primary, { tour.step == .offer ? showMe() : tour.next() }))
+                           extra: (primary, { tour.step == .offer ? showMe() : tour.next() }), extraProminent: true)
                 .frame(maxWidth: 400)
         } else {
             TourCoachStrip(chapter: page.headline, lead: tour.step == .results ? page.activeSection?.lead : page.shortLead,
@@ -603,7 +610,7 @@ struct ZikrTourSessionLayer: View {
             ZStack {
                 // The counter's welcome first (its own moment, not a bubble): the lessons wait for "Let's begin".
                 if tour.step == .taps, !tour.welcomed, !paused, !results, settled {
-                    CounterWelcome { withAnimation(.easeInOut(duration: 0.45)) { tour.welcomed = true } }
+                    CounterWelcome { withAnimation(.easeInOut(duration: 0.45)) { tour.practiced() } }
                         .transition(.opacity)
                 }
                 if tour.place == .session, !paused, !results, settled, tour.welcomed || tour.step != .taps {
@@ -644,16 +651,20 @@ struct ZikrTourSessionLayer: View {
 }
 
 /// The counter's welcome in the Zikr Tour (owner, 2026-10-09: "a nice welcome and just explains we gonna show them the
-/// different ways to count and we'll do it together"; no bubble in the Zikr tab): the page's own colour over the
-/// counter, a few calm words in the lock pages' type, and one button. It takes every touch, so nothing counts under it.
+/// different ways to count and we'll do it together"; then "three different boxed areas in an hstack that has each ghost
+/// finger graphic in it and they can satisfy the taps in those graphics before starting the actual counter … a green
+/// border … a cross on its caption … each time they satisfy one flash that area's border"): the page's own colour over
+/// the counter, three practice boxes, "Let's begin" once all three are done. It takes every touch, so nothing counts
+/// under it; the boxes' moves are practice only.
 struct CounterWelcome: View {
     let onBegin: () -> Void
     @Environment(\.circleTheme) private var theme
+    @State private var done: Set<GestureHint.Kind> = []
     private typealias C = TourCopy.ZikrTour
 
     var body: some View {
         ZStack {
-            theme.backdrop.opacity(0.94)
+            theme.backdrop.opacity(0.96)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture {}
@@ -671,8 +682,14 @@ struct CounterWelcome: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: 300)
+                    .frame(maxWidth: 320)
                     .padding(.top, 14)
+                HStack(alignment: .top, spacing: 10) {
+                    PracticeBox(kind: .tap, caption: C.practiceTap) { done.insert(.tap) }
+                    PracticeBox(kind: .drag, caption: C.practiceDrag) { done.insert(.drag) }
+                    PracticeBox(kind: .stroke, caption: C.practiceStroke) { done.insert(.stroke) }
+                }
+                .padding(.top, 30)
                 Button(action: onBegin) {
                     HStack(spacing: 6) {
                         Text(C.welcomeButton)
@@ -686,10 +703,114 @@ struct CounterWelcome: View {
                     .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5))
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 34)
+                .opacity(done.count == 3 ? 1 : 0.3)
+                .disabled(done.count < 3)
+                .animation(.easeInOut(duration: 0.3), value: done.count)
+                .padding(.top, 30)
             }
-            .padding(.horizontal, 28)
+            .padding(.horizontal, 18)
         }
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+}
+
+/// One way to count, to try: its ghost finger looping inside, three of the move to fill it. Each right move flashes the
+/// border; three, and the border stays green, the caption crossed out. A stroke's three are in one touch (lifting early
+/// starts it again).
+private struct PracticeBox: View {
+    let kind: GestureHint.Kind
+    let caption: String
+    let onDone: () -> Void
+    @State private var count = 0
+    @State private var flash = false
+    // A drag's way, as the counter reads it: down past `step` counts, back up half of it re-arms.
+    @State private var highest: CGFloat = 0
+    @State private var lowest: CGFloat = 0
+    @State private var armed = true
+    private static let needed = 3
+    private static let step: CGFloat = 40
+    private var isDone: Bool { count >= Self.needed }
+
+    var body: some View {
+        let box = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        VStack(spacing: 10) {
+            ZStack {
+                NeuPressed(shape: box, radius: 5, offset: 3)
+                GestureHint(kind: kind, height: 150)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .opacity(isDone ? 0.2 : 1)
+                if isDone {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(Color.sage)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .frame(height: 170)
+            .overlay(box.strokeBorder(Color.sage.opacity(isDone || flash ? 1 : 0), lineWidth: flash ? 3 : 2))
+            .contentShape(box)
+            .gesture(practice)
+            .allowsHitTesting(!isDone)
+            Text(caption)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .strikethrough(isDone, color: Color.sage)
+                .foregroundStyle(isDone ? Color.sage : Color.primary.opacity(0.75))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 5) {
+                ForEach(0..<Self.needed, id: \.self) { i in
+                    Circle().fill(i < count ? Color.sage : Color.primary.opacity(0.15)).frame(width: 6, height: 6)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .animation(.easeOut(duration: 0.25), value: isDone)
+    }
+
+    private var practice: some Gesture {
+        switch kind {
+        case .tap:
+            return AnyGesture(TapGesture().onEnded { hit() })
+        case .drag:
+            return AnyGesture(DragGesture(minimumDistance: 8).onEnded { v in
+                if v.translation.height > Self.step { hit() }
+            }.map { _ in () })
+        case .stroke:
+            return AnyGesture(DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    let y = v.translation.height
+                    highest = min(highest, y)
+                    lowest = max(lowest, y)
+                    if armed && y - highest > Self.step {
+                        armed = false
+                        lowest = y
+                        hit()
+                    } else if !armed && lowest - y > Self.step / 2 {
+                        armed = true
+                        highest = y
+                    }
+                }
+                .onEnded { _ in
+                    highest = 0; lowest = 0; armed = true
+                    if !isDone { withAnimation(.easeOut(duration: 0.2)) { count = 0 } }   // lifted early: again
+                }
+                .map { _ in () })
+        }
+    }
+
+    private func hit() {
+        guard !isDone else { return }
+        withAnimation(.easeOut(duration: 0.15)) { count += 1; flash = true }
+        if isDone {
+            triggerSomeVibration(type: .success)
+            onDone()
+        } else {
+            triggerSomeVibration(type: .light)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(320))
+            withAnimation(.easeIn(duration: 0.3)) { flash = false }
+        }
     }
 }
