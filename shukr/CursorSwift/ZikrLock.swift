@@ -586,9 +586,19 @@ struct ZikrLockCover: View {
                 }
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: picked ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20))
-                    .foregroundStyle(picked ? Color.sage : Color.primary.opacity(0.25))
+                // Plain shapes, not a swapped symbol: the symbol's swap drew on its own layer and landed at its end place
+                // early as the choice glided up (owner: "the checkmark ghosts somewhere else"). These move with the card.
+                ZStack {
+                    Circle().strokeBorder(Color.primary.opacity(0.25), lineWidth: 1.5)
+                        .opacity(picked ? 0 : 1)
+                    Circle().fill(Color.sage)
+                        .opacity(picked ? 1 : 0)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .opacity(picked ? 1 : 0)
+                }
+                .frame(width: 20, height: 20)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
             .background(NeuPressed(shape: box, radius: 5, offset: 3).opacity(picked ? 1 : 0.55))
