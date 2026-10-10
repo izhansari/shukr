@@ -1626,30 +1626,32 @@ private struct RemindersStep: View {
                           action: "Turn on", tap: SettingsLinks.notifications)
                         .padding(.horizontal, 24)
                 }
-                HStack(spacing: 4) {
-                    prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, accent: .sage)
-                    prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, accent: .sage)
-                    prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, accent: .sage)
-                    prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, accent: .sage)
-                    prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, accent: .sage)
+                // The choice, set apart from the preview (owner: "no real separation … not clear to user that its
+                // adjustable"): a label, then one tile per prayer that looks like a button — its state in its fill
+                // (off grey, start outlined, nudge solid sage) — cycling off → start → nudge like Settings' bells.
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("For each prayer")
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .tracking(1)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                    HStack(spacing: 8) {
+                        NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
+                        NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
+                        NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
+                        NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
+                        NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
+                    }
+                    // What the states send, tied to the preview above.
+                    (Text("Start").fontWeight(.semibold) + Text(" sends the first one. ")
+                     + Text("Nudge").fontWeight(.semibold) + Text(" sends all three."))
+                        .font(.system(.footnote, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
                 }
-                .frame(height: 70)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 8)
-                .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
                 .padding(.horizontal, 24)
-                // The legend, one line each: what the three states send.
-                VStack(alignment: .leading, spacing: 6) {
-                    legend("bell.slash.fill", "off", "no notification")
-                    legend("bell.fill", "start", "when the prayer begins")
-                    legend("bell.badge.fill", "nudge", "also halfway through and with 30 min left")
-                }
-                .padding(.horizontal, 32)
-                Text("Tap a bell to change it.")
-                    .font(.system(.footnote, design: .rounded, weight: .light))
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
+                .padding(.top, 6)
             }
         } bottom: {
             if notifications.isOn == nil {
@@ -1661,19 +1663,71 @@ private struct RemindersStep: View {
         }
         .task { await notifications.refresh() }
     }
-
-    private func legend(_ symbol: String, _ name: String, _ text: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Image(systemName: symbol).font(.caption).foregroundStyle(Color.sage).frame(width: 18)
-            (Text(name).fontWeight(.medium) + Text("  \(text)").foregroundStyle(.secondary))
-                .font(.system(.footnote, design: .rounded))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
 }
 
 private extension String {
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
+/// One prayer's notifications as a tile you can see is a button: off (grey, bell slashed), start (sage outline, bell),
+/// nudge (solid sage, bell with a badge). A tap cycles off → start → nudge → off, as Settings' bells do.
+private struct NotificationTile: View {
+    let prayer: String
+    @Binding var notifIsOn: Bool
+    @Binding var nudgeIsOn: Bool
+    @EnvironmentObject private var viewModel: PrayerViewModel
+
+    private var state: Int { notifIsOn ? (nudgeIsOn ? 2 : 1) : 0 }
+
+    var body: some View {
+        Button {
+            switch state {
+            case 0: notifIsOn = true; nudgeIsOn = false
+            case 1: nudgeIsOn = true
+            default: notifIsOn = false; nudgeIsOn = false
+            }
+            triggerSomeVibration(type: .light)
+        } label: {
+            VStack(spacing: 6) {
+                Text(prayer)
+                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Image(systemName: ["bell.slash.fill", "bell.fill", "bell.badge.fill"][state])
+                    .font(.system(size: 18))
+                    .contentTransition(.symbolEffect(.replace))
+                Text(["Off", "Start", "Nudge"][state])
+                    .font(.system(.caption2, design: .rounded, weight: .semibold))
+            }
+            .foregroundStyle(state == 2 ? Color.white : state == 1 ? Color.sage : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(state == 2 ? Color.sage : state == 1 ? Color.sage.opacity(0.12) : Color(.secondarySystemBackground))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(state == 1 ? Color.sage.opacity(0.7) : Color.primary.opacity(state == 0 ? 0.06 : 0),
+                                      lineWidth: state == 1 ? 1.5 : 1))
+                    .shadow(color: .black.opacity(0.06), radius: 3, y: 2)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(TilePressStyle())
+        .animation(.snappy(duration: 0.2), value: state)
+        .accessibilityLabel("\(prayer) notifications")
+        .accessibilityValue(["off", "at the start", "with nudges"][state])
+        .onChange(of: notifIsOn) { _, _ in viewModel.fetchPrayerTimes(cameFrom: "setup notification tile") }
+        .onChange(of: nudgeIsOn) { _, _ in viewModel.fetchPrayerTimes(cameFrom: "setup notification tile") }
+    }
+}
+
+/// A tile sinks a little under the finger.
+private struct TilePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1)
+            .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+    }
 }
 
 /// A live preview of one prayer's notifications, in the words and at the times shukr really sends them
