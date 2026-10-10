@@ -322,6 +322,17 @@ enum PhotoDevelop {
     /// Days whose clearing has played (the reveal shows once per day).
     static let revealedKey = "prayerPhotos.revealedDays"
 
+    /// Today's key, formatted once a day: every card asks on every redraw (a date formatted each time, in the frame log's
+    /// busiest moments).
+    nonisolated(unsafe) private static var today: (key: String, until: Date)?
+    private static func todayKey(_ now: Date) -> String {
+        if let today, now < today.until, now >= Calendar.current.startOfDay(for: now) { return today.key }
+        let key = PrayerNotificationID.dayKey(now)
+        let next = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) ?? now
+        today = (key, next)
+        return key
+    }
+
     static func isDeveloped(key photoKey: String, now: Date = Date()) -> Bool {
         isDeveloped(day: String(photoKey.prefix(10)), now: now)
     }
@@ -334,7 +345,7 @@ enum PhotoDevelop {
         }
         #endif
         // Past midnight: the day is over.
-        if dayKey < PrayerNotificationID.dayKey(now) { return true }
+        if dayKey < todayKey(now) { return true }
         if let all = UserDefaults.standard.string(forKey: developedDayKey), dayKey <= all { return true }
         return false
     }

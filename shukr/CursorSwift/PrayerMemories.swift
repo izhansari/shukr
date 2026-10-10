@@ -608,10 +608,14 @@ struct MemoriesPage: View {
                 go(l)
                 try? await Task.sleep(for: .seconds(1.5))
             }
-            guard let photo = PrayerPhotos.all().last else { continue }
+            let all = PrayerPhotos.all()
+            let jumps = ProcessInfo.processInfo.arguments.contains("-perfPileJumps")
+            // Jumps want a day with all five (the newest such day).
+            let full = Dictionary(grouping: all, by: \.dayKey).max { ($0.value.count, $0.key) < ($1.value.count, $1.key) }?.key
+            guard let photo = jumps ? all.last(where: { $0.dayKey == full }) : all.last else { continue }
             if FrameMonitor.on { FrameMonitor.shared.note("pile opening") }
             openDeck(photo, from: "day:\(photo.dayKey)")
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(jumps ? 14 : 2))
             closeDeck(photo.key, photo.dayKey, 1, .zero)
             try? await Task.sleep(for: .seconds(1.5))
         }
@@ -1113,9 +1117,6 @@ struct MemoriesDeck: View {
     @State private var keyboardLift: CGFloat = 0
     @State private var noteBox = NoteBox()
     final class NoteBox { var bottom: CGFloat = 0 }
-    /// A jump of more than one prayer (a tap in the strip): the pile goes out and comes back with the new one on top
-    /// (owner: Fajr → Isha "has a jittery transition" — the cards between all flew at once).
-    @State private var pileSwap = false
     @State private var index: Int
     @State private var drag: CGFloat = 0
     /// A drag down: the pile follows the finger and shrinks a little, then closes.
@@ -1209,7 +1210,6 @@ struct MemoriesDeck: View {
                     } else {
                         pile(range, width: width, screen: geo.size.width)
                             .offset(x: shift + paging)
-                            .opacity(pileSwap ? 0 : 1)
                     }
                     if !neighboursOut, let right = neighbour(range, right: true) {
                         restingPile(right.range, top: right.top, width: width, screen: geo.size.width)
@@ -1225,8 +1225,8 @@ struct MemoriesDeck: View {
                 .gesture(emptyDay == nil && !noteEditing ? pileDrag(range) : nil)
                 .gesture(emptyDay != nil ? emptyDrag : nil)
                 // Gone quickly once the pile is dragged down over it (it showed on the dragged card — owner).
-                if let current {
-                    caption(current).padding(.top, 24)
+                if current != nil {
+                    captions(shownIndex).padding(.top, 24)
                         .opacity(shown && emptyDay == nil ? 1 - min(max(down, 0) / 40, 1) : 0)
                         .allowsHitTesting(emptyDay == nil)
                 }
@@ -1273,8 +1273,8 @@ struct MemoriesDeck: View {
                         Color.clear.frame(height: MemoriesDayStrip.height)
                     } else {
                         MemoriesDayStrip(photos: photos, centred: $stripDay,
-                                         currentPrayer: emptyDay == nil && photos.indices.contains(shownIndex) ? photos[shownIndex].name : nil,
                                          onScrub: scrubTo, onRest: goToDay, onPrayer: goToPrayer)
+                            .equatable()
                     }
                 }
                 .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
@@ -1343,6 +1343,9 @@ struct MemoriesDeck: View {
             pickLies()
         }
         .sensoryFeedback(.selection, trigger: shownIndex)
+        .onChange(of: emptyDay == nil && photos.indices.contains(shownIndex) ? photos[shownIndex].name : nil, initial: true) { _, name in
+            PileStripFocus.shared.prayer = name
+        }
         .onChange(of: shownIndex) { _, i in
             // The strip follows the pile.
             guard photos.indices.contains(i), photos[i].dayKey != stripDay else { return }
@@ -1364,6 +1367,22 @@ struct MemoriesDeck: View {
         }
         #endif
         .onDisappear { PrayerPhotoViewing.shared.closed() }
+        .task {
+            // `-perfPileJumps` (with -perfOpenMemories -perfMemoriesCycle): Fajr ↔ Isha from the strip, on its own, for
+            // the frame log (Release builds too).
+            guard ProcessInfo.processInfo.arguments.contains("-perfPileJumps") else { return }
+            try? await Task.sleep(for: .seconds(1.2))
+            // The day's first and last prayers with photos (Fajr ↔ Isha on a full day).
+            let names = photos.filter { $0.dayKey == photos[index].dayKey }.map(\.name)
+            guard let first = names.first, let last = names.last, first != last else { return }
+            if FrameMonitor.on { FrameMonitor.shared.note("jumps on \(photos[index].dayKey): \(names)") }
+            for n in 0..<8 {
+                let name = n % 2 == 0 ? first : last
+                if FrameMonitor.on { FrameMonitor.shared.note("jump → \(name)") }
+                goToPrayer(name)
+                try? await Task.sleep(for: .seconds(1.4))
+            }
+        }
     }
 
     /// ✕ · the day ("Wednesday, Oct 7", "3 days ago" / "Today") · ··· (Retake photo, Delete photo).
@@ -1403,8 +1422,21 @@ struct MemoriesDeck: View {
         .padding(.top, 8)
     }
 
+    /// Worked out once per day and per today (the title is drawn on every redraw of the pile).
+    nonisolated(unsafe) private static var titles: [String: String] = [:]
+    private static func remembered(_ key: String, _ make: () -> String) -> String {
+        let k = key + "|" + MemoriesPage.dayKeyFormatter.string(from: Date())
+        if let hit = titles[k] { return hit }
+        if titles.count > 400 { titles.removeAll() }
+        let value = make()
+        titles[k] = value
+        return value
+    }
+
     /// "Wednesday, Oct 7" — the year too when it isn't this one.
-    static func dayTitle(_ dayKey: String) -> String {
+    static func dayTitle(_ dayKey: String) -> String { remembered("t" + dayKey) { makeDayTitle(dayKey) } }
+
+    private static func makeDayTitle(_ dayKey: String) -> String {
         guard let date = MemoriesPage.parse(dayKey) else { return dayKey }
         let thisYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
         return thisYear ? date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
@@ -1412,7 +1444,9 @@ struct MemoriesDeck: View {
     }
 
     /// "Today", "Yesterday", "3 days ago", "5 weeks ago", "1 year ago".
-    static func dayAgo(_ dayKey: String) -> String {
+    static func dayAgo(_ dayKey: String) -> String { remembered("a" + dayKey) { makeDayAgo(dayKey) } }
+
+    private static func makeDayAgo(_ dayKey: String) -> String {
         guard let date = MemoriesPage.parse(dayKey) else { return "" }
         let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: date),
                                                    to: Calendar.current.startOfDay(for: Date())).day ?? 0
@@ -1534,27 +1568,20 @@ struct MemoriesDeck: View {
     private func goToPrayer(_ name: String) {
         let range = dayRange(of: shownIndex)
         guard emptyDay == nil, let i = range.first(where: { photos[$0].name == name }), i != index, pendingTop == nil else { return }
-        guard abs(i - index) > 1 else {
-            // The next or the one before: the usual move, one card.
-            moving(back: i < index) {
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { index = i; drag = 0 }
-                pickLies()
-            }
-            return
-        }
-        // Further: out, the new one on top while it's out, back in — the cards between don't fly across.
-        withAnimation(.easeOut(duration: 0.12)) { pileSwap = true }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(130))
+        // Every card the move passes already has its lie (picked before, quietly), so each one only slides: on together
+        // from the right going forward, off together to the right going back.
+        // In one pass: a lies write that changed nothing still redrew the whole pile, and `moving`'s turn for the side
+        // was another — two full redraws before the move, 20–30 ms on his phone.
+        let lies = Self.lies(around: i, in: photos, keeping: lie)
+        if lies.count != lie.count {
             var quiet = Transaction()
             quiet.disablesAnimations = true
-            withTransaction(quiet) {
-                wentBack = i < index
-                index = i
-                drag = 0
-                pickLies()
-            }
-            withAnimation(.easeOut(duration: 0.2)) { pileSwap = false }
+            withTransaction(quiet) { lie = lies }
+        }
+        withAnimation(.spring(response: abs(i - index) > 1 ? 0.48 : 0.42, dampingFraction: 0.86)) {
+            wentBack = i < index
+            index = i
+            drag = 0
         }
     }
 
@@ -1668,7 +1695,11 @@ struct MemoriesDeck: View {
     /// day's edge the whole pile follows the finger (a little only, at the very first and last photo).
     private func pile(_ range: ClosedRange<Int>, width: CGFloat, screen: CGFloat) -> some View {
         let atStart = index == range.lowerBound, atEnd = index == range.upperBound
-        let shown = Array(max(range.lowerBound, index - Self.pileDepth)...min(index + 1, range.upperBound))
+        // The whole day's cards (five at most), built and kept: a jump then only moves them — the ones it adds slide on
+        // together from the right, the ones it takes off slide away together (owner: "pulling the whole removed part of
+        // the pile off or added part of pile on"). Built only near the top, a jump made up to three cards mid-move:
+        // 40–50 ms, 5–6 frames lost on his phone (the frame log).
+        let shown = Array(range)
         return ZStack {
             ForEach(shown, id: \.self) { i in
                 card(i, width: width, screen: screen, atStart: atStart, atEnd: atEnd)
@@ -1697,7 +1728,28 @@ struct MemoriesDeck: View {
     }
 
     /// The prayer's name, its line and its note — they slide sideways with every photo.
-    private func caption(_ current: MemoryPhoto) -> some View {
+    /// Every photo of the day keeps its caption, built (five at most): moving between them only slides and fades them —
+    /// the one on top in place, the earlier ones out to the left, the later ones out to the right. Built per photo, a
+    /// jump between prayers made the new caption (text and all) on its first frame: 2–3 frames lost (the frame log).
+    /// Another day's come in and go with the slide as before.
+    private func captions(_ s: Int) -> some View {
+        let range = dayRange(of: s)
+        return ZStack {
+            ForEach(Array(range), id: \.self) { i in
+                let place: CGFloat = i == s ? max(-90, min(90, drag * 0.35)) : (i < s ? -36 : 36)
+                captionBody(photos[i])
+                    .offset(x: place)
+                    .opacity(i == s ? 1 - min(abs(drag) / 320, 0.6) : 0)
+                    .allowsHitTesting(i == s)
+                    .transition(slide(36))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .opacity(1 - min(max(down, 0) / 120, 1))
+    }
+
+    private func captionBody(_ current: MemoryPhoto) -> some View {
         // Its own photo's details, worked out before it shows (`prepareInfo`): the whole caption is one view that moves
         // as one — filled in after it slid in, its lines changed separately and seemed to move at their own speeds.
         let info = infos[current.key] ?? CaptionInfo()
@@ -1762,16 +1814,7 @@ struct MemoriesDeck: View {
                 .padding(.horizontal, 36)
                 .padding(.top, 6)
             }
-            .opacity(pileSwap ? 0 : 1)
-            // Follows the finger while a photo is dragged, then the next one's slides in as it lands.
-            .offset(x: max(-90, min(90, drag * 0.35)))
-            .opacity(1 - min(abs(drag) / 320, 0.6))
-            .id(current.key)
-            .transition(slide(36))
         }
-        .frame(maxWidth: .infinity)
-        .clipped()
-        .opacity(1 - min(max(down, 0) / 120, 1))
     }
 
     struct CaptionInfo {
@@ -1962,15 +2005,28 @@ struct MemoriesDeck: View {
 /// shrink and fade with their distance from the centre (`visualEffect` in the scroll view's space); days without photos
 /// are faint and the pile skips them. Each month's name and its photo count sit above its 1st, and the month in view
 /// stays pinned at the left edge until the next month's name pushes it out. Lazy: only numbers, only what's on screen.
-struct MemoriesDayStrip: View {
+/// The prayer on top of the pile, for the strip's lens alone.
+@MainActor @Observable final class PileStripFocus {
+    static let shared = PileStripFocus()
+    var prayer: String?
+}
+
+struct MemoriesDayStrip: View, Equatable {
+    /// Redrawn only for its photos or its day (the closures are the pile's, the same each time in effect).
+    nonisolated static func == (a: MemoriesDayStrip, b: MemoriesDayStrip) -> Bool {
+        MainActor.assumeIsolated {
+            a.photos.count == b.photos.count && a.photos.last?.key == b.photos.last?.key
+                && a.photos.first?.key == b.photos.first?.key && a.centred == b.centred
+        }
+    }
     let photos: [MemoryPhoto]
     @Binding var centred: String?
     /// A day passing the centre under the finger (with photos or not).
     let onScrub: (String) -> Void
     /// The strip came to rest on a day, or a day was tapped (with photos or not — an empty day is shown as one).
     let onRest: (String) -> Void
-    /// The prayer on top in the pile (bright in the centred day's symbols), and a tap on another one.
-    var currentPrayer: String? = nil
+    /// The prayer on top in the pile is `PileStripFocus.prayer` (only the lens reads it — passed in, every change of the
+    /// top photo re-ran the whole strip: hundreds of days); a tap on another one.
     var onPrayer: (String) -> Void = { _ in }
     /// Built before the first layout, so the strip opens on the pile's day (built later, `scrollPosition` had nothing to
     /// find and it opened elsewhere).
@@ -1980,20 +2036,30 @@ struct MemoriesDayStrip: View {
 
     @State private var slots: [String: Set<Int>]
 
-    init(photos: [MemoryPhoto], centred: Binding<String?>, currentPrayer: String? = nil,
+    init(photos: [MemoryPhoto], centred: Binding<String?>,
          onScrub: @escaping (String) -> Void, onRest: @escaping (String) -> Void,
          onPrayer: @escaping (String) -> Void = { _ in }) {
         self.onScrub = onScrub
         self.photos = photos
         self._centred = centred
         self.onRest = onRest
-        self.currentPrayer = currentPrayer
         self.onPrayer = onPrayer
-        let model = Self.model(photos)
+        let model = Self.cachedModel(photos)
         _days = State(initialValue: model.days)
         _photoDays = State(initialValue: model.photoDays)
         _monthCounts = State(initialValue: model.monthCounts)
         _slots = State(initialValue: Self.slots(photos))
+    }
+
+    /// Worked out once per set of photos: `init` runs on every redraw of the pile, and the day list walks every day since
+    /// the first photo.
+    nonisolated(unsafe) private static var modelCache: (signature: String, model: (days: [String], photoDays: Set<String>, monthCounts: [String: Int]))?
+    private static func cachedModel(_ photos: [MemoryPhoto]) -> (days: [String], photoDays: Set<String>, monthCounts: [String: Int]) {
+        let signature = "\(photos.count)|\(photos.first?.key ?? "")|\(photos.last?.key ?? "")|\(MemoriesPage.dayKeyFormatter.string(from: Date()))"
+        if let hit = modelCache, hit.signature == signature { return hit.model }
+        let model = Self.model(photos)
+        modelCache = (signature, model)
+        return model
     }
 
     private static func slots(_ photos: [MemoryPhoto]) -> [String: Set<Int>] {
@@ -2107,7 +2173,7 @@ struct MemoriesDayStrip: View {
         }
         // A photo saved or deleted: the days, dots and counts again.
         .onChange(of: photos) { _, new in
-            let model = Self.model(new)
+            let model = Self.cachedModel(new)
             days = model.days; photoDays = model.photoDays; monthCounts = model.monthCounts
             slots = Self.slots(new)
         }
@@ -2204,10 +2270,25 @@ struct MemoriesDayStrip: View {
                     Text("· Today").font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
                 }
             }
+            // Its own view: only it reads the pile's top prayer, so a jump redraws five symbols, not the whole strip.
+            LensPrayers(filled: filled, onPrayer: onPrayer)
+        }
+        .frame(width: Self.lensWidth - 12)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial))
+    }
+
+    /// The lens's five prayers (a tap goes to that one's photo; the one on top bright).
+    private struct LensPrayers: View {
+        let filled: Set<Int>
+        let onPrayer: (String) -> Void
+
+        var body: some View {
+            let top = PileStripFocus.shared.prayer
             HStack(spacing: 4) {
                 ForEach(0..<5, id: \.self) { s in
-                    let name = Self.names[s]
-                    let current = name == currentPrayer && filled.contains(s)
+                    let name = MemoriesDayStrip.names[s]
+                    let current = name == top && filled.contains(s)
                     Button { onPrayer(name) } label: {
                         Image(systemName: prayerIcon(for: name))
                             .font(.system(size: 14, weight: current ? .bold : .regular))
@@ -2220,11 +2301,8 @@ struct MemoriesDayStrip: View {
                     .accessibilityLabel(name)
                 }
             }
+            .animation(.snappy(duration: 0.2), value: top)
         }
-        .frame(width: Self.lensWidth - 12)
-        .padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial))
-        .animation(.snappy(duration: 0.2), value: currentPrayer)
     }
 
     /// "Oct 10" — "Oct 10, 2024" when it isn't this year.
@@ -2405,36 +2483,55 @@ struct PileNoteField: View {
         _text = State(initialValue: note ?? "")
     }
 
+    /// The field only while it's being typed in; the rest of the time the note is plain text (the caption is built
+    /// again for each photo, and a text field — a UIKit text view — made every jump between prayers lose frames).
+    @State private var field = false
+
     var body: some View {
-        TextField("Add a note", text: $text, axis: .vertical)
-            .font(.system(size: 14, design: .rounded))
-            .italic(!text.isEmpty)
-            .multilineTextAlignment(.center)
-            .lineLimit(focused ? 1...5 : 1...3)
-            .focused($focused)
-            .submitLabel(.done)
-            .tint(.primary)
-            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { box.bottom = $0 }
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focused = false }.fontWeight(.semibold)
-                }
+        Group {
+            if field {
+                TextField("Add a note", text: $text, axis: .vertical)
+                    .font(.system(size: 14, design: .rounded))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(1...5)
+                    .focused($focused)
+                    .submitLabel(.done)
+                    .tint(.primary)
+                    .onAppear { focused = true }
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
+                            Button("Done") { focused = false }.fontWeight(.semibold)
+                        }
+                    }
+            } else {
+                Text(text.isEmpty ? "Add a note" : text)
+                    .font(.system(size: 14, design: .rounded))
+                    .italic(!text.isEmpty)
+                    .foregroundStyle(text.isEmpty ? .secondary : .primary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture { field = true }
             }
-            .onChange(of: focused) { _, now in
-                editing = now
-                guard !now else { return }
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard trimmed != (note ?? "") else { return }
-                PrayerPhotos.setNote(key, trimmed.isEmpty ? nil : trimmed)
-                onSave(PrayerPhotos.note(key))
-            }
-            // Return ends it too (a note is a line or three, not a page).
-            .onChange(of: text) { _, new in
-                if new.contains("\n") { text = new.replacingOccurrences(of: "\n", with: ""); focused = false }
-            }
-            .onChange(of: note) { _, new in if !focused { text = new ?? "" } }
-            .accessibilityLabel("Note")
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { box.bottom = $0 }
+        .onChange(of: focused) { _, now in
+            editing = now
+            guard !now else { return }
+            field = false
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed != (note ?? "") else { return }
+            PrayerPhotos.setNote(key, trimmed.isEmpty ? nil : trimmed)
+            onSave(PrayerPhotos.note(key))
+        }
+        // Return ends it too (a note is a line or three, not a page).
+        .onChange(of: text) { _, new in
+            if new.contains("\n") { text = new.replacingOccurrences(of: "\n", with: ""); focused = false }
+        }
+        .onChange(of: note) { _, new in if !focused { text = new ?? "" } }
+        .accessibilityLabel("Note")
     }
 }
 
