@@ -1611,8 +1611,9 @@ private struct RemindersStep: View {
     @AppStorage("asrNudges") private var asrNudges = NotificationDefaults.nudges("Asr")
     @AppStorage("maghribNudges") private var maghribNudges = NotificationDefaults.nudges("Maghrib")
     @AppStorage("ishaNudges") private var ishaNudges = NotificationDefaults.nudges("Isha")
-    /// The prayer the preview shows: the last tile tapped (Asr to begin).
+    /// The prayer the preview shows: the last tile tapped; to begin, one on Nudge so the whole sequence runs (Asr if any).
     @State private var focus = "Asr"
+    @State private var focusPicked = false
 
     private func state(_ prayer: String) -> Int {
         let pairs: [String: (Bool, Bool)] = ["Fajr": (fajrNotif, fajrNudges), "Dhuhr": (dhuhrNotif, dhuhrNudges), "Asr": (asrNotif, asrNudges),
@@ -1665,6 +1666,12 @@ private struct RemindersStep: View {
             }
         }
         .task { await notifications.refresh() }
+        .onAppear {
+            guard !focusPicked else { return }
+            focusPicked = true
+            focus = ["Asr", "Dhuhr", "Isha", "Maghrib", "Fajr"].first { state($0) == 2 }
+                ?? ["Asr", "Dhuhr", "Isha", "Maghrib", "Fajr"].first { state($0) == 1 } ?? "Asr"
+        }
     }
 }
 
@@ -1748,6 +1755,8 @@ private struct NotificationDemo: View {
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = 0
+    /// Bumped to bring a lone banner (Start) in again, so the preview never stands still (owner: "Just make it running").
+    @State private var replay = 0
 
     private struct Banner: Identifiable {
         let id: Int
@@ -1808,7 +1817,8 @@ private struct NotificationDemo: View {
                         } else {
                             // The one before peeks out under the newest, as on the Lock Screen.
                             let upTo = min(shown, sent.count - 1)
-                            ForEach(Array(sent.enumerated()).filter { $0.offset <= upTo }.suffix(2), id: \.element.id) { i, b in
+                            ForEach(stack(sent, upTo: upTo), id: \.key) { item in
+                                let i = item.index, b = item.banner
                                 let behind = i < upTo
                                 banner(b, end: w.end)
                                     .scaleEffect(behind ? 0.93 : 1, anchor: .top)
@@ -1852,17 +1862,43 @@ private struct NotificationDemo: View {
                                 : state == 1 ? "\(prayer): one notification as it starts."
                                 : "\(prayer): as it starts, then nudges until you mark it.")
             .task(id: "\(prayer)-\(state)") {
+                // A change shows at once: the first banner now, the next one a moment later (it waited a full beat
+                // and Start → Nudge looked like nothing happened — owner).
                 shown = 0
-                guard !reduceMotion, sent.count > 1 else { shown = max(sent.count - 1, 0); return }
+                guard !reduceMotion, !sent.isEmpty else { shown = max(sent.count - 1, 0); return }
+                let arrive = Animation.spring(response: 0.45, dampingFraction: 0.85)
+                if sent.count == 1 {
+                    // Start: its one banner keeps arriving.
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(2.8))
+                        if Task.isCancelled { break }
+                        withAnimation(arrive) { replay += 1 }
+                    }
+                    return
+                }
+                try? await Task.sleep(for: .seconds(0.35))
+                if Task.isCancelled { return }
+                withAnimation(arrive) { shown = 1 }
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(shown == sent.count - 1 ? 3.2 : 2.2))
                     if Task.isCancelled { break }
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { shown = (shown + 1) % sent.count }
+                    withAnimation(arrive) { shown = (shown + 1) % sent.count }
                 }
             }
             .animation(.snappy(duration: 0.25), value: prayer)
             .animation(.snappy(duration: 0.25), value: state)
         }
+    }
+
+    /// The newest banner and the one before it, each with a key that changes on a replay (so a lone Start banner
+    /// comes in again).
+    private func stack(_ sent: [Banner], upTo: Int) -> [(index: Int, banner: Banner, key: Int)] {
+        let replayKey = sent.count == 1 ? replay * 10 : 0
+        var out: [(index: Int, banner: Banner, key: Int)] = []
+        for (i, b) in sent.enumerated() where i <= upTo {
+            out.append((index: i, banner: b, key: b.id + replayKey))
+        }
+        return Array(out.suffix(2))
     }
 
     /// Off: nothing will come for this prayer.
