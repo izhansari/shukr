@@ -1188,8 +1188,8 @@ private struct LocationStep: View {
                 whyRow("mappin.and.ellipse", "Pinned places you prayed",
                        "Even from the widget or your watch.")
                 // The mosque finder and masjid marking are one point (owner); Jumu'ah is just one prayer it covers.
-                whyRow("building.columns", "Masajid near you",
-                       "Prayers there are marked at the masjid.")
+                whyRow("building.columns", "Find the nearest mosques",
+                       "Prayers you mark there are saved as prayed at that mosque.")
                 whyRow("lock", "It stays on your phone", "No account, nothing sent anywhere.")
             }
             .padding(.horizontal, 32)
