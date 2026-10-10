@@ -26,19 +26,36 @@ enum PrayerPhotos {
         "\(dayKey)-\(name == "Jumu'ah" ? "Dhuhr" : name)"
     }
 
-    static var directory: URL {
+    /// Made once: it was made again (a stat + mkdir) on every look-up, five times per redraw of the day's ring
+    /// (paging lag, Release trace 2026-10-09).
+    static let directory: URL = {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let dir = base.appendingPathComponent("PrayerPhotos", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }()
+
+    /// The folder's file names, read once and again after every change (`forgetFiles`, from each write / remove here
+    /// and `PrayerPhotoRevision.bump`): `has` / `url` checked the disk two or three times per prayer per redraw.
+    private static let filesLock = NSLock()
+    nonisolated(unsafe) private static var cachedFiles: Set<String>?
+    static func forgetFiles() { filesLock.withLock { cachedFiles = nil } }
+    private static func files() -> Set<String> {
+        filesLock.withLock {
+            if let cachedFiles { return cachedFiles }
+            let names = Set((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
+            cachedFiles = names
+            return names
+        }
     }
 
     /// HEIC since decision prayer-photo-storage A (about a third of the old JPEGs); a photo saved before keeps its .jpg.
     static func url(_ key: String, front: Bool) -> URL {
+        let names = files()
         let heic = file(key, front: front, "heic")
-        if FileManager.default.fileExists(atPath: heic.path) { return heic }
+        if names.contains(heic.lastPathComponent) { return heic }
         let jpg = file(key, front: front, "jpg")
-        return FileManager.default.fileExists(atPath: jpg.path) ? jpg : heic
+        return names.contains(jpg.lastPathComponent) ? jpg : heic
     }
 
     private static func file(_ key: String, front: Bool, _ ext: String) -> URL {
@@ -189,7 +206,7 @@ enum PrayerPhotos {
     #endif
 
     static func has(_ key: String) -> Bool {
-        FileManager.default.fileExists(atPath: url(key, front: false).path)
+        files().contains(url(key, front: false).lastPathComponent)
     }
 
     /// Downscaled and written off the main thread; the views showing photos redraw after.
@@ -204,6 +221,7 @@ enum PrayerPhotos {
             }
             try? backFile.data.write(to: file(key, front: false, backFile.ext), options: .atomic)
             if let frontFile { try? frontFile.data.write(to: file(key, front: true, frontFile.ext), options: .atomic) }
+            forgetFiles()
         }.value
         await PrayerPhotoRevision.shared.bump()
     }
@@ -224,6 +242,7 @@ enum PrayerPhotos {
         for isFront in [false, true] {
             for ext in ["heic", "jpg"] { try? FileManager.default.removeItem(at: file(key, front: isFront, ext)) }
         }
+        forgetFiles()
         Task { @MainActor in PrayerPhotoRevision.shared.bump() }
     }
 
@@ -483,7 +502,7 @@ extension View {
     /// Any photo saved at all (the day page's Memories link), re-read only when one is saved or removed.
     private(set) var hasPhotos = !PrayerPhotos.all().isEmpty
     init() { PrayerPhotoMainCleanup.run(); PhotoDevelop.watchMidnight() }
-    func bump() { value += 1; hasPhotos = !PrayerPhotos.all().isEmpty }
+    func bump() { PrayerPhotos.forgetFiles(); value += 1; hasPhotos = !PrayerPhotos.all().isEmpty }
 }
 
 /// What the camera is for: the prayer's key and its line ("Asr · 4:52 PM").

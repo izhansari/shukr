@@ -612,6 +612,13 @@ extension MantraModel {
     /// The same, leaving one session out (the results screen compares a just-saved session with
     /// your usual pace *before* it).
     func secondsPerCount(excluding session: SessionDataModel?) -> TimeInterval? {
+        if session == nil, modelContext != nil {
+            return PaceCache.value(persistentModelID) { secondsPerCount(excludingUncached: nil) }
+        }
+        return secondsPerCount(excludingUncached: session)
+    }
+
+    private func secondsPerCount(excludingUncached session: SessionDataModel?) -> TimeInterval? {
         let counted = sessions.filter { $0.totalCount > 0 && $0.activeSeconds > 0 && $0 !== session }
         let counts = counted.reduce(0) { $0 + $1.totalCount }
         guard counts > 0 else { return nil }
@@ -643,6 +650,11 @@ extension TaskModel {
     /// sessions'. Nil until something has been counted.
     var secondsPerCount: TimeInterval? {
         if let rate = mantra?.secondsPerCount { return rate }
+        guard modelContext != nil else { return ownSecondsPerCount }
+        return PaceCache.value(persistentModelID) { ownSecondsPerCount }
+    }
+
+    private var ownSecondsPerCount: TimeInterval? {
         let counted = sessions.filter { $0.totalCount > 0 && $0.activeSeconds > 0 }
         let counts = counted.reduce(0) { $0 + $1.totalCount }
         guard counts > 0 else { return nil }
@@ -749,4 +761,25 @@ extension SessionDataModel {
         if let name = mantra?.name { return name }
         return title.isEmpty || title == "Untitled" ? "Freestyle" : title
     }
+}
+
+/// Paces (seconds per count over every session), worked out once and kept until the store saves: the Zikr wheel's rings
+/// read one per task on every redraw — each a walk through all of a zikr's sessions — and the wheel redraws on every
+/// frame of a page swipe (paging lag, Release trace 2026-10-09).
+enum PaceCache {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var values: [PersistentIdentifier: TimeInterval?] = [:]
+    private static let watching: Void = {
+        NotificationCenter.default.addObserver(forName: ModelContext.didSave, object: nil, queue: nil) { _ in forget() }
+    }()
+
+    static func value(_ id: PersistentIdentifier, _ make: () -> TimeInterval?) -> TimeInterval? {
+        _ = watching
+        if let kept = lock.withLock({ values[id] }) { return kept }
+        let made = make()
+        lock.withLock { values[id] = .some(made) }
+        return made
+    }
+
+    static func forget() { lock.withLock { values.removeAll() } }
 }

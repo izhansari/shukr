@@ -38,4 +38,55 @@ final class shukrUITests: XCTestCase {
             }
         }
     }
+
+    // MARK: Paging smoothness (scheme shukrPerf, Release). Hitches = frames the app delivered late while paging.
+    // Run on a phone: xcodebuild test -scheme shukrPerf -destination id=<udid> -only-testing:shukrUITests/shukrUITests/testPagingHitches
+
+    private func launchForPerf() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-demoPerfRun"]   // any -demo… skips welcome / prompts / setup; nothing else changes
+        // Extra launch args from the run (xcodebuild … TEST_RUNNER_PERF_ARGS="-perf_x -perf_y").
+        app.launchArguments += (ProcessInfo.processInfo.environment["PERF_ARGS"] ?? "").split(separator: " ").map(String.init)
+        print("PERF launch args:", app.launchArguments.joined(separator: " "))
+        app.launch()
+        sleep(3)
+        return app
+    }
+
+    private func perfOptions() -> XCTMeasureOptions {
+        let o = XCTMeasureOptions()
+        o.iterationCount = 5
+        return o
+    }
+
+    /// Salah → Zikr → Salah → Settings → Salah, the owner's left / right swipes.
+    @available(iOS 26.0, *)
+    func testPagingHitches() throws {
+        let app = launchForPerf()
+        let window = app.windows.firstMatch
+        measure(metrics: [XCTHitchMetric(application: app), XCTOSSignpostMetric.scrollingAndDecelerationMetric],
+                options: perfOptions()) {
+            window.swipeLeft(velocity: .default)
+            usleep(700_000)
+            window.swipeRight(velocity: .default)
+            usleep(700_000)
+            window.swipeRight(velocity: .default)
+            usleep(700_000)
+            window.swipeLeft(velocity: .default)
+            usleep(700_000)
+        }
+    }
+
+    /// The Salah page's swipe up (list) and back down.
+    @available(iOS 26.0, *)
+    func testSalahVerticalHitches() throws {
+        let app = launchForPerf()
+        let window = app.windows.firstMatch
+        measure(metrics: [XCTHitchMetric(application: app)], options: perfOptions()) {
+            window.swipeUp(velocity: .default)
+            usleep(900_000)
+            window.swipeDown(velocity: .default)
+            usleep(900_000)
+        }
+    }
 }

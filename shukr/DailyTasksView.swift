@@ -447,6 +447,8 @@ struct ZikrCircleWheel: View {
         }
         // The cover has gone (or a plain sheet is going): back, if the close didn't bring it already; then land on the
         // next task once the session's cover has really gone (it was a guessed 0.3 s).
+        // Paces are kept until the store saves (PaceCache); a new session today drops them too.
+        .onChange(of: storedSessions.count) { PaceCache.forget() }
         .onChange(of: showTasbeehPage) { _, showing in
             guard !showing else { return }
             if openingSoft { withAnimation(.easeInOut(duration: CircleMotion.quick)) { openingSoft = false } }
