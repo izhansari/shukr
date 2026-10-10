@@ -1601,15 +1601,21 @@ private struct TodayStrip: View {
         if let t = todaysTimes(method: method, school: school) {
             VStack(spacing: 8) {
                 Text("today").font(.caption).tracking(2).textCase(.uppercase).foregroundStyle(.tertiary)
-                HStack(spacing: 0) {
+                // Equal gaps between the times (not equal columns), so Asr a size up on its step leaves even space
+                // round every time (owner).
+                HStack(alignment: .lastTextBaseline, spacing: 0) {
                     cell("Fajr", t.fajr)
+                    Spacer(minLength: 4)
                     cell("Dhuhr", t.dhuhr)
+                    Spacer(minLength: 4)
                     cell("Asr", t.asr, strong: highlightAsr)
+                    Spacer(minLength: 4)
                     cell("Maghrib", t.maghrib)
+                    Spacer(minLength: 4)
                     cell("Isha", t.isha)
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 22)
         }
     }
 
@@ -1620,14 +1626,13 @@ private struct TodayStrip: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             Text(clockTime(date))
-                .font(.system(.subheadline, design: .rounded, weight: strong ? .medium : .light))
+                .font(.system(strong ? .body : .subheadline, design: .rounded, weight: strong ? .medium : .light))
                 .monospacedDigit()
                 .minimumScaleFactor(0.45)
                 .lineLimit(1)
                 .contentTransition(.numericText())
                 .foregroundStyle(strong ? Color.sage : .primary)
         }
-        .frame(maxWidth: .infinity)
         .animation(.snappy, value: date)
     }
 }
