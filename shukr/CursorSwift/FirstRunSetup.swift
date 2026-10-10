@@ -1775,18 +1775,13 @@ struct NotificationTile: View {
                     .foregroundStyle(inList && state > 0 ? accent : ink)
                 if inList {
                     // How many notifications it sends (decision settings-tile-look A): none, one, or all three.
-                    // A prayer too short for a halfway nudge, on Nudge: the middle one an empty ring (decision
-                    // settings-short-dots C — only when it's on Nudge).
-                    let skipsHalfway = state == 2 && hasNoHalfwayToday(prayer)
+                    // (A short prayer's missing halfway nudge is explained in the ⓘ info, not drawn — the empty middle
+                    // dot confused people; owner.)
                     HStack(spacing: 4) {
                         ForEach(0..<3, id: \.self) { i in
-                            if skipsHalfway && i == 1 {
-                                Circle().strokeBorder(accent.opacity(0.7), lineWidth: 1).frame(width: 5, height: 5)
-                            } else {
-                                Circle()
-                                    .fill(i < [0, 1, 3][state] ? accent : Color.secondary.opacity(0.25))
-                                    .frame(width: 5, height: 5)
-                            }
+                            Circle()
+                                .fill(i < [0, 1, 3][state] ? accent : Color.secondary.opacity(0.25))
+                                .frame(width: 5, height: 5)
                         }
                     }
                     .frame(height: 8)
