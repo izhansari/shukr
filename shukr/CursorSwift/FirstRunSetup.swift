@@ -2660,11 +2660,38 @@ private struct ReviewStep: View {
     @Environment(\.scenePhase) private var scenePhase
     /// iOS's answer on alarms (nil not asked), re-read on return from Settings.
     @State private var alarmsAllowed: Bool? = nil
+    /// "Continue with limited features" tapped: bismillah comes in.
+    @State private var goLimited = false
+
+    // One more nudge before bismillah while location or notifications aren't on (owner: "bro the experience really
+    // isnt gonna be great without those permissions"); the alarm isn't part of it.
+    private var locationMissing: Bool { !location.isAuthorized }
+    private var notificationsMissing: Bool { notifications.isOn != true }
+    private var limited: Bool { (locationMissing || notificationsMissing) && !goLimited }
+    private var limitedNote: String {
+        switch (locationMissing, notificationsMissing) {
+        case (true, true): return "Without location and notifications, your times won’t follow you and no nudges will come."
+        case (true, false): return "Without location, your times won’t follow you, prayers won’t be pinned and the qibla is rougher."
+        default: return "Without notifications, nothing will nudge you before a prayer slips by."
+        }
+    }
+    /// One at a time: location first, then notifications — iOS asks if it never has, else Settings.
+    private func turnOnMissing() {
+        if locationMissing {
+            if location.authorizationStatus == .notDetermined { location.requestLocationPermission() } else { SettingsLinks.app() }
+        } else if notifications.isOn == nil {
+            notifications.request()
+        } else {
+            SettingsLinks.notifications()
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            StepTitle(title: "You're all set",
+            // Not "all set" while it's still asking for location / notifications.
+            StepTitle(title: limited ? "Almost set" : "You're all set",
                       subtitle: "Tap anything to change it. It's all in Settings later, too.")
+                .contentTransition(.opacity)
                 .padding(.bottom, 16)
             ScrollView {
                 VStack(spacing: 0) {
@@ -2687,9 +2714,31 @@ private struct ReviewStep: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
-            BismillahCapsule(action: done)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
+            ZStack {
+                if limited {
+                    VStack(spacing: 0) {
+                        Text(limitedNote)
+                            .font(.system(.subheadline, design: .rounded, weight: .light))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 32)
+                            .padding(.bottom, 12)
+                        PrimaryButton(title: locationMissing ? "Turn on location" : "Turn on notifications", outlined: true,
+                                      action: turnOnMissing)
+                        SecondaryButton(title: "Continue with limited features") { goLimited = true }
+                    }
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+                } else {
+                    BismillahCapsule(action: done)
+                        .padding(.top, 8)
+                        .padding(.bottom, 10)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.35), value: limited)
         }
         .task {
             alarmsAllowed = FajrAlarms.allowed
