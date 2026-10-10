@@ -37,7 +37,6 @@ import UserNotifications
 import WidgetKit
 import SwiftData
 import Adhan
-import CoreMotion
 
 // MARK: - When it shows
 
@@ -877,7 +876,7 @@ private struct SetupHadith: View {
     var body: some View {
         ZStack {
             // The opening's gradient and grain, over black: its dark version whatever the app's look.
-            // The easter egg lives here: a finger pushes through the colours, the tilt moves a light.
+            // The easter egg lives here: a finger through calm water.
             HadithSurface(lit: lit, still: reduceMotion)
                 .ignoresSafeArea()
             // The hadith stays in the middle (owner: "dont shift the thing up"); the invitation sits at the bottom.
@@ -1002,8 +1001,7 @@ private struct SetupHadith: View {
     }
 }
 
-/// The hadith page's background and its easter egg: the opening's gradient over black, a soft light that drifts with
-/// the phone's tilt, and a finger through calm water (owner: "pushing through it like calm water", not "dragging a color
+/// The hadith page's background and its easter egg: the opening's gradient over black, and a finger through calm water (owner: "pushing through it like calm water", not "dragging a color
 /// around"): each touch, and every little way along a drag, drops a ripple that spreads out and fades, bending the
 /// colours and grain under it, with light on its slope (`hadithWater`, HadithSurface.metal). The frames run only while a
 /// ripple is alive.
@@ -1018,7 +1016,7 @@ private struct HadithSurface: View {
     @State private var lastDrop: (point: CGPoint, time: Double)?
 
     /// How long a ripple lives (as the shader draws it).
-    private static let life: Double = 2.6
+    private static let life: Double = 3.4
 
     private func now() -> Double { Date().timeIntervalSince(origin) }
 
@@ -1030,7 +1028,6 @@ private struct HadithSurface: View {
                 // The grain is under the water too: a smooth gradient alone barely shows a ripple bending it.
                 ZStack {
                     AnimatedWavyGradient(still: still)
-                    HadithLight(still: still)
                     NoiseOverlay()
                         .blendMode(.overlay)
                         .opacity(0.3)
@@ -1049,11 +1046,12 @@ private struct HadithSurface: View {
                 .onChanged { v in
                     let t = now()
                     if let last = lastDrop {
-                        // Along a drag: a ripple every ~22 pt or 70 ms, a little stronger the faster it moves.
+                        // Along a drag: a ripple every ~44 pt or 150 ms (calmer — owner), a little stronger the faster it
+                        // moves.
                         let moved = hypot(v.location.x - last.point.x, v.location.y - last.point.y)
-                        guard moved > 22 || t - last.time > 0.07 else { return }
+                        guard moved > 44 || t - last.time > 0.15 else { return }
                         let speed = hypot(v.velocity.width, v.velocity.height)
-                        drop(at: v.location, time: t, strength: min(1, 0.45 + speed / 2500))
+                        drop(at: v.location, time: t, strength: min(0.8, 0.4 + speed / 4000))
                     } else {
                         drop(at: v.location, time: t, strength: 1)   // the touch itself
                     }
@@ -1072,53 +1070,8 @@ private struct HadithSurface: View {
         lastDrop = (point, time)
         ripples.removeAll { time - $0.time > Self.life }
         ripples.append(Ripple(point: point, time: time, strength: strength))
-        if ripples.count > 24 { ripples.removeFirst(ripples.count - 24) }
+        if ripples.count > 16 { ripples.removeFirst(ripples.count - 16) }
     }
-}
-
-/// A soft green light in the hadith page's gradient that drifts with the phone's tilt. Its own view, so the tilt's
-/// updates redraw only this layer. Reduce Motion: still, in the middle.
-private struct HadithLight: View {
-    var still = false
-    @State private var tilt = HadithTilt()
-
-    var body: some View {
-        GeometryReader { geo in
-            RadialGradient(colors: [Color(red: 0.42, green: 0.86, blue: 0.58).opacity(0.4), .clear],
-                           center: UnitPoint(x: 0.5 + tilt.x * 0.45, y: 0.55 + tilt.y * 0.4),
-                           startRadius: 0, endRadius: min(geo.size.width, geo.size.height) * 0.6)
-                .blendMode(.plusLighter)
-                .blur(radius: 30)
-        }
-        .allowsHitTesting(false)
-        .onAppear { if !still { tilt.start() } }
-        .onDisappear { tilt.stop() }
-    }
-}
-
-/// The phone's tilt from where it was held when the page opened, smoothed, −1…1 each way.
-@Observable @MainActor
-private final class HadithTilt {
-    var x: Double = 0
-    var y: Double = 0
-    @ObservationIgnored private let manager = CMMotionManager()
-    @ObservationIgnored private var reference: CMAttitude?
-
-    func start() {
-        guard manager.isDeviceMotionAvailable, !manager.isDeviceMotionActive else { return }
-        manager.deviceMotionUpdateInterval = 1.0 / 30
-        manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
-            guard let self, let attitude = motion?.attitude.copy() as? CMAttitude else { return }
-            if let ref = self.reference { attitude.multiply(byInverseOf: ref) } else { self.reference = attitude.copy() as? CMAttitude; return }
-            // About 30° either way covers the range; smoothed so it glides.
-            let nx = max(-1, min(1, attitude.roll / 0.5)), ny = max(-1, min(1, attitude.pitch / 0.5))
-            let newX = self.x + (nx - self.x) * 0.15, newY = self.y + (ny - self.y) * 0.15
-            // Publish only a visible change (every observation redraws the light).
-            if abs(newX - self.x) > 0.004 || abs(newY - self.y) > 0.004 { self.x = newX; self.y = newY }
-        }
-    }
-
-    func stop() { manager.stopDeviceMotionUpdates() }
 }
 
 // MARK: - The opening (the original welcome's look)
