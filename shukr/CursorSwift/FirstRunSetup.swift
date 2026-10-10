@@ -2648,6 +2648,9 @@ private struct ReviewStep: View {
     @AppStorage("asrNudges") private var asrNudges = NotificationDefaults.nudges("Asr")
     @AppStorage("maghribNudges") private var maghribNudges = NotificationDefaults.nudges("Maghrib")
     @AppStorage("ishaNudges") private var ishaNudges = NotificationDefaults.nudges("Isha")
+    @Environment(\.scenePhase) private var scenePhase
+    /// iOS's answer on alarms (nil not asked), re-read on return from Settings.
+    @State private var alarmsAllowed: Bool? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2656,20 +2659,19 @@ private struct ReviewStep: View {
                 .padding(.bottom, 16)
             ScrollView {
                 VStack(spacing: 0) {
-                    row("location.fill", "Location", locationValue, step: .location) { locationNudge }
+                    // Two lines a row, always (owner: never more than a page): a permission not given says so on the
+                    // value line, with its way to change their mind at the end of it.
+                    row("location.fill", "Location", locationFix?.value ?? locationValue, step: .location, fix: locationFix)
                     divider
                     row("clock", "Prayer times", methodValue, step: .method)
                     divider
                     row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
                     divider
-                    row("bell", "Notifications", remindersValue, step: .reminders,
-                        sell: "A nudge if a prayer isn't marked yet.") { notificationsNudge }
+                    row("bell", "Notifications", notificationsFix?.value ?? remindersValue, step: .reminders, fix: notificationsFix)
                     divider
-                    row("alarm", "Fajr alarm", alarmValue, step: .fajr,
-                        sell: "It follows Fajr all year.")
+                    row("alarm", "Fajr alarm", alarmFix?.value ?? alarmValue, step: .fajr, fix: alarmFix)
                     divider
-                    row("building.columns", "Your masjid", masjidValue, step: .masjid,
-                        sell: "A dua when you arrive and when you leave.")
+                    row("building.columns", "Your masjid", masjidValue, step: .masjid)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -2681,9 +2683,11 @@ private struct ReviewStep: View {
                 .padding(.bottom, 10)
         }
         .task {
+            alarmsAllowed = FajrAlarms.allowed
             await notifications.refresh()
             await health.refresh()
         }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { alarmsAllowed = FajrAlarms.allowed } }
     }
 
     private var divider: some View { Divider().padding(.leading, 44) }
@@ -2695,7 +2699,7 @@ private struct ReviewStep: View {
         switch location.authorizationStatus {
         case .authorizedAlways: return place + "Always"
         case .authorizedWhenInUse: return place + "While Using"
-        default: return location.hasManualLocation ? "\(cityName.isEmpty ? "A city you picked" : cityName)" : "Not set"
+        default: return location.hasManualLocation ? "\(cityName.isEmpty ? "A city" : cityName) · set by hand" : "Not set"
         }
     }
     private var methodValue: String {
@@ -2723,42 +2727,58 @@ private struct ReviewStep: View {
         return place + (duas ? " · arrival duas on" : "")
     }
 
-    // MARK: nudges (gentle, never blocking)
+    // MARK: fixes (gentle, never blocking): what to show on the value line, and the way to change their mind
 
-    @ViewBuilder private var locationNudge: some View {
+    private struct Fix {
+        var value: String? = nil
+        let action: String
+        let run: () -> Void
+    }
+
+    private var locationFix: Fix? {
         if !location.isAuthorized && !location.hasManualLocation {
-            Nudge(text: "Prayer times need a location.", action: "Set up") { jump(.location) }
-        } else if !location.isAuthorized {
-            Nudge(text: "Allow location so your times follow you when you travel.", action: "Turn on", tap: SettingsLinks.app)
-        } else if location.authorizationStatus == .authorizedWhenInUse {
-            Nudge(text: "Turn on Always so your times follow you when you travel.", action: "Turn on") {
-                LocationUpgrade.askForAlways(location)
+            return Fix(action: "Set up") { jump(.location) }
+        }
+        if !location.isAuthorized && location.authorizationStatus == .notDetermined {
+            // A city picked before iOS ever asked: ask now (Settings has nothing to turn on yet).
+            return Fix(action: "Allow") { location.requestLocationPermission() }
+        }
+        if !location.isAuthorized { return Fix(action: "Turn on", run: SettingsLinks.app) }
+        if location.authorizationStatus == .authorizedWhenInUse {
+            return Fix(action: "Always") { LocationUpgrade.askForAlways(location) }
+        }
+        if location.manager.accuracyAuthorization == .reducedAccuracy {
+            return Fix(value: "\(locationValue) · approximate", action: "Precise", run: SettingsLinks.app)
+        }
+        return nil
+    }
+    /// The same checks as Settings' status (NotificationHealth): off, not asked, held for the Scheduled Summary,
+    /// Time Sensitive off.
+    private var notificationsFix: Fix? {
+        switch notifications.isOn {
+        case .some(false): return Fix(value: "Off", action: "Turn on", run: SettingsLinks.notifications)
+        case .none: return Fix(value: "Not on yet", action: "Allow") { notifications.request() }
+        default:
+            if health.issues.contains(.held) {
+                return Fix(value: "Held for the Scheduled Summary", action: "Fix", run: SettingsLinks.notifications)
             }
-        } else if location.isAuthorized && location.manager.accuracyAuthorization == .reducedAccuracy {
-            Nudge(text: "Precise Location is off: times can be a few minutes out.", action: "Turn on", tap: SettingsLinks.app)
+            if health.issues.contains(.timeSensitiveOff) {
+                return Fix(value: "Time Sensitive is off", action: "Fix", run: SettingsLinks.notifications)
+            }
+            return nil
         }
     }
-    /// The same checks as Settings' status (NotificationHealth): off, not asked, held for the
-    /// Scheduled Summary, Time Sensitive off.
-    @ViewBuilder private var notificationsNudge: some View {
-        let issues = health.issues
-        switch notifications.isOn {
-        case .some(false):
-            Nudge(text: "Notifications are off for shukr, so they can't reach you.", action: "Turn on", tap: SettingsLinks.notifications)
-        case .none:
-            Nudge(text: "Allow notifications so they can reach you.", action: "Allow") { notifications.request() }
-        default:
-            if issues.contains(.held) {
-                Nudge(text: "They're held for the Scheduled Summary and may arrive late. Turn on Time Sensitive.", action: "Fix", tap: SettingsLinks.notifications)
-            } else if issues.contains(.timeSensitiveOff) {
-                Nudge(text: "Time Sensitive is off, so Focus modes may hold them back.", action: "Settings", tap: SettingsLinks.notifications)
-            }
+    /// No alarm because iOS said no: Settings; skipped before being asked: back to its step.
+    private var alarmFix: Fix? {
+        if FajrAlarms.supported && alarmsAllowed == false {
+            return Fix(value: "Alarms are off for shukr", action: "Turn on", run: SettingsLinks.app)
         }
+        if !alarmOn { return Fix(value: "Off", action: "Set up") { jump(.fajr) } }
+        return nil
     }
 
-    private func row<N: View>(_ symbol: String, _ title: String, _ value: String, step: SetupStep, sell: String? = nil,
-                              @ViewBuilder nudge: () -> N = { EmptyView() }) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func row(_ symbol: String, _ title: String, _ value: String, step: SetupStep, fix: Fix? = nil) -> some View {
+        HStack(alignment: .top, spacing: 14) {
             Button { jump(step) } label: {
                 HStack(alignment: .top, spacing: 14) {
                     Image(systemName: symbol)
@@ -2771,20 +2791,32 @@ private struct ReviewStep: View {
                             Spacer()
                             Image(systemName: "chevron.right").font(.footnote.weight(.medium)).foregroundStyle(.tertiary)
                         }
-                        // The value and its one-line note together (owner: "would rather they not have to scroll").
-                        Text(value).font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(.secondary)
-                            .lineLimit(1).minimumScaleFactor(0.85)
-                        if let sell {
-                            Text(sell).font(.system(.footnote, design: .rounded, weight: .light)).italic()
-                                .foregroundStyle(.tertiary)
+                        HStack(spacing: 4) {
+                            if fix != nil {
+                                Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
+                            }
+                            Text(value).foregroundStyle(fix != nil ? Color.orange : .secondary)
                                 .lineLimit(1).minimumScaleFactor(0.85)
+                            Spacer(minLength: 0)
                         }
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        // Room for the fix's button, laid over the line's end.
+                        .padding(.trailing, fix == nil ? 0 : 76)
                     }
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            nudge().padding(.leading, 44)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let fix {
+                Button(fix.action, action: fix.run)
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .foregroundStyle(Color.sage)
+                    .padding(.vertical, 2)
+                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+            }
         }
         .padding(.vertical, 8)
     }
