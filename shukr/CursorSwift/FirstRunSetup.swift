@@ -6,8 +6,8 @@
 //  replaced the old first open (`GradientAnimationLoad`: wavy gradient, glass cards).
 //
 //  Look: the everyday opening's (WelcomeAnimation.swift) — the plain background, a sage ring, light
-//  rounded type. The small ring at the top is the progress (where you pray · appearance · reminders
-//  · Fajr · masjid) with the step's symbol inside; every title sits at the same height under it;
+//  rounded type. The small ring at the top is the progress (location · prayer times · appearance ·
+//  notifications · Fajr · masjid) with the step's symbol inside; every title sits at the same height under it;
 //  one calm primary button at the bottom; Skip on every step. Nothing blocks: each step shows the
 //  real setting (so existing users see theirs), prompts only for a permission that isn't decided,
 //  and the review nudges (never blocks) towards the best permissions.
@@ -197,21 +197,24 @@ enum SetupStep: String, CaseIterable, Identifiable {
     case welcome, location, method, madhab, appearance, reminders, fajr, masjid, review
     var id: String { rawValue }
 
-    /// The ring: a fifth per group (where you pray · appearance · reminders · Fajr · masjid).
+    /// The ring: a sixth per group (location · prayer times · appearance · notifications · Fajr · masjid). The method and
+    /// Asr steps are their own group: they're how the times are worked out, not where you are (owner).
     var progress: Double {
         switch self {
         case .welcome: 0
-        case .location, .method, .madhab: 0.2
-        case .appearance: 0.4
-        case .reminders: 0.6
-        case .fajr: 0.8
+        case .location: 1 / 6
+        case .method, .madhab: 2 / 6
+        case .appearance: 3 / 6
+        case .reminders: 4 / 6
+        case .fajr: 5 / 6
         case .masjid, .review: 1
         }
     }
     var symbol: String {
         switch self {
         case .welcome: "sparkle"
-        case .location, .method, .madhab: "location.fill"
+        case .location: "location.fill"
+        case .method, .madhab: "clock"   // the review's "Prayer times" row too
         case .appearance: "circle.lefthalf.filled"
         case .reminders: "bell"
         case .fajr: "alarm"
@@ -941,7 +944,7 @@ private struct SetupOpening: View {
 // MARK: - The ring (progress + the step's symbol)
 
 /// The opening's sage ring, small, at the top of every step: a hairline track, the sage arc filling
-/// a fifth per group, the step's symbol inside. `handoff`: it becomes the welcome's ring — 150 pt,
+/// a sixth per group, the step's symbol inside. `handoff`: it becomes the welcome's ring — 150 pt,
 /// a 1.2 pt sage hairline with its soft glow, empty inside.
 struct SetupRing: View {
     let progress: Double
