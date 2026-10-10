@@ -219,6 +219,9 @@ enum FajrAlarms {
             let id = UUID()
             testIDs.insert(id.uuidString)
             _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration(id: id, at: date, reference: date, test: true))
+            var dates = (group?.dictionary(forKey: "fajrAlarmLog.dates") as? [String: Double]) ?? [:]
+            dates[id.uuidString] = date.timeIntervalSince1970
+            group?.set(dates, forKey: "fajrAlarmLog.dates")
             FajrAlarmLog.add("test alarm \(id.uuidString.prefix(4)) set for \(FajrAlarmLog.day(date))")
             return true
         } catch {
@@ -265,7 +268,10 @@ enum FajrAlarms {
     static func describe(_ idString: String) -> String {
         guard let id = UUID(uuidString: idString) else { return idString }
         let alarm = ((try? AlarmManager.shared.alarms) ?? []).first { $0.id == id }
-        let when: String = if case .fixed(let d)? = alarm?.schedule { FajrAlarmLog.day(d) } else { "unknown time" }
+        // A ringing / stopped alarm no longer reports its schedule: the time noted when it was set.
+        let noted = (UserDefaults(suiteName: SharedStore.appGroup)?.dictionary(forKey: "fajrAlarmLog.dates") as? [String: Double])?[idString]
+        let when: String = if case .fixed(let d)? = alarm?.schedule { FajrAlarmLog.day(d) }
+            else if let noted { FajrAlarmLog.day(Date(timeIntervalSince1970: noted)) } else { "unknown time" }
         let test = testIDs.contains(idString) ? " (test)" : ""
         return "\(idString.prefix(4)) set for \(when)\(test)"
     }
