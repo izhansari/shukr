@@ -2714,7 +2714,9 @@ private struct ReviewStep: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
-            ZStack {
+            // Both sit on the bottom edge, out then in: the nudge goes, then bismillah rises into its own place (crossfaded,
+            // bismillah came in over the buttons, mid-height, then dropped).
+            ZStack(alignment: .bottom) {
                 if limited {
                     VStack(spacing: 0) {
                         Text(limitedNote)
@@ -2730,15 +2732,17 @@ private struct ReviewStep: View {
                     }
                     .padding(.top, 8)
                     .padding(.bottom, 8)
-                    .transition(.opacity)
+                    .transition(.opacity.animation(.easeOut(duration: 0.2)))
                 } else {
                     BismillahCapsule(action: done)
                         .padding(.top, 8)
                         .padding(.bottom, 10)
-                        .transition(.opacity)
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 14))
+                                                    .animation(.easeOut(duration: 0.4).delay(0.22)),
+                                                removal: .opacity.animation(.easeOut(duration: 0.2))))
                 }
             }
-            .animation(.easeInOut(duration: 0.35), value: limited)
+            .animation(.easeInOut(duration: 0.3), value: limited)
         }
         .task {
             alarmsAllowed = FajrAlarms.allowed
