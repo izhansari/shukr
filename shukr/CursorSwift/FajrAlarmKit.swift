@@ -20,6 +20,14 @@ import SwiftUI
 import AlarmKit
 import AppIntents
 
+/// The alarm rule's minutes: 5-minute steps up to an hour; before the END of Fajr at least 10 (owner: you need time to
+/// wake up and make wudu — 0 or 5 minutes before sunrise is too late). Setup's and Settings' wheels and the scheduler
+/// all go through here.
+enum FajrAlarmRule {
+    static func minutes(isFajr: Bool) -> [Int] { Array(stride(from: isFajr ? 0 : 10, through: 60, by: 5)) }
+    static func clamp(_ minutes: Int, isFajr: Bool) -> Int { isFajr ? minutes : max(10, minutes) }
+}
+
 enum FajrAlarms {
     /// App group: shukr sets the Fajr alarm with AlarmKit (the Shortcut steps aside).
     static let activeKey = "alarmKitActive"
@@ -51,9 +59,9 @@ enum FajrAlarms {
     static func dates(from now: Date = Date(), days: Int = daysAhead) -> [(alarm: Date, reference: Date)] {
         guard let g = group, g.bool(forKey: "alarmEnabled"),
               let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
-        let offset = g.integer(forKey: "alarmOffsetMinutes")
-        let before = g.object(forKey: "alarmIsBefore") as? Bool ?? true
         let isFajr = g.object(forKey: "alarmIsFajr") as? Bool ?? true
+        let offset = FajrAlarmRule.clamp(g.integer(forKey: "alarmOffsetMinutes"), isFajr: isFajr)
+        let before = g.object(forKey: "alarmIsBefore") as? Bool ?? true
         let params = PrayerUtils.getCalculationParameters()
         let cal = Calendar.current
         var out: [(Date, Date)] = []

@@ -2262,7 +2262,14 @@ private struct FajrStep: View {
         }
         .onAppear {
             if offset % 5 != 0 { offset = min(60, Int((Double(offset) / 5).rounded()) * 5) }   // 5-minute steps
+            let floored = FajrAlarmRule.clamp(offset, isFajr: isFajr)
+            if floored != offset { offset = floored }
             answer = FajrAlarms.allowed
+        }
+        // Picking the end of Fajr lifts 0 / 5 minutes to 10 (owner: time to wake up and make wudu).
+        .onChange(of: isFajr) { _, isFajr in
+            let floored = FajrAlarmRule.clamp(offset, isFajr: isFajr)
+            if floored != offset { withAnimation(.snappy) { offset = floored } }
         }
         // Back from Settings: their answer may have changed.
         .onChange(of: scenePhase) { _, phase in if phase == .active { answer = FajrAlarms.allowed } }
@@ -2296,7 +2303,7 @@ private struct FajrStep: View {
                 .padding(.top, 18)
             HStack(spacing: 0) {
                 Picker("Minutes", selection: $offset) {
-                    ForEach(Array(stride(from: 0, through: 60, by: 5)), id: \.self) { Text("\($0) min").tag($0) }
+                    ForEach(FajrAlarmRule.minutes(isFajr: isFajr), id: \.self) { Text("\($0) min").tag($0) }
                 }
                 Picker("Before or after", selection: $isBefore) {
                     Text("before").tag(true)
@@ -2360,10 +2367,8 @@ private struct AlarmDemo: View {
     let rule: String
     var refused = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The pill is in: it slides in on arrival and again whenever the rule changes, as the notifications' banners do.
-    @State private var shown = false
-    /// After the first arrival a change came from the wheels: it comes back quickly.
-    @State private var settled = false
+    /// The island has opened into the alarm (once, on arrival; the wheels only change its words).
+    @State private var open = false
     /// The alarm's own tint (FajrAlarms' `tintColor`), so the button is the green iOS shows.
     private static let alarmGreen = Color(red: 0.43, green: 0.62, blue: 0.5)
 
@@ -2374,7 +2379,7 @@ private struct AlarmDemo: View {
             Image(systemName: "alarm.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(Self.alarmGreen)
-                .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.25)), isActive: !reduceMotion && !refused)
+                .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.25)), isActive: open && !reduceMotion && !refused)
             VStack(alignment: .leading, spacing: 1) {
                 Text("shukr")
                     .font(.system(.footnote, design: .default))
@@ -2400,14 +2405,23 @@ private struct AlarmDemo: View {
         }
         .padding(.leading, 14).padding(.trailing, 10)
         .padding(.vertical, 12)
-        .background(Capsule().fill(.black))
+        // The contents come in once the island has opened (and go first if it closes).
+        .opacity(open ? 1 : 0)
+        .blur(radius: open ? 0 : 4)
+        .animation(open ? .easeOut(duration: 0.25).delay(0.18) : .easeOut(duration: 0.1), value: open)
+        // As iOS does it: the Dynamic Island, a small black pill at the top, widens and grows into the alarm (owner: the
+        // slide-in from above "looks real tacky").
+        .background(alignment: .top) {
+            Capsule().fill(.black)
+                .frame(width: open ? nil : 112, height: open ? nil : 34)
+        }
     }
 
     var body: some View {
         if let first = days.first {
             VStack(spacing: 12) {
                 // In the notifications' card (owner: "match the style of the notifications graphic"): the label, then the
-                // alarm sliding in from the top.
+                // alarm opening out of the island.
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 6) {
                         Text("Fajr").fontWeight(.semibold)
@@ -2418,16 +2432,9 @@ private struct AlarmDemo: View {
                     .foregroundStyle(Color.primary.opacity(0.7))
                     .padding(.leading, 4)
                     .contentTransition(.opacity)
-                    ZStack(alignment: .top) {
-                        if shown {
-                            pill(first)
-                                .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
-                        }
-                    }
-                    .frame(height: 62, alignment: .top)
-                    // Slides in from inside the card, never over the label (the top cut only).
-                    .mask(Rectangle().padding(.horizontal, -24).padding(.bottom, -24))
-                    .padding(.bottom, 6)
+                    pill(first)
+                        .frame(height: 62, alignment: .top)
+                        .padding(.bottom, 6)
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity)
@@ -2436,13 +2443,12 @@ private struct AlarmDemo: View {
                         .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
                 }
-                .task(id: "\(rule)-\(isFajr)") {
-                    let quick = settled
-                    settled = true
-                    withAnimation(.easeOut(duration: 0.15)) { shown = false }
-                    try? await Task.sleep(for: .seconds(quick ? 0.25 : 0.6))
+                .task {
+                    guard !open else { return }
+                    if reduceMotion { open = true; return }
+                    try? await Task.sleep(for: .seconds(0.45))
                     if Task.isCancelled { return }
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { shown = true }
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { open = true }
                 }
                 // The same rule on days through the year: the time moves with Fajr, nothing to reset.
                 HStack(spacing: 0) {

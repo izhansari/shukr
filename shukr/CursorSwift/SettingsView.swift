@@ -1208,9 +1208,9 @@ struct AlarmSettingsView: View {
                     VStack{
                         
                         HStack {
-                            // 5-minute steps (owner, 2026-09-29).
+                            // 5-minute steps (owner, 2026-09-29); before the end of Fajr from 10 (FajrAlarmRule).
                             Picker("", selection: $alarmOffsetMinutes) {
-                                ForEach(Array(stride(from: 0, through: 60, by: 5)), id: \.self) { number in
+                                ForEach(FajrAlarmRule.minutes(isFajr: alarmIsFajr), id: \.self) { number in
                                     Text("\(number) min").tag(number)
                                 }
                             }
@@ -1332,6 +1332,13 @@ struct AlarmSettingsView: View {
             if let fajr = viewModel.getNextPrayerTime(for: "fajr") { nextFajrTime = fajr }
             // 5-minute steps: an older value (e.g. 7) snaps to the nearest step.
             if alarmOffsetMinutes % 5 != 0 { alarmOffsetMinutes = min(60, Int((Double(alarmOffsetMinutes) / 5).rounded()) * 5) }
+            let floored = FajrAlarmRule.clamp(alarmOffsetMinutes, isFajr: alarmIsFajr)
+            if floored != alarmOffsetMinutes { alarmOffsetMinutes = floored }
+        }
+        // Picking the end of Fajr lifts 0 / 5 minutes to 10.
+        .onChange(of: alarmIsFajr) { _, isFajr in
+            let floored = FajrAlarmRule.clamp(alarmOffsetMinutes, isFajr: isFajr)
+            if floored != alarmOffsetMinutes { alarmOffsetMinutes = floored }
         }
         .onChange(of: alarmEnabled){_, newValue in
                 if newValue {
