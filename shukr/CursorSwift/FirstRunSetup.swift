@@ -1728,7 +1728,7 @@ struct NotificationTile: View {
 
     /// The words' colour: in a list the page's own greys (on stronger than off); in setup sage / white.
     private var ink: Color {
-        if inList { return state == 0 ? Color.secondary.opacity(0.6) : state == 1 ? Color.secondary : Color.primary }
+        if inList { return state == 0 ? Color.secondary.opacity(0.6) : Color.secondary }
         return state == 2 ? Color.white : state == 1 ? accent : Color.secondary
     }
 
@@ -1747,23 +1747,34 @@ struct NotificationTile: View {
                     .font(.system(.caption, design: .rounded, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
+                    .foregroundStyle(inList && state > 0 ? Color.primary : ink)
                 Image(systemName: ["bell.slash.fill", "bell.fill", "bell.badge.fill"][state])
                     .font(.system(size: 18))
                     .contentTransition(.symbolEffect(.replace))
-                    // In a list the colour is the bell's alone.
+                    // In a list the colour is the bell's (and the dots') alone.
                     .foregroundStyle(inList && state > 0 ? accent : ink)
+                if inList {
+                    // How many notifications it sends (decision settings-tile-look A): none, one, or all three.
+                    HStack(spacing: 4) {
+                        ForEach(0..<3, id: \.self) { i in
+                            Circle()
+                                .fill(i < [0, 1, 3][state] ? accent : Color.secondary.opacity(0.25))
+                                .frame(width: 5, height: 5)
+                        }
+                    }
+                    .frame(height: 8)
+                }
                 Text(["Off", "Start", "Nudge"][state])
-                    .font(.system(.caption2, design: .rounded, weight: inList && state == 1 ? .medium : .semibold))
+                    .font(.system(.caption2, design: .rounded, weight: inList ? .medium : .semibold))
             }
             .foregroundStyle(ink)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    // In a Settings list it stays calm (owner: "too much color. its screaming" … "keep color. just use it
-                    // calmer … still differentiating the start from nudge"): grey tiles, the colour only in the bell; Nudge
-                    // a faint tint and its word in full, Start's word quieter.
-                    .fill(inList ? (state == 2 ? accent.opacity(0.09) : Color(.tertiarySystemFill))
+                    // In a Settings list it stays calm (owner: "too much color. its screaming" … decision
+                    // settings-tile-look A): one grey for every tile, the colour only in the bell and the dots.
+                    .fill(inList ? Color(.tertiarySystemFill)
                           : state == 2 ? accent : state == 1 ? accent.opacity(0.12) : Color(.secondarySystemBackground))
                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(inList ? Color.clear
