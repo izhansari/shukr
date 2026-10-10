@@ -375,8 +375,9 @@ struct FirstRunSetupView: View {
                 .accessibilityLabel("Back")
             }
             Spacer()
-            // Not while editing from the review: back and Continue / Done already go there (owner).
-            if step != .review && mode == .full && editing == nil {
+            // Not while editing from the review: back and Continue / Done already go there (owner). Not on the welcome
+            // either: it only leads in (setup-welcome-ring).
+            if step != .review && step != .welcome && mode == .full && editing == nil {
                 Button("Skip") { backToReview() }
                     .font(.body)
                     .foregroundStyle(.secondary)
@@ -1703,17 +1704,112 @@ private func whyRow(_ symbol: String, _ title: String, _ detail: String) -> some
 private struct WelcomeStep: View {
     let next: () -> Void
     var body: some View {
-        // The three reasons to have shukr (owner: "Prayers on time, prayers tracked, zikr tracking").
+        // Bradley's mock (setup-welcome-ring, board/mocks/setup-opening-value/welcome-ring-v2.html; owner: "match the
+        // graphic we show for notifs and alarm so its visually consistent"): what the prayer circle means, in the same
+        // card, then why we're about to ask a few questions. No Skip here.
         StepScaffold(title: "Assalamu alaikum",
-                     subtitle: "shukr helps you pray on time, keep track of every prayer, and keep up your zikr. A few quick choices and you're in.") {
-            VStack(alignment: .leading, spacing: 22) {
-                whyRow("clock", "Pray on time", "Accurate times for where you are, a circle that shows how long is left, and a reminder before it ends.")
-                whyRow("checkmark.circle", "Every prayer, tracked", "Mark each one as you pray it. See your score, your streak and how your week went.")
-                whyRow("circle.hexagonpath", "Your zikr, kept up", "Count with a tap, set a daily goal, and watch your streak and history grow.")
-            }
-            .padding(.horizontal, 32)
+                     subtitle: "Every prayer has a window of time. shukr shows you how much of it is left, so you can pray while it’s green.") {
+            WelcomeRingDemo()
+                .padding(.horizontal, 24)
+                .padding(.top, 6)
         } bottom: {
-            PrimaryButton(title: "Begin", action: next)
+            VStack(spacing: 0) {
+                Text("To show your own prayers like this, we need a few quick answers: where you are, and how you pray. It takes about a minute.")
+                    .font(.system(.subheadline, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 16)
+                PrimaryButton(title: "Let’s set it up", outlined: true, action: next)
+            }
+        }
+    }
+}
+
+/// The welcome's graphic: the notifications / alarm card ("Prayer circle"), inside it just the ring as the app draws it
+/// (no prayer, no time left), sweeping a prayer's window once — green, then yellow, then red — and settling back on green;
+/// under the card the three parts of the window, each lighting in its colour as the ring reaches it. Reduce Motion:
+/// settled at once.
+private struct WelcomeRingDemo: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// How much of the window has gone (0…1); animated by `WelcomeSweep`.
+    @State private var gone: Double = 0
+
+    /// Where it rests: a little into the green.
+    static let rest: Double = 0.13
+
+
+    var body: some View {
+        VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Prayer circle")
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.7))
+                    .padding(.leading, 4)
+                WelcomeSweep(gone: gone)
+                    .frame(width: 140, height: 140)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.regularMaterial))
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity)
+            .background {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            // Each part of the window lights as the ring reaches it (animatable, so it follows the ring frame by frame —
+            // reading `gone` here jumped straight to the sweep's end).
+            WelcomeSweepParts(gone: gone)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("The prayer circle: green is the best time, yellow on time, red almost gone.")
+        .task {
+            typealias T = CircleMotion.Setup
+            if reduceMotion { gone = Self.rest; return }
+            guard await CircleGate.pause(T.welcomeSweepAfterDuration) else { return }
+            withAnimation(T.welcomeSweep) { gone = 1 }
+            guard await CircleGate.pause(T.welcomeSweepDuration) else { return }
+            withAnimation(T.welcomeSettle) { gone = Self.rest }
+        }
+    }
+}
+
+/// The three parts of the window under the welcome's card; the one the ring is in, in its colour.
+private struct WelcomeSweepParts: View, Animatable {
+    var gone: Double
+    var animatableData: Double { get { gone } set { gone = newValue } }
+
+    var body: some View {
+        let part = gone < 0.2 ? 0 : gone < 0.8 ? 1 : 2
+        let colours: [Color] = [.green, Color(red: 0.83, green: 0.66, blue: 0), .red]
+        HStack(spacing: 0) {
+            ForEach(Array(["Best time", "On time", "Almost gone"].enumerated()), id: \.offset) { i, word in
+                Text(word)
+                    .font(.system(.caption, design: .rounded, weight: part == i ? .semibold : .regular))
+                    .foregroundStyle(part == i ? colours[i] : .secondary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+
+/// The ring, its arc animatable: what's left of the window, in the colour of where it is.
+private struct WelcomeSweep: View, Animatable {
+    var gone: Double
+    var animatableData: Double { get { gone } set { gone = newValue } }
+
+    var body: some View {
+        let colour: Color = gone < 0.2 ? .green : gone < 0.8 ? .yellow : .red
+        ZStack {
+            Circle().stroke(Color.primary.opacity(0.08), lineWidth: 9)
+            Circle()
+                .trim(from: 0, to: max(1 - gone, 0.004))
+                .stroke(colour, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .shadow(color: colour.opacity(0.55), radius: 5)
         }
     }
 }
@@ -3576,6 +3672,11 @@ extension CircleMotion {
         static let revealBeatReducedDuration: Double = 0.15
         // Bismillah
         static let leaving = Animation.easeOut(duration: 0.35)
+        // The welcome step's ring: a beat, one sweep through the window, then back to rest in the green.
+        static let welcomeSweepAfterDuration: Double = 1.0
+        static let welcomeSweepDuration: Double = 4.2
+        static let welcomeSweep = Animation.easeInOut(duration: welcomeSweepDuration)
+        static let welcomeSettle = Animation.easeOut(duration: 1.0)
         /// Bismillah: the steps fade before "welcome to shukr" plays as the end.
         static let endingFade = Animation.easeInOut(duration: 0.6)
         static let leavingReduced = Animation.easeInOut(duration: 0.35)
