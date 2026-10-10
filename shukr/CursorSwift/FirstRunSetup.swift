@@ -2670,9 +2670,9 @@ private struct ReviewStep: View {
     private var limited: Bool { (locationMissing || notificationsMissing) && !goLimited }
     private var limitedNote: String {
         switch (locationMissing, notificationsMissing) {
-        case (true, true): return "Without location and notifications: no prayer reminders, and times that won’t follow you."
-        case (true, false): return "Without location, your times won’t follow you, prayers won’t be pinned and the qibla is rougher."
-        default: return "Without notifications, nothing will nudge you before a prayer slips by."
+        case (true, true): return "Without location and notifications, you’ll miss prayer reminders, nearby mosques and more."
+        case (true, false): return "Without location, you’ll miss nearby mosques, pinned places and a precise qibla."
+        default: return "Without notifications, you’ll miss reminders before a prayer slips by."
         }
     }
     /// One at a time: location first, then notifications — iOS asks if it never has, else Settings.
