@@ -352,7 +352,8 @@ struct FirstRunSetupView: View {
                 .accessibilityLabel("Back")
             }
             Spacer()
-            if step != .review && mode == .full {
+            // Not while editing from the review: back and Continue / Done already go there (owner).
+            if step != .review && mode == .full && editing == nil {
                 Button("Skip") { backToReview() }
                     .font(.body)
                     .foregroundStyle(.secondary)
@@ -1311,6 +1312,14 @@ enum LocationUpgrade {
         } else {
             FirstRunSetup.alwaysAsked = true
             location.requestAlwaysPermission()
+            // "Allow Once" reads as While Using, but iOS shows no Always prompt then: if none came up, go to Settings
+            // instead of a tap that does nothing (a prompt makes the app inactive).
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.2))
+                if UIApplication.shared.applicationState == .active && location.authorizationStatus == .authorizedWhenInUse {
+                    SettingsLinks.app()
+                }
+            }
         }
     }
 }
@@ -2759,6 +2768,9 @@ private struct ReviewStep: View {
         case .some(false): return Fix(value: "Off", action: "Turn on", run: SettingsLinks.notifications)
         case .none: return Fix(value: "Not on yet", action: "Allow") { notifications.request() }
         default:
+            // Allowed, but every prayer switched off: nothing will come.
+            let anyOn = [fajrNotif, dhuhrNotif, asrNotif, maghribNotif, ishaNotif].contains(true)
+            if !anyOn { return Fix(value: "All five off", action: "Set up") { jump(.reminders) } }
             if health.issues.contains(.held) {
                 return Fix(value: "Held for the Scheduled Summary", action: "Fix", run: SettingsLinks.notifications)
             }
@@ -2778,44 +2790,39 @@ private struct ReviewStep: View {
     }
 
     private func row(_ symbol: String, _ title: String, _ value: String, step: SetupStep, fix: Fix? = nil) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Button { jump(step) } label: {
-                HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: symbol)
-                        .font(.system(size: 18, weight: .light))
-                        .foregroundStyle(Color.sage)
-                        .frame(width: 30, height: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(title).font(.system(.body, design: .rounded))
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.footnote.weight(.medium)).foregroundStyle(.tertiary)
+        Button { jump(step) } label: {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: symbol)
+                    .font(.system(size: 18, weight: .light))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 30, height: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(.body, design: .rounded))
+                    HStack(spacing: 4) {
+                        if fix != nil {
+                            Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
                         }
-                        HStack(spacing: 4) {
-                            if fix != nil {
-                                Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
-                            }
-                            Text(value).foregroundStyle(fix != nil ? Color.orange : .secondary)
-                                .lineLimit(1).minimumScaleFactor(0.85)
-                            Spacer(minLength: 0)
-                        }
-                        .font(.system(.subheadline, design: .rounded, weight: .light))
-                        // Room for the fix's button, laid over the line's end.
-                        .padding(.trailing, fix == nil ? 0 : 76)
+                        Text(value).foregroundStyle(fix != nil ? Color.orange : .secondary)
+                            .lineLimit(1).minimumScaleFactor(0.8)
                     }
+                    .font(.system(.subheadline, design: .rounded, weight: .light))
                 }
-                .contentShape(Rectangle())
+                // Room for the fix, beside the chevron (owner: not under it).
+                Spacer(minLength: fix == nil ? 8 : 84)
+                Image(systemName: "chevron.right").font(.footnote.weight(.medium)).foregroundStyle(.tertiary)
             }
-            .buttonStyle(.plain)
+            .contentShape(Rectangle())
         }
-        .overlay(alignment: .bottomTrailing) {
+        .buttonStyle(.plain)
+        .overlay(alignment: .trailing) {
             if let fix {
                 Button(fix.action, action: fix.run)
                     .font(.system(.subheadline, design: .rounded, weight: .medium))
                     .foregroundStyle(Color.sage)
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 8).padding(.horizontal, 4)
                     .contentShape(Rectangle())
                     .buttonStyle(.plain)
+                    .padding(.trailing, 18)
             }
         }
         .padding(.vertical, 8)
