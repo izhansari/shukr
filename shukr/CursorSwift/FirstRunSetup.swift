@@ -1713,11 +1713,15 @@ private extension String {
 /// One prayer's notifications as a tile you can see is a button: off (grey, bell slashed), start (sage outline, bell),
 /// nudge (solid sage, bell with a badge). A tap cycles off → start → nudge → off, as Settings' bells do, and puts that
 /// prayer in the preview above (no ring on it — owner: "visual clutter"; the card's label names it).
-private struct NotificationTile: View {
+/// Shared by setup (sage, on the page) and Settings (its green, in a list row: `inList` gives off a fill that shows on
+/// the row's background in both looks).
+struct NotificationTile: View {
     let prayer: String
     @Binding var notifIsOn: Bool
     @Binding var nudgeIsOn: Bool
-    let onTap: () -> Void
+    var accent: Color = .sage
+    var inList = false
+    var onTap: () -> Void = {}
     @EnvironmentObject private var viewModel: PrayerViewModel
 
     private var state: Int { notifIsOn ? (nudgeIsOn ? 2 : 1) : 0 }
@@ -1743,16 +1747,17 @@ private struct NotificationTile: View {
                 Text(["Off", "Start", "Nudge"][state])
                     .font(.system(.caption2, design: .rounded, weight: .semibold))
             }
-            .foregroundStyle(state == 2 ? Color.white : state == 1 ? Color.sage : Color.secondary)
+            .foregroundStyle(state == 2 ? Color.white : state == 1 ? accent : Color.secondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(state == 2 ? Color.sage : state == 1 ? Color.sage.opacity(0.12) : Color(.secondarySystemBackground))
+                    .fill(state == 2 ? accent : state == 1 ? accent.opacity(0.12)
+                          : inList ? Color(.tertiarySystemFill) : Color(.secondarySystemBackground))
                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(state == 1 ? Color.sage.opacity(0.7) : Color.primary.opacity(state == 0 ? 0.06 : 0),
+                        .strokeBorder(state == 1 ? accent.opacity(0.7) : Color.primary.opacity(state == 0 && !inList ? 0.06 : 0),
                                       lineWidth: state == 1 ? 1.5 : 1))
-                    .shadow(color: .black.opacity(0.06), radius: 3, y: 2)
+                    .shadow(color: .black.opacity(inList ? 0 : 0.06), radius: 3, y: 2)
             }
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
@@ -1766,7 +1771,7 @@ private struct NotificationTile: View {
 }
 
 /// A tile sinks a little under the finger.
-private struct TilePressStyle: ButtonStyle {
+struct TilePressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.94 : 1)

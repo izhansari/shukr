@@ -299,18 +299,16 @@ struct SettingsView: View {
                         // Will they actually arrive? (NotificationHealth: off / held for the Scheduled
                         // Summary / Time Sensitive / Background App Refresh.)
                         NotificationHealthRows()
-                        HStack {
-                            prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
-                            Divider()
-                            prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
-                            Divider()
-                            prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
-                            Divider()
-                            prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
-                            Divider()
-                            prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
+                        // The same per-prayer tiles as setup's (off grey · start outlined · nudge filled; a tap cycles),
+                        // in Settings' green (owner: "speaks the same language and flows with our settings page style").
+                        HStack(spacing: 8) {
+                            NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, accent: .green, inList: true)
+                            NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, accent: .green, inList: true)
+                            NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, accent: .green, inList: true)
+                            NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, accent: .green, inList: true)
+                            NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, accent: .green, inList: true)
                         }
-                        .padding(.vertical)
+                        .padding(.vertical, 6)
                         
                         if isNotifPopupVisible{
                             NotificationDropdownInfo()
