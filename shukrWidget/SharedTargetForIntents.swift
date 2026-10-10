@@ -1272,6 +1272,60 @@ struct GetOffsetTimeIntent: AppIntent {
 //}
 
 /// Intent: Get Offset Time Relative to Fajr or Sunrise
+/// The Fajr alarm's record (owner, 2026-10-10: "it doesn't tell us how many it schedules … i got an alarm going off at
+/// midnight one time"): every plan, alarm set or cancelled, stop, "I'm up", ring seen and Shortcut call, with what it was
+/// worked out from — in the app group, so the app and the Shortcut's intent both write it. Settings → Fajr alarm →
+/// Alarm check shows it (beta installs); `devicectl … --domain-type appGroupDataContainer` pulls it.
+enum FajrAlarmLog {
+    private static let queue = DispatchQueue(label: "shukr.fajrAlarmLog")
+    static var url: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")?
+            .appendingPathComponent("Library/Application Support/fajr-alarm.log", isDirectory: false)
+    }
+    private static let stamp: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d HH:mm:ss zzz"
+        return f
+    }()
+    /// "Fri Oct 10 5:12 AM" — every date in the log reads the same way.
+    static func day(_ date: Date) -> String {
+        date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute())
+    }
+
+    static func add(_ line: String) {
+        let text = "\(stamp.string(from: Date()))  \(line)\n"
+        print("⏰ \(line)")
+        queue.async {
+            guard let url else { return }
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if let handle = try? FileHandle(forWritingTo: url) {
+                handle.seekToEndOfFile()
+                handle.write(Data(text.utf8))
+                try? handle.close()
+            } else {
+                try? Data(text.utf8).write(to: url)
+            }
+            // Kept to the last ~1500 lines.
+            if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 400_000,
+               let all = try? String(contentsOf: url, encoding: .utf8) {
+                let kept = all.split(separator: "\n").suffix(1500).joined(separator: "\n") + "\n"
+                try? kept.write(to: url, atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
+    /// Newest first.
+    static func lines() -> [String] {
+        queue.sync {
+            guard let url, let all = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+            return all.split(separator: "\n").map(String.init).reversed()
+        }
+    }
+
+    static var text: String { queue.sync { url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "" } }
+}
+
 struct SetFajrAlarmIntent: AppIntent {
     static var title: LocalizedStringResource = "Autopilot Fajr Alarm Time"
     static var description: LocalizedStringResource = "Dynamically returns a time offset from Fajr or Sunrise (rules defined in the Shukr app settings)"
@@ -1303,10 +1357,22 @@ struct SetFajrAlarmIntent: AppIntent {
             #if canImport(AlarmKit)
             if #available(iOS 26.1, *), AlarmManager.shared.authorizationState != .authorized { permissionGone = true }
             #endif
-            if permissionGone { group.set(false, forKey: "alarmKitActive") } else { throw SetByShukrError() }
+            if permissionGone {
+                FajrAlarmLog.add("Shortcut asked: AlarmKit permission gone — the Shortcut takes over again")
+                group.set(false, forKey: "alarmKitActive")
+            } else {
+                // A Shortcut that carries on past this error makes its "Create Alarm" with no time: 12:00 AM.
+                FajrAlarmLog.add("Shortcut asked: AlarmKit sets the alarm — refused (an automation that carries on past this error makes a 12:00 AM alarm)")
+                throw SetByShukrError()
+            }
         }
-        let calculatedAlarm = try PrayerUtils.calculateAlarmDescription()
+        let calculatedAlarm: (description: String, time: Date)
+        do { calculatedAlarm = try PrayerUtils.calculateAlarmDescription() } catch {
+            FajrAlarmLog.add("Shortcut asked: no time worked out — \(error)")
+            throw error
+        }
         let resultTime = calculatedAlarm.time
+        FajrAlarmLog.add("Shortcut asked: gave \(FajrAlarmLog.day(resultTime)) (\(calculatedAlarm.description))")
 
 //        if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
 //            store.setValue(shortTimePM(resultTime), forKey: "alarmTimeSetFor")

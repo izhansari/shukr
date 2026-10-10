@@ -165,6 +165,7 @@ enum NotificationScheduler {
         // (a refresh on activation can run before this re-plan finishes).
         // The AlarmKit Fajr alarm tops up with every run (launch, coming back, background refresh,
         // notification actions, settings) — a diff, so nothing changes when nothing's due.
+        await MainActor.run { FajrAlarms.watch() }   // a log line when one starts ringing while shukr runs
         await FajrAlarms.plan(reason: reason.isEmpty ? "reschedule" : reason)
         await NotificationHealth.shared.refresh()
         if !stalePending.isEmpty || !toAdd.isEmpty || !stale.isEmpty {

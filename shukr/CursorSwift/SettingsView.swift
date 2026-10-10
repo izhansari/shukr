@@ -1062,6 +1062,8 @@ struct AlarmSettingsView: View {
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
     /// iOS 26.1+: shukr sets the alarm itself (AlarmKit); the Shortcut steps aside.
     @AppStorage(FajrAlarms.activeKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var alarmKitActive = false
+    @ObservedObject private var betaAccess = WhatsNewAccess.shared
+    @State private var showAlarmCheck = false
     @State private var alarmKitRefused = false
     
     // ------------------------------------------
@@ -1282,6 +1284,20 @@ struct AlarmSettingsView: View {
                                     .foregroundStyle(Color.green)
                             }
                             .buttonStyle(.plain)
+                        }
+                    }
+                    // Beta: every alarm AlarmKit holds, checked against the rule, and the alarm's log (FajrAlarmKit.swift).
+                    if FajrAlarms.supported && !isEditingAlarm && betaAccess.beta {
+                        Button { showAlarmCheck = true } label: {
+                            Label("Alarm check", systemImage: "checklist")
+                                .font(.footnote.weight(.medium))
+                        }
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showAlarmCheck) {
+                            NavigationStack {
+                                FajrAlarmCheckView()
+                                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showAlarmCheck = false } } }
+                            }
                         }
                     }
             }

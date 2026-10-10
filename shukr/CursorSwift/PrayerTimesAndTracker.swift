@@ -1758,6 +1758,7 @@ struct PrayerTimesView: View {
         @EnvironmentObject private var viewModel: PrayerViewModel
         #if DEBUG
         @State private var demoViewer = false
+        @State private var demoAlarmCheck = false
         #endif
         /// The pill's camera is open for this prayer (PrayerPhotos.swift).
         @State private var prayerPhoto: PrayerPhotoTarget?
@@ -2024,7 +2025,13 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(2))
                     demoViewer = PrayerPhotos.newestKey != nil
                 }
+                if ProcessInfo.processInfo.arguments.contains("-demoAlarmCheck") {
+                    try? await Task.sleep(for: .seconds(2))
+                    demoAlarmCheck = true
+                }
             }
+            // `-demoAlarmCheck`: Settings' Alarm check page (FajrAlarmKit.swift).
+            .sheet(isPresented: $demoAlarmCheck) { NavigationStack { FajrAlarmCheckView() } }
             #endif
             // The sheet popping (whoever changed it): the chevron, "N done" and the bar fade with the page's own move.
             .animation(CircleMotion.movement(CircleMotion.page, reduced: reduceMotion), value: showBottom)
