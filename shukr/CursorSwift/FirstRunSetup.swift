@@ -1646,11 +1646,11 @@ private struct RemindersStep: View {
                         .textCase(.uppercase)
                         .foregroundStyle(.secondary)
                     HStack(spacing: 8) {
-                        NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, focused: focus == "Fajr") { focus = "Fajr" }
-                        NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, focused: focus == "Dhuhr") { focus = "Dhuhr" }
-                        NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, focused: focus == "Asr") { focus = "Asr" }
-                        NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, focused: focus == "Maghrib") { focus = "Maghrib" }
-                        NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, focused: focus == "Isha") { focus = "Isha" }
+                        NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges) { focus = "Fajr" }
+                        NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges) { focus = "Dhuhr" }
+                        NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges) { focus = "Asr" }
+                        NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges) { focus = "Maghrib" }
+                        NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges) { focus = "Isha" }
                     }
                 }
                 .padding(.horizontal, 24)
@@ -1674,12 +1674,11 @@ private extension String {
 
 /// One prayer's notifications as a tile you can see is a button: off (grey, bell slashed), start (sage outline, bell),
 /// nudge (solid sage, bell with a badge). A tap cycles off → start → nudge → off, as Settings' bells do, and puts that
-/// prayer in the preview above (`focused` gets a ring).
+/// prayer in the preview above (no ring on it — owner: "visual clutter"; the card's label names it).
 private struct NotificationTile: View {
     let prayer: String
     @Binding var notifIsOn: Bool
     @Binding var nudgeIsOn: Bool
-    let focused: Bool
     let onTap: () -> Void
     @EnvironmentObject private var viewModel: PrayerViewModel
 
@@ -1717,17 +1716,10 @@ private struct NotificationTile: View {
                                       lineWidth: state == 1 ? 1.5 : 1))
                     .shadow(color: .black.opacity(0.06), radius: 3, y: 2)
             }
-            // The prayer the preview is showing: a ring round its tile.
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Color.sage.opacity(focused ? 0.9 : 0), lineWidth: 2)
-                    .padding(-4)
-            }
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(TilePressStyle())
         .animation(.snappy(duration: 0.2), value: state)
-        .animation(.snappy(duration: 0.2), value: focused)
         .accessibilityLabel("\(prayer) notifications")
         .accessibilityValue(["off", "at the start", "with nudges"][state])
         .onChange(of: notifIsOn) { _, _ in viewModel.fetchPrayerTimes(cameFrom: "setup notification tile") }
