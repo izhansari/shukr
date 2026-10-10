@@ -480,6 +480,10 @@ struct MemoriesPage: View {
         }
         .onChange(of: placeNamesLearned) { _, _ in if searching { buildIndex() } }
         .sheet(isPresented: $showSettings) { MemoriesSettings() }
+        .onChange(of: deckStart == nil) { _, closed in
+            if FrameMonitor.on { FrameMonitor.shared.note(closed ? "pile closed" : "pile opened") }
+        }
+        .task { await perfCycle() }
         // The pile in its own clear layer over everything, presented without a slide (like a prayer photo from the hold
         // editor): the page's bars stay as they are underneath. Hiding them for the pile and bringing them back left a
         // second, ghost bottom bar with an empty search field (owner's screenshot) once Memories was pushed.
@@ -531,6 +535,7 @@ struct MemoriesPage: View {
 
     /// To another level, opening at `id` (a tapped stack), else at the month that's on screen now.
     private func go(_ new: Level, at id: String? = nil) {
+        if FrameMonitor.on { FrameMonitor.shared.note("memories → \(new.title)") }
         guard new != level else { return }
         if let target = id ?? tops[level].map({ String($0.prefix(7)) }) {
             tops[new] = target
@@ -540,6 +545,25 @@ struct MemoriesPage: View {
             pinned.remove(new)
         }
         withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { level = new }
+    }
+
+    /// `-perfMemoriesCycle` (with -perfOpenMemories): Memories runs through its moves on its own — the levels, then the
+    /// newest photo's pile, open and closed — so Instruments can record them with no UI test attached.
+    private func perfCycle() async {
+        guard ProcessInfo.processInfo.arguments.contains("-perfMemoriesCycle") else { return }
+        try? await Task.sleep(for: .seconds(3))
+        while !Task.isCancelled {
+            for l in [Level.months, .prayers, .days] {
+                go(l)
+                try? await Task.sleep(for: .seconds(1.5))
+            }
+            guard let photo = PrayerPhotos.all().last else { continue }
+            if FrameMonitor.on { FrameMonitor.shared.note("pile opening") }
+            openDeck(photo)
+            try? await Task.sleep(for: .seconds(2))
+            closeDeck(photo.key, photo.dayKey, 1)
+            try? await Task.sleep(for: .seconds(1.5))
+        }
     }
 
     /// The pile's card width (`MemoriesDeck` uses the same).
@@ -1071,6 +1095,7 @@ struct MemoriesDeck: View {
 
     /// To another day: all the piles slide a page over, then that day is the current one, on `top`.
     private func page(to top: Int, fromRight: Bool, jump: Bool, response: Double = 0.42) {
+        if FrameMonitor.on { FrameMonitor.shared.note("pile → day \(top)") }
         finishPaging()
         guard photos.indices.contains(top) else { return }
         let screen = UIScreen.main.bounds.width

@@ -27,6 +27,13 @@ import UIKit
     private var toggling: Task<Void, Never>?
 
     func startIfAsked() {
+        // `-perfOpenMemories`: Memories opens 3 s in (the Memories swipe test, in Release builds too).
+        if ProcessInfo.processInfo.arguments.contains("-perfOpenMemories"), toggling == nil {
+            toggling = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(3))
+                MemoriesPresenter.shared.open = true
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-perfToggleList"), toggling == nil {
             toggling = Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(4))

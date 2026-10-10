@@ -129,4 +129,34 @@ final class shukrUITests: XCTestCase {
             window.swipeLeft(velocity: .default); usleep(700_000)
         }
     }
+
+    /// Memories (opened by -perfOpenMemories): scroll Days, switch to Months and Prayers and back, open a pile, swipe
+    /// through it, close it. Late frames land in the app's frames.log with the level / pile changes.
+    @available(iOS 26.0, *)
+    func testMemoriesHitches() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-demoPerfRun", "-perfFrames", "-perfOpenMemories"]
+        app.launch()
+        sleep(6)
+        let window = app.windows.firstMatch
+        measure(metrics: [XCTHitchMetric(application: app)], options: perfOptions()) {
+            window.swipeDown(velocity: .default); usleep(800_000)
+            window.swipeUp(velocity: .default); usleep(800_000)
+            for level in ["Months", "Prayers", "Days"] {
+                let b = app.buttons[level].firstMatch
+                if b.exists { b.tap(); usleep(900_000) }
+                window.swipeDown(velocity: .default); usleep(700_000)
+                window.swipeUp(velocity: .default); usleep(700_000)
+            }
+            let photo = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS[c] 'Fajr' OR label CONTAINS[c] 'Dhuhr' OR label CONTAINS[c] 'Asr' OR label CONTAINS[c] 'Maghrib' OR label CONTAINS[c] 'Isha'")).firstMatch
+            if photo.exists {
+                photo.tap(); usleep(1_200_000)
+                for _ in 0..<3 { window.swipeLeft(velocity: .default); usleep(700_000) }
+                for _ in 0..<3 { window.swipeRight(velocity: .default); usleep(700_000) }
+                let close = app.buttons["Close"].firstMatch
+                if close.exists { close.tap() } else { window.swipeDown(velocity: .default) }
+                usleep(1_200_000)
+            }
+        }
+    }
 }

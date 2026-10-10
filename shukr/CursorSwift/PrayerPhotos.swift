@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import os
 import SwiftData
 import CoreLocation
 import AVFoundation
@@ -526,13 +527,23 @@ struct PrayerPhotoTarget: Identifiable {
 extension PrayerPhotos {
     /// The prayer's name and its day ("Tue, Oct 7") from a key ("2026-10-07-Asr").
     static func parts(_ key: String) -> (name: String, day: String) {
+        if let kept = partsLock.withLock({ keptParts[key] }) { return kept }
         let dayKey = String(key.prefix(10)), name = String(key.dropFirst(11))
+        let day = partsParser.withLock { $0.date(from: dayKey) }
+            .map { $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? dayKey
+        partsLock.withLock { keptParts[key] = (name, day) }
+        return (name, day)
+    }
+    /// Worked out once per photo: every thumbnail's caption (its accessibility label) made a DateFormatter on each
+    /// redraw — a third of Memories' own time when a level or the pile came in (perf trace 2026-10-10).
+    private static let partsLock = NSLock()
+    nonisolated(unsafe) private static var keptParts: [String: (name: String, day: String)] = [:]
+    private static let partsParser = OSAllocatedUnfairLock(uncheckedState: {
         let parser = DateFormatter()
         parser.dateFormat = "yyyy-MM-dd"
         parser.locale = Locale(identifier: "en_US_POSIX")
-        let day = parser.date(from: dayKey).map { $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? dayKey
-        return (name, day)
-    }
+        return parser
+    }())
 
     /// "Asr · Tue, Oct 7".
     static func caption(_ key: String) -> String {
