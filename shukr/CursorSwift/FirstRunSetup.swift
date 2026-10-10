@@ -1240,7 +1240,7 @@ private struct LocationStep: View {
     }
 
     private var primaryTitle: String {
-        if denied && !location.hasManualLocation { return "Continue with a city" }
+        if denied && !location.hasManualLocation { return "I’ll choose a location manually" }
         if status == .notDetermined && !location.hasManualLocation { return "Allow location" }
         return locationOnly ? "Done" : "Continue"
     }
