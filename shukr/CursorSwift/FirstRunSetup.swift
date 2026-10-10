@@ -2224,7 +2224,7 @@ private struct FajrStep: View {
                                   subtitle: "Set it once. It moves with Fajr every day, so there’s nothing to do before bed.")
                             .padding(.bottom, 18)
                         if !on { Spacer(minLength: 0) }
-                        AlarmDemo(days: upcoming, isFajr: isFajr, refused: refused)
+                        AlarmDemo(days: upcoming, isFajr: isFajr, rule: ruleWords, refused: refused)
                             .padding(.horizontal, 24)
                         if on {
                             tuner
@@ -2266,6 +2266,12 @@ private struct FajrStep: View {
         }
         // Back from Settings: their answer may have changed.
         .onChange(of: scenePhase) { _, phase in if phase == .active { answer = FajrAlarms.allowed } }
+    }
+
+    /// The rule in words for the alarm card's label: "20 min before it starts", "When it ends".
+    private var ruleWords: String {
+        let edge = isFajr ? "starts" : "ends"
+        return offset == 0 ? "When it \(edge)" : "\(offset) min \(isBefore ? "before" : "after") it \(edge)"
     }
 
     /// "Set my Fajr alarm": on, and (iOS 26.1+) iOS asks; a no frosts the alarm over.
@@ -2344,54 +2350,99 @@ private struct FajrStep: View {
     }
 }
 
-/// The Fajr alarm as it rings (the real one's words and buttons: "Fajr starts 5:32 AM", Stop, "I'm up — open Fajr"),
-/// then the same rule's time on days through the year: one rule, a time that follows Fajr. Refused: frosted over.
+/// The Fajr alarm as iOS shows it with the phone in use — the pill at the top (matched to a real AlarmKit test alarm,
+/// 2026-10-10: the green alarm symbol, "shukr" over "Fajr starts …", a sunrise button and ✕), the symbol shaking as it
+/// rings; then the same rule's time on days through the year: one rule, a time that follows Fajr. Refused: frosted over.
 private struct AlarmDemo: View {
     let days: [(day: Date, alarm: Date, reference: Date)]
     let isFajr: Bool
+    /// The rule in words, for the card's label ("20 min before it starts").
+    let rule: String
     var refused = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The pill is in: it slides in on arrival and again whenever the rule changes, as the notifications' banners do.
+    @State private var shown = false
+    /// After the first arrival a change came from the wheels: it comes back quickly.
+    @State private var settled = false
+    /// The alarm's own tint (FajrAlarms' `tintColor`), so the button is the green iOS shows.
+    private static let alarmGreen = Color(red: 0.43, green: 0.62, blue: 0.5)
+
+    /// The pill at the top of the screen (owner: "the small bar one"): the alarm symbol, shaking, "shukr" over the alarm's
+    /// title in its green, then "I'm up" (sunrise) and Stop (✕) as round buttons.
+    private func pill(_ first: (day: Date, alarm: Date, reference: Date)) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "alarm.fill")
+                .font(.system(size: 36))
+                .foregroundStyle(Self.alarmGreen)
+                .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.25)), isActive: !reduceMotion && !refused)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("shukr")
+                    .font(.system(.footnote, design: .default))
+                    .foregroundStyle(.white.opacity(0.5))
+                Text("Fajr \(isFajr ? "starts" : "ends") \(clockTime(first.reference))")
+                    .font(.system(.callout, design: .default))
+                    .foregroundStyle(Self.alarmGreen)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .contentTransition(.numericText())
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "sunrise.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Self.alarmGreen)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(Self.alarmGreen.opacity(0.28)))
+            Image(systemName: "xmark")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(Circle().fill(.white.opacity(0.18)))
+        }
+        .padding(.leading, 14).padding(.trailing, 10)
+        .padding(.vertical, 12)
+        .background(Capsule().fill(.black))
+    }
 
     var body: some View {
         if let first = days.first {
-            VStack(spacing: 14) {
-                VStack(spacing: 6) {
+            VStack(spacing: 12) {
+                // In the notifications' card (owner: "match the style of the notifications graphic"): the label, then the
+                // alarm sliding in from the top.
+                VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 6) {
-                        Image(systemName: "alarm.fill")
-                            .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.8)), isActive: !reduceMotion && !refused)
-                        Text("shukr · Alarm")
+                        Text("Fajr").fontWeight(.semibold)
+                        Text("·")
+                        Text(rule)
                     }
-                    .font(.system(.caption, design: .rounded, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.8))
-                    Text(first.alarm.formatted(.dateTime.hour().minute()))
-                        .font(.system(size: 44, weight: .light, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
-                    Text("Fajr \(isFajr ? "starts" : "ends") \(clockTime(first.reference))")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.85))
-                    HStack(spacing: 10) {
-                        Text("Stop")
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(Capsule().fill(.white.opacity(0.18)))
-                        Label("I’m up — open Fajr", systemImage: "sunrise.fill")
-                            .frame(maxWidth: .infinity, minHeight: 40)
-                            .background(Capsule().fill(Color.sage))
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.7))
+                    .padding(.leading, 4)
+                    .contentTransition(.opacity)
+                    ZStack(alignment: .top) {
+                        if shown {
+                            pill(first)
+                                .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
+                        }
                     }
-                    .font(.system(.footnote, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .padding(.top, 6)
+                    .frame(height: 62, alignment: .top)
+                    // Slides in from inside the card, never over the label (the top cut only).
+                    .mask(Rectangle().padding(.horizontal, -24).padding(.bottom, -24))
+                    .padding(.bottom, 6)
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity)
                 .background {
-                    // A Lock Screen at night, in either look.
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(LinearGradient(colors: [Color(red: 0.10, green: 0.13, blue: 0.17), Color(red: 0.16, green: 0.24, blue: 0.22)],
-                                             startPoint: .top, endPoint: .bottom))
+                        .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                }
+                .task(id: "\(rule)-\(isFajr)") {
+                    let quick = settled
+                    settled = true
+                    withAnimation(.easeOut(duration: 0.15)) { shown = false }
+                    try? await Task.sleep(for: .seconds(quick ? 0.25 : 0.6))
+                    if Task.isCancelled { return }
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { shown = true }
                 }
                 // The same rule on days through the year: the time moves with Fajr, nothing to reset.
                 HStack(spacing: 0) {
@@ -2399,13 +2450,12 @@ private struct AlarmDemo: View {
                         VStack(spacing: 2) {
                             Text(i == 0 ? "Tomorrow" : d.day.formatted(.dateTime.month(.abbreviated).day()))
                                 .font(.system(.caption, design: .rounded, weight: i == 0 ? .semibold : .regular))
-                                .foregroundStyle(i == 0 ? Color.sage : .secondary)
                             Text(clockTime(d.alarm))
-                                .font(.system(.subheadline, design: .rounded, weight: i == 0 ? .medium : .light))
+                                .font(.system(.caption2, design: .rounded))
                                 .monospacedDigit()
-                                .foregroundStyle(i == 0 ? Color.sage : .primary)
                                 .contentTransition(.numericText())
                         }
+                        .foregroundStyle(i == 0 ? Color.sage : .secondary)
                         .frame(maxWidth: .infinity)
                     }
                 }

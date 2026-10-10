@@ -313,6 +313,10 @@ enum FajrAlarms {
     @available(iOS 26.1, *)
     private static func configuration(id: UUID, at date: Date, reference: Date, test: Bool = false) -> AlarmManager.AlarmConfiguration<FajrAlarmMetadata> {
         let isFajr = group?.object(forKey: "alarmIsFajr") as? Bool ?? true
+        var test = test
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-alarmTestIn") { test = false }   // looks like the real one
+        #endif
         let title: LocalizedStringResource = test ? "Test alarm from shukr"
             : "Fajr \(isFajr ? "starts" : "ends") \(shortTimePM(reference))"
         let alert = AlarmPresentation.Alert(

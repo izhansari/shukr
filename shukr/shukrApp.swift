@@ -212,6 +212,12 @@ struct shukrApp: App {
         if ProcessInfo.processInfo.arguments.contains("-alarmCheck") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { AlarmSelfTest.run() }   // after migrateDefaults
         }
+        // `-alarmTestIn N`: one real AlarmKit test alarm N seconds from now, titled like a Fajr one ("Fajr starts …"),
+        // to see what iOS shows (in use: the banner on top; locked: the Lock Screen) and match setup's picture to it.
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-alarmTestIn"),
+           i + 1 < ProcessInfo.processInfo.arguments.count, let secs = Double(ProcessInfo.processInfo.arguments[i + 1]) {
+            Task { @MainActor in _ = await FajrAlarms.scheduleTest(at: Date().addingTimeInterval(secs)) }
+        }
         #endif
         WhatsNew.noteLaunch()      // a new build moves the last one to "previous" (NEW badges)
         // 1a) Create EnvLocationManager in a local var
