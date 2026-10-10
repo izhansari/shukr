@@ -1747,15 +1747,16 @@ struct NotificationTile: View {
                 Text(["Off", "Start", "Nudge"][state])
                     .font(.system(.caption2, design: .rounded, weight: .semibold))
             }
-            .foregroundStyle(inList ? (state == 0 ? Color.secondary : accent)
+            .foregroundStyle(inList ? (state == 0 ? Color.secondary.opacity(0.6) : Color.primary)
                              : state == 2 ? Color.white : state == 1 ? accent : Color.secondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    // In a Settings list it stays quiet (owner: "too much color. its screaming"): grey tiles, the
-                    // accent only in the bell and word, a light tint for Nudge, no borders.
-                    .fill(inList ? (state == 2 ? accent.opacity(0.14) : Color(.tertiarySystemFill))
+                    // In a Settings list it stays quiet (owner: "too much color. its screaming" … "still loud"): one grey
+                    // for every tile and no colour at all — on in the page's text colour, off faded, the bell and the
+                    // word telling Start from Nudge (the old bells' look, in the new tiles).
+                    .fill(inList ? Color(.tertiarySystemFill)
                           : state == 2 ? accent : state == 1 ? accent.opacity(0.12) : Color(.secondarySystemBackground))
                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(inList ? Color.clear
