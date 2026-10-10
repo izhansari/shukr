@@ -2201,114 +2201,139 @@ private struct FajrStep: View {
     @AppStorage("alarmTimeSetFor", store: UserDefaults(suiteName: SharedStore.appGroup)) private var timeSetFor = ""
     @AppStorage("alarmDescription", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmDescription = ""
     @AppStorage("didShowAlarmSetupAlert") private var didShowShortcut = false
-    /// Alarms refused at the iOS prompt: said here instead of the switch quietly going off (owner: "are we guarding in
-    /// the case they say no or showing that it wont work if they say no?").
-    @State private var refused = false
+    @Environment(\.scenePhase) private var scenePhase
+    /// iOS's answer on alarms: nil not asked, true allowed, false refused (AlarmKit; iOS 26.1+).
+    @State private var answer: Bool? = nil
+    /// "No thanks" asks once more, as on notifications (owner).
+    @State private var confirmSkip = false
 
     private static let shortcutURL = URL(string: "https://www.icloud.com/shortcuts/6ebcfeb12813483992687461d027fd14")
 
+    /// The alarm is on: allowed and switched on (before iOS 26.1, the Shortcut's switch alone).
+    private var on: Bool { enabled && (!FajrAlarms.supported || answer == true) }
+    private var refused: Bool { FajrAlarms.supported && answer == false }
+
     var body: some View {
-        StepScaffold(title: "Wake up for Fajr",
-                     subtitle: "A real alarm from a rule you set once. It follows Fajr all year, so you never reset it.") {
-            VStack(spacing: 18) {
-                Toggle(isOn: $enabled.animation(.snappy)) {
-                    Label("Daily Fajr alarm", systemImage: "alarm")
-                        .font(.system(.body, design: .rounded))
-                }
-                .tint(Color.sage)
-                .padding(16)
-                .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
-                if refused {
-                    Nudge(text: "Alarms aren't allowed for shukr, so it can't ring. Allow them in Settings, or carry on without it.",
-                          action: "Settings", tap: SettingsLinks.app)
-                }
-                if enabled {
-                    VStack(spacing: 6) {
-                        HStack(spacing: 0) {
-                            Picker("Minutes", selection: $offset) {
-                                ForEach(Array(stride(from: 0, through: 60, by: 5)), id: \.self) { Text("\($0) min").tag($0) }
-                            }
-                            Picker("Before or after", selection: $isBefore) {
-                                Text("before").tag(true)
-                                if isFajr { Text("after").tag(false) }
-                            }
-                            // The start / end of Fajr (owner, 2026-09-28; stored as alarmIsFajr true / false).
-                            Picker("Start or end of Fajr", selection: $isFajr) {
-                                Text("Start").tag(true)
-                                if isBefore { Text("End").tag(false) }
-                            }
+        // Laid out like the notifications page (owner: "show a graphic … the same way we did with notifs"): the ringing
+        // alarm sits in the middle of the free space; once it's on it glides up and the rule's wheels come in under it.
+        VStack(spacing: 0) {
+            GeometryReader { geo in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        StepTitle(title: "A real alarm for Fajr",
+                                  subtitle: "Set it once. It moves with Fajr every day, so there’s nothing to do before bed.")
+                            .padding(.bottom, 18)
+                        if !on { Spacer(minLength: 0) }
+                        AlarmDemo(days: upcoming, isFajr: isFajr, refused: refused)
+                            .padding(.horizontal, 24)
+                        if on {
+                            tuner
+                                .transition(.opacity.combined(with: .offset(y: 16)))
                         }
-                        .pickerStyle(.wheel)
-                        .frame(height: 120)
-                        .clipped()
-                        // Just the result, backed by the time it's worked from (owner: the wheels already
-                        // say the rule) — like Settings' "is 5:24 AM (Fajr starts 5:34 AM)".
-                        // The result big, the Fajr time under it as the proof (owner, 2026-09-29).
-                        if let next = nextAlarm {
-                            VStack(spacing: 2) {
-                                Text("Alarm tomorrow \(clockTime(next.alarm))")
-                                    .font(.system(.headline, design: .rounded, weight: .semibold))
-                                    .foregroundStyle(Color.sage)
-                                Text("Fajr \(isFajr ? "starts" : "ends") \(clockTime(next.reference))")
-                                    .font(.system(.footnote, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                        Spacer(minLength: 0)
                     }
-                    if FajrAlarms.supported {
-                        // iOS 26.1+: shukr sets real alarms itself (Continue asks once).
-                        Text("shukr sets a real alarm for each day, ringing even on silent. You'll be asked to allow alarms.")
-                            .font(.system(.footnote, design: .rounded, weight: .light))
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                    } else {
-                        VStack(spacing: 8) {
-                            Text("shukr sets the alarm through a Shortcut you add once.")
-                                .font(.system(.footnote, design: .rounded, weight: .light))
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                            Button("Get the Shortcut") {
-                                didShowShortcut = true
-                                if let url = Self.shortcutURL { UIApplication.shared.open(url) }
-                            }
-                            .font(.system(.subheadline, design: .rounded, weight: .medium))
-                            .foregroundStyle(Color.sage)
-                        }
-                    }
+                    .padding(.bottom, 16)
+                    .frame(minHeight: geo.size.height)
                 }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.hidden)
             }
-            .padding(.horizontal, 24)
-        } bottom: {
-            PrimaryButton(title: "Continue") {
-                saveDescription()
-                // iOS 26.1+: ask for alarms and set them now; refused → the switch goes off and the step says why
-                // (a second Continue goes on without it).
-                if enabled && FajrAlarms.supported {
-                    Task { @MainActor in
-                        if await FajrAlarms.enable() {
-                            next()
-                        } else {
-                            withAnimation(.snappy) { enabled = false; refused = true }
-                        }
-                    }
+            VStack(spacing: 0) {
+                if on {
+                    PrimaryButton(title: "Continue") { saveDescription(); next() }
+                } else if refused {
+                    // Refused: the alarm says it, frosted over; the way on is outlined, Settings the quiet way back.
+                    PrimaryButton(title: "I’ll set my own alarm", outlined: true) { enabled = false; next() }
+                    SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.app)
                 } else {
-                    next()
+                    PrimaryButton(title: "Set my Fajr alarm", outlined: true, action: turnOn)
+                    SecondaryButton(title: "No thanks, I’ll set my own alarm") { confirmSkip = true }
                 }
             }
+            .padding(.top, 8).padding(.bottom, 8)
+        }
+        .animation(.easeInOut(duration: 0.45), value: on)
+        .animation(.easeInOut(duration: 0.45), value: refused)
+        .alert("Go without the Fajr alarm?", isPresented: $confirmSkip) {
+            Button("Set my Fajr alarm", role: .cancel, action: turnOn)
+            Button("Skip it", role: .destructive) { enabled = false; next() }
+        } message: {
+            Text("You’d check Fajr’s time each night and set an alarm yourself. You can turn it on later in Settings.")
         }
         .onAppear {
             if offset % 5 != 0 { offset = min(60, Int((Double(offset) / 5).rounded()) * 5) }   // 5-minute steps
+            answer = FajrAlarms.allowed
+        }
+        // Back from Settings: their answer may have changed.
+        .onChange(of: scenePhase) { _, phase in if phase == .active { answer = FajrAlarms.allowed } }
+    }
+
+    /// "Set my Fajr alarm": on, and (iOS 26.1+) iOS asks; a no frosts the alarm over.
+    private func turnOn() {
+        guard FajrAlarms.supported else { withAnimation { enabled = true }; return }
+        enabled = true
+        Task { @MainActor in
+            let ok = await FajrAlarms.enable()
+            withAnimation(.easeInOut(duration: 0.45)) {
+                answer = ok
+                if !ok { enabled = false }
+            }
+            if ok { saveDescription() }
         }
     }
 
-    /// Tomorrow's alarm from the rule, and the start / end of Fajr it's worked from.
-    private var nextAlarm: (alarm: Date, reference: Date)? {
-        guard let coords = try? PrayerUtils.getUserCoordinates(),
-              let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()),
-              let t = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coords, params: PrayerUtils.getCalculationParameters())
-        else { return nil }
-        let ref = isFajr ? t.fajr : t.sunrise
-        return (ref.addingTimeInterval(Double(offset * 60) * (isBefore ? -1 : 1)), ref)
+    /// The rule: the same wheels as Settings, then (before iOS 26.1) the Shortcut that sets it.
+    private var tuner: some View {
+        VStack(spacing: 4) {
+            Text("When should it ring?")
+                .font(.system(.headline, design: .rounded))
+                .padding(.top, 18)
+            HStack(spacing: 0) {
+                Picker("Minutes", selection: $offset) {
+                    ForEach(Array(stride(from: 0, through: 60, by: 5)), id: \.self) { Text("\($0) min").tag($0) }
+                }
+                Picker("Before or after", selection: $isBefore) {
+                    Text("before").tag(true)
+                    if isFajr { Text("after").tag(false) }
+                }
+                // The start / end of Fajr (owner, 2026-09-28; stored as alarmIsFajr true / false).
+                Picker("Start or end of Fajr", selection: $isFajr) {
+                    Text("Fajr starts").tag(true)
+                    if isBefore { Text("Fajr ends").tag(false) }
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(height: 100)
+            .clipped()
+            .padding(.horizontal, 24)
+            if !FajrAlarms.supported {
+                VStack(spacing: 6) {
+                    Text("shukr sets it through a Shortcut you add once.")
+                        .font(.system(.footnote, design: .rounded, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Button("Get the Shortcut") {
+                        didShowShortcut = true
+                        if let url = Self.shortcutURL { UIApplication.shared.open(url) }
+                    }
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .foregroundStyle(Color.sage)
+                }
+            }
+        }
+    }
+
+    /// The rule's alarm on days through the year — tomorrow, then a week, a month and three months on — so the preview
+    /// shows the time moving with Fajr while the rule stays the same.
+    private var upcoming: [(day: Date, alarm: Date, reference: Date)] {
+        guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
+        let params = PrayerUtils.getCalculationParameters()
+        let cal = Calendar.current
+        return [1, 8, 31, 91].compactMap { ahead in
+            guard let day = cal.date(byAdding: .day, value: ahead, to: cal.startOfDay(for: Date())),
+                  let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { return nil }
+            let ref = isFajr ? t.fajr : t.sunrise
+            return (day, ref.addingTimeInterval(Double(offset * 60) * (isBefore ? -1 : 1)), ref)
+        }
     }
 
     /// What Settings' Save writes, so its row reads right.
@@ -2316,6 +2341,109 @@ private struct FajrStep: View {
         guard enabled, let calc = try? PrayerUtils.calculateAlarmDescription() else { return }
         timeSetFor = shortTimePM(calc.time)
         alarmDescription = calc.description
+    }
+}
+
+/// The Fajr alarm as it rings (the real one's words and buttons: "Fajr starts 5:32 AM", Stop, "I'm up — open Fajr"),
+/// then the same rule's time on days through the year: one rule, a time that follows Fajr. Refused: frosted over.
+private struct AlarmDemo: View {
+    let days: [(day: Date, alarm: Date, reference: Date)]
+    let isFajr: Bool
+    var refused = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if let first = days.first {
+            VStack(spacing: 14) {
+                VStack(spacing: 6) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "alarm.fill")
+                            .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.8)), isActive: !reduceMotion && !refused)
+                        Text("shukr · Alarm")
+                    }
+                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.8))
+                    Text(first.alarm.formatted(.dateTime.hour().minute()))
+                        .font(.system(size: 44, weight: .light, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text("Fajr \(isFajr ? "starts" : "ends") \(clockTime(first.reference))")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.85))
+                    HStack(spacing: 10) {
+                        Text("Stop")
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(Capsule().fill(.white.opacity(0.18)))
+                        Label("I’m up — open Fajr", systemImage: "sunrise.fill")
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(Capsule().fill(Color.sage))
+                    }
+                    .font(.system(.footnote, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.top, 6)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity)
+                .background {
+                    // A Lock Screen at night, in either look.
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(LinearGradient(colors: [Color(red: 0.10, green: 0.13, blue: 0.17), Color(red: 0.16, green: 0.24, blue: 0.22)],
+                                             startPoint: .top, endPoint: .bottom))
+                }
+                // The same rule on days through the year: the time moves with Fajr, nothing to reset.
+                HStack(spacing: 0) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { i, d in
+                        VStack(spacing: 2) {
+                            Text(i == 0 ? "Tomorrow" : d.day.formatted(.dateTime.month(.abbreviated).day()))
+                                .font(.system(.caption, design: .rounded, weight: i == 0 ? .semibold : .regular))
+                                .foregroundStyle(i == 0 ? Color.sage : .secondary)
+                            Text(clockTime(d.alarm))
+                                .font(.system(.subheadline, design: .rounded, weight: i == 0 ? .medium : .light))
+                                .monospacedDigit()
+                                .foregroundStyle(i == 0 ? Color.sage : .primary)
+                                .contentTransition(.numericText())
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            }
+            .animation(.snappy, value: first.alarm)
+            .overlay {
+                if refused {
+                    ZStack {
+                        // Thicker than the notifications' frost: over a dark card a thin one read as muddy grey.
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(.regularMaterial)
+                            .padding(-8)
+                        VStack(spacing: 6) {
+                            Image(systemName: "alarm")
+                                .font(.system(size: 26))
+                                .foregroundStyle(.secondary)
+                                .padding(.bottom, 4)
+                            Text("Alarms are off")
+                                .font(.system(.headline, design: .rounded))
+                            Text("shukr can’t ring at Fajr. Turn alarms on in Settings any time.")
+                                .font(.system(.subheadline, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous).inset(by: -8))
+                    .onTapGesture { SettingsLinks.app() }
+                    .transition(.opacity)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(refused ? "Alarms are off. shukr can’t ring at Fajr. Turn alarms on in Settings any time."
+                                : "Fajr alarm, \(clockTime(first.alarm)) tomorrow, set once and moving with Fajr through the year.")
+        }
     }
 }
 

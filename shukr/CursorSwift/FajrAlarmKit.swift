@@ -67,6 +67,16 @@ enum FajrAlarms {
         return out
     }
 
+    /// AlarmKit's answer so far: nil = not asked yet (or no AlarmKit), true = allowed, false = refused.
+    @MainActor static var allowed: Bool? {
+        guard #available(iOS 26.1, *) else { return nil }
+        switch AlarmManager.shared.authorizationState {
+        case .authorized: return true
+        case .denied: return false
+        default: return nil
+        }
+    }
+
     /// Turn it on: ask for AlarmKit permission (once), then plan. False = refused / not supported.
     @MainActor static func enable() async -> Bool {
         guard #available(iOS 26.1, *) else { return false }
