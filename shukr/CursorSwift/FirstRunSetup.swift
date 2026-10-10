@@ -1755,6 +1755,8 @@ private struct NotificationDemo: View {
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = 0
+    /// The page has been shown once: after that a change came from a tap, and shows its next banner quickly.
+    @State private var settled = false
 
     private struct Banner: Identifiable {
         let id: Int
@@ -1871,15 +1873,18 @@ private struct NotificationDemo: View {
                                 : state == 1 ? "\(prayer): one notification as it starts."
                                 : "\(prayer): as it starts, then nudges until you mark it.")
             .task(id: "\(prayer)-\(state)") {
-                // A change shows at once: the first banner now, the next one a moment later (it waited a full beat
-                // and Start → Nudge looked like nothing happened — owner).
+                // A tap's change shows at once: the first banner now, the next one a moment later (it waited a full
+                // beat and Start → Nudge looked like nothing happened — owner). Arriving on the page, the usual pace
+                // (it jumped straight to the second banner — owner).
                 shown = 0
+                let tapped = settled
+                settled = true
                 guard !reduceMotion, !sent.isEmpty else { shown = max(sent.count - 1, 0); return }
                 let arrive = Animation.spring(response: 0.45, dampingFraction: 0.85)
                 // Start: its one banner, still (owner: "for start with only one notif it doesnt make sense to keep it
                 // playing"); only several rotate.
                 if sent.count == 1 { return }
-                try? await Task.sleep(for: .seconds(0.35))
+                try? await Task.sleep(for: .seconds(tapped ? 0.35 : 2.2))
                 if Task.isCancelled { return }
                 withAnimation(arrive) { shown = 1 }
                 while !Task.isCancelled {
