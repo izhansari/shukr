@@ -2428,6 +2428,21 @@ struct MemoriesPileMock: View {
                 .frame(width: 16, height: 16)
                 Text("92 · On time").font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(.green)
             }
+            // The note, on the screen (owner: "whether there are notes or not, the user wouldn't know unless they click
+            // it"): up to three lines in a fixed box, a tap to edit; none = "Add a note".
+            Group {
+                if variant == "A" {
+                    Text("Walked to the masjid with Dad after dinner — first Isha together in months. The imam recited Surah Al-Mulk.")
+                        .foregroundStyle(.primary.opacity(0.8))
+                } else {
+                    Label("Add a note", systemImage: "square.and.pencil").foregroundStyle(.secondary)
+                }
+            }
+            .font(.system(size: 14, design: .rounded))
+            .lineLimit(3)
+            .multilineTextAlignment(.center)
+            .frame(height: 58, alignment: .top)
+            .padding(.top, 6)
         }
     }
 
@@ -2436,7 +2451,6 @@ struct MemoriesPileMock: View {
             HStack(spacing: 18) {
                 circle("square.and.arrow.up", faded: variant == "B")
                 circle(variant == "A" ? "heart.fill" : "heart", tint: variant == "A" ? .pink : .primary)
-                circle("note.text")
             }
             if variant == "B" {
                 Text("You can share it once it develops").font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
@@ -2597,13 +2611,16 @@ struct MemoriesPileMock: View {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Memories").font(.system(size: 17, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity)
                 // A month with no photos stays, slim: the gap between photos is still there to see (owner: a sense of time).
-                HStack {
-                    Text("August 2026").font(.system(size: 17, weight: .semibold, design: .rounded))
-                    Spacer()
-                    Text("no photos").font(.system(size: 14, design: .rounded)).foregroundStyle(.tertiary)
+                // A month header like every other (owner: the boxed row "not the same size … spacing is different"),
+                // with "No photos" beside it and no calendar under it.
+                HStack(alignment: .firstTextBaseline) {
+                    Text("August 2026").font(.system(size: 20, weight: .semibold, design: .rounded))
+                    Text("No photos").font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 10).padding(.horizontal, 14)
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
+                HStack(alignment: .firstTextBaseline) {
+                    Text("September 2026").font(.system(size: 20, weight: .semibold, design: .rounded))
+                    Text("No photos").font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
+                }
                 Text("October 2026").font(.system(size: 20, weight: .semibold, design: .rounded))
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 12) {
                     ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { i, l in
