@@ -1185,6 +1185,9 @@ private struct LocationStep: View {
                 whyRow("lock", "It stays on your phone", "No account, nothing sent anywhere.")
             }
             .padding(.horizontal, 32)
+            // Refused at iOS's prompt: what they're missing, frosted over what it would have given — as on the
+            // notifications page (owner: guard it the same way, so they can change their mind).
+            .overlay { if denied { offFrost.transition(.opacity) } }
             statusLine
                 .padding(.top, 26)
                 .padding(.horizontal, 28)
@@ -1198,11 +1201,13 @@ private struct LocationStep: View {
                         .padding(.horizontal, 36)
                         .padding(.bottom, 14)
                 }
-                PrimaryButton(title: primaryTitle, action: primary)
-                if !ready || denied {
-                    SecondaryButton(title: denied ? "Open Settings" : "Enter a city instead") {
-                        if denied { SettingsLinks.app() } else { pickingCity = true }
-                    }
+                // The way without location is outlined, never the filled Continue; each has a way back (owner). A city
+                // is only offered once location is refused — it's not how shukr is meant to be used (owner).
+                PrimaryButton(title: primaryTitle, outlined: !location.isAuthorized, action: primary)
+                if denied {
+                    SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.app)
+                } else if status == .notDetermined && location.hasManualLocation {
+                    SecondaryButton(title: "I changed my mind. Allow location") { location.requestLocationPermission() }
                 } else if status == .authorizedWhenInUse {
                     SecondaryButton(title: FirstRunSetup.alwaysAsked ? "Turn on “Always” in Settings" : "Allow “Always”") {
                         LocationUpgrade.askForAlways(location)
@@ -1210,6 +1215,7 @@ private struct LocationStep: View {
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.45), value: denied)
         .sheet(isPresented: $pickingCity) {
             CityPickerSheet(onPicked: { pickingCity = false })
         }
@@ -1218,7 +1224,7 @@ private struct LocationStep: View {
     }
 
     private var primaryTitle: String {
-        if denied && !location.hasManualLocation { return "Enter a city" }
+        if denied && !location.hasManualLocation { return "Continue with a city" }
         if status == .notDetermined && !location.hasManualLocation { return "Allow location" }
         return locationOnly ? "Done" : "Continue"
     }
@@ -1242,13 +1248,36 @@ private struct LocationStep: View {
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(Color.sage)
                 .frame(maxWidth: .infinity)
-        } else if denied {
-            Text("Location is off for shukr. Turn it on in Settings, or pick a city.")
-                .font(.system(.subheadline, design: .rounded, weight: .light))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity)
         }
+    }
+
+    /// Location refused: frosted over the reasons, saying what that costs; a tap goes to Settings → shukr.
+    private var offFrost: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(.ultraThinMaterial)
+                // The rows' box spans the page (its 32 pt sides are padding): in 16 pt, like the notifications card.
+                .padding(.horizontal, 16).padding(.vertical, -14)
+            VStack(spacing: 6) {
+                Image(systemName: "location.slash.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 4)
+                Text("Location is off")
+                    .font(.system(.headline, design: .rounded))
+                Text("Your times won’t follow you when you travel. Turn it on in Settings any time.")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 36)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .onTapGesture { SettingsLinks.app() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Location is off. Your times won’t follow you when you travel. Turn it on in Settings any time.")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
