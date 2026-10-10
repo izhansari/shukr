@@ -636,6 +636,14 @@ struct PrayerTimesView: View {
                 if FrameMonitor.on { FrameMonitor.shared.note(now ? "lock" : "unlock") }
             }
             .onAppear {
+                // `-perfPage zikr|settings`: start on that page (the idle-CPU check, Release builds too).
+                if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-perfPage"),
+                   i + 1 < ProcessInfo.processInfo.arguments.count {
+                    let page = ProcessInfo.processInfo.arguments[i + 1]
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                        sharedState.horizontalPage = page == "zikr" ? .zikr : page == "settings" ? .settings : .main
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("-perfToggleList") {
                     FrameMonitor.shared.toggleList = { [sharedState] in
                         withAnimation(CircleMotion.page) {
