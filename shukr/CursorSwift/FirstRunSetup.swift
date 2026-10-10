@@ -1613,9 +1613,14 @@ private struct RemindersStep: View {
     @AppStorage("ishaNudges") private var ishaNudges = NotificationDefaults.nudges("Isha")
 
     var body: some View {
-        StepScaffold(title: "Notifications that help",
-                     subtitle: "Not just at the start: if you haven't marked it yet, a nudge halfway through and with 30 min left.") {
-            VStack(spacing: 18) {
+        StepScaffold(title: "Prayer notifications",
+                     subtitle: "Not just when it starts: if you haven’t marked it yet, a nudge halfway through and with 30 minutes left.") {
+            VStack(spacing: 14) {
+                // The real thing, live (owner: "a nicer graphic of our actual notification on the page to show a live
+                // demo so they get the point better").
+                NotificationDemo()
+                    .padding(.horizontal, 24)
+                    .padding(.top, -6)
                 if notifications.isOn == false {
                     Nudge(text: "Notifications are off for shukr, so they can't reach you.",
                           action: "Turn on", tap: SettingsLinks.notifications)
@@ -1628,8 +1633,8 @@ private struct RemindersStep: View {
                     prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, accent: .sage)
                     prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, accent: .sage)
                 }
-                .frame(height: 76)
-                .padding(.vertical, 14)
+                .frame(height: 70)
+                .padding(.vertical, 10)
                 .padding(.horizontal, 8)
                 .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
                 .padding(.horizontal, 24)
@@ -1637,10 +1642,10 @@ private struct RemindersStep: View {
                 VStack(alignment: .leading, spacing: 6) {
                     legend("bell.slash.fill", "off", "no notification")
                     legend("bell.fill", "start", "when the prayer begins")
-                    legend("bell.badge.fill", "nudge", "also halfway through and with 30 min left, if it isn't marked")
+                    legend("bell.badge.fill", "nudge", "also halfway through and with 30 min left")
                 }
                 .padding(.horizontal, 32)
-                Text("Tap a bell to change it. “I already prayed” on a notification marks the prayer.")
+                Text("Tap a bell to change it.")
                     .font(.system(.footnote, design: .rounded, weight: .light))
                     .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
@@ -1669,6 +1674,109 @@ private struct RemindersStep: View {
 
 private extension String {
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
+}
+
+/// A live preview of one prayer's notifications, in the words and at the times shukr really sends them
+/// (NotificationScheduler): 🟢 as it starts, 🟡 halfway through, 🔴 with 30 minutes left, each arriving on top of the
+/// last like iOS stacks them. Today's Asr, from the method and school just picked.
+private struct NotificationDemo: View {
+    @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
+    @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown = 0
+
+    private struct Banner: Identifiable {
+        let id: Int
+        let title: String
+        let line: String
+        let at: Date
+        let step: String
+    }
+
+    private var banners: [Banner] {
+        guard let t = todaysTimes(method: method, school: school) else { return [] }
+        let start = t.asr, end = t.maghrib
+        return [
+            Banner(id: 0, title: "Asr 🟢", line: "Asr has started", at: start, step: "Starts"),
+            Banner(id: 1, title: "Asr 🟡", line: "Halfway through Asr", at: start.addingTimeInterval(end.timeIntervalSince(start) / 2),
+                   step: "Halfway"),
+            Banner(id: 2, title: "Asr 🔴", line: "Only 30 minutes left", at: end.addingTimeInterval(-30 * 60), step: "30 min left"),
+        ]
+    }
+
+    var body: some View {
+        let all = banners
+        if let end = todaysTimes(method: method, school: school)?.maghrib, !all.isEmpty {
+            VStack(spacing: 12) {
+                ZStack(alignment: .top) {
+                    // The one before peeks out under the newest, as on the Lock Screen.
+                    ForEach(all.filter { $0.id <= shown }.suffix(2)) { b in
+                        let behind = b.id < shown
+                        banner(b, end: end)
+                            .scaleEffect(behind ? 0.93 : 1, anchor: .top)
+                            .offset(y: behind ? 12 : 0)
+                            .opacity(behind ? 0.55 : 1)
+                            .zIndex(Double(b.id))
+                            .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
+                    }
+                }
+                .padding(.bottom, 12)
+                .padding(14)
+                .frame(maxWidth: .infinity)
+                .background {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                }
+                // When each one comes: the step on now in sage.
+                HStack(spacing: 0) {
+                    ForEach(all) { b in
+                        VStack(spacing: 2) {
+                            Text(b.step)
+                                .font(.system(.caption, design: .rounded, weight: b.id == shown ? .semibold : .regular))
+                            Text(clockTime(b.at))
+                                .font(.system(.caption2, design: .rounded))
+                                .monospacedDigit()
+                        }
+                        .foregroundStyle(b.id == shown ? Color.sage : .secondary)
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Example: Asr has started, then halfway through Asr, then only 30 minutes left, until you mark it.")
+            .task {
+                guard !reduceMotion else { shown = 2; return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(shown == 2 ? 3.2 : 2.2))
+                    if Task.isCancelled { break }
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { shown = (shown + 1) % 3 }
+                }
+            }
+        }
+    }
+
+    private func banner(_ b: Banner, end: Date) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image("NotificationIcon")
+                .resizable()
+                .frame(width: 34, height: 34)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(b.title).font(.subheadline.weight(.semibold))
+                    Spacer(minLength: 6)
+                    Text(clockTime(b.at)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                }
+                Text("Pray by \(clockTime(end))").font(.subheadline)
+                Text(b.line).font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+    }
 }
 
 // MARK: - Fajr alarm
