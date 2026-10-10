@@ -1140,12 +1140,13 @@ private func whyRow(_ symbol: String, _ title: String, _ detail: String) -> some
 private struct WelcomeStep: View {
     let next: () -> Void
     var body: some View {
+        // The three reasons to have shukr (owner: "Prayers on time, prayers tracked, zikr tracking").
         StepScaffold(title: "Assalamu alaikum",
-                     subtitle: "shukr helps you pray on time, keep Allah in mind through the day, and see how you're growing.") {
+                     subtitle: "shukr helps you pray on time, keep track of every prayer, and keep up your zikr. A few quick choices and you're in.") {
             VStack(alignment: .leading, spacing: 22) {
-                whyRow("circle.dashed", "Your prayers, on time", "Accurate times, a circle that shows how long is left, and a score for each prayer.")
-                whyRow("circle.hexagonpath", "Zikr, anywhere", "A tasbeeh that counts with a tap, daily tasks, and your own library of azkar.")
-                whyRow("sparkles", "Made for you", "A few quick choices and you're in. Skip any of them.")
+                whyRow("clock", "Pray on time", "Accurate times for where you are, a circle that shows how long is left, and a reminder before it ends.")
+                whyRow("checkmark.circle", "Every prayer, tracked", "Mark each one as you pray it. See your score, your streak and how your week went.")
+                whyRow("circle.hexagonpath", "Your zikr, kept up", "Count with a tap, set a daily goal, and watch your streak and history grow.")
             }
             .padding(.horizontal, 32)
         } bottom: {
@@ -1185,7 +1186,7 @@ private struct LocationStep: View {
         } bottom: {
             VStack(spacing: 0) {
                 if status == .notDetermined && !location.hasManualLocation {
-                    Text("iOS asks “While Using” first. Choose “Always” when it offers, so your times follow you.")
+                    Text("You can allow “Always” after this, so your times follow you when you travel.")
                         .font(.footnote)
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
@@ -1207,14 +1208,8 @@ private struct LocationStep: View {
         .sheet(isPresented: $pickingCity) {
             CityPickerSheet(onPicked: { pickingCity = false })
         }
-        // Apple's way to Always (owner: ask for it here): When In Use first, then — right after it's
-        // granted — the one-time upgrade prompt. (Asking Always straight away from "not decided" only
-        // gives a provisional While Using, and the upgrade offer may never come.)
-        .onChange(of: location.authorizationStatus) { old, new in
-            if old == .notDetermined && new == .authorizedWhenInUse && !FirstRunSetup.alwaysAsked {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { LocationUpgrade.askForAlways(location) }
-            }
-        }
+        // One iOS prompt here (owner, 2026-10-10: "i dont love two prompts back to back"): While Using, then
+        // "Allow “Always”" waits as a button below (the one-time upgrade prompt only when tapped).
     }
 
     private var primaryTitle: String {
@@ -1305,43 +1300,50 @@ private struct MethodStep: View {
             StepTitle(title: "Your calculation method",
                       subtitle: "Picked for where you are. Match your masjid if its times differ.")
                 .padding(.bottom, 16)
-            // A short scroller: the popular ones show, the rest are a scroll away (the fade says so).
+            // Its own card (owner: "more like its own component so its clear its scrollable … selected one needs to
+            // be clearer"): a rounded list the rows scroll inside, the scroll bar flashing as it appears, and the pick
+            // filled in sage.
             ScrollView {
-                VStack(spacing: 0) {
+                VStack(spacing: 4) {
                     ForEach(methodRows, id: \.tag) { row in
+                        let picked = method == row.tag
                         Button {
                             withAnimation(.snappy(duration: 0.25)) { method = row.tag }
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(row.title).font(.system(.body, design: .rounded))
+                                    Text(row.title)
+                                        .font(.system(.body, design: .rounded, weight: picked ? .semibold : .regular))
                                     Text(row.tag == 0 ? "Follows where you are · \(AutoMethod.shortName(AutoMethod.resolved())) here" : row.region)
                                         .font(.system(.footnote, design: .rounded, weight: .light))
-                                        .foregroundStyle(row.tag == 0 ? Color.sage : .secondary)
+                                        .foregroundStyle(picked || row.tag == 0 ? Color.sage : .secondary)
                                 }
                                 Spacer()
-                                Image(systemName: method == row.tag ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 20, weight: .light))
-                                    .foregroundStyle(method == row.tag ? Color.sage : Color.secondary.opacity(0.4))
+                                Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 22, weight: picked ? .regular : .light))
+                                    .foregroundStyle(picked ? Color.sage : Color.secondary.opacity(0.4))
                             }
                             .padding(.vertical, 10)
+                            .padding(.horizontal, 14)
+                            .background {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.sage.opacity(picked ? 0.14 : 0))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(Color.sage.opacity(picked ? 0.45 : 0), lineWidth: 1))
+                            }
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityAddTraits(method == row.tag ? .isSelected : [])
-                        if row.tag != methodRows.last?.tag { Divider() }
+                        .accessibilityAddTraits(picked ? .isSelected : [])
                     }
                 }
-                .padding(.horizontal, 32)
-                .padding(.bottom, 24)
+                .padding(6)
             }
-            .scrollIndicators(.hidden)
-            .mask {
-                VStack(spacing: 0) {
-                    Color.black
-                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 36)
-                }
-            }
+            .scrollIndicators(.visible)
+            .scrollIndicatorsFlash(onAppear: true)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemBackground)))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.horizontal, 20)
             TodayStrip(method: method, school: school)
                 .padding(.top, 8)
                 .padding(.bottom, 16)
@@ -1606,11 +1608,11 @@ private struct RemindersStep: View {
     @AppStorage("ishaNudges") private var ishaNudges = NotificationDefaults.nudges("Isha")
 
     var body: some View {
-        StepScaffold(title: "Reminders that help",
+        StepScaffold(title: "Notifications that help",
                      subtitle: "Not just at the start: if you haven't marked it yet, a nudge halfway through and with 30 min left.") {
             VStack(spacing: 18) {
                 if notifications.isOn == false {
-                    Nudge(text: "Notifications are off for shukr, so reminders can't reach you.",
+                    Nudge(text: "Notifications are off for shukr, so they can't reach you.",
                           action: "Turn on", tap: SettingsLinks.notifications)
                         .padding(.horizontal, 24)
                 }
@@ -1676,6 +1678,9 @@ private struct FajrStep: View {
     @AppStorage("alarmTimeSetFor", store: UserDefaults(suiteName: SharedStore.appGroup)) private var timeSetFor = ""
     @AppStorage("alarmDescription", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmDescription = ""
     @AppStorage("didShowAlarmSetupAlert") private var didShowShortcut = false
+    /// Alarms refused at the iOS prompt: said here instead of the switch quietly going off (owner: "are we guarding in
+    /// the case they say no or showing that it wont work if they say no?").
+    @State private var refused = false
 
     private static let shortcutURL = URL(string: "https://www.icloud.com/shortcuts/6ebcfeb12813483992687461d027fd14")
 
@@ -1690,6 +1695,10 @@ private struct FajrStep: View {
                 .tint(Color.sage)
                 .padding(16)
                 .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
+                if refused {
+                    Nudge(text: "Alarms aren't allowed for shukr, so it can't ring. Allow them in Settings, or carry on without it.",
+                          action: "Settings", tap: SettingsLinks.app)
+                }
                 if enabled {
                     VStack(spacing: 6) {
                         HStack(spacing: 0) {
@@ -1749,11 +1758,15 @@ private struct FajrStep: View {
         } bottom: {
             PrimaryButton(title: "Continue") {
                 saveDescription()
-                // iOS 26.1+: ask for alarms and set them now; refused → the switch goes off.
+                // iOS 26.1+: ask for alarms and set them now; refused → the switch goes off and the step says why
+                // (a second Continue goes on without it).
                 if enabled && FajrAlarms.supported {
                     Task { @MainActor in
-                        if !(await FajrAlarms.enable()) { enabled = false }
-                        next()
+                        if await FajrAlarms.enable() {
+                            next()
+                        } else {
+                            withAnimation(.snappy) { enabled = false; refused = true }
+                        }
                     }
                 } else {
                     next()
@@ -1941,11 +1954,11 @@ private struct ReviewStep: View {
                     divider
                     row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
                     divider
-                    row("bell", "Reminders", remindersValue, step: .reminders,
-                        sell: "Not just at the start: if it isn't marked yet, a nudge halfway through and with 30 min left.") { notificationsNudge }
+                    row("bell", "Notifications", remindersValue, step: .reminders,
+                        sell: "A nudge if a prayer isn't marked yet.") { notificationsNudge }
                     divider
                     row("alarm", "Fajr alarm", alarmValue, step: .fajr,
-                        sell: "A real alarm from a rule you set once. It follows Fajr all year.")
+                        sell: "It follows Fajr all year.")
                     divider
                     row("building.columns", "Your masjid", masjidValue, step: .masjid,
                         sell: "A dua when you arrive and when you leave.")
@@ -2023,9 +2036,9 @@ private struct ReviewStep: View {
         let issues = health.issues
         switch notifications.isOn {
         case .some(false):
-            Nudge(text: "Notifications are off, so reminders can't reach you.", action: "Turn on", tap: SettingsLinks.notifications)
+            Nudge(text: "Notifications are off for shukr, so they can't reach you.", action: "Turn on", tap: SettingsLinks.notifications)
         case .none:
-            Nudge(text: "Reminders need notifications.", action: "Allow") { notifications.request() }
+            Nudge(text: "Allow notifications so they can reach you.", action: "Allow") { notifications.request() }
         default:
             if issues.contains(.held) {
                 Nudge(text: "They're held for the Scheduled Summary and may arrive late. Turn on Time Sensitive.", action: "Fix", tap: SettingsLinks.notifications)
@@ -2044,17 +2057,19 @@ private struct ReviewStep: View {
                         .font(.system(size: 18, weight: .light))
                         .foregroundStyle(Color.sage)
                         .frame(width: 30, height: 24)
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text(title).font(.system(.body, design: .rounded))
                             Spacer()
                             Image(systemName: "chevron.right").font(.footnote.weight(.medium)).foregroundStyle(.tertiary)
                         }
+                        // The value and its one-line note together (owner: "would rather they not have to scroll").
                         Text(value).font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.85)
                         if let sell {
                             Text(sell).font(.system(.footnote, design: .rounded, weight: .light)).italic()
                                 .foregroundStyle(.tertiary)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .lineLimit(1).minimumScaleFactor(0.85)
                         }
                     }
                 }
@@ -2063,7 +2078,7 @@ private struct ReviewStep: View {
             .buttonStyle(.plain)
             nudge().padding(.leading, 44)
         }
-        .padding(.vertical, 13)
+        .padding(.vertical, 8)
     }
 }
 

@@ -359,7 +359,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Your reminders (`YourRemindersView`, Settings → Notifications): 64-bead ring, week rings, three explainer tiles.
 
 **First-run setup, location lost** (FirstRunSetup.swift)
-- `SetupOpening` → location → method (Automatic = `AutoMethod`) → madhab → appearance → reminders → Fajr alarm → masjid → review (rows edit and return) → Bismillah hands off to `WelcomeOverlay`. Once per install (`firstRunSetup.v1`); Always location gives travel updates.
+- `SetupOpening` → welcome (three reasons: pray on time, every prayer tracked, zikr kept up) → location (ONE iOS prompt, While Using; "Allow “Always”" waits as a button — owner 2026-10-10, no automatic second prompt) → method (a sage-picked card the rows scroll inside; Automatic = `AutoMethod`) → madhab → appearance → notifications (step title "Notifications that help"; keys still `reminders`) → Fajr alarm (refused at iOS's prompt → the switch off + a Nudge saying it can't ring; a second Continue goes on) → masjid → review (rows edit and return; one-line notes, fits an iPhone 15 without scrolling) → Bismillah hands off to `WelcomeOverlay`. Once per install (`firstRunSetup.v1`); Always location gives travel updates.
 - `LostLocationView`: root overlay when location is revoked with no city; the comeback plays the welcome in reverse. DEBUG `-setupForce`, `-setupReset`, `-setupStep <step>`.
 
 **Map & qibla** (LocationMapView2.swift, MapModes.swift)
