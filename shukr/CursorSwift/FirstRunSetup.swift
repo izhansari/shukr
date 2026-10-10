@@ -3528,18 +3528,19 @@ extension CircleMotion {
         // the source), then the invitation; the page goes on a tap.
         // The defaults; a DEBUG build can tune each on the page itself (`HadithTiming`, its ⚙).
         static let hadithLitDuration: Double = 2.2
+        // Tuned by the owner on his phone (2026-10-10, the ⚙ panel).
         /// From the page opening to the question starting (the gradient is still coming up).
-        static let hadithAfterDuration: Double = 1.8
+        static let hadithAfterDuration: Double = 2.4
         /// How long the question, "He ﷺ replied," and the source each take to fade in.
         static let hadithQuestionFade: Double = 1.4
         static let hadithRepliedFade: Double = 1.4
-        static let hadithSourceFade: Double = 1.4
+        static let hadithSourceFade: Double = 1.0
         /// The empty time after each line has fully appeared: the question, "He ﷺ replied,", the Arabic, the English,
         /// the source (the long one: a beat between the quote and "shukr helps you to do that" — owner).
-        static let hadithEmptyAfter: [Double] = [1.0, 0.0, 0.3, 1.4, 2.4]
+        static let hadithEmptyAfter: [Double] = [1.6, 0.0, 0.3, 0.2, 1.0]
         /// The English answer's pace, the same for each of its lines.
         static let hadithWordDuration: Double = 0.3
-        static let hadithInviteFade: Double = 1.6
+        static let hadithInviteFade: Double = 0.9
         /// The Arabic written in, right to left.
         static let hadithWipeDuration: Double = 1.9
         /// Leaving: the words go, then the background drains (the opening's own).
