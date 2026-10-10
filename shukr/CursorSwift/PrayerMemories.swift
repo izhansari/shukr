@@ -615,8 +615,8 @@ struct MemoriesPage: View {
             guard let photo = jumps ? all.last(where: { $0.dayKey == full }) : all.last else { continue }
             if FrameMonitor.on { FrameMonitor.shared.note("pile opening") }
             openDeck(photo, from: "day:\(photo.dayKey)")
-            try? await Task.sleep(for: .seconds(jumps ? 14 : 2))
-            closeDeck(photo.key, photo.dayKey, 1, .zero)
+            try? await Task.sleep(for: .seconds(jumps ? 14 : UserDefaults.standard.double(forKey: "demoPileDrag") > 0 ? 3.5 : 2))
+            if deckStart != nil { closeDeck(photo.key, photo.dayKey, 1, .zero) }
             try? await Task.sleep(for: .seconds(1.5))
         }
     }
@@ -706,54 +706,46 @@ struct MemoriesPage: View {
         }
     }
 
-    /// The pile zooms back into its day's square (where the page is now), else fades out where it is. `scale` and `drag`
-    /// are the pile's own drag down as it was let go: the zoom starts exactly there (worked out from the card at rest —
-    /// a dragged card's reported frame lagged, and the zoom landed ~20 pt off its square, which then jumped into place).
+    /// The pile fades out where it is, shrinking a little, and the page shows through (decision memories-pile-close B —
+    /// zooming back onto the day's square, then heading for it and fading, both still glitched on his phone). Driven
+    /// frame by frame like the open, the whole pile as one flattened picture: no SwiftUI animation in the same turn.
+    /// `scale` and `drag` are the pile's own drag down as it was let go: the fade starts exactly there.
     private func closeDeck(_ key: String, _ dayKey: String, _ scale: CGFloat, _ drag: CGSize) {
         triggerSomeVibration(type: .light)
-        let square = [key, "day:\(dayKey)"].first { MemoryFrames.frame($0) != nil }
-        if let square, let target = MemoryFrames.frame(square), let rest = deckGeo.restFrame ?? deckGeo.topFrame,
-           let pile = deckGeo.deckFrame {
-            if FrameMonitor.on {
-                FrameMonitor.shared.note(String(format: "pile zoom: out to %.0f,%.0f %.0f wide", target.midX, target.midY, target.width))
-                deckGeo.logUntil = Date().addingTimeInterval(0.8)
-            }
-            // Where the drag left the top card (`.offset(drag).scaleEffect(scale)` about the pile's middle ≈ the card's).
-            let dragged = CGRect(x: rest.midX + drag.width * scale - rest.width * scale / 2,
-                                 y: rest.midY + drag.height * scale - rest.height * scale / 2,
-                                 width: rest.width * scale, height: rest.height * scale)
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            // The square stays shown: the pile fades out on its way there and never lands on it (decision
-            // memories-pile-close A — landing on the square, the hand-off glitched); the one hidden at the open comes
-            // back under the frost.
-            withTransaction(quiet) { zoomHidden = nil }
-            withAnimation(.easeOut(duration: 0.2)) { chromeShown = false; deckClosing = true }
-            // The backdrop follows the zoom (DeckBackdrop reads the driver while it runs).
-            backdropShown = false
-            zoom.close(from: .placing(rest, on: dragged, pile: pile), into: .placing(rest, on: target, pile: pile),
-                       fadeFloor: 0.35, spring: Spring(response: 0.38, dampingRatio: 0.92)) {
-                withTransaction(quiet) {
-                    deckStart = nil
-                    deckShown = false
-                    deckClosing = false
-                    zoomHidden = nil
-                }
-                zoom.reset()
-            }
-            return
+        if FrameMonitor.on {
+            FrameMonitor.shared.note("pile closing (fade)")
+            deckGeo.logUntil = Date().addingTimeInterval(0.6)
         }
-        withAnimation(.easeInOut(duration: 0.2)) { chromeShown = false }
-        withAnimation(.easeInOut(duration: 0.35)) { deckShown = false }
-        Task {
-            try? await Task.sleep(for: .milliseconds(150))
-            withAnimation(.easeInOut(duration: 0.4)) {
-                backdropShown = false
-            } completion: {
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { deckStart = nil; zoomHidden = nil }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        let dragged = drag != .zero || scale < 1
+        withTransaction(quiet) {
+            // The square hidden at the open is back under the frost.
+            zoomHidden = nil
+            // Let go from a drag: the chrome is already out and the cards under the top gathered — kept so (the drag
+            // resets in this turn). From ✕ everything fades together, as it is.
+            if dragged { chromeShown = false; deckClosing = true }
+        }
+        backdropShown = false
+        var from = DeckZoom(), into = DeckZoom(scale: 0.92)
+        if let rest = deckGeo.restFrame ?? deckGeo.topFrame, let pile = deckGeo.deckFrame {
+            // Where the drag left the top card (`.offset(drag).scaleEffect(scale)` about the pile's middle ≈ the card's),
+            // and that a little smaller about its own middle.
+            let at = CGRect(x: rest.midX + drag.width * scale - rest.width * scale / 2,
+                            y: rest.midY + drag.height * scale - rest.height * scale / 2,
+                            width: rest.width * scale, height: rest.height * scale)
+            from = .placing(rest, on: at, pile: pile)
+            into = .placing(rest, on: at.insetBy(dx: at.width * 0.04, dy: at.height * 0.04), pile: pile)
+        }
+        zoom.close(from: from, into: into, fadeOut: true, spring: Spring(response: 0.34, dampingRatio: 1)) {
+            withTransaction(quiet) {
+                deckStart = nil
+                deckShown = false
+                deckClosing = false
+                zoomHidden = nil
             }
+            // No `zoom.reset()` here: it put the pile back, full size and opaque, for a frame before the cover went (the
+            // flash at the end of every close — the frame-by-frame recording). The next open resets it.
         }
     }
 
@@ -1367,6 +1359,10 @@ struct MemoriesDeck: View {
             vertical = true
             freeDrag = CGSize(width: 0, height: n)
             down = n
+            // `-demoPileDragClose`: then let go, as a finger would past the line (a drag-down close, recorded in the sim).
+            guard ProcessInfo.processInfo.arguments.contains("-demoPileDragClose") else { return }
+            try? await Task.sleep(for: .seconds(0.6))
+            close()
         }
         #endif
         .onDisappear { PrayerPhotoViewing.shared.closed() }
@@ -1465,8 +1461,6 @@ struct MemoriesDeck: View {
 
     private func close() {
         guard photos.indices.contains(index) else { return }
-        // The top card turns back to its main picture as it folds, so the photo flying home matches its square.
-        withAnimation(.snappy(duration: 0.18)) { swapped = [] }
         onClose(photos[index].key, photos[index].dayKey, dragScale, freeDrag)
         // The page's zoom takes the drag over from here (it starts exactly where the drag left the pile), so the pile's
         // own goes, in the same turn — measuring the dragged pile instead landed ~20 pt off its square.
@@ -2385,14 +2379,14 @@ struct MemoriesDayStrip: View, Equatable {
     @ObservationIgnored private var target: CGFloat = 1
     @ObservationIgnored private var spring = Spring(response: 0.4, dampingRatio: 0.9)
     @ObservationIgnored private var done: (() -> Void)?
-    /// A close that fades out on the way (decision memories-pile-close A): it heads for the square but stops this far
-    /// short (progress), gone before it gets there — never landing on the square, where the hand-off glitched. 0 = lands.
-    private(set) var fadeFloor: CGFloat = 0
+    /// A close that fades out where it is (decision memories-pile-close B: zooming back onto the square, and then
+    /// heading for it, both still glitched on his phone).
+    private(set) var fading = false
 
-    /// How far from the square, 1 → 0, along the part it travels: the backdrop's opacity.
-    var level: CGFloat { min(max((progress - fadeFloor) / (1 - fadeFloor), 0), 1) }
-    /// The pile's own opacity: 1 except on a fading close, where it's out a little before the stop.
-    var pileOpacity: Double { fadeFloor > 0 ? Double(max(0, (level - 0.12) / 0.88)) : 1 }
+    /// 1 → 0 through a close: the backdrop's opacity.
+    var level: CGFloat { min(max(progress, 0), 1) }
+    /// The pile's own opacity: 1 except on a fading close, where it's out a little before the end.
+    var pileOpacity: Double { fading ? Double(max(0, (level - 0.12) / 0.88)) : 1 }
 
     /// Landed with nothing on it (the pile's own frame reports are its real place).
     var atRest: Bool { !running && progress == 1 && start == MemoriesPage.DeckZoom() }
@@ -2404,10 +2398,10 @@ struct MemoriesDayStrip: View, Equatable {
                                                     height: end.offset.height + (start.offset.height - end.offset.height) * p))
     }
 
-    func reset() { stop(); start = MemoriesPage.DeckZoom(); end = MemoriesPage.DeckZoom(); progress = 1; fadeFloor = 0 }
+    func reset() { stop(); start = MemoriesPage.DeckZoom(); end = MemoriesPage.DeckZoom(); progress = 1; fading = false }
 
     /// On the square, at once (an open runs from here to 1).
-    func place(_ zoom: MemoriesPage.DeckZoom) { stop(); start = MemoriesPage.DeckZoom(); end = zoom; progress = 0; fadeFloor = 0 }
+    func place(_ zoom: MemoriesPage.DeckZoom) { stop(); start = MemoriesPage.DeckZoom(); end = zoom; progress = 0; fading = false }
 
     func run(to value: CGFloat, spring: Spring, done: @escaping () -> Void) {
         stop()
@@ -2423,16 +2417,15 @@ struct MemoriesDayStrip: View, Equatable {
         self.link = link
     }
 
-    /// From `from` (where it is now: landed, or where a drag left it) toward `into` (on the square) — fading out and
-    /// stopping `fadeFloor` short of it.
-    func close(from: MemoriesPage.DeckZoom, into: MemoriesPage.DeckZoom, fadeFloor: CGFloat, spring: Spring,
+    /// From `from` (where it is now: landed, or where a drag left it) to `into`, fading out on the way when `fadeOut`.
+    func close(from: MemoriesPage.DeckZoom, into: MemoriesPage.DeckZoom, fadeOut: Bool, spring: Spring,
                done: @escaping () -> Void) {
         stop()
         start = from
         end = into
         progress = 1
-        self.fadeFloor = fadeFloor
-        run(to: fadeFloor, spring: spring, done: done)
+        fading = fadeOut
+        run(to: 0, spring: spring, done: done)
     }
 
     @objc private func step() {
@@ -2441,7 +2434,7 @@ struct MemoriesDayStrip: View, Equatable {
         let settled = t >= spring.settlingDuration || abs(value - target) < 0.001 && t > 0.1
         progress = settled ? target : value
         // A fading close is over once it's out of sight (the spring's slow tail would only hold the page's touches).
-        if !settled, fadeFloor > 0, pileOpacity <= 0.01 {
+        if !settled, fading, pileOpacity <= 0.01 {
             progress = target
             stop()
             let finish = done
