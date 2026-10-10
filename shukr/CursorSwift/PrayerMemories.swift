@@ -1107,8 +1107,15 @@ struct MemoriesDeck: View {
     /// Each photo's caption details, by key (`prepareInfo`).
     @State private var infos: [String: CaptionInfo] = [:]
     @State private var showingPlace = false
-    @State private var editingNote = false
-    @State private var noteDraft = ""
+    /// The note is being typed in place (owner: the sheet editor "just seems silly"): the page lifts it over the
+    /// keyboard, and nothing else takes touches.
+    @State private var noteEditing = false
+    @State private var keyboardLift: CGFloat = 0
+    @State private var noteBox = NoteBox()
+    final class NoteBox { var bottom: CGFloat = 0 }
+    /// A jump of more than one prayer (a tap in the strip): the pile goes out and comes back with the new one on top
+    /// (owner: Fajr → Isha "has a jittery transition" — the cards between all flew at once).
+    @State private var pileSwap = false
     @State private var index: Int
     @State private var drag: CGFloat = 0
     /// A drag down: the pile follows the finger and shrinks a little, then closes.
@@ -1184,7 +1191,7 @@ struct MemoriesDeck: View {
                 // bottom; ✕ was among the buttons under the photo).
                 titleRow(current)
                     .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
-                    .allowsHitTesting(shown)
+                    .allowsHitTesting(shown && !noteEditing)
                 Spacer(minLength: 0)
                 // The neighbouring days wait off the edges for a swipe; a drag down shrinks and moves the pile, which
                 // brought them into view (owner) — so they're out while it's dragged down, and while it zooms.
@@ -1202,6 +1209,7 @@ struct MemoriesDeck: View {
                     } else {
                         pile(range, width: width, screen: geo.size.width)
                             .offset(x: shift + paging)
+                            .opacity(pileSwap ? 0 : 1)
                     }
                     if !neighboursOut, let right = neighbour(range, right: true) {
                         restingPile(right.range, top: right.top, width: width, screen: geo.size.width)
@@ -1211,9 +1219,10 @@ struct MemoriesDeck: View {
                 }
                 .frame(width: geo.size.width, height: width + 30)
                 .contentShape(Rectangle())
+                .allowsHitTesting(!noteEditing)
                 .offset(freeDrag)
                 .scaleEffect(dragScale)
-                .gesture(emptyDay == nil ? pileDrag(range) : nil)
+                .gesture(emptyDay == nil && !noteEditing ? pileDrag(range) : nil)
                 .gesture(emptyDay != nil ? emptyDrag : nil)
                 // Gone quickly once the pile is dragged down over it (it showed on the dragged card — owner).
                 if let current {
@@ -1244,7 +1253,7 @@ struct MemoriesDeck: View {
                 }
                 .buttonStyle(.plain)
                 .opacity(down > 10 || !shown || emptyDay != nil ? 0 : 1)
-                .allowsHitTesting(emptyDay == nil)
+                .allowsHitTesting(emptyDay == nil && !noteEditing)
                 .padding(.top, 22)
                 // Why Share is faded (owner: it greyed out with no word why). Room kept, so nothing moves.
                 Text(photos.indices.contains(index) && !PhotoDevelop.isDeveloped(key: photos[index].key)
@@ -1258,41 +1267,45 @@ struct MemoriesDeck: View {
                     // The strip is its own bar (owner: "put a separator for that new bottom bar"; the system Divider was too
                     // faint on the frosted page).
                     Rectangle().fill(Color.primary.opacity(0.22)).frame(height: 1)
-                    MemoriesDayStrip(photos: photos, centred: $stripDay,
-                                     currentPrayer: emptyDay == nil && photos.indices.contains(shownIndex) ? photos[shownIndex].name : nil,
-                                     onScrub: scrubTo, onRest: goToDay, onPrayer: goToPrayer)
+                    // Out while the note is typed (it's under the keyboard, and the keyboard coming up threw its scroll to
+                    // the end, fighting there every frame — the frame log); its room kept, back on the pile's day after.
+                    if noteEditing {
+                        Color.clear.frame(height: MemoriesDayStrip.height)
+                    } else {
+                        MemoriesDayStrip(photos: photos, centred: $stripDay,
+                                         currentPrayer: emptyDay == nil && photos.indices.contains(shownIndex) ? photos[shownIndex].name : nil,
+                                         onScrub: scrubTo, onRest: goToDay, onPrayer: goToPrayer)
+                    }
                 }
                 .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
+                .allowsHitTesting(!noteEditing)
                 .padding(.bottom, 22)
             }
             .frame(width: geo.size.width)
             // No tap-to-close on the frosted page: a missed tap on the note or a prayer symbol closed it (owner) —
             // ✕ or a drag down closes.
+            // Typing the note: the page lifts it clear of the keyboard; a tap anywhere else is the end of typing.
+            .offset(y: -keyboardLift)
+            // Behind it all: a tap on any empty part ends the typing (the field keeps its own taps for the cursor).
+            .background {
+                if noteEditing {
+                    Color.black.opacity(0.001)
+                        .onTapGesture { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
+                }
+            }
+        }
+        .ignoresSafeArea(.keyboard)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            guard let end = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            let screen = UIScreen.main.bounds.height
+            let top = end.minY >= screen ? screen : end.minY
+            let lift = noteEditing ? max(0, noteBox.bottom + 18 - top) : 0
+            withAnimation(.easeOut(duration: 0.25)) { keyboardLift = lift }
+        }
+        .onChange(of: noteEditing) { _, editing in
+            if !editing { withAnimation(.easeOut(duration: 0.25)) { keyboardLift = 0 } }
         }
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $editingNote) {
-            // The whole note, to read and edit (the pile shows three lines of it).
-            NavigationStack {
-                TextEditor(text: $noteDraft)
-                    .font(.system(size: 17, design: .rounded))
-                    .padding(.horizontal, 12)
-                    .navigationTitle(photos.indices.contains(index) ? PrayerPhotos.caption(photos[index].key) : "Note")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { editingNote = false } }
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Save") {
-                                if photos.indices.contains(shownIndex) {
-                                    PrayerPhotos.setNote(photos[shownIndex].key, noteDraft)
-                                    infos[photos[shownIndex].key]?.note = PrayerPhotos.note(photos[shownIndex].key)
-                                }
-                                editingNote = false
-                            }
-                        }
-                    }
-            }
-            .presentationDetents([.medium, .large])
-        }
         .onAppear { prepareInfo(around: shownIndex) }
         .onChange(of: shownIndex) { _, i in prepareInfo(around: i) }
         .sheet(isPresented: $showingPlace) {
@@ -1521,9 +1534,27 @@ struct MemoriesDeck: View {
     private func goToPrayer(_ name: String) {
         let range = dayRange(of: shownIndex)
         guard emptyDay == nil, let i = range.first(where: { photos[$0].name == name }), i != index, pendingTop == nil else { return }
-        moving(back: i < index) {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { index = i; drag = 0 }
-            pickLies()
+        guard abs(i - index) > 1 else {
+            // The next or the one before: the usual move, one card.
+            moving(back: i < index) {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { index = i; drag = 0 }
+                pickLies()
+            }
+            return
+        }
+        // Further: out, the new one on top while it's out, back in — the cards between don't fly across.
+        withAnimation(.easeOut(duration: 0.12)) { pileSwap = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(130))
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                wentBack = i < index
+                index = i
+                drag = 0
+                pickLies()
+            }
+            withAnimation(.easeOut(duration: 0.2)) { pileSwap = false }
         }
     }
 
@@ -1721,32 +1752,17 @@ struct MemoriesDeck: View {
                 .frame(height: 26)
                 // Three lines' room whether there's a note or not, so nothing on the page moves from photo to photo
                 // (owner's note: a long one pushed the pile and the buttons, which clicked up and down on each swipe).
-                Button {
-                    noteDraft = info.note ?? ""
-                    editingNote = true
-                } label: {
-                    Group {
-                        if let note = info.note {
-                            Text(note)
-                                .font(.system(size: 14, design: .rounded)).italic()
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.center)
-                                .lineLimit(3)
-                                .truncationMode(.tail)
-                        } else {
-                            Label("Add a note", systemImage: "square.and.pencil")
-                                .font(.system(size: 13, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
-                    .frame(height: 58, alignment: .top)
-                    .contentShape(Rectangle())
+                // Typed in place (owner: "edit in place on the screen … self explanatory") — a field, like Photos'
+                // caption: a tap puts the cursor in it, Done or a tap elsewhere keeps it.
+                PileNoteField(key: current.key, note: info.note, editing: $noteEditing, box: noteBox) { saved in
+                    infos[current.key]?.note = saved
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(height: 58, alignment: .top)
                 .padding(.horizontal, 36)
                 .padding(.top, 6)
             }
+            .opacity(pileSwap ? 0 : 1)
             // Follows the finger while a photo is dragged, then the next one's slides in as it lands.
             .offset(x: max(-90, min(90, drag * 0.35)))
             .opacity(1 - min(abs(drag) / 320, 0.6))
@@ -1999,6 +2015,7 @@ struct MemoriesDayStrip: View {
 
     private static let cell: CGFloat = 50
     private static let labelHeight: CGFloat = 34
+    static let height: CGFloat = 34 + 64
 
     /// Where the strip is scrolled, set by us from the day's place in the list (the id-based position didn't move a
     /// short strip — three days on the owner's phone — so the pile's day and the strip's drifted apart).
@@ -2077,6 +2094,7 @@ struct MemoriesDayStrip: View {
             // The strip's real width (at its first appearance the reader still read 0, and nothing scrolled), then
             // straight onto the pile's day.
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                if FrameMonitor.on { FrameMonitor.shared.note("strip width \(width)") }
                 let first = self.margin <= 0
                 self.margin = (width - Self.cell) / 2
                 if first { scroll(to: centred, animated: false) }
@@ -2093,7 +2111,7 @@ struct MemoriesDayStrip: View {
             days = model.days; photoDays = model.photoDays; monthCounts = model.monthCounts
             slots = Self.slots(new)
         }
-        .frame(height: Self.labelHeight + 64)
+        .frame(height: Self.height)
         .sensoryFeedback(.selection, trigger: tick)
         // Away from today: the way back to it (it can be months on).
         .overlay(alignment: .bottom) {
@@ -2364,6 +2382,59 @@ struct DeckBackdrop: View {
             .overlay(Color.black.opacity(0.12))
             .ignoresSafeArea()
             .opacity(driver.running ? Double(min(max(driver.progress, 0), 1)) : (shown ? 1 : 0))
+    }
+}
+
+/// The pile's note, typed where it is (owner: the sheet editor "just seems silly"): a field like Photos' caption —
+/// "Add a note" when empty, three lines shown, Done on the keyboard (or a tap elsewhere) keeps it.
+struct PileNoteField: View {
+    let key: String
+    let note: String?
+    @Binding var editing: Bool
+    let box: MemoriesDeck.NoteBox
+    let onSave: (String?) -> Void
+    @State private var text: String
+    @FocusState private var focused: Bool
+
+    init(key: String, note: String?, editing: Binding<Bool>, box: MemoriesDeck.NoteBox, onSave: @escaping (String?) -> Void) {
+        self.key = key
+        self.note = note
+        self._editing = editing
+        self.box = box
+        self.onSave = onSave
+        _text = State(initialValue: note ?? "")
+    }
+
+    var body: some View {
+        TextField("Add a note", text: $text, axis: .vertical)
+            .font(.system(size: 14, design: .rounded))
+            .italic(!text.isEmpty)
+            .multilineTextAlignment(.center)
+            .lineLimit(focused ? 1...5 : 1...3)
+            .focused($focused)
+            .submitLabel(.done)
+            .tint(.primary)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY } action: { box.bottom = $0 }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focused = false }.fontWeight(.semibold)
+                }
+            }
+            .onChange(of: focused) { _, now in
+                editing = now
+                guard !now else { return }
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed != (note ?? "") else { return }
+                PrayerPhotos.setNote(key, trimmed.isEmpty ? nil : trimmed)
+                onSave(PrayerPhotos.note(key))
+            }
+            // Return ends it too (a note is a line or three, not a page).
+            .onChange(of: text) { _, new in
+                if new.contains("\n") { text = new.replacingOccurrences(of: "\n", with: ""); focused = false }
+            }
+            .onChange(of: note) { _, new in if !focused { text = new ?? "" } }
+            .accessibilityLabel("Note")
     }
 }
 
