@@ -1666,9 +1666,15 @@ private struct RemindersStep: View {
                         NotificationDemo(prayer: allowed ? focus : "Asr", state: allowed ? state(focus) : 2)
                             .padding(.horizontal, 24)
                         if allowed {
-                            tuner
-                                .padding(.top, 14)
-                                .transition(.opacity.combined(with: .offset(y: 16)))
+                            VStack(spacing: 0) {
+                                // A short dash, not a full rule: the preview above, the tuner below (owner).
+                                Capsule()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(width: 32, height: 3)
+                                    .padding(.top, 18).padding(.bottom, 16)
+                                tuner
+                            }
+                            .transition(.opacity.combined(with: .offset(y: 16)))
                         }
                         Spacer(minLength: 0)
                     }
