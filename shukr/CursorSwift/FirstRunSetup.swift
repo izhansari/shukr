@@ -877,18 +877,9 @@ private struct SetupHadith: View {
     var body: some View {
         ZStack {
             // The opening's gradient and grain, over black: its dark version whatever the app's look.
-            ZStack {
-                Color.black
-                AnimatedWavyGradient(still: reduceMotion)
-                    .opacity(lit ? 1 : 0)
-                // The easter egg: a soft light in the gradient that follows a finger, and the phone's tilt.
-                HadithLight(still: reduceMotion)
-                    .opacity(lit ? 1 : 0)
-                NoiseOverlay()
-                    .blendMode(.overlay)
-                    .opacity(lit ? 0.3 : 0)
-            }
-            .ignoresSafeArea()
+            // The easter egg lives here: a finger pushes through the colours, the tilt moves a light.
+            HadithSurface(lit: lit, still: reduceMotion)
+                .ignoresSafeArea()
             // The hadith stays in the middle (owner: "dont shift the thing up"); the invitation sits at the bottom.
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
@@ -1011,34 +1002,85 @@ private struct SetupHadith: View {
     }
 }
 
-/// The hadith page's easter egg: a soft green light in its gradient that follows a finger across the page and, left
-/// alone, drifts with the phone's tilt (owner: "interactive with the finger like moving the gradient with it. or like as
-/// we tilt the phone"). Its own view, so the tilt's updates redraw only this layer. Reduce Motion: still, in the middle.
+/// The hadith page's background and its easter egg (owner: "id like the finger to distort the colors like pushing
+/// through it"): the opening's gradient over black, a soft light that drifts with the phone's tilt, and a finger that
+/// pushes through the colours (`hadithPush`, HadithSurface.metal) — they part, swirl and smear with it, and spring
+/// back with a wobble when it lets go. The grain sits on top, undistorted.
+private struct HadithSurface: View {
+    let lit: Bool
+    var still = false
+    @State private var touch: CGPoint = .zero
+    @State private var strength: CGFloat = 0
+    @State private var velocity: CGSize = .zero
+
+    var body: some View {
+        ZStack {
+            Color.black
+            ZStack {
+                AnimatedWavyGradient(still: still)
+                HadithLight(still: still)
+            }
+            .opacity(lit ? 1 : 0)
+            .modifier(HadithPush(touch: touch, strength: strength, velocity: velocity))
+            NoiseOverlay()
+                .blendMode(.overlay)
+                .opacity(lit ? 0.3 : 0)
+                .allowsHitTesting(false)
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { v in
+                    touch = v.location
+                    let clamp = { (x: CGFloat) in max(-2000, min(2000, x)) }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        strength = 1
+                        velocity = CGSize(width: clamp(v.velocity.width), height: clamp(v.velocity.height))
+                    }
+                }
+                .onEnded { _ in
+                    // Underdamped: it swings past rest once (pulling in a little) before it settles.
+                    withAnimation(.spring(response: 1.1, dampingFraction: 0.45)) { strength = 0; velocity = .zero }
+                }
+        )
+    }
+}
+
+/// `hadithPush` with its strength and the finger's speed animatable (a press eases in, a release springs back).
+private struct HadithPush: ViewModifier, Animatable {
+    var touch: CGPoint
+    var strength: CGFloat
+    var velocity: CGSize
+
+    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(strength, AnimatablePair(velocity.width, velocity.height)) }
+        set { strength = newValue.first; velocity = CGSize(width: newValue.second.first, height: newValue.second.second) }
+    }
+
+    func body(content: Content) -> some View {
+        content.layerEffect(
+            ShaderLibrary.hadithPush(.float2(touch.x, touch.y), .float2(velocity.width, velocity.height),
+                                     .float(strength), .float(170)),
+            maxSampleOffset: CGSize(width: 160, height: 160),
+            isEnabled: abs(strength) > 0.001)
+    }
+}
+
+/// A soft green light in the hadith page's gradient that drifts with the phone's tilt. Its own view, so the tilt's
+/// updates redraw only this layer. Reduce Motion: still, in the middle.
 private struct HadithLight: View {
     var still = false
     @State private var tilt = HadithTilt()
-    /// Where a finger is (0…1 of the page), while it's down.
-    @State private var finger: UnitPoint?
 
     var body: some View {
         GeometryReader { geo in
-            let centre = finger ?? UnitPoint(x: 0.5 + tilt.x * 0.45, y: 0.55 + tilt.y * 0.4)
-            RadialGradient(colors: [Color(red: 0.42, green: 0.86, blue: 0.58).opacity(0.42), .clear],
-                           center: centre, startRadius: 0, endRadius: min(geo.size.width, geo.size.height) * 0.6)
+            RadialGradient(colors: [Color(red: 0.42, green: 0.86, blue: 0.58).opacity(0.4), .clear],
+                           center: UnitPoint(x: 0.5 + tilt.x * 0.45, y: 0.55 + tilt.y * 0.4),
+                           startRadius: 0, endRadius: min(geo.size.width, geo.size.height) * 0.6)
                 .blendMode(.plusLighter)
                 .blur(radius: 30)
-                .animation(.spring(response: finger == nil ? 1.4 : 0.5, dampingFraction: 0.9), value: centre)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { v in
-                            guard !still else { return }
-                            finger = UnitPoint(x: v.location.x / max(geo.size.width, 1),
-                                               y: v.location.y / max(geo.size.height, 1))
-                        }
-                        .onEnded { _ in finger = nil }
-                )
         }
+        .allowsHitTesting(false)
         .onAppear { if !still { tilt.start() } }
         .onDisappear { tilt.stop() }
     }
