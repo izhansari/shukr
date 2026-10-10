@@ -194,7 +194,9 @@ enum AlarmSelfTest {
 #endif
 
 enum SetupStep: String, CaseIterable, Identifiable {
-    case welcome, location, method, madhab, appearance, reminders, fajr, masjid, review
+    // `reminders` explains and asks for notifications; `tuning` (only once they're allowed) sets them per prayer
+    // (decision setup-notif-split A).
+    case welcome, location, method, madhab, appearance, reminders, tuning, fajr, masjid, review
     var id: String { rawValue }
 
     /// The ring: a fifth per group (where you pray · appearance · reminders · Fajr · masjid).
@@ -203,7 +205,7 @@ enum SetupStep: String, CaseIterable, Identifiable {
         case .welcome: 0
         case .location, .method, .madhab: 0.2
         case .appearance: 0.4
-        case .reminders: 0.6
+        case .reminders, .tuning: 0.6
         case .fajr: 0.8
         case .masjid, .review: 1
         }
@@ -213,7 +215,7 @@ enum SetupStep: String, CaseIterable, Identifiable {
         case .welcome: "sparkle"
         case .location, .method, .madhab: "location.fill"
         case .appearance: "circle.lefthalf.filled"
-        case .reminders: "bell"
+        case .reminders, .tuning: "bell"
         case .fajr: "alarm"
         case .masjid: "building.columns"
         case .review: "checkmark"
@@ -294,7 +296,16 @@ struct FirstRunSetupView: View {
                         case .method: MethodStep(next: { advance(to: .madhab) })
                         case .madhab: MadhabStep(next: { advance(to: .appearance) })
                         case .appearance: AppearanceStep(next: { advance(to: .reminders) })
-                        case .reminders: RemindersStep(next: {
+                        case .reminders: RemindersStep(next: { allowed in
+                            // Allowed: on to setting them per prayer. Not now / off: past it.
+                            if allowed {
+                                advance(to: .tuning)
+                            } else {
+                                NotificationScheduler.reschedule(context: context, reason: "setup reminders")
+                                if editing != nil { backToReview() } else { go(.fajr) }
+                            }
+                        })
+                        case .tuning: NotificationTuningStep(next: {
                             NotificationScheduler.reschedule(context: context, reason: "setup reminders")
                             advance(to: .fajr)
                         })
@@ -337,8 +348,14 @@ struct FirstRunSetupView: View {
                 Button {
                     if editing != nil {
                         // Editing from the review: back = the review (the madhab's back = its method).
-                        if editing == .method && step == .madhab { go(.method) } else { backToReview() }
-                    } else if let i = SetupStep.allCases.firstIndex(of: step), i > 0 { go(SetupStep.allCases[i - 1]) }
+                        if editing == .method && step == .madhab { go(.method) }
+                        else if editing == .reminders && step == .tuning { go(.reminders) }
+                        else { backToReview() }
+                    } else if let i = SetupStep.allCases.firstIndex(of: step), i > 0 {
+                        // The per-prayer page is only there once notifications are allowed.
+                        let back = SetupStep.allCases[i - 1]
+                        go(back == .tuning && NotificationStatus.shared.isOn != true ? .reminders : back)
+                    }
                 } label: {
                     Image(systemName: "chevron.left").font(.body.weight(.medium))
                         .frame(width: 44, height: 44)
@@ -378,7 +395,13 @@ struct FirstRunSetupView: View {
         if editing != nil && step == lastEditedStep { backToReview() } else { go(next) }
     }
 
-    private var lastEditedStep: SetupStep? { editing == .method ? .madhab : editing }
+    private var lastEditedStep: SetupStep? {
+        switch editing {
+        case .method: .madhab
+        case .reminders: NotificationStatus.shared.isOn == true ? .tuning : .reminders
+        default: editing
+        }
+    }
 
     private func backToReview() {
         go(.review)
@@ -1595,12 +1618,46 @@ private struct AppearanceSwatch: View {
 // MARK: - Reminders
 
 
+/// Page one: what shukr's notifications do — the real thing playing (owner: "a nicer graphic of our actual
+/// notification") — and the ask. Allowed → page two sets them per prayer; Not now → past both.
 private struct RemindersStep: View {
-    let next: () -> Void
+    let next: (_ allowed: Bool) -> Void
     @ObservedObject private var notifications = NotificationStatus.shared
-    // The same keys and the same control as Settings: one button per prayer cycling off → start →
-    // nudge (`prayerCol`; owner, 2026-09-28: "it should follow the same toggling logic we have in
-    // the settings" — the first version's two independent columns allowed states Settings can't).
+
+    var body: some View {
+        StepScaffold(title: "Prayer notifications",
+                     subtitle: "Not just when it starts: if you haven’t prayed, we’ll nudge you at halfway and 30 minutes left.") {
+            VStack(spacing: 14) {
+                NotificationDemo(prayer: "Asr", state: 2)
+                    .padding(.horizontal, 24)
+                    .padding(.top, -6)
+                if notifications.isOn == false {
+                    Nudge(text: "Notifications are off for shukr, so they can't reach you.",
+                          action: "Turn on", tap: SettingsLinks.notifications)
+                        .padding(.horizontal, 24)
+                }
+            }
+        } bottom: {
+            if notifications.isOn == nil {
+                PrimaryButton(title: "Allow notifications") { notifications.request() }
+                SecondaryButton(title: "Not now") { next(false) }
+            } else {
+                PrimaryButton(title: "Continue") { next(notifications.isOn == true) }
+            }
+        }
+        .task { await notifications.refresh() }
+        // Allowed at iOS's prompt: straight on to setting them per prayer.
+        .onChange(of: notifications.isOn) { old, new in
+            if old == nil && new == true { next(true) }
+        }
+    }
+}
+
+/// Page two (only once notifications are allowed): one tile per prayer, the preview above following the last one
+/// tapped, and why the defaults are what they are (owner: "do we explain our recommended default").
+private struct NotificationTuningStep: View {
+    let next: () -> Void
+    // The same keys and the same off → start → nudge cycle as Settings' bells (`prayerCol`).
     @AppStorage("fajrNotif") private var fajrNotif = NotificationDefaults.notify("Fajr")
     @AppStorage("dhuhrNotif") private var dhuhrNotif = NotificationDefaults.notify("Dhuhr")
     @AppStorage("asrNotif") private var asrNotif = NotificationDefaults.notify("Asr")
@@ -1623,49 +1680,28 @@ private struct RemindersStep: View {
     }
 
     var body: some View {
-        StepScaffold(title: "Prayer notifications",
-                     subtitle: "Not just when it starts: if you haven’t prayed, we’ll nudge you at halfway and 30 minutes left.") {
-            VStack(spacing: 14) {
-                // The real thing, live (owner: "a nicer graphic of our actual notification on the page to show a live
-                // demo so they get the point better").
+        // The defaults' reasons (owner confirmed): the day's prayers slip during work, a nudge late at night is too
+        // much, and Fajr falls while people sleep — the alarm, next, is for that.
+        StepScaffold(title: "For each prayer",
+                     subtitle: "We nudge the daytime prayers, remind you once at Isha, and leave Fajr to your alarm.") {
+            VStack(spacing: 18) {
                 NotificationDemo(prayer: focus, state: state(focus))
                     .padding(.horizontal, 24)
                     .padding(.top, -6)
-                if notifications.isOn == false {
-                    Nudge(text: "Notifications are off for shukr, so they can't reach you.",
-                          action: "Turn on", tap: SettingsLinks.notifications)
-                        .padding(.horizontal, 24)
-                }
-                // The choice, set apart from the preview (owner: "no real separation … not clear to user that its
-                // adjustable"): a label, then one tile per prayer that looks like a button — its state in its fill
-                // (off grey, start outlined, nudge solid sage) — cycling off → start → nudge like Settings' bells.
-                // Each tile drives the preview above: a tap cycles that prayer and shows what it will now send.
-                VStack(spacing: 12) {
-                    Text("For each prayer")
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
-                        .tracking(1)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges) { focus = "Fajr" }
-                        NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges) { focus = "Dhuhr" }
-                        NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges) { focus = "Asr" }
-                        NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges) { focus = "Maghrib" }
-                        NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges) { focus = "Isha" }
-                    }
+                // One tile per prayer that looks like a button — its state in its fill (off grey, start outlined,
+                // nudge solid sage); a tap cycles it and shows it above.
+                HStack(spacing: 8) {
+                    NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges) { focus = "Fajr" }
+                    NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges) { focus = "Dhuhr" }
+                    NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges) { focus = "Asr" }
+                    NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges) { focus = "Maghrib" }
+                    NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges) { focus = "Isha" }
                 }
                 .padding(.horizontal, 24)
-                .padding(.top, 6)
             }
         } bottom: {
-            if notifications.isOn == nil {
-                PrimaryButton(title: "Allow notifications") { notifications.request() }
-                SecondaryButton(title: "Not now", action: next)
-            } else {
-                PrimaryButton(title: "Continue", action: next)
-            }
+            PrimaryButton(title: "Continue", action: next)
         }
-        .task { await notifications.refresh() }
         .onAppear {
             guard !focusPicked else { return }
             focusPicked = true
