@@ -323,7 +323,11 @@ struct MainCircleView: View {
                     .transition(.opacity)
                 }
                 else {
+                    // Equatable on its three inputs: the circle's body runs every second (its clock) and on every page
+                    // or list change, and the day's page (~1.5 ms a body) ran with it each time (paging lag, 2026-10-10).
+                    // Its own data (the day's rows, photos, scores) still redraws it directly.
                     summaryCircle(ogText: $ogText, showsScore: summaryShowsScore ?? summaryWantsScore, away: summaryAway)
+                        .equatable()
                         .transition(.opacity)
                 }
             }
@@ -850,7 +854,11 @@ struct MainCircleView: View {
 
 
 
-struct summaryCircle: View{
+struct summaryCircle: View, Equatable {
+    static func == (a: summaryCircle, b: summaryCircle) -> Bool {
+        a.ogText == b.ogText && a.showsScore == b.showsScore && a.away == b.away
+    }
+
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
     // FIXME: think this through more and make sure it makes sense.
     @EnvironmentObject var viewModel: PrayerViewModel
