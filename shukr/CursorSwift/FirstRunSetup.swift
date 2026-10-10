@@ -1651,32 +1651,52 @@ private struct RemindersStep: View {
     }
 
     var body: some View {
-        StepScaffold(title: "Prayer notifications",
-                     subtitle: "Not just when it starts: if you haven’t prayed, we’ll nudge you at halfway and 30 minutes left.") {
-            VStack(spacing: 14) {
-                NotificationDemo(prayer: allowed ? focus : "Asr", state: allowed ? state(focus) : 2)
-                    .padding(.horizontal, 24)
-                    .padding(.top, -6)
-                if allowed {
-                    tuner
-                        .transition(.opacity.combined(with: .offset(y: 16)))
+        // Its own layout (not StepScaffold): the preview sits in the middle of the free space while it's all there is,
+        // and glides up as the tuner comes in under it once allowed (owner: "move the graphic to the center when thats
+        // the only thing on the page"). Scrolls only if a small screen needs it.
+        VStack(spacing: 0) {
+            GeometryReader { geo in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        StepTitle(title: "Prayer notifications",
+                                  subtitle: "Not just when it starts: if you haven’t prayed, we’ll nudge you at halfway and 30 minutes left.")
+                            .padding(.bottom, 22)
+                        // Equal room above and below while it's alone; the room above goes once the tuner comes.
+                        if !allowed { Spacer(minLength: 0) }
+                        NotificationDemo(prayer: allowed ? focus : "Asr", state: allowed ? state(focus) : 2)
+                            .padding(.horizontal, 24)
+                        if allowed {
+                            tuner
+                                .padding(.top, 14)
+                                .transition(.opacity.combined(with: .offset(y: 16)))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.bottom, 16)
+                    .frame(minHeight: geo.size.height)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.hidden)
+            }
+            VStack(spacing: 0) {
+                if notifications.isOn == nil {
+                    PrimaryButton(title: "Yes, remind me", outlined: true) { notifications.request() }
+                    SecondaryButton(title: "No thanks, I’ll remember") { confirmSkip = true }
                 } else if notifications.isOn == false {
+                    // Refused: the note right above the way on, which says what they're giving up and is outlined, not
+                    // the filled Continue; Settings as the quiet way back (owner).
                     offNote
-                        .transition(.opacity)
+                        .padding(.bottom, 14)
+                    PrimaryButton(title: "Continue without reminders", outlined: true, action: next)
+                    SecondaryButton(title: "Changed my mind? Open Settings", action: SettingsLinks.notifications)
+                } else {
+                    PrimaryButton(title: "Continue", action: next)
                 }
             }
-            .animation(.easeOut(duration: 0.35), value: notifications.isOn)
-        } bottom: {
-            if notifications.isOn == nil {
-                PrimaryButton(title: "Yes, remind me", outlined: true) { notifications.request() }
-                SecondaryButton(title: "No thanks, I’ll remember") { confirmSkip = true }
-            } else if notifications.isOn == false {
-                // Refused: going on says what they're giving up, outlined — not the filled Continue (owner).
-                PrimaryButton(title: "Continue without reminders", outlined: true, action: next)
-            } else {
-                PrimaryButton(title: "Continue", action: next)
-            }
+            .padding(.top, 8)
+            .padding(.bottom, 8)
         }
+        .animation(.easeInOut(duration: 0.45), value: notifications.isOn)
         .task { await notifications.refresh() }
         .alert("Go without reminders?", isPresented: $confirmSkip) {
             Button("Remind me", role: .cancel) { notifications.request() }
@@ -1715,17 +1735,12 @@ private struct RemindersStep: View {
 
     /// Refused at iOS's prompt (or off in Settings): said calmly, with the way back.
     private var offNote: some View {
-        VStack(spacing: 8) {
-            Text("Notifications are off. You can turn them on any time in Settings.")
-                .font(.system(.subheadline, design: .rounded))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-            Button("Open Settings", action: SettingsLinks.notifications)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .foregroundStyle(Color.sage)
-        }
-        .padding(.horizontal, 32)
-        .padding(.top, 8)
+        Text("Notifications are off. You can turn them on any time in Settings.")
+            .font(.system(.subheadline, design: .rounded))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 32)
+            .transition(.opacity)
     }
 }
 
