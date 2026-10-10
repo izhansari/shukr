@@ -1013,11 +1013,12 @@ private struct SetupHadith: View {
             // The gradient comes up first, as on the opening; then the conversation.
             withAnimation(.easeInOut(duration: tm.lit)) { lit = true }
             guard await CircleGate.pause(tm.firstAfter) else { return }
-            // The question, "He ﷺ replied,", the Arabic.
-            let gaps = [tm.afterQuestion, tm.afterReplied, tm.afterArabic]
-            for i in 0..<3 {
-                withAnimation(.easeInOut(duration: i == 2 ? tm.arabicWipe : tm.lineFade)) { lines = i + 1 }
-                guard await CircleGate.pause(gaps[i]) else { return }
+            // The question, "He ﷺ replied,", the Arabic: each comes in, then its empty time.
+            let steps = [(tm.questionFade, tm.emptyAfterQuestion), (tm.repliedFade, tm.emptyAfterReplied),
+                         (tm.arabicWipe, tm.emptyAfterArabic)]
+            for (i, step) in steps.enumerated() {
+                withAnimation(.easeInOut(duration: step.0)) { lines = i + 1 }
+                guard await CircleGate.pause(step.0 + step.1) else { return }
             }
             // The English answer: one stroke across both lines (its own easing, see `HadithAnswer`), so the time runs
             // linearly here.
@@ -1025,10 +1026,10 @@ private struct SetupHadith: View {
             let seconds = HadithAnswer.duration(perWord: tm.perWord)
             withAnimation(.linear(duration: seconds)) { answerProgress = 1 }
             guard await CircleGate.pause(seconds) else { return }
-            guard await CircleGate.pause(tm.afterEnglish) else { return }
+            guard await CircleGate.pause(tm.emptyAfterEnglish) else { return }
             // The source, then a long beat before the invitation.
-            withAnimation(.easeInOut(duration: tm.lineFade)) { lines = 5 }
-            guard await CircleGate.pause(tm.afterSource) else { return }
+            withAnimation(.easeInOut(duration: tm.sourceFade)) { lines = 5 }
+            guard await CircleGate.pause(tm.sourceFade + tm.emptyAfterSource) else { return }
             withAnimation(.easeInOut(duration: tm.inviteFade)) { invite = true }
             withAnimation(T.hadithNudge) { nudge = true }
         }
@@ -1066,62 +1067,81 @@ private struct SetupHadith: View {
 @Observable @MainActor
 final class HadithTiming {
     static let shared = HadithTiming()
-    struct Knob: Identifiable { let id: String; let title: String; let range: ClosedRange<Double>; let step: Double; let base: Double }
+    /// A row of the timeline: something coming in (its own words shown), an empty stretch ("E"), or a step of leaving.
+    enum Kind { case line(String), empty, step }
+    struct Knob: Identifiable {
+        let id: String; let kind: Kind; let title: String
+        let range: ClosedRange<Double>; let step: Double; let base: Double
+    }
     private typealias T = CircleMotion.Setup
+    /// In the order the page plays them (owner: "write the line text … empty space with E … put it in order").
     static let knobs: [Knob] = [
-        Knob(id: "lit", title: "Gradient fades in", range: 0.2...5, step: 0.1, base: T.hadithLitDuration),
-        Knob(id: "firstAfter", title: "Wait before the question", range: 0...5, step: 0.1, base: T.hadithAfterDuration),
-        Knob(id: "lineFade", title: "A line fades in (question, replied, source)", range: 0.2...4, step: 0.1, base: T.hadithLineDuration),
-        Knob(id: "afterQuestion", title: "Gap after the question", range: 0...6, step: 0.1, base: T.hadithLineBeats[0]),
-        Knob(id: "afterReplied", title: "Gap after “He ﷺ replied,”", range: 0...6, step: 0.1, base: T.hadithLineBeats[1]),
-        Knob(id: "arabicWipe", title: "The Arabic writes in", range: 0.2...5, step: 0.1, base: T.hadithWipeDuration),
-        Knob(id: "afterArabic", title: "Gap after the Arabic", range: 0...6, step: 0.1, base: T.hadithLineBeats[2]),
-        Knob(id: "perWord", title: "The English, seconds per word", range: 0.05...1, step: 0.01, base: T.hadithWordDuration),
-        Knob(id: "afterEnglish", title: "Gap after the English", range: 0...6, step: 0.1, base: T.hadithLineBeats[3]),
-        Knob(id: "afterSource", title: "Gap after the source (before the invitation)", range: 0...8, step: 0.1, base: T.hadithLineBeats[4]),
-        Knob(id: "inviteFade", title: "The invitation fades in", range: 0.2...4, step: 0.1, base: T.hadithExtraDuration),
-        Knob(id: "wordsAway", title: "Tapped: the words go", range: 0.1...2, step: 0.05, base: T.hadithWordsAwayDuration),
-        Knob(id: "drain", title: "Tapped: the background drains", range: 0.2...4, step: 0.1, base: SetupOpening.drain),
+        Knob(id: "lit", kind: .step, title: "Background: the gradient fades in", range: 0.2...5, step: 0.1, base: T.hadithLitDuration),
+        Knob(id: "firstAfter", kind: .empty, title: "from the page opening to the question", range: 0...5, step: 0.1, base: T.hadithAfterDuration),
+        Knob(id: "questionFade", kind: .line(SetupHadithWords.question), title: "fades in", range: 0.2...4, step: 0.1, base: T.hadithQuestionFade),
+        Knob(id: "emptyAfterQuestion", kind: .empty, title: "after the question", range: 0...6, step: 0.1, base: T.hadithEmptyAfter[0]),
+        Knob(id: "repliedFade", kind: .line(SetupHadithWords.replied), title: "fades in", range: 0.2...4, step: 0.1, base: T.hadithRepliedFade),
+        Knob(id: "emptyAfterReplied", kind: .empty, title: "after “He ﷺ replied,”", range: 0...6, step: 0.1, base: T.hadithEmptyAfter[1]),
+        Knob(id: "arabicWipe", kind: .line(SetupHadithWords.arabic), title: "writes in, right to left", range: 0.2...5, step: 0.1, base: T.hadithWipeDuration),
+        Knob(id: "emptyAfterArabic", kind: .empty, title: "after the Arabic", range: 0...6, step: 0.1, base: T.hadithEmptyAfter[2]),
+        Knob(id: "perWord", kind: .line(SetupHadithWords.answerLines.joined(separator: "\n")), title: "writes in — seconds per word", range: 0.05...1, step: 0.01, base: T.hadithWordDuration),
+        Knob(id: "emptyAfterEnglish", kind: .empty, title: "after the English", range: 0...6, step: 0.1, base: T.hadithEmptyAfter[3]),
+        Knob(id: "sourceFade", kind: .line(SetupHadithWords.source.uppercased()), title: "fades in", range: 0.2...4, step: 0.1, base: T.hadithSourceFade),
+        Knob(id: "emptyAfterSource", kind: .empty, title: "after the source, before the invitation", range: 0...8, step: 0.1, base: T.hadithEmptyAfter[4]),
+        Knob(id: "inviteFade", kind: .line(SetupHadithWords.help + " →"), title: "fades in", range: 0.2...4, step: 0.1, base: T.hadithInviteFade),
+        Knob(id: "wordsAway", kind: .step, title: "Tapped: the words go", range: 0.1...2, step: 0.05, base: T.hadithWordsAwayDuration),
+        Knob(id: "drain", kind: .step, title: "Tapped: the background drains", range: 0.2...4, step: 0.1, base: SetupOpening.drain),
     ]
 
     private(set) var values: [String: Double] = [:]
 
     private init() {
         #if DEBUG
-        for k in Self.knobs { if let v = UserDefaults.standard.object(forKey: "hadithTiming.\(k.id)") as? Double { values[k.id] = v } }
+        for k in Self.knobs { if let v = UserDefaults.standard.object(forKey: Self.key(k.id)) as? Double { values[k.id] = v } }
         #endif
     }
+
+    /// v2: the gaps became the empty time after each line has appeared (v1's counted from its start).
+    private static func key(_ id: String) -> String { "hadithTiming2.\(id)" }
 
     func value(_ id: String) -> Double { values[id] ?? Self.knobs.first { $0.id == id }?.base ?? 0 }
     func set(_ id: String, _ v: Double) {
         values[id] = v
         #if DEBUG
-        UserDefaults.standard.set(v, forKey: "hadithTiming.\(id)")
+        UserDefaults.standard.set(v, forKey: Self.key(id))
         #endif
     }
     func reset() {
         values = [:]
-        for k in Self.knobs { UserDefaults.standard.removeObject(forKey: "hadithTiming.\(k.id)") }
+        for k in Self.knobs { UserDefaults.standard.removeObject(forKey: Self.key(k.id)) }
     }
     /// The values as text, to paste back to the team.
     var summary: String {
         Self.knobs.map { k in
             let changed = values[k.id] != nil
-            return String(format: "%@: %.2f s", k.title, value(k.id)) + (changed ? String(format: " (default %.2f)", k.base) : "")
+            let what: String
+            switch k.kind {
+            case .line(let text): what = "\(text.replacingOccurrences(of: "\n", with: " / ")) — \(k.title)"
+            case .empty: what = "E — \(k.title)"
+            case .step: what = k.title
+            }
+            return String(format: "%@: %.2f s", what, value(k.id)) + (changed ? String(format: " (default %.2f)", k.base) : "")
         }
         .joined(separator: "\n")
     }
 
     var lit: Double { value("lit") }
     var firstAfter: Double { value("firstAfter") }
-    var lineFade: Double { value("lineFade") }
-    var afterQuestion: Double { value("afterQuestion") }
-    var afterReplied: Double { value("afterReplied") }
+    var questionFade: Double { value("questionFade") }
+    var emptyAfterQuestion: Double { value("emptyAfterQuestion") }
+    var repliedFade: Double { value("repliedFade") }
+    var emptyAfterReplied: Double { value("emptyAfterReplied") }
     var arabicWipe: Double { value("arabicWipe") }
-    var afterArabic: Double { value("afterArabic") }
+    var emptyAfterArabic: Double { value("emptyAfterArabic") }
     var perWord: Double { value("perWord") }
-    var afterEnglish: Double { value("afterEnglish") }
-    var afterSource: Double { value("afterSource") }
+    var emptyAfterEnglish: Double { value("emptyAfterEnglish") }
+    var sourceFade: Double { value("sourceFade") }
+    var emptyAfterSource: Double { value("emptyAfterSource") }
     var inviteFade: Double { value("inviteFade") }
     var wordsAway: Double { value("wordsAway") }
     var drain: Double { value("drain") }
@@ -1140,8 +1160,8 @@ private struct HadithTimingPanel: View {
                 Section {
                     ForEach(HadithTiming.knobs) { k in
                         VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(k.title).font(.subheadline)
+                            HStack(alignment: .firstTextBaseline) {
+                                label(k)
                                 Spacer()
                                 Text(String(format: k.step < 0.1 ? "%.2f s" : "%.1f s", timing.value(k.id)))
                                     .font(.subheadline.monospacedDigit())
@@ -1154,7 +1174,7 @@ private struct HadithTimingPanel: View {
                         }
                     }
                 } footer: {
-                    Text("Green = changed from the default. Replay plays the page from the top with these.")
+                    Text("In the order the page plays. E = empty time after the line above has fully appeared. Green = changed from the default. Replay plays the page from the top with these.")
                 }
                 Section {
                     Button("Copy values") { UIPasteboard.general.string = timing.summary; copied = true }
@@ -1167,6 +1187,28 @@ private struct HadithTimingPanel: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Replay", action: replay) }
             }
             .alert("Copied", isPresented: $copied) { Button("OK") {} } message: { Text("Paste them to Sami.") }
+        }
+    }
+
+    /// A line's own words (what's coming in), "E" for an empty stretch, or a step's name.
+    @ViewBuilder private func label(_ k: HadithTiming.Knob) -> some View {
+        switch k.kind {
+        case .line(let text):
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text).font(.subheadline.weight(.medium))
+                Text(k.title).font(.caption).foregroundStyle(.secondary)
+            }
+        case .empty:
+            HStack(spacing: 8) {
+                Text("E")
+                    .font(.caption.weight(.bold).monospaced())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .background(RoundedRectangle(cornerRadius: 5).stroke(Color.secondary.opacity(0.5)))
+                Text(k.title).font(.subheadline).foregroundStyle(.secondary)
+            }
+        case .step:
+            Text(k.title).font(.subheadline.weight(.medium))
         }
     }
 }
@@ -3486,14 +3528,18 @@ extension CircleMotion {
         // the source), then the invitation; the page goes on a tap.
         // The defaults; a DEBUG build can tune each on the page itself (`HadithTiming`, its ⚙).
         static let hadithLitDuration: Double = 2.2
+        /// From the page opening to the question starting (the gradient is still coming up).
         static let hadithAfterDuration: Double = 1.8
-        static let hadithLineDuration: Double = 1.4
-        /// After the question, "He ﷺ replied,", the Arabic, the English (once written), the source (the long one: a
-        /// beat between the quote and "shukr helps you to do that" — owner).
-        static let hadithLineBeats: [Double] = [2.4, 1.4, 2.2, 1.4, 3.8]
+        /// How long the question, "He ﷺ replied," and the source each take to fade in.
+        static let hadithQuestionFade: Double = 1.4
+        static let hadithRepliedFade: Double = 1.4
+        static let hadithSourceFade: Double = 1.4
+        /// The empty time after each line has fully appeared: the question, "He ﷺ replied,", the Arabic, the English,
+        /// the source (the long one: a beat between the quote and "shukr helps you to do that" — owner).
+        static let hadithEmptyAfter: [Double] = [1.0, 0.0, 0.3, 1.4, 2.4]
         /// The English answer's pace, the same for each of its lines.
         static let hadithWordDuration: Double = 0.3
-        static let hadithExtraDuration: Double = 1.6
+        static let hadithInviteFade: Double = 1.6
         /// The Arabic written in, right to left.
         static let hadithWipeDuration: Double = 1.9
         /// Leaving: the words go, then the background drains (the opening's own).
