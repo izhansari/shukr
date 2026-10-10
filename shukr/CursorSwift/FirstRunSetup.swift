@@ -869,8 +869,8 @@ private struct SetupHadith: View {
     @State private var lines = 0
     /// The gradient has come up.
     @State private var lit = false
-    /// How many of the answer's lines are written in (0…2).
-    @State private var answerShown = 0
+    /// The English answer being written, 0…1 of its time (one stroke across both lines: `HadithAnswer`).
+    @State private var answerProgress: Double = 0
     /// "shukr helps you to do that →" is in.
     @State private var invite = false
     /// The arrow's nudge.
@@ -881,6 +881,9 @@ private struct SetupHadith: View {
     /// shukr' page does instead of a flat fade").
     @State private var draining = false
     @State private var run: Task<Void, Never>?
+    #if DEBUG
+    @State private var tuning = false
+    #endif
 
     var body: some View {
         ZStack {
@@ -904,6 +907,23 @@ private struct SetupHadith: View {
             .opacity(leaving ? 0 : 1)
         }
         .environment(\.colorScheme, .dark)
+        #if DEBUG
+        // Tuning (owner: "a page to tune the gaps and speeds between the fades"): a ⚙ in the corner, dev builds only.
+        .overlay(alignment: .topTrailing) {
+            Button { tuning = true } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .frame(width: 44, height: 44)
+            }
+            .padding(.trailing, 8)
+            .opacity(leaving ? 0 : 1)
+        }
+        .sheet(isPresented: $tuning) {
+            HadithTimingPanel(replay: { tuning = false; replay() })
+                .presentationDetents([.medium, .large])
+        }
+        #endif
         .task { start() }
         .onDisappear { run?.cancel() }
     }
@@ -928,16 +948,7 @@ private struct SetupHadith: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .modifier(WipeIn(progress: lines > 2 ? 1 : 0, fromTrailing: true))
                 .padding(.top, 4)
-            VStack(spacing: 2) {
-                ForEach(Array(SetupHadithWords.answerLines.enumerated()), id: \.offset) { k, line in
-                    Text(line)
-                        .font(.system(size: 18, weight: .light, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.92))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .modifier(WipeIn(progress: answerShown > k ? 1 : 0))
-                }
-            }
+            HadithAnswer(progress: answerProgress)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(SetupHadithWords.answer)
             .padding(.top, 2)
@@ -994,34 +1005,44 @@ private struct SetupHadith: View {
     private func start() {
         typealias T = CircleMotion.Setup
         if reduceMotion {
-            lit = true; lines = SetupHadithWords.lineCount; answerShown = SetupHadithWords.answerLines.count; invite = true
+            lit = true; lines = SetupHadithWords.lineCount; answerProgress = 1; invite = true
             return
         }
+        let tm = HadithTiming.shared
         run = Task { @MainActor in
-            let beats = T.hadithLineBeats
             // The gradient comes up first, as on the opening; then the conversation.
-            withAnimation(T.hadithLit) { lit = true }
-            guard await CircleGate.pause(T.hadithAfterDuration) else { return }
+            withAnimation(.easeInOut(duration: tm.lit)) { lit = true }
+            guard await CircleGate.pause(tm.firstAfter) else { return }
             // The question, "He ﷺ replied,", the Arabic.
+            let gaps = [tm.afterQuestion, tm.afterReplied, tm.afterArabic]
             for i in 0..<3 {
-                withAnimation(i == 2 ? T.hadithWipe : T.hadithLine) { lines = i + 1 }
-                guard await CircleGate.pause(beats[i]) else { return }
+                withAnimation(.easeInOut(duration: i == 2 ? tm.arabicWipe : tm.lineFade)) { lines = i + 1 }
+                guard await CircleGate.pause(gaps[i]) else { return }
             }
-            // The English answer, a line at a time, each as long as its words take.
+            // The English answer: one stroke across both lines (its own easing, see `HadithAnswer`), so the time runs
+            // linearly here.
             lines = 4
-            for (k, line) in SetupHadithWords.answerLines.enumerated() {
-                let seconds = Double(line.split(separator: " ").count) * T.hadithWordDuration
-                withAnimation(.linear(duration: seconds)) { answerShown = k + 1 }
-                guard await CircleGate.pause(seconds) else { return }
-            }
-            guard await CircleGate.pause(beats[3]) else { return }
+            let seconds = HadithAnswer.duration(perWord: tm.perWord)
+            withAnimation(.linear(duration: seconds)) { answerProgress = 1 }
+            guard await CircleGate.pause(seconds) else { return }
+            guard await CircleGate.pause(tm.afterEnglish) else { return }
             // The source, then a long beat before the invitation.
-            withAnimation(T.hadithLine) { lines = 5 }
-            guard await CircleGate.pause(beats[4]) else { return }
-            withAnimation(T.hadithExtra) { invite = true }
+            withAnimation(.easeInOut(duration: tm.lineFade)) { lines = 5 }
+            guard await CircleGate.pause(tm.afterSource) else { return }
+            withAnimation(.easeInOut(duration: tm.inviteFade)) { invite = true }
             withAnimation(T.hadithNudge) { nudge = true }
         }
     }
+
+    #if DEBUG
+    /// The tuning panel's Replay: from the top, at the current timings.
+    private func replay() {
+        run?.cancel()
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { lit = false; lines = 0; answerProgress = 0; invite = false; nudge = false; leaving = false; draining = false }
+        start()
+    }
+    #endif
 
     /// As the opening leaves: a light tap, the words go, then the background drains away while it keeps moving; then
     /// the opening plays from its blank page.
@@ -1030,14 +1051,126 @@ private struct SetupHadith: View {
         triggerSomeVibration(type: .light)
         typealias T = CircleMotion.Setup
         Task { @MainActor in
-            await CircleMotion.animate(T.openingAway) { leaving = true }
-            await CircleMotion.animate(.easeInOut(duration: reduceMotion ? T.drainReducedDuration : SetupOpening.drain)) {
+            let tm = HadithTiming.shared
+            await CircleMotion.animate(.easeOut(duration: tm.wordsAway)) { leaving = true }
+            await CircleMotion.animate(.easeInOut(duration: reduceMotion ? T.drainReducedDuration : tm.drain)) {
                 draining = true
             }
             onDone()
         }
     }
 }
+
+/// The hadith page's timings: `CircleMotion.Setup`'s defaults, which a DEBUG build can tune on the page (its ⚙ →
+/// `HadithTimingPanel`; kept on the phone under `hadithTiming.<key>`). Release builds always use the defaults.
+@Observable @MainActor
+final class HadithTiming {
+    static let shared = HadithTiming()
+    struct Knob: Identifiable { let id: String; let title: String; let range: ClosedRange<Double>; let step: Double; let base: Double }
+    private typealias T = CircleMotion.Setup
+    static let knobs: [Knob] = [
+        Knob(id: "lit", title: "Gradient fades in", range: 0.2...5, step: 0.1, base: T.hadithLitDuration),
+        Knob(id: "firstAfter", title: "Wait before the question", range: 0...5, step: 0.1, base: T.hadithAfterDuration),
+        Knob(id: "lineFade", title: "A line fades in (question, replied, source)", range: 0.2...4, step: 0.1, base: T.hadithLineDuration),
+        Knob(id: "afterQuestion", title: "Gap after the question", range: 0...6, step: 0.1, base: T.hadithLineBeats[0]),
+        Knob(id: "afterReplied", title: "Gap after “He ﷺ replied,”", range: 0...6, step: 0.1, base: T.hadithLineBeats[1]),
+        Knob(id: "arabicWipe", title: "The Arabic writes in", range: 0.2...5, step: 0.1, base: T.hadithWipeDuration),
+        Knob(id: "afterArabic", title: "Gap after the Arabic", range: 0...6, step: 0.1, base: T.hadithLineBeats[2]),
+        Knob(id: "perWord", title: "The English, seconds per word", range: 0.05...1, step: 0.01, base: T.hadithWordDuration),
+        Knob(id: "afterEnglish", title: "Gap after the English", range: 0...6, step: 0.1, base: T.hadithLineBeats[3]),
+        Knob(id: "afterSource", title: "Gap after the source (before the invitation)", range: 0...8, step: 0.1, base: T.hadithLineBeats[4]),
+        Knob(id: "inviteFade", title: "The invitation fades in", range: 0.2...4, step: 0.1, base: T.hadithExtraDuration),
+        Knob(id: "wordsAway", title: "Tapped: the words go", range: 0.1...2, step: 0.05, base: T.hadithWordsAwayDuration),
+        Knob(id: "drain", title: "Tapped: the background drains", range: 0.2...4, step: 0.1, base: SetupOpening.drain),
+    ]
+
+    private(set) var values: [String: Double] = [:]
+
+    private init() {
+        #if DEBUG
+        for k in Self.knobs { if let v = UserDefaults.standard.object(forKey: "hadithTiming.\(k.id)") as? Double { values[k.id] = v } }
+        #endif
+    }
+
+    func value(_ id: String) -> Double { values[id] ?? Self.knobs.first { $0.id == id }?.base ?? 0 }
+    func set(_ id: String, _ v: Double) {
+        values[id] = v
+        #if DEBUG
+        UserDefaults.standard.set(v, forKey: "hadithTiming.\(id)")
+        #endif
+    }
+    func reset() {
+        values = [:]
+        for k in Self.knobs { UserDefaults.standard.removeObject(forKey: "hadithTiming.\(k.id)") }
+    }
+    /// The values as text, to paste back to the team.
+    var summary: String {
+        Self.knobs.map { k in
+            let changed = values[k.id] != nil
+            return String(format: "%@: %.2f s", k.title, value(k.id)) + (changed ? String(format: " (default %.2f)", k.base) : "")
+        }
+        .joined(separator: "\n")
+    }
+
+    var lit: Double { value("lit") }
+    var firstAfter: Double { value("firstAfter") }
+    var lineFade: Double { value("lineFade") }
+    var afterQuestion: Double { value("afterQuestion") }
+    var afterReplied: Double { value("afterReplied") }
+    var arabicWipe: Double { value("arabicWipe") }
+    var afterArabic: Double { value("afterArabic") }
+    var perWord: Double { value("perWord") }
+    var afterEnglish: Double { value("afterEnglish") }
+    var afterSource: Double { value("afterSource") }
+    var inviteFade: Double { value("inviteFade") }
+    var wordsAway: Double { value("wordsAway") }
+    var drain: Double { value("drain") }
+}
+
+#if DEBUG
+/// The hadith page's tuning panel (dev builds): a slider per gap and speed, Replay, Reset and Copy values.
+private struct HadithTimingPanel: View {
+    let replay: () -> Void
+    @State private var timing = HadithTiming.shared
+    @State private var copied = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(HadithTiming.knobs) { k in
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(k.title).font(.subheadline)
+                                Spacer()
+                                Text(String(format: k.step < 0.1 ? "%.2f s" : "%.1f s", timing.value(k.id)))
+                                    .font(.subheadline.monospacedDigit())
+                                    .foregroundStyle(timing.values[k.id] == nil ? Color.secondary : Color.sage)
+                            }
+                            Slider(value: Binding(get: { timing.value(k.id) },
+                                                  set: { timing.set(k.id, ($0 / k.step).rounded() * k.step) }),
+                                   in: k.range)
+                                .tint(Color.sage)
+                        }
+                    }
+                } footer: {
+                    Text("Green = changed from the default. Replay plays the page from the top with these.")
+                }
+                Section {
+                    Button("Copy values") { UIPasteboard.general.string = timing.summary; copied = true }
+                    Button("Reset to defaults", role: .destructive) { timing.reset() }
+                }
+            }
+            .navigationTitle("Hadith page timings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Replay", action: replay) }
+            }
+            .alert("Copied", isPresented: $copied) { Button("OK") {} } message: { Text("Paste them to Sami.") }
+        }
+    }
+}
+#endif
 
 /// The hadith page's background and its easter egg: the opening's gradient over black, and a finger through calm water (owner: "pushing through it like calm water", not "dragging a color
 /// around"): each touch, and every little way along a drag, drops a ripple that spreads out and fades, bending the
@@ -1112,6 +1245,66 @@ private struct HadithSurface: View {
         ripples.removeAll { time - $0.time > Self.life }
         ripples.append(Ripple(point: point, time: time, strength: strength))
         if ripples.count > 16 { ripples.removeFirst(ripples.count - 16) }
+    }
+}
+
+/// The English answer written in one stroke across its two lines (owner: "ease in from first word with ease out on
+/// second word while the inner words all show same pace"): it eases in over the first word, every word after goes at
+/// the same pace (`hadithWordDuration`) straight across the line break, and it eases out over the last. Each line's
+/// soft edge starts at its first letter and ends on its last (WipeIn's ran on past a line and started before the next —
+/// a lag at the break).
+private struct HadithAnswer: View, Animatable {
+    /// 0…1 of the answer's time, run linearly; the easing is done here.
+    var progress: Double
+    var animatableData: Double {
+        get { progress }
+        set { progress = newValue }
+    }
+
+    private static let words = SetupHadithWords.answerLines.map { Double($0.split(separator: " ").count) }
+    private static let total = words.reduce(0, +)
+    /// The soft edge, a word wide: letters appear at its front and are solid a word later. Measured in words (not a share
+    /// of each line), so new letters keep coming straight across the line break while the end of the first line firms.
+    private static let soft: Double = 1
+    /// The front travels the words plus the soft edge, so the last word ends solid.
+    private static let span = total + soft
+    /// One word's share of the time eases in, one eases out.
+    private static let ease = 1 / span
+    /// Long enough that the middle runs at `perWord` seconds a word.
+    static func duration(perWord: Double) -> Double { span * perWord / (1 - 1 / span) }
+
+    /// Where the front is (in words) at a point in its time: speeding up over the first word, steady, slowing over the last.
+    private static func front(at t: Double) -> Double {
+        let a = ease, v = 1 / (1 - a)
+        let x: Double
+        if t <= 0 { x = 0 } else if t >= 1 { x = 1 }
+        else if t < a { x = v * t * t / (2 * a) }
+        else if t < 1 - a { x = v * (a / 2 + t - a) }
+        else { x = 1 - v * (1 - t) * (1 - t) / (2 * a) }
+        return x * span
+    }
+
+    var body: some View {
+        let front = Self.front(at: progress)
+        VStack(spacing: 2) {
+            ForEach(Array(SetupHadithWords.answerLines.enumerated()), id: \.offset) { k, line in
+                let before = Self.words[..<k].reduce(0, +)
+                // Fractions of this line: where letters start to show, and where they're solid.
+                let shows = min(max((front - before) / Self.words[k], 0), 1)
+                let solid = min(max((front - Self.soft - before) / Self.words[k], 0), 1)
+                Text(line)
+                    .font(.system(size: 18, weight: .light, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .mask {
+                        LinearGradient(stops: [.init(color: .black, location: solid),
+                                               .init(color: .clear, location: max(shows, solid + 0.0001))],
+                                       startPoint: .leading, endPoint: .trailing)
+                    }
+                    .opacity(shows > 0 ? 1 : 0)
+            }
+        }
     }
 }
 
@@ -3291,17 +3484,20 @@ extension CircleMotion {
         // The hadith page (slow, owner: "slow the transitions down a bit"): the gradient comes up, then the conversation
         // a line at a time (each beat = the wait after that line: the question, "He ﷺ replied,", the Arabic, the English,
         // the source), then the invitation; the page goes on a tap.
-        static let hadithLit = Animation.easeInOut(duration: 2.2)
+        // The defaults; a DEBUG build can tune each on the page itself (`HadithTiming`, its ⚙).
+        static let hadithLitDuration: Double = 2.2
         static let hadithAfterDuration: Double = 1.8
-        static let hadithLine = Animation.easeInOut(duration: 1.4)
+        static let hadithLineDuration: Double = 1.4
         /// After the question, "He ﷺ replied,", the Arabic, the English (once written), the source (the long one: a
         /// beat between the quote and "shukr helps you to do that" — owner).
         static let hadithLineBeats: [Double] = [2.4, 1.4, 2.2, 1.4, 3.8]
         /// The English answer's pace, the same for each of its lines.
         static let hadithWordDuration: Double = 0.3
-        static let hadithExtra = Animation.easeInOut(duration: 1.6)
-        /// The answer written in (Arabic right to left, then the English).
-        static let hadithWipe = Animation.easeInOut(duration: 1.9)
+        static let hadithExtraDuration: Double = 1.6
+        /// The Arabic written in, right to left.
+        static let hadithWipeDuration: Double = 1.9
+        /// Leaving: the words go, then the background drains (the opening's own).
+        static let hadithWordsAwayDuration: Double = 0.45
         /// The invitation's arrow, nudging forward.
         static let hadithNudge = Animation.easeInOut(duration: 1.1).repeatForever(autoreverses: true)
         // The opening page (the gradient, the glass circle, "welcome to shukr", "tap to continue")
