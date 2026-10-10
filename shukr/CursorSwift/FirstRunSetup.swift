@@ -1320,7 +1320,7 @@ private struct MethodStep: View {
                                 }
                                 Spacer()
                                 Image(systemName: picked ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 22, weight: picked ? .regular : .light))
+                                    .font(.system(size: 20, weight: .light))
                                     .foregroundStyle(picked ? Color.sage : Color.secondary.opacity(0.4))
                             }
                             .padding(.vertical, 10)
@@ -1467,6 +1467,11 @@ private struct MadhabStep: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
+                // The same pick mark as the other choices in setup (Appearance, the method list), so both cards
+                // read as choices (owner).
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(selected ? Color.sage : Color.secondary.opacity(0.4))
             }
             .padding(.vertical, 18)
             .padding(.horizontal, 12)
