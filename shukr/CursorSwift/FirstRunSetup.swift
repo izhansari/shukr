@@ -1185,10 +1185,11 @@ private struct LocationStep: View {
                        "They follow you when you travel.")
                 whyRow("location.north.line", "A qibla you can trust",
                        "True north, from where you stand.")
-                whyRow("mappin.and.ellipse", "Prayers pinned where you prayed",
+                whyRow("mappin.and.ellipse", "Pinned places you prayed",
                        "Even from the widget or your watch.")
-                whyRow("building.columns", "Jumu'ah at the masjid",
-                       "Counted when you pray it there.")
+                // The mosque finder and masjid marking are one point (owner); Jumu'ah is just one prayer it covers.
+                whyRow("building.columns", "Masajid near you",
+                       "Prayers there are marked at the masjid.")
                 whyRow("lock", "It stays on your phone", "No account, nothing sent anywhere.")
             }
             .padding(.horizontal, 32)
@@ -1232,7 +1233,7 @@ private struct LocationStep: View {
             Button("Allow location", role: .cancel) { location.requestLocationPermission() }
             Button("Enter it manually", role: .destructive) { pickingCity = true }
         } message: {
-            Text("Your prayers won’t be pinned where you prayed, Jumu'ah won’t count at the masjid, the qibla will be rougher, and your times won’t follow you when you travel. You can allow location later in Settings.")
+            Text("The places you pray won’t be pinned, masajid won’t be found around you, the qibla will be rougher, and your times won’t follow you when you travel. You can allow location later in Settings.")
         }
         // One iOS prompt here (owner, 2026-10-10: "i dont love two prompts back to back"): While Using, then
         // "Allow “Always”" waits as a button below (the one-time upgrade prompt only when tapped).
@@ -1280,7 +1281,7 @@ private struct LocationStep: View {
                     .padding(.bottom, 4)
                 Text("Location is off")
                     .font(.system(.headline, design: .rounded))
-                Text("No prayer pins, no Jumu'ah at the masjid, a rougher qibla, and times that don’t follow you. Turn it on in Settings any time.")
+                Text("No pinned places or nearby masajid, a rougher qibla, and times that don’t follow you. Turn it on in Settings any time.")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -1291,7 +1292,7 @@ private struct LocationStep: View {
         .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .onTapGesture { SettingsLinks.app() }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Location is off. No prayer pins, no Jumu'ah at the masjid, a rougher qibla, and times that don’t follow you. Turn it on in Settings any time.")
+        .accessibilityLabel("Location is off. No pinned places or nearby masajid, a rougher qibla, and times that don’t follow you. Turn it on in Settings any time.")
         .accessibilityAddTraits(.isButton)
     }
 }
