@@ -1189,7 +1189,7 @@ private struct LocationStep: View {
                        "Even from the widget or your watch.")
                 // The mosque finder and masjid marking are one point (owner); Jumu'ah is just one prayer it covers.
                 whyRow("building.columns", "Find the nearest mosques",
-                       "Prayers you mark there are saved as prayed at that mosque.")
+                       "Marked prayers save to that mosque.")
                 whyRow("lock", "It stays on your phone", "No account, nothing sent anywhere.")
             }
             .padding(.horizontal, 32)
@@ -1217,7 +1217,7 @@ private struct LocationStep: View {
                 } else if status == .notDetermined && location.hasManualLocation {
                     SecondaryButton(title: "I changed my mind. Allow location") { location.requestLocationPermission() }
                 } else if status == .notDetermined {
-                    SecondaryButton(title: "No thanks, I’ll input my location manually") { confirmManual = true }
+                    SecondaryButton(title: "No thanks, I’ll set my location manually") { confirmManual = true }
                 } else if status == .authorizedWhenInUse {
                     SecondaryButton(title: FirstRunSetup.alwaysAsked ? "Turn on “Always” in Settings" : "Allow “Always”") {
                         LocationUpgrade.askForAlways(location)
@@ -1240,7 +1240,7 @@ private struct LocationStep: View {
     }
 
     private var primaryTitle: String {
-        if denied && !location.hasManualLocation { return "I’ll choose a location manually" }
+        if denied && !location.hasManualLocation { return "I’ll set a location manually" }
         if status == .notDetermined && !location.hasManualLocation { return "Allow location" }
         return locationOnly ? "Done" : "Continue"
     }
