@@ -670,6 +670,9 @@ struct CounterWelcome: View {
     @Environment(\.circleTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var done: Set<GestureHint.Kind> = []
+    /// The box last touched: its ghost finger is the moving one (owner: "whichever one was last worked on … should be in
+    /// focus"), else the first one still to do.
+    @State private var focus: GestureHint.Kind?
     /// The rows come in one at a time (owner: "fade in each hstack one by one"): 1 the title, 2 the line, 3 the boxes,
     /// 4 the buttons.
     @State private var shown = 0
@@ -698,11 +701,15 @@ struct CounterWelcome: View {
                     .rowIn(shown >= 2, reduceMotion)
                 // One ghost finger moving at a time — the first box still to do; the others hold their move still, faint
                 // (owner: "they all show up at one time and it's like woah").
-                let next = [GestureHint.Kind.tap, .drag, .stroke].first { !done.contains($0) }
+                let next = focus.flatMap { done.contains($0) ? nil : $0 }
+                    ?? [GestureHint.Kind.tap, .drag, .stroke].first { !done.contains($0) }
                 HStack(alignment: .top, spacing: 10) {
-                    PracticeBox(kind: .tap, caption: C.practiceTap, active: next == .tap) { done.insert(.tap) }
-                    PracticeBox(kind: .drag, caption: C.practiceDrag, active: next == .drag) { done.insert(.drag) }
-                    PracticeBox(kind: .stroke, caption: C.practiceStroke, active: next == .stroke) { done.insert(.stroke) }
+                    PracticeBox(kind: .tap, caption: C.practiceTap, active: next == .tap,
+                                onTouch: { focus = .tap }) { done.insert(.tap) }
+                    PracticeBox(kind: .drag, caption: C.practiceDrag, active: next == .drag,
+                                onTouch: { focus = .drag }) { done.insert(.drag) }
+                    PracticeBox(kind: .stroke, caption: C.practiceStroke, active: next == .stroke,
+                                onTouch: { focus = .stroke }) { done.insert(.stroke) }
                 }
                 .padding(.top, 30)
                 .rowIn(shown >= 3, reduceMotion)
@@ -768,6 +775,8 @@ private struct PracticeBox: View {
     let caption: String
     /// Its ghost finger moves (the box to try now); otherwise it's held still and faint.
     var active = true
+    /// A finger came down on it (it takes the focus).
+    var onTouch: () -> Void = {}
     let onDone: () -> Void
     @State private var count = 0
     @State private var flash: Color?
@@ -822,6 +831,7 @@ private struct PracticeBox: View {
             .allowsHitTesting(!isDone)
             Text(caption)
                 .font(.system(size: 13, weight: .medium, design: .rounded))
+                .lineLimit(2, reservesSpace: true)   // two lines each, so the dots under them line up
                 .strikethrough(isDone, color: Color.sage)
                 .foregroundStyle(isDone ? Color.sage : Color.primary.opacity(0.75))
                 .multilineTextAlignment(.center)
@@ -861,7 +871,7 @@ private struct PracticeBox: View {
     private var practice: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { v in
-                if !pressed { pressed = true; strokes = 0 }
+                if !pressed { pressed = true; strokes = 0; onTouch() }
                 guard kind != .tap else { return }
                 let y = v.translation.height
                 highest = min(highest, y)

@@ -129,6 +129,9 @@ struct ZikrLockCover: View {
     /// After the first pick, the task's parts one at a time (owner: "move up and bring in the other stuff not all at one
     /// time. in an order that makes sense"): 1 the arrow, 2 its title and circle, 3 the line, 4 the prompt.
     @State private var reveal = 0
+    /// The rest of page 3 is in the layout (the choice has made room for it); set a beat after the pick, so the pick
+    /// itself changes nothing while the cards glide (owner: "just make it easy selection … clean").
+    @State private var expanded = false
     /// Page 3's circle opening into the session: everything else on the page fades, the circle stays.
     @State private var launching = false
     /// The practice page (the three ways to count), between page 2 and the first zikr (owner: "make this page come before
@@ -509,7 +512,7 @@ struct ZikrLockCover: View {
             .offset(y: thirdShown >= 1 || reduceMotion ? 0 : 6)
             // Nothing picked: the choice alone, in the middle of the page. The first pick brings the rest into the
             // layout (the choice glides up to make room), then each part comes in on its turn (`reveal`).
-            if choice != nil {
+            if expanded {
                 Spacer(minLength: 12)
                 choiceArrow.opacity(reveal >= 1 && !launching ? 1 : 0)
                 Spacer(minLength: 12)
@@ -532,17 +535,22 @@ struct ZikrLockCover: View {
     /// A card picked: the first time, the choice glides up and the task comes in a part at a time; after that, a switch.
     private func pick(_ i: Int) {
         triggerSomeVibration(type: .light)
-        guard choice == nil else {
-            withAnimation(.easeInOut(duration: 0.25)) { choice = i }
-            return
-        }
-        withAnimation(.easeInOut(duration: 0.8)) { choice = i }
+        // The pick shows at once, unanimated; later picks just switch.
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        let first = choice == nil
+        withTransaction(quiet) { choice = i }
+        guard first else { return }
         if reduceMotion {
+            expanded = true
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) { reveal = 4 }
             return
         }
         run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(650))
+            // Then the choice glides up to make room, and the task comes in a part at a time.
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.easeInOut(duration: 0.8)) { expanded = true }
+            try? await Task.sleep(for: .milliseconds(800))
             for step in 1...4 {
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeInOut(duration: 0.7)) { reveal = step }
@@ -615,7 +623,7 @@ struct ZikrLockCover: View {
             Spacer(minLength: 0)
             sectionLabel("Choose your first zikr")
                 .opacity(thirdShown >= 1 && !launching ? 1 : 0)
-            TabView(selection: Binding(get: { picked }, set: { choice = $0; reveal = 4 })) {
+            TabView(selection: Binding(get: { picked }, set: { choice = $0; reveal = 4; expanded = true })) {
                 ForEach(FirstZikr.options.indices, id: \.self) { i in
                     optionWell(FirstZikr.options[i])
                         .padding(.horizontal, 2)
@@ -809,6 +817,7 @@ struct ZikrLockCover: View {
                 practicing = false
                 choice = nil
                 reveal = 0
+                expanded = false
                 launchOffset = .zero
                 launchScale = 1
                 unlockStage = 0
