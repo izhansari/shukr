@@ -1259,6 +1259,8 @@ extension FirstZikr {
 /// A line written in from left to right: a soft edge sweeps across it as `progress` goes 0 → 1.
 struct WipeIn: ViewModifier, Animatable {
     var progress: CGFloat
+    /// Written from the trailing edge (Arabic, right to left).
+    var fromTrailing = false
     var animatableData: CGFloat {
         get { progress }
         set { progress = newValue }
@@ -1270,7 +1272,7 @@ struct WipeIn: ViewModifier, Animatable {
         content.mask {
             LinearGradient(stops: [.init(color: .black, location: min(max(edge, 0), 1)),
                                    .init(color: .clear, location: min(max(edge + soft, 0), 1))],
-                           startPoint: .leading, endPoint: .trailing)
+                           startPoint: fromTrailing ? .trailing : .leading, endPoint: fromTrailing ? .leading : .trailing)
         }
     }
 }

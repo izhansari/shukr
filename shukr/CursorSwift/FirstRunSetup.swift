@@ -852,141 +852,174 @@ enum SetupHadithWords {
     static let lineCount = 5
 }
 
-/// The first thing setup shows (owner: "i want that hadith to be on its own at first. then say 'shukr helps you to do
-/// that' as secondary text spaced a bit further down closer to a button that fades in saying 'Set up shukr'"), built
-/// like the zikr lock's page (owner: "gotta be centered first. Then move it up … like a conversation with one after the
-/// other"): the hadith comes in a line at a time in the middle of the screen — the question, "He ﷺ replied,", the
-/// answer in Arabic and English, the source — holds, then drifts up to its place; then the line near the bottom, then
-/// the button. A tap mid-way brings the rest in at once. Its button: the page fades and the opening plays. No Skip;
-/// nothing comes back here. Reduce Motion: all at once.
+/// The first thing setup shows (owner: "i want that hadith to be on its own at first … shukr helps you to do that"),
+/// a better version of the zikr lock's page (owner: "more beautiful than the zikr lock. but similar"): the hadith comes
+/// in as a conversation in the middle of the screen — the question and "He ﷺ replied," surfacing out of a blur, the
+/// answer written in (the Arabic right to left, in sage with a soft glow; the English left to right), then the source —
+/// while a faint sage ring draws itself round it like a prayer's time filling. Then it rises and "shukr helps you to do
+/// that" comes in with an arrow that nudges forward (no button — owner); a tap there plays the opening. No hurry tap, no
+/// Skip, nothing comes back here. Reduce Motion: all at once.
 private struct SetupHadith: View {
     let onDone: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// How many of the conversation's lines are in (0…`SetupHadithWords.lineCount`).
     @State private var lines = 0
+    /// The ring round it, drawn as the conversation plays (0…1).
+    @State private var ring: CGFloat = 0
     /// The hadith has risen from the middle to its place.
     @State private var up = false
-    /// 1 "shukr helps you to do that" · 2 the button.
-    @State private var extras = 0
+    /// "shukr helps you to do that" and its arrow are in.
+    @State private var invite = false
+    /// The arrow's nudge.
+    @State private var nudge = false
     @State private var leaving = false
-    /// The line and the button's height: the room the hadith rises out of.
-    @State private var bottomHeight: CGFloat = 140
+    /// The line and its arrow's height: the room the hadith rises out of.
+    @State private var bottomHeight: CGFloat = 120
     @State private var run: Task<Void, Never>?
 
-    /// Beyond the line and the button, how much more room it leaves under the hadith once up (it sits high, as the
-    /// zikr lock's verse does).
-    private static let liftExtra: CGFloat = 120
+    /// Beyond the invitation, how much more room it leaves under the hadith once up.
+    private static let liftExtra: CGFloat = 110
 
     var body: some View {
-        // The hadith is centred in the page, with a room under it that opens as it rises (0 → the line and the button's
-        // height + `liftExtra`), so it glides up by layout. Nothing measures the hadith: measured into its own layout
-        // (with ViewThatFits) it looped and hung the page.
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                Spacer(minLength: 24)
-                hadith
-                Spacer(minLength: 24)
-                Color.clear.frame(height: up ? bottomHeight + Self.liftExtra : 0)
+        GeometryReader { geo in
+            let ringSize = min(geo.size.width - 20, 380)
+            // The hadith is centred in the page with a room under it that opens as it rises (layout only: measured into
+            // its own layout through ViewThatFits, the hadith looped and hung the page blank).
+            ZStack(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 24)
+                    hadith
+                        .background { stage(size: ringSize) }
+                    Spacer(minLength: 24)
+                    Color.clear.frame(height: up ? bottomHeight + Self.liftExtra : 0)
+                }
+                invitation
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomHeight = $0 }
             }
-            bottom
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomHeight = $0 }
         }
-        .contentShape(Rectangle())
-        .onTapGesture { hurry() }
         .opacity(leaving ? 0 : 1)
         .task { start() }
         .onDisappear { run?.cancel() }
     }
 
-    /// "shukr helps you to do that", then the button.
-    private var bottom: some View {
-        VStack(spacing: 0) {
-            Text(SetupHadithWords.help)
-                .font(.system(.callout, design: .rounded, weight: .light))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 20)
-                .opacity(extras >= 1 ? 1 : 0)
-            PrimaryButton(title: SetupHadithWords.button, action: advance)
-                .padding(.bottom, 8)
-                .opacity(extras >= 2 ? 1 : 0)
-                .allowsHitTesting(extras >= 2)
-                .accessibilityHidden(extras < 2)
+    /// Behind the hadith: a soft sage light and the ring drawing itself round it.
+    private func stage(size: CGFloat) -> some View {
+        ZStack {
+            RadialGradient(colors: [Color.sage.opacity(0.13), Color.sage.opacity(0)], center: .center,
+                           startRadius: 0, endRadius: size * 0.62)
+                .frame(width: size * 1.4, height: size * 1.4)
+                .opacity(lines > 0 ? 1 : 0)
+            Circle()
+                .stroke(Color.sage.opacity(0.08), lineWidth: 1)
+                .frame(width: size, height: size)
+                .opacity(lines > 0 ? 1 : 0)
+            Circle()
+                .trim(from: 0, to: ring)
+                .stroke(Color.sage.opacity(0.45), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: size, height: size)
+                .shadow(color: Color.sage.opacity(0.35), radius: 4)
         }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     /// The conversation, a line at a time.
     private var hadith: some View {
         VStack(spacing: 0) {
-            line(0) {
+            surfacing(0) {
                 Text(SetupHadithWords.question)
-                    .font(.system(size: 19, weight: .light, design: .rounded))
+                    .font(.system(size: 18, weight: .light, design: .rounded))
                     .foregroundStyle(Color.primary.opacity(0.82))
             }
-            line(1) {
+            surfacing(1) {
                 Text(SetupHadithWords.replied)
                     .font(.system(size: 15, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
             }
             .padding(.top, 22)
-            line(2) {
-                Text(SetupHadithWords.arabic)
-                    .font(.custom("KFGQPCUthmanTahaNaskh", size: 44))
-                    .foregroundStyle(Color.sage)
-            }
-            .padding(.top, 6)
-            line(3) {
-                Text(SetupHadithWords.answer)
-                    .font(.system(size: 19, weight: .light, design: .rounded))
-                    .foregroundStyle(Color.primary.opacity(0.82))
-            }
-            .padding(.top, 4)
-            line(4) {
+            Text(SetupHadithWords.arabic)
+                .font(.custom("KFGQPCUthmanTahaNaskh", size: 50))
+                .foregroundStyle(Color.sage)
+                .shadow(color: Color.sage.opacity(0.35), radius: 14)
+                .fixedSize(horizontal: false, vertical: true)
+                .modifier(WipeIn(progress: lines > 2 ? 1 : 0, fromTrailing: true))
+                .padding(.top, 4)
+            Text(SetupHadithWords.answer)
+                .font(.system(size: 18, weight: .light, design: .rounded))
+                .foregroundStyle(Color.primary.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+                .modifier(WipeIn(progress: lines > 3 ? 1 : 0))
+                .padding(.top, 2)
+            surfacing(4) {
                 Text(SetupHadithWords.source.uppercased())
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .tracking(1.2)
-                    .foregroundStyle(Color.primary.opacity(0.4))
+                    .tracking(1.6)
+                    .foregroundStyle(Color.sage.opacity(0.7))
             }
-            .padding(.top, 14)
+            .padding(.top, 16)
         }
         .multilineTextAlignment(.center)
-        .padding(.horizontal, 36)
+        // Kept well inside the ring (at 40 the question met it).
+        .padding(.horizontal, 54)
         .accessibilityElement(children: .combine)
     }
 
-    /// One line of the conversation: in once it's its turn, rising a touch as it fades in.
-    private func line<V: View>(_ index: Int, @ViewBuilder _ content: () -> V) -> some View {
-        content()
+    /// A line surfacing out of a blur as it fades in, rising a touch.
+    private func surfacing<V: View>(_ index: Int, @ViewBuilder _ content: () -> V) -> some View {
+        let shown = lines > index
+        return content()
             .fixedSize(horizontal: false, vertical: true)
-            .opacity(lines > index ? 1 : 0)
-            .offset(y: lines > index || reduceMotion ? 0 : 6)
+            .opacity(shown ? 1 : 0)
+            .blur(radius: shown || reduceMotion ? 0 : 6)
+            .offset(y: shown || reduceMotion ? 0 : 6)
+    }
+
+    /// "shukr helps you to do that" and an arrow nudging forward: the way on (no button — owner).
+    private var invitation: some View {
+        Button(action: advance) {
+            VStack(spacing: 14) {
+                Text(SetupHadithWords.help)
+                    .font(.system(.title3, design: .rounded, weight: .light))
+                    .foregroundStyle(Color.primary.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Color.sage)
+                    .offset(x: nudge ? 4 : -2)
+                    .frame(width: 46, height: 46)
+                    .background(Circle().stroke(Color.sage.opacity(0.5), lineWidth: 1))
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 18)
+        .opacity(invite ? 1 : 0)
+        .blur(radius: invite || reduceMotion ? 0 : 6)
+        .allowsHitTesting(invite)
+        .accessibilityLabel(SetupHadithWords.button)
+        .accessibilityHint(SetupHadithWords.help)
+        .accessibilityHidden(!invite)
     }
 
     private func start() {
-        if reduceMotion { lines = SetupHadithWords.lineCount; up = true; extras = 2; return }
         typealias T = CircleMotion.Setup
+        if reduceMotion { lines = SetupHadithWords.lineCount; ring = 1; up = true; invite = true; return }
         run = Task { @MainActor in
             guard await CircleGate.pause(T.hadithAfterDuration) else { return }
+            // The ring draws round it for the whole conversation, full as the source comes in.
+            withAnimation(T.hadithRing) { ring = 1 }
             for (i, beat) in T.hadithLineBeats.enumerated() {
-                withAnimation(T.hadithLine) { lines = i + 1 }
+                withAnimation(i == 2 || i == 3 ? T.hadithWipe : T.hadithLine) { lines = i + 1 }
                 guard await CircleGate.pause(beat) else { return }
             }
             withAnimation(T.hadithUp) { up = true }
             guard await CircleGate.pause(T.hadithUpDuration) else { return }
-            withAnimation(T.hadithExtra) { extras = 1 }
-            guard await CircleGate.pause(T.hadithButtonAfterDuration) else { return }
-            withAnimation(T.hadithExtra) { extras = 2 }
+            withAnimation(T.hadithExtra) { invite = true }
+            withAnimation(T.hadithNudge) { nudge = true }
         }
-    }
-
-    /// A tap before the button: the rest at once.
-    private func hurry() {
-        guard extras < 2, !leaving else { return }
-        run?.cancel()
-        withAnimation(.easeOut(duration: 0.35)) { lines = SetupHadithWords.lineCount }
-        withAnimation(.easeInOut(duration: 0.55)) { up = true }
-        withAnimation(.easeOut(duration: 0.35).delay(0.35)) { extras = 2 }
     }
 
     private func advance() {
@@ -3162,7 +3195,12 @@ extension CircleMotion {
         static let hadithUp = Animation.easeInOut(duration: 1.6)
         static let hadithUpDuration: Double = 1.4
         static let hadithExtra = Animation.easeInOut(duration: 1.0)
-        static let hadithButtonAfterDuration: Double = 0.9
+        /// The answer written in (Arabic right to left, then the English).
+        static let hadithWipe = Animation.easeInOut(duration: 1.3)
+        /// The ring round it: drawn over the conversation, full as the source comes in.
+        static let hadithRing = Animation.easeInOut(duration: hadithLineBeats.dropLast().reduce(0, +) + 0.9)
+        /// The invitation's arrow, nudging forward.
+        static let hadithNudge = Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true)
         static let hadithAway = Animation.easeOut(duration: 0.45)
         static let hadithAwayDuration: Double = 0.5
         // The opening page (the gradient, the glass circle, "welcome to shukr", "tap to continue")
