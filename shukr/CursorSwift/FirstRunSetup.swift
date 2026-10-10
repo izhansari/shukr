@@ -1693,7 +1693,7 @@ private struct RemindersStep: View {
                     // Refused: the preview says it, frosted over (owner); the way on is outlined, not the filled
                     // Continue; Settings is the quiet way back.
                     PrimaryButton(title: "Continue without reminders", outlined: true, action: next)
-                    SecondaryButton(title: "Changed my mind? Open Settings", action: SettingsLinks.notifications)
+                    SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.notifications)
                 } else {
                     PrimaryButton(title: "Continue", action: next)
                 }
@@ -1970,7 +1970,7 @@ private struct NotificationDemo: View {
                                 .padding(.bottom, 4)
                             Text("Notifications are off")
                                 .font(.system(.headline, design: .rounded))
-                            Text("You won’t get any of these, so a prayer can slip by unnoticed. Turn them on in Settings any time.")
+                            Text("A prayer can slip by unnoticed. Turn them on in Settings any time.")
                                 .font(.system(.subheadline, design: .rounded))
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -1978,11 +1978,14 @@ private struct NotificationDemo: View {
                         }
                         .padding(.horizontal, 20)
                     }
+                    // A tap goes where the words say: iOS's Settings → shukr → Notifications (owner).
+                    .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous).inset(by: -8))
+                    .onTapGesture { SettingsLinks.notifications() }
                     .transition(.opacity)
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(refused ? "Notifications are off. You won’t get any of these. Turn them on in Settings any time."
+            .accessibilityLabel(refused ? "Notifications are off. A prayer can slip by unnoticed. Turn them on in Settings any time."
                                 : state == 0 ? "\(prayer): no notifications."
                                 : state == 1 ? "\(prayer): one notification as it starts."
                                 : "\(prayer): as it starts, then nudges until you mark it.")
