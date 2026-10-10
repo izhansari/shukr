@@ -162,6 +162,17 @@ enum FajrAlarms {
                 have.insert(key)
             }
         }
+        // Alarms that went off since the last plan: gone from AlarmKit without our cancelling them (rang and ended).
+        let known = Set(group?.stringArray(forKey: "fajrAlarmLog.known") ?? [])
+        let nowIDs = Set(existing.map(\.id.uuidString))
+        let gone = known.subtracting(nowIDs)
+        if !gone.isEmpty {
+            let when = (group?.dictionary(forKey: "fajrAlarmLog.dates") as? [String: Double]) ?? [:]
+            for id in gone {
+                let at = when[id].map { FajrAlarmLog.day(Date(timeIntervalSince1970: $0)) } ?? "unknown time"
+                FajrAlarmLog.add("went off: \(id.prefix(4)) set for \(at) (no longer in AlarmKit; a Stop / I'm up would be logged above)")
+            }
+        }
         var added = 0
         var last: Date? = existing.compactMap { a -> Date? in
             if case .fixed(let d)? = a.schedule, have.contains(Int(d.timeIntervalSince1970 / 60)) { return d }
@@ -185,6 +196,12 @@ enum FajrAlarms {
             }
         }
         if let last { group?.set(last.timeIntervalSince1970, forKey: throughKey) }
+        // What's held now, for the next plan's "went off" lines.
+        let held = (try? AlarmManager.shared.alarms) ?? []
+        group?.set(held.map(\.id.uuidString), forKey: "fajrAlarmLog.known")
+        var dates: [String: Double] = [:]
+        for a in held { if case .fixed(let d)? = a.schedule { dates[a.id.uuidString] = d.timeIntervalSince1970 } }
+        group?.set(dates, forKey: "fajrAlarmLog.dates")
         let next = wanted.first.map { " · next \(FajrAlarmLog.day($0.alarm))" } ?? ""
         FajrAlarmLog.add("plan (\(reason)): \(have.count) set, +\(added) −\(cancelled), through \(last.map { FajrAlarmLog.day($0) } ?? "—")\(next)")
         // The next one, for Settings' row and the widget-free summary.

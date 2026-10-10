@@ -1296,7 +1296,9 @@ enum FajrAlarmLog {
     static func add(_ line: String) {
         let text = "\(stamp.string(from: Date()))  \(line)\n"
         print("⏰ \(line)")
-        queue.async {
+        // Written before returning: the alarm's Stop runs shukr for a moment in the background, and a write left for later
+        // was lost when iOS suspended it straight after (his first morning had no Stop line at all).
+        queue.sync {
             guard let url else { return }
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             if let handle = try? FileHandle(forWritingTo: url) {
