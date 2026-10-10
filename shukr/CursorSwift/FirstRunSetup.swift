@@ -247,9 +247,13 @@ struct FirstRunSetupView: View {
     /// edited and then it's straight back to the review (owner, 2026-09-29: "we shouldn't have to go
     /// through the whole flow again"). The ring stays full meanwhile, so nothing reads as going on.
     @State private var editing: SetupStep?
-    /// The opening page (a new install / Run setup again): the original welcome's moving gradient and
-    /// glass circle, before any step. The steps aren't there at all until it has drained away.
+    /// The opening page (the original welcome's moving gradient and glass circle, "welcome to shukr"): at the END of
+    /// setup now (owner: "move the welcome to shukr page to the end of the onboarding"), after Bismillah — the steps fade,
+    /// it plays, and once it has drained the app's welcome plays as on a launch. DEBUG `-setupStep opening` still shows it
+    /// first, to look at.
     @State private var opening: Bool
+    /// Bismillah was tapped and the steps have faded: the opening is playing as the end.
+    @State private var ending = false
     /// The hadith page, before the opening (owner: "i want that hadith to be on its own at first"); wherever setup
     /// starts with the opening: a new install, `-setupForce`, Run setup again.
     @State private var hadith: Bool
@@ -264,17 +268,22 @@ struct FirstRunSetupView: View {
         var withOpening = mode == .full
         var withHadith = withOpening
         #if DEBUG
-        // `-setupStep hadith` = the hadith page, then the opening (a fresh start); `-setupStep opening` = the opening
-        // alone; any other step skips both.
+        // `-setupStep hadith` = the hadith page, then the first step (a fresh start); `-setupStep opening` = the opening
+        // page first, to look at; any other step skips both.
+        var showOpening = false
         if mode == .full, let raw = UserDefaults.standard.string(forKey: "setupStep") {
             if let s = SetupStep(rawValue: raw) { start = s }
             withOpening = raw == "opening" || raw == "hadith"
             withHadith = raw == "hadith"
+            showOpening = raw == "opening"
         }
+        _opening = State(initialValue: showOpening)
+        #else
+        _opening = State(initialValue: false)
         #endif
         _step = State(initialValue: start)
-        _opening = State(initialValue: withOpening)
         _hadith = State(initialValue: withHadith)
+        // A fresh start: the first step comes in piece by piece after the hadith page.
         _reveal = State(initialValue: withOpening ? 0 : 4)
     }
 
@@ -284,20 +293,23 @@ struct FirstRunSetupView: View {
             Color(.systemBackground).ignoresSafeArea()
                 .opacity(welcome ? 0 : 1)
             if hadith {
-                // Its words go, then the opening plays from its blank page as before.
-                SetupHadith(onDone: { hadith = false })
+                // Its words go and it drains; then the first step comes in, piece by piece.
+                SetupHadith(onDone: { hadith = false; finishOpening() })
+            } else if ending {
+                // The end: "welcome to shukr", then the app's welcome.
+                SetupOpening(onDone: { welcome = true })
             } else if opening {
                 SetupOpening(onDone: finishOpening)
             } else {
                 VStack(spacing: 0) {
                     topBar
                         .opacity(leaving || reveal < 1 ? 0 : 1)
-                    SetupRing(progress: editing == nil ? step.progress : 1, symbol: step.symbol, handoff: leaving)
+                    SetupRing(progress: editing == nil ? step.progress : 1, symbol: step.symbol, handoff: false)
                         .onGeometryChange(for: CGPoint.self) { geo in
                             let f = geo.frame(in: .global); return CGPoint(x: f.midX, y: f.midY)
                         } action: { if !leaving { ringCentre = $0 } }
-                        .offset(leaving ? handoffShift : .zero)
                         .padding(.top, 4)
+                        .opacity(leaving ? 0 : 1)
                         .opacity(reveal >= 1 ? 1 : 0)
                         .zIndex(1)
                     Group {
@@ -331,7 +343,8 @@ struct FirstRunSetupView: View {
                 .opacity(welcome ? 0 : 1)
             }
             if welcome {
-                WelcomeOverlay(startDrawn: true, onFinish: { WelcomeTarget.playing = false; onFinish() })
+                // After the opening at the end the ring draws itself (the setup's own ring is long gone).
+                WelcomeOverlay(startDrawn: !ending, onFinish: { WelcomeTarget.playing = false; onFinish() })
                     .transition(.identity)
                     .onAppear { WelcomeTarget.playing = true }
             }
@@ -432,17 +445,11 @@ struct FirstRunSetupView: View {
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.8)
         typealias T = CircleMotion.Setup
         Task { @MainActor in
-            if reduceMotion {
-                await CircleMotion.animate(T.leavingReduced) { leaving = true }
-                welcome = true
-                return
-            }
-            // The page lets go; the ring glides onto the circle and thins into the welcome's hairline (SetupRing's own
-            // spring, `T.ringGlide`), and the welcome takes over once it's there.
-            withAnimation(T.leaving) { leaving = true }
-            guard await CircleGate.pause(T.ringGlideDuration) else { return }
+            // The steps fade (the ring with them — no glide now), then "welcome to shukr" plays as the end; its tap
+            // drains it and the app's welcome follows (`SetupOpening(onDone:)` above).
+            await CircleMotion.animate(reduceMotion ? T.leavingReduced : T.endingFade) { leaving = true }
             var t = Transaction(); t.disablesAnimations = true
-            withTransaction(t) { welcome = true }   // same ring, same place: only the letters appear
+            withTransaction(t) { ending = true }
         }
     }
 }
@@ -3569,6 +3576,8 @@ extension CircleMotion {
         static let revealBeatReducedDuration: Double = 0.15
         // Bismillah
         static let leaving = Animation.easeOut(duration: 0.35)
+        /// Bismillah: the steps fade before "welcome to shukr" plays as the end.
+        static let endingFade = Animation.easeInOut(duration: 0.6)
         static let leavingReduced = Animation.easeInOut(duration: 0.35)
         /// SetupRing gliding onto the circle and growing round the word; it has arrived by `ringGlideDuration`.
         static let ringGlide = Animation.spring(response: 0.8, dampingFraction: 0.9)
