@@ -1611,6 +1611,15 @@ private struct RemindersStep: View {
     @AppStorage("asrNudges") private var asrNudges = NotificationDefaults.nudges("Asr")
     @AppStorage("maghribNudges") private var maghribNudges = NotificationDefaults.nudges("Maghrib")
     @AppStorage("ishaNudges") private var ishaNudges = NotificationDefaults.nudges("Isha")
+    /// The prayer the preview shows: the last tile tapped (Asr to begin).
+    @State private var focus = "Asr"
+
+    private func state(_ prayer: String) -> Int {
+        let pairs: [String: (Bool, Bool)] = ["Fajr": (fajrNotif, fajrNudges), "Dhuhr": (dhuhrNotif, dhuhrNudges), "Asr": (asrNotif, asrNudges),
+                                             "Maghrib": (maghribNotif, maghribNudges), "Isha": (ishaNotif, ishaNudges)]
+        guard let (notif, nudge) = pairs[prayer] else { return 0 }
+        return notif ? (nudge ? 2 : 1) : 0
+    }
 
     var body: some View {
         StepScaffold(title: "Prayer notifications",
@@ -1618,7 +1627,7 @@ private struct RemindersStep: View {
             VStack(spacing: 14) {
                 // The real thing, live (owner: "a nicer graphic of our actual notification on the page to show a live
                 // demo so they get the point better").
-                NotificationDemo()
+                NotificationDemo(prayer: focus, state: state(focus))
                     .padding(.horizontal, 24)
                     .padding(.top, -6)
                 if notifications.isOn == false {
@@ -1629,26 +1638,20 @@ private struct RemindersStep: View {
                 // The choice, set apart from the preview (owner: "no real separation … not clear to user that its
                 // adjustable"): a label, then one tile per prayer that looks like a button — its state in its fill
                 // (off grey, start outlined, nudge solid sage) — cycling off → start → nudge like Settings' bells.
-                VStack(alignment: .leading, spacing: 10) {
+                // Each tile drives the preview above: a tap cycles that prayer and shows what it will now send.
+                VStack(spacing: 12) {
                     Text("For each prayer")
                         .font(.system(.caption, design: .rounded, weight: .semibold))
                         .tracking(1)
                         .textCase(.uppercase)
                         .foregroundStyle(.secondary)
-                        .padding(.leading, 4)
                     HStack(spacing: 8) {
-                        NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
-                        NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
-                        NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
-                        NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
-                        NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
+                        NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, focused: focus == "Fajr") { focus = "Fajr" }
+                        NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, focused: focus == "Dhuhr") { focus = "Dhuhr" }
+                        NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, focused: focus == "Asr") { focus = "Asr" }
+                        NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, focused: focus == "Maghrib") { focus = "Maghrib" }
+                        NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, focused: focus == "Isha") { focus = "Isha" }
                     }
-                    // What the states send, tied to the preview above.
-                    (Text("Start").fontWeight(.semibold) + Text(" sends the first one. ")
-                     + Text("Nudge").fontWeight(.semibold) + Text(" sends all three."))
-                        .font(.system(.footnote, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 4)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 6)
@@ -1670,11 +1673,14 @@ private extension String {
 }
 
 /// One prayer's notifications as a tile you can see is a button: off (grey, bell slashed), start (sage outline, bell),
-/// nudge (solid sage, bell with a badge). A tap cycles off → start → nudge → off, as Settings' bells do.
+/// nudge (solid sage, bell with a badge). A tap cycles off → start → nudge → off, as Settings' bells do, and puts that
+/// prayer in the preview above (`focused` gets a ring).
 private struct NotificationTile: View {
     let prayer: String
     @Binding var notifIsOn: Bool
     @Binding var nudgeIsOn: Bool
+    let focused: Bool
+    let onTap: () -> Void
     @EnvironmentObject private var viewModel: PrayerViewModel
 
     private var state: Int { notifIsOn ? (nudgeIsOn ? 2 : 1) : 0 }
@@ -1686,6 +1692,7 @@ private struct NotificationTile: View {
             case 1: nudgeIsOn = true
             default: notifIsOn = false; nudgeIsOn = false
             }
+            onTap()
             triggerSomeVibration(type: .light)
         } label: {
             VStack(spacing: 6) {
@@ -1710,10 +1717,17 @@ private struct NotificationTile: View {
                                       lineWidth: state == 1 ? 1.5 : 1))
                     .shadow(color: .black.opacity(0.06), radius: 3, y: 2)
             }
+            // The prayer the preview is showing: a ring round its tile.
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Color.sage.opacity(focused ? 0.9 : 0), lineWidth: 2)
+                    .padding(-4)
+            }
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(TilePressStyle())
         .animation(.snappy(duration: 0.2), value: state)
+        .animation(.snappy(duration: 0.2), value: focused)
         .accessibilityLabel("\(prayer) notifications")
         .accessibilityValue(["off", "at the start", "with nudges"][state])
         .onChange(of: notifIsOn) { _, _ in viewModel.fetchPrayerTimes(cameFrom: "setup notification tile") }
@@ -1730,10 +1744,14 @@ private struct TilePressStyle: ButtonStyle {
     }
 }
 
-/// A live preview of one prayer's notifications, in the words and at the times shukr really sends them
-/// (NotificationScheduler): 🟢 as it starts, 🟡 halfway through, 🔴 with 30 minutes left, each arriving on top of the
-/// last like iOS stacks them. Today's Asr, from the method and school just picked.
+/// A live preview of one prayer's notifications as its tile below is set (owner: "no flow from graphic to the setting
+/// selector"), in the words and at the times shukr really sends them (NotificationScheduler): 🟢 as it starts, 🟡 halfway
+/// through (only for a window of 90 min+), 🔴 with 30 minutes left — each arriving on top of the last like iOS stacks
+/// them. Off shows nothing coming; Start only the 🟢; Nudge all of them. Today's times, from the method and school picked.
 private struct NotificationDemo: View {
+    let prayer: String
+    /// 0 off · 1 start · 2 nudge.
+    let state: Int
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1745,69 +1763,126 @@ private struct NotificationDemo: View {
         let line: String
         let at: Date
         let step: String
+        let sent: Bool
+    }
+
+    /// The prayer's window today: Fajr to sunrise, Isha to 11:59 PM.
+    private var window: (start: Date, end: Date)? {
+        guard let t = todaysTimes(method: method, school: school) else { return nil }
+        switch prayer {
+        case "Fajr": return (t.fajr, t.sunrise)
+        case "Dhuhr": return (t.dhuhr, t.asr)
+        case "Asr": return (t.asr, t.maghrib)
+        case "Maghrib": return (t.maghrib, t.isha)
+        default:
+            let end = Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: t.isha) ?? t.isha
+            return (t.isha, end)
+        }
     }
 
     private var banners: [Banner] {
-        guard let t = todaysTimes(method: method, school: school) else { return [] }
-        let start = t.asr, end = t.maghrib
-        return [
-            Banner(id: 0, title: "Asr 🟢", line: "Asr has started", at: start, step: "Starts"),
-            Banner(id: 1, title: "Asr 🟡", line: "Halfway through Asr", at: start.addingTimeInterval(end.timeIntervalSince(start) / 2),
-                   step: "Halfway"),
-            Banner(id: 2, title: "Asr 🔴", line: "Only 30 minutes left", at: end.addingTimeInterval(-30 * 60), step: "30 min left"),
-        ]
+        guard let w = window else { return [] }
+        let length = w.end.timeIntervalSince(w.start)
+        var list = [Banner(id: 0, title: "\(prayer) 🟢", line: "\(prayer) has started", at: w.start, step: "Starts", sent: state >= 1)]
+        if length >= NotificationScheduler.halfwayMinimumWindow {
+            list.append(Banner(id: 1, title: "\(prayer) 🟡", line: "Halfway through \(prayer)",
+                               at: w.start.addingTimeInterval(length / 2), step: "Halfway", sent: state == 2))
+        }
+        list.append(Banner(id: 2, title: "\(prayer) 🔴", line: "Only 30 minutes left",
+                           at: w.end.addingTimeInterval(-30 * 60), step: "30 min left", sent: state == 2))
+        return list
     }
 
     var body: some View {
         let all = banners
-        if let end = todaysTimes(method: method, school: school)?.maghrib, !all.isEmpty {
+        let sent = all.filter(\.sent)
+        if let w = window, !all.isEmpty {
             VStack(spacing: 12) {
-                ZStack(alignment: .top) {
-                    // The one before peeks out under the newest, as on the Lock Screen.
-                    ForEach(all.filter { $0.id <= shown }.suffix(2)) { b in
-                        let behind = b.id < shown
-                        banner(b, end: end)
-                            .scaleEffect(behind ? 0.93 : 1, anchor: .top)
-                            .offset(y: behind ? 12 : 0)
-                            .opacity(behind ? 0.55 : 1)
-                            .zIndex(Double(b.id))
-                            .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
+                VStack(alignment: .leading, spacing: 10) {
+                    // Which prayer this is, and how it's set — the same words as its tile.
+                    HStack(spacing: 6) {
+                        Text(prayer).fontWeight(.semibold)
+                        Text("·")
+                        Text(["Off", "Start", "Nudge"][state])
                     }
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.7))
+                    .padding(.leading, 4)
+                    .contentTransition(.opacity)
+                    ZStack(alignment: .top) {
+                        if sent.isEmpty {
+                            quiet
+                                .transition(.opacity)
+                        } else {
+                            // The one before peeks out under the newest, as on the Lock Screen.
+                            let upTo = min(shown, sent.count - 1)
+                            ForEach(Array(sent.enumerated()).filter { $0.offset <= upTo }.suffix(2), id: \.element.id) { i, b in
+                                let behind = i < upTo
+                                banner(b, end: w.end)
+                                    .scaleEffect(behind ? 0.93 : 1, anchor: .top)
+                                    .offset(y: behind ? 12 : 0)
+                                    .opacity(behind ? 0.55 : 1)
+                                    .zIndex(Double(i))
+                                    .transition(.asymmetric(insertion: .move(edge: .top).combined(with: .opacity), removal: .opacity))
+                            }
+                        }
+                    }
+                    // One height whatever it shows, so the tiles below never move.
+                    .frame(height: 84, alignment: .top)
+                    .padding(.bottom, 10)
                 }
-                .padding(.bottom, 12)
                 .padding(14)
                 .frame(maxWidth: .infinity)
                 .background {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
+                        .fill(LinearGradient(colors: [Color.sage.opacity(state == 0 ? 0.3 : 0.55), Color.sage.opacity(0.18)],
                                              startPoint: .topLeading, endPoint: .bottomTrailing))
                 }
-                // When each one comes: the step on now in sage.
+                // When each one comes: the one on now in sage, the ones this setting doesn't send faint.
                 HStack(spacing: 0) {
                     ForEach(all) { b in
+                        let on = b.sent && sent.firstIndex(where: { $0.id == b.id }) == min(shown, max(sent.count - 1, 0))
                         VStack(spacing: 2) {
                             Text(b.step)
-                                .font(.system(.caption, design: .rounded, weight: b.id == shown ? .semibold : .regular))
+                                .font(.system(.caption, design: .rounded, weight: on ? .semibold : .regular))
                             Text(clockTime(b.at))
                                 .font(.system(.caption2, design: .rounded))
                                 .monospacedDigit()
                         }
-                        .foregroundStyle(b.id == shown ? Color.sage : .secondary)
+                        .foregroundStyle(on ? Color.sage : .secondary)
+                        .opacity(b.sent ? 1 : 0.35)
                         .frame(maxWidth: .infinity)
                     }
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Example: Asr has started, then halfway through Asr, then only 30 minutes left, until you mark it.")
-            .task {
-                guard !reduceMotion else { shown = 2; return }
+            .accessibilityLabel(state == 0 ? "\(prayer): no notifications."
+                                : state == 1 ? "\(prayer): one notification as it starts."
+                                : "\(prayer): as it starts, then nudges until you mark it.")
+            .task(id: "\(prayer)-\(state)") {
+                shown = 0
+                guard !reduceMotion, sent.count > 1 else { shown = max(sent.count - 1, 0); return }
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(shown == 2 ? 3.2 : 2.2))
+                    try? await Task.sleep(for: .seconds(shown == sent.count - 1 ? 3.2 : 2.2))
                     if Task.isCancelled { break }
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { shown = (shown + 1) % 3 }
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { shown = (shown + 1) % sent.count }
                 }
             }
+            .animation(.snappy(duration: 0.25), value: prayer)
+            .animation(.snappy(duration: 0.25), value: state)
         }
+    }
+
+    /// Off: nothing will come for this prayer.
+    private var quiet: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bell.slash.fill").foregroundStyle(.secondary)
+            Text("No notifications for \(prayer)").font(.subheadline).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(height: 76)
+        .background(.regularMaterial.opacity(0.6), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func banner(_ b: Banner, end: Date) -> some View {
