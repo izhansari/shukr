@@ -2664,14 +2664,15 @@ private struct ReviewStep: View {
     @State private var goLimited = false
 
     // One more nudge before bismillah while location or notifications aren't on (owner: "bro the experience really
-    // isnt gonna be great without those permissions"); the alarm isn't part of it.
+    // isnt gonna be great without those permissions"); the alarm isn't part of it. Location's losses in the owner's
+    // order: times that follow you, the qibla, prayer pins (not mosques).
     private var locationMissing: Bool { !location.isAuthorized }
     private var notificationsMissing: Bool { notifications.isOn != true }
     private var limited: Bool { (locationMissing || notificationsMissing) && !goLimited }
     private var limitedNote: String {
         switch (locationMissing, notificationsMissing) {
-        case (true, true): return "Without location and notifications, you’ll miss prayer reminders, nearby mosques and more."
-        case (true, false): return "Without location, you’ll miss nearby mosques, pinned places and a precise qibla."
+        case (true, true): return "Without these: no prayer reminders, and times and qibla that won’t follow you."
+        case (true, false): return "Without location, your times won’t follow you, the qibla will be off and prayers won’t be pinned."
         default: return "Without notifications, you’ll miss reminders before a prayer slips by."
         }
     }
