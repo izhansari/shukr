@@ -1,5 +1,6 @@
 #!/bin/zsh
 # Install the newest pushed shukr (the team line) on Izhan's phone, his wife's, or both — a Debug build, no TestFlight.
+# CONFIG=Release zsh scripts/install.sh me: the same, built Release (to feel the real speed; DEBUG-only extras are off).
 #
 #   zsh scripts/install.sh            both phones
 #   zsh scripts/install.sh me         13 Pro Max only
@@ -36,8 +37,10 @@ echo "→ Building $HASH: $(git -C "$COPY" log -1 --format=%s | cut -c1-90)"
 
 cd "$COPY" || exit 1
 mkdir -p build
-xcodebuild -project shukr.xcodeproj -scheme shukr -configuration Debug -destination 'generic/platform=iOS' \
-  -derivedDataPath build/device -allowProvisioningUpdates \
+CONFIG="${CONFIG:-Debug}"
+DERIVED=build/device; [[ $CONFIG == Release ]] && DERIVED=build/device-release
+xcodebuild -project shukr.xcodeproj -scheme shukr -configuration "$CONFIG" -destination 'generic/platform=iOS' \
+  -derivedDataPath "$DERIVED" -allowProvisioningUpdates \
   -authenticationKeyPath "$KEY" -authenticationKeyID 6K2RUXRJ92 \
   -authenticationKeyIssuerID 60a885ac-0315-4323-974d-57783a7392a2 \
   SHUKR_BUILD_STAMP="$HASH" build > build/install-build.log 2>&1
@@ -48,7 +51,7 @@ if ! grep -q "BUILD SUCCEEDED" build/install-build.log; then
   exit 1
 fi
 
-APP=build/device/Build/Products/Debug-iphoneos/shukr.app
+APP="$DERIVED/Build/Products/$CONFIG-iphoneos/shukr.app"
 FAILED=0
 for phone in $PHONES; do
   name=$([[ $phone == $ME ]] && echo "your 13 Pro Max" || echo "her 15 Pro")
@@ -58,7 +61,7 @@ for phone in $PHONES; do
     if xcrun devicectl device install app --device "$phone" "$APP" > build/install-$phone.log 2>&1; then ok=1; break; fi
     sleep 5    # CoreDeviceError 4016 and a phone waking up usually pass on a retry
   done
-  if (( ok )); then echo "✓ $name has $HASH"
+  if (( ok )); then echo "✓ $name has $HASH ($CONFIG)"
   else
     FAILED=1
     echo "✗ $name: not installed — is it unlocked, and on the same Wi-Fi or plugged in?"
