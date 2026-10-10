@@ -1547,11 +1547,6 @@ private struct PrayerTimesStep: View {
                      lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
             }
             .padding(.horizontal, 24)
-            // The two cards' times side by side say how far apart they are (the "N min later" line was cut for room).
-            Text("Not sure? Go with what your masjid uses.")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-                .padding(.top, 10)
         }
     }
 
@@ -1604,7 +1599,8 @@ private struct TodayStrip: View {
 
     var body: some View {
         if let t = todaysTimes(method: method, school: school) {
-            VStack(spacing: 8) {
+            // Room above the row for Asr's bigger time.
+            VStack(spacing: highlightAsr ? 14 : 8) {
                 Text("today").font(.caption).tracking(2).textCase(.uppercase).foregroundStyle(.tertiary)
                 HStack(spacing: 0) {
                     cell("Fajr", t.fajr)
@@ -1625,15 +1621,18 @@ private struct TodayStrip: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             Text(clockTime(date))
-                .font(.system(.subheadline, design: .rounded, weight: strong ? .medium : .light))
+                .font(.system(.subheadline, design: .rounded, weight: strong ? .semibold : .light))
                 .monospacedDigit()
                 .minimumScaleFactor(0.45)
                 .lineLimit(1)
                 .contentTransition(.numericText())
                 .foregroundStyle(strong ? Color.sage : .primary)
         }
+        // On the Asr step its time stands out (owner): bigger and bolder, grown in place so the row never reflows.
+        .scaleEffect(strong ? 1.2 : 1, anchor: .bottom)
         .frame(maxWidth: .infinity)
         .animation(.snappy, value: date)
+        .animation(.snappy(duration: 0.35), value: strong)
     }
 }
 
