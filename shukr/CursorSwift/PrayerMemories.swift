@@ -724,12 +724,15 @@ struct MemoriesPage: View {
                                  width: rest.width * scale, height: rest.height * scale)
             var quiet = Transaction()
             quiet.disablesAnimations = true
-            withTransaction(quiet) { zoomHidden = square }
+            // The square stays shown: the pile fades out on its way there and never lands on it (decision
+            // memories-pile-close A — landing on the square, the hand-off glitched); the one hidden at the open comes
+            // back under the frost.
+            withTransaction(quiet) { zoomHidden = nil }
             withAnimation(.easeOut(duration: 0.2)) { chromeShown = false; deckClosing = true }
             // The backdrop follows the zoom (DeckBackdrop reads the driver while it runs).
             backdropShown = false
             zoom.close(from: .placing(rest, on: dragged, pile: pile), into: .placing(rest, on: target, pile: pile),
-                       spring: Spring(response: 0.38, dampingRatio: 0.92)) {
+                       fadeFloor: 0.35, spring: Spring(response: 0.38, dampingRatio: 0.92)) {
                 withTransaction(quiet) {
                     deckStart = nil
                     deckShown = false
@@ -2382,6 +2385,14 @@ struct MemoriesDayStrip: View, Equatable {
     @ObservationIgnored private var target: CGFloat = 1
     @ObservationIgnored private var spring = Spring(response: 0.4, dampingRatio: 0.9)
     @ObservationIgnored private var done: (() -> Void)?
+    /// A close that fades out on the way (decision memories-pile-close A): it heads for the square but stops this far
+    /// short (progress), gone before it gets there — never landing on the square, where the hand-off glitched. 0 = lands.
+    private(set) var fadeFloor: CGFloat = 0
+
+    /// How far from the square, 1 → 0, along the part it travels: the backdrop's opacity.
+    var level: CGFloat { min(max((progress - fadeFloor) / (1 - fadeFloor), 0), 1) }
+    /// The pile's own opacity: 1 except on a fading close, where it's out a little before the stop.
+    var pileOpacity: Double { fadeFloor > 0 ? Double(max(0, (level - 0.12) / 0.88)) : 1 }
 
     /// Landed with nothing on it (the pile's own frame reports are its real place).
     var atRest: Bool { !running && progress == 1 && start == MemoriesPage.DeckZoom() }
@@ -2393,10 +2404,10 @@ struct MemoriesDayStrip: View, Equatable {
                                                     height: end.offset.height + (start.offset.height - end.offset.height) * p))
     }
 
-    func reset() { stop(); start = MemoriesPage.DeckZoom(); end = MemoriesPage.DeckZoom(); progress = 1 }
+    func reset() { stop(); start = MemoriesPage.DeckZoom(); end = MemoriesPage.DeckZoom(); progress = 1; fadeFloor = 0 }
 
     /// On the square, at once (an open runs from here to 1).
-    func place(_ zoom: MemoriesPage.DeckZoom) { stop(); start = MemoriesPage.DeckZoom(); end = zoom; progress = 0 }
+    func place(_ zoom: MemoriesPage.DeckZoom) { stop(); start = MemoriesPage.DeckZoom(); end = zoom; progress = 0; fadeFloor = 0 }
 
     func run(to value: CGFloat, spring: Spring, done: @escaping () -> Void) {
         stop()
@@ -2412,13 +2423,16 @@ struct MemoriesDayStrip: View, Equatable {
         self.link = link
     }
 
-    /// From `from` (where it is now: landed, or where a drag left it) into `into` (on the square).
-    func close(from: MemoriesPage.DeckZoom, into: MemoriesPage.DeckZoom, spring: Spring, done: @escaping () -> Void) {
+    /// From `from` (where it is now: landed, or where a drag left it) toward `into` (on the square) — fading out and
+    /// stopping `fadeFloor` short of it.
+    func close(from: MemoriesPage.DeckZoom, into: MemoriesPage.DeckZoom, fadeFloor: CGFloat, spring: Spring,
+               done: @escaping () -> Void) {
         stop()
         start = from
         end = into
         progress = 1
-        run(to: 0, spring: spring, done: done)
+        self.fadeFloor = fadeFloor
+        run(to: fadeFloor, spring: spring, done: done)
     }
 
     @objc private func step() {
@@ -2426,6 +2440,15 @@ struct MemoriesDayStrip: View, Equatable {
         let value = spring.value(fromValue: origin, toValue: target, initialVelocity: 0, time: t)
         let settled = t >= spring.settlingDuration || abs(value - target) < 0.001 && t > 0.1
         progress = settled ? target : value
+        // A fading close is over once it's out of sight (the spring's slow tail would only hold the page's touches).
+        if !settled, fadeFloor > 0, pileOpacity <= 0.01 {
+            progress = target
+            stop()
+            let finish = done
+            done = nil
+            finish?()
+            return
+        }
         if settled {
             stop()
             let finish = done
@@ -2447,7 +2470,7 @@ struct DeckZoomFrame<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         let z = driver.transform
-        content.scaleEffect(z.scale).offset(z.offset)
+        content.scaleEffect(z.scale).offset(z.offset).opacity(driver.pileOpacity)
     }
 }
 
@@ -2459,7 +2482,7 @@ struct DeckBackdrop: View {
         Rectangle().fill(.ultraThinMaterial)
             .overlay(Color.black.opacity(0.12))
             .ignoresSafeArea()
-            .opacity(driver.running ? Double(min(max(driver.progress, 0), 1)) : (shown ? 1 : 0))
+            .opacity(driver.running ? Double(driver.level) : (shown ? 1 : 0))
     }
 }
 
