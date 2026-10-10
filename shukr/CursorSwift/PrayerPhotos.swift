@@ -212,7 +212,15 @@ enum PrayerPhotos {
     }
 
     /// Downscaled and written off the main thread; the views showing photos redraw after.
+    /// Bumped when a photo's files change (saved again, deleted): the decoded copies are cached by key, so a retaken photo
+    /// showed the old picture until its cache entry went (Memories' ··· Retake).
+    nonisolated(unsafe) private static var editions: [String: Int] = [:]
+    private static let editionsLock = NSLock()
+    static func edition(of key: String) -> Int { editionsLock.withLock { editions[key] ?? 0 } }
+    private static func newEdition(_ key: String) { editionsLock.withLock { editions[key, default: 0] += 1 } }
+
     static func save(_ key: String, back: Data, front: Data?) async {
+        newEdition(key)
         // The card shows the back picture at most ~1000 px across, the front inset ~350 (decision prayer-photo-storage A).
         let backFile = await encoded(back, maxPixels: 1200)
         let frontFile: (data: Data, ext: String)? = if let front { await encoded(front, maxPixels: 700) } else { nil }
@@ -239,6 +247,7 @@ enum PrayerPhotos {
     static func exists(for row: PrayerModel) -> Bool { has(key(dayKey: row.dayKey, name: row.name)) }
 
     static func delete(_ key: String) {
+        newEdition(key)
         Task { @MainActor in PrayerPhotoFavorites.shared.set(key, false) }
         setNote(key, nil)
         for isFront in [false, true] {

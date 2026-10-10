@@ -54,7 +54,7 @@ extension PrayerPhotos {
 
     /// Developing and developed copies are cached apart (the day develops under the cache).
     private static func thumbKey(_ key: String, _ side: Int) -> NSString {
-        "\(key)-\(thumbSide(side))-\(PhotoDevelop.isDeveloped(key: key) ? "d" : "v")" as NSString
+        "\(key)-\(edition(of: key))-\(thumbSide(side))-\(PhotoDevelop.isDeveloped(key: key) ? "d" : "v")" as NSString
     }
 
     /// Already decoded? (A square drawn again shows its picture from the first frame.)
@@ -750,11 +750,34 @@ struct MemoriesPage: View {
         }
     }
 
-    private func monthHeader(_ month: Month) -> some View {
-        Text(month.title)
-            .font(.system(size: 20, weight: .semibold, design: .rounded))
-            .padding(.top, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private func monthHeader(_ month: Month) -> some View { monthHeader(month.title, empty: false) }
+
+    /// A month's name; a month with no photos says so beside it, at the same size (owner: a boxed row "not the same
+    /// size as the other month labels and its spacing is different").
+    private func monthHeader(_ title: String, empty: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title).font(.system(size: 20, weight: .semibold, design: .rounded))
+            if empty { Text("No photos").font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary) }
+        }
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Every month from the first photo's to this one (owner: "visually see how far out it's been between their
+    /// photos"): a month with photos, or this month (today is on it), gets its calendar; one in between with none, just
+    /// its name and "No photos". Searching: only the months with matches.
+    private var calendarMonths: [(id: String, month: Month?)] {
+        let thisMonth = String(Self.dayKeyFormatter.string(from: Date()).prefix(7))
+        let byID = Dictionary(uniqueKeysWithValues: months.map { ($0.id, $0) })
+        guard !filtering, let first = months.first?.id else { return months.map { ($0.id, $0) } }
+        var ids: [String] = []
+        var id = min(first, thisMonth)
+        while id <= thisMonth, ids.count < 600 {
+            ids.append(id)
+            guard let date = Self.parse(id + "-01"), let next = Calendar.current.date(byAdding: .month, value: 1, to: date) else { break }
+            id = String(Self.dayKeyFormatter.string(from: next).prefix(7))
+        }
+        return ids.map { ($0, byID[$0]) }
     }
 
     /// Every prayer: a row per day, five squares.
@@ -775,27 +798,33 @@ struct MemoriesPage: View {
     /// Each month as a calendar, a week to a row (owner: "organized the same way a calendar would be"); a day with photos
     /// is a small pile, a tap opens that day's prayers; a day without is just its number, faint.
     private var dayStacks: some View {
-        LazyVStack(alignment: .leading, spacing: 18) {
-            ForEach(months, id: \.id) { month in
-                monthHeader(month).id(month.id)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 12) {
-                    ForEach(Self.weekdayLetters.indices, id: \.self) { i in
-                        Text(Self.weekdayLetters[i])
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                    ForEach(Array(Self.calendarCells(month.id).enumerated()), id: \.offset) { _, cell in
-                        if let dayKey = cell {
-                            calendarDay(dayKey, month.days.first { $0.dayKey == dayKey }?.photos ?? [])
-                        } else {
-                            Color.clear.frame(height: 1)
+        let thisMonth = String(Self.dayKeyFormatter.string(from: Date()).prefix(7))
+        return LazyVStack(alignment: .leading, spacing: 18) {
+            ForEach(calendarMonths, id: \.id) { entry in
+                let month = entry.month
+                if month == nil && entry.id != thisMonth {
+                    monthHeader(Self.monthTitle(entry.id), empty: true).id(entry.id)
+                } else {
+                    monthHeader(month?.title ?? Self.monthTitle(entry.id), empty: false).id(entry.id)
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 12) {
+                        ForEach(Self.weekdayLetters.indices, id: \.self) { i in
+                            Text(Self.weekdayLetters[i])
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(Array(Self.calendarCells(entry.id).enumerated()), id: \.offset) { _, cell in
+                            if let dayKey = cell {
+                                calendarDay(dayKey, month?.days.first { $0.dayKey == dayKey }?.photos ?? [])
+                            } else {
+                                Color.clear.frame(height: 1)
+                            }
                         }
                     }
+                    // Named by its month too: with only the headers named, a calendar scrolled past its header left the
+                    // top unnamed, and a switch to another level then opened at today (owner: "it takes me to say oct 7
+                    // 2026 or something random"). `go` reads the month off the id's first 7 characters.
+                    .id("\(entry.id)~days")
                 }
-                // Named by its month too: with only the headers named, a calendar scrolled past its header left the
-                // top unnamed, and a switch to another level then opened at today (owner: "it takes me to say oct 7
-                // 2026 or something random"). `go` reads the month off the id's first 7 characters.
-                .id("\(month.id)~days")
             }
             // Under today's month, where the page opens: earlier years' photos from today's date.
             if !filtering {
@@ -812,20 +841,28 @@ struct MemoriesPage: View {
 
     @ViewBuilder
     private func calendarDay(_ dayKey: String, _ dayPhotos: [MemoryPhoto]) -> some View {
-        let number = Text(String(Int(dayKey.suffix(2)) ?? 0)).font(.system(size: 11, weight: .medium, design: .rounded))
+        // Today: bold, with "Today" under it, grey (owner's pick — the green was "too loud"), photos or not.
+        let today = dayKey == Self.dayKeyFormatter.string(from: Date())
+        let number = Text(String(Int(dayKey.suffix(2)) ?? 0)).font(.system(size: 11, weight: today ? .heavy : .medium, design: .rounded))
+        let todayLine = Text("Today").font(.system(size: 9, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
         if dayPhotos.isEmpty {
             VStack(spacing: 4) {
                 Color.clear.frame(height: 40)
-                number.foregroundStyle(.tertiary)
+                number.foregroundStyle(today ? .primary : .tertiary)
+                if today { todayLine.padding(.top, -3) }
             }
         } else {
             Button { if let newest = dayPhotos.last { openDeck(newest, from: "day:\(dayKey)") } } label: {
                 VStack(spacing: 4) {
                     stack(dayPhotos, side: 38, corner: 10)
                         .background(MemoryFrameProbe(key: "day:\(dayKey)"))
+                        .overlay(alignment: .topTrailing) {
+                            if dayPhotos.contains(where: { PrayerPhotoFavorites.shared.contains($0.key) }) { FavoriteBadge(size: 9).offset(x: 5, y: -6) }
+                        }
                         .opacity(zoomHidden == "day:\(dayKey)" ? 0 : 1)
                         .frame(height: 40)
                     number.foregroundStyle(.primary)
+                    if today { todayLine.padding(.top, -3) }
                 }
             }
             .buttonStyle(.plain)
@@ -949,6 +986,9 @@ struct MemoriesPage: View {
                             MemoryThumb(key: photo.key, side: 240)
                                 .matchedGeometryEffect(id: photo.key, in: pinch)
                                 .background(MemoryFrameProbe(key: photo.key))
+                                .overlay(alignment: .topTrailing) {
+                                    if PrayerPhotoFavorites.shared.contains(photo.key) { FavoriteBadge(size: 10).padding(4) }
+                                }
                                 .opacity(zoomHidden == photo.key ? 0 : 1)
                                 .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .onTapGesture { openDeck(photo, from: photo.key) }
@@ -2033,6 +2073,20 @@ struct DeckBackdrop: View {
     }
 }
 
+/// A favourite's heart on its photo (owner: "showing a heart on any favorited photos would be nice").
+struct FavoriteBadge: View {
+    var size: CGFloat = 11
+    var body: some View {
+        Image(systemName: "heart.fill")
+            .font(.system(size: size, weight: .bold))
+            .foregroundStyle(.pink)
+            .padding(size * 0.35)
+            .background(Circle().fill(.white))
+            .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+            .accessibilityLabel("Favorite")
+    }
+}
+
 /// Waits for the screen to draw `n` frames: a change made before is on screen by then, so an animation started after
 /// begins from it (a fixed sleep was sometimes too short on the phone).
 @MainActor enum DisplayFrames {
@@ -2095,7 +2149,7 @@ private struct MemoryCard: View {
     private final class Pair { let images: (back: UIImage?, front: UIImage?); init(_ i: (back: UIImage?, front: UIImage?)) { images = i } }
     private static let cache: NSCache<NSString, Pair> = { let c = NSCache<NSString, Pair>(); c.countLimit = 40; return c }()
     private static func cacheKey(_ key: String) -> NSString {
-        "\(key)-\(PhotoDevelop.isDeveloped(key: key) ? "d" : "v")" as NSString
+        "\(key)-\(PrayerPhotos.edition(of: key))-\(PhotoDevelop.isDeveloped(key: key) ? "d" : "v")" as NSString
     }
     /// Showing the selfie big (a tap in the pile), for this look only.
     var swapped = false
