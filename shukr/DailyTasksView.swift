@@ -735,7 +735,10 @@ struct ZikrCircleWheel: View {
         // The plain full-screen sheet, sliding up (owner, 2026-10-09: "just open a full sheet when someone clicks a task
         // from the wheel … it feels more crisp"); its results are inside it. The ring handoff (SessionHandoff.open — the
         // wheel's ring becoming the session's) isn't used from the wheel any more; coming back, the ring catches up
-        // instead (`showProgress`).
+        // instead (`showProgress`). It closes the way the post-salah session does, in place: what's on the page goes where
+        // it stands and the page fades off the wheel — the sheet sliding down with the results on it, their ring moved
+        // under it (owner: "ring comes out and in … keep it clean and easy").
+        SessionHandoff.shared.openInPlace(entering: false)
         showTasbeehPage = true
     }
 
