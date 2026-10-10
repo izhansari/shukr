@@ -254,6 +254,8 @@ struct FirstRunSetupView: View {
     @State private var opening: Bool
     /// Bismillah was tapped and the steps have faded: the opening is playing as the end.
     @State private var ending = false
+    /// The end's circle is flying onto the Salah circle: the setup's background fades to show the page.
+    @State private var revealing = false
     /// The hadith page, before the opening (owner: "i want that hadith to be on its own at first"); wherever setup
     /// starts with the opening: a new install, `-setupForce`, Run setup again.
     @State private var hadith: Bool
@@ -291,13 +293,15 @@ struct FirstRunSetupView: View {
         ZStack {
             // Gone once the welcome takes over (it has its own background).
             Color(.systemBackground).ignoresSafeArea()
-                .opacity(welcome ? 0 : 1)
+                .opacity(welcome || revealing ? 0 : 1)
             if hadith {
                 // Its words go and it drains; then the first step comes in, piece by piece.
                 SetupHadith(onDone: { hadith = false; finishOpening() })
             } else if ending {
-                // The end: "welcome to shukr", then the app's welcome.
-                SetupOpening(onDone: { welcome = true })
+                // The end: "welcome to shukr", its circle flying onto the Salah circle (no welcome animation after).
+                SetupOpening(landsOnCircle: true,
+                             onReveal: { var t = Transaction(); t.disablesAnimations = true; withTransaction(t) { revealing = true } },
+                             onDone: landed)
             } else if opening {
                 SetupOpening(onDone: finishOpening)
             } else {
@@ -418,6 +422,12 @@ struct FirstRunSetupView: View {
 
     private func go(_ s: SetupStep) {
         withAnimation(reduceMotion ? CircleMotion.Setup.stepReduced : CircleMotion.Setup.step) { step = s }
+    }
+
+    /// The end has landed on the Salah circle: the setup goes, as the welcome's own finish would leave it.
+    private func landed() {
+        WelcomeTarget.landed = true
+        onFinish()
     }
 
     /// From the ring's place to the Salah circle's centre (the screen's centre if it isn't there).
@@ -1389,8 +1399,29 @@ private struct HadithGlow: View {
 /// in `.locationOnly` mode or anywhere else. The white words carry a soft dark shadow (the original's
 /// thin white on pale mint was hard to read in light mode).
 private struct SetupOpening: View {
+    /// At the end of setup: the tap flies the glass circle onto the Salah circle as the gradient drains and the page
+    /// underneath shows (owner: "make that circle on the welcome page turn into the main circle on salah"); no welcome
+    /// animation after it. `onReveal` lets the flow fade its own background with it.
+    var landsOnCircle = false
+    var onReveal: () -> Void = {}
     let onDone: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.circleTheme) private var theme
+    /// The glass circle's frame on screen, and the move / size that put it on the Salah circle.
+    @State private var circleFrame: CGRect = .zero
+    /// Tapped at the end: the circle draws in small while the page drains, then grows out to the ring (the opening
+    /// animation's way — owner: "first fade out background then grow the frosted circle up to the ring").
+    @State private var shrunk = false
+    /// The end, copying the opening (owner: "copy how the opening animation circle turns into the main salah ring"): the
+    /// frosted circle draws in to the welcome ring's size and becomes its sage hairline (`WelcomeMark`, no word), which
+    /// then grows out into the Salah ring's band exactly as the opening's does.
+    @State private var mark = WelcomeMarkState()
+    @State private var markShown = false
+    @State private var markOffset: CGSize = .zero
+    /// Landed: the glass circle lets go of the real one.
+    @State private var landed = false
+    /// The plain page under the gradient at the end (the Salah page's own surface), gone as the page shows.
+    @State private var plainGone = false
 
     /// 1 gradient · 2 circle · 3 words · 4 "tap to continue".
     @State private var stage = 0
@@ -1402,6 +1433,10 @@ private struct SetupOpening: View {
 
     var body: some View {
         ZStack {
+            if landsOnCircle {
+                // The gradient drains to the Salah page's surface, not to white: the ring grows out on its own page.
+                theme.surface.ignoresSafeArea().opacity(plainGone ? 0 : 1)
+            }
             ZStack {
                 AnimatedWavyGradient(still: reduceMotion)
                 NoiseOverlay()
@@ -1411,9 +1446,19 @@ private struct SetupOpening: View {
             .ignoresSafeArea()
             .opacity(stage >= 1 && !draining ? 1 : 0)
 
+            if landsOnCircle {
+                WelcomeMark(state: mark)
+                    .offset(markOffset)
+                    .opacity(markShown && !landed ? 1 : 0)
+            }
+
             circle
                 .frame(width: 200, height: 200)
-                .opacity(stage >= 2 && !leaving ? 1 : 0)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if !leaving { circleFrame = $0 } }
+                .scaleEffect(shrunk ? WelcomeMark.startSize / 200 : 1)
+                .offset(markOffset)
+                // At the end it stays (only its words go) until it has become the welcome's ring.
+                .opacity(stage >= 2 && !(leaving && !landsOnCircle) && !markShown ? 1 : 0)
                 .scaleEffect(reduceMotion || stage >= 2 ? 1 : 0.94)
 
             VStack {
@@ -1452,7 +1497,7 @@ private struct SetupOpening: View {
                         .foregroundStyle(.white.opacity(0.97))
                 }
                 .shadow(color: .black.opacity(0.4), radius: 6, y: 1)
-                .opacity(stage >= 3 ? 1 : 0)
+                .opacity(stage >= 3 && !leaving ? 1 : 0)
             }
             .shadow(radius: 5)
     }
@@ -1483,7 +1528,8 @@ private struct SetupOpening: View {
         #endif
     }
 
-    /// The circle, words and hint go; then the gradient drains (still moving); then the steps.
+    /// The circle, words and hint go; then the gradient drains (still moving); then the steps. At the end of setup
+    /// (`landsOnCircle`) the circle instead flies onto the Salah circle while the gradient drains, then lets go.
     private func advance() {
         guard stage >= 2, !leaving else { return }
         stage = 4
@@ -1491,6 +1537,27 @@ private struct SetupOpening: View {
         typealias T = CircleMotion.Setup
         Task { @MainActor in
             await CircleMotion.animate(T.openingAway) { leaving = true }
+            if landsOnCircle, !reduceMotion, let target = WelcomeTarget.circleFrame, target.width > 100, circleFrame.width > 0 {
+                typealias O = CircleMotion.Opening
+                markOffset = CGSize(width: target.midX - circleFrame.midX, height: target.midY - circleFrame.midY)
+                mark.startDrawn = true
+                mark.ringDrawn = true
+                // 1. The page drains to the Salah page's surface while the frosted circle draws in to the welcome ring's
+                // size and becomes its sage hairline.
+                withAnimation(.easeInOut(duration: T.landDrainDuration)) { draining = true }
+                await CircleMotion.animate(T.landShrink) { shrunk = true }
+                await CircleMotion.animate(T.landToRing) { markShown = true }
+                guard await CircleGate.pause(max(T.landDrainDuration - 0.55 - 0.45, 0) + T.landHoldDuration) else { return }
+                // 2. As the opening ends: the ring grows out to the Salah circle, thickening into its band.
+                withAnimation(O.grow) { mark.grow = true }
+                guard await CircleGate.pause(O.toBandDuration) else { return }
+                // 3. The ring and the real track are the same shape in the same place: only the page appears.
+                onReveal()
+                await CircleMotion.animate(T.landLetGo) { landed = true; plainGone = true }
+                onDone()
+                return
+            }
+            if landsOnCircle { onReveal() }
             await CircleMotion.animate(.easeInOut(duration: reduceMotion ? T.drainReducedDuration : Self.drain)) { draining = true }
             onDone()
         }
@@ -1727,18 +1794,21 @@ private struct WelcomeStep: View {
     }
 }
 
-/// The welcome's graphic: the notifications / alarm card ("Prayer circle"), inside it just the ring as the app draws it
-/// (no prayer, no time left), sweeping a prayer's window once — green, then yellow, then red — and settling back on green;
-/// under the card the three parts of the window, each lighting in its colour as the ring reaches it. Reduce Motion:
-/// settled at once.
+/// The welcome's graphic: the notifications / alarm card ("Prayer circle"), inside it the ring as the Salah page draws it
+/// — the soft look's raised band (`NeuRingTrack`) with the arc on it — filling over a pretend 150-minute window the
+/// real way (owner: "copy same logic of progression our real ring uses"): it fills clockwise from the top as the window
+/// goes, green for the first 30 minutes, yellow for the first half of the rest, red after (`PrayerScoring`'s grades),
+/// then settles back early in the green. Under the card the three parts light as the ring reaches them. It comes in
+/// gently after the page (owner: "the page before it was so calm"). Reduce Motion: settled at once.
 private struct WelcomeRingDemo: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.circleTheme) private var theme
     /// How much of the window has gone (0…1); animated by `WelcomeSweep`.
     @State private var gone: Double = 0
+    @State private var shown = false
 
     /// Where it rests: a little into the green.
-    static let rest: Double = 0.13
-
+    static let rest: Double = 0.1
 
     var body: some View {
         VStack(spacing: 12) {
@@ -1750,8 +1820,9 @@ private struct WelcomeRingDemo: View {
                 WelcomeSweep(gone: gone)
                     .frame(width: 140, height: 140)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.regularMaterial))
+                    .padding(.vertical, 18)
+                    // The page's own soft surface, so the raised band reads as it does on the Salah page.
+                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(theme.surface))
             }
             .padding(14)
             .frame(maxWidth: .infinity)
@@ -1760,15 +1831,18 @@ private struct WelcomeRingDemo: View {
                     .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
                                          startPoint: .topLeading, endPoint: .bottomTrailing))
             }
-            // Each part of the window lights as the ring reaches it (animatable, so it follows the ring frame by frame —
-            // reading `gone` here jumped straight to the sweep's end).
+            // Each part of the window lights as the ring reaches it (animatable, so it follows the ring frame by frame).
             WelcomeSweepParts(gone: gone)
         }
+        .opacity(shown ? 1 : 0)
+        .offset(y: shown || reduceMotion ? 0 : 14)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("The prayer circle: green is the best time, yellow on time, red almost gone.")
+        .accessibilityLabel("The prayer circle fills as a prayer's time passes: green is the best time, yellow on time, red almost gone.")
         .task {
             typealias T = CircleMotion.Setup
-            if reduceMotion { gone = Self.rest; return }
+            if reduceMotion { shown = true; gone = Self.rest; return }
+            guard await CircleGate.pause(T.welcomeCardAfterDuration) else { return }
+            withAnimation(T.welcomeCardIn) { shown = true }
             guard await CircleGate.pause(T.welcomeSweepAfterDuration) else { return }
             withAnimation(T.welcomeSweep) { gone = 1 }
             guard await CircleGate.pause(T.welcomeSweepDuration) else { return }
@@ -1777,13 +1851,20 @@ private struct WelcomeRingDemo: View {
     }
 }
 
+/// The window's three parts, as `PrayerScoring` grades a 150-minute window: Perfect for the first 30 minutes (0.2),
+/// On time for the first half of the rest (to 0.6), then Late.
+private enum WelcomeWindow {
+    static func part(_ gone: Double) -> Int { gone < 0.2 ? 0 : gone < 0.6 ? 1 : 2 }
+    static let colours: [Color] = [.green, .yellow, .red]
+}
+
 /// The three parts of the window under the welcome's card; the one the ring is in, in its colour.
 private struct WelcomeSweepParts: View, Animatable {
     var gone: Double
     var animatableData: Double { get { gone } set { gone = newValue } }
 
     var body: some View {
-        let part = gone < 0.2 ? 0 : gone < 0.8 ? 1 : 2
+        let part = WelcomeWindow.part(gone)
         let colours: [Color] = [.green, Color(red: 0.83, green: 0.66, blue: 0), .red]
         HStack(spacing: 0) {
             ForEach(Array(["Best time", "On time", "Almost gone"].enumerated()), id: \.offset) { i, word in
@@ -1796,21 +1877,27 @@ private struct WelcomeSweepParts: View, Animatable {
     }
 }
 
-/// The ring, its arc animatable: what's left of the window, in the colour of where it is.
+/// The Salah page's ring in its soft look at 140 pt: the raised band, and on it the arc filled to what's gone, from the
+/// top, clockwise, in the colour of where it is (the theme's arc width, round cap and glow).
 private struct WelcomeSweep: View, Animatable {
     var gone: Double
     var animatableData: Double { get { gone } set { gone = newValue } }
+    @Environment(\.circleTheme) private var theme
 
     var body: some View {
-        let colour: Color = gone < 0.2 ? .green : gone < 0.8 ? .yellow : .red
+        let colour = WelcomeWindow.colours[WelcomeWindow.part(gone)]
         ZStack {
-            Circle().stroke(Color.primary.opacity(0.08), lineWidth: 9)
+            NeuRingTrack()
             Circle()
-                .trim(from: 0, to: max(1 - gone, 0.004))
-                .stroke(colour, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                .trim(from: 0, to: max(gone, 0.002))
+                .stroke(colour, style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
                 .rotationEffect(.degrees(-90))
-                .shadow(color: colour.opacity(0.55), radius: 5)
+                .frame(width: 200, height: 200)
+                .shadow(color: colour.opacity(theme.arc.glow), radius: 6)
         }
+        // Drawn at the Salah ring's 200 pt (its band and glow as they are there), shown at 140.
+        .scaleEffect(0.7)
+        .frame(width: 140, height: 140)
     }
 }
 
@@ -3672,11 +3759,22 @@ extension CircleMotion {
         static let revealBeatReducedDuration: Double = 0.15
         // Bismillah
         static let leaving = Animation.easeOut(duration: 0.35)
-        // The welcome step's ring: a beat, one sweep through the window, then back to rest in the green.
-        static let welcomeSweepAfterDuration: Double = 1.0
+        // The welcome step's ring: the card comes in gently, a beat, one sweep through the window, back to rest in green.
+        static let welcomeCardAfterDuration: Double = 0.9
+        static let welcomeCardIn = Animation.easeOut(duration: 1.2)
+        static let welcomeSweepAfterDuration: Double = 1.6
         static let welcomeSweepDuration: Double = 4.2
         static let welcomeSweep = Animation.easeInOut(duration: welcomeSweepDuration)
         static let welcomeSettle = Animation.easeOut(duration: 1.0)
+        /// The end, the opening animation's way: the frosted circle draws in small, the gradient drains to the page's
+        /// surface, the circle grows out to the ring, then lets go of it as the page shows.
+        static let landShrink = Animation.easeInOut(duration: 0.55)
+        /// The frosted disc turning into the welcome's sage hairline ring.
+        static let landToRing = Animation.easeInOut(duration: 0.45)
+        static let landDrainDuration: Double = 1.4
+        /// The hairline ring rests a beat before it grows (the opening's hold).
+        static let landHoldDuration: Double = 0.35
+        static let landLetGo = Animation.easeOut(duration: 0.45)
         /// Bismillah: the steps fade before "welcome to shukr" plays as the end.
         static let endingFade = Animation.easeInOut(duration: 0.6)
         static let leavingReduced = Animation.easeInOut(duration: 0.35)
