@@ -2446,7 +2446,8 @@ private struct AlarmDemo: View {
                 .task {
                     guard !open else { return }
                     if reduceMotion { open = true; return }
-                    try? await Task.sleep(for: .seconds(0.45))
+                    // The island rests a beat first (owner: "a second longer").
+                    try? await Task.sleep(for: .seconds(1.45))
                     if Task.isCancelled { return }
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { open = true }
                 }
