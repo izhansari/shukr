@@ -488,6 +488,8 @@ struct MemoriesPage: View {
                 case .months: levelScroll(.months) { monthStacks }
                 case .days: levelScroll(.days) { dayStacks }
                 case .prayers: levelScroll(.prayers) { prayerStrips }
+                    // Which column is which (owner: item 7): the five prayers' symbols over the squares, kept at the top.
+                    .safeAreaInset(edge: .top, spacing: 0) { prayerColumnHeader }
                 }
             }
         }
@@ -553,6 +555,13 @@ struct MemoriesPage: View {
             if now != photos { photos = now }
         }
         #if DEBUG
+        .task {
+            // `-demoMemoriesLevel months|prayers`: opens on that level (the simulator can't tap the level switch).
+            let args = ProcessInfo.processInfo.arguments
+            guard let i = args.firstIndex(of: "-demoMemoriesLevel"), args.indices.contains(i + 1) else { return }
+            try? await Task.sleep(for: .seconds(1))
+            go(args[i + 1] == "months" ? .months : args[i + 1] == "prayers" ? .prayers : .days)
+        }
         .task {
             // `-demoMemoriesSearch [words]`: search opens (and types the words) — the simulator's look at it.
             let args = ProcessInfo.processInfo.arguments
@@ -900,6 +909,26 @@ struct MemoriesPage: View {
     /// A loose angle and nudge for a card in a stack, the same each time it's drawn.
     private static func looseTilt(_ key: String) -> Double { Double(abs(key.hashValue) % 19) - 9 }
     private static func looseNudge(_ key: String) -> CGFloat { CGFloat(abs(key.hashValue / 19) % 25) - 12 }
+
+    /// The five prayers' symbols, each over its column of squares (the rows' layout: the day's 38 pt, 14 pt, then five
+    /// shared columns 8 pt apart).
+    private var prayerColumnHeader: some View {
+        HStack(spacing: 14) {
+            Color.clear.frame(width: 38, height: 1)
+            HStack(spacing: 8) {
+                ForEach(["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"], id: \.self) { name in
+                    Image(systemName: prayerIcon(for: name))
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel(name)
+                }
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
 
     /// "6 / Tue", then five squares, Fajr → Isha.
     private func dayRow(_ dayKey: String, _ dayPhotos: [MemoryPhoto]) -> some View {
