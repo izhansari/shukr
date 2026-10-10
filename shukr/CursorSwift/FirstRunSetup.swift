@@ -1624,7 +1624,7 @@ private struct RemindersStep: View {
 
     var body: some View {
         StepScaffold(title: "Prayer notifications",
-                     subtitle: "Not just when it starts: if you haven’t marked it yet, a nudge halfway through and with 30 minutes left.") {
+                     subtitle: "Not just when it starts: if you haven’t prayed, we’ll nudge you at halfway and 30 minutes left.") {
             VStack(spacing: 14) {
                 // The real thing, live (owner: "a nicer graphic of our actual notification on the page to show a live
                 // demo so they get the point better").
@@ -1755,8 +1755,6 @@ private struct NotificationDemo: View {
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = 0
-    /// Bumped to bring a lone banner (Start) in again, so the preview never stands still (owner: "Just make it running").
-    @State private var replay = 0
 
     private struct Banner: Identifiable {
         let id: Int
@@ -1854,6 +1852,17 @@ private struct NotificationDemo: View {
                         .foregroundStyle(on ? Color.sage : .secondary)
                         .opacity(b.sent ? 1 : 0.35)
                         .frame(maxWidth: .infinity)
+                        // A window too short for a halfway nudge (under 90 min, usually Maghrib): its place says so,
+                        // so Nudge doesn't look broken (owner).
+                        if b.id == 0 && !all.contains(where: { $0.id == 1 }) {
+                            VStack(spacing: 2) {
+                                Text("Halfway").font(.system(.caption, design: .rounded)).strikethrough()
+                                Text("too short").font(.system(.caption2, design: .rounded))
+                            }
+                            .foregroundStyle(.secondary)
+                            .opacity(0.35)
+                            .frame(maxWidth: .infinity)
+                        }
                     }
                 }
             }
@@ -1867,15 +1876,9 @@ private struct NotificationDemo: View {
                 shown = 0
                 guard !reduceMotion, !sent.isEmpty else { shown = max(sent.count - 1, 0); return }
                 let arrive = Animation.spring(response: 0.45, dampingFraction: 0.85)
-                if sent.count == 1 {
-                    // Start: its one banner keeps arriving.
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .seconds(2.8))
-                        if Task.isCancelled { break }
-                        withAnimation(arrive) { replay += 1 }
-                    }
-                    return
-                }
+                // Start: its one banner, still (owner: "for start with only one notif it doesnt make sense to keep it
+                // playing"); only several rotate.
+                if sent.count == 1 { return }
                 try? await Task.sleep(for: .seconds(0.35))
                 if Task.isCancelled { return }
                 withAnimation(arrive) { shown = 1 }
@@ -1890,13 +1893,11 @@ private struct NotificationDemo: View {
         }
     }
 
-    /// The newest banner and the one before it, each with a key that changes on a replay (so a lone Start banner
-    /// comes in again).
+    /// The newest banner and the one before it.
     private func stack(_ sent: [Banner], upTo: Int) -> [(index: Int, banner: Banner, key: Int)] {
-        let replayKey = sent.count == 1 ? replay * 10 : 0
         var out: [(index: Int, banner: Banner, key: Int)] = []
         for (i, b) in sent.enumerated() where i <= upTo {
-            out.append((index: i, banner: b, key: b.id + replayKey))
+            out.append((index: i, banner: b, key: b.id))
         }
         return Array(out.suffix(2))
     }
