@@ -37,6 +37,7 @@ import UserNotifications
 import WidgetKit
 import SwiftData
 import Adhan
+import CoreMotion
 
 // MARK: - When it shows
 
@@ -866,19 +867,12 @@ private struct SetupHadith: View {
     @State private var lines = 0
     /// The gradient has come up.
     @State private var lit = false
-    /// The hadith has risen from the middle to its place.
-    @State private var up = false
     /// "shukr helps you to do that →" is in.
     @State private var invite = false
     /// The arrow's nudge.
     @State private var nudge = false
     @State private var leaving = false
-    /// The invitation's height: the room the hadith rises out of.
-    @State private var bottomHeight: CGFloat = 80
     @State private var run: Task<Void, Never>?
-
-    /// Beyond the invitation, how much more room it leaves under the hadith once up.
-    private static let liftExtra: CGFloat = 150
 
     var body: some View {
         ZStack {
@@ -887,22 +881,23 @@ private struct SetupHadith: View {
                 Color.black
                 AnimatedWavyGradient(still: reduceMotion)
                     .opacity(lit ? 1 : 0)
+                // The easter egg: a soft light in the gradient that follows a finger, and the phone's tilt.
+                HadithLight(still: reduceMotion)
+                    .opacity(lit ? 1 : 0)
                 NoiseOverlay()
                     .blendMode(.overlay)
                     .opacity(lit ? 0.3 : 0)
             }
             .ignoresSafeArea()
-            // The hadith is centred in the page with a room under it that opens as it rises (layout only: measured into
-            // its own layout through ViewThatFits, the hadith looped and hung the page blank).
+            // The hadith stays in the middle (owner: "dont shift the thing up"); the invitation sits at the bottom.
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 24)
                     hadith
                     Spacer(minLength: 24)
-                    Color.clear.frame(height: up ? bottomHeight + Self.liftExtra : 0)
                 }
+                .allowsHitTesting(false)
                 invitation
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomHeight = $0 }
             }
             // The opening's soft dark halo, so white reads on every part of the gradient.
             .shadow(color: .black.opacity(0.45), radius: 6, y: 1)
@@ -965,14 +960,16 @@ private struct SetupHadith: View {
     /// "shukr helps you to do that →", set like the opening's "tap to continue": the way on (no button — owner).
     private var invitation: some View {
         Button(action: advance) {
-            HStack(spacing: 8) {
+            // Secondary to the hadith (owner: "too similar to the typeface of main content"): smaller, light, dimmer.
+            HStack(spacing: 6) {
                 Text(SetupHadithWords.help)
-                    .font(.system(.body, design: .rounded, weight: .medium))
+                    .font(.system(.footnote, design: .rounded, weight: .regular))
+                    .tracking(0.3)
                 Image(systemName: "arrow.right")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .offset(x: nudge ? 4 : 0)
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .offset(x: nudge ? 3 : 0)
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.white.opacity(0.62))
             .padding(.horizontal, 32)
             .padding(.vertical, 16)
             .contentShape(Rectangle())
@@ -989,17 +986,15 @@ private struct SetupHadith: View {
 
     private func start() {
         typealias T = CircleMotion.Setup
-        if reduceMotion { lit = true; lines = SetupHadithWords.lineCount; up = true; invite = true; return }
+        if reduceMotion { lit = true; lines = SetupHadithWords.lineCount; invite = true; return }
         run = Task { @MainActor in
             // The gradient comes up first, as on the opening; then the conversation.
-            withAnimation(T.gradient) { lit = true }
+            withAnimation(T.hadithLit) { lit = true }
             guard await CircleGate.pause(T.hadithAfterDuration) else { return }
             for (i, beat) in T.hadithLineBeats.enumerated() {
                 withAnimation(i == 2 || i == 3 ? T.hadithWipe : T.hadithLine) { lines = i + 1 }
                 guard await CircleGate.pause(beat) else { return }
             }
-            withAnimation(T.hadithUp) { up = true }
-            guard await CircleGate.pause(T.hadithUpDuration) else { return }
             withAnimation(T.hadithExtra) { invite = true }
             withAnimation(T.hadithNudge) { nudge = true }
         }
@@ -1014,6 +1009,64 @@ private struct SetupHadith: View {
             onDone()
         }
     }
+}
+
+/// The hadith page's easter egg: a soft green light in its gradient that follows a finger across the page and, left
+/// alone, drifts with the phone's tilt (owner: "interactive with the finger like moving the gradient with it. or like as
+/// we tilt the phone"). Its own view, so the tilt's updates redraw only this layer. Reduce Motion: still, in the middle.
+private struct HadithLight: View {
+    var still = false
+    @State private var tilt = HadithTilt()
+    /// Where a finger is (0…1 of the page), while it's down.
+    @State private var finger: UnitPoint?
+
+    var body: some View {
+        GeometryReader { geo in
+            let centre = finger ?? UnitPoint(x: 0.5 + tilt.x * 0.45, y: 0.55 + tilt.y * 0.4)
+            RadialGradient(colors: [Color(red: 0.42, green: 0.86, blue: 0.58).opacity(0.42), .clear],
+                           center: centre, startRadius: 0, endRadius: min(geo.size.width, geo.size.height) * 0.6)
+                .blendMode(.plusLighter)
+                .blur(radius: 30)
+                .animation(.spring(response: finger == nil ? 1.4 : 0.5, dampingFraction: 0.9), value: centre)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { v in
+                            guard !still else { return }
+                            finger = UnitPoint(x: v.location.x / max(geo.size.width, 1),
+                                               y: v.location.y / max(geo.size.height, 1))
+                        }
+                        .onEnded { _ in finger = nil }
+                )
+        }
+        .onAppear { if !still { tilt.start() } }
+        .onDisappear { tilt.stop() }
+    }
+}
+
+/// The phone's tilt from where it was held when the page opened, smoothed, −1…1 each way.
+@Observable @MainActor
+private final class HadithTilt {
+    var x: Double = 0
+    var y: Double = 0
+    @ObservationIgnored private let manager = CMMotionManager()
+    @ObservationIgnored private var reference: CMAttitude?
+
+    func start() {
+        guard manager.isDeviceMotionAvailable, !manager.isDeviceMotionActive else { return }
+        manager.deviceMotionUpdateInterval = 1.0 / 30
+        manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
+            guard let self, let attitude = motion?.attitude.copy() as? CMAttitude else { return }
+            if let ref = self.reference { attitude.multiply(byInverseOf: ref) } else { self.reference = attitude.copy() as? CMAttitude; return }
+            // About 30° either way covers the range; smoothed so it glides.
+            let nx = max(-1, min(1, attitude.roll / 0.5)), ny = max(-1, min(1, attitude.pitch / 0.5))
+            let newX = self.x + (nx - self.x) * 0.15, newY = self.y + (ny - self.y) * 0.15
+            // Publish only a visible change (every observation redraws the light).
+            if abs(newX - self.x) > 0.004 || abs(newY - self.y) > 0.004 { self.x = newX; self.y = newY }
+        }
+    }
+
+    func stop() { manager.stopDeviceMotionUpdates() }
 }
 
 // MARK: - The opening (the original welcome's look)
@@ -3169,21 +3222,20 @@ extension CircleMotion {
 extension CircleMotion {
     /// The first-run setup: its opening page, the first step coming in, and Bismillah's hand-off to the welcome.
     enum Setup {
-        // The hadith page (paced like the zikr lock's verse): a blank beat, the conversation a line at a time (each
-        // beat = the wait after that line: the question, "He ﷺ replied,", the Arabic, the English, the source — the
-        // last one the hold before it rises), it rises, then the line and the button; its words go on a tap.
-        static let hadithAfterDuration: Double = 1.2
-        static let hadithLine = Animation.easeInOut(duration: 0.9)
-        static let hadithLineBeats: [Double] = [1.8, 0.9, 1.4, 1.2, 2.0]
-        static let hadithUp = Animation.easeInOut(duration: 1.6)
-        static let hadithUpDuration: Double = 1.4
-        static let hadithExtra = Animation.easeInOut(duration: 1.0)
+        // The hadith page (slow, owner: "slow the transitions down a bit"): the gradient comes up, then the conversation
+        // a line at a time (each beat = the wait after that line: the question, "He ﷺ replied,", the Arabic, the English,
+        // the source), then the invitation; the page goes on a tap.
+        static let hadithLit = Animation.easeInOut(duration: 2.2)
+        static let hadithAfterDuration: Double = 1.8
+        static let hadithLine = Animation.easeInOut(duration: 1.4)
+        static let hadithLineBeats: [Double] = [2.4, 1.4, 2.2, 2.0, 2.0]
+        static let hadithExtra = Animation.easeInOut(duration: 1.6)
         /// The answer written in (Arabic right to left, then the English).
-        static let hadithWipe = Animation.easeInOut(duration: 1.3)
+        static let hadithWipe = Animation.easeInOut(duration: 1.9)
         /// The invitation's arrow, nudging forward.
-        static let hadithNudge = Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true)
-        static let hadithAway = Animation.easeOut(duration: 0.45)
-        static let hadithAwayDuration: Double = 0.5
+        static let hadithNudge = Animation.easeInOut(duration: 1.1).repeatForever(autoreverses: true)
+        static let hadithAway = Animation.easeOut(duration: 0.6)
+        static let hadithAwayDuration: Double = 0.65
         // The opening page (the gradient, the glass circle, "welcome to shukr", "tap to continue")
         static let gradientAfterDuration: Double = 0.6
         static let gradient = Animation.easeInOut(duration: 1.4)
