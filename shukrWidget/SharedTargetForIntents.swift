@@ -1354,11 +1354,15 @@ struct SetFajrAlarmIntent: AppIntent {
             // AlarmKit's permission taken away while the app wasn't running (audit B13): the Shortcut takes over
             // again, instead of neither setting an alarm.
             var permissionGone = false
+            var permission = "?"
             #if canImport(AlarmKit)
-            if #available(iOS 26.1, *), AlarmManager.shared.authorizationState != .authorized { permissionGone = true }
+            if #available(iOS 26.1, *) {
+                permission = String(describing: AlarmManager.shared.authorizationState)
+                if AlarmManager.shared.authorizationState != .authorized { permissionGone = true }
+            }
             #endif
             if permissionGone {
-                FajrAlarmLog.add("Shortcut asked: AlarmKit permission gone — the Shortcut takes over again")
+                FajrAlarmLog.add("Shortcut asked: AlarmKit permission reads \(permission) in \(Bundle.main.bundleIdentifier ?? "?") — AlarmKit mode off, the Shortcut takes over (AlarmKit's alarms stay set)")
                 group.set(false, forKey: "alarmKitActive")
             } else {
                 // A Shortcut that carries on past this error makes its "Create Alarm" with no time: 12:00 AM.

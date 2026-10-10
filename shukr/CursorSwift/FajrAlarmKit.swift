@@ -101,9 +101,21 @@ enum FajrAlarms {
     /// Make the scheduled alarms match the rule: cancel ones that are past or no longer wanted,
     /// add the missing days until AlarmKit's cap. Cheap when nothing changed (no calls at all).
     @MainActor static func plan(reason: String) async {
-        guard #available(iOS 26.1, *), isActive else { return }
+        guard #available(iOS 26.1, *) else { return }
+        guard isActive else {
+            // AlarmKit mode off (the Shortcut answers): nothing re-plans or cancels what AlarmKit still holds. Say so
+            // whenever that changes — leftovers ring at their old times (a lead for the midnight alarm, 2026-10-10).
+            let held = scheduled().filter { !$0.test }
+            let line = "AlarmKit mode off (\(String(describing: AlarmManager.shared.authorizationState))) — \(held.count) AlarmKit alarm(s) still set"
+                + (held.first?.date.map { ", next \(FajrAlarmLog.day($0))" } ?? "")
+            if group?.string(forKey: "fajrAlarmLog.off") != line {
+                group?.set(line, forKey: "fajrAlarmLog.off")
+                FajrAlarmLog.add(line)
+            }
+            return
+        }
         if AlarmManager.shared.authorizationState != .authorized {
-            FajrAlarmLog.add("plan (\(reason)): AlarmKit permission gone — AlarmKit mode off, the Shortcut can take over")
+            FajrAlarmLog.add("plan (\(reason)): AlarmKit permission \(String(describing: AlarmManager.shared.authorizationState)) — AlarmKit mode off, the Shortcut can take over; \(scheduled().count) still set")
             group?.set(false, forKey: activeKey)
             return
         }
