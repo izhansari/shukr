@@ -2300,3 +2300,285 @@ private struct FliesBetweenLevels: ViewModifier {
         if on { content.matchedGeometryEffect(id: id, in: namespace) } else { content }
     }
 }
+
+#if DEBUG
+/// Mock-ups for the open pile v2 (owner, 2026-10-10) — static screens from the real parts, shown with `-demoPileMock A|B|C|D`.
+/// A: the pile (date as the title, Today, a favourite's heart, one bottom row); B: developing + the ··· menu; C: a day
+/// with no photos; D: Days with today marked, an empty month shown slim, hearts. Pictures for a decision, not shipped.
+struct MemoriesPileMock: View {
+    let variant: String
+    private let photos = PrayerPhotos.all()
+    private let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial).overlay(Color.black.opacity(0.12)).ignoresSafeArea()
+                .background(LinearGradient(colors: [.purple.opacity(0.25), .green.opacity(0.2), .orange.opacity(0.2)],
+                                           startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea())
+            switch variant {
+            case "D": daysMock
+            default: pileMock
+            }
+        }
+    }
+
+    // MARK: A / B / C — the open pile
+
+    /// A: a finished day (Oct 7, all five); B: today's, still developing.
+    private var top: [MemoryPhoto] {
+        let day = variant == "A" ? photos.filter { $0.dayKey == "2026-10-07" } : photos.filter { $0.dayKey == "2026-10-10" }
+        return Array((day.isEmpty ? photos : day).suffix(4))
+    }
+
+    private var pileMock: some View {
+        VStack(spacing: 0) {
+            // Title row: ✕ left, the day as the title (Today), ··· right (Retake / Delete) — the date was only in the strip.
+            HStack {
+                circle("xmark")
+                Spacer()
+                VStack(spacing: 2) {
+                    Text(variant == "C" ? "Tuesday, Oct 6" : variant == "A" ? "Wednesday, Oct 7" : "Saturday, Oct 10")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    if variant == "A" {
+                        Text("3 days ago").font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
+                    } else if variant == "B" {
+                        Text("Today").font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(Capsule().fill(Color.green.opacity(0.18))).foregroundStyle(.green)
+                    } else {
+                        Text("4 days ago").font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                circle("ellipsis")
+            }
+            .padding(.horizontal, 20).padding(.top, 8)
+            Spacer(minLength: 12)
+            if variant == "C" { emptyDay } else { pile }
+            Spacer(minLength: 12)
+            if variant != "C" { caption.padding(.horizontal, 24) }
+            Spacer(minLength: 16)
+            if variant != "C" { actions }
+            Spacer(minLength: 18)
+            strip
+        }
+        .overlay(alignment: .topTrailing) { if variant == "B" { menu.padding(.top, 58).padding(.trailing, 18) } }
+    }
+
+    private var pile: some View {
+        let w: CGFloat = 300
+        return ZStack {
+            ForEach(Array(top.dropLast().enumerated()), id: \.element.key) { n, p in
+                MemoryThumb(key: p.key, side: 900, corner: 28)
+                    .frame(width: w, height: w)
+                    .rotationEffect(.degrees([-5.0, 4, -2][n % 3]))
+                    .offset(x: [-10.0, 12, -4][n % 3], y: [6.0, -4, 2][n % 3])
+            }
+            if let p = top.last {
+                MemoryThumb(key: p.key, side: 900, corner: 28)
+                    .frame(width: w, height: w)
+                    .blur(radius: variant == "B" ? 14 : 0)
+                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .overlay(alignment: .topTrailing) {
+                        // A favourite carries its heart on the photo (owner) — and on its square in the grid (D).
+                        if variant == "A" {
+                            Image(systemName: "heart.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(.pink)
+                                .padding(9).background(Circle().fill(.white)).shadow(radius: 3).padding(12)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        if variant == "B" {
+                            Label("Develops after Isha", systemImage: "hourglass")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                                .padding(.horizontal, 10).padding(.vertical, 6).background(Capsule().fill(.black.opacity(0.35)))
+                                .padding(12)
+                        }
+                    }
+            }
+        }
+        .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+    }
+
+    private var emptyDay: some View {
+        // A day with no photos (the strip scrubbed onto it, or today before any): its place in time, said plainly.
+        RoundedRectangle(cornerRadius: 28, style: .continuous)
+            .strokeBorder(Color.primary.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [7, 6]))
+            .frame(width: 300, height: 300)
+            .overlay {
+                VStack(spacing: 10) {
+                    Image(systemName: "photo.on.rectangle.angled").font(.system(size: 34, weight: .light)).foregroundStyle(.secondary)
+                    Text("No photos this day").font(.system(size: 17, weight: .semibold, design: .rounded))
+                    Text("Swipe to Oct 4 or Oct 7").font(.system(size: 14, design: .rounded)).foregroundStyle(.secondary)
+                }
+            }
+    }
+
+    private var caption: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: prayerIcon(for: "Isha"))
+                Text("Isha")
+            }
+            .font(.system(size: 22, weight: .semibold, design: .rounded))
+            Text("Prayed 8:42 PM · Masjid Al-Noor").font(.system(size: 14, design: .rounded)).foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle().stroke(Color.green.opacity(0.2), lineWidth: 3)
+                    Circle().trim(from: 0, to: 0.92).stroke(Color.green, style: StrokeStyle(lineWidth: 3, lineCap: .round)).rotationEffect(.degrees(-90))
+                }
+                .frame(width: 16, height: 16)
+                Text("92 · On time").font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(.green)
+            }
+        }
+    }
+
+    private var actions: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 18) {
+                circle("square.and.arrow.up", faded: variant == "B")
+                circle(variant == "A" ? "heart.fill" : "heart", tint: variant == "A" ? .pink : .primary)
+                circle("note.text")
+            }
+            if variant == "B" {
+                Text("You can share it once it develops").font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var menu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Label("Retake photo", systemImage: "camera").padding(.horizontal, 16).padding(.vertical, 12)
+            Divider()
+            Label("Delete photo", systemImage: "trash").foregroundStyle(.red).padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .font(.system(size: 16, design: .rounded))
+        .frame(width: 210, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial))
+        .shadow(color: .black.opacity(0.15), radius: 16, y: 6)
+    }
+
+    /// One bottom row: every day (the gaps show how long it's been), five dots per day for its prayers' photos, the
+    /// centred day opened into the five prayer symbols (they were a second row), today marked.
+    private var strip: some View {
+        let days: [(n: String, w: String, dots: [Bool], today: Bool)] = [
+            ("4", "Sun", [true, true, false, true, true], false), ("5", "Mon", [true, false, false, false, true], false),
+            ("6", "Tue", [false, false, false, false, false], false), ("7", "Wed", [true, true, true, true, true], false),
+            ("8", "Thu", [false, true, true, false, true], false), ("9", "Fri", [true, true, true, true, false], false),
+            ("10", "Sat", [true, true, true, true, true], true)]
+        let centre = variant == "C" ? 2 : variant == "A" ? 3 : 6
+        return VStack(spacing: 10) {
+            Rectangle().fill(Color.primary.opacity(0.22)).frame(height: 1)
+            HStack(spacing: 0) {
+                ForEach(days.indices, id: \.self) { i in
+                    let d = days[i]
+                    if i == centre {
+                        VStack(spacing: 6) {
+                            HStack(spacing: 4) {
+                                Text(d.n).font(.system(size: 22, weight: .bold, design: .rounded))
+                                Text(d.w).font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
+                            }
+                            HStack(spacing: 10) {
+                                ForEach(0..<5, id: \.self) { s in
+                                    Image(systemName: prayerIcon(for: names[s]))
+                                        .font(.system(size: 14, weight: s == 4 && variant != "C" ? .bold : .regular))
+                                        .foregroundStyle(d.dots[s] ? (s == 4 && variant != "C" ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary)) : AnyShapeStyle(.quaternary))
+                                        .scaleEffect(s == 4 && variant != "C" ? 1.2 : 1)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial))
+                        .overlay(alignment: .top) { if d.today { todayDot.offset(y: -10) } }
+                    } else {
+                        VStack(spacing: 4) {
+                            Text(d.n).font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundStyle(d.dots.contains(true) ? .primary : .tertiary)
+                            HStack(spacing: 2) {
+                                ForEach(0..<5, id: \.self) { s in
+                                    Circle().fill(d.dots[s] ? Color.primary.opacity(0.55) : Color.primary.opacity(0.12)).frame(width: 4, height: 4)
+                                }
+                            }
+                        }
+                        .frame(width: 40)
+                        .overlay(alignment: .top) { if d.today { todayDot.offset(y: -10) } }
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            if variant != "B" {
+                Text("Today is Sat, Oct 10 →").font(.system(size: 12, design: .rounded)).foregroundStyle(.green)
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
+    private var todayDot: some View { Circle().fill(Color.green).frame(width: 6, height: 6) }
+
+    private func circle(_ symbol: String, tint: Color = .primary, faded: Bool = false) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 17, weight: .medium)).foregroundStyle(tint)
+            .frame(width: 50, height: 50)
+            .background(Circle().fill(.regularMaterial))
+            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
+            .opacity(faded ? 0.35 : 1)
+    }
+
+    // MARK: D — Days, with today and hearts
+
+    private var daysMock: some View {
+        let byDay = Dictionary(grouping: photos, by: \.dayKey)
+        let octKeys = (4...10).map { String(format: "2026-10-%02d", $0) }
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Memories").font(.system(size: 17, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity)
+                // A month with no photos stays, slim: the gap between photos is still there to see (owner: a sense of time).
+                HStack {
+                    Text("August 2026").font(.system(size: 17, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Text("no photos").font(.system(size: 14, design: .rounded)).foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 10).padding(.horizontal, 14)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.12)))
+                Text("October 2026").font(.system(size: 20, weight: .semibold, design: .rounded))
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 12) {
+                    ForEach(Array(["S", "M", "T", "W", "T", "F", "S"].enumerated()), id: \.offset) { i, l in
+                        Text(l).font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(.secondary).id("h\(i)")
+                    }
+                    ForEach(["b0", "b1", "b2", "b3"], id: \.self) { _ in Color.clear.frame(height: 1) }
+                    ForEach(["2026-10-01", "2026-10-02", "2026-10-03"] + octKeys, id: \.self) { k in
+                        dayCell(k, byDay, heart: k.hasSuffix("02") || k.hasSuffix("07"), today: k.hasSuffix("10"))
+                    }
+                }
+                Text("A day with photos: its pile · a favourite: ♥ · today: ringed, with or without photos")
+                    .font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
+            }
+            .padding(16)
+        }
+    }
+
+    private func dayCell(_ key: String, _ byDay: [String: [MemoryPhoto]], heart: Bool, today: Bool) -> some View {
+        let dayPhotos = byDay[key] ?? []
+        return VStack(spacing: 4) {
+            ZStack {
+                if let p = dayPhotos.last {
+                    MemoryThumb(key: p.key, side: 120, corner: 10).frame(width: 38, height: 38)
+                        .overlay(alignment: .topTrailing) {
+                            if heart {
+                                Image(systemName: "heart.fill").font(.system(size: 9, weight: .bold)).foregroundStyle(.pink)
+                                    .padding(3).background(Circle().fill(.white)).offset(x: 5, y: -5)
+                            }
+                        }
+                } else {
+                    Color.clear.frame(width: 38, height: 38)
+                }
+            }
+            .frame(height: 40)
+            Text(String(Int(key.suffix(2)) ?? 0))
+                .font(.system(size: 11, weight: today ? .bold : .medium, design: .rounded))
+                .foregroundStyle(today ? Color.white : (dayPhotos.isEmpty ? Color.secondary : Color.primary))
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(today ? Color.green : .clear))
+        }
+    }
+}
+#endif

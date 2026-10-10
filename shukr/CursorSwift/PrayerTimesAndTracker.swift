@@ -1770,6 +1770,8 @@ struct PrayerTimesView: View {
         #if DEBUG
         @State private var demoViewer = false
         @State private var demoAlarmCheck = false
+        @State private var demoPileMock: String?
+        struct MockVariant: Identifiable { let id: String }
         #endif
         /// The pill's camera is open for this prayer (PrayerPhotos.swift).
         @State private var prayerPhoto: PrayerPhotoTarget?
@@ -2040,6 +2042,15 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(2))
                     demoAlarmCheck = true
                 }
+                if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoPileMock"),
+                   i + 1 < ProcessInfo.processInfo.arguments.count {
+                    try? await Task.sleep(for: .seconds(2))
+                    demoPileMock = ProcessInfo.processInfo.arguments[i + 1]
+                }
+            }
+            // `-demoPileMock A|B|C|D`: the open pile v2 mock-ups (PrayerMemories.swift).
+            .fullScreenCover(item: Binding(get: { demoPileMock.map { MockVariant(id: $0) } }, set: { demoPileMock = $0?.id })) { v in
+                MemoriesPileMock(variant: v.id)
             }
             // `-demoAlarmCheck`: Settings' Alarm check page (FajrAlarmKit.swift).
             .sheet(isPresented: $demoAlarmCheck) { NavigationStack { FajrAlarmCheckView() } }
