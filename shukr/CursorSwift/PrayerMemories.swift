@@ -2343,9 +2343,7 @@ struct MemoriesPileMock: View {
                     if variant == "A" {
                         Text("3 days ago").font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
                     } else if variant == "B" {
-                        Text("Today").font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .padding(.horizontal, 8).padding(.vertical, 2)
-                            .background(Capsule().fill(Color.green.opacity(0.18))).foregroundStyle(.green)
+                        Text("Today").font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
                     } else {
                         Text("4 days ago").font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
                     }
@@ -2489,25 +2487,25 @@ struct MemoriesPileMock: View {
                         }
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial))
-                        .overlay(alignment: .top) { if d.today { todayDot.offset(y: -10) } }
                     } else {
                         VStack(spacing: 4) {
-                            Text(d.n).font(.system(size: 16, weight: .semibold, design: .rounded))
+                            Text(d.n).font(.system(size: 16, weight: d.today ? .heavy : .semibold, design: .rounded))
                                 .foregroundStyle(d.dots.contains(true) ? .primary : .tertiary)
                             HStack(spacing: 2) {
                                 ForEach(0..<5, id: \.self) { s in
                                     Circle().fill(d.dots[s] ? Color.primary.opacity(0.55) : Color.primary.opacity(0.12)).frame(width: 4, height: 4)
                                 }
                             }
+                            // Today: bold, with the word under it, grey (owner picked it over a green dot / a ring / a dot).
+                            Text(d.today ? "Today" : " ").font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
                         }
                         .frame(width: 40)
-                        .overlay(alignment: .top) { if d.today { todayDot.offset(y: -10) } }
                     }
                 }
             }
             .padding(.horizontal, 10)
             if variant != "B" {
-                Text("Today is Sat, Oct 10 →").font(.system(size: 12, design: .rounded)).foregroundStyle(.green)
+                Text("Today is Sat, Oct 10 →").font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
             }
         }
         .padding(.bottom, 8)
@@ -2616,7 +2614,7 @@ struct MemoriesPileMock: View {
                         dayCell(k, byDay, heart: k.hasSuffix("02") || k.hasSuffix("07"), today: k.hasSuffix("10"))
                     }
                 }
-                Text("A day with photos: its pile · a favourite: ♥ · today: ringed, with or without photos")
+                Text("A day with photos: its pile · a favourite: ♥ · today: bold with \"Today\", with or without photos")
                     .font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
             }
             .padding(16)
@@ -2641,10 +2639,9 @@ struct MemoriesPileMock: View {
             }
             .frame(height: 40)
             Text(String(Int(key.suffix(2)) ?? 0))
-                .font(.system(size: 11, weight: today ? .bold : .medium, design: .rounded))
-                .foregroundStyle(today ? Color.white : (dayPhotos.isEmpty ? Color.secondary : Color.primary))
-                .frame(width: 20, height: 20)
-                .background(Circle().fill(today ? Color.green : .clear))
+                .font(.system(size: 11, weight: today ? .heavy : .medium, design: .rounded))
+                .foregroundStyle(dayPhotos.isEmpty ? Color.secondary : Color.primary)
+            Text(today ? "Today" : " ").font(.system(size: 9, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
         }
     }
 }
