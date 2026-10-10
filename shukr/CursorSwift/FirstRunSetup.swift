@@ -845,6 +845,9 @@ enum SetupHadithWords {
     static let replied = "He ﷺ replied,"
     static let arabic = "الصَّلَاةُ عَلَى وَقْتِهَا"
     static let answer = "“To offer the prayers at their early stated fixed times.”"
+    /// The answer as the two lines it's written in, one after the other at the same pace per word (owner: "the same word
+    /// rate. not the same pace per line").
+    static let answerLines = ["“To offer the prayers at their early", "stated fixed times.”"]
     static let source = "Sahih al-Bukhari 527"
     static let help = "shukr helps you to do that"
     static let button = "Set up shukr"
@@ -866,6 +869,8 @@ private struct SetupHadith: View {
     @State private var lines = 0
     /// The gradient has come up.
     @State private var lit = false
+    /// How many of the answer's lines are written in (0…2).
+    @State private var answerShown = 0
     /// "shukr helps you to do that →" is in.
     @State private var invite = false
     /// The arrow's nudge.
@@ -918,12 +923,19 @@ private struct SetupHadith: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .modifier(WipeIn(progress: lines > 2 ? 1 : 0, fromTrailing: true))
                 .padding(.top, 4)
-            Text(SetupHadithWords.answer)
-                .font(.system(size: 18, weight: .light, design: .rounded))
-                .foregroundStyle(.white.opacity(0.92))
-                .fixedSize(horizontal: false, vertical: true)
-                .modifier(WipeIn(progress: lines > 3 ? 1 : 0))
-                .padding(.top, 2)
+            VStack(spacing: 2) {
+                ForEach(Array(SetupHadithWords.answerLines.enumerated()), id: \.offset) { k, line in
+                    Text(line)
+                        .font(.system(size: 18, weight: .light, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.92))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .modifier(WipeIn(progress: answerShown > k ? 1 : 0))
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(SetupHadithWords.answer)
+            .padding(.top, 2)
             surfacing(4) {
                 Text(SetupHadithWords.source.uppercased())
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -976,15 +988,31 @@ private struct SetupHadith: View {
 
     private func start() {
         typealias T = CircleMotion.Setup
-        if reduceMotion { lit = true; lines = SetupHadithWords.lineCount; invite = true; return }
+        if reduceMotion {
+            lit = true; lines = SetupHadithWords.lineCount; answerShown = SetupHadithWords.answerLines.count; invite = true
+            return
+        }
         run = Task { @MainActor in
+            let beats = T.hadithLineBeats
             // The gradient comes up first, as on the opening; then the conversation.
             withAnimation(T.hadithLit) { lit = true }
             guard await CircleGate.pause(T.hadithAfterDuration) else { return }
-            for (i, beat) in T.hadithLineBeats.enumerated() {
-                withAnimation(i == 2 || i == 3 ? T.hadithWipe : T.hadithLine) { lines = i + 1 }
-                guard await CircleGate.pause(beat) else { return }
+            // The question, "He ﷺ replied,", the Arabic.
+            for i in 0..<3 {
+                withAnimation(i == 2 ? T.hadithWipe : T.hadithLine) { lines = i + 1 }
+                guard await CircleGate.pause(beats[i]) else { return }
             }
+            // The English answer, a line at a time, each as long as its words take.
+            lines = 4
+            for (k, line) in SetupHadithWords.answerLines.enumerated() {
+                let seconds = Double(line.split(separator: " ").count) * T.hadithWordDuration
+                withAnimation(.linear(duration: seconds)) { answerShown = k + 1 }
+                guard await CircleGate.pause(seconds) else { return }
+            }
+            guard await CircleGate.pause(beats[3]) else { return }
+            // The source, then a long beat before the invitation.
+            withAnimation(T.hadithLine) { lines = 5 }
+            guard await CircleGate.pause(beats[4]) else { return }
             withAnimation(T.hadithExtra) { invite = true }
             withAnimation(T.hadithNudge) { nudge = true }
         }
@@ -1028,6 +1056,9 @@ private struct HadithSurface: View {
                 // The grain is under the water too: a smooth gradient alone barely shows a ripple bending it.
                 ZStack {
                     AnimatedWavyGradient(still: still)
+                    // The second travelling colour (owner: "put both traveling colors back like how the original had"):
+                    // on black, the gradient's own pale patch hardly shows.
+                    HadithGlow(still: still)
                     NoiseOverlay()
                         .blendMode(.overlay)
                         .opacity(0.3)
@@ -1071,6 +1102,26 @@ private struct HadithSurface: View {
         ripples.removeAll { time - $0.time > Self.life }
         ripples.append(Ripple(point: point, time: time, strength: strength))
         if ripples.count > 16 { ripples.removeFirst(ripples.count - 16) }
+    }
+}
+
+/// A soft green light travelling slowly across the hadith page's gradient, the other way from its waves — the second
+/// colour the opening shows over a light page. Reduce Motion: still.
+private struct HadithGlow: View {
+    var still = false
+    @State private var drift = false
+
+    var body: some View {
+        GeometryReader { geo in
+            RadialGradient(colors: [Color(red: 0.42, green: 0.86, blue: 0.58).opacity(0.36), .clear],
+                           center: drift ? UnitPoint(x: 0.8, y: 0.28) : UnitPoint(x: 0.2, y: 0.8),
+                           startRadius: 0, endRadius: min(geo.size.width, geo.size.height) * 0.62)
+                .blendMode(.plusLighter)
+                .blur(radius: 30)
+        }
+        .allowsHitTesting(false)
+        .animation(.easeInOut(duration: 13).repeatForever(autoreverses: true), value: drift)
+        .onAppear { if !still { drift = true } }
     }
 }
 
@@ -3233,7 +3284,11 @@ extension CircleMotion {
         static let hadithLit = Animation.easeInOut(duration: 2.2)
         static let hadithAfterDuration: Double = 1.8
         static let hadithLine = Animation.easeInOut(duration: 1.4)
-        static let hadithLineBeats: [Double] = [2.4, 1.4, 2.2, 2.0, 2.0]
+        /// After the question, "He ﷺ replied,", the Arabic, the English (once written), the source (the long one: a
+        /// beat between the quote and "shukr helps you to do that" — owner).
+        static let hadithLineBeats: [Double] = [2.4, 1.4, 2.2, 1.4, 3.8]
+        /// The English answer's pace, the same for each of its lines.
+        static let hadithWordDuration: Double = 0.3
         static let hadithExtra = Animation.easeInOut(duration: 1.6)
         /// The answer written in (Arabic right to left, then the English).
         static let hadithWipe = Animation.easeInOut(duration: 1.9)
