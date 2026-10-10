@@ -296,7 +296,8 @@ struct FirstRunSetupView: View {
                         case .location: LocationStep(locationOnly: mode == .locationOnly, next: { advance(to: .method) })
                         case .method, .madhab:
                             PrayerTimesStep(asr: step == .madhab,
-                                            next: { advance(to: step == .madhab ? .appearance : .madhab) })
+                                            next: { advance(to: step == .madhab ? .appearance : .madhab) },
+                                            change: { go(.method) })
                         case .appearance: AppearanceStep(next: { advance(to: .reminders) })
                         case .reminders: RemindersStep(next: {
                             NotificationScheduler.reschedule(context: context, reason: "setup reminders")
@@ -1364,33 +1365,66 @@ func hasNoHalfwayToday(_ prayer: String) -> Bool {
     return w.end.timeIntervalSince(w.start) < NotificationScheduler.halfwayMinimumWindow
 }
 
-/// The calculation method, then when Asr begins: two steps on ONE page (owner: "no need to redraw it"). Today's
-/// times stay at the bottom with Continue; only the top fades from the method list to the Asr cards (and back).
+/// The calculation method, then when Asr begins: two steps on ONE page (owner: "no need to redraw it"). On Continue the
+/// method list folds down into its picked row, just above today's times (method + times read together), the title
+/// becomes "When does Asr begin?" (owner: it catches people) and the Shafi'i / Hanafi cards come in above; the strip and
+/// Continue never move. The folded row (or ‹) unfolds it again.
 private struct PrayerTimesStep: View {
     /// The Asr (madhab) step; else the method.
     let asr: Bool
     let next: () -> Void
+    /// Back to the method: the folded row's "Change".
+    let change: () -> Void
     @EnvironmentObject private var viewModel: PrayerViewModel
+    @EnvironmentObject private var location: EnvLocationManager
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
+    /// One row's height, so the folded card fits exactly one.
+    @State private var rowHeight: CGFloat = 60
+
+    /// Out, then in: the two titles differ in height, and crossfaded they sat on top of each other.
+    private static let titleSwap = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeOut(duration: 0.22).delay(0.14)),
+        removal: .opacity.animation(.easeOut(duration: 0.12)))
+
+    /// Automatic follows where you are: offered only with location on (owner); a picked city chooses for itself.
+    private var rows: [(tag: Int, title: String, region: String)] {
+        location.isAuthorized ? methodRows : methodRows.filter { $0.tag != AutoMethod.automatic }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .top) {
                 if asr {
-                    asrPart
-                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                    StepTitle(title: "When does Asr begin?",
+                              subtitle: "The madhab only changes Asr. The other four prayers stay the same.")
+                        .transition(Self.titleSwap)
                 } else {
-                    methodPart
-                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                    StepTitle(title: "Your calculation method",
+                              subtitle: "Each method sets Fajr and Isha by a different angle of the sun. Pick the one your masjid uses.")
+                        .transition(Self.titleSwap)
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            .padding(.bottom, 16)
+            if asr {
+                asrPart
+                    // In just behind the fold; out at once going back.
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 16))
+                                                .animation(.easeOut(duration: 0.3).delay(0.15)),
+                                            removal: .opacity.animation(.easeOut(duration: 0.15))))
+                Spacer(minLength: 8)
+            }
+            methodCard
             TodayStrip(method: method, school: school, highlightAsr: asr)
                 .padding(.top, 8)
                 .padding(.bottom, 16)
+                .fixedSize(horizontal: false, vertical: true)
             PrimaryButton(title: "Continue", action: next)
                 .padding(.bottom, 8)
+        }
+        .onAppear {
+            // No location: Automatic isn't offered, so start on what it would have picked for their city.
+            if !location.isAuthorized && method == AutoMethod.automatic { method = AutoMethod.resolved() }
         }
         .onChange(of: method) { _, _ in
             viewModel.fetchPrayerTimes(cameFrom: "setup method")
@@ -1404,89 +1438,95 @@ private struct PrayerTimesStep: View {
         }
     }
 
-    private var methodPart: some View {
-        VStack(spacing: 0) {
-            StepTitle(title: "Your calculation method",
-                      subtitle: "Picked for where you are. Match your masjid if its times differ.")
-                .padding(.bottom, 16)
-            // Its own card (owner: "more like its own component so its clear its scrollable … selected one needs to
-            // be clearer"): a rounded list the rows scroll inside, the scroll bar flashing as it appears, and the pick
-            // filled in sage.
-            ScrollView {
-                VStack(spacing: 4) {
-                    ForEach(methodRows, id: \.tag) { row in
-                        let picked = method == row.tag
-                        Button {
-                            withAnimation(.snappy(duration: 0.25)) { method = row.tag }
-                        } label: {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(row.title)
-                                        .font(.system(.body, design: .rounded, weight: picked ? .semibold : .regular))
-                                    Text(row.tag == 0 ? "Follows where you are · \(AutoMethod.shortName(AutoMethod.resolved())) here" : row.region)
-                                        .font(.system(.footnote, design: .rounded, weight: .light))
-                                        .foregroundStyle(picked || row.tag == 0 ? Color.sage : .secondary)
-                                }
-                                Spacer()
-                                Image(systemName: picked ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 20, weight: .light))
-                                    .foregroundStyle(picked ? Color.sage : Color.secondary.opacity(0.4))
-                            }
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 14)
-                            .background {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color.sage.opacity(picked ? 0.14 : 0))
-                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .strokeBorder(Color.sage.opacity(picked ? 0.45 : 0), lineWidth: 1))
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(picked ? .isSelected : [])
-                    }
+    /// Its own card (owner: "more like its own component so its clear its scrollable … selected one needs to be
+    /// clearer"): a rounded list the rows scroll inside, the scroll bar flashing as it appears, the pick filled in sage.
+    /// On the Asr step only the pick stays, folded to one row with "Change".
+    private var methodCard: some View {
+        ScrollView {
+            VStack(spacing: 4) {
+                ForEach(rows.filter { !asr || $0.tag == method }, id: \.tag) { row in
+                    methodRow(row)
+                        .transition(.opacity)
                 }
-                .padding(6)
             }
-            .scrollIndicators(.visible)
-            .scrollIndicatorsFlash(onAppear: true)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemBackground)))
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .padding(.horizontal, 20)
+            .padding(6)
         }
+        .scrollDisabled(asr)
+        .scrollIndicators(asr ? .hidden : .visible)
+        .scrollIndicatorsFlash(onAppear: true)
+        .frame(height: asr ? rowHeight + 12 : nil)
+        .frame(maxHeight: asr ? nil : .infinity)
+        .layoutPriority(1)   // never squeezed: the Asr part above gives way first
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemBackground)))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.horizontal, 20)
+    }
+
+    private func methodRow(_ row: (tag: Int, title: String, region: String)) -> some View {
+        let picked = method == row.tag
+        return Button {
+            if asr { change() } else { withAnimation(.snappy(duration: 0.25)) { method = row.tag } }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.title)
+                        .font(.system(.body, design: .rounded, weight: picked ? .semibold : .regular))
+                    Text(asr ? "Calculation method" : row.tag == 0 ? "Follows where you are · \(AutoMethod.shortName(AutoMethod.resolved())) here" : row.region)
+                        .font(.system(.footnote, design: .rounded, weight: .light))
+                        .foregroundStyle(picked || row.tag == 0 ? Color.sage : .secondary)
+                        .contentTransition(.opacity)
+                }
+                Spacer()
+                ZStack(alignment: .trailing) {
+                    Text("Change")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(Color.sage)
+                        .opacity(asr ? 1 : 0)
+                    Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(picked ? Color.sage : Color.secondary.opacity(0.4))
+                        .opacity(asr ? 0 : 1)
+                }
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.sage.opacity(picked ? 0.14 : 0))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.sage.opacity(picked ? 0.45 : 0), lineWidth: 1))
+            }
+            .contentShape(Rectangle())
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if picked { rowHeight = $0 } }
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(picked ? .isSelected : [])
+        .accessibilityHint(asr ? "Change the calculation method" : "")
     }
 
     private var asrPart: some View {
         let shafiAsr = todaysTimes(method: method, school: 0)?.asr
         let hanafiAsr = todaysTimes(method: method, school: 1)?.asr
         let gap = (shafiAsr != nil && hanafiAsr != nil) ? Int(hanafiAsr!.timeIntervalSince(shafiAsr!) / 60) : nil
-        return ScrollView {
-            VStack(spacing: 0) {
-                StepTitle(title: "When does Asr begin?",
-                          subtitle: "The madhab only changes Asr. The other four prayers stay the same.")
-                    .padding(.bottom, 22)
-                HStack(spacing: 14) {
-                    card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
-                         lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
-                    card(title: "Hanafi", note: nil, rule: "when a shadow is twice the object's length",
-                         lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
-                }
-                .padding(.horizontal, 24)
-                if let gap {
-                    Text("Hanafi Asr is \(gap) min later today.")
-                        .font(.system(.subheadline, design: .rounded, weight: .light))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 18)
-                }
-                Text("Not sure? Go with what your masjid uses.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 6)
+        return VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
+                     lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
+                card(title: "Hanafi", note: nil, rule: "when a shadow is twice the object's length",
+                     lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
             }
-            .padding(.bottom, 16)
+            .padding(.horizontal, 24)
+            if let gap {
+                Text("Hanafi Asr is \(gap) min later today.")
+                    .font(.system(.subheadline, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 10)
+            }
+            Text("Not sure? Go with what your masjid uses.")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .padding(.top, 4)
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .scrollIndicators(.hidden)
     }
 
     private func card(title: String, note: String?, rule: String, lengths: CGFloat, asr: Date?,
@@ -1494,9 +1534,10 @@ private struct PrayerTimesStep: View {
         Button {
             withAnimation(.snappy(duration: 0.3)) { pick() }
         } label: {
-            VStack(spacing: 12) {
+            // Compact: they share the page with the folded method row and today's times.
+            VStack(spacing: 8) {
                 ShadowSketch(lengths: lengths)
-                    .frame(height: 64)
+                    .frame(height: 46)
                 VStack(spacing: 2) {
                     Text(title).font(.system(.title3, design: .rounded))
                     Text(note ?? " ").font(.caption).foregroundStyle(.tertiary)
@@ -1518,7 +1559,7 @@ private struct PrayerTimesStep: View {
                     .font(.system(size: 20, weight: .light))
                     .foregroundStyle(selected ? Color.sage : Color.secondary.opacity(0.4))
             }
-            .padding(.vertical, 18)
+            .padding(.vertical, 12)
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
             .background(RoundedRectangle(cornerRadius: 22).fill(selected ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
