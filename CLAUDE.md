@@ -296,7 +296,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - **Memories** (briefly "Journal" — the owner went back to Memories and its photo.stack icon; PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo — a full-screen cover via `MemoriesPresenter.open` (its tab bar needs to be a root; it was pushed for swipe-back, decision swipe-back-pages A, until the owner chose Photos' tab bar); the pile is a clear cover over it
   exists — `PrayerPhotoRevision.hasPhotos`; ⚙ top right = `MemoriesSettings`: Show where, Space used — not in Settings
   any more). Opens on Days. A tap on a day's stack (its newest) or a prayer's square opens `MemoriesDeck` in the page's
-  own clear `fullScreenCover` over a frosted backdrop; it FADES in and out (owner 2026-10-08: "get rid of zoom in zoom out … just make it fade"; the flying photo, a matchedGeometry hero and the system zoom were all tried and dropped). The share page is pushed on the cover's own NavigationStack (`.containerBackground(.clear, for: .navigation)`). **One day's pile at a time** (owner): within a day swipe left = the day's next one comes in from the right
+  own clear `fullScreenCover` over a frosted backdrop; it ZOOMS out of the tapped square and back into its day's square (owner 2026-10-10, replacing the 10-08 fade): `MemoryFrames` (a UIView per square, read only at open / close), built invisible then placed once its top card stops moving, driven frame by frame by `DeckZoomDriver` (a display link on SwiftUI's Spring — as SwiftUI animations the phone dropped ~1 in 3; Info.plist `CADisableMinimumFrameDurationOnPhone` for 120 Hz); no square (search, On this day, a day off screen) = the fade. Never start a second animation or a quiet transaction on the cover in the same turn as a zoom, and no `.animation(nil, …)` inside it. The share page is pushed on the cover's own NavigationStack (`.containerBackground(.clear, for: .navigation)`). **One day's pile at a time** (owner): within a day swipe left = the day's next one comes in from the right
   onto the top, swipe right = the top one goes back off to the right; past the day's last (first) photo the whole pile
   changes day like pages, in the strip's order (owner: forward must move the pile left): the previous day's pile waits off
   the left edge, the next day's off the right (`neighbour`, drawn exactly as they'll be — `restingPile`, lies picked for
@@ -332,8 +332,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `PrayerShareButton` for this page and the viewer's panel — edit them once; Location and Prayer score — a ring,
   `score:` — as toggles; the place as City (default — owner) or Address — `PrayerSpotAddress.city`, "Cary, NC"; the pile's line uses the masjid, else the city; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
   on a card swaps the pictures; a drag down follows the finger anywhere (`freeDrag`), the cards under the top gathering in (`fold`), and closes;
-  closing fades the pile out where it is (the deck's own drag
-  picks the axis on its first move). **Finding** (decision memories-finding C): a heart in the pile
+  closing zooms it home from where it is (the deck's own drag picks the axis on its first move, leaning sideways: only
+  within ~40° of straight down closes, only the way down counts; the neighbouring days are out of the view while dragged
+  down or zooming). **Finding** (decision memories-finding C): a heart in the pile
   (`PrayerPhotoFavorites`, UserDefaults); the bottom bar (see **The bars**). The pile is a clear `fullScreenCover` (no slide) so the bars are never hidden / re-shown. Searching shows a
   results LIST (`resultsList`: chips Favorites · Jumu'ah · At a masjid · With a note on top, rows = photo, prayer, date,
   the note / masjid / place; a tap opens the pile over the results only); words (all must match, folded: no case / accents /
