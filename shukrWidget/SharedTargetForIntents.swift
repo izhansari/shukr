@@ -1358,7 +1358,9 @@ struct SetFajrAlarmIntent: AppIntent {
             #if canImport(AlarmKit)
             if #available(iOS 26.1, *) {
                 permission = String(describing: AlarmManager.shared.authorizationState)
-                if AlarmManager.shared.authorizationState != .authorized { permissionGone = true }
+                // Only a real refusal: outside the app the state can read otherwise (the owner's phone went to the
+                // Shortcut with AlarmKit allowed, 56 alarms left unplanned — 2026-10-10).
+                if AlarmManager.shared.authorizationState == .denied { permissionGone = true }
             }
             #endif
             if permissionGone {

@@ -102,6 +102,15 @@ enum FajrAlarms {
     /// add the missing days until AlarmKit's cap. Cheap when nothing changed (no calls at all).
     @MainActor static func plan(reason: String) async {
         guard #available(iOS 26.1, *) else { return }
+        // Switched off by a misread while AlarmKit is allowed and still holds our alarms (only `disable` turns it off on
+        // purpose, and it cancels them all): back on, so they're kept to the rule again. The owner's phone, 2026-10-10:
+        // mode off, permission authorized, 56 alarms nobody planned any more.
+        if !isActive, AlarmManager.shared.authorizationState == .authorized, group?.bool(forKey: "alarmEnabled") == true,
+           scheduled().contains(where: { !$0.test }) {
+            group?.set(true, forKey: activeKey)
+            group?.removeObject(forKey: "fajrAlarmLog.off")
+            FajrAlarmLog.add("AlarmKit mode back on (\(reason)): allowed, and \(scheduled().count) alarm(s) were still set with nothing planning them")
+        }
         guard isActive else {
             // AlarmKit mode off (the Shortcut answers): nothing re-plans or cancels what AlarmKit still holds. Say so
             // whenever that changes — leftovers ring at their old times (a lead for the midnight alarm, 2026-10-10).
