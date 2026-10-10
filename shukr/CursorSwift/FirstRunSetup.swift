@@ -1116,6 +1116,8 @@ struct Nudge: View {
     }
 }
 
+/// Every "Open Settings" in the app goes through here, so they all land the same way: notifications → iOS's
+/// Settings → shukr → Notifications; anything else (location, alarms, mic, background refresh) → Settings → shukr.
 enum SettingsLinks {
     static func app() { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
     static func notifications() {
@@ -1254,7 +1256,7 @@ private struct LocationStep: View {
 enum LocationUpgrade {
     @MainActor static func askForAlways(_ location: EnvLocationManager) {
         if FirstRunSetup.alwaysAsked {
-            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            SettingsLinks.app()
         } else {
             FirstRunSetup.alwaysAsked = true
             location.requestAlwaysPermission()

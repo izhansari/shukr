@@ -432,8 +432,8 @@ struct VoiceMemoPanel: View {
         VStack(spacing: 10) {
             HStack(spacing: 36) {
                 Button {
-                    if engine.micDenied, let url = URL(string: UIApplication.openSettingsURLString) {
-                        UIApplication.shared.open(url)
+                    if engine.micDenied {
+                        SettingsLinks.app()
                     } else {
                         Task { await engine.startRecording() }
                     }

@@ -278,11 +278,7 @@ struct SettingsView: View {
                             // No location permission: prayer times come from a picked city.
                             Button("Choose City") { showCityPicker = true }
                                 .tint(.green)
-                            Button("Use My Location") {
-                                if let url = URL(string: UIApplication.openSettingsURLString) {
-                                    UIApplication.shared.open(url)
-                                }
-                            }
+                            Button("Use My Location", action: SettingsLinks.app)
                             .tint(.green)
                         }
                     }
@@ -1186,9 +1182,7 @@ struct AlarmSettingsView: View {
                 ))
             }
             .alert("Alarms are off for shukr", isPresented: $alarmKitRefused) {
-                Button("Open Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-                }
+                Button("Open Settings", action: SettingsLinks.app)
                 Button("Not now", role: .cancel) {}
             } message: {
                 Text("To set your Fajr alarm, allow shukr to schedule alarms in Settings.")

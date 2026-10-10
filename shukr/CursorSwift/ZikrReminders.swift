@@ -396,9 +396,7 @@ struct TaskReminderSheet: View {
     /// prayer-based one (2026-09-27 review — both used to fail silently).
     @ViewBuilder private var notice: some View {
         if permission == .denied {
-            noticeRow("Notifications are off", action: "Open Settings") {
-                if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
-            }
+            noticeRow("Notifications are off", action: "Open Settings", run: SettingsLinks.notifications)
         } else if permission == .notDetermined {
             noticeRow("shukr can't notify you yet", action: "Allow") {
                 UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
