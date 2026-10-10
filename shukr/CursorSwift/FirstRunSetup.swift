@@ -294,8 +294,9 @@ struct FirstRunSetupView: View {
                         switch step {
                         case .welcome: WelcomeStep(next: { go(.location) })
                         case .location: LocationStep(locationOnly: mode == .locationOnly, next: { advance(to: .method) })
-                        case .method: MethodStep(next: { advance(to: .madhab) })
-                        case .madhab: MadhabStep(next: { advance(to: .appearance) })
+                        case .method, .madhab:
+                            PrayerTimesStep(asr: step == .madhab,
+                                            next: { advance(to: step == .madhab ? .appearance : .madhab) })
                         case .appearance: AppearanceStep(next: { advance(to: .reminders) })
                         case .reminders: RemindersStep(next: {
                             NotificationScheduler.reschedule(context: context, reason: "setup reminders")
@@ -309,7 +310,8 @@ struct FirstRunSetupView: View {
                     // The last step of an edit from the review: its "Continue" reads "Done".
                     .environment(\.setupReturnsToReview, editing != nil && step == lastEditedStep)
                     .padding(.top, 26)          // every title at the same height under the ring
-                    .id(step)
+                    // Method → Asr is one page (owner): the today strip stays and only the top changes.
+                    .id(step == .madhab ? SetupStep.method : step)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
                     .opacity(leaving ? 0 : 1)
                     .environment(\.setupReveal, reveal)
@@ -1362,13 +1364,47 @@ func hasNoHalfwayToday(_ prayer: String) -> Bool {
     return w.end.timeIntervalSince(w.start) < NotificationScheduler.halfwayMinimumWindow
 }
 
-private struct MethodStep: View {
+/// The calculation method, then when Asr begins: two steps on ONE page (owner: "no need to redraw it"). Today's
+/// times stay at the bottom with Continue; only the top fades from the method list to the Asr cards (and back).
+private struct PrayerTimesStep: View {
+    /// The Asr (madhab) step; else the method.
+    let asr: Bool
     let next: () -> Void
     @EnvironmentObject private var viewModel: PrayerViewModel
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
 
     var body: some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .top) {
+                if asr {
+                    asrPart
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                } else {
+                    methodPart
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+            TodayStrip(method: method, school: school, highlightAsr: asr)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
+            PrimaryButton(title: "Continue", action: next)
+                .padding(.bottom, 8)
+        }
+        .onChange(of: method) { _, _ in
+            viewModel.fetchPrayerTimes(cameFrom: "setup method")
+            WidgetCenter.shared.reloadAllTimelines()
+            WatchSync.shared.send()
+        }
+        .onChange(of: school) { _, _ in
+            viewModel.fetchPrayerTimes(cameFrom: "setup school")
+            WidgetCenter.shared.reloadAllTimelines()
+            WatchSync.shared.send()
+        }
+    }
+
+    private var methodPart: some View {
         VStack(spacing: 0) {
             StepTitle(title: "Your calculation method",
                       subtitle: "Picked for where you are. Match your masjid if its times differ.")
@@ -1417,17 +1453,79 @@ private struct MethodStep: View {
             .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemBackground)))
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .padding(.horizontal, 20)
-            TodayStrip(method: method, school: school)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
-            PrimaryButton(title: "Continue", action: next)
-                .padding(.bottom, 8)
         }
-        .onChange(of: method) { _, _ in
-            viewModel.fetchPrayerTimes(cameFrom: "setup method")
-            WidgetCenter.shared.reloadAllTimelines()
-            WatchSync.shared.send()
+    }
+
+    private var asrPart: some View {
+        let shafiAsr = todaysTimes(method: method, school: 0)?.asr
+        let hanafiAsr = todaysTimes(method: method, school: 1)?.asr
+        let gap = (shafiAsr != nil && hanafiAsr != nil) ? Int(hanafiAsr!.timeIntervalSince(shafiAsr!) / 60) : nil
+        return ScrollView {
+            VStack(spacing: 0) {
+                StepTitle(title: "When does Asr begin?",
+                          subtitle: "The madhab only changes Asr. The other four prayers stay the same.")
+                    .padding(.bottom, 22)
+                HStack(spacing: 14) {
+                    card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
+                         lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
+                    card(title: "Hanafi", note: nil, rule: "when a shadow is twice the object's length",
+                         lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
+                }
+                .padding(.horizontal, 24)
+                if let gap {
+                    Text("Hanafi Asr is \(gap) min later today.")
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 18)
+                }
+                Text("Not sure? Go with what your masjid uses.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 6)
+            }
+            .padding(.bottom, 16)
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollIndicators(.hidden)
+    }
+
+    private func card(title: String, note: String?, rule: String, lengths: CGFloat, asr: Date?,
+                      selected: Bool, pick: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.3)) { pick() }
+        } label: {
+            VStack(spacing: 12) {
+                ShadowSketch(lengths: lengths)
+                    .frame(height: 64)
+                VStack(spacing: 2) {
+                    Text(title).font(.system(.title3, design: .rounded))
+                    Text(note ?? " ").font(.caption).foregroundStyle(.tertiary)
+                }
+                Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
+                    .font(.system(.title2, design: .rounded, weight: .light))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                    .foregroundStyle(selected ? Color.sage : .primary)
+                Text(rule)
+                    .font(.system(.footnote, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                // The same pick mark as the other choices in setup (Appearance, the method list), so both cards
+                // read as choices (owner).
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(selected ? Color.sage : Color.secondary.opacity(0.4))
+            }
+            .padding(.vertical, 18)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 22).fill(selected ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(selected ? Color.sage.opacity(0.6) : .clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -1469,91 +1567,6 @@ private struct TodayStrip: View {
         }
         .frame(maxWidth: .infinity)
         .animation(.snappy, value: date)
-    }
-}
-
-// MARK: - Madhab
-
-private struct MadhabStep: View {
-    let next: () -> Void
-    @EnvironmentObject private var viewModel: PrayerViewModel
-    @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
-    @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
-
-    var body: some View {
-        let shafiAsr = todaysTimes(method: method, school: 0)?.asr
-        let hanafiAsr = todaysTimes(method: method, school: 1)?.asr
-        let gap = (shafiAsr != nil && hanafiAsr != nil) ? Int(hanafiAsr!.timeIntervalSince(shafiAsr!) / 60) : nil
-        StepScaffold(title: "When does Asr begin?",
-                     subtitle: "The madhab only changes Asr. The other four prayers stay the same.") {
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
-                         lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
-                    card(title: "Hanafi", note: nil, rule: "when a shadow is twice the object's length",
-                         lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
-                }
-                .padding(.horizontal, 24)
-                if let gap {
-                    Text("Hanafi Asr is \(gap) min later today.")
-                        .font(.system(.subheadline, design: .rounded, weight: .light))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 18)
-                }
-                Text("Not sure? Go with what your masjid uses.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 6)
-                TodayStrip(method: method, school: school, highlightAsr: true)
-                    .padding(.top, 26)
-            }
-        } bottom: {
-            PrimaryButton(title: "Continue", action: next)
-        }
-        .onChange(of: school) { _, _ in
-            viewModel.fetchPrayerTimes(cameFrom: "setup school")
-            WidgetCenter.shared.reloadAllTimelines()
-            WatchSync.shared.send()
-        }
-    }
-
-    private func card(title: String, note: String?, rule: String, lengths: CGFloat, asr: Date?,
-                      selected: Bool, pick: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(.snappy(duration: 0.3)) { pick() }
-        } label: {
-            VStack(spacing: 12) {
-                ShadowSketch(lengths: lengths)
-                    .frame(height: 64)
-                VStack(spacing: 2) {
-                    Text(title).font(.system(.title3, design: .rounded))
-                    Text(note ?? " ").font(.caption).foregroundStyle(.tertiary)
-                }
-                Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
-                    .font(.system(.title2, design: .rounded, weight: .light))
-                    .monospacedDigit()
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
-                    .foregroundStyle(selected ? Color.sage : .primary)
-                Text(rule)
-                    .font(.system(.footnote, design: .rounded, weight: .light))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                // The same pick mark as the other choices in setup (Appearance, the method list), so both cards
-                // read as choices (owner).
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 20, weight: .light))
-                    .foregroundStyle(selected ? Color.sage : Color.secondary.opacity(0.4))
-            }
-            .padding(.vertical, 18)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 22).fill(selected ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(selected ? Color.sage.opacity(0.6) : .clear, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
