@@ -1005,7 +1005,7 @@ struct MemoriesPage: View {
     }
 
     /// One formatter for every day key (a new one per call — hundreds per level switch — was slow).
-    private static let dayKeyFormatter: DateFormatter = {
+    static let dayKeyFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -1128,6 +1128,8 @@ struct MemoriesDeck: View {
     @State private var retaking: PrayerPhotoTarget?
     /// ··· → Delete photo: asked first.
     @State private var deleting: String?
+    /// The strip on a day with no photos (owner: show it, it's part of the sense of time): the pile area says so.
+    @State private var emptyDay: String?
     /// Cards showing their selfie big after a tap — on this screen only; it swaps back as the pile closes.
     @State private var swapped: Set<String> = []
     /// The day centred in the strip at the bottom: follows the pile, and a drag on the strip moves the pile there once
@@ -1195,8 +1197,12 @@ struct MemoriesDeck: View {
                             .offset(x: -geo.size.width + shift + paging)
                             .transition(.identity)
                     }
-                    pile(range, width: width, screen: geo.size.width)
-                        .offset(x: shift + paging)
+                    if let emptyDay {
+                        emptyCard(emptyDay, width: width)
+                    } else {
+                        pile(range, width: width, screen: geo.size.width)
+                            .offset(x: shift + paging)
+                    }
                     if !neighboursOut, let right = neighbour(range, right: true) {
                         restingPile(right.range, top: right.top, width: width, screen: geo.size.width)
                             .offset(x: geo.size.width + shift + paging)
@@ -1207,9 +1213,14 @@ struct MemoriesDeck: View {
                 .contentShape(Rectangle())
                 .offset(freeDrag)
                 .scaleEffect(dragScale)
-                .gesture(pileDrag(range))
+                .gesture(emptyDay == nil ? pileDrag(range) : nil)
+                .gesture(emptyDay != nil ? emptyDrag : nil)
                 // Gone quickly once the pile is dragged down over it (it showed on the dragged card — owner).
-                if let current { caption(current).padding(.top, 24).opacity(shown ? 1 - min(max(down, 0) / 40, 1) : 0) }
+                if let current {
+                    caption(current).padding(.top, 24)
+                        .opacity(shown && emptyDay == nil ? 1 - min(max(down, 0) / 40, 1) : 0)
+                        .allowsHitTesting(emptyDay == nil)
+                }
                 // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
                 // never redrawn per photo: the share page makes the picture.
                 HStack(spacing: 18) {
@@ -1232,27 +1243,27 @@ struct MemoriesDeck: View {
                     .accessibilityLabel(favorite ? "Remove from favorites" : "Favorite")
                 }
                 .buttonStyle(.plain)
-                .opacity(down > 10 || !shown ? 0 : 1)
+                .opacity(down > 10 || !shown || emptyDay != nil ? 0 : 1)
+                .allowsHitTesting(emptyDay == nil)
                 .padding(.top, 22)
                 // Why Share is faded (owner: it greyed out with no word why). Room kept, so nothing moves.
                 Text(photos.indices.contains(index) && !PhotoDevelop.isDeveloped(key: photos[index].key)
                      ? "You can share it once it develops" : " ")
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
-                    .opacity(down > 10 || !shown ? 0 : 1)
+                    .opacity(down > 10 || !shown || emptyDay != nil ? 0 : 1)
                     .padding(.top, 6)
                 Spacer(minLength: 0)
-                prayerMarks
-                    .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
-                    .padding(.bottom, 10)
                 VStack(spacing: 8) {
                     // The strip is its own bar (owner: "put a separator for that new bottom bar"; the system Divider was too
                     // faint on the frosted page).
                     Rectangle().fill(Color.primary.opacity(0.22)).frame(height: 1)
-                    MemoriesDayStrip(photos: photos, centred: $stripDay, onScrub: scrubTo, onRest: goToDay)
+                    MemoriesDayStrip(photos: photos, centred: $stripDay,
+                                     currentPrayer: emptyDay == nil && photos.indices.contains(shownIndex) ? photos[shownIndex].name : nil,
+                                     onScrub: scrubTo, onRest: goToDay, onPrayer: goToPrayer)
                 }
                 .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
-                .padding(.bottom, 6)
+                .padding(.bottom, 22)
             }
             .frame(width: geo.size.width)
             // No tap-to-close on the frosted page: a missed tap on the note or a prayer symbol closed it (owner) —
@@ -1344,7 +1355,7 @@ struct MemoriesDeck: View {
 
     /// ✕ · the day ("Wednesday, Oct 7", "3 days ago" / "Today") · ··· (Retake photo, Delete photo).
     private func titleRow(_ current: MemoryPhoto?) -> some View {
-        let dayKey = current?.dayKey
+        let dayKey = emptyDay ?? current?.dayKey
         return HStack {
             Button(action: close) { circleIcon("xmark") }
                 .buttonStyle(.plain)
@@ -1362,7 +1373,7 @@ struct MemoriesDeck: View {
             .animation(.snappy(duration: 0.25), value: dayKey)
             Spacer(minLength: 8)
             Menu {
-                if let current {
+                if let current, emptyDay == nil {
                     Button {
                         retaking = PrayerPhotoTarget(key: current.key, title: PrayerPhotos.caption(current.key))
                     } label: { Label("Retake photo", systemImage: "camera") }
@@ -1372,6 +1383,8 @@ struct MemoriesDeck: View {
                 }
             } label: { circleIcon("ellipsis") }
             .accessibilityLabel("More")
+            .opacity(emptyDay == nil ? 1 : 0)
+            .allowsHitTesting(emptyDay == nil)
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
@@ -1486,9 +1499,72 @@ struct MemoriesDeck: View {
     /// The strip passing a day under the finger: that day's pile at once, if it has photos (owner: "the scrubber … isn't
     /// updating as we scroll"); days without photos are passed over until the strip comes to rest.
     private func scrubTo(_ dayKey: String) {
-        guard photos.indices.contains(shownIndex), dayKey != photos[shownIndex].dayKey,
-              let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) else { return }
+        guard photos.indices.contains(shownIndex) else { return }
+        guard let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) else {
+            // An empty day under the finger: shown as one.
+            setEmpty(dayKey)
+            return
+        }
+        setEmpty(nil)
+        guard dayKey != photos[shownIndex].dayKey else { return }
         page(to: newest, fromRight: dayKey > photos[shownIndex].dayKey, jump: true, response: 0.3)
+    }
+
+    private func setEmpty(_ day: String?) {
+        guard emptyDay != day else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { emptyDay = day }
+    }
+
+    /// A tap on one of the centred day's prayers (in the strip): its photo on top.
+    private func goToPrayer(_ name: String) {
+        let range = dayRange(of: shownIndex)
+        guard emptyDay == nil, let i = range.first(where: { photos[$0].name == name }), i != index, pendingTop == nil else { return }
+        moving(back: i < index) {
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { index = i; drag = 0 }
+            pickLies()
+        }
+    }
+
+    /// The empty day's card: where it sits in time, and the days with photos either side.
+    private func emptyCard(_ day: String, width: CGFloat) -> some View {
+        let before = photos.last { $0.dayKey < day }?.dayKey
+        let after = photos.first { $0.dayKey > day }?.dayKey
+        let ways = [before, after].compactMap { $0 }.map(MemoriesDayStrip.shortDay)
+        let today = day == MemoriesPage.dayKeyFormatter.string(from: Date())
+        return RoundedRectangle(cornerRadius: 28, style: .continuous)
+            .strokeBorder(Color.primary.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [7, 6]))
+            .frame(width: width, height: width)
+            .overlay {
+                VStack(spacing: 10) {
+                    Image(systemName: "photo.on.rectangle.angled").font(.system(size: 34, weight: .light)).foregroundStyle(.secondary)
+                    Text(today ? "No photos yet today" : "No photos this day")
+                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    if !ways.isEmpty {
+                        Text("Swipe to " + ways.joined(separator: " or "))
+                            .font(.system(size: 14, design: .rounded)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .transition(.identity)
+    }
+
+    /// On an empty day: sideways to the nearest day with photos that way, down to close (it fades — no photo to zoom).
+    private var emptyDrag: some Gesture {
+        DragGesture(minimumDistance: 12).onEnded { value in
+            guard let day = emptyDay else { return }
+            let t = value.translation
+            if t.height > 0 && t.height > abs(t.width) * 1.2 {
+                if t.height > 100 || value.predictedEndTranslation.height > 300 { onClose("", "", 1, .zero) }
+                return
+            }
+            let forward = t.width < -60 || value.predictedEndTranslation.width < -200
+            let back = t.width > 60 || value.predictedEndTranslation.width > 200
+            let target = forward ? photos.first { $0.dayKey > day }?.dayKey : back ? photos.last { $0.dayKey < day }?.dayKey : nil
+            if let target { withAnimation(.snappy(duration: 0.35)) { stripDay = target }; goToDay(target) }
+        }
     }
 
     /// The day's five prayers as their symbols, above the strip (owner: "so user can see visually which part of the day
@@ -1532,8 +1608,16 @@ struct MemoriesDeck: View {
     /// The strip came to rest on `dayKey`: that day's pile, on its newest photo; a day without photos sends the strip
     /// on to the nearest day that has some.
     private func goToDay(_ dayKey: String) {
-        guard photos.indices.contains(shownIndex), dayKey != photos[shownIndex].dayKey else { return }
-        if let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) {
+        guard photos.indices.contains(shownIndex) else { return }
+        guard let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) else {
+            // A day with no photos: shown as one (owner, decision memories-pile-v2 — it used to snap to the nearest).
+            setEmpty(dayKey)
+            if stripDay != dayKey { withAnimation(.snappy(duration: 0.35)) { stripDay = dayKey } }
+            return
+        }
+        setEmpty(nil)
+        guard dayKey != photos[shownIndex].dayKey else { return }
+        if true {
             page(to: newest, fromRight: dayKey > photos[shownIndex].dayKey, jump: true)
             return
         }
@@ -1865,26 +1949,47 @@ struct MemoriesDeck: View {
 struct MemoriesDayStrip: View {
     let photos: [MemoryPhoto]
     @Binding var centred: String?
-    /// A day passing the centre under the finger.
+    /// A day passing the centre under the finger (with photos or not).
     let onScrub: (String) -> Void
+    /// The strip came to rest on a day, or a day was tapped (with photos or not — an empty day is shown as one).
     let onRest: (String) -> Void
+    /// The prayer on top in the pile (bright in the centred day's symbols), and a tap on another one.
+    var currentPrayer: String? = nil
+    var onPrayer: (String) -> Void = { _ in }
     /// Built before the first layout, so the strip opens on the pile's day (built later, `scrollPosition` had nothing to
     /// find and it opened elsewhere).
     @State private var days: [String]
     @State private var photoDays: Set<String>
     @State private var monthCounts: [String: Int]
 
-    init(photos: [MemoryPhoto], centred: Binding<String?>, onScrub: @escaping (String) -> Void,
-         onRest: @escaping (String) -> Void) {
+    @State private var slots: [String: Set<Int>]
+
+    init(photos: [MemoryPhoto], centred: Binding<String?>, currentPrayer: String? = nil,
+         onScrub: @escaping (String) -> Void, onRest: @escaping (String) -> Void,
+         onPrayer: @escaping (String) -> Void = { _ in }) {
         self.onScrub = onScrub
         self.photos = photos
         self._centred = centred
         self.onRest = onRest
+        self.currentPrayer = currentPrayer
+        self.onPrayer = onPrayer
         let model = Self.model(photos)
         _days = State(initialValue: model.days)
         _photoDays = State(initialValue: model.photoDays)
         _monthCounts = State(initialValue: model.monthCounts)
+        _slots = State(initialValue: Self.slots(photos))
     }
+
+    private static func slots(_ photos: [MemoryPhoto]) -> [String: Set<Int>] {
+        Dictionary(grouping: photos, by: \.dayKey).mapValues { Set($0.map(\.slot)) }
+    }
+
+    /// The centred day opened into the five prayers (owner, decision memories-pile-v2: they were a second row above):
+    /// this wide, its neighbours pushed aside to make room — drawn only, so the scroll and its snapping are untouched.
+    private static let lensWidth: CGFloat = 170
+    private static var push: CGFloat { (lensWidth - cell) / 2 }
+    private static let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    private var todayKey: String { MemoriesPage.dayKeyFormatter.string(from: Date()) }
     /// The earliest day in view (its month is the pinned one), and where each month's 1st sits in the view.
     @State private var leftmost: String?
     @State private var firstX: [String: CGFloat] = [:]
@@ -1954,18 +2059,21 @@ struct MemoriesDayStrip: View {
                     // (owner: every photo opened on the 6th).
                     guard new == .idle, touched, days.indices.contains(centreIndex) else { return }
                     touched = false
-                    let day = days[centreIndex]
-                    if photoDays.contains(day) {
-                        onRest(day)
-                    } else if let nearest = nearestPhotoDay(to: centreIndex) {
-                        // An empty day (today before its Fajr photo, owner): back onto the nearest day with photos.
-                        scroll(to: nearest, animated: true)
-                        onRest(nearest)
-                    }
+                    // Any day: an empty one is shown as one (owner: the gaps are the point) — it used to snap away.
+                    onRest(days[centreIndex])
                 }
                 pinnedMonth
+                lens
+                    .frame(width: geo.size.width)
+                    .padding(.top, Self.labelHeight - 6)
             }
             .coordinateSpace(name: "dayStrip")
+            // Taps by where the day is drawn (the neighbours are drawn pushed aside of where they're laid out).
+            .simultaneousGesture(SpatialTapGesture().onEnded { tap in
+                guard let day = day(atOffset: tap.location.x - geo.size.width / 2) else { return }
+                withAnimation(.snappy(duration: 0.35)) { centred = day }
+                onRest(day)
+            })
             // The strip's real width (at its first appearance the reader still read 0, and nothing scrolled), then
             // straight onto the pile's day.
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
@@ -1979,29 +2087,61 @@ struct MemoriesDayStrip: View {
             guard phase != .interacting, phase != .decelerating else { return }
             scroll(to: day, animated: true)
         }
-        .frame(height: Self.labelHeight + 50)
+        // A photo saved or deleted: the days, dots and counts again.
+        .onChange(of: photos) { _, new in
+            let model = Self.model(new)
+            days = model.days; photoDays = model.photoDays; monthCounts = model.monthCounts
+            slots = Self.slots(new)
+        }
+        .frame(height: Self.labelHeight + 64)
         .sensoryFeedback(.selection, trigger: tick)
+        // Away from today: the way back to it (it can be months on).
+        .overlay(alignment: .bottom) {
+            let away = days.indices.contains(centreIndex) && days[centreIndex] != todayKey
+            Button {
+                scroll(to: todayKey, animated: true)
+                onRest(todayKey)
+            } label: {
+                Text("Today is \(MemoriesDeck.dayTitle(todayKey).split(separator: ",").first.map(String.init) ?? ""), \(Self.shortDay(todayKey)) →")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .opacity(away ? 1 : 0)
+            .allowsHitTesting(away)
+            .offset(y: 18)
+        }
 
     }
 
     private func dayCell(_ day: String) -> some View {
         let date = MemoriesPage.parse(day)
         let has = photoDays.contains(day)
-        return VStack(spacing: 2) {
+        let today = day == todayKey
+        let filled = slots[day] ?? []
+        return VStack(spacing: 3) {
             Text(date.map { "\(Calendar.current.component(.day, from: $0))" } ?? "")
-                .font(.system(size: 19, weight: .semibold, design: .rounded))
-            Text(date.map { $0.formatted(.dateTime.weekday(.abbreviated)) } ?? "")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 17, weight: today ? .heavy : .semibold, design: .rounded))
+                .foregroundStyle(has || today ? .primary : .tertiary)
+            // Its five prayers: a dot each, filled where there's a photo.
+            HStack(spacing: 2) {
+                ForEach(0..<5, id: \.self) { s in
+                    Circle().fill(Color.primary.opacity(filled.contains(s) ? 0.55 : 0.12)).frame(width: 4, height: 4)
+                }
+            }
+            // Today: the word under it, grey (decision memories-today-mark 1).
+            Text(today ? "Today" : " ").font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
         }
-        .opacity(has ? 1 : 0.3)
         .visualEffect { content, proxy in
             let frame = proxy.frame(in: .scrollView(axis: .horizontal))
             let width = proxy.bounds(of: .scrollView(axis: .horizontal))?.width ?? 0
-            let distance = min(abs(frame.midX - width / 2) / 110, 1)
+            let d = frame.midX - width / 2
+            let near = min(abs(d) / Self.cell, 1)
+            let distance = min(abs(d) / 160, 1)
             return content
-                .scaleEffect(1.2 - 0.35 * distance)
-                .opacity(1 - 0.6 * distance)
+                // Out of the lens's way (the centred day is the lens), fading with distance.
+                .offset(x: (d < 0 ? -1 : 1) * Self.push * near)
+                .opacity(near * (1 - 0.55 * distance))
         }
         .frame(width: Self.cell, height: 50)
         .padding(.top, Self.labelHeight)
@@ -2018,12 +2158,63 @@ struct MemoriesDayStrip: View {
         } action: { x in
             if day.hasSuffix("-01") { firstX[String(day.prefix(7))] = x }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard has else { return }
-            withAnimation(.snappy(duration: 0.35)) { centred = day }
-            onRest(day)
+    }
+
+    /// The day a tap at `x` (from the strip's centre) means, the neighbours being drawn pushed aside: past the lens, one
+    /// day per cell.
+    private func day(atOffset x: CGFloat) -> String? {
+        guard abs(x) > Self.lensWidth / 2 else { return nil }
+        let steps = Int(((abs(x) - Self.push) / Self.cell).rounded()) * (x < 0 ? -1 : 1)
+        let i = centreIndex + steps
+        return days.indices.contains(i) ? days[i] : nil
+    }
+
+    /// The centred day, opened: its number and weekday, and its five prayers (a tap goes to that one's photo; the one
+    /// on top bright).
+    @ViewBuilder
+    private var lens: some View {
+        let day = days.indices.contains(centreIndex) ? days[centreIndex] : centred ?? ""
+        let date = MemoriesPage.parse(day)
+        let filled = slots[day] ?? []
+        VStack(spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(date.map { "\(Calendar.current.component(.day, from: $0))" } ?? "")
+                    .font(.system(size: 21, weight: .bold, design: .rounded))
+                Text(date.map { $0.formatted(.dateTime.weekday(.abbreviated)) } ?? "")
+                    .font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
+                if day == todayKey {
+                    Text("· Today").font(.system(size: 12, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
+                }
+            }
+            HStack(spacing: 4) {
+                ForEach(0..<5, id: \.self) { s in
+                    let name = Self.names[s]
+                    let current = name == currentPrayer && filled.contains(s)
+                    Button { onPrayer(name) } label: {
+                        Image(systemName: prayerIcon(for: name))
+                            .font(.system(size: 14, weight: current ? .bold : .regular))
+                            .foregroundStyle(current ? AnyShapeStyle(.primary) : filled.contains(s) ? AnyShapeStyle(.secondary) : AnyShapeStyle(.quaternary))
+                            .scaleEffect(current ? 1.15 : 1)
+                            .frame(width: 26, height: 24)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!filled.contains(s))
+                    .accessibilityLabel(name)
+                }
+            }
         }
+        .frame(width: Self.lensWidth - 12)
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial))
+        .animation(.snappy(duration: 0.2), value: currentPrayer)
+    }
+
+    /// "Oct 10" — "Oct 10, 2024" when it isn't this year.
+    static func shortDay(_ day: String) -> String {
+        guard let date = MemoriesPage.parse(day) else { return day }
+        return Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+            ? date.formatted(.dateTime.month(.abbreviated).day())
+            : date.formatted(.dateTime.month(.abbreviated).day().year())
     }
 
     private func monthLabel(_ month: String) -> some View {
