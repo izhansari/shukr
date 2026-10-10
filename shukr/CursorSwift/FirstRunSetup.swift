@@ -1168,6 +1168,7 @@ private struct LocationStep: View {
     @EnvironmentObject private var location: EnvLocationManager
     @AppStorage("lastCityName", store: UserDefaults(suiteName: SharedStore.appGroup)) private var cityName = ""
     @State private var pickingCity = false
+    @State private var confirmManual = false
 
     private var status: CLAuthorizationStatus { location.authorizationStatus }
     private var denied: Bool { status == .denied || status == .restricted }
@@ -1201,13 +1202,15 @@ private struct LocationStep: View {
                         .padding(.horizontal, 36)
                         .padding(.bottom, 14)
                 }
-                // The way without location is outlined, never the filled Continue; each has a way back (owner). A city
-                // is only offered once location is refused — it's not how shukr is meant to be used (owner).
+                // The way without location is outlined, never the filled Continue; each has a way back (owner). Going
+                // without asks first, like "No thanks" on notifications — it's not how shukr is meant to be used.
                 PrimaryButton(title: primaryTitle, outlined: !location.isAuthorized, action: primary)
                 if denied {
                     SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.app)
                 } else if status == .notDetermined && location.hasManualLocation {
                     SecondaryButton(title: "I changed my mind. Allow location") { location.requestLocationPermission() }
+                } else if status == .notDetermined {
+                    SecondaryButton(title: "No thanks, I’ll input my location manually") { confirmManual = true }
                 } else if status == .authorizedWhenInUse {
                     SecondaryButton(title: FirstRunSetup.alwaysAsked ? "Turn on “Always” in Settings" : "Allow “Always”") {
                         LocationUpgrade.askForAlways(location)
@@ -1218,6 +1221,12 @@ private struct LocationStep: View {
         .animation(.easeInOut(duration: 0.45), value: denied)
         .sheet(isPresented: $pickingCity) {
             CityPickerSheet(onPicked: { pickingCity = false })
+        }
+        .alert("Go without location?", isPresented: $confirmManual) {
+            Button("Allow location", role: .cancel) { location.requestLocationPermission() }
+            Button("Enter it anyway", role: .destructive) { pickingCity = true }
+        } message: {
+            Text("Your times won’t follow you when you travel, and your prayers won’t be pinned where you prayed. You can allow location later in Settings.")
         }
         // One iOS prompt here (owner, 2026-10-10: "i dont love two prompts back to back"): While Using, then
         // "Allow “Always”" waits as a button below (the one-time upgrade prompt only when tapped).
