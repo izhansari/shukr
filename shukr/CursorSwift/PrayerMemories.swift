@@ -2317,6 +2317,7 @@ struct MemoriesPileMock: View {
                                            startPoint: .topLeading, endPoint: .bottomTrailing).ignoresSafeArea())
             switch variant {
             case "D": daysMock
+            case "T": todayOptions
             default: pileMock
             }
         }
@@ -2521,6 +2522,72 @@ struct MemoriesPileMock: View {
             .background(Circle().fill(.regularMaterial))
             .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
             .opacity(faded ? 0.35 : 1)
+    }
+
+    // MARK: T — quieter ways to mark today (owner: the green "is just too loud")
+
+    private var todayOptions: some View {
+        VStack(alignment: .leading, spacing: 28) {
+            Text("Marking today — three quiet options").font(.system(size: 17, weight: .semibold, design: .rounded))
+            ForEach(1...3, id: \.self) { option in
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(["", "1 · Bold, with \"Today\" under it", "2 · A thin ring", "3 · A small grey dot"][option])
+                        .font(.system(size: 15, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
+                    // The strip (today not the centred day).
+                    HStack(spacing: 0) {
+                        ForEach(4...10, id: \.self) { d in
+                            stripDay(d, today: d == 10, option: option)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial.opacity(0.6)))
+                    // The calendar's week.
+                    HStack(spacing: 0) {
+                        ForEach(4...10, id: \.self) { d in
+                            calendarDay(d, today: d == 10, option: option).frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(20)
+    }
+
+    private func todayNumber(_ d: Int, today: Bool, option: Int, size: CGFloat) -> some View {
+        Text("\(d)")
+            .font(.system(size: size, weight: today && option == 1 ? .heavy : .semibold, design: .rounded))
+            .frame(width: size * 1.7, height: size * 1.7)
+            .overlay { if today && option == 2 { Circle().strokeBorder(Color.primary.opacity(0.45), lineWidth: 1.2) } }
+            .overlay(alignment: .top) {
+                if today && option == 3 { Circle().fill(Color.primary.opacity(0.5)).frame(width: 5, height: 5).offset(y: -5) }
+            }
+    }
+
+    private func stripDay(_ d: Int, today: Bool, option: Int) -> some View {
+        VStack(spacing: 3) {
+            todayNumber(d, today: today, option: option, size: 16)
+            HStack(spacing: 2) {
+                ForEach(0..<5, id: \.self) { s in
+                    Circle().fill(Color.primary.opacity(d == 6 ? 0.12 : 0.5)).frame(width: 4, height: 4)
+                }
+            }
+            Text(today && option == 1 ? "Today" : " ").font(.system(size: 10, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func calendarDay(_ d: Int, today: Bool, option: Int) -> some View {
+        let key = String(format: "2026-10-%02d", d)
+        let p = photos.last { $0.dayKey == key }
+        return VStack(spacing: 2) {
+            ZStack {
+                if let p { MemoryThumb(key: p.key, side: 120, corner: 10).frame(width: 38, height: 38) }
+            }
+            .frame(height: 40)
+            todayNumber(d, today: today, option: option, size: 11)
+            Text(today && option == 1 ? "Today" : " ").font(.system(size: 9, weight: .medium, design: .rounded)).foregroundStyle(.secondary)
+        }
     }
 
     // MARK: D — Days, with today and hearts
