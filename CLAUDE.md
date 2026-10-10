@@ -4,7 +4,7 @@ iOS SwiftUI app (iOS 18.0+, SwiftData, WidgetKit extension, adhan-swift). Prayer
 tracker, qibla, tasbeeh/zikr counter, daily zikr tasks, duas, daily ayah. No CI, no tests
 beyond Xcode templates. Build/run happens in Xcode on the owner's machine. scripts/: whatsnew.py, testflight.sh,
 pull-feedback.sh, asc.py, circle-check.sh; the team's board scripts live in shukrGit/board/. A local agent can build with
-`xcodebuild -project shukr.xcodeproj -scheme shukr -destination 'platform=iOS Simulator,name=iPhone 16 Pro'`.
+`xcodebuild -project shukr.xcodeproj -scheme shukr -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`.
 
 Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehView.swift`),
 `shukr/Models/AllModels.swift` (SwiftData models + `SharedStateClass`), `shukrWidget/`
