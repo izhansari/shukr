@@ -44,12 +44,12 @@ final class shukrUITests: XCTestCase {
 
     private func launchForPerf() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-demoPerfRun"]   // any -demo… skips welcome / prompts / setup; nothing else changes
+        app.launchArguments += ["-demoPerfRun", "-perfFrames"]   // any -demo… skips welcome / prompts / setup; nothing else changes
         // Extra launch args from the run (xcodebuild … TEST_RUNNER_PERF_ARGS="-perf_x -perf_y").
         app.launchArguments += (ProcessInfo.processInfo.environment["PERF_ARGS"] ?? "").split(separator: " ").map(String.init)
         print("PERF launch args:", app.launchArguments.joined(separator: " "))
         app.launch()
-        sleep(3)
+        sleep(UInt32(ProcessInfo.processInfo.environment["PERF_DELAY"] ?? "") ?? 3)   // time to start a recorder
         return app
     }
 
@@ -87,6 +87,46 @@ final class shukrUITests: XCTestCase {
             usleep(900_000)
             window.swipeDown(velocity: .default)
             usleep(900_000)
+        }
+    }
+
+    /// A drag up that drifts sideways on Salah: the list opens and the page stays (the per-drag pager lock). Read the
+    /// result in the app's frames.log (pager lines carry the page).
+    @available(iOS 26.0, *)
+    func testSalahDiagonalStaysPut() throws {
+        let app = launchForPerf()
+        let window = app.windows.firstMatch
+        for _ in 0..<3 {
+            let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.7))
+            start.press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.35)),
+                        withVelocity: .default, thenHoldForDuration: 0)
+            usleep(900_000)
+            let back = window.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.35))
+            back.press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.7)),
+                       withVelocity: .default, thenHoldForDuration: 0)
+            usleep(900_000)
+        }
+    }
+
+    /// The same swipes with no metrics, for an Instruments recording alongside (XCTest's hitch metrics take the phone's
+    /// one trace session: a recording started with them stopped after about a second).
+    func testSalahVerticalSwipesOnly() throws {
+        let window = launchForPerf().windows.firstMatch
+        for _ in 0..<5 {
+            window.swipeUp(velocity: .default)
+            usleep(900_000)
+            window.swipeDown(velocity: .default)
+            usleep(900_000)
+        }
+    }
+
+    func testPagingSwipesOnly() throws {
+        let window = launchForPerf().windows.firstMatch
+        for _ in 0..<5 {
+            window.swipeLeft(velocity: .default); usleep(700_000)
+            window.swipeRight(velocity: .default); usleep(700_000)
+            window.swipeRight(velocity: .default); usleep(700_000)
+            window.swipeLeft(velocity: .default); usleep(700_000)
         }
     }
 }

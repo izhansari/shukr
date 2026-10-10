@@ -40,7 +40,7 @@ enum PrayerPhotos {
     private static let filesLock = NSLock()
     nonisolated(unsafe) private static var cachedFiles: Set<String>?
     static func forgetFiles() { filesLock.withLock { cachedFiles = nil } }
-    private static func files() -> Set<String> {
+    static func files() -> Set<String> {
         filesLock.withLock {
             if let cachedFiles { return cachedFiles }
             let names = Set((try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
@@ -59,7 +59,8 @@ enum PrayerPhotos {
     }
 
     private static func file(_ key: String, front: Bool, _ ext: String) -> URL {
-        directory.appendingPathComponent("\(key)-\(front ? "front" : "back").\(ext)")
+        // Never asks the disk whether it's a folder (the plain appendingPathComponent does, an lstat per call).
+        directory.appendingPathComponent("\(key)-\(front ? "front" : "back").\(ext)", isDirectory: false)
     }
 
     /// The photo's key from a back picture's file name ("2026-10-06-Asr-back.heic" → "2026-10-06-Asr"), else nil.
@@ -80,7 +81,7 @@ enum PrayerPhotos {
 
     // MARK: Notes (owner: "after taking a photo let them write a small text of notes so we fit the journal vibe")
 
-    private static func noteURL(_ key: String) -> URL { directory.appendingPathComponent("\(key)-note.txt") }
+    private static func noteURL(_ key: String) -> URL { directory.appendingPathComponent("\(key)-note.txt", isDirectory: false) }
 
     static func note(_ key: String) -> String? {
         (try? String(contentsOf: noteURL(key), encoding: .utf8)).flatMap { $0.isEmpty ? nil : $0 }

@@ -37,8 +37,8 @@ struct MemoryPhoto: Identifiable, Hashable {
 extension PrayerPhotos {
     /// Every saved photo, oldest first (by day, then Fajr → Isha) — the strip's reading order.
     static func all() -> [MemoryPhoto] {
-        let files = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        return Set(files.compactMap(key(fromFile:))).map { MemoryPhoto(key: $0) }
+        // The cached file names (`files()`): the day page asks twice per redraw, which listed the folder each time.
+        Set(files().compactMap(key(fromFile:))).map { MemoryPhoto(key: $0) }
             .sorted { $0.dayKey != $1.dayKey ? $0.dayKey < $1.dayKey : $0.slot < $1.slot }
     }
 

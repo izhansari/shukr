@@ -131,6 +131,8 @@ struct ZikrCircleWheel: View {
     @State private var openingStyle: SessionOpening = .current
     /// Each circle's place on screen, kept outside state (written on every scroll frame; read only on a tap).
     @State private var circleFrames = CircleFrames()
+    /// Until it's measured: the screen (the page runs nearly its full height).
+    @State private var wheelBox = WheelBox(height: screenHeight ?? 800, minY: 0)
     final class CircleFrames { var byID: [String: CGRect] = [:] }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.circleTheme) private var theme
@@ -312,8 +314,8 @@ struct ZikrCircleWheel: View {
 
     private var wheel: some View {
         let items = items
-        return GeometryReader { geo in
-            ScrollView(.vertical, showsIndicators: false) {
+        let box = wheelBox
+        return ScrollView(.vertical, showsIndicators: false) {
                 // Never lazy (CLAUDE.md): a lazy stack only estimates rows it hasn't built, so centring a task further
                 // down (a widget open, `scrollPosition` set before layout) landed on a neighbour (widget-open-chrome).
                 VStack(spacing: 0) {
@@ -326,7 +328,7 @@ struct ZikrCircleWheel: View {
                                     TourTargets.shared.set("zikrCircle", frame)
                                     // The wheel's centre slot: where the centred circle rests, whatever the scroll is
                                     // doing — the tour's bubble keeps to it (owner: it moved with the scroll).
-                                    let mid = geo.frame(in: .global).midY
+                                    let mid = wheelBox.minY + wheelBox.height / 2
                                     TourTargets.shared.set("zikrSlot", CGRect(x: frame.minX, y: mid - frame.height / 2,
                                                                               width: frame.width, height: frame.height))
                                 }
@@ -351,7 +353,7 @@ struct ZikrCircleWheel: View {
                 }
                 .scrollTargetLayout()
             }
-            .contentMargins(.vertical, max((geo.size.height - itemHeight) / 2, 0), for: .scrollContent)
+            .contentMargins(.vertical, max((box.height - itemHeight) / 2, 0), for: .scrollContent)
             .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
             .scrollPosition(id: $centered, anchor: .center)
             // Soft edges under the page's title and bottom bar.
@@ -366,8 +368,14 @@ struct ZikrCircleWheel: View {
             // Centre the focused circle on the SCREEN (owner): the page starts under the status
             // bar and runs to the bottom edge, so its own middle sits a little low. Shift the
             // whole wheel up by the difference (scroll snapping always centres in its own frame).
-            .offset(y: -screenCentreShift(geo))
-        }
+            .offset(y: -screenCentreShift(box))
+            // Measured outside the shift (measured inside it, each shift moved what it's worked out from: a loop).
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                Color.clear.onGeometryChange(for: WheelBox.self) {
+                    WheelBox(height: $0.size.height, minY: $0.frame(in: .global).minY)
+                } action: { wheelBox = $0 }
+            }
         .onChange(of: centered) { old, id in
             triggerSomeVibration(type: .light)
             ZikrWheelFocus.shared.centre(id, from: old, in: items.map(\.id))   // the top bar's title
@@ -467,25 +475,7 @@ struct ZikrCircleWheel: View {
         #if DEBUG
         // `-demoFinishTask N` (with -demoZikrPage): centre task N, save a session that completes it,
         // then come back as from its session — the wheel should land on the next task (simulator).
-        .task {
-            let n = UserDefaults.standard.integer(forKey: "demoFinishTask")
-            guard n > 0 else { return }
-            try? await Task.sleep(for: .seconds(2.5))
-            guard n <= tasks.count else { return }
-            let task = tasks[n - 1]
-            withAnimation { centered = task.id.uuidString }
-            try? await Task.sleep(for: .seconds(1.5))
-            let session = SessionDataModel(title: task.displayName, sessionMode: task.isCountMode ? 2 : 1,
-                                           targetMin: task.isCountMode ? 0 : task.goal, targetCount: task.isCountMode ? task.goal : 0,
-                                           totalCount: task.isCountMode ? task.goal : 60, startTime: Date(),
-                                           secondsPassed: task.isCountMode ? Double(task.goal) : Double(task.goal * 60),
-                                           avgTimePerClick: 1, tasbeehRate: "1m 40s", task: task, mantra: task.mantra)
-            context.insert(session)
-            try? context.save()
-            try? await Task.sleep(for: .seconds(1))
-            print("🧪 demoFinishTask: finished \(task.title) (done \(isDone(task)))")
-            landAfterSession(task.id)
-        }
+        .task { await demoFinishTask() }
         #endif
         .alert(resumeAsk?.title ?? "",
                isPresented: Binding(get: { resumeAsk != nil }, set: { if !$0 { resumeAsk = nil } }),
@@ -501,12 +491,51 @@ struct ZikrCircleWheel: View {
         }
     }
 
+    #if DEBUG
+    private func demoFinishTask() async {
+        let n = UserDefaults.standard.integer(forKey: "demoFinishTask")
+        guard n > 0 else { return }
+        try? await Task.sleep(for: .seconds(2.5))
+        guard n <= tasks.count else { return }
+        let task = tasks[n - 1]
+        withAnimation { centered = task.id.uuidString }
+        try? await Task.sleep(for: .seconds(1.5))
+        let counts = task.isCountMode
+        let mode: Int = counts ? 2 : 1
+        let minutes: Int = counts ? 0 : task.goal
+        let target: Int = counts ? task.goal : 0
+        let total: Int = counts ? task.goal : 60
+        let seconds: Double = counts ? Double(task.goal) : Double(task.goal * 60)
+        let session = SessionDataModel(title: task.displayName, sessionMode: mode,
+                                       targetMin: minutes, targetCount: target,
+                                       totalCount: total, startTime: Date(),
+                                       secondsPassed: seconds,
+                                       avgTimePerClick: 1, tasbeehRate: "1m 40s", task: task, mantra: task.mantra)
+        context.insert(session)
+        try? context.save()
+        try? await Task.sleep(for: .seconds(1))
+        print("🧪 demoFinishTask: finished \(task.title) (done \(isDone(task)))")
+        landAfterSession(task.id)
+    }
+    #endif
+
     /// How far the page's middle sits below the screen's middle.
-    private func screenCentreShift(_ geo: GeometryProxy) -> CGFloat {
-        let screenHeight = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height
-            ?? geo.frame(in: .global).maxY
-        let pageMid = geo.frame(in: .global).minY + geo.size.height / 2
+    private func screenCentreShift(_ box: WheelBox) -> CGFloat {
+        let screenHeight = Self.screenHeight ?? box.minY + box.height
+        let pageMid = box.minY + box.height / 2
         return min(max(pageMid - screenHeight / 2, 0), 80)
+    }
+
+    private static var screenHeight: CGFloat? {
+        (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height
+    }
+
+    /// The wheel's height and its top on screen, measured — not a GeometryReader: one re-ran the whole wheel (every
+    /// ring's body) on every frame of a page swipe, its proxy changing as the page moves sideways (paging lag, Release
+    /// trace 2026-10-09). A sideways move changes neither number, so nothing here redraws while paging.
+    struct WheelBox: Equatable {
+        var height: CGFloat
+        var minY: CGFloat
     }
 
     private func face(for task: TaskModel) -> some View {

@@ -1,12 +1,14 @@
 #!/bin/zsh
 # scripts/perf-paging.sh <label> [testPagingHitches|testSalahVerticalHitches] — Release swipe test on his 13 Pro Max
 # (scheme shukrPerf; the phone unlocked, Settings → Developer → Enable UI Automation on). Prints hitches per run;
-# Apple: < 5 ms/s smooth, > 10 ms/s visible. PERF_ARGS="-x -y" adds launch args. Results: build/perf-results/.
+# Apple: < 5 ms/s smooth, > 10 ms/s visible — but XCTest's own screen reads before each swipe count too; the frame log's
+# "while moving" line is the honest one. PERF_ARGS="-x -y" adds launch args, PERF_DELAY=s waits before swiping.
+# Instruments can't record alongside the metric tests: use test*SwipesOnly, or launch with -perfToggleList (no test).
 cd "/Users/izhanansari/Coding and Tinkering/shukrGit/shukr"
 L=$1; T=${2:-testPagingHitches}
 K="$HOME/.appstoreconnect/private_keys/AuthKey_6K2RUXRJ92.p8"
 mkdir -p build/perf-results; R=build/perf-results/dev-$L-$(date +%H%M%S).xcresult
-TEST_RUNNER_PERF_ARGS="$PERF_ARGS" xcodebuild test -project shukr.xcodeproj -scheme shukrPerf -destination 'id=00008110-001C041C2203801E' -derivedDataPath build/perf-dev -allowProvisioningUpdates -authenticationKeyPath "$K" -authenticationKeyID 6K2RUXRJ92 -authenticationKeyIssuerID 60a885ac-0315-4323-974d-57783a7392a2 SHUKR_BUILD_STAMP="$(git rev-parse --short HEAD)+perf" -only-testing:shukrUITests/shukrUITests/$T -resultBundlePath $R > build/perf-results/dev-$L.log 2>&1
+TEST_RUNNER_PERF_DELAY="${PERF_DELAY:-3}" TEST_RUNNER_PERF_ARGS="$PERF_ARGS" xcodebuild test -project shukr.xcodeproj -scheme shukrPerf -destination 'id=00008110-001C041C2203801E' -derivedDataPath build/perf-dev -allowProvisioningUpdates -authenticationKeyPath "$K" -authenticationKeyID 6K2RUXRJ92 -authenticationKeyIssuerID 60a885ac-0315-4323-974d-57783a7392a2 SHUKR_BUILD_STAMP="$(git rev-parse --short HEAD)+perf" -only-testing:shukrUITests/shukrUITests/$T -resultBundlePath $R > build/perf-results/dev-$L.log 2>&1
 grep -E "Test Case.*(passed|failed)|encountered an error|\*\* TEST" build/perf-results/dev-$L.log | cut -c1-200
 python3 - $R <<'PY'
 import json,subprocess,sys
@@ -29,3 +31,6 @@ try:
                 print(f'{m["displayName"]["_value"]:55} {m.get("unitOfMeasurement",{}).get("_value",""):8} {vals}')
 except Exception as e: print("no metrics:",e)
 PY
+# The app's own late-frame log (FrameMonitor, -perfFrames): the moving / idle split.
+xcrun devicectl device copy from --device 00008110-001C041C2203801E --domain-type appDataContainer --domain-identifier com.betternorms.shukr --source Library/Caches/frames.log --destination build/perf-results/frames-$L.log >/dev/null 2>&1 \
+  && python3 scripts/perf-frames.py build/perf-results/frames-$L.log

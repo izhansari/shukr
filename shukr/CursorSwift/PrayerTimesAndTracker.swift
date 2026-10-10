@@ -579,6 +579,7 @@ struct PrayerTimesView: View {
                         .id(NavPage.settings)
                 }
                 .scrollTargetLayout()
+                .background { PagerPanLock(live: live) }
             }
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
@@ -628,9 +629,33 @@ struct PrayerTimesView: View {
                 }
             }
             .simultaneousGesture(abstractedDragGesture)
+            .onChange(of: sharedState.navPosition) { _, now in
+                if FrameMonitor.on { FrameMonitor.shared.note("list → \(now)") }
+            }
+            .onChange(of: live.pagerLocked) { _, now in
+                if FrameMonitor.on { FrameMonitor.shared.note(now ? "lock" : "unlock") }
+            }
+            .onAppear {
+                if ProcessInfo.processInfo.arguments.contains("-perfToggleList") {
+                    FrameMonitor.shared.toggleList = { [sharedState] in
+                        withAnimation(CircleMotion.page) {
+                            sharedState.navPosition = sharedState.navPosition == .main ? .bottom : .main
+                        }
+                    }
+                    FrameMonitor.shared.startIfAsked()
+                }
+                guard FrameMonitor.on else { return }
+                FrameMonitor.shared.context = { [live, sharedState] in
+                    String(format: "pager %@ at %.2f, page %@, list %@ pull %.0f locked %@", String(describing: live.pagerPhase),
+                           live.scrollProgress, String(describing: sharedState.horizontalPage),
+                           String(describing: sharedState.navPosition), live.pull, live.pagerLocked ? "y" : "n")
+                }
+                FrameMonitor.shared.startIfAsked()
+            }
             .onChange(of: pagerDragActive) { _, active in if !active { pagerDragReleased() } }
             .onScrollPhaseChange { _, phase, context in
                 live.pagerPhase = phase
+                if FrameMonitor.on { FrameMonitor.shared.note("pager \(phase) · \(FrameMonitor.shared.context())") }
                 let geometry = context.geometry
                 if geometry.containerSize.width > 0, geometry.contentSize.width >= geometry.containerSize.width * 2.5 {
                     noteRestingPage(progress: geometry.contentOffset.x / geometry.containerSize.width, phase: phase)
@@ -661,8 +686,14 @@ struct PrayerTimesView: View {
                 }
             }
             .onChange(of: sharedState.horizontalPage) { left, now in
-                // Settings may have changed how times are worked out: refetch on leaving its page.
-                if left == .settings, now != .settings { viewModel.fetchPrayerTimes(cameFrom: "left the Settings page") }
+                // Settings may have changed how times are worked out: refetch on leaving its page — once the pager has
+                // landed (run at the page's commit, mid-swipe, it stalled two frames: perf trace 2026-10-10).
+                if left == .settings, now != .settings {
+                    Task { @MainActor in
+                        _ = await CircleStage.shared.until(deadline: 2) { CircleStage.shared.restingPage != nil }
+                        viewModel.fetchPrayerTimes(cameFrom: "left the Settings page")
+                    }
+                }
             }
             .onChange(of: sharedState.horizontalPage) { _, wanted in
                 // Programmatic nav (bottom bar, menu, widget deep link): scroll the pager to match, quietly when the
@@ -3166,15 +3197,44 @@ struct PagerBackdrop: View {
     }
 }
 
-/// `.scrollDisabled(live.pagerLocked)` in its own modifier: reading `pagerLocked` in
-/// PrayerTimesView's body re-rendered the whole tree on every touch-down and release on the
-/// task strip; here only this modifier re-evaluates.
+/// The pager's longer holds — the tour's (audit E17: only its swipe step pages) and the Zikr lock's narration — as
+/// `.scrollDisabled`, in its own modifier (read in PrayerTimesView's body it re-rendered the whole tree). Rare, and they
+/// reach the scroll views inside the pages too, which the tour relies on. The per-drag holds are `PagerPanLock`.
 struct PagerLock: ViewModifier {
     var live: PagerLiveState
     func body(content: Content) -> some View {
-        // The tour holds the page too: only its swipe step pages (audit E17).
-        content.scrollDisabled(live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating
-                               || TourRuntime.shared.locksPager || ZikrLock.shared.focus)
+        content.scrollDisabled(TourRuntime.shared.locksPager || ZikrLock.shared.focus)
+    }
+}
+
+/// The per-drag holds (`live.pagerLocked`: a vertical drag on Salah, a drag that could only rubber-band, a finger on the
+/// post-salah pill; and the live sheet's drag) switch the pager's own pan off and on in UIKit. As `.scrollDisabled` each
+/// switch went down through every view in all three pages (the Settings form, the wheel, the list): 8–12 ms twice per
+/// vertical swipe, a dropped frame each (perf trace 2026-10-10).
+struct PagerPanLock: UIViewRepresentable {
+    var live: PagerLiveState
+    func makeUIView(context: Context) -> Finder { Finder() }
+    func updateUIView(_ view: Finder, context: Context) {
+        view.locked = live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating
+    }
+
+    /// Sits in the pager's content: the nearest UIScrollView above it is the pager.
+    final class Finder: UIView {
+        private weak var pager: UIScrollView?
+        var locked = false { didSet { if locked != oldValue { apply() } } }
+        init() {
+            super.init(frame: .zero)
+            isUserInteractionEnabled = false
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            var v = superview
+            while let current = v, !(current is UIScrollView) { v = current.superview }
+            pager = v as? UIScrollView
+            apply()
+        }
+        private func apply() { pager?.panGestureRecognizer.isEnabled = !locked }
     }
 }
 
