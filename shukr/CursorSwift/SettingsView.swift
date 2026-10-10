@@ -912,6 +912,14 @@ struct prayerCol: View {
 
 struct NotificationDropdownInfo: View {
     @EnvironmentObject var viewModel: PrayerViewModel
+    @AppStorage("fajrNotif") private var fajrNotif = NotificationDefaults.notify("Fajr")
+    @AppStorage("fajrNudges") private var fajrNudges = NotificationDefaults.nudges("Fajr")
+    @AppStorage("maghribNotif") private var maghribNotif = NotificationDefaults.notify("Maghrib")
+    @AppStorage("maghribNudges") private var maghribNudges = NotificationDefaults.nudges("Maghrib")
+    /// Fajr or Maghrib on Nudge and too short today for a halfway one (their tile shows ● ○ ●).
+    private var shortOnNudge: Bool {
+        (fajrNotif && fajrNudges && hasNoHalfwayToday("Fajr")) || (maghribNotif && maghribNudges && hasNoHalfwayToday("Maghrib"))
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Information:")
@@ -937,6 +945,15 @@ struct NotificationDropdownInfo: View {
                     .font(.caption)
             }
             .foregroundColor(.gray)
+
+            if shortOnNudge {
+                HStack {
+                    Image(systemName: "circle.dotted")
+                    Text("Fajr and Maghrib are usually too short for a halfway nudge.")
+                        .font(.caption)
+                }
+                .foregroundColor(.gray)
+            }
             
         }
         HStack{

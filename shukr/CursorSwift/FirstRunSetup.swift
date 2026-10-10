@@ -1292,6 +1292,26 @@ private func todaysTimes(method: Int, school: Int) -> PrayerTimes? {
 
 private func clockTime(_ d: Date) -> String { d.formatted(.dateTime.hour().minute()) }
 
+/// A prayer's window today, with the saved method and school unless given: Fajr to sunrise, Isha to 11:59 PM.
+func prayerWindowToday(_ prayer: String, method: Int? = nil, school: Int? = nil) -> (start: Date, end: Date)? {
+    let group = UserDefaults(suiteName: SharedStore.appGroup)
+    guard let t = todaysTimes(method: method ?? group?.integer(forKey: "calculationMethod") ?? AutoMethod.automatic,
+                              school: school ?? group?.integer(forKey: "school") ?? 0) else { return nil }
+    switch prayer {
+    case "Fajr": return (t.fajr, t.sunrise)
+    case "Dhuhr": return (t.dhuhr, t.asr)
+    case "Asr": return (t.asr, t.maghrib)
+    case "Maghrib": return (t.maghrib, t.isha)
+    default: return (t.isha, Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: t.isha) ?? t.isha)
+    }
+}
+
+/// Too short today for a halfway nudge (under 90 min — usually Fajr and Maghrib): its Nudge sends two, not three.
+func hasNoHalfwayToday(_ prayer: String) -> Bool {
+    guard let w = prayerWindowToday(prayer) else { return false }
+    return w.end.timeIntervalSince(w.start) < NotificationScheduler.halfwayMinimumWindow
+}
+
 private struct MethodStep: View {
     let next: () -> Void
     @EnvironmentObject private var viewModel: PrayerViewModel
@@ -1755,11 +1775,18 @@ struct NotificationTile: View {
                     .foregroundStyle(inList && state > 0 ? accent : ink)
                 if inList {
                     // How many notifications it sends (decision settings-tile-look A): none, one, or all three.
+                    // A prayer too short for a halfway nudge, on Nudge: the middle one an empty ring (decision
+                    // settings-short-dots C — only when it's on Nudge).
+                    let skipsHalfway = state == 2 && hasNoHalfwayToday(prayer)
                     HStack(spacing: 4) {
                         ForEach(0..<3, id: \.self) { i in
-                            Circle()
-                                .fill(i < [0, 1, 3][state] ? accent : Color.secondary.opacity(0.25))
-                                .frame(width: 5, height: 5)
+                            if skipsHalfway && i == 1 {
+                                Circle().strokeBorder(accent.opacity(0.7), lineWidth: 1).frame(width: 5, height: 5)
+                            } else {
+                                Circle()
+                                    .fill(i < [0, 1, 3][state] ? accent : Color.secondary.opacity(0.25))
+                                    .frame(width: 5, height: 5)
+                            }
                         }
                     }
                     .frame(height: 8)
@@ -1827,18 +1854,7 @@ private struct NotificationDemo: View {
     }
 
     /// The prayer's window today: Fajr to sunrise, Isha to 11:59 PM.
-    private var window: (start: Date, end: Date)? {
-        guard let t = todaysTimes(method: method, school: school) else { return nil }
-        switch prayer {
-        case "Fajr": return (t.fajr, t.sunrise)
-        case "Dhuhr": return (t.dhuhr, t.asr)
-        case "Asr": return (t.asr, t.maghrib)
-        case "Maghrib": return (t.maghrib, t.isha)
-        default:
-            let end = Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: t.isha) ?? t.isha
-            return (t.isha, end)
-        }
-    }
+    private var window: (start: Date, end: Date)? { prayerWindowToday(prayer, method: method, school: school) }
 
     private var banners: [Banner] {
         guard let w = window else { return [] }
