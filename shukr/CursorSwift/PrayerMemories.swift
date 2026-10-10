@@ -1124,6 +1124,10 @@ struct MemoriesDeck: View {
     /// feel more hand made"); not stored.
     @State private var lie: [String: Lie]
     @State private var sharing: String?
+    /// ··· → Retake photo: the camera for this photo's prayer (it replaces the photo).
+    @State private var retaking: PrayerPhotoTarget?
+    /// ··· → Delete photo: asked first.
+    @State private var deleting: String?
     /// Cards showing their selfie big after a tap — on this screen only; it swaps back as the pile closes.
     @State private var swapped: Set<String> = []
     /// The day centred in the strip at the bottom: follows the pile, and a drag on the strip moves the pile there once
@@ -1174,6 +1178,11 @@ struct MemoriesDeck: View {
             let range = day
             let shift = edgeShift(range)
             VStack(spacing: 0) {
+                // ✕, the day as the title, ··· (owner, decision memories-pile-v2: the date was only in the strip at the
+                // bottom; ✕ was among the buttons under the photo).
+                titleRow(current)
+                    .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
+                    .allowsHitTesting(shown)
                 Spacer(minLength: 0)
                 // The neighbouring days wait off the edges for a swipe; a drag down shrinks and moves the pile, which
                 // brought them into view (owner) — so they're out while it's dragged down, and while it zooms.
@@ -1221,12 +1230,17 @@ struct MemoriesDeck: View {
                         circleIcon(favorite ? "heart.fill" : "heart", tint: favorite ? .pink : .primary)
                     }
                     .accessibilityLabel(favorite ? "Remove from favorites" : "Favorite")
-                    Button(action: close) { circleIcon("xmark") }
-                        .accessibilityLabel("Close")
                 }
                 .buttonStyle(.plain)
                 .opacity(down > 10 || !shown ? 0 : 1)
                 .padding(.top, 22)
+                // Why Share is faded (owner: it greyed out with no word why). Room kept, so nothing moves.
+                Text(photos.indices.contains(index) && !PhotoDevelop.isDeveloped(key: photos[index].key)
+                     ? "You can share it once it develops" : " ")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .opacity(down > 10 || !shown ? 0 : 1)
+                    .padding(.top, 6)
                 Spacer(minLength: 0)
                 prayerMarks
                     .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
@@ -1277,6 +1291,33 @@ struct MemoriesDeck: View {
             }
         }
         .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
+        .fullScreenCover(item: $retaking) { target in
+            PrayerPhotoCapture(target: target) { retaking = nil }
+        }
+        .alert("Delete this photo?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete", role: .destructive) {
+                if let key = deleting { PrayerPhotos.delete(key) }
+                deleting = nil
+            }
+            Button("Cancel", role: .cancel) { deleting = nil }
+        } message: {
+            Text("It's removed from Memories, along with its note.")
+        }
+        // A photo deleted (or retaken) under the pile: stay on the same photo if it's still there, else the one beside
+        // it in its day, else the nearest; none left closes the pile.
+        .onChange(of: photos) { old, new in
+            guard old.indices.contains(index) else { return }
+            let key = old[index].key
+            if let i = new.firstIndex(where: { $0.key == key }) {
+                if i != index { index = i }
+                return
+            }
+            guard !new.isEmpty else { onClose(key, old[index].dayKey, 1, .zero); return }
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { index = min(index, new.count - 1); pendingTop = nil }
+            pickLies()
+        }
         .sensoryFeedback(.selection, trigger: shownIndex)
         .onChange(of: shownIndex) { _, i in
             // The strip follows the pile.
@@ -1299,6 +1340,64 @@ struct MemoriesDeck: View {
         }
         #endif
         .onDisappear { PrayerPhotoViewing.shared.closed() }
+    }
+
+    /// ✕ · the day ("Wednesday, Oct 7", "3 days ago" / "Today") · ··· (Retake photo, Delete photo).
+    private func titleRow(_ current: MemoryPhoto?) -> some View {
+        let dayKey = current?.dayKey
+        return HStack {
+            Button(action: close) { circleIcon("xmark") }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            Spacer(minLength: 8)
+            VStack(spacing: 2) {
+                Text(dayKey.map(Self.dayTitle) ?? " ")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                Text(dayKey.map(Self.dayAgo) ?? " ")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            .contentTransition(.numericText())
+            .animation(.snappy(duration: 0.25), value: dayKey)
+            Spacer(minLength: 8)
+            Menu {
+                if let current {
+                    Button {
+                        retaking = PrayerPhotoTarget(key: current.key, title: PrayerPhotos.caption(current.key))
+                    } label: { Label("Retake photo", systemImage: "camera") }
+                    Button(role: .destructive) { deleting = current.key } label: {
+                        Label("Delete photo", systemImage: "trash")
+                    }
+                }
+            } label: { circleIcon("ellipsis") }
+            .accessibilityLabel("More")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+    }
+
+    /// "Wednesday, Oct 7" — the year too when it isn't this one.
+    static func dayTitle(_ dayKey: String) -> String {
+        guard let date = MemoriesPage.parse(dayKey) else { return dayKey }
+        let thisYear = Calendar.current.isDate(date, equalTo: Date(), toGranularity: .year)
+        return thisYear ? date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+                        : date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year())
+    }
+
+    /// "Today", "Yesterday", "3 days ago", "5 weeks ago", "1 year ago".
+    static func dayAgo(_ dayKey: String) -> String {
+        guard let date = MemoriesPage.parse(dayKey) else { return "" }
+        let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: date),
+                                                   to: Calendar.current.startOfDay(for: Date())).day ?? 0
+        switch days {
+        case ..<1: return "Today"
+        case 1: return "Yesterday"
+        case 2..<14: return "\(days) days ago"
+        case 14..<60: return "\(days / 7) weeks ago"
+        case 60..<365: return "\(days / 30) months ago"
+        default: return days / 365 == 1 ? "1 year ago" : "\(days / 365) years ago"
+        }
     }
 
     private func close() {
@@ -1648,6 +1747,10 @@ struct MemoriesDeck: View {
             }
         }()
         MemoryCard(key: key, width: width, swapped: swapped.contains(key), tagged: i == index)
+            .overlay(alignment: .topTrailing) {
+                // A favourite carries its heart on the photo (owner).
+                if i == index && PrayerPhotoFavorites.shared.contains(key) { FavoriteBadge(size: 15).padding(12) }
+            }
             .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
                 if i == index { onTopFrame(rect) }
