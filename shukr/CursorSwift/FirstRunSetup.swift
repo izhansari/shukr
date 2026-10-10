@@ -852,76 +852,65 @@ enum SetupHadithWords {
     static let lineCount = 5
 }
 
-/// The first thing setup shows (owner: "i want that hadith to be on its own at first … shukr helps you to do that"),
-/// a better version of the zikr lock's page (owner: "more beautiful than the zikr lock. but similar"): the hadith comes
-/// in as a conversation in the middle of the screen — the question and "He ﷺ replied," surfacing out of a blur, the
-/// answer written in (the Arabic right to left, in sage with a soft glow; the English left to right), then the source —
-/// while a faint sage ring draws itself round it like a prayer's time filling. Then it rises and "shukr helps you to do
-/// that" comes in with an arrow that nudges forward (no button — owner); a tap there plays the opening. No hurry tap, no
-/// Skip, nothing comes back here. Reduce Motion: all at once.
+/// The first thing setup shows (owner: "i want that hadith to be on its own at first … shukr helps you to do that"), on
+/// the opening's own look in its dark version (owner, after a ring and glow were "so tacky": "take inspo from this
+/// page, the dark version"): the moving wavy gradient and grain over black, the words white with the opening's soft
+/// shadow. The hadith comes in as a conversation in the middle of the screen — the question and "He ﷺ replied,"
+/// surfacing out of a blur, the answer written in (the Arabic right to left, then the English), then the source — holds,
+/// rises, and "shukr helps you to do that →" comes in (no button — owner); a tap there plays the opening. No hurry tap,
+/// no Skip, nothing comes back here. Reduce Motion: all at once, the gradient still.
 private struct SetupHadith: View {
     let onDone: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// How many of the conversation's lines are in (0…`SetupHadithWords.lineCount`).
     @State private var lines = 0
-    /// The ring round it, drawn as the conversation plays (0…1).
-    @State private var ring: CGFloat = 0
+    /// The gradient has come up.
+    @State private var lit = false
     /// The hadith has risen from the middle to its place.
     @State private var up = false
-    /// "shukr helps you to do that" and its arrow are in.
+    /// "shukr helps you to do that →" is in.
     @State private var invite = false
     /// The arrow's nudge.
     @State private var nudge = false
     @State private var leaving = false
-    /// The line and its arrow's height: the room the hadith rises out of.
-    @State private var bottomHeight: CGFloat = 120
+    /// The invitation's height: the room the hadith rises out of.
+    @State private var bottomHeight: CGFloat = 80
     @State private var run: Task<Void, Never>?
 
     /// Beyond the invitation, how much more room it leaves under the hadith once up.
-    private static let liftExtra: CGFloat = 110
+    private static let liftExtra: CGFloat = 150
 
     var body: some View {
-        GeometryReader { geo in
-            let ringSize = min(geo.size.width - 20, 380)
+        ZStack {
+            // The opening's gradient and grain, over black: its dark version whatever the app's look.
+            ZStack {
+                Color.black
+                AnimatedWavyGradient(still: reduceMotion)
+                    .opacity(lit ? 1 : 0)
+                NoiseOverlay()
+                    .blendMode(.overlay)
+                    .opacity(lit ? 0.3 : 0)
+            }
+            .ignoresSafeArea()
             // The hadith is centred in the page with a room under it that opens as it rises (layout only: measured into
             // its own layout through ViewThatFits, the hadith looped and hung the page blank).
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     Spacer(minLength: 24)
                     hadith
-                        .background { stage(size: ringSize) }
                     Spacer(minLength: 24)
                     Color.clear.frame(height: up ? bottomHeight + Self.liftExtra : 0)
                 }
                 invitation
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bottomHeight = $0 }
             }
+            // The opening's soft dark halo, so white reads on every part of the gradient.
+            .shadow(color: .black.opacity(0.45), radius: 6, y: 1)
         }
+        .environment(\.colorScheme, .dark)
         .opacity(leaving ? 0 : 1)
         .task { start() }
         .onDisappear { run?.cancel() }
-    }
-
-    /// Behind the hadith: a soft sage light and the ring drawing itself round it.
-    private func stage(size: CGFloat) -> some View {
-        ZStack {
-            RadialGradient(colors: [Color.sage.opacity(0.13), Color.sage.opacity(0)], center: .center,
-                           startRadius: 0, endRadius: size * 0.62)
-                .frame(width: size * 1.4, height: size * 1.4)
-                .opacity(lines > 0 ? 1 : 0)
-            Circle()
-                .stroke(Color.sage.opacity(0.08), lineWidth: 1)
-                .frame(width: size, height: size)
-                .opacity(lines > 0 ? 1 : 0)
-            Circle()
-                .trim(from: 0, to: ring)
-                .stroke(Color.sage.opacity(0.45), style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .frame(width: size, height: size)
-                .shadow(color: Color.sage.opacity(0.35), radius: 4)
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
     /// The conversation, a line at a time.
@@ -930,24 +919,23 @@ private struct SetupHadith: View {
             surfacing(0) {
                 Text(SetupHadithWords.question)
                     .font(.system(size: 18, weight: .light, design: .rounded))
-                    .foregroundStyle(Color.primary.opacity(0.82))
+                    .foregroundStyle(.white.opacity(0.88))
             }
             surfacing(1) {
                 Text(SetupHadithWords.replied)
                     .font(.system(size: 15, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.6))
             }
             .padding(.top, 22)
             Text(SetupHadithWords.arabic)
                 .font(.custom("KFGQPCUthmanTahaNaskh", size: 50))
-                .foregroundStyle(Color.sage)
-                .shadow(color: Color.sage.opacity(0.35), radius: 14)
+                .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
                 .modifier(WipeIn(progress: lines > 2 ? 1 : 0, fromTrailing: true))
                 .padding(.top, 4)
             Text(SetupHadithWords.answer)
                 .font(.system(size: 18, weight: .light, design: .rounded))
-                .foregroundStyle(Color.primary.opacity(0.85))
+                .foregroundStyle(.white.opacity(0.92))
                 .fixedSize(horizontal: false, vertical: true)
                 .modifier(WipeIn(progress: lines > 3 ? 1 : 0))
                 .padding(.top, 2)
@@ -955,13 +943,12 @@ private struct SetupHadith: View {
                 Text(SetupHadithWords.source.uppercased())
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .tracking(1.6)
-                    .foregroundStyle(Color.sage.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.55))
             }
             .padding(.top, 16)
         }
         .multilineTextAlignment(.center)
-        // Kept well inside the ring (at 40 the question met it).
-        .padding(.horizontal, 54)
+        .padding(.horizontal, 44)
         .accessibilityElement(children: .combine)
     }
 
@@ -975,27 +962,23 @@ private struct SetupHadith: View {
             .offset(y: shown || reduceMotion ? 0 : 6)
     }
 
-    /// "shukr helps you to do that" and an arrow nudging forward: the way on (no button — owner).
+    /// "shukr helps you to do that →", set like the opening's "tap to continue": the way on (no button — owner).
     private var invitation: some View {
         Button(action: advance) {
-            VStack(spacing: 14) {
+            HStack(spacing: 8) {
                 Text(SetupHadithWords.help)
-                    .font(.system(.title3, design: .rounded, weight: .light))
-                    .foregroundStyle(Color.primary.opacity(0.8))
-                    .multilineTextAlignment(.center)
+                    .font(.system(.body, design: .rounded, weight: .medium))
                 Image(systemName: "arrow.right")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(Color.sage)
-                    .offset(x: nudge ? 4 : -2)
-                    .frame(width: 46, height: 46)
-                    .background(Circle().stroke(Color.sage.opacity(0.5), lineWidth: 1))
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .offset(x: nudge ? 4 : 0)
             }
+            .foregroundStyle(.white)
             .padding(.horizontal, 32)
-            .padding(.vertical, 12)
+            .padding(.vertical, 16)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.bottom, 18)
+        .padding(.bottom, 30)
         .opacity(invite ? 1 : 0)
         .blur(radius: invite || reduceMotion ? 0 : 6)
         .allowsHitTesting(invite)
@@ -1006,11 +989,11 @@ private struct SetupHadith: View {
 
     private func start() {
         typealias T = CircleMotion.Setup
-        if reduceMotion { lines = SetupHadithWords.lineCount; ring = 1; up = true; invite = true; return }
+        if reduceMotion { lit = true; lines = SetupHadithWords.lineCount; up = true; invite = true; return }
         run = Task { @MainActor in
+            // The gradient comes up first, as on the opening; then the conversation.
+            withAnimation(T.gradient) { lit = true }
             guard await CircleGate.pause(T.hadithAfterDuration) else { return }
-            // The ring draws round it for the whole conversation, full as the source comes in.
-            withAnimation(T.hadithRing) { ring = 1 }
             for (i, beat) in T.hadithLineBeats.enumerated() {
                 withAnimation(i == 2 || i == 3 ? T.hadithWipe : T.hadithLine) { lines = i + 1 }
                 guard await CircleGate.pause(beat) else { return }
@@ -3189,7 +3172,7 @@ extension CircleMotion {
         // The hadith page (paced like the zikr lock's verse): a blank beat, the conversation a line at a time (each
         // beat = the wait after that line: the question, "He ﷺ replied,", the Arabic, the English, the source — the
         // last one the hold before it rises), it rises, then the line and the button; its words go on a tap.
-        static let hadithAfterDuration: Double = 0.5
+        static let hadithAfterDuration: Double = 1.2
         static let hadithLine = Animation.easeInOut(duration: 0.9)
         static let hadithLineBeats: [Double] = [1.8, 0.9, 1.4, 1.2, 2.0]
         static let hadithUp = Animation.easeInOut(duration: 1.6)
@@ -3197,8 +3180,6 @@ extension CircleMotion {
         static let hadithExtra = Animation.easeInOut(duration: 1.0)
         /// The answer written in (Arabic right to left, then the English).
         static let hadithWipe = Animation.easeInOut(duration: 1.3)
-        /// The ring round it: drawn over the conversation, full as the source comes in.
-        static let hadithRing = Animation.easeInOut(duration: hadithLineBeats.dropLast().reduce(0, +) + 0.9)
         /// The invitation's arrow, nudging forward.
         static let hadithNudge = Animation.easeInOut(duration: 0.9).repeatForever(autoreverses: true)
         static let hadithAway = Animation.easeOut(duration: 0.45)
