@@ -1817,10 +1817,11 @@ private struct WelcomeRingDemo: View {
                     .font(.system(.caption, design: .rounded, weight: .semibold))
                     .foregroundStyle(Color.primary.opacity(0.7))
                     .padding(.leading, 4)
+                // 80 % of the first size in the same panel, so it breathes (owner).
                 WelcomeSweep(gone: gone)
-                    .frame(width: 140, height: 140)
+                    .frame(width: 112, height: 112)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
+                    .padding(.vertical, 32)
                     // The page's own soft surface, so the raised band reads as it does on the Salah page.
                     .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(theme.surface))
             }
@@ -1895,9 +1896,9 @@ private struct WelcomeSweep: View, Animatable {
                 .frame(width: 200, height: 200)
                 .shadow(color: colour.opacity(theme.arc.glow), radius: 6)
         }
-        // Drawn at the Salah ring's 200 pt (its band and glow as they are there), shown at 140.
-        .scaleEffect(0.7)
-        .frame(width: 140, height: 140)
+        // Drawn at the Salah ring's 200 pt (its band and glow as they are there), shown at 112.
+        .scaleEffect(0.56)
+        .frame(width: 112, height: 112)
     }
 }
 
