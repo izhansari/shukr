@@ -116,6 +116,10 @@ struct ZikrCircleWheel: View {
     /// moves on and it leaves (owner, 2026-10-02: "from completion page back" — it left at once, and the full ring landed
     /// on the next task's).
     @State private var heldTaskID: UUID?
+    /// The task's progress as it stood when its session opened: its ring shows that until the session's sheet has gone,
+    /// then catches up in front of them (owner: "some sort of visual animation … so they comprehend how their ring has
+    /// changed").
+    @State private var ringHold: (id: UUID, progress: TaskProgress)?
     /// Under the soft look, a session opens out of the tapped ring (SessionHandoff): everything but that ring
     /// fades while it does, and back in as the session closes.
     @State private var openingSoft = false
@@ -453,6 +457,8 @@ struct ZikrCircleWheel: View {
             wheelTask = Task { @MainActor in
                 _ = await CircleStage.shared.until(deadline: 2) { !CircleStage.shared.covers.contains("tasbeeh") }
                 guard !Task.isCancelled else { return }
+                await showProgress(finished)
+                guard !Task.isCancelled else { return }
                 landAfterSession(finished)
             }
         }
@@ -502,7 +508,7 @@ struct ZikrCircleWheel: View {
     }
 
     private func face(for task: TaskModel) -> some View {
-        let p = progress(task)
+        let p = ringHold.flatMap { $0.id == task.id ? $0.progress : nil } ?? progress(task)
         let done = task.isCompleted(with: p)
         let fraction = task.isCountMode ? Double(p.count) / Double(max(task.goal, 1))
                                         : p.seconds / Double(max(task.goal * 60, 1))
@@ -661,6 +667,21 @@ struct ZikrCircleWheel: View {
 
     // MARK: actions
 
+    /// The sheet has gone: the task's ring goes from where it stood to where it is now, and a finished one is held full
+    /// a moment (a success buzz) before the wheel moves on.
+    private func showProgress(_ id: UUID) async {
+        guard let hold = ringHold, hold.id == id, let task = tasks.first(where: { $0.id == id }) else { ringHold = nil; return }
+        let now = progress(task)
+        guard now.count != hold.progress.count || now.seconds != hold.progress.seconds else { ringHold = nil; return }
+        try? await Task.sleep(for: .milliseconds(250))
+        withAnimation(.easeInOut(duration: reduceMotion ? 0.3 : 0.9)) { ringHold = nil }
+        try? await Task.sleep(for: .milliseconds(reduceMotion ? 300 : 900))
+        if isDone(task) {
+            triggerSomeVibration(type: .success)
+            try? await Task.sleep(for: .milliseconds(800))
+        }
+    }
+
     /// Back from a session of `finished`: once it's done, centre what comes next.
     private func landAfterSession(_ finished: UUID) {
         guard let task = tasks.first(where: { $0.id == finished }), isDone(task) else { heldTaskID = nil; return }
@@ -684,6 +705,7 @@ struct ZikrCircleWheel: View {
         wheelTask?.cancel()   // a landing still waiting must not clear this session's held task
         sessionTaskID = task.id
         heldTaskID = task.id
+        ringHold = (task.id, progress(task))
         sharedState.selectedTask = task   // its didSet loads the mode / goal / mantra
         let p = progress(task)
         sharedState.resumeCount = resume && task.isCountMode ? p.count : 0
@@ -710,21 +732,11 @@ struct ZikrCircleWheel: View {
     /// `base`: the ring's share as it stands; `rewind`: the session starts from nothing, so the arc rewinds to empty
     /// first (decision zikr-ring-progress B).
     private func openSession(from id: String, base: Double, rewind: Bool, entryFrame: CGRect? = nil) {
-        guard theme.sessionLayout == .ringAbove, id == centered,
-              let frame = entryFrame ?? circleFrames.byID[id], frame.width > 100,
-              UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(frame) else {
-            showTasbeehPage = true
-            return
-        }
-        openingStyle = reduceMotion ? .fade : SessionOpening.current
-        SessionHandoff.shared.open(from: frame, landingBase: openingStyle == .fade ? nil : base)
-        withAnimation(.easeOut(duration: reduceMotion ? CircleMotion.quick : CircleMotion.wheelOpenDuration)) { openingSoft = true }
-        if rewind && openingStyle != .fade {
-            withAnimation(.easeInOut(duration: CircleMotion.arcMoveDuration)) { arcRewound = true }
-        }
-        var quiet = Transaction()
-        quiet.disablesAnimations = true
-        withTransaction(quiet) { showTasbeehPage = true }
+        // The plain full-screen sheet, sliding up (owner, 2026-10-09: "just open a full sheet when someone clicks a task
+        // from the wheel … it feels more crisp"); its results are inside it. The ring handoff (SessionHandoff.open — the
+        // wheel's ring becoming the session's) isn't used from the wheel any more; coming back, the ring catches up
+        // instead (`showProgress`).
+        showTasbeehPage = true
     }
 
     private func resumeLabel(_ task: TaskModel) -> String {
