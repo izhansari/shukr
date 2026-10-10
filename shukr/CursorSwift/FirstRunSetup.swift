@@ -875,7 +875,11 @@ private struct SetupHadith: View {
     @State private var invite = false
     /// The arrow's nudge.
     @State private var nudge = false
+    /// Tapped: the words go…
     @State private var leaving = false
+    /// …then the background drains away, still moving — as the opening leaves (owner: "the same way the 'welcome to
+    /// shukr' page does instead of a flat fade").
+    @State private var draining = false
     @State private var run: Task<Void, Never>?
 
     var body: some View {
@@ -884,6 +888,7 @@ private struct SetupHadith: View {
             // The easter egg lives here: a finger through calm water.
             HadithSurface(lit: lit, still: reduceMotion)
                 .ignoresSafeArea()
+                .opacity(draining ? 0 : 1)
             // The hadith stays in the middle (owner: "dont shift the thing up"); the invitation sits at the bottom.
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
@@ -896,9 +901,9 @@ private struct SetupHadith: View {
             }
             // The opening's soft dark halo, so white reads on every part of the gradient.
             .shadow(color: .black.opacity(0.45), radius: 6, y: 1)
+            .opacity(leaving ? 0 : 1)
         }
         .environment(\.colorScheme, .dark)
-        .opacity(leaving ? 0 : 1)
         .task { start() }
         .onDisappear { run?.cancel() }
     }
@@ -1018,12 +1023,17 @@ private struct SetupHadith: View {
         }
     }
 
+    /// As the opening leaves: a light tap, the words go, then the background drains away while it keeps moving; then
+    /// the opening plays from its blank page.
     private func advance() {
         guard !leaving else { return }
+        triggerSomeVibration(type: .light)
         typealias T = CircleMotion.Setup
         Task { @MainActor in
-            withAnimation(reduceMotion ? T.stepReduced : T.hadithAway) { leaving = true }
-            guard await CircleGate.pause(reduceMotion ? 0.2 : T.hadithAwayDuration) else { return }
+            await CircleMotion.animate(T.openingAway) { leaving = true }
+            await CircleMotion.animate(.easeInOut(duration: reduceMotion ? T.drainReducedDuration : SetupOpening.drain)) {
+                draining = true
+            }
             onDone()
         }
     }
@@ -3294,8 +3304,6 @@ extension CircleMotion {
         static let hadithWipe = Animation.easeInOut(duration: 1.9)
         /// The invitation's arrow, nudging forward.
         static let hadithNudge = Animation.easeInOut(duration: 1.1).repeatForever(autoreverses: true)
-        static let hadithAway = Animation.easeOut(duration: 0.6)
-        static let hadithAwayDuration: Double = 0.65
         // The opening page (the gradient, the glass circle, "welcome to shukr", "tap to continue")
         static let gradientAfterDuration: Double = 0.6
         static let gradient = Animation.easeInOut(duration: 1.4)
