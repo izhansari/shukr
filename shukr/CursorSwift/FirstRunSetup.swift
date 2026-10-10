@@ -1175,14 +1175,20 @@ private struct LocationStep: View {
     private var ready: Bool { location.isAuthorized || location.hasManualLocation }
 
     var body: some View {
-        StepScaffold(title: "Where do you pray?",
+        StepScaffold(title: "Your location",
                      subtitle: locationOnly ? "shukr needs a location for your prayer times."
-                                            : "shukr works out your prayer times from where you are.") {
-            VStack(alignment: .leading, spacing: 22) {
+                                            : "It does more than set your prayer times.") {
+            VStack(alignment: .leading, spacing: 18) {
+                // Everything location gives, so going without is an informed choice (owner: "we use location for so
+                // much more").
                 whyRow("clock", "Accurate times, wherever you are",
-                       "With Always, they follow you when you travel. No city to update.")
-                whyRow("mappin.and.ellipse", "Your prayers, pinned where you prayed",
-                       "Even the ones you mark from the widget, a notification or your watch.")
+                       "They follow you when you travel.")
+                whyRow("location.north.line", "A qibla you can trust",
+                       "True north, from where you stand.")
+                whyRow("mappin.and.ellipse", "Prayers pinned where you prayed",
+                       "Even from the widget or your watch.")
+                whyRow("building.columns", "Jumu'ah at the masjid",
+                       "Counted when you pray it there.")
                 whyRow("lock", "It stays on your phone", "No account, nothing sent anywhere.")
             }
             .padding(.horizontal, 32)
@@ -1224,9 +1230,9 @@ private struct LocationStep: View {
         }
         .alert("Go without location?", isPresented: $confirmManual) {
             Button("Allow location", role: .cancel) { location.requestLocationPermission() }
-            Button("Enter it anyway", role: .destructive) { pickingCity = true }
+            Button("Enter it manually", role: .destructive) { pickingCity = true }
         } message: {
-            Text("Your times won’t follow you when you travel, and your prayers won’t be pinned where you prayed. You can allow location later in Settings.")
+            Text("Your prayers won’t be pinned where you prayed, Jumu'ah won’t count at the masjid, the qibla will be rougher, and your times won’t follow you when you travel. You can allow location later in Settings.")
         }
         // One iOS prompt here (owner, 2026-10-10: "i dont love two prompts back to back"): While Using, then
         // "Allow “Always”" waits as a button below (the one-time upgrade prompt only when tapped).
@@ -1266,7 +1272,7 @@ private struct LocationStep: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(.ultraThinMaterial)
                 // The rows' box spans the page (its 32 pt sides are padding): in 16 pt, like the notifications card.
-                .padding(.horizontal, 16).padding(.vertical, -14)
+                .padding(.horizontal, 16).padding(.vertical, -4)
             VStack(spacing: 6) {
                 Image(systemName: "location.slash.fill")
                     .font(.system(size: 26))
@@ -1274,7 +1280,7 @@ private struct LocationStep: View {
                     .padding(.bottom, 4)
                 Text("Location is off")
                     .font(.system(.headline, design: .rounded))
-                Text("Your times won’t follow you when you travel. Turn it on in Settings any time.")
+                Text("No prayer pins, no Jumu'ah at the masjid, a rougher qibla, and times that don’t follow you. Turn it on in Settings any time.")
                     .font(.system(.subheadline, design: .rounded))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -1285,7 +1291,7 @@ private struct LocationStep: View {
         .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .onTapGesture { SettingsLinks.app() }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Location is off. Your times won’t follow you when you travel. Turn it on in Settings any time.")
+        .accessibilityLabel("Location is off. No prayer pins, no Jumu'ah at the masjid, a rougher qibla, and times that don’t follow you. Turn it on in Settings any time.")
         .accessibilityAddTraits(.isButton)
     }
 }
