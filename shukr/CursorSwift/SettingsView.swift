@@ -8,6 +8,12 @@ struct SettingsView: View {
     @AppStorage("firstZikrChoice") private var firstZikrChoice = "cards"
     #endif
     @EnvironmentObject var viewModel: PrayerViewModel
+    /// Whether notifications can arrive at all: off or not yet allowed hides the per-prayer tiles.
+    @ObservedObject private var notificationHealth = NotificationHealth.shared
+    private var remindersOff: Bool {
+        notificationHealth.checked
+            && (notificationHealth.authorization == .notDetermined || notificationHealth.issues.contains(.off))
+    }
     /// The header's back chevron. Passed in rather than read from `sharedState`, so this big
     /// Form doesn't re-render on every page turn (it only ever wrote `horizontalPage`).
     var onBack: () -> Void = {}
@@ -299,8 +305,10 @@ struct SettingsView: View {
                         // Will they actually arrive? (NotificationHealth: off / held for the Scheduled
                         // Summary / Time Sensitive / Background App Refresh.)
                         NotificationHealthRows()
-                        // The same per-prayer tiles as setup's (off grey · start outlined · nudge filled; a tap cycles),
-                        // in Settings' green (owner: "speaks the same language and flows with our settings page style").
+                        // The same per-prayer tiles as setup's, in Settings' look. Only while notifications can arrive
+                        // (owner: "if reminders are off then no need to show this component. just show reminders are
+                        // off... with a button to turn them on" — the rows above say so, with the button).
+                        if !remindersOff {
                         HStack(spacing: 8) {
                             NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, accent: .green, inList: true)
                             NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, accent: .green, inList: true)
@@ -309,8 +317,9 @@ struct SettingsView: View {
                             NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, accent: .green, inList: true)
                         }
                         .padding(.vertical, 6)
-                        
-                        if isNotifPopupVisible{
+                        }
+
+                        if isNotifPopupVisible && !remindersOff {
                             NotificationDropdownInfo()
                         }
                     }
