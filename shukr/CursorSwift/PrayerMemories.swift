@@ -115,6 +115,8 @@ struct MemoriesPage: View {
         /// Each report while the pile settles; the zoom starts once a report has stood for a moment.
         var settle = 0
         var firstReport: Date?
+        /// The top card at rest, landed (no drag on it): what a close zooms from.
+        var restFrame: CGRect?
         /// -perfFrames: log the card's path until then.
         var logUntil = Date.distantPast
     }
@@ -601,7 +603,7 @@ struct MemoriesPage: View {
             if FrameMonitor.on { FrameMonitor.shared.note("pile opening") }
             openDeck(photo, from: "day:\(photo.dayKey)")
             try? await Task.sleep(for: .seconds(2))
-            closeDeck(photo.key, photo.dayKey, 1)
+            closeDeck(photo.key, photo.dayKey, 1, .zero)
             try? await Task.sleep(for: .seconds(1.5))
         }
     }
@@ -622,6 +624,7 @@ struct MemoriesPage: View {
         }
         zoom.reset()
         deckGeo.topFrame = nil
+        deckGeo.restFrame = nil
         deckGeo.firstReport = nil
         if let square, let from = MemoryFrames.frame(square) {
             // Built invisible; its top card's first frame starts the zoom (`topCardMoved`).
@@ -682,6 +685,7 @@ struct MemoriesPage: View {
                 zoom.run(to: 1, spring: Spring(response: 0.42, dampingRatio: 0.88)) {
                     backdropShown = true
                     zoomLanded = true
+                    deckGeo.restFrame = deckGeo.topFrame
                 }
                 try? await Task.sleep(for: .milliseconds(220))
                 withAnimation(.easeOut(duration: 0.25)) { chromeShown = true }
@@ -689,22 +693,30 @@ struct MemoriesPage: View {
         }
     }
 
-    /// The pile zooms back into its day's square (where the page is now), else fades out where it is.
-    private func closeDeck(_ key: String, _ dayKey: String, _ scale: CGFloat) {
+    /// The pile zooms back into its day's square (where the page is now), else fades out where it is. `scale` and `drag`
+    /// are the pile's own drag down as it was let go: the zoom starts exactly there (worked out from the card at rest —
+    /// a dragged card's reported frame lagged, and the zoom landed ~20 pt off its square, which then jumped into place).
+    private func closeDeck(_ key: String, _ dayKey: String, _ scale: CGFloat, _ drag: CGSize) {
         triggerSomeVibration(type: .light)
         let square = [key, "day:\(dayKey)"].first { MemoryFrames.frame($0) != nil }
-        if let square, let target = MemoryFrames.frame(square), let card = deckGeo.topFrame, let pile = deckGeo.deckFrame {
+        if let square, let target = MemoryFrames.frame(square), let rest = deckGeo.restFrame ?? deckGeo.topFrame,
+           let pile = deckGeo.deckFrame {
             if FrameMonitor.on {
                 FrameMonitor.shared.note(String(format: "pile zoom: out to %.0f,%.0f %.0f wide", target.midX, target.midY, target.width))
                 deckGeo.logUntil = Date().addingTimeInterval(0.8)
             }
+            // Where the drag left the top card (`.offset(drag).scaleEffect(scale)` about the pile's middle ≈ the card's).
+            let dragged = CGRect(x: rest.midX + drag.width * scale - rest.width * scale / 2,
+                                 y: rest.midY + drag.height * scale - rest.height * scale / 2,
+                                 width: rest.width * scale, height: rest.height * scale)
             var quiet = Transaction()
             quiet.disablesAnimations = true
             withTransaction(quiet) { zoomHidden = square }
             withAnimation(.easeOut(duration: 0.2)) { chromeShown = false; deckClosing = true }
             // The backdrop follows the zoom (DeckBackdrop reads the driver while it runs).
             backdropShown = false
-            zoom.close(on: .placing(card, on: target, pile: pile), spring: Spring(response: 0.38, dampingRatio: 0.92)) {
+            zoom.close(from: .placing(rest, on: dragged, pile: pile), into: .placing(rest, on: target, pile: pile),
+                       spring: Spring(response: 0.38, dampingRatio: 0.92)) {
                 withTransaction(quiet) {
                     deckStart = nil
                     deckShown = false
@@ -1002,7 +1014,7 @@ struct MemoriesDeck: View {
     let onTopFrame: (CGRect) -> Void
     /// Close with this photo (and its day) on top.
     /// Close with this photo (and its day) on top, and how far the pile is shrunk right now (it flies home from there).
-    let onClose: (_ key: String, _ dayKey: String, _ scale: CGFloat) -> Void
+    let onClose: (_ key: String, _ dayKey: String, _ scale: CGFloat, _ drag: CGSize) -> Void
     /// Closing: the cards under the top one gather into it and fade, so only the top photo flies home (no ghost pile).
     let folded: Bool
     /// The neighbouring days' piles may show (not while the pile zooms in or out: scaled, they came into view beside it).
@@ -1056,7 +1068,7 @@ struct MemoriesDeck: View {
 
     init(photos: [MemoryPhoto], start: MemoryPhoto, shown: Bool, hideTop: Bool, folded: Bool, neighboursShown: Bool = true,
          onTopFrame: @escaping (CGRect) -> Void,
-         onClose: @escaping (_ key: String, _ dayKey: String, _ scale: CGFloat) -> Void) {
+         onClose: @escaping (_ key: String, _ dayKey: String, _ scale: CGFloat, _ drag: CGSize) -> Void) {
         self.folded = folded
         self.neighboursShown = neighboursShown
         self.photos = photos
@@ -1212,7 +1224,12 @@ struct MemoriesDeck: View {
         guard photos.indices.contains(index) else { return }
         // The top card turns back to its main picture as it folds, so the photo flying home matches its square.
         withAnimation(.snappy(duration: 0.18)) { swapped = [] }
-        onClose(photos[index].key, photos[index].dayKey, dragScale)
+        onClose(photos[index].key, photos[index].dayKey, dragScale, freeDrag)
+        // The page's zoom takes the drag over from here (it starts exactly where the drag left the pile), so the pile's
+        // own goes, in the same turn — measuring the dragged pile instead landed ~20 pt off its square.
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { freeDrag = .zero; down = 0 }
     }
 
     /// The day waiting off one edge: the strip's jump if it's coming from that side, else the next day (on its first
@@ -1878,9 +1895,10 @@ struct MemoriesDayStrip: View {
 /// can't be cancelled by anything else on the page. Only `DeckZoomFrame` and `DeckBackdrop` read it, so only they redraw
 /// per frame.
 @MainActor @Observable final class DeckZoomDriver {
-    /// 0 = on the square (`from`), 1 = landed.
+    /// 1 = `start` (landed, or where a drag left it), 0 = `end` (on the square).
     private(set) var progress: CGFloat = 1
-    private(set) var from = MemoriesPage.DeckZoom()
+    private(set) var start = MemoriesPage.DeckZoom()
+    private(set) var end = MemoriesPage.DeckZoom()
     private(set) var running = false
     @ObservationIgnored private var link: CADisplayLink?
     @ObservationIgnored private var started: CFTimeInterval = 0
@@ -1890,18 +1908,19 @@ struct MemoriesDayStrip: View {
     @ObservationIgnored private var done: (() -> Void)?
 
     /// Landed with nothing on it (the pile's own frame reports are its real place).
-    var atRest: Bool { !running && progress == 1 && from == MemoriesPage.DeckZoom() }
+    var atRest: Bool { !running && progress == 1 && start == MemoriesPage.DeckZoom() }
 
     var transform: MemoriesPage.DeckZoom {
         let p = progress
-        return MemoriesPage.DeckZoom(scale: from.scale + (1 - from.scale) * p,
-                                     offset: CGSize(width: from.offset.width * (1 - p), height: from.offset.height * (1 - p)))
+        return MemoriesPage.DeckZoom(scale: end.scale + (start.scale - end.scale) * p,
+                                     offset: CGSize(width: end.offset.width + (start.offset.width - end.offset.width) * p,
+                                                    height: end.offset.height + (start.offset.height - end.offset.height) * p))
     }
 
-    func reset() { stop(); from = MemoriesPage.DeckZoom(); progress = 1 }
+    func reset() { stop(); start = MemoriesPage.DeckZoom(); end = MemoriesPage.DeckZoom(); progress = 1 }
 
-    /// On the square, at once.
-    func place(_ zoom: MemoriesPage.DeckZoom) { stop(); from = zoom; progress = 0 }
+    /// On the square, at once (an open runs from here to 1).
+    func place(_ zoom: MemoriesPage.DeckZoom) { stop(); start = MemoriesPage.DeckZoom(); end = zoom; progress = 0 }
 
     func run(to value: CGFloat, spring: Spring, done: @escaping () -> Void) {
         stop()
@@ -1917,10 +1936,11 @@ struct MemoriesDayStrip: View {
         self.link = link
     }
 
-    /// From where it is now (landed, maybe dragged) into `zoom`.
-    func close(on zoom: MemoriesPage.DeckZoom, spring: Spring, done: @escaping () -> Void) {
+    /// From `from` (where it is now: landed, or where a drag left it) into `into` (on the square).
+    func close(from: MemoriesPage.DeckZoom, into: MemoriesPage.DeckZoom, spring: Spring, done: @escaping () -> Void) {
         stop()
-        from = zoom
+        start = from
+        end = into
         progress = 1
         run(to: 0, spring: spring, done: done)
     }
