@@ -1435,7 +1435,9 @@ private struct SetupOpening: View {
         ZStack {
             if landsOnCircle {
                 // The gradient drains to the Salah page's surface, not to white: the ring grows out on its own page.
-                theme.surface.ignoresSafeArea().opacity(plainGone ? 0 : 1)
+                // Off-white only as the gradient comes in (owner: bismillah to this page is on the white page first, then
+                // it fades to the soft background during the gradient's fade-in).
+                theme.surface.ignoresSafeArea().opacity(stage >= 1 && !plainGone ? 1 : 0)
             }
             ZStack {
                 AnimatedWavyGradient(still: reduceMotion)
@@ -1806,6 +1808,10 @@ private struct WelcomeRingDemo: View {
     /// How much of the window has gone (0…1); animated by `WelcomeSweep`.
     @State private var gone: Double = 0
     @State private var shown = false
+    /// The arc fades out at the end of the sweep and back in from empty (it rewound through red and yellow before).
+    @State private var arcShown = true
+    /// Bumped by a tap on the graphic or "Play demo": plays it again.
+    @State private var run = 0
 
     /// Where it rests: a little into the green.
     static let rest: Double = 0.1
@@ -1813,12 +1819,22 @@ private struct WelcomeRingDemo: View {
     var body: some View {
         VStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Prayer circle")
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(Color.primary.opacity(0.7))
-                    .padding(.leading, 4)
+                HStack(spacing: 10) {
+                    Text("Prayer circle")
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .foregroundStyle(Color.primary.opacity(0.7))
+                    Button { run += 1 } label: {
+                        Label("Play demo", systemImage: "play.fill")
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(.caption, design: .rounded, weight: .medium))
+                            .imageScale(.small)
+                            .foregroundStyle(Color.sage)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.leading, 4)
                 // 80 % of the first size in the same panel, so it breathes (owner).
-                WelcomeSweep(gone: gone)
+                WelcomeSweep(gone: gone, arcOpacity: arcShown ? 1 : 0)
                     .frame(width: 112, height: 112)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
@@ -1832,21 +1848,40 @@ private struct WelcomeRingDemo: View {
                     .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
                                          startPoint: .topLeading, endPoint: .bottomTrailing))
             }
+            // A tap on the graphic plays it again (owner).
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .onTapGesture { run += 1 }
             // Each part of the window lights as the ring reaches it (animatable, so it follows the ring frame by frame).
             WelcomeSweepParts(gone: gone)
         }
         .opacity(shown ? 1 : 0)
         .offset(y: shown || reduceMotion ? 0 : 14)
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("The prayer circle fills as a prayer's time passes: green is the best time, yellow on time, red almost gone.")
-        .task {
+        .accessibilityAction(named: "Play demo") { run += 1 }
+        .task(id: run) {
             typealias T = CircleMotion.Setup
             if reduceMotion { shown = true; gone = Self.rest; return }
-            guard await CircleGate.pause(T.welcomeCardAfterDuration) else { return }
-            withAnimation(T.welcomeCardIn) { shown = true }
-            guard await CircleGate.pause(T.welcomeSweepAfterDuration) else { return }
+            if run == 0 {
+                // First time: the card comes in gently after the page, then a beat.
+                guard await CircleGate.pause(T.welcomeCardAfterDuration) else { return }
+                withAnimation(T.welcomeCardIn) { shown = true }
+                guard await CircleGate.pause(T.welcomeSweepAfterDuration) else { return }
+            } else {
+                // Again: from empty.
+                await CircleMotion.animate(T.welcomeArcAway) { arcShown = false }
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { gone = 0 }
+                withAnimation(T.welcomeArcAway) { arcShown = true }
+            }
+            // Steady, as time passes (the real ring fills linearly).
             withAnimation(T.welcomeSweep) { gone = 1 }
-            guard await CircleGate.pause(T.welcomeSweepDuration) else { return }
+            guard await CircleGate.pause(T.welcomeSweepDuration + 0.4) else { return }
+            // Then it lets go and fills back in, gently, to rest early in the green.
+            await CircleMotion.animate(T.welcomeArcAway) { arcShown = false }
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { gone = 0 }
+            withAnimation(T.welcomeArcAway) { arcShown = true }
             withAnimation(T.welcomeSettle) { gone = Self.rest }
         }
     }
@@ -1869,10 +1904,16 @@ private struct WelcomeSweepParts: View, Animatable {
         let colours: [Color] = [.green, Color(red: 0.83, green: 0.66, blue: 0), .red]
         HStack(spacing: 0) {
             ForEach(Array(["Best time", "On time", "Almost gone"].enumerated()), id: \.offset) { i, word in
-                Text(word)
-                    .font(.system(.caption, design: .rounded, weight: part == i ? .semibold : .regular))
-                    .foregroundStyle(part == i ? colours[i] : .secondary)
-                    .frame(maxWidth: .infinity)
+                VStack(spacing: 1) {
+                    Text(word)
+                        .font(.system(.caption, design: .rounded, weight: part == i ? .semibold : .regular))
+                        .foregroundStyle(part == i ? colours[i] : .secondary)
+                    // The Perfect window's length (owner); the others have none, a blank keeps them level.
+                    Text(i == 0 ? "first 30 min" : " ")
+                        .font(.system(.caption2, design: .rounded))
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
             }
         }
     }
@@ -1882,11 +1923,27 @@ private struct WelcomeSweepParts: View, Animatable {
 /// top, clockwise, in the colour of where it is (the theme's arc width, round cap and glow).
 private struct WelcomeSweep: View, Animatable {
     var gone: Double
-    var animatableData: Double { get { gone } set { gone = newValue } }
+    /// Only the arc fades (the replay); the band stays.
+    var arcOpacity: Double = 1
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(gone, arcOpacity) }
+        set { gone = newValue.first; arcOpacity = newValue.second }
+    }
     @Environment(\.circleTheme) private var theme
 
+    /// Blended across each boundary (a short crossfade either side), so the colour turns rather than snaps.
+    private var colour: Color {
+        let band = 0.035
+        func mix(_ a: Color, _ b: Color, at edge: Double) -> Color? {
+            guard abs(gone - edge) < band else { return nil }
+            return a.mix(with: b, by: (gone - edge + band) / (2 * band))
+        }
+        return mix(.green, .yellow, at: 0.2) ?? mix(.yellow, .red, at: 0.6)
+            ?? WelcomeWindow.colours[WelcomeWindow.part(gone)]
+    }
+
     var body: some View {
-        let colour = WelcomeWindow.colours[WelcomeWindow.part(gone)]
+        let colour = self.colour
         ZStack {
             NeuRingTrack()
             Circle()
@@ -1895,6 +1952,7 @@ private struct WelcomeSweep: View, Animatable {
                 .rotationEffect(.degrees(-90))
                 .frame(width: 200, height: 200)
                 .shadow(color: colour.opacity(theme.arc.glow), radius: 6)
+                .opacity(arcOpacity)
         }
         // Drawn at the Salah ring's 200 pt (its band and glow as they are there), shown at 112.
         .scaleEffect(0.56)
@@ -3764,9 +3822,11 @@ extension CircleMotion {
         static let welcomeCardAfterDuration: Double = 0.9
         static let welcomeCardIn = Animation.easeOut(duration: 1.2)
         static let welcomeSweepAfterDuration: Double = 1.6
-        static let welcomeSweepDuration: Double = 4.2
-        static let welcomeSweep = Animation.easeInOut(duration: welcomeSweepDuration)
-        static let welcomeSettle = Animation.easeOut(duration: 1.0)
+        static let welcomeSweepDuration: Double = 5.0
+        static let welcomeSweep = Animation.linear(duration: welcomeSweepDuration)
+        static let welcomeSettle = Animation.easeOut(duration: 1.1)
+        /// The arc fading out at the sweep's end (and in again before the refill).
+        static let welcomeArcAway = Animation.easeInOut(duration: 0.45)
         /// The end, the opening animation's way: the frosted circle draws in small, the gradient drains to the page's
         /// surface, the circle grows out to the ring, then lets go of it as the page shows.
         static let landShrink = Animation.easeInOut(duration: 0.55)

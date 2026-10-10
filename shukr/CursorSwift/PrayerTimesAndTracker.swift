@@ -130,6 +130,25 @@ struct PrayerTimesView: View {
     }
     private static let morningCardDeadline: Double = 20
 
+    /// The tour's invitation, a breath after the page is the user's (the welcome landed, or the setup ended).
+    private func inviteToTour(after seconds: Double) {
+        guard TourRuntime.shouldAutoStart else { return }
+        tourWait?.cancel()
+        tourWait = Task {
+            // A breath on the real day after the welcome lands, ring alive, before the invitation (audit L).
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            // Deferred, never skipped, while something else owns the page (audit A4): the lost page, the morning
+            // card, the reminders card, a cover, a system alert.
+            let stage = CircleStage.shared
+            guard await stage.until(deadline: 600, recheck: 1, { tourCanStart }) else { return }
+            guard !Task.isCancelled, !TourRuntime.shared.active, TourRuntime.shouldAutoStart else { return }
+            SalahSheetDrag.closeQuietly(sharedState)
+            sharedState.go(to: .main, animated: false)
+            TourRuntime.shared.invite()
+        }
+    }
+
     /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
     /// first-run setup is up — the flags stay set and this runs again once it's done
     /// (`FirstRunSetup.finished`), so its hand-off always lands on this page's circle.
@@ -776,21 +795,13 @@ struct PrayerTimesView: View {
             }
         }
         .onChange(of: CircleStage.shared.pageHidden, initial: true) { _, hidden in
-            guard !hidden, TourRuntime.shouldAutoStart else { return }
-            tourWait?.cancel()
-            tourWait = Task {
-                // A breath on the real day after the welcome lands, ring alive, before the invitation (audit L).
-                try? await Task.sleep(for: .seconds(2.5))
-                // Deferred, never skipped, while something else owns the page (audit A4): the lost page, the morning
-                // card, the reminders card, a cover, a system alert.
-                let stage = CircleStage.shared
-                guard await stage.until(deadline: 600, recheck: 1, { tourCanStart }) else { return }
-                guard !Task.isCancelled, !TourRuntime.shared.active, TourRuntime.shouldAutoStart else { return }
-                SalahSheetDrag.closeQuietly(sharedState)
-                sharedState.go(to: .main, animated: false)
-                TourRuntime.shared.invite()
-            }
+            guard !hidden else { return }
+            inviteToTour(after: 2.5)
         }
+        // The setup's end lands on this circle with the page already shown: the breath starts from there, so the
+        // invitation doesn't come the instant the setup goes (owner: "a bit of a pause before showing the want a
+        // quick look around").
+        .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in inviteToTour(after: 3) }
         // A practice mark undone: the post-salah pill it brought goes too.
         .onChange(of: TourRuntime.shared.clearPill) { _, _ in live.postSalahNudge = nil }
         // The first real mark's pill, held through the celebration, comes on its Continue.
