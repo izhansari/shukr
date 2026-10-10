@@ -250,6 +250,9 @@ struct FirstRunSetupView: View {
     /// The opening page (a new install / Run setup again): the original welcome's moving gradient and
     /// glass circle, before any step. The steps aren't there at all until it has drained away.
     @State private var opening: Bool
+    /// The hadith page, before the opening (owner: "i want that hadith to be on its own at first"); wherever setup
+    /// starts with the opening: a new install, `-setupForce`, Run setup again.
+    @State private var hadith: Bool
     /// How much of the first step has come in after the opening (ring 1 · title 2 · rows 3 · button 4);
     /// 4 = all, as every other time.
     @State private var reveal: Int
@@ -259,15 +262,19 @@ struct FirstRunSetupView: View {
         self.onFinish = onFinish
         var start: SetupStep = mode == .locationOnly ? .location : .welcome
         var withOpening = mode == .full
+        var withHadith = withOpening
         #if DEBUG
-        // `-setupStep opening` = the opening (as a fresh start); any other step skips it.
+        // `-setupStep hadith` = the hadith page, then the opening (a fresh start); `-setupStep opening` = the opening
+        // alone; any other step skips both.
         if mode == .full, let raw = UserDefaults.standard.string(forKey: "setupStep") {
             if let s = SetupStep(rawValue: raw) { start = s }
-            withOpening = raw == "opening"
+            withOpening = raw == "opening" || raw == "hadith"
+            withHadith = raw == "hadith"
         }
         #endif
         _step = State(initialValue: start)
         _opening = State(initialValue: withOpening)
+        _hadith = State(initialValue: withHadith)
         _reveal = State(initialValue: withOpening ? 0 : 4)
     }
 
@@ -276,7 +283,10 @@ struct FirstRunSetupView: View {
             // Gone once the welcome takes over (it has its own background).
             Color(.systemBackground).ignoresSafeArea()
                 .opacity(welcome ? 0 : 1)
-            if opening {
+            if hadith {
+                // Its words go, then the opening plays from its blank page as before.
+                SetupHadith(onDone: { hadith = false })
+            } else if opening {
                 SetupOpening(onDone: finishOpening)
             } else {
                 VStack(spacing: 0) {
@@ -823,6 +833,98 @@ struct LostPageLayer: View {
         }
         CircleCover.set("lost", false)
         location.clearComeback()
+    }
+}
+
+// MARK: - The hadith page (before the opening)
+
+/// The hadith page's words in one place (checked on sunnah.com; cited like `ZikrLockWords`).
+enum SetupHadithWords {
+    static let arabic = "الصَّلَاةُ عَلَى وَقْتِهَا"
+    static let english = "“Which deed is the dearest to Allah?” He ﷺ replied, “To offer the prayers at their early stated fixed times.”"
+    static let source = "Sahih al-Bukhari 527"
+    static let help = "shukr helps you to do that"
+    static let button = "Set up shukr"
+}
+
+/// The first thing setup shows (owner: "i want that hadith to be on its own at first. then say 'shukr helps you to do
+/// that' as secondary text spaced a bit further down closer to a button that fades in saying 'Set up shukr'"): the
+/// hadith alone, centred, fading in; a beat later the line near the bottom; then the button. Its tap: the page fades
+/// and the opening (`SetupOpening`) plays. No Skip; nothing comes back here. Reduce Motion: all at once.
+private struct SetupHadith: View {
+    let onDone: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 1 the hadith · 2 "shukr helps you to do that" · 3 the button.
+    @State private var stage = 0
+    @State private var leaving = false
+
+    var body: some View {
+        // One screen at any text size: the line and the button come down a size or two if the page wouldn't fit.
+        ViewThatFits(in: .vertical) {
+            page
+            page.dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            page.dynamicTypeSize(...DynamicTypeSize.large)
+        }
+        .opacity(leaving ? 0 : 1)
+        .task { await open() }
+    }
+
+    private var page: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 24)
+            VStack(spacing: 14) {
+                Text(SetupHadithWords.arabic)
+                    .font(.custom("KFGQPCUthmanTahaNaskh", size: 44))
+                    .foregroundStyle(Color.sage)
+                Text(SetupHadithWords.english)
+                    .font(.system(size: 19, weight: .light, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.82))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(SetupHadithWords.source.uppercased())
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(Color.primary.opacity(0.4))
+                    .padding(.top, 2)
+            }
+            .padding(.horizontal, 36)
+            .accessibilityElement(children: .combine)
+            .opacity(stage >= 1 ? 1 : 0)
+            Spacer(minLength: 24)
+            Text(SetupHadithWords.help)
+                .font(.system(.callout, design: .rounded, weight: .light))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+                .padding(.bottom, 20)
+                .opacity(stage >= 2 ? 1 : 0)
+            PrimaryButton(title: SetupHadithWords.button, action: advance)
+                .padding(.bottom, 8)
+                .opacity(stage >= 3 ? 1 : 0)
+                .allowsHitTesting(stage >= 3)
+                .accessibilityHidden(stage < 3)
+        }
+    }
+
+    private func open() async {
+        typealias T = CircleMotion.Setup
+        if reduceMotion { stage = 3; return }
+        guard await CircleGate.pause(T.hadithAfterDuration) else { return }
+        withAnimation(T.hadithIn) { stage = 1 }
+        guard await CircleGate.pause(T.hadithHelpAfterDuration) else { return }
+        withAnimation(T.hadithIn) { stage = 2 }
+        guard await CircleGate.pause(T.hadithButtonAfterDuration) else { return }
+        withAnimation(T.hadithIn) { stage = 3 }
+    }
+
+    private func advance() {
+        guard !leaving else { return }
+        typealias T = CircleMotion.Setup
+        Task { @MainActor in
+            withAnimation(reduceMotion ? T.stepReduced : T.hadithAway) { leaving = true }
+            guard await CircleGate.pause(reduceMotion ? 0.2 : T.hadithAwayDuration) else { return }
+            onDone()
+        }
     }
 }
 
@@ -2979,6 +3081,13 @@ extension CircleMotion {
 extension CircleMotion {
     /// The first-run setup: its opening page, the first step coming in, and Bismillah's hand-off to the welcome.
     enum Setup {
+        // The hadith page: a blank beat, the hadith, a beat to read, the line, then the button; its words go on a tap.
+        static let hadithAfterDuration: Double = 0.5
+        static let hadithIn = Animation.easeOut(duration: 1.0)
+        static let hadithHelpAfterDuration: Double = 1.8
+        static let hadithButtonAfterDuration: Double = 0.9
+        static let hadithAway = Animation.easeOut(duration: 0.45)
+        static let hadithAwayDuration: Double = 0.5
         // The opening page (the gradient, the glass circle, "welcome to shukr", "tap to continue")
         static let gradientAfterDuration: Double = 0.6
         static let gradient = Animation.easeInOut(duration: 1.4)
