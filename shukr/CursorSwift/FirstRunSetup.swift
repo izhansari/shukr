@@ -1663,7 +1663,8 @@ private struct RemindersStep: View {
                             .padding(.bottom, 22)
                         // Equal room above and below while it's alone; the room above goes once the tuner comes.
                         if !allowed { Spacer(minLength: 0) }
-                        NotificationDemo(prayer: allowed ? focus : "Asr", state: allowed ? state(focus) : 2)
+                        NotificationDemo(prayer: allowed ? focus : "Asr", state: allowed ? state(focus) : 2,
+                                         refused: notifications.isOn == false)
                             .padding(.horizontal, 24)
                         if allowed {
                             VStack(spacing: 0) {
@@ -1689,10 +1690,8 @@ private struct RemindersStep: View {
                     PrimaryButton(title: "Yes, remind me", outlined: true) { notifications.request() }
                     SecondaryButton(title: "No thanks, I’ll remember") { confirmSkip = true }
                 } else if notifications.isOn == false {
-                    // Refused: the note right above the way on, which says what they're giving up and is outlined, not
-                    // the filled Continue; Settings as the quiet way back (owner).
-                    offNote
-                        .padding(.bottom, 14)
+                    // Refused: the preview says it, frosted over (owner); the way on is outlined, not the filled
+                    // Continue; Settings is the quiet way back.
                     PrimaryButton(title: "Continue without reminders", outlined: true, action: next)
                     SecondaryButton(title: "Changed my mind? Open Settings", action: SettingsLinks.notifications)
                 } else {
@@ -1737,16 +1736,6 @@ private struct RemindersStep: View {
         }
         .padding(.horizontal, 24)
         .padding(.top, 8)
-    }
-
-    /// Refused at iOS's prompt (or off in Settings): said calmly, with the way back.
-    private var offNote: some View {
-        Text("Notifications are off. You can turn them on any time in Settings.")
-            .font(.system(.subheadline, design: .rounded))
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 32)
-            .transition(.opacity)
     }
 }
 
@@ -1856,6 +1845,9 @@ private struct NotificationDemo: View {
     let prayer: String
     /// 0 off · 1 start · 2 nudge.
     let state: Int
+    /// Notifications refused: the preview stays where it is, frosted over with what that means (owner: in place of
+    /// a note above the button, and louder).
+    var refused = false
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1965,8 +1957,33 @@ private struct NotificationDemo: View {
                     }
                 }
             }
+            .overlay {
+                if refused {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .padding(-8)
+                        VStack(spacing: 6) {
+                            Image(systemName: "bell.slash.fill")
+                                .font(.system(size: 26))
+                                .foregroundStyle(.secondary)
+                                .padding(.bottom, 4)
+                            Text("Notifications are off")
+                                .font(.system(.headline, design: .rounded))
+                            Text("You won’t get any of these, so a prayer can slip by unnoticed. Turn them on in Settings any time.")
+                                .font(.system(.subheadline, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.horizontal, 20)
+                    }
+                    .transition(.opacity)
+                }
+            }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(state == 0 ? "\(prayer): no notifications."
+            .accessibilityLabel(refused ? "Notifications are off. You won’t get any of these. Turn them on in Settings any time."
+                                : state == 0 ? "\(prayer): no notifications."
                                 : state == 1 ? "\(prayer): one notification as it starts."
                                 : "\(prayer): as it starts, then nudges until you mark it.")
             .task(id: "\(prayer)-\(state)") {
