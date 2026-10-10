@@ -1180,9 +1180,12 @@ struct PrayerTimesView: View {
                 return
             }
             if UserDefaults.standard.object(forKey: "demoTasbeehCount") != nil {
-                // A freestyle session for `-demoTasbeehCount` (tasbeehView counts it).
+                // A freestyle session for `-demoTasbeehCount` (tasbeehView counts it); `-demoTasbeehTarget N`: a count goal
+                // of N instead, so the ring fills (the battery check).
                 try? await Task.sleep(for: .seconds(1))
-                sharedState.selectedMode = 0
+                let target = UserDefaults.standard.integer(forKey: "demoTasbeehTarget")
+                sharedState.selectedMode = target > 0 ? 2 : 0
+                if target > 0 { sharedState.targetCount = String(target) }
                 showTasbeehPage = true
                 return
             }

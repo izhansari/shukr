@@ -685,7 +685,7 @@ struct NeuCircularProgressView: View {
                 .mask { progressArc(band) }
                 .allowsHitTesting(false)
             case .alive, .fine:
-                AliveRingFill(dark: colorScheme == .dark, tuning: tuning)
+                AliveRingFill(dark: colorScheme == .dark, tuning: tuning, tag: forceAlive ? "ring playground" : "tasbeeh ring")
                     .frame(width: 230, height: 230)
                     .mask { progressArc(band) }
                     .shadow(color: .green.opacity(tuning.glow), radius: 6)
@@ -769,6 +769,8 @@ struct AliveRingTuning: Codable, Equatable {
 struct AliveRingFill: View {   // also the Salah ring's Perfect window under the soft ring (mainCircle)
     let dark: Bool
     var tuning = AliveRingTuning()
+    /// Who mounted it (the frame log's "alive ring on / off" lines, -perfFrames).
+    var tag = ""
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
@@ -810,6 +812,8 @@ struct AliveRingFill: View {   // also the Salah ring's Perfect window under the
                 .blendMode(.overlay)
             }
         }
+        .onAppear { if FrameMonitor.on { FrameMonitor.shared.note("alive ring on: \(tag)") } }
+        .onDisappear { if FrameMonitor.on { FrameMonitor.shared.note("alive ring off: \(tag)") } }
     }
 }
 

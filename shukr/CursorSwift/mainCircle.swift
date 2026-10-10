@@ -227,11 +227,15 @@ struct MainCircleView: View {
                         // (AliveRingFill, "fine") cut to the arc — "it deserves it … we want to beautify when we are in
                         // that period of prayer" (owner, 2026-10-01). Yellow / red stay the solid arc below.
                         // Not during the tour's colour sweep: the swap to the solid arc at yellow popped (owner).
-                        let perfectNow = theme.arc.alivePerfect && progress < 1 && TourRuntime.shared.colorSweep == nil
+                        // Started, too: before the window a "score now" grades Perfect, and the fill (30 fps, ~700 specks,
+                        // trimmed to nothing) ran from one prayer to the next — ~15 % CPU with the app just open (battery
+                        // check, 2026-10-10).
+                        let perfectNow = theme.arc.alivePerfect && progress > 0 && progress < 1
+                            && currentTime >= prayer.startTime && TourRuntime.shared.colorSweep == nil
                             && PrayerScoring.grade(for: PrayerScoring.score(
                             start: prayer.startTime, end: prayer.endTime, markedAt: currentTime)) == .perfect
                         if perfectNow {
-                            AliveRingFill(dark: colorScheme == .dark, tuning: .fine)
+                            AliveRingFill(dark: colorScheme == .dark, tuning: .fine, tag: "salah ring \(prayer.name)")
                                 .frame(width: 230, height: 230)
                                 .mask {
                                     Circle()
