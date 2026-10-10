@@ -1365,10 +1365,10 @@ func hasNoHalfwayToday(_ prayer: String) -> Bool {
     return w.end.timeIntervalSince(w.start) < NotificationScheduler.halfwayMinimumWindow
 }
 
-/// The calculation method, then when Asr begins: two steps on ONE page (owner: "no need to redraw it"). On Continue the
-/// method list folds down into its picked row, just above today's times (method + times read together), the title
-/// becomes "When does Asr begin?" (owner: it catches people) and the Shafi'i / Hanafi cards come in above; the strip and
-/// Continue never move. The folded row (or ‹) unfolds it again.
+/// "Your prayer times": the calculation method, then when Asr begins, as two numbered parts of ONE page (owner: "no need
+/// to redraw it"). On Continue the method list folds up into its picked row (it stays at the top — owner: cleaner), and
+/// "2 When does Asr begin?" (owner: it catches people) opens with the Shafi'i / Hanafi cards; the strip and Continue
+/// never move. The folded row (or ‹) unfolds it again.
 private struct PrayerTimesStep: View {
     /// The Asr (madhab) step; else the method.
     let asr: Bool
@@ -1382,10 +1382,6 @@ private struct PrayerTimesStep: View {
     /// One row's height, so the folded card fits exactly one.
     @State private var rowHeight: CGFloat = 60
 
-    /// Out, then in: the two titles differ in height, and crossfaded they sat on top of each other.
-    private static let titleSwap = AnyTransition.asymmetric(
-        insertion: .opacity.animation(.easeOut(duration: 0.22).delay(0.14)),
-        removal: .opacity.animation(.easeOut(duration: 0.12)))
 
     /// Automatic follows where you are: offered only with location on (owner); a picked city chooses for itself.
     private var rows: [(tag: Int, title: String, region: String)] {
@@ -1394,27 +1390,27 @@ private struct PrayerTimesStep: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .top) {
-                if asr {
-                    StepTitle(title: "When does Asr begin?",
-                              subtitle: "The madhab only changes Asr. The other four prayers stay the same.")
-                        .transition(Self.titleSwap)
-                } else {
-                    StepTitle(title: "Your calculation method",
-                              subtitle: "Each method sets Fajr and Isha by a different angle of the sun. Pick the one your masjid uses.")
-                        .transition(Self.titleSwap)
-                }
+            // One title for both steps (owner): the two questions are its numbered parts, so nothing at the top swaps.
+            StepTitle(title: "Your prayer times", subtitle: nil)
+                .padding(.bottom, 14)
+            section(1, "Your calculation method", current: !asr)
+            if !asr {
+                note("Each method sets Fajr and Isha by a different angle of the sun. Pick the one your masjid uses.")
+                    .transition(.opacity)
             }
-            .padding(.bottom, 16)
+            methodCard
+                .padding(.top, 10)
+            section(2, "When does Asr begin?", current: asr)
+                .padding(.top, asr ? 14 : 18)
             if asr {
                 asrPart
+                    .padding(.top, 4)
                     // In just behind the fold; out at once going back.
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 16))
                                                 .animation(.easeOut(duration: 0.3).delay(0.15)),
                                             removal: .opacity.animation(.easeOut(duration: 0.15))))
-                Spacer(minLength: 8)
+                Spacer(minLength: 0)
             }
-            methodCard
             TodayStrip(method: method, school: school, highlightAsr: asr)
                 .padding(.top, 8)
                 .padding(.bottom, 16)
@@ -1436,6 +1432,40 @@ private struct PrayerTimesStep: View {
             WidgetCenter.shared.reloadAllTimelines()
             WatchSync.shared.send()
         }
+    }
+
+    /// "1  Your calculation method": the part being answered is full strength, the other faint; a done one is ticked.
+    private func section(_ number: Int, _ title: String, current: Bool) -> some View {
+        let done = number == 1 && asr
+        return HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(current || done ? Color.sage : .clear)
+                    .overlay(Circle().strokeBorder(Color.secondary.opacity(current || done ? 0 : 0.4), lineWidth: 1))
+                Group {
+                    if done { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)) }
+                    else { Text("\(number)").font(.system(.caption, design: .rounded, weight: .semibold)) }
+                }
+                .foregroundStyle(current || done ? Color.white : .secondary)
+            }
+            .frame(width: 22, height: 22)
+            Text(title)
+                .font(.system(.title3, design: .rounded, weight: current ? .medium : .regular))
+                .foregroundStyle(current ? Color.primary : .secondary)
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.subheadline, design: .rounded, weight: .light))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.leading, 56).padding(.trailing, 24)
+            .padding(.top, 4)
     }
 
     /// Its own card (owner: "more like its own component so its clear its scrollable … selected one needs to be
@@ -1471,7 +1501,7 @@ private struct PrayerTimesStep: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.title)
                         .font(.system(.body, design: .rounded, weight: picked ? .semibold : .regular))
-                    Text(asr ? "Calculation method" : row.tag == 0 ? "Follows where you are · \(AutoMethod.shortName(AutoMethod.resolved())) here" : row.region)
+                    Text(row.tag == 0 ? "Follows where you are · \(AutoMethod.shortName(AutoMethod.resolved())) here" : row.region)
                         .font(.system(.footnote, design: .rounded, weight: .light))
                         .foregroundStyle(picked || row.tag == 0 ? Color.sage : .secondary)
                         .contentTransition(.opacity)
@@ -1507,8 +1537,9 @@ private struct PrayerTimesStep: View {
     private var asrPart: some View {
         let shafiAsr = todaysTimes(method: method, school: 0)?.asr
         let hanafiAsr = todaysTimes(method: method, school: 1)?.asr
-        let gap = (shafiAsr != nil && hanafiAsr != nil) ? Int(hanafiAsr!.timeIntervalSince(shafiAsr!) / 60) : nil
         return VStack(spacing: 0) {
+            note("Your madhab only moves Asr; the rest stay put.")
+                .padding(.bottom, 10)
             HStack(spacing: 14) {
                 card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
                      lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
@@ -1516,16 +1547,11 @@ private struct PrayerTimesStep: View {
                      lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
             }
             .padding(.horizontal, 24)
-            if let gap {
-                Text("Hanafi Asr is \(gap) min later today.")
-                    .font(.system(.subheadline, design: .rounded, weight: .light))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 10)
-            }
+            // The two cards' times side by side say how far apart they are (the "N min later" line was cut for room).
             Text("Not sure? Go with what your masjid uses.")
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
-                .padding(.top, 4)
+                .padding(.top, 10)
         }
     }
 
@@ -1537,7 +1563,7 @@ private struct PrayerTimesStep: View {
             // Compact: they share the page with the folded method row and today's times.
             VStack(spacing: 8) {
                 ShadowSketch(lengths: lengths)
-                    .frame(height: 46)
+                    .frame(height: 40)
                 VStack(spacing: 2) {
                     Text(title).font(.system(.title3, design: .rounded))
                     Text(note ?? " ").font(.caption).foregroundStyle(.tertiary)
@@ -1559,7 +1585,7 @@ private struct PrayerTimesStep: View {
                     .font(.system(size: 20, weight: .light))
                     .foregroundStyle(selected ? Color.sage : Color.secondary.opacity(0.4))
             }
-            .padding(.vertical, 12)
+            .padding(.vertical, 10)
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
             .background(RoundedRectangle(cornerRadius: 22).fill(selected ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
