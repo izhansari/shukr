@@ -1670,6 +1670,9 @@ private struct RemindersStep: View {
             if notifications.isOn == nil {
                 PrimaryButton(title: "Yes, remind me", outlined: true) { notifications.request() }
                 SecondaryButton(title: "No thanks, I’ll remember") { confirmSkip = true }
+            } else if notifications.isOn == false {
+                // Refused: going on says what they're giving up, outlined — not the filled Continue (owner).
+                PrimaryButton(title: "Continue without reminders", outlined: true, action: next)
             } else {
                 PrimaryButton(title: "Continue", action: next)
             }
