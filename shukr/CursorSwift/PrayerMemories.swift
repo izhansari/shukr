@@ -1130,7 +1130,8 @@ struct MemoriesDeck: View {
                 .offset(freeDrag)
                 .scaleEffect(dragScale)
                 .gesture(pileDrag(range))
-                if let current { caption(current).padding(.top, 24).opacity(shown ? 1 : 0) }
+                // Gone quickly once the pile is dragged down over it (it showed on the dragged card — owner).
+                if let current { caption(current).padding(.top, 24).opacity(shown ? 1 - min(max(down, 0) / 40, 1) : 0) }
                 // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
                 // never redrawn per photo: the share page makes the picture.
                 HStack(spacing: 18) {
@@ -1217,6 +1218,17 @@ struct MemoriesDeck: View {
             PrayerPhotoViewing.shared.opened()
             pickLies()
         }
+        #if DEBUG
+        .task {
+            // `-demoPileDrag N`: the pile held N pt into a drag down (a look at what shows mid-drag).
+            let n = UserDefaults.standard.double(forKey: "demoPileDrag")
+            guard n > 0 else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            vertical = true
+            freeDrag = CGSize(width: 0, height: n)
+            down = n
+        }
+        #endif
         .onDisappear { PrayerPhotoViewing.shared.closed() }
     }
 
@@ -1571,7 +1583,12 @@ struct MemoriesDeck: View {
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
                 if i == index { onTopFrame(rect) }
             }
-            .opacity(i == index ? (hideTop ? 0 : 1) : (shown ? 1 - fold : 0))
+            // The cards under the top one tuck straight in behind it, opaque (fading as they gathered, they showed through
+            // as a ghost around the top card while it was dragged down — owner); while closing they stay, covered. The
+            // day's next one, waiting off to the right for a swipe, is out while the pile is dragged down.
+            .opacity(i == index ? (hideTop ? 0 : 1)
+                     : i > index ? (shown && down == 0 && vertical != true ? 1 : 0)
+                     : (shown || folded ? 1 : 0))
             .rotationEffect(.degrees(angle))
             .offset(x: x, y: y)
             .zIndex(Double(i))
