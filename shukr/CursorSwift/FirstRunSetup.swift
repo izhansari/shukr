@@ -1002,67 +1002,77 @@ private struct SetupHadith: View {
     }
 }
 
-/// The hadith page's background and its easter egg (owner: "id like the finger to distort the colors like pushing
-/// through it"): the opening's gradient over black, a soft light that drifts with the phone's tilt, and a finger that
-/// pushes through the colours (`hadithPush`, HadithSurface.metal) — they part, swirl and smear with it, and spring
-/// back with a wobble when it lets go. The grain sits on top, undistorted.
+/// The hadith page's background and its easter egg: the opening's gradient over black, a soft light that drifts with
+/// the phone's tilt, and a finger through calm water (owner: "pushing through it like calm water", not "dragging a color
+/// around"): each touch, and every little way along a drag, drops a ripple that spreads out and fades, bending the
+/// colours and grain under it, with light on its slope (`hadithWater`, HadithSurface.metal). The frames run only while a
+/// ripple is alive.
 private struct HadithSurface: View {
     let lit: Bool
     var still = false
-    @State private var touch: CGPoint = .zero
-    @State private var strength: CGFloat = 0
-    @State private var velocity: CGSize = .zero
+
+    private struct Ripple { let point: CGPoint; let time: Double; let strength: Double }
+    @State private var ripples: [Ripple] = []
+    /// The page's clock starts here (seconds since, for the shader: small numbers keep their precision).
+    @State private var origin = Date()
+    @State private var lastDrop: (point: CGPoint, time: Double)?
+
+    /// How long a ripple lives (as the shader draws it).
+    private static let life: Double = 2.6
+
+    private func now() -> Double { Date().timeIntervalSince(origin) }
 
     var body: some View {
-        ZStack {
-            Color.black
+        TimelineView(.animation(paused: ripples.isEmpty)) { timeline in
+            let t = timeline.date.timeIntervalSince(origin)
             ZStack {
-                AnimatedWavyGradient(still: still)
-                HadithLight(still: still)
-            }
-            .opacity(lit ? 1 : 0)
-            .modifier(HadithPush(touch: touch, strength: strength, velocity: velocity))
-            NoiseOverlay()
-                .blendMode(.overlay)
-                .opacity(lit ? 0.3 : 0)
+                Color.black
+                // The grain is under the water too: a smooth gradient alone barely shows a ripple bending it.
+                ZStack {
+                    AnimatedWavyGradient(still: still)
+                    HadithLight(still: still)
+                    NoiseOverlay()
+                        .blendMode(.overlay)
+                        .opacity(0.3)
+                }
+                .compositingGroup()
+                .opacity(lit ? 1 : 0)
+                .layerEffect(ShaderLibrary.hadithWater(.float(t), .floatArray(ripples.flatMap {
+                    [Float($0.point.x), Float($0.point.y), Float($0.time), Float($0.strength)]
+                })), maxSampleOffset: CGSize(width: 24, height: 24), isEnabled: !ripples.isEmpty)
                 .allowsHitTesting(false)
+            }
         }
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { v in
-                    touch = v.location
-                    let clamp = { (x: CGFloat) in max(-2000, min(2000, x)) }
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        strength = 1
-                        velocity = CGSize(width: clamp(v.velocity.width), height: clamp(v.velocity.height))
+                    let t = now()
+                    if let last = lastDrop {
+                        // Along a drag: a ripple every ~22 pt or 70 ms, a little stronger the faster it moves.
+                        let moved = hypot(v.location.x - last.point.x, v.location.y - last.point.y)
+                        guard moved > 22 || t - last.time > 0.07 else { return }
+                        let speed = hypot(v.velocity.width, v.velocity.height)
+                        drop(at: v.location, time: t, strength: min(1, 0.45 + speed / 2500))
+                    } else {
+                        drop(at: v.location, time: t, strength: 1)   // the touch itself
                     }
                 }
-                .onEnded { _ in
-                    // Underdamped: it swings past rest once (pulling in a little) before it settles.
-                    withAnimation(.spring(response: 1.1, dampingFraction: 0.45)) { strength = 0; velocity = .zero }
-                }
+                .onEnded { _ in lastDrop = nil }
         )
-    }
-}
-
-/// `hadithPush` with its strength and the finger's speed animatable (a press eases in, a release springs back).
-private struct HadithPush: ViewModifier, Animatable {
-    var touch: CGPoint
-    var strength: CGFloat
-    var velocity: CGSize
-
-    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
-        get { AnimatablePair(strength, AnimatablePair(velocity.width, velocity.height)) }
-        set { strength = newValue.first; velocity = CGSize(width: newValue.second.first, height: newValue.second.second) }
+        // Rings that have faded go (the frames stop once none are left).
+        .task(id: ripples.last?.time) {
+            try? await Task.sleep(for: .seconds(Self.life))
+            let t = now()
+            ripples.removeAll { t - $0.time > Self.life }
+        }
     }
 
-    func body(content: Content) -> some View {
-        content.layerEffect(
-            ShaderLibrary.hadithPush(.float2(touch.x, touch.y), .float2(velocity.width, velocity.height),
-                                     .float(strength), .float(170)),
-            maxSampleOffset: CGSize(width: 160, height: 160),
-            isEnabled: abs(strength) > 0.001)
+    private func drop(at point: CGPoint, time: Double, strength: Double) {
+        lastDrop = (point, time)
+        ripples.removeAll { time - $0.time > Self.life }
+        ripples.append(Ripple(point: point, time: time, strength: strength))
+        if ripples.count > 24 { ripples.removeFirst(ripples.count - 24) }
     }
 }
 

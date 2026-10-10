@@ -2,36 +2,39 @@
 //  HadithSurface.metal
 //  shukr
 //
-//  The hadith page's easter egg (setup's first page): a finger pushes through the gradient's colours like a hand through
-//  water — they part round it, swirl a little, smear the way it moves and catch a touch of light; let go and they spring
-//  back (the strength overshoots, so the surface wobbles once before it settles). Applied with `.layerEffect` by
-//  `HadithPush` in FirstRunSetup.swift.
+//  The hadith page's easter egg (setup's first page): a finger through calm water (owner: "pushing through it like calm
+//  water", not "dragging a color around"). Every touch, and every little way along a drag, drops a ripple: a ring that
+//  spreads out from where it fell and fades, bending what's under it (the gradient and its grain) with light and shade on
+//  its slope — nothing is carried along. Applied with `.layerEffect` by `HadithSurface` in FirstRunSetup.swift.
 //
 
 #include <metal_stdlib>
 #include <SwiftUI/SwiftUI_Metal.h>
 using namespace metal;
 
-/// - touch: the finger (points, in the layer); velocity: its speed (points/s); strength: 0 at rest, 1 pressed (may
-///   swing a little negative as it springs back); radius: how far the push reaches.
-[[ stitchable ]] half4 hadithPush(float2 position, SwiftUI::Layer layer, float2 touch, float2 velocity, float strength,
-                                  float radius) {
-    float2 d = position - touch;
-    float dist = length(d);
-    float falloff = exp(-(dist * dist) / (radius * radius));
-    // Eased to nothing right under the fingertip: at full strength the centre folded in on itself (a dark pinch point).
-    float core = smoothstep(0.0, radius * 0.35, dist);
-    float2 dir = dist > 0.001 ? d / dist : float2(0.0);
-    // Parted round the finger: each point shows the colour from nearer the finger.
-    float2 push = dir * falloff * core * strength * radius * 0.45;
-    // Smeared along the way it moves.
-    float2 drag = velocity * falloff * strength * 0.03;
-    // A little swirl.
-    float angle = falloff * core * strength * 0.8;
-    float c = cos(angle), s = sin(angle);
-    float2 swirl = float2(d.x * c - d.y * s, d.x * s + d.y * c) - d;
-    half4 colour = layer.sample(position - push - drag - swirl);
-    // A touch of light where it's pressed.
-    colour.rgb += half3(0.05, 0.11, 0.07) * half(max(strength, 0.0) * falloff);
+/// - time: seconds since the page opened. ripples: x, y, the time it fell, its strength — four floats a ripple.
+[[ stitchable ]] half4 hadithWater(float2 position, SwiftUI::Layer layer, float time, device const float *ripples,
+                                   int count) {
+    float2 offset = float2(0.0);
+    float shade = 0.0;
+    for (int i = 0; i + 3 < count; i += 4) {
+        float age = time - ripples[i + 2];
+        if (age < 0.0 || age > 2.6) { continue; }
+        float2 d = position - float2(ripples[i], ripples[i + 1]);
+        float dist = length(d);
+        if (dist < 0.001) { continue; }
+        // A ring travelling out at 230 pt/s: a short wave packet round its front.
+        float band = dist - age * 230.0;
+        float packet = exp(-(band * band) / (2.0 * 34.0 * 34.0));
+        float wave = sin(band * 0.085) * packet;
+        // Fading as it ages and as it spreads.
+        float fade = exp(-age * 1.5) * ripples[i + 3] / (1.0 + dist * 0.004);
+        offset += (d / dist) * wave * fade * 11.0;
+        // Light on the ring's slope: crests catch it, troughs fall into shade (how a ripple shows on calm water).
+        shade += cos(band * 0.085) * packet * fade;
+    }
+    half4 colour = layer.sample(position + offset);
+    colour.rgb *= half(1.0 + 0.22 * shade);
+    colour.rgb += half3(0.05, 0.07, 0.06) * half(max(shade, 0.0));
     return colour;
 }
