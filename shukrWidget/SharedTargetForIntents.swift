@@ -1741,6 +1741,9 @@ struct LATestAttributes: ActivityAttributes {
         var end: Date
         var symbol: String = "sun.max.fill"
         var markedAt: Date? = nil
+        /// The app's look for this window (its light / dark / follows-the-sun setting, worked out by the app when it
+        /// schedules); nil = the phone's.
+        var dark: Bool? = nil
     }
     var n: Int
 }

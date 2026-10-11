@@ -684,6 +684,16 @@ enum LATest {
     private static let names: [(String, String)] = [("Fajr", "sunrise.fill"), ("Dhuhr", "sun.max.fill"), ("Asr", "sun.haze.fill"),
                                                     ("Maghrib", "sunset.fill"), ("Isha", "moon.stars.fill")]
 
+    /// The app's look at a moment: Light 0 / Dark 1 / follows the sun 2 (dark from Maghrib to sunrise — approximated here
+    /// as 7 PM–6 AM for the test windows).
+    static func dark(at t: Date) -> Bool {
+        switch UserDefaults.standard.integer(forKey: "modeToggleNew") {
+        case 1: return true
+        case 2: let h = Calendar.current.component(.hour, from: t); return h >= 19 || h < 6
+        default: return false
+        }
+    }
+
     @MainActor static func onLaunch() {
         guard #available(iOS 26.0, *) else { return }
         let state = UIApplication.shared.applicationState
@@ -721,11 +731,13 @@ enum LATest {
             if let ago = arg("-laNowAgo") {
                 let start = Date().addingTimeInterval(-ago * 60), end = start.addingTimeInterval(90 * 60)
                 _ = try? Activity.request(attributes: LATestAttributes(n: 99),
-                                          content: .init(state: .init(label: "Asr", start: start, end: end, symbol: "sun.haze.fill"), staleDate: end),
+                                          content: .init(state: .init(label: "Asr", start: start, end: end, symbol: "sun.haze.fill", dark: dark(at: start)), staleDate: end),
                                           pushType: nil)
                 LATestLog.add("live window \(Int(ago)) min in")
                 return
             }
+            // `-laInitial N`: the fresh chain starts with only N scheduled (room to see how many one tap can add).
+            if args.contains("-laTest"), let first = arg("-laInitial") { topUp(reason: "launch", limit: Int(first)); return }
             handOver(reason: "launch")
         }
     }
@@ -764,7 +776,7 @@ enum LATest {
     }
 
     @available(iOS 26.0, *)
-    @MainActor static func topUp(reason: String) {
+    @MainActor static func topUp(reason: String, limit: Int = 5) {
         let count = g.integer(forKey: "la.count")
         guard count > 0 else { return }
         let base = Date(timeIntervalSince1970: g.double(forKey: "la.base"))
@@ -773,12 +785,12 @@ enum LATest {
         var added: [Int] = []
         while next <= count {
             let held = Activity<LATestAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale }.count
-            guard held < 5 else { break }
+            guard held < limit else { break }
             let start = base.addingTimeInterval(Double(next - 1) * cadence)
             if start < Date() { next += 1; continue }   // missed (the chain stalled): skip, don't start late
             let end = start.addingTimeInterval(cadence)   // back to back, like Dhuhr → Asr → Maghrib → Isha
             let name = names[(next - 1) % names.count]
-            let state = LATestAttributes.ContentState(label: "\(name.0) (test \(next))", start: start, end: end, symbol: name.1)
+            let state = LATestAttributes.ContentState(label: "\(name.0) \(next)", start: start, end: end, symbol: name.1, dark: dark(at: start))
             do {
                 _ = try Activity.request(attributes: LATestAttributes(n: next),
                                          content: .init(state: state, staleDate: end),
@@ -807,7 +819,14 @@ enum LATest {
         st.markedAt = Date()
         await a.update(.init(state: st, staleDate: st.end))
         LATestLog.add("marked #\(n) · \(bg ? "background" : "fg")")
-        topUp(reason: "mark #\(n)")
+        // As many as iOS lets this tap add (owner: "top up as much as we can"): retry after short pauses.
+        for attempt in 1...4 {
+            let before = g.integer(forKey: "la.next")
+            topUp(reason: "mark #\(n) try \(attempt)")
+            if Activity<LATestAttributes>.activities.filter({ $0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale }).count >= 5
+                || g.integer(forKey: "la.next") > g.integer(forKey: "la.count") { break }
+            if g.integer(forKey: "la.next") == before || attempt < 4 { try? await Task.sleep(for: .milliseconds(attempt == 1 ? 300 : 1000)) }
+        }
         // Location in the same run (S9FJ): first fix within 8 s, with its accuracy.
         let t0 = Date()
         let auth = CLLocationManager().authorizationStatus
