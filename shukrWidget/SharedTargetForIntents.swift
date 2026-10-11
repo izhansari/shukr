@@ -1797,11 +1797,11 @@ enum LATestHooks {
 enum LATestLog {
     static var url: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")?
-            .appendingPathComponent("Library/Caches/la-test.log", isDirectory: false)
+            .appendingPathComponent("Library/Application Support/la-test.log", isDirectory: false)
     }
     private static let queue = DispatchQueue(label: "shukr.laTestLog")
     static func add(_ line: String) {
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "HH:mm:ss.SSS"
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "MMM d HH:mm:ss.SSS"
         let text = "\(f.string(from: Date()))  [\(Bundle.main.bundleURL.pathExtension == "appex" ? "ext" : "app")] \(line)\n"
         print("🟣 \(line)")
         queue.sync {
@@ -1809,6 +1809,11 @@ enum LATestLog {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() }
             else { try? Data(text.utf8).write(to: url) }
+            // Days of it, never too big: the last ~4000 lines once it passes 1 MB.
+            if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 1_000_000,
+               let all = try? String(contentsOf: url, encoding: .utf8) {
+                try? (all.split(separator: "\n").suffix(4000).joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
+            }
         }
     }
 }

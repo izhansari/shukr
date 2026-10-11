@@ -715,12 +715,15 @@ enum LATest {
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
             LATestLog.add("didEnterBackground")
+            if LAReal.on { Task { @MainActor in LAReal.plan(reason: "background") } }   // a prayer marked in the app ends its card
         }
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
             LATestLog.add("willEnterForeground"); Task { @MainActor in list("on foreground"); handOver(reason: "foreground") }
         }
         let args = ProcessInfo.processInfo.arguments
         func arg(_ k: String) -> Double? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? Double(args[$0 + 1]) : nil } }
+        if args.contains("-laReal") { g.set(true, forKey: LAReal.onKey); g.set(0, forKey: "la.count"); LATestLog.add("REAL MODE ON") }
+        if args.contains("-laRealOff") { g.set(false, forKey: LAReal.onKey); LATestLog.add("real mode off") }
         Task { @MainActor in
             if args.contains("-laEndAll") || args.contains("-laTest") {
                 for a in Activity<LATestAttributes>.activities { await a.end(nil, dismissalPolicy: .immediate) }
@@ -742,6 +745,15 @@ enum LATest {
                                           pushType: nil)
                 LATestLog.add("live window \(Int(ago)) min in")
                 if args.contains("-laMarkNow") { try? await Task.sleep(for: .seconds(1)); await mark(99) }
+                return
+            }
+            // `-laMarkLive`: Mark prayed on the live window, as the button would (sim: its taps don't reach the button).
+            if args.contains("-laMarkLive") {
+                handOver(reason: "launch")
+                try? await Task.sleep(for: .seconds(2))
+                if let live = Activity<LATestAttributes>.activities.first(where: { $0.activityState == .active && $0.content.state.markedAt == nil }) {
+                    await mark(live.attributes.n)
+                }
                 return
             }
             // `-laInitial N`: the fresh chain starts with only N scheduled (room to see how many one tap can add).
@@ -772,6 +784,7 @@ enum LATest {
     /// The plan's one move: end every window before the live one, then refill the schedule up to the limit.
     @MainActor static func handOver(reason: String) {
         guard #available(iOS 26.0, *) else { return }
+        if LAReal.on { LAReal.plan(reason: reason); return }
         let all = Activity<LATestAttributes>.activities
         let liveN = all.filter { $0.activityState == .active }.map(\.attributes.n).max() ?? 0
         Task { @MainActor in
@@ -827,12 +840,25 @@ enum LATest {
             LATestLog.add("mark #\(n): no such activity"); return
         }
         var st = a.content.state
+        if LAReal.isReal(n) {
+            // The real prayer, exactly as the widget's check marks it (scored at the tap, saved, the app reconciles).
+            let done = SharedStore.markPrayerComplete(named: st.label, start: st.start, end: st.end)
+            LATestLog.add("real mark \(st.label) \(st.start.formatted(date: .omitted, time: .shortened)) → \(done ? "marked in shukr" : "NOT marked (already done, not started, or no store)")")
+        }
         st.markedAt = Date()
         // Marked: photo + Tasbih for ~15 s, then iOS removes it on its own (owner's idea, Frank's proposal):
         // ended now with the marked content and a dismissal 15 s out — nothing waits in shukr.
         let content = ActivityContent(state: st, staleDate: nil)
         await a.end(content, dismissalPolicy: .after(Date().addingTimeInterval(15)))
         LATestLog.add("marked #\(n) · ended, dismissal in 15 s · \(bg ? "background" : "fg") · state now \(a.activityState)")
+        if LAReal.on {
+            for attempt in 1...4 {   // as many as this tap may add (owner: "top up as much as we can")
+                let added = LAReal.plan(reason: "mark try \(attempt)")
+                if added == 0 { break }
+                try? await Task.sleep(for: .milliseconds(400))
+            }
+            return
+        }
         // As many as iOS lets this tap add (owner: "top up as much as we can"): retry after short pauses.
         for attempt in 1...4 {
             let before = g.integer(forKey: "la.next")
@@ -870,6 +896,103 @@ enum LATest {
     @MainActor static func list(_ why: String) {
         let all = Activity<LATestAttributes>.activities
         LATestLog.add("\(why): \(all.count) — " + all.sorted { $0.attributes.n < $1.attributes.n }.map { "#\($0.attributes.n) \($0.activityState)" }.joined(separator: ", "))
+    }
+}
+
+/// Real mode (DEBUG, his phone): the day's actual prayer windows as Live Activities, look G. Turned on once with
+/// `-laReal` (kept in the app group), off with `-laRealOff`. Windows: Fajr → sunrise, Dhuhr → Asr, Asr → Maghrib,
+/// Maghrib → Isha, Isha → 11:59 PM; only prayers whose Live Activity is on in Settings. Ids are the start minute, so a
+/// window is never scheduled twice. Every run of shukr plans (launch, foreground, background, each start's wake, Mark
+/// prayed, a Settings toggle) and logs what it did to la.log.
+enum LAReal {
+    static let onKey = "la.real"
+    private static var g: UserDefaults { UserDefaults(suiteName: SharedStore.appGroup)! }
+    static var on: Bool { g.bool(forKey: onKey) }
+    static func isReal(_ n: Int) -> Bool { n > 1_000_000 }
+
+    struct Window { let name: String; let start: Date; let end: Date; var id: Int { Int(start.timeIntervalSince1970 / 60) } }
+
+    /// Today's and tomorrow's windows still to come or under way, for the prayers that are on.
+    static func windows(now: Date = Date()) -> [Window] {
+        guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
+        let params = PrayerUtils.getCalculationParameters()
+        let cal = Calendar.current
+        var out: [Window] = []
+        for d in 0...1 {
+            guard let day = cal.date(byAdding: .day, value: d, to: cal.startOfDay(for: now)),
+                  let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { continue }
+            let ishaEnd = cal.date(byAdding: .minute, value: 24 * 60 - 1, to: cal.startOfDay(for: day)) ?? t.isha.addingTimeInterval(3 * 3600)
+            out += [Window(name: "Fajr", start: t.fajr, end: t.sunrise), Window(name: "Dhuhr", start: t.dhuhr, end: t.asr),
+                    Window(name: "Asr", start: t.asr, end: t.maghrib), Window(name: "Maghrib", start: t.maghrib, end: t.isha),
+                    Window(name: "Isha", start: t.isha, end: ishaEnd)]
+        }
+        return out.filter { $0.end > now && LiveActivityPrefs.isOn($0.name) }.sorted { $0.start < $1.start }
+    }
+
+    private static func done(_ w: Window) -> Bool {
+        guard let c = SharedStore.widgetContainer else { return false }
+        return SharedStore.fetchPrayer(named: w.name, on: w.start, in: ModelContext(c))?.isCompleted == true
+    }
+
+    /// End what shouldn't be showing, then add windows up to iOS's 5. Returns how many it added.
+    @MainActor @discardableResult static func plan(reason: String) -> Int {
+        guard on, #available(iOS 26.0, *) else { return 0 }
+        let now = Date()
+        let bg = UIApplication.shared.applicationState == .background
+        let want = windows(now: now)
+        let wantIDs = Set(want.map(\.id))
+        var all = Activity<LATestAttributes>.activities
+        let liveStarts = all.filter { $0.activityState == .active && $0.content.state.markedAt == nil }.map(\.content.state.start)
+        var ended: [String] = []
+        var endedIDs = Set<String>()
+        for a in all where a.activityState != .ended && a.activityState != .dismissed {
+            let st = a.content.state
+            if st.markedAt != nil { continue }   // marked: its own 15 s dismissal
+            var why: String?
+            if !isReal(a.attributes.n) { why = "test window" }
+            else if st.end <= now { why = "window over" }
+            else if let latest = liveStarts.max(), st.start < latest, a.activityState != .pending { why = "next prayer began" }
+            else if !wantIDs.contains(a.attributes.n) { why = "not wanted (off / times moved)" }
+            else if a.activityState != .pending, done(Window(name: st.label, start: st.start, end: st.end)) { why = "prayed in shukr" }
+            if let why {
+                Task { await a.end(nil, dismissalPolicy: .immediate) }
+                endedIDs.insert(a.id)
+                ended.append("\(st.label) \(st.start.formatted(date: .omitted, time: .shortened)) (\(why))")
+            }
+        }
+        all = Activity<LATestAttributes>.activities
+        var held = Set(all.filter { !endedIDs.contains($0.id) && ($0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale) }.map(\.attributes.n))
+        var added: [String] = []
+        var failed: String?
+        for w in want where !held.contains(w.id) {
+            guard held.count < 5 else { break }
+            if w.start <= now && done(w) { continue }   // under way but already prayed
+            let state = LATestAttributes.ContentState(label: w.name, start: w.start, end: w.end, symbol: prayerIcon(for: w.name),
+                                                      dark: LATest.dark(at: w.start))
+            do {
+                if w.start > now {
+                    _ = try Activity.request(attributes: LATestAttributes(n: w.id), content: .init(state: state, staleDate: w.end),
+                                             pushType: nil, style: .standard,
+                                             alertConfiguration: AlertConfiguration(title: "\(w.name) has started",
+                                                                                    body: "ends \(w.end.formatted(date: .omitted, time: .shortened))", sound: .default),
+                                             start: w.start)
+                } else {
+                    _ = try Activity.request(attributes: LATestAttributes(n: w.id), content: .init(state: state, staleDate: w.end), pushType: nil)
+                }
+                held.insert(w.id)
+                added.append("\(w.name) \(w.start.formatted(date: .abbreviated, time: .shortened))")
+            } catch {
+                failed = "\(w.name): \(error)"
+                break
+            }
+        }
+        var line = "plan (\(reason), \(bg ? "bg" : "fg")): holding \(held.count)"
+        if !ended.isEmpty { line += " · ended " + ended.joined(separator: ", ") }
+        if !added.isEmpty { line += " · added " + added.joined(separator: ", ") }
+        if let failed { line += " · couldn't add \(failed)" }
+        if want.isEmpty { line += " · NO WINDOWS (no location?)" }
+        LATestLog.add(line)
+        return added.count
     }
 }
 #endif

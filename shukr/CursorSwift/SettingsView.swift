@@ -1597,6 +1597,7 @@ private struct LiveActivityPrayerCol: View {
         Button {
             on.toggle()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Task { @MainActor in LAReal.plan(reason: "Settings: \(prayer) \(on ? "on" : "off")") }
         } label: {
             VStack {
                 Text(prayer)
