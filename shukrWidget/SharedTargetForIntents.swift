@@ -1733,6 +1733,16 @@ enum WidgetSpeedTest {
 
 #if DEBUG
 import ActivityKit
+/// Which prayers get a Live Activity for their window (owner, 2026-10-11: its own setting, not the notifications' —
+/// "two very different features"). App group, on by default for all five.
+enum LiveActivityPrefs {
+    static let prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    static func key(_ prayer: String) -> String { "liveActivity.\(prayer)" }
+    static func isOn(_ prayer: String) -> Bool {
+        UserDefaults(suiteName: SharedStore.appGroup)?.object(forKey: key(prayer)) as? Bool ?? true
+    }
+}
+
 /// DEBUG Live Activity research (MY4R, 2026-10-11): a stand-in prayer window, and a log both processes write.
 struct LATestAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {

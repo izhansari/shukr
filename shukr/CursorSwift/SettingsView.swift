@@ -327,6 +327,11 @@ struct SettingsView: View {
                     }
                     
                     
+                    #if DEBUG
+                    // MARK: - Live Activities (MY4R, research builds only until the feature ships)
+                    LiveActivitySettingsSection()
+                    #endif
+
                     // MARK: - Daily Alarm
                     AlarmSettingsView()
                         .id(SettingsJump.fajrAlarm)
@@ -1528,3 +1533,89 @@ struct HoldRepeatStepper: View {
         pressedAt = nil
     }
 }
+
+
+#if DEBUG
+import ActivityKit
+
+/// Settings → Live Activities (owner, 2026-10-11: "keep this setting different from the notifications … turn it on or
+/// off for live activities for each prayer"): the notifications row's five columns, each the prayer's own symbol —
+/// black when its window shows as a Live Activity, grey when not. While iOS has Live Activities off for shukr, only that
+/// line and the way to Settings.
+struct LiveActivitySettingsSection: View {
+    @State private var enabled = ActivityAuthorizationInfo().areActivitiesEnabled
+    @State private var showInfo = false
+
+    var body: some View {
+        Section {
+            if enabled {
+                HStack {
+                    ForEach(Array(LiveActivityPrefs.prayers.enumerated()), id: \.offset) { i, prayer in
+                        if i > 0 { Divider() }
+                        LiveActivityPrayerCol(prayer: prayer)
+                    }
+                }
+                .padding(.vertical, 4)
+            } else {
+                Label("Live Activities are off for shukr", systemImage: "exclamationmark.circle")
+                    .foregroundStyle(.orange)
+                Button("Turn them on in Settings") { SettingsLinks.app() }
+            }
+            if showInfo && enabled {
+                Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it or the next prayer begins.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            HStack {
+                Text("Live Activities")
+                Spacer()
+                Button { withAnimation { showInfo.toggle() } } label: {
+                    Image(systemName: showInfo ? "info.circle.fill" : "info.circle")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.green)
+            }
+        }
+        .task {
+            for await on in ActivityAuthorizationInfo().activityEnablementUpdates { enabled = on }
+        }
+    }
+}
+
+/// One prayer: its name, its symbol (black = on, grey = off), "on" / "off" — a tap flips it.
+private struct LiveActivityPrayerCol: View {
+    let prayer: String
+    @AppStorage private var on: Bool
+
+    init(prayer: String) {
+        self.prayer = prayer
+        _on = AppStorage(wrappedValue: true, LiveActivityPrefs.key(prayer), store: UserDefaults(suiteName: SharedStore.appGroup))
+    }
+
+    var body: some View {
+        Button {
+            on.toggle()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        } label: {
+            VStack {
+                Text(prayer)
+                    .font(.footnote)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                Spacer()
+                Image(systemName: prayerIcon(for: prayer))
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(on ? Color.primary : Color.gray.opacity(0.45))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .frame(height: 22)
+                Spacer()
+                Text(on ? "on" : "off")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .animation(.snappy(duration: 0.2), value: on)
+    }
+}
+#endif

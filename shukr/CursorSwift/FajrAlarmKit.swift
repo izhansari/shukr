@@ -790,7 +790,10 @@ enum LATest {
             if start < Date() { next += 1; continue }   // missed (the chain stalled): skip, don't start late
             let end = start.addingTimeInterval(cadence)   // back to back, like Dhuhr → Asr → Maghrib → Isha
             let name = names[(next - 1) % names.count]
-            let state = LATestAttributes.ContentState(label: "\(name.0) \(next)", start: start, end: end, symbol: name.1, dark: dark(at: start))
+            if !LiveActivityPrefs.isOn(name.0) {   // that prayer's Live Activity is off in Settings: skip it
+                LATestLog.add("skipped #\(next) (\(name.0) is off)"); next += 1; continue
+            }
+            let state = LATestAttributes.ContentState(label: "\(name.0) \(next)", start: start, end: end, symbol: prayerIcon(for: name.0), dark: dark(at: start))
             do {
                 _ = try Activity.request(attributes: LATestAttributes(n: next),
                                          content: .init(state: state, staleDate: end),
