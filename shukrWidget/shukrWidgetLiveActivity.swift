@@ -78,3 +78,34 @@ extension shukrWidgetAttributes.ContentState {
     shukrWidgetAttributes.ContentState.smiley
     shukrWidgetAttributes.ContentState.starEyes
 }
+
+
+#if DEBUG
+/// DEBUG Live Activity research: logs every time the extension draws it, so a start shows up even with shukr killed.
+struct LATestLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: LATestAttributes.self) { context in
+            let _ = LATestLog.add("render lock #\(context.attributes.n) stale=\(context.isStale)")
+            VStack(alignment: .leading, spacing: 4) {
+                Text(context.isStale ? "\(context.state.label) · ENDED (stale)" : context.state.label).font(.headline)
+                Text(timerInterval: context.state.start...context.state.end, countsDown: true).monospacedDigit()
+                ProgressView(timerInterval: context.state.start...context.state.end, countsDown: false)
+            }
+            .padding()
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.bottom) {
+                    let _ = LATestLog.add("render island #\(context.attributes.n) stale=\(context.isStale)")
+                    Text(context.state.label)
+                }
+            } compactLeading: {
+                Text("#\(context.attributes.n)")
+            } compactTrailing: {
+                Text(timerInterval: context.state.start...context.state.end, countsDown: true).monospacedDigit().frame(width: 44)
+            } minimal: {
+                Text("\(context.attributes.n)")
+            }
+        }
+    }
+}
+#endif

@@ -33,6 +33,8 @@
 	<string>To take a photo after you pray, or of a written dua to keep with your zikr. Your photos stay on your iPhone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>To record how a zikr is said, so you can listen and practise it. The recording stays on your iPhone.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>ShukrBuildStamp</key>
 	<string>$(SHUKR_BUILD_STAMP)</string>
 	<key>UIAppFonts</key>

@@ -19,6 +19,9 @@ struct shukrWidgetBundle: WidgetBundle {
         DailyAyahWidget()
         QiblaControl()
         TasbeehControl()
+        #if DEBUG
+        LATestLiveActivity()   // Live Activity research (MY4R)
+        #endif
     }
 }
 

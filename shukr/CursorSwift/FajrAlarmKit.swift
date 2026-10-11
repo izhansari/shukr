@@ -670,3 +670,85 @@ struct FajrMorning: Identifiable {
         return d
     }
 }
+
+
+#if DEBUG
+import ActivityKit
+/// DEBUG Live Activity research (MY4R): every launch logs how it started and what Live Activities exist;
+/// `-laTest` schedules 12 test windows a minute apart (iOS 26 scheduled start), each stale 45 s after it starts.
+enum LATest {
+    @MainActor static func onLaunch() {
+        guard #available(iOS 26.0, *) else { return }
+        let state = UIApplication.shared.applicationState
+        LATestLog.add("launch · appState=\(state == .background ? "background" : state == .active ? "active" : "inactive") · enabled=\(ActivityAuthorizationInfo().areActivitiesEnabled)")
+        list("at launch")
+        for activity in Activity<LATestAttributes>.activities { observe(activity) }
+        Task { @MainActor in
+            for await activity in Activity<LATestAttributes>.activityUpdates {
+                LATestLog.add("activityUpdates: #\(activity.attributes.n) \(activity.activityState)")
+                observe(activity)
+            }
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+            LATestLog.add("didEnterBackground")
+        }
+        NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
+            LATestLog.add("willEnterForeground"); Task { @MainActor in list("on foreground") }
+        }
+        Task { @MainActor in
+            if ProcessInfo.processInfo.arguments.contains("-laEndAll") {
+                for a in Activity<LATestAttributes>.activities { await a.end(nil, dismissalPolicy: .immediate) }
+                LATestLog.add("ended all")
+            }
+            if ProcessInfo.processInfo.arguments.contains("-laTest") { schedule() }
+        }
+    }
+
+    @MainActor private static var observed = Set<String>()
+    @MainActor static func observe(_ activity: Activity<LATestAttributes>) {
+        guard observed.insert(activity.id).inserted else { return }
+        Task { @MainActor in
+            for await st in activity.activityStateUpdates {
+                LATestLog.add("state #\(activity.attributes.n) → \(st) · appState=\(UIApplication.shared.applicationState == .background ? "background" : "fg")")
+                // The next window started: end the one before it (the plan's hand-over), and log that it took.
+                if st == .active {
+                    for old in Activity<LATestAttributes>.activities where old.attributes.n < activity.attributes.n
+                        && (old.activityState == .active || old.activityState == .stale) {
+                        await old.end(nil, dismissalPolicy: .immediate)
+                        LATestLog.add("ended #\(old.attributes.n) on #\(activity.attributes.n)'s start → \(old.activityState)")
+                    }
+                }
+            }
+        }
+    }
+
+    @MainActor static func list(_ why: String) {
+        let all = Activity<LATestAttributes>.activities
+        LATestLog.add("\(why): \(all.count) — " + all.map { "#\($0.attributes.n) \($0.activityState)" }.joined(separator: ", "))
+    }
+
+    @available(iOS 26.0, *)
+    @MainActor static func schedule() {
+        let base = Date().addingTimeInterval(60)
+        var ok = 0
+        for i in 0..<12 {
+            let start = base.addingTimeInterval(Double(i) * 60)
+            let end = start.addingTimeInterval(55)
+            let state = LATestAttributes.ContentState(label: "Test window \(i + 1)", start: start, end: end)
+            do {
+                _ = try Activity.request(attributes: LATestAttributes(n: i + 1),
+                                         content: .init(state: state, staleDate: start.addingTimeInterval(45)),
+                                         pushType: nil, style: .standard,
+                                         alertConfiguration: AlertConfiguration(title: "Test window \(i + 1)", body: "Started", sound: .default),
+                                         start: start)
+                ok += 1
+                LATestLog.add("scheduled #\(i + 1) for \(start.formatted(date: .omitted, time: .standard))")
+            } catch {
+                LATestLog.add("schedule #\(i + 1) FAILED: \(error)")
+            }
+        }
+        LATestLog.add("scheduled \(ok) of 12")
+        list("after scheduling")
+    }
+}
+#endif

@@ -1729,3 +1729,36 @@ enum WidgetSpeedTest {
     static var fewestEntries: Bool { UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: fewestEntriesKey) == true }
 }
 #endif
+
+
+#if DEBUG
+import ActivityKit
+/// DEBUG Live Activity research (MY4R, 2026-10-11): a stand-in prayer window, and a log both processes write.
+struct LATestAttributes: ActivityAttributes {
+    struct ContentState: Codable, Hashable {
+        var label: String
+        var start: Date
+        var end: Date
+    }
+    var n: Int
+}
+
+enum LATestLog {
+    static var url: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")?
+            .appendingPathComponent("Library/Caches/la-test.log", isDirectory: false)
+    }
+    private static let queue = DispatchQueue(label: "shukr.laTestLog")
+    static func add(_ line: String) {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "HH:mm:ss.SSS"
+        let text = "\(f.string(from: Date()))  [\(Bundle.main.bundleURL.pathExtension == "appex" ? "ext" : "app")] \(line)\n"
+        print("🟣 \(line)")
+        queue.sync {
+            guard let url else { return }
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() }
+            else { try? Data(text.utf8).write(to: url) }
+        }
+    }
+}
+#endif
