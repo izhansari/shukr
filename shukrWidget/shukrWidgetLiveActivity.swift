@@ -81,31 +81,182 @@ extension shukrWidgetAttributes.ContentState {
 
 
 #if DEBUG
-/// DEBUG Live Activity research: logs every time the extension draws it, so a start shows up even with shukr killed.
+/// DEBUG Live Activity research (MY4R): what a prayer window could look like — the app's soft ring filling live (its
+/// colours laid out by where in the window they apply, revealed by the timer-driven fill), the time left, Mark prayed;
+/// once marked, the post-salah photo and tasbeeh.
 struct LATestLiveActivity: Widget {
+    static let sage = Color(red: 0.43, green: 0.62, blue: 0.5)
+
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: LATestAttributes.self) { context in
-            let _ = LATestLog.add("render lock #\(context.attributes.n) stale=\(context.isStale)")
-            VStack(alignment: .leading, spacing: 4) {
-                Text(context.isStale ? "\(context.state.label) · ENDED (stale)" : context.state.label).font(.headline)
-                Text(timerInterval: context.state.start...context.state.end, countsDown: true).monospacedDigit()
-                ProgressView(timerInterval: context.state.start...context.state.end, countsDown: false)
+            let s = context.state
+            HStack(spacing: 14) {
+                LAWindowRing(state: s, size: 56, symbolSize: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(s.label).font(.system(.title3, design: .rounded).weight(.semibold))
+                    if let at = s.markedAt {
+                        Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 4) {
+                            Text(timerInterval: s.start...s.end, countsDown: true)
+                                .monospacedDigit().frame(maxWidth: 64, alignment: .leading)
+                            Text("left · ends \(s.end.formatted(date: .omitted, time: .shortened))")
+                        }
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+                LAActions(state: s, n: context.attributes.n, compact: false)
             }
-            .padding()
+            .padding(.horizontal, 16).padding(.vertical, 14)
+            .activityBackgroundTint(Color(.systemBackground).opacity(0.55))
+            .activitySystemActionForegroundColor(.primary)
         } dynamicIsland: { context in
-            DynamicIsland {
+            let s = context.state
+            return DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    LAWindowRing(state: s, size: 52, symbolSize: 17).padding(.leading, 4)
+                }
+                DynamicIslandExpandedRegion(.center) {
+                    VStack(spacing: 2) {
+                        Text(s.label).font(.system(.headline, design: .rounded))
+                        Text(s.markedAt == nil ? "ends \(s.end.formatted(date: .omitted, time: .shortened))"
+                                               : "Prayed \(s.markedAt!.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    if s.markedAt == nil {
+                        Text(timerInterval: s.start...s.end, countsDown: true)
+                            .monospacedDigit().font(.system(.title3, design: .rounded))
+                            .frame(maxWidth: 72).padding(.trailing, 4)
+                    } else {
+                        Image(systemName: "checkmark.circle.fill").font(.title2).foregroundStyle(Self.sage)
+                    }
+                }
                 DynamicIslandExpandedRegion(.bottom) {
-                    let _ = LATestLog.add("render island #\(context.attributes.n) stale=\(context.isStale)")
-                    Text(context.state.label)
+                    LAActions(state: s, n: context.attributes.n, compact: true).padding(.top, 4)
                 }
             } compactLeading: {
-                Text("#\(context.attributes.n)")
+                LAWindowRing(state: s, size: 22, symbolSize: 8)
             } compactTrailing: {
-                Text(timerInterval: context.state.start...context.state.end, countsDown: true).monospacedDigit().frame(width: 44)
+                if s.markedAt == nil {
+                    Text(timerInterval: s.start...s.end, countsDown: true)
+                        .monospacedDigit().font(.system(size: 14, weight: .medium, design: .rounded))
+                        .frame(maxWidth: 48)
+                } else {
+                    Image(systemName: "checkmark").foregroundStyle(Self.sage)
+                }
             } minimal: {
-                Text("\(context.attributes.n)")
+                LAWindowRing(state: s, size: 22, symbolSize: 8)
             }
+            .keylineTint(Self.sage)
         }
+    }
+}
+
+/// Mark prayed (a capsule) — or, once marked, the photo and tasbeeh round buttons.
+private struct LAActions: View {
+    let state: LATestAttributes.ContentState
+    let n: Int
+    let compact: Bool
+    var body: some View {
+        if state.markedAt == nil {
+            Button(intent: LATestMarkIntent(n: n)) {
+                Label("Mark prayed", systemImage: "checkmark")
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .frame(maxWidth: compact ? .infinity : nil)
+                    .background(Capsule().fill(LATestLiveActivity.sage.opacity(0.25)))
+                    .foregroundStyle(LATestLiveActivity.sage)
+            }
+            .buttonStyle(.plain)
+        } else {
+            HStack(spacing: 10) {
+                round("camera.fill", "Photo", LATestOpenIntent(what: "Photo"))
+                round("circle.grid.cross.fill", "Tasbih", LATestOpenIntent(what: "Tasbih"))
+            }
+            .frame(maxWidth: compact ? .infinity : nil)
+        }
+    }
+    private func round(_ icon: String, _ label: String, _ intent: LATestOpenIntent) -> some View {
+        Button(intent: intent) {
+            Group {
+                if compact {
+                    Label(label, systemImage: icon).font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 9).frame(maxWidth: .infinity)
+                } else {
+                    Image(systemName: icon).font(.system(size: 16, weight: .semibold)).frame(width: 40, height: 40)
+                }
+            }
+            .background(Capsule().fill(LATestLiveActivity.sage.opacity(0.25)))
+            .foregroundStyle(LATestLiveActivity.sage)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The app's soft ring for one window: a faint band, and the arc in the colour the score would be at each point of the
+/// window (an angular gradient with hard stops), shown only up to now by the system-driven `ProgressView(timerInterval:)`
+/// used as a mask (`PrayersWidget.LiveArc`'s trick). Marked: the full ring in the score it got.
+struct LAWindowRing: View {
+    let state: LATestAttributes.ContentState
+    let size: CGFloat
+    let symbolSize: CGFloat
+    private let design: CGFloat = 98
+
+    var body: some View {
+        ZStack {
+            Group {
+                Circle().stroke(Color.primary.opacity(0.15), lineWidth: 6).frame(width: 90, height: 90)
+                if let at = state.markedAt {
+                    Circle().stroke(PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at)),
+                                    style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                        .frame(width: 90, height: 90)
+                } else {
+                    Circle()
+                        .stroke(gradient, style: StrokeStyle(lineWidth: 6, lineCap: .butt))
+                        .frame(width: 90, height: 90)
+                        .mask { liveMask }
+                }
+            }
+            .frame(width: design, height: design)
+            .scaleEffect(size / design)
+            Image(systemName: state.markedAt == nil ? state.symbol : "checkmark")
+                .font(.system(size: symbolSize, weight: .semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(width: size, height: size)
+    }
+
+    /// Hard colour stops: the score colour at each 1/48 of the window.
+    private var gradient: AngularGradient {
+        let steps = 48
+        let span = state.end.timeIntervalSince(state.start)
+        var stops: [Gradient.Stop] = []
+        for i in 0..<steps {
+            let at = state.start.addingTimeInterval(span * (Double(i) + 0.5) / Double(steps))
+            let c = PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at))
+            stops.append(.init(color: c, location: Double(i) / Double(steps)))
+            stops.append(.init(color: c, location: Double(i + 1) / Double(steps)))
+        }
+        return AngularGradient(stops: stops, center: .center, startAngle: .degrees(-90), endAngle: .degrees(270))
+    }
+
+    private var liveMask: some View {
+        ZStack {
+            Color.black
+            ProgressView(timerInterval: state.start...state.end, countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                .progressViewStyle(.circular)
+                .tint(.white)
+                .labelsHidden()
+        }
+        .frame(width: design, height: design)
+        .compositingGroup()
+        .brightness(-0.35)
+        .contrast(3)
+        .luminanceToAlpha()
     }
 }
 #endif

@@ -674,33 +674,48 @@ struct FajrMorning: Identifiable {
 
 #if DEBUG
 import ActivityKit
-/// DEBUG Live Activity research (MY4R): every launch logs how it started and what Live Activities exist;
-/// `-laTest` schedules 12 test windows a minute apart (iOS 26 scheduled start), each stale 45 s after it starts.
+import CoreLocation
+/// DEBUG Live Activity research (MY4R): a rolling chain of stand-in prayer windows. Every time shukr gets to run — a
+/// window starting (the wake found on 2026-10-11), Mark prayed, an open — it ends the windows before the live one and
+/// tops the schedule back up to iOS's limit (5), so the chain keeps going without the app being opened.
+/// `-laTest [-laCadence s] [-laCount n]`: a fresh chain (first window in 20 s); `-laEndAll` ends every test one.
 enum LATest {
+    private static var g: UserDefaults { UserDefaults(suiteName: SharedStore.appGroup)! }
+    private static let names: [(String, String)] = [("Fajr", "sunrise.fill"), ("Dhuhr", "sun.max.fill"), ("Asr", "sun.haze.fill"),
+                                                    ("Maghrib", "sunset.fill"), ("Isha", "moon.stars.fill")]
+
     @MainActor static func onLaunch() {
         guard #available(iOS 26.0, *) else { return }
         let state = UIApplication.shared.applicationState
         LATestLog.add("launch · appState=\(state == .background ? "background" : state == .active ? "active" : "inactive") · enabled=\(ActivityAuthorizationInfo().areActivitiesEnabled)")
+        LATestHooks.mark = { n in await mark(n) }
         list("at launch")
         for activity in Activity<LATestAttributes>.activities { observe(activity) }
         Task { @MainActor in
-            for await activity in Activity<LATestAttributes>.activityUpdates {
-                LATestLog.add("activityUpdates: #\(activity.attributes.n) \(activity.activityState)")
-                observe(activity)
-            }
+            for await activity in Activity<LATestAttributes>.activityUpdates { observe(activity) }
         }
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
             LATestLog.add("didEnterBackground")
         }
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
-            LATestLog.add("willEnterForeground"); Task { @MainActor in list("on foreground") }
+            LATestLog.add("willEnterForeground"); Task { @MainActor in list("on foreground"); handOver(reason: "foreground") }
         }
+        let args = ProcessInfo.processInfo.arguments
+        func arg(_ k: String) -> Double? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? Double(args[$0 + 1]) : nil } }
         Task { @MainActor in
-            if ProcessInfo.processInfo.arguments.contains("-laEndAll") {
+            if args.contains("-laEndAll") || args.contains("-laTest") {
                 for a in Activity<LATestAttributes>.activities { await a.end(nil, dismissalPolicy: .immediate) }
+                g.set(0, forKey: "la.count")
                 LATestLog.add("ended all")
             }
-            if ProcessInfo.processInfo.arguments.contains("-laTest") { schedule() }
+            if args.contains("-laTest") {
+                g.set(Date().addingTimeInterval(20).timeIntervalSince1970, forKey: "la.base")
+                g.set(arg("-laCadence") ?? 60, forKey: "la.cadence")
+                g.set(Int(arg("-laCount") ?? 14), forKey: "la.count")
+                g.set(1, forKey: "la.next")
+                LATestLog.add("new chain: \(g.integer(forKey: "la.count")) windows every \(Int(g.double(forKey: "la.cadence"))) s")
+            }
+            handOver(reason: "launch")
         }
     }
 
@@ -709,46 +724,101 @@ enum LATest {
         guard observed.insert(activity.id).inserted else { return }
         Task { @MainActor in
             for await st in activity.activityStateUpdates {
-                LATestLog.add("state #\(activity.attributes.n) → \(st) · appState=\(UIApplication.shared.applicationState == .background ? "background" : "fg")")
-                // The next window started: end the one before it (the plan's hand-over), and log that it took.
-                if st == .active {
-                    for old in Activity<LATestAttributes>.activities where old.attributes.n < activity.attributes.n
-                        && (old.activityState == .active || old.activityState == .stale) {
-                        await old.end(nil, dismissalPolicy: .immediate)
-                        LATestLog.add("ended #\(old.attributes.n) on #\(activity.attributes.n)'s start → \(old.activityState)")
-                    }
-                }
+                let bg = UIApplication.shared.applicationState == .background
+                LATestLog.add("state #\(activity.attributes.n) → \(st) · \(bg ? "background" : "fg")")
+                if st == .active { handOver(reason: "#\(activity.attributes.n) started") }
             }
+        }
+    }
+
+    /// The plan's one move: end every window before the live one, then refill the schedule up to the limit.
+    @MainActor static func handOver(reason: String) {
+        guard #available(iOS 26.0, *) else { return }
+        let all = Activity<LATestAttributes>.activities
+        let liveN = all.filter { $0.activityState == .active }.map(\.attributes.n).max() ?? 0
+        Task { @MainActor in
+            for old in all where old.attributes.n < liveN && (old.activityState == .active || old.activityState == .stale) {
+                await old.end(nil, dismissalPolicy: .immediate)
+                LATestLog.add("ended #\(old.attributes.n) (\(reason))")
+            }
+            topUp(reason: reason)
+        }
+    }
+
+    @available(iOS 26.0, *)
+    @MainActor static func topUp(reason: String) {
+        let count = g.integer(forKey: "la.count")
+        guard count > 0 else { return }
+        let base = Date(timeIntervalSince1970: g.double(forKey: "la.base"))
+        let cadence = g.double(forKey: "la.cadence")
+        var next = g.integer(forKey: "la.next")
+        var added: [Int] = []
+        while next <= count {
+            let held = Activity<LATestAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale }.count
+            guard held < 5 else { break }
+            let start = base.addingTimeInterval(Double(next - 1) * cadence)
+            if start < Date() { next += 1; continue }   // missed (the chain stalled): skip, don't start late
+            let end = start.addingTimeInterval(cadence)   // back to back, like Dhuhr → Asr → Maghrib → Isha
+            let name = names[(next - 1) % names.count]
+            let state = LATestAttributes.ContentState(label: "\(name.0) (test \(next))", start: start, end: end, symbol: name.1)
+            do {
+                _ = try Activity.request(attributes: LATestAttributes(n: next),
+                                         content: .init(state: state, staleDate: end),
+                                         pushType: nil, style: .standard,
+                                         alertConfiguration: AlertConfiguration(title: "\(name.0) has started", body: "Test window \(next)", sound: .default),
+                                         start: start)
+                added.append(next)
+            } catch {
+                LATestLog.add("schedule #\(next) FAILED (\(reason)): \(error)")
+                break
+            }
+            next += 1
+        }
+        g.set(next, forKey: "la.next")
+        if !added.isEmpty { LATestLog.add("scheduled \(added.map { "#\($0)" }.joined(separator: " ")) (\(reason)) · \(UIApplication.shared.applicationState == .background ? "background" : "fg")") }
+    }
+
+    /// Mark prayed on a test window: the card turns to its marked look, a location fix is timed (S9FJ), the schedule refills.
+    @MainActor static func mark(_ n: Int) async {
+        guard #available(iOS 26.0, *) else { return }
+        let bg = UIApplication.shared.applicationState == .background
+        guard let a = Activity<LATestAttributes>.activities.first(where: { $0.attributes.n == n }) else {
+            LATestLog.add("mark #\(n): no such activity"); return
+        }
+        var st = a.content.state
+        st.markedAt = Date()
+        await a.update(.init(state: st, staleDate: st.end))
+        LATestLog.add("marked #\(n) · \(bg ? "background" : "fg")")
+        topUp(reason: "mark #\(n)")
+        // Location in the same run (S9FJ): first fix within 8 s, with its accuracy.
+        let t0 = Date()
+        let auth = CLLocationManager().authorizationStatus
+        var got: CLLocation?
+        await withTaskGroup(of: CLLocation?.self) { group in
+            group.addTask {
+                do {
+                    for try await u in CLLocationUpdate.liveUpdates() {
+                        if let l = u.location, l.horizontalAccuracy >= 0, l.horizontalAccuracy <= 100,
+                           l.timestamp > t0.addingTimeInterval(-5) { return l }
+                    }
+                } catch {}
+                return nil
+            }
+            group.addTask { try? await Task.sleep(for: .seconds(8)); return nil }
+            got = await group.next() ?? nil
+            group.cancelAll()
+        }
+        let authText = auth == .authorizedAlways ? "Always" : auth == .authorizedWhenInUse ? "While Using" : "\(auth.rawValue)"
+        if let got {
+            LATestLog.add("location for #\(n): ±\(Int(got.horizontalAccuracy)) m in \(String(format: "%.1f", Date().timeIntervalSince(t0))) s · auth \(authText)")
+        } else {
+            LATestLog.add("location for #\(n): none within 8 s · auth \(authText)")
         }
     }
 
     @MainActor static func list(_ why: String) {
         let all = Activity<LATestAttributes>.activities
-        LATestLog.add("\(why): \(all.count) — " + all.map { "#\($0.attributes.n) \($0.activityState)" }.joined(separator: ", "))
-    }
-
-    @available(iOS 26.0, *)
-    @MainActor static func schedule() {
-        let base = Date().addingTimeInterval(60)
-        var ok = 0
-        for i in 0..<12 {
-            let start = base.addingTimeInterval(Double(i) * 60)
-            let end = start.addingTimeInterval(55)
-            let state = LATestAttributes.ContentState(label: "Test window \(i + 1)", start: start, end: end)
-            do {
-                _ = try Activity.request(attributes: LATestAttributes(n: i + 1),
-                                         content: .init(state: state, staleDate: start.addingTimeInterval(45)),
-                                         pushType: nil, style: .standard,
-                                         alertConfiguration: AlertConfiguration(title: "Test window \(i + 1)", body: "Started", sound: .default),
-                                         start: start)
-                ok += 1
-                LATestLog.add("scheduled #\(i + 1) for \(start.formatted(date: .omitted, time: .standard))")
-            } catch {
-                LATestLog.add("schedule #\(i + 1) FAILED: \(error)")
-            }
-        }
-        LATestLog.add("scheduled \(ok) of 12")
-        list("after scheduling")
+        LATestLog.add("\(why): \(all.count) — " + all.sorted { $0.attributes.n < $1.attributes.n }.map { "#\($0.attributes.n) \($0.activityState)" }.joined(separator: ", "))
     }
 }
 #endif

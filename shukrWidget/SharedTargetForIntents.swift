@@ -1739,8 +1739,43 @@ struct LATestAttributes: ActivityAttributes {
         var label: String
         var start: Date
         var end: Date
+        var symbol: String = "sun.max.fill"
+        var markedAt: Date? = nil
     }
     var n: Int
+}
+
+/// The test window's Mark prayed (runs in shukr's process): marks the stand-in window (never a real prayer), times a
+/// location fix (S9FJ), refills the schedule. The app target supplies `LATestHooks.mark`.
+struct LATestMarkIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Mark test window prayed"
+    static var isDiscoverable = false
+    @Parameter(title: "Window") var n: Int
+    init() {}
+    init(n: Int) { self.n = n }
+    func perform() async throws -> some IntentResult {
+        LATestLog.add("Mark prayed tapped on #\(n)")
+        await LATestHooks.mark?(n)
+        return .result()
+    }
+}
+
+/// After marking: the post-salah actions open shukr (the real routing comes with the feature).
+struct LATestOpenIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Open after a test window"
+    static var isDiscoverable = false
+    static var openAppWhenRun = true
+    @Parameter(title: "What") var what: String
+    init() {}
+    init(what: String) { self.what = what }
+    func perform() async throws -> some IntentResult {
+        LATestLog.add("\(what) tapped (opens shukr)")
+        return .result()
+    }
+}
+
+enum LATestHooks {
+    nonisolated(unsafe) static var mark: ((Int) async -> Void)?
 }
 
 enum LATestLog {
