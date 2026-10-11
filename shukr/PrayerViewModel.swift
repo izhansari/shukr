@@ -696,6 +696,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         try? context.save()
         WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
         WatchSync.shared.send()                    // the watch's ✓s
+        #if DEBUG
+        // Live Activities (MY4R): a mark ends its card at once, an unmark brings it back while its window is open
+        // (owner: "we should show the live activity so long as unmarked") — re-planned now, while shukr is in front.
+        Task { @MainActor in LAReal.plan(reason: "a prayer marked / unmarked / edited in shukr") }
+        #endif
     }
     
     /*
