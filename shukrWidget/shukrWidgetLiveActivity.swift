@@ -98,14 +98,19 @@ struct LATestLiveActivity: Widget {
             let n = context.attributes.n
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    LAEnds(state: s, stale: stale) { e in LALeftLines(state: s, ended: e) }.padding(.leading, 8).padding(.top, 22)
+                    LAEnds(state: s, stale: stale) { e in LASideRing(state: s, ended: e, size: 62, onIsland: true) }
+                        .padding(.leading, 6).padding(.top, 6)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    LAEnds(state: s, stale: stale) { e in LACentreRing(state: s, ended: e, size: 76, onIsland: true) }
+                    LAEnds(state: s, stale: stale) { e in LANameLines(state: s, ended: e, big: false) }
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     LAEnds(state: s, stale: stale) { e in LAButtons(state: s, n: n, ended: e, size: 38, onIsland: true) }
-                        .padding(.trailing, 8).padding(.top, 18)
+                        .padding(.trailing, 6).padding(.top, 10)
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    LADismissBar(state: s).padding(.horizontal, 24)
                 }
             } compactLeading: {
                 LAEnds(state: s, stale: stale) { e in LARing(state: s, ended: e, size: 22, onIsland: true) }
@@ -147,39 +152,97 @@ private struct LALockCard: View {
     let n: Int
     let ended: Bool
     var body: some View {
-        let card = LAEnds(state: state, stale: ended) { e in LALockCardBody(state: state, n: n, ended: e) }
-        if let dark = state.dark {
-            card.environment(\.colorScheme, dark ? .dark : .light)
-        } else {
-            card   // the app follows the phone
-        }
+        // Always dark (owner, 2026-10-11: "the dark ones look sleek, modern and not loud; the light ones … soft and playful
+        // and colour in your face").
+        LAEnds(state: state, stale: ended) { e in LALockCardBody(state: state, n: n, ended: e) }
+            .environment(\.colorScheme, .dark)
     }
 }
 
+/// Look D's layout in the app's soft look (owner, 2026-10-11): the soft ring on the left with the prayer's symbol
+/// inside (✓ once prayed), the name and two lines beside it, the soft round buttons on the right, the score colour
+/// glowing out from the ring, dark; once prayed, the 15 s bar along the bottom.
 private struct LALockCardBody: View {
     let state: LATestAttributes.ContentState
     let n: Int
     let ended: Bool
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        HStack(spacing: 0) {
-            LALeftLines(state: state, ended: ended)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            LACentreRing(state: state, ended: ended, size: 96, onIsland: false)
+        HStack(spacing: 16) {
+            LASideRing(state: state, ended: ended, size: 78, onIsland: false)
+            LANameLines(state: state, ended: ended, big: true)
+            Spacer(minLength: 0)
             LAButtons(state: state, n: n, ended: ended, size: 44, onIsland: false)
-                .frame(maxWidth: .infinity, alignment: .trailing)
         }
-        .padding(.horizontal, 18).padding(.vertical, 12)
-        // Our own solid surface under the wash: iOS draws `activityBackgroundTint` see-through, so the wallpaper showed
-        // through and a red wash over a blue sky read pink (owner's phone, 2026-10-11).
+        .padding(.horizontal, 18).padding(.vertical, 14)
+        // Our own solid surface under the glow: iOS draws `activityBackgroundTint` see-through, so the wallpaper showed
+        // through and turned a red glow pink (owner's phone, 2026-10-11).
         .background {
-            ZStack(alignment: .bottomLeading) {
+            ZStack {
                 WidgetSoft.surface(scheme)
                 LAWash(state: state, ended: ended)
             }
         }
+        .overlay(alignment: .bottom) { LADismissBar(state: state).padding(.horizontal, 18).padding(.bottom, 7) }
         .activityBackgroundTint(WidgetSoft.surface(scheme))
         .activitySystemActionForegroundColor(.primary)
+    }
+}
+
+/// The soft ring with the prayer's symbol inside (a ✓ once prayed).
+private struct LASideRing: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    let size: CGFloat
+    let onIsland: Bool
+    var body: some View {
+        ZStack {
+            LARing(state: state, ended: ended, size: size, onIsland: onIsland)
+            Image(systemName: state.markedAt == nil ? state.symbol : "checkmark")
+                .font(.system(size: size * 0.24, weight: .light))
+                .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// "Asr" in the ring's light rounded type, then: the time left (red in the last half hour) + "ends 6:48 PM"; prayed:
+/// "Prayed 4:31 PM" + "Perfect · 100"; ended: "Asr ended" + "6:48 PM · not marked".
+private struct LANameLines: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    let big: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(ended ? "\(state.label) ended" : state.label)
+                .font(.system(size: big ? 24 : 19, weight: .light, design: .rounded))
+                .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            Group {
+                if let at = state.markedAt {
+                    let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
+                    Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
+                        .foregroundStyle(.primary)
+                    Text("\(PrayerScoring.grade(for: score).rawValue) · \(Int((score * 100).rounded()))")
+                        .foregroundStyle(.secondary)
+                } else if ended {
+                    Text("\(state.end.formatted(date: .omitted, time: .shortened)) · not marked")
+                        .foregroundStyle(.secondary)
+                } else {
+                    let lastHalf = state.end.addingTimeInterval(-30 * 60)
+                    ZStack(alignment: .leading) {
+                        LATimeLeft(end: state.end).foregroundStyle(.primary)
+                            .mask { LAGate(from: nil, until: lastHalf) }
+                        LATimeLeft(end: state.end).foregroundStyle(.red)
+                            .mask { LAGate(from: lastHalf, until: nil) }
+                    }
+                    Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .font(.system(size: big ? 14 : 12, weight: .regular, design: .rounded))
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
     }
 }
 
@@ -263,6 +326,21 @@ private struct LATimeLeft: View {
     }
 }
 
+/// After Mark prayed: how long until the card goes (shukr ends it 15 s after the tap) — a thin sage bar along the
+/// bottom, full at the tap and emptying right to left, as the post-salah pill's ring empties. Timer-driven, no updates.
+struct LADismissBar: View {
+    let state: LATestAttributes.ContentState
+    static let seconds: TimeInterval = 15
+    var body: some View {
+        if let at = state.markedAt {
+            ProgressView(timerInterval: at...at.addingTimeInterval(Self.seconds), countsDown: true) { EmptyView() } currentValueLabel: { EmptyView() }
+                .progressViewStyle(.linear)
+                .tint(Color(red: 0.43, green: 0.62, blue: 0.5))
+                .labelsHidden()
+        }
+    }
+}
+
 /// The island's small right side: time left; marked → the grade in its colour; ended → "ended".
 private struct LACompactTrailing: View {
     let state: LATestAttributes.ContentState
@@ -295,7 +373,7 @@ private struct LAButtons: View {
         if state.markedAt != nil {
             VStack(spacing: 8) {
                 LARoundButton(intent: LATestOpenIntent(what: "Photo", n: n), symbol: "camera", size: size * 0.86, onIsland: onIsland)
-                LARoundButton(intent: LATestOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagongrid", size: size * 0.86, onIsland: onIsland)
+                LARoundButton(intent: LATestOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: size * 0.86, onIsland: onIsland)
             }
         } else if ended {
             LARoundButton(intent: LATestMarkIntent(n: n), symbol: "circle.dashed", size: size, onIsland: onIsland, dim: true)
@@ -332,7 +410,7 @@ private struct LARoundButton<I: AppIntent>: View {
     }
 }
 
-/// The score colour washing up from the bottom-left corner, in the colour of the grade now (it changes by itself);
+/// The score colour glowing out from the ring (Look D's halo), in the colour of the grade now (it changes by itself);
 /// prayed: its score's colour; ended: none.
 private struct LAWash: View {
     let state: LATestAttributes.ContentState
@@ -349,7 +427,7 @@ private struct LAWash: View {
         }
     }
     private func wash(_ c: Color) -> some View {
-        RadialGradient(colors: [c.opacity(0.32), c.opacity(0)], center: .bottomLeading, startRadius: 0, endRadius: 260)
+        RadialGradient(colors: [c.opacity(0.40), c.opacity(0.12), c.opacity(0)], center: UnitPoint(x: 0.17, y: 0.5), startRadius: 24, endRadius: 230)
     }
 }
 
@@ -360,7 +438,11 @@ enum LAGrades {
         let changes = PrayerScoring.gradeChanges(start: s.start, end: s.end)
         let starts: [Date?] = [nil] + changes.map { Optional($0) }
         return starts.enumerated().map { i, from in
-            let at = (from ?? s.start).addingTimeInterval(1)
+            // The grade in the middle of its stretch: 1 s after a change, a long window's score is still 0.99999…,
+            // which `grade(for:)` counts as Perfect (a 160-min Asr stayed green 40 min in).
+            let a = from ?? s.start
+            let b = i + 1 < starts.count ? (starts[i + 1] ?? s.end) : s.end
+            let at = a.addingTimeInterval(b.timeIntervalSince(a) / 2)
             let score = PrayerScoring.score(start: s.start, end: s.end, markedAt: at)
             return Span(grade: PrayerScoring.grade(for: score), color: PrayerScoring.color(for: score),
                         from: from, until: i + 1 < starts.count ? starts[i + 1] : s.end)
@@ -432,6 +514,9 @@ struct LAGate: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .clipped()
+            // Light, whatever the card: in dark the stock bar's tint and track resolve differently and the gates
+            // stopped switching (the ring stayed green past 30 min on the dark card).
+            .environment(\.colorScheme, .light)
             .compositingGroup()
             .brightness(lift)
             .contrast(3)

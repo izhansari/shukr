@@ -954,9 +954,9 @@ enum LAReal {
         ids.append(id); g.set(Array(ids.suffix(30)), forKey: markedKey)
     }
 
-    /// Prayed already? A card mark, else the store (logged: on his phone a marked Asr read as not done once).
+    /// Prayed already? From the store (a card mark goes through the app's own toggle, so it's there; an unmark in the
+    /// app brings the card back). Logged while the window is under way.
     private static func done(_ w: Window) -> Bool {
-        if (g.array(forKey: markedKey) as? [Int] ?? []).contains(w.id) { return true }
         guard let c = SharedStore.widgetContainer else { LATestLog.add("done? \(w.name): store not open"); return false }
         let row = SharedStore.fetchPrayer(named: w.name, on: w.start, in: ModelContext(c))
         let yes = row?.isCompleted == true
