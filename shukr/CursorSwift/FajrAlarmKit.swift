@@ -702,10 +702,21 @@ enum LATest {
                       + (ProcessInfo.processInfo.isLowPowerModeEnabled ? " · LOW POWER" : ""))
         LATestHooks.mark = { n in await mark(n) }
         // Photo / Tasbih open shukr: the marked card goes at once (Frank's brief, look G).
-        LATestHooks.open = { n in
+        LATestHooks.open = { n, what in
+            let name = Activity<LATestAttributes>.activities.first(where: { $0.attributes.n == n })?.content.state.label
             if let a = Activity<LATestAttributes>.activities.first(where: { $0.attributes.n == n }) {
                 await a.end(nil, dismissalPolicy: .immediate)
                 LATestLog.add("ended #\(n) (opened shukr)")
+            }
+            // Where the post-salah pill's two sections go: the prayer's camera, or Tasbih Fatimah in place.
+            if what == "Photo", let name {
+                try? await Task.sleep(for: .milliseconds(700))   // shukr in front first
+                NotificationCenter.default.post(name: LAReal.openPhoto, object: name)
+                LATestLog.add("→ camera for \(name)")
+            } else if what == "Tasbih" {
+                UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: LAReal.openTasbihKey)
+                DeepLinkSignal.post()
+                LATestLog.add("→ Tasbih Fatimah")
             }
         }
         list("at launch")
@@ -923,6 +934,10 @@ enum LATest {
 /// window is never scheduled twice. Every run of shukr plans (launch, foreground, background, each start's wake, Mark
 /// prayed, a Settings toggle) and logs what it did to la.log.
 enum LAReal {
+    /// A card's Photo: PrayerTimesView's page opens that prayer's camera (object: the prayer's name).
+    static let openPhoto = Notification.Name("la.openPhoto")
+    /// A card's Tasbih: Tasbih Fatimah, as the post-salah pill opens it (app-group flag, read with the widget's flags).
+    static let openTasbihKey = "la.openTasbih"
     static let onKey = "la.real"
     private static var g: UserDefaults { UserDefaults(suiteName: SharedStore.appGroup)! }
     static var on: Bool { g.bool(forKey: onKey) }
@@ -999,7 +1014,28 @@ enum LAReal {
             }
         }
         all = Activity<LATestAttributes>.activities
-        var held = Set(all.filter { !endedIDs.contains($0.id) && ($0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale) }.map(\.attributes.n))
+        var live = all.filter { !endedIDs.contains($0.id) && ($0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale) }
+        // The earliest windows win (an unmarked prayer under way must show even when the 5 are full of later ones —
+        // owner's unmark test: tomorrow's Maghrib held the slot): the windows that should be held now, in order…
+        let markedHeld = live.filter { $0.content.state.markedAt != nil }.count
+        var shouldHold: [Int] = []
+        for w in want where shouldHold.count < 5 - markedHeld {
+            if w.start <= now && done(w) { continue }
+            shouldHold.append(w.id)
+        }
+        // …and the latest pending ones past them give their slots back, one for each missing window.
+        // Only with shukr in front: iOS refuses new ones from the background, so a freed slot would stay empty.
+        var room = bg ? 0 : shouldHold.filter { id in !live.contains { $0.attributes.n == id } }.count - (5 - live.count)
+        for a in live.sorted(by: { $0.content.state.start > $1.content.state.start })
+            where a.activityState == .pending && !shouldHold.contains(a.attributes.n) {
+            guard room > 0 else { break }
+            room -= 1
+            Task { await a.end(nil, dismissalPolicy: .immediate) }
+            endedIDs.insert(a.id)
+            ended.append("\(a.content.state.label) \(a.content.state.start.formatted(date: .abbreviated, time: .shortened)) (to make room)")
+        }
+        live = live.filter { !endedIDs.contains($0.id) }
+        var held = Set(live.map(\.attributes.n))
         var added: [String] = []
         var failed: String?
         for w in want where !held.contains(w.id) {

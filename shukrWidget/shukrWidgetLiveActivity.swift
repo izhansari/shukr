@@ -418,6 +418,15 @@ private struct LAButtons: View {
     }
 }
 
+/// Pressed: a touch darker and smaller (owner: the button "doesn't visually react to our press").
+private struct LAPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .brightness(configuration.isPressed ? -0.12 : 0)
+            .scaleEffect(configuration.isPressed ? 0.93 : 1)
+    }
+}
+
 private struct LARoundButton<I: AppIntent>: View {
     let intent: I
     let symbol: String
@@ -443,7 +452,7 @@ private struct LARoundButton<I: AppIntent>: View {
                     }
                 }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(LAPressStyle())
     }
 }
 
