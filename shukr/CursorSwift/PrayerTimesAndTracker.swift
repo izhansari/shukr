@@ -1793,6 +1793,7 @@ struct PrayerTimesView: View {
         #if DEBUG
         @State private var demoViewer = false
         @State private var demoAlarmCheck = false
+        @State private var demoLATuner = false
         @State private var demoPileMock: String?
         struct MockVariant: Identifiable { let id: String }
         #endif
@@ -2074,6 +2075,10 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(2))
                     demoAlarmCheck = true
                 }
+                if ProcessInfo.processInfo.arguments.contains("-laTuner") {
+                    try? await Task.sleep(for: .seconds(2))
+                    demoLATuner = true
+                }
                 if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoPileMock"),
                    i + 1 < ProcessInfo.processInfo.arguments.count {
                     try? await Task.sleep(for: .seconds(2))
@@ -2086,6 +2091,8 @@ struct PrayerTimesView: View {
             }
             // `-demoAlarmCheck`: Settings' Alarm check page (FajrAlarmKit.swift).
             .sheet(isPresented: $demoAlarmCheck) { NavigationStack { FajrAlarmCheckView() } }
+            // `-laTuner`: Settings → Live Activities → Tune the card's look.
+            .sheet(isPresented: $demoLATuner) { LATunerView() }
             #endif
             // The sheet popping (whoever changed it): the chevron, "N done" and the bar fade with the page's own move.
             .animation(CircleMotion.movement(CircleMotion.page, reduced: reduceMotion), value: showBottom)

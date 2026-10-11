@@ -426,8 +426,10 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Untried on a real watch: wrist-down runtime, outbox catch-up, compass, memo, complications. DEBUG `-demoWatch`.
 
 **Prayer Live Activities** (research, DEBUG only — board MY4R; findings, logs, shots in shukrGit/board/mocks/prayer-live-activities/ and live-activity-looks/)
-- Look G (decision live-activity-look) in shukrWidgetLiveActivity.swift; everything that changes with time is a timer gate (`LAGate`) — iOS's
-  stale flag didn't flip on time. Harness `LATest` / `LAReal` at the end of FajrAlarmKit.swift; Settings → Live Activities (`LiveActivityPrefs`).
+- Look D's layout in the soft look, always dark (owner); the card's views live in SharedTargetForIntents.swift (app + widget) and read
+  `LATuning` (app group JSON `la.tuning`) — Settings → Live Activities → Tune the card's look (`LATunerView`, DEBUG `-laTuner`) previews the same
+  card, Copy config / Show on Lock Screen (logs the JSON). Everything that changes with time is a timer gate (`LAGate`) — iOS's stale flag
+  didn't flip on time. Harness `LATest` / `LAReal` at the end of FajrAlarmKit.swift; Settings → Live Activities (`LiveActivityPrefs`).
 - Rules found on phones: 5 held at most; scheduled starts fire on their own and wake / relaunch shukr (it can END then, not schedule); Mark
   prayed may schedule; an open refills. Real mode (`-laReal`, on his 13 Pro Max only; `-laRealOff`) plans at every run. Log: app group
   Library/Application Support/la-test.log (`devicectl device copy from --domain-type appGroupDataContainer …`).

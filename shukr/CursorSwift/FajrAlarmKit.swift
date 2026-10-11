@@ -982,7 +982,7 @@ enum LAReal {
     }
 
     /// End what shouldn't be showing, then add windows up to iOS's 5. Returns how many it added.
-    @MainActor @discardableResult static func plan(reason: String) -> Int {
+    @MainActor @discardableResult static func plan(reason: String, retry: Bool = false) -> Int {
         guard on, #available(iOS 26.0, *) else { return 0 }
         let now = Date()
         let bg = UIApplication.shared.applicationState == .background
@@ -992,11 +992,12 @@ enum LAReal {
         let liveStarts = all.filter { $0.activityState == .active && $0.content.state.markedAt == nil }.map(\.content.state.start)
         var ended: [String] = []
         var endedIDs = Set<String>()
+        var ending: [Task<Void, Never>] = []
         for a in all where a.activityState != .ended && a.activityState != .dismissed {
             let st = a.content.state
             if let m = st.markedAt {
                 guard now.timeIntervalSince(m) > 20 else { continue }   // marked: its 15 s with photo + Tasbih
-                Task { await a.end(nil, dismissalPolicy: .immediate) }
+                ending.append(Task { await a.end(nil, dismissalPolicy: .immediate) })
                 endedIDs.insert(a.id)
                 ended.append("\(st.label) (marked \(Int(now.timeIntervalSince(m))) s ago — shukr was paused before its 15 s)")
                 continue
@@ -1008,7 +1009,7 @@ enum LAReal {
             else if !wantIDs.contains(a.attributes.n) { why = "not wanted (off / times moved)" }
             else if a.activityState != .pending, done(Window(name: st.label, start: st.start, end: st.end)) { why = "prayed in shukr" }
             if let why {
-                Task { await a.end(nil, dismissalPolicy: .immediate) }
+                ending.append(Task { await a.end(nil, dismissalPolicy: .immediate) })
                 endedIDs.insert(a.id)
                 ended.append("\(st.label) \(st.start.formatted(date: .omitted, time: .shortened)) (\(why))")
             }
@@ -1030,7 +1031,7 @@ enum LAReal {
             where a.activityState == .pending && !shouldHold.contains(a.attributes.n) {
             guard room > 0 else { break }
             room -= 1
-            Task { await a.end(nil, dismissalPolicy: .immediate) }
+            ending.append(Task { await a.end(nil, dismissalPolicy: .immediate) })
             endedIDs.insert(a.id)
             ended.append("\(a.content.state.label) \(a.content.state.start.formatted(date: .abbreviated, time: .shortened)) (to make room)")
         }
@@ -1066,6 +1067,13 @@ enum LAReal {
         if let failed { line += " · couldn't add \(failed)" }
         if want.isEmpty { line += " · NO WINDOWS (no location?)" }
         LATestLog.add(line)
+        // An end hadn't landed yet when it asked (iOS still counted 5 — his first unmark): once they have, once more.
+        if let failed, failed.contains("targetMaximumExceeded"), !ending.isEmpty, !retry {
+            Task { @MainActor in
+                for e in ending { await e.value }
+                plan(reason: "\(reason) · after the ends landed", retry: true)
+            }
+        }
         return added.count
     }
 }

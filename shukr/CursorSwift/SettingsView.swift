@@ -1545,6 +1545,7 @@ import ActivityKit
 struct LiveActivitySettingsSection: View {
     @State private var enabled = ActivityAuthorizationInfo().areActivitiesEnabled
     @State private var showInfo = false
+    @State private var showTuner = false
 
     var body: some View {
         Section {
@@ -1566,6 +1567,12 @@ struct LiveActivitySettingsSection: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            Button {
+                showTuner = true
+            } label: {
+                Label("Tune the card's look", systemImage: "slider.horizontal.3")
+            }
+            .sheet(isPresented: $showTuner) { LATunerView() }
         } header: {
             HStack {
                 Text("Live Activities")
@@ -1617,6 +1624,186 @@ private struct LiveActivityPrayerCol: View {
         }
         .buttonStyle(.plain)
         .animation(.snappy(duration: 0.2), value: on)
+    }
+}
+
+/// The Live Activity card's tuner (owner, 2026-10-11: "give me a tuner to adjust the ui layout, gradient, font size,
+/// positions … easily labeled … and not hiding the ui so i can see the changes"). The very card the Lock Screen draws
+/// (shared views), pinned at the top; its state picked under it; labelled sliders below. Every change is saved to the
+/// app group at once; "Show on Lock Screen" redraws the real card and writes the config into la-test.log; "Copy" copies it.
+struct LATunerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var t = LATuning.current
+    @State private var kind = 0
+    @State private var base = Date()
+    @State private var note = ""
+
+    private let kinds = ["Running", "Last ½ hr", "Marked", "Ended", "Island"]
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                preview
+                    .frame(height: 210)
+                    .frame(maxWidth: .infinity)
+                    .background(LinearGradient(colors: [Color(red: 0.16, green: 0.22, blue: 0.30), Color(red: 0.05, green: 0.08, blue: 0.12)],
+                                               startPoint: .top, endPoint: .bottom))
+                    .allowsHitTesting(false)
+                Picker("State", selection: $kind) {
+                    ForEach(kinds.indices, id: \.self) { Text(kinds[$0]).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .onChange(of: kind) { _, _ in base = Date() }
+                Form { controls }
+            }
+            .navigationTitle("Live Activity look")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("Copy config", systemImage: "doc.on.doc") {
+                            UIPasteboard.general.string = t.json
+                            note = "Copied — paste it to Sami"
+                        }
+                        Button("Show on Lock Screen", systemImage: "lock.iphone") { Task { await apply() } }
+                        Button("Reset to the current look", systemImage: "arrow.counterclockwise", role: .destructive) {
+                            t = LATuning(); note = "Reset"
+                        }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                HStack(spacing: 10) {
+                    Button { UIPasteboard.general.string = t.json; note = "Copied — paste it to Sami" } label: {
+                        Label("Copy config", systemImage: "doc.on.doc").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    Button { Task { await apply() } } label: {
+                        Label("Show on Lock Screen", systemImage: "lock.iphone").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .background(.bar)
+                .overlay(alignment: .top) {
+                    if !note.isEmpty { Text(note).font(.caption).foregroundStyle(.secondary).offset(y: -18) }
+                }
+            }
+            .onChange(of: t) { _, new in new.save(); note = "" }
+        }
+    }
+
+    // MARK: The pinned preview
+
+    private var sample: LATestAttributes.ContentState {
+        let m: Double = 60
+        switch kind {
+        case 1: return .init(label: "Asr", start: base.addingTimeInterval(-110 * m), end: base.addingTimeInterval(20 * m), symbol: prayerIcon(for: "Asr"))
+        case 2: return .init(label: "Asr", start: base.addingTimeInterval(-25 * m), end: base.addingTimeInterval(115 * m), symbol: prayerIcon(for: "Asr"), markedAt: base)
+        case 3: return .init(label: "Asr", start: base.addingTimeInterval(-145 * m), end: base.addingTimeInterval(-5 * m), symbol: prayerIcon(for: "Asr"))
+        default: return .init(label: "Asr", start: base.addingTimeInterval(-40 * m), end: base.addingTimeInterval(100 * m), symbol: prayerIcon(for: "Asr"))
+        }
+    }
+
+    @ViewBuilder private var preview: some View {
+        let s = sample
+        if kind == 4 {
+            // The Dynamic Island opened up, on black.
+            HStack(spacing: 12) {
+                LASideRing(state: s, ended: false, size: t.islandRingSize, symbolSize: t.islandRingSize * 0.26, onIsland: true, t: t)
+                LANameLines(state: s, ended: false, big: false, t: t)
+                Spacer(minLength: 0)
+                LAGlyphs(state: s, n: 0, ended: false, size: t.islandButtonSize, onIsland: true, t: t)
+            }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            .frame(maxWidth: .infinity)
+            .background(Color.black, in: RoundedRectangle(cornerRadius: 44, style: .continuous))
+            .environment(\.colorScheme, .dark)
+            .padding(.horizontal, 10)
+        } else {
+            LALockCardBody(state: s, n: 0, ended: kind == 3, t: t)
+                .environment(\.colorScheme, .dark)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .padding(.horizontal, 16)
+        }
+    }
+
+    // MARK: The controls
+
+    @ViewBuilder private var controls: some View {
+        Section("Card") {
+            row("Side padding", "space inside the card, left and right", $t.cardPaddingSides, 0...40, 1)
+            row("Top / bottom padding", "space inside the card, above and below", $t.cardPaddingTopBottom, 0...40, 1)
+            row("Minimum height", "the card is never shorter than this", $t.cardMinHeight, 60...180, 1)
+            row("Gap: ring → text", "space between the ring and the name", $t.gapRingToText, 0...40, 1)
+            row("Background grey", "0 = black, higher = lighter", $t.cardSurfaceGrey, 0...0.3, 0.01)
+        }
+        Section("Ring") {
+            row("Ring size", "the ring's box on the left", $t.ringSize, 40...120, 1)
+            row("Ring diameter", "share of the box the ring fills", $t.ringArcDiameter, 0.5...1, 0.01)
+            row("Soft band width", "the raised band behind the arc", $t.ringBandWidth, 0...20, 0.5)
+            row("Arc width", "the coloured progress line", $t.ringArcWidth, 1...12, 0.5)
+            row("Band lift", "the light on the band's top-left edge", $t.ringBandLift, 0...0.3, 0.01)
+            row("Prayer symbol size", "the sun / moon inside the ring", $t.ringSymbolSize, 8...40, 1)
+        }
+        Section("Text") {
+            row("Name size", "\"Asr\"", $t.titleSize, 10...36, 1)
+            row("Time left size", "\"1 hour, 40 minutes left\" · \"Prayed 4:31 PM\"", $t.timeLeftSize, 8...24, 1)
+            row("Small line size", "\"ends 6:48 PM\" · \"Perfect · 100\"", $t.endsSize, 8...20, 1)
+            row("Line spacing", "space between the three lines", $t.lineSpacing, 0...12, 0.5)
+            row("Move text up / down", "negative = up", $t.textOffsetY, -20...20, 1)
+        }
+        Section("Glow") {
+            row("Strength", "how strong the colour is at the ring", $t.glowStrength, 0...0.6, 0.01)
+            row("Reach", "how far it spreads before it's gone", $t.glowReach, 0.1...1.2, 0.01)
+            row("Centre left / right", "0 = left edge, 1 = right edge", $t.glowCentreX, 0...1, 0.01)
+            row("Centre up / down", "0 = top, 1 = bottom", $t.glowCentreY, 0...1, 0.01)
+        }
+        Section("Buttons") {
+            row("Button size", "the soft round disc", $t.buttonSize, 24...64, 1)
+            row("Symbol size", "the circle / camera / beads inside", $t.buttonSymbolSize, 8...32, 1)
+            row("Gap between camera and beads", "after marking", $t.buttonStackGap, 0...24, 1)
+            row("Move buttons left / right", "positive = right", $t.buttonOffsetX, -20...20, 1)
+        }
+        Section("15-second bar (after marking — pick Marked)") {
+            row("Side inset", "space from the card's left and right edges", $t.barSideInset, 0...60, 1)
+            row("Bottom inset", "space from the card's bottom edge", $t.barBottomInset, 0...30, 1)
+            row("Thickness", "1 = the system's own", $t.barThickness, 0.5...3, 0.1)
+        }
+        Section("Dynamic Island (opened up — pick Island)") {
+            row("Ring size", "", $t.islandRingSize, 30...90, 1)
+            row("Name size", "", $t.islandTitleSize, 10...30, 1)
+            row("Line size", "", $t.islandLineSize, 8...20, 1)
+            row("Button size", "", $t.islandButtonSize, 24...56, 1)
+        }
+    }
+
+    private func row(_ title: String, _ hint: String, _ value: Binding<Double>, _ range: ClosedRange<Double>, _ step: Double) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(title).font(.subheadline)
+                Spacer()
+                Text(step < 1 ? String(format: "%.2f", value.wrappedValue) : String(format: "%.0f", value.wrappedValue))
+                    .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+            }
+            if !hint.isEmpty { Text(hint).font(.caption2).foregroundStyle(.secondary) }
+            Slider(value: value, in: range, step: step)
+        }
+    }
+
+    /// Saves, redraws the real cards (an update with the same content makes the widget extension render again, reading
+    /// the new numbers), and writes the config into la-test.log so Sami can read it off the phone.
+    private func apply() async {
+        t.save()
+        var n = 0
+        for a in Activity<LATestAttributes>.activities where a.activityState == .active || a.activityState == .stale {
+            await a.update(a.content)
+            n += 1
+        }
+        LATestLog.add("tuning applied to \(n) card(s): " + t.json.replacingOccurrences(of: "\n", with: " "))
+        note = n == 0 ? "Saved — no card on the Lock Screen right now" : "Saved and redrawn on the Lock Screen"
     }
 }
 #endif

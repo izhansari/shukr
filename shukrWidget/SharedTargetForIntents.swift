@@ -1818,3 +1818,492 @@ enum LATestLog {
     }
 }
 #endif
+
+#if DEBUG
+import SwiftUI
+
+// MARK: - Prayer Live Activity card (MY4R), shared by the widget extension (the real card) and the app (the tuner's
+// preview). Look D's layout in the app's soft look, dark. Every size / gap / glow comes from `LATuning` (owner: "give me
+// a tuner … then I can send you the config"), kept in the app group so the real card reads what the tuner set.
+
+/// The card's adjustable numbers. Defaults = what's on his phone now. Stored as JSON in the app group (`la.tuning`).
+struct LATuning: Codable, Equatable {
+    // Card
+    var cardPaddingSides: Double = 16
+    var cardPaddingTopBottom: Double = 14
+    var cardMinHeight: Double = 124
+    var gapRingToText: Double = 16
+    var cardSurfaceGrey: Double = 0.10
+    // Ring
+    var ringSize: Double = 78
+    var ringArcDiameter: Double = 0.81      // of the ring size
+    var ringBandWidth: Double = 10          // at the 90 pt design size
+    var ringArcWidth: Double = 4.5          // at the 90 pt design size
+    var ringSymbolSize: Double = 20
+    var ringBandLift: Double = 0.05
+    // Text
+    var titleSize: Double = 20
+    var timeLeftSize: Double = 14
+    var endsSize: Double = 12
+    var lineSpacing: Double = 2
+    var textOffsetY: Double = 0
+    // Glow
+    var glowStrength: Double = 0.20
+    var glowReach: Double = 0.52
+    var glowCentreX: Double = 0.12
+    var glowCentreY: Double = 0.5
+    // Buttons
+    var buttonSize: Double = 44
+    var buttonSymbolSize: Double = 18
+    var buttonStackGap: Double = 8
+    var buttonOffsetX: Double = 0
+    // 15 s bar
+    var barSideInset: Double = 18
+    var barBottomInset: Double = 7
+    var barThickness: Double = 1
+    // Dynamic Island (opened up)
+    var islandRingSize: Double = 68
+    var islandTitleSize: Double = 18
+    var islandLineSize: Double = 12
+    var islandButtonSize: Double = 38
+
+    static let key = "la.tuning"
+    static var current: LATuning {
+        guard let data = UserDefaults(suiteName: SharedStore.appGroup)?.data(forKey: key),
+              let t = try? JSONDecoder().decode(LATuning.self, from: data) else { return LATuning() }
+        return t
+    }
+    func save() {
+        if let data = try? JSONEncoder().encode(self) { UserDefaults(suiteName: SharedStore.appGroup)?.set(data, forKey: Self.key) }
+    }
+    var json: String {
+        let e = JSONEncoder(); e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return (try? e.encode(self)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+    }
+}
+
+/// The app's soft look, dark (the card is always dark — owner).
+enum LASoft {
+    static func surface(_ t: LATuning) -> Color { Color(white: t.cardSurfaceGrey) }
+    static let shade = Color.black.opacity(0.75)
+    static let light = Color.white.opacity(0.06)
+}
+
+/// The running look until the window ends, the ended look from then on — by itself (timer gates), because iOS's stale
+/// flag didn't flip at the stale date. Marked, or already stale: just that one look.
+struct LAEnds<Content: View>: View {
+    let state: LATestAttributes.ContentState
+    let stale: Bool
+    @ViewBuilder let content: (_ ended: Bool) -> Content
+    var body: some View {
+        if state.markedAt != nil {
+            content(false)
+        } else if stale {
+            content(true)
+        } else {
+            ZStack {
+                content(false).mask { LAGate(from: nil, until: state.end) }
+                content(true).mask { LAGate(from: state.end, until: nil) }
+            }
+        }
+    }
+}
+
+/// The Lock Screen card (always dark).
+struct LALockCard: View {
+    let state: LATestAttributes.ContentState
+    let n: Int
+    let stale: Bool
+    var t = LATuning.current
+    var body: some View {
+        LAEnds(state: state, stale: stale) { e in LALockCardBody(state: state, n: n, ended: e, t: t) }
+            .environment(\.colorScheme, .dark)
+    }
+}
+
+/// Look D's layout in the soft look: the soft ring with the prayer's symbol on the left, the name and two lines beside
+/// it, the soft round buttons on the right, the score colour glowing out from the ring; once prayed, the 15 s bar.
+struct LALockCardBody: View {
+    let state: LATestAttributes.ContentState
+    let n: Int
+    let ended: Bool
+    let t: LATuning
+    var body: some View {
+        HStack(spacing: t.gapRingToText) {
+            LASideRing(state: state, ended: ended, size: t.ringSize, symbolSize: t.ringSymbolSize, onIsland: false, t: t)
+            LANameLines(state: state, ended: ended, big: true, t: t).offset(y: t.textOffsetY)
+            Spacer(minLength: 0)
+            LAGlyphs(state: state, n: n, ended: ended, size: t.buttonSize, onIsland: false, t: t).offset(x: t.buttonOffsetX)
+        }
+        .padding(.horizontal, t.cardPaddingSides).padding(.vertical, t.cardPaddingTopBottom)
+        .frame(minHeight: t.cardMinHeight)
+        // Our own solid surface under the glow: iOS draws `activityBackgroundTint` see-through (the wallpaper turned a red
+        // glow pink on his phone).
+        .background {
+            ZStack {
+                LASoft.surface(t)
+                LAWash(state: state, ended: ended, t: t)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            LADismissBar(state: state).scaleEffect(x: 1, y: t.barThickness)
+                .padding(.horizontal, t.barSideInset).padding(.bottom, t.barBottomInset)
+        }
+        .activityBackgroundTint(LASoft.surface(t))
+        .activitySystemActionForegroundColor(.primary)
+    }
+}
+
+/// The soft ring with the prayer's symbol inside (a ✓ in its score colour once prayed).
+struct LASideRing: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    let size: Double
+    let symbolSize: Double
+    let onIsland: Bool
+    let t: LATuning
+    var body: some View {
+        ZStack {
+            LARing(state: state, ended: ended, size: size * t.ringArcDiameter, onIsland: onIsland, t: t)
+            if let at = state.markedAt {
+                Image(systemName: "checkmark")
+                    .font(.system(size: symbolSize * 0.9, weight: .medium))
+                    .foregroundStyle(PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at)))
+            } else {
+                Image(systemName: state.symbol)
+                    .font(.system(size: symbolSize, weight: .light))
+                    .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// The name, then: the time left (red in the last half hour) + "ends 6:48 PM"; prayed: "Prayed 4:31 PM" +
+/// "Perfect · 100"; ended: "Asr ended" + "6:48 PM · not marked".
+struct LANameLines: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    let big: Bool
+    let t: LATuning
+    var body: some View {
+        let title = big ? t.titleSize : t.islandTitleSize
+        let line = big ? t.timeLeftSize : t.islandLineSize
+        let small = big ? t.endsSize : t.islandLineSize
+        VStack(alignment: .leading, spacing: t.lineSpacing) {
+            Text(ended ? "\(state.label) ended" : state.label)
+                .font(.system(size: title, weight: .light))
+                .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            if let at = state.markedAt {
+                let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
+                Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
+                    .font(.system(size: line)).foregroundStyle(.primary)
+                Text("\(PrayerScoring.grade(for: score).rawValue) · \(Int((score * 100).rounded()))")
+                    .font(.system(size: small)).foregroundStyle(.secondary)
+            } else if ended {
+                Text("\(state.end.formatted(date: .omitted, time: .shortened)) · not marked")
+                    .font(.system(size: line)).foregroundStyle(.secondary)
+            } else {
+                let lastHalf = state.end.addingTimeInterval(-30 * 60)
+                ZStack(alignment: .leading) {
+                    LATimeLeft(end: state.end).foregroundStyle(.primary)
+                        .mask { LAGate(from: nil, until: lastHalf) }
+                    LATimeLeft(end: state.end).foregroundStyle(.red)
+                        .mask { LAGate(from: lastHalf, until: nil) }
+                }
+                .font(.system(size: line))
+                if big {
+                    Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: small)).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+    }
+}
+
+/// "2 hours, 36 minutes left" — the system's live offset, hours and minutes only, ticking by itself.
+struct LATimeLeft: View {
+    let end: Date
+    var body: some View {
+        Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.hour, .minute], maxFieldCount: 2, sign: .never))) left")
+    }
+}
+
+/// After Mark prayed: how long until the card goes (15 s) — a thin sage bar, full at the tap, emptying right to left.
+struct LADismissBar: View {
+    let state: LATestAttributes.ContentState
+    static let seconds: TimeInterval = 15
+    var body: some View {
+        if let at = state.markedAt {
+            ProgressView(timerInterval: at...at.addingTimeInterval(Self.seconds), countsDown: true) { EmptyView() } currentValueLabel: { EmptyView() }
+                .progressViewStyle(.linear)
+                .tint(Color(red: 0.43, green: 0.62, blue: 0.5))
+                .labelsHidden()
+        }
+    }
+}
+
+/// The island's small right side: time left; prayed → the grade in its colour; ended → "ended".
+struct LACompactTrailing: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    var body: some View {
+        Group {
+            if let at = state.markedAt {
+                let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
+                Text(PrayerScoring.grade(for: score).rawValue).foregroundStyle(PrayerScoring.color(for: score))
+            } else if ended {
+                Text("ended").foregroundStyle(.secondary)
+            } else {
+                Text(timerInterval: state.start...state.end, countsDown: true).monospacedDigit()
+            }
+        }
+        .font(.system(size: 14, weight: .medium, design: .rounded))
+        .frame(maxWidth: 64)
+    }
+}
+
+/// The right side: the soft round buttons — `circle` marks it (as on the widget); prayed → camera over the zikr beads;
+/// ended → a grey dashed circle (Qaza; never red — owner).
+struct LAGlyphs: View {
+    let state: LATestAttributes.ContentState
+    let n: Int
+    let ended: Bool
+    let size: Double
+    let onIsland: Bool
+    let t: LATuning
+    var body: some View {
+        if state.markedAt != nil {
+            VStack(spacing: t.buttonStackGap) {
+                LARoundButton(intent: LATestOpenIntent(what: "Photo", n: n), symbol: "camera", size: size * 0.82, symbolSize: t.buttonSymbolSize * 0.9, onIsland: onIsland, t: t)
+                LARoundButton(intent: LATestOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: size * 0.82, symbolSize: t.buttonSymbolSize * 0.9, onIsland: onIsland, t: t)
+            }
+        } else if ended {
+            LARoundButton(intent: LATestMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
+        } else {
+            LARoundButton(intent: LATestMarkIntent(n: n), symbol: "circle", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, t: t)
+        }
+    }
+}
+
+/// Pressed: a touch darker and smaller.
+struct LAPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .brightness(configuration.isPressed ? -0.12 : 0)
+            .scaleEffect(configuration.isPressed ? 0.93 : 1)
+    }
+}
+
+/// The app's soft raised disc.
+struct LARoundButton<I: AppIntent>: View {
+    let intent: I
+    let symbol: String
+    let size: Double
+    let symbolSize: Double
+    var onIsland = false
+    var dim = false
+    let t: LATuning
+    var body: some View {
+        Button(intent: intent) {
+            Image(systemName: symbol)
+                .font(.system(size: symbolSize, weight: .light))
+                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                .frame(width: size, height: size)
+                .background {
+                    if onIsland {
+                        Circle().fill(Color(white: 0.11))
+                            .shadow(color: .black, radius: 3, x: 1.5, y: 1.5)
+                            .shadow(color: .white.opacity(0.09), radius: 3, x: -1.5, y: -1.5)
+                    } else {
+                        Circle().fill(LASoft.surface(t))
+                            .shadow(color: LASoft.shade, radius: 3, x: 1.5, y: 1.5)
+                            .shadow(color: LASoft.light, radius: 3, x: -1.5, y: -1.5)
+                    }
+                }
+        }
+        .buttonStyle(LAPressStyle())
+    }
+}
+
+/// The score colour glowing out from the ring (Look D's halo), in the colour of the grade now (changes by itself);
+/// prayed: its score's colour; ended: none.
+struct LAWash: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    let t: LATuning
+    var body: some View {
+        if let at = state.markedAt {
+            wash(PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at)))
+        } else if !ended {
+            ZStack {
+                ForEach(Array(LAGrades.spans(state).enumerated()), id: \.offset) { _, span in
+                    wash(span.color).mask { LAGate(from: span.from, until: span.until) }
+                }
+            }
+        }
+    }
+    /// An ellipse centred on the ring (Look D: 120 % × 140 % of the card), the colour at `glowStrength`, gone by `glowReach`.
+    private func wash(_ c: Color) -> some View {
+        GeometryReader { g in
+            let rx = g.size.width * 1.2 * t.glowReach, ry = g.size.height * 1.4 * t.glowReach
+            EllipticalGradient(colors: [c.opacity(t.glowStrength), c.opacity(0)], center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5)
+                .frame(width: rx * 2, height: ry * 2)
+                .position(x: g.size.width * t.glowCentreX, y: g.size.height * t.glowCentreY)
+        }
+    }
+}
+
+/// The window's grades in order, each with when it applies (its colour taken mid-stretch: 1 s after a change a long
+/// window's score is still 0.99999…, which counts as Perfect).
+enum LAGrades {
+    struct Span { let grade: PrayerScoring.Grade; let color: Color; let from: Date?; let until: Date? }
+    static func spans(_ s: LATestAttributes.ContentState) -> [Span] {
+        let changes = PrayerScoring.gradeChanges(start: s.start, end: s.end)
+        let starts: [Date?] = [nil] + changes.map { Optional($0) }
+        return starts.enumerated().map { i, from in
+            let a = from ?? s.start
+            let b = i + 1 < starts.count ? (starts[i + 1] ?? s.end) : s.end
+            let at = a.addingTimeInterval(b.timeIntervalSince(a) / 2)
+            let score = PrayerScoring.score(start: s.start, end: s.end, markedAt: at)
+            return Span(grade: PrayerScoring.grade(for: score), color: PrayerScoring.color(for: score),
+                        from: from, until: i + 1 < starts.count ? starts[i + 1] : s.end)
+        }
+    }
+}
+
+/// The soft raised band (the app's / widget's): the surface, lifted — shade down-right, light up-left.
+struct LASoftBand: View {
+    let width: Double
+    let t: LATuning
+    var body: some View {
+        Circle()
+            .stroke(LASoft.surface(t), lineWidth: width)
+            .shadow(color: LASoft.shade, radius: width * 0.6, x: width * 0.3, y: width * 0.3)
+            .shadow(color: LASoft.light, radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
+            .shadow(color: .white.opacity(t.ringBandLift), radius: width * 0.5, x: -width * 0.25, y: -width * 0.25)
+    }
+}
+
+/// The live arc (the widget's `LiveArc`): a round arc with a glow, shown up to now by the stock timer ring used as a mask.
+struct LALiveArc: View {
+    let start: Date
+    let end: Date
+    let color: Color
+    let width: Double
+    /// In the app (the tuner's preview) the stock timer ring is a spinner, not a gauge: there the arc is drawn up to now
+    /// (once a second); on the Lock Screen it's the system's own, self-updating mask.
+    private static let inApp = Bundle.main.bundleURL.pathExtension != "appex"
+    var body: some View {
+        if Self.inApp {
+            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                let f = min(max(ctx.date.timeIntervalSince(start) / max(end.timeIntervalSince(start), 1), 0), 1)
+                Circle().trim(from: 0, to: f)
+                    .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: color.opacity(0.45), radius: 3)
+            }
+        } else {
+            systemArc
+        }
+    }
+
+    private var systemArc: some View {
+        Circle()
+            .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))
+            .mask {
+                ZStack {
+                    Color.black
+                    ProgressView(timerInterval: start...end, countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                        .progressViewStyle(.circular)
+                        .tint(.white)
+                        .labelsHidden()
+                }
+                .frame(width: 98, height: 98)
+                .environment(\.colorScheme, .light)
+                .compositingGroup()
+                .brightness(-0.35)
+                .contrast(3)
+                .luminanceToAlpha()
+            }
+            .shadow(color: color.opacity(0.45), radius: 3)
+    }
+}
+
+/// The ring at its 90 pt design size, scaled: one colour at a time (an arc per grade, each shown only while its grade
+/// lasts). Prayed: the whole ring in its score. Ended: 8 grey dashes.
+struct LARing: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    let size: Double
+    var onIsland = false
+    let t: LATuning
+    var body: some View {
+        let band = t.ringBandWidth, arc = t.ringArcWidth
+        ZStack {
+            if onIsland {
+                Circle().stroke(Color(white: 0.11), lineWidth: band)
+                    .shadow(color: .black, radius: band * 0.6, x: band * 0.3, y: band * 0.3)
+                    .shadow(color: .white.opacity(0.09), radius: band * 0.9, x: -band * 0.3, y: -band * 0.3)
+            } else {
+                LASoftBand(width: band, t: t)
+            }
+            if let at = state.markedAt {
+                let c = PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at))
+                Circle().stroke(c, style: StrokeStyle(lineWidth: arc, lineCap: .round))
+                    .shadow(color: c.opacity(0.45), radius: 3)
+            } else if ended {
+                let gap = CGFloat.pi * 90 / 8
+                Circle().stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: arc, lineCap: .round, dash: [gap * 0.55, gap * 0.45]))
+                    .rotationEffect(.degrees(-90))
+            } else {
+                ForEach(Array(LAGrades.spans(state).enumerated()), id: \.offset) { _, span in
+                    LALiveArc(start: state.start, end: state.end, color: span.color, width: arc)
+                        .mask { LAGate(from: span.from, until: span.until).frame(width: 110, height: 110) }
+                }
+            }
+        }
+        .frame(width: 90, height: 90)
+        .scaleEffect(size / 90)
+        .frame(width: size, height: size)
+    }
+}
+
+/// Visible from `from` (nil = from the start) until `until` (nil = for good), by itself: each edge is a stock timer bar
+/// over a 1 s interval stretched over the whole area, thresholded to all-or-nothing.
+struct LAGate: View {
+    let from: Date?
+    let until: Date?
+    var body: some View {
+        Group {
+            if let from { edge(from, fill: .white, ground: .black, lift: -0.35) } else { Color.white }
+        }
+        .mask {
+            if let until { edge(until, fill: .black, ground: .white, lift: 0.2) } else { Color.white }
+        }
+    }
+
+    private func edge(_ t: Date, fill: Color, ground: Color, lift: Double) -> some View {
+        GeometryReader { geo in
+            ZStack {
+                ground
+                ProgressView(timerInterval: t...t.addingTimeInterval(1), countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                    .progressViewStyle(.linear)
+                    .tint(fill)
+                    .labelsHidden()
+                    .frame(width: geo.size.width)
+                    .scaleEffect(x: 1, y: max(geo.size.height, 4) * 2)
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
+            .environment(\.colorScheme, .light)   // in dark the stock bar's tint resolves differently
+            .compositingGroup()
+            .brightness(lift)
+            .contrast(3)
+            .luminanceToAlpha()
+        }
+    }
+}
+#endif
