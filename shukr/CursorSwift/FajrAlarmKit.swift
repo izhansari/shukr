@@ -687,7 +687,9 @@ enum LATest {
     @MainActor static func onLaunch() {
         guard #available(iOS 26.0, *) else { return }
         let state = UIApplication.shared.applicationState
-        LATestLog.add("launch · appState=\(state == .background ? "background" : state == .active ? "active" : "inactive") · enabled=\(ActivityAuthorizationInfo().areActivitiesEnabled)")
+        LATestLog.add("launch · appState=\(state == .background ? "background" : state == .active ? "active" : "inactive") · enabled=\(ActivityAuthorizationInfo().areActivitiesEnabled)"
+                      + (UIApplication.shared.isProtectedDataAvailable ? " · unlocked" : " · LOCKED")
+                      + (ProcessInfo.processInfo.isLowPowerModeEnabled ? " · LOW POWER" : ""))
         LATestHooks.mark = { n in await mark(n) }
         list("at launch")
         for activity in Activity<LATestAttributes>.activities { observe(activity) }
@@ -725,7 +727,14 @@ enum LATest {
         Task { @MainActor in
             for await st in activity.activityStateUpdates {
                 let bg = UIApplication.shared.applicationState == .background
-                LATestLog.add("state #\(activity.attributes.n) → \(st) · \(bg ? "background" : "fg")")
+                var extra = ""
+                if st == .active {
+                    let late = Date().timeIntervalSince(activity.content.state.start)
+                    extra = String(format: " · %+.1f s after its start", late)
+                        + (UIApplication.shared.isProtectedDataAvailable ? " · unlocked" : " · LOCKED")
+                        + (ProcessInfo.processInfo.isLowPowerModeEnabled ? " · LOW POWER" : "")
+                }
+                LATestLog.add("state #\(activity.attributes.n) → \(st) · \(bg ? "background" : "fg")\(extra)")
                 if st == .active { handOver(reason: "#\(activity.attributes.n) started") }
             }
         }
@@ -765,7 +774,7 @@ enum LATest {
                 _ = try Activity.request(attributes: LATestAttributes(n: next),
                                          content: .init(state: state, staleDate: end),
                                          pushType: nil, style: .standard,
-                                         alertConfiguration: AlertConfiguration(title: "\(name.0) has started", body: "Test window \(next)", sound: .default),
+                                         alertConfiguration: AlertConfiguration(title: "shukr test window \(next)", body: "A test — not a real prayer time", sound: .default),
                                          start: start)
                 added.append(next)
             } catch {
