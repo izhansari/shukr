@@ -841,9 +841,17 @@ enum LATest {
         }
         var st = a.content.state
         if LAReal.isReal(n) {
-            // The real prayer, exactly as the widget's check marks it (scored at the tap, saved, the app reconciles).
-            let done = SharedStore.markPrayerComplete(named: st.label, start: st.start, end: st.end)
-            LATestLog.add("real mark \(st.label) \(st.start.formatted(date: .omitted, time: .shortened)) → \(done ? "marked in shukr" : "NOT marked (already done, not started, or no store)")")
+            // The real prayer, through the app's own toggle — the same as tapping its dot in the list (location, masjid /
+            // Jumu'ah, score, streaks, widgets, the watch), in the app's own context. The widget's separate-container
+            // path (SharedStore.markPrayerComplete) lost a mark on his phone: the app later saved its stale row over it.
+            if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: st.label, startingAt: st.start) {
+                if !row.isCompleted { vm.togglePrayerCompletion(for: row) }
+                LATestLog.add("real mark \(st.label) \(st.start.formatted(date: .omitted, time: .shortened)) → \(row.isCompleted ? "marked in shukr (the list's toggle)" : "NOT marked") · score \(row.numberScore.map { String(format: "%.2f", $0) } ?? "-")")
+            } else {
+                let done = SharedStore.markPrayerComplete(named: st.label, start: st.start, end: st.end)
+                LATestLog.add("real mark \(st.label): no row in the app's list (vm \(PrayerViewModel.current == nil ? "missing" : "has no match")) → store path \(done ? "marked" : "NOT marked")")
+            }
+            LAReal.remember(n)
         }
         st.markedAt = Date()
         // Marked: photo + Tasbih for ~15 s (owner's idea). Ending it with a 15 s dismissal didn't hold on his phone —
@@ -939,9 +947,23 @@ enum LAReal {
         return out.filter { $0.end > now && LiveActivityPrefs.isOn($0.name) }.sorted { $0.start < $1.start }
     }
 
+    /// Windows marked from a card (kept so a re-plan never brings one back, whatever the store says).
+    static let markedKey = "la.markedIDs"
+    static func remember(_ id: Int) {
+        var ids = g.array(forKey: markedKey) as? [Int] ?? []
+        ids.append(id); g.set(Array(ids.suffix(30)), forKey: markedKey)
+    }
+
+    /// Prayed already? A card mark, else the store (logged: on his phone a marked Asr read as not done once).
     private static func done(_ w: Window) -> Bool {
-        guard let c = SharedStore.widgetContainer else { return false }
-        return SharedStore.fetchPrayer(named: w.name, on: w.start, in: ModelContext(c))?.isCompleted == true
+        if (g.array(forKey: markedKey) as? [Int] ?? []).contains(w.id) { return true }
+        guard let c = SharedStore.widgetContainer else { LATestLog.add("done? \(w.name): store not open"); return false }
+        let row = SharedStore.fetchPrayer(named: w.name, on: w.start, in: ModelContext(c))
+        let yes = row?.isCompleted == true
+        if w.start <= Date() {
+            LATestLog.add("done? \(w.name) \(w.start.formatted(date: .omitted, time: .shortened)): \(row.map { "row \($0.dayKey) \($0.startTime.formatted(date: .omitted, time: .shortened)) completed=\($0.isCompleted)" } ?? "no row") → \(yes)")
+        }
+        return yes
     }
 
     /// End what shouldn't be showing, then add windows up to iOS's 5. Returns how many it added.

@@ -13,6 +13,15 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     private var context: ModelContext // Inject the ModelContext in the initializer
     var ENV_LocationManager: EnvLocationManager // Inject the EnvLocationManager in the initializer
+    /// The app's one view model, for code that runs in shukr's process without a view (a Live Activity's Mark prayed
+    /// marks through it — the widget's separate-container path lost a mark when the app later saved over it).
+    static weak var current: PrayerViewModel?
+
+    /// Today's row for `name` whose window starts at `start` (a Live Activity's window), if it's loaded.
+    func todaysRow(named name: String, startingAt start: Date) -> PrayerModel? {
+        todaysPrayers.first { $0.name == name && abs($0.startTime.timeIntervalSince(start)) < 120 }
+    }
+
     init(context: ModelContext, envLocationManager: EnvLocationManager) {
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>PrayerViewModel initialized")
         self.context = context
@@ -20,6 +29,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         self.timeAtLastRefresh = Date()
         self.scheduleDailyRefresh() //this will only run once on initialization. but will not run again if app is kept open in appswitcher.
         self.subscribeToChanges()
+        PrayerViewModel.current = self
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-demoStreakBackfill") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoStreakBackfill() }
