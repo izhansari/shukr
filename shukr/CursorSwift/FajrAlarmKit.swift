@@ -736,7 +736,7 @@ enum LATest {
             }
             // `-laNowAgo N`: one window live now that began N minutes ago and lasts 90 (to see the ring's colours).
             if let ago = arg("-laNowAgo") {
-                let start = Date().addingTimeInterval(-ago * 60), end = start.addingTimeInterval(90 * 60)
+                let start = Date().addingTimeInterval(-ago * 60), end = start.addingTimeInterval((arg("-laLength") ?? 90) * 60)
                 _ = try? Activity.request(attributes: LATestAttributes(n: 99),
                                           content: .init(state: .init(label: "Asr", start: start, end: end, symbol: "sun.haze.fill", dark: dark(at: start)), staleDate: end),
                                           pushType: nil)
