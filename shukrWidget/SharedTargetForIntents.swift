@@ -1779,16 +1779,19 @@ struct LATestOpenIntent: LiveActivityIntent {
     static var isDiscoverable = false
     static var openAppWhenRun = true
     @Parameter(title: "What") var what: String
+    @Parameter(title: "Window") var n: Int
     init() {}
-    init(what: String) { self.what = what }
+    init(what: String, n: Int) { self.what = what; self.n = n }
     func perform() async throws -> some IntentResult {
-        LATestLog.add("\(what) tapped (opens shukr)")
+        LATestLog.add("\(what) tapped on #\(n) (opens shukr)")
+        await LATestHooks.open?(n)
         return .result()
     }
 }
 
 enum LATestHooks {
     nonisolated(unsafe) static var mark: ((Int) async -> Void)?
+    nonisolated(unsafe) static var open: ((Int) async -> Void)?
 }
 
 enum LATestLog {

@@ -701,6 +701,13 @@ enum LATest {
                       + (UIApplication.shared.isProtectedDataAvailable ? " · unlocked" : " · LOCKED")
                       + (ProcessInfo.processInfo.isLowPowerModeEnabled ? " · LOW POWER" : ""))
         LATestHooks.mark = { n in await mark(n) }
+        // Photo / Tasbih open shukr: the marked card goes at once (Frank's brief, look G).
+        LATestHooks.open = { n in
+            if let a = Activity<LATestAttributes>.activities.first(where: { $0.attributes.n == n }) {
+                await a.end(nil, dismissalPolicy: .immediate)
+                LATestLog.add("ended #\(n) (opened shukr)")
+            }
+        }
         list("at launch")
         for activity in Activity<LATestAttributes>.activities { observe(activity) }
         Task { @MainActor in
@@ -734,6 +741,7 @@ enum LATest {
                                           content: .init(state: .init(label: "Asr", start: start, end: end, symbol: "sun.haze.fill", dark: dark(at: start)), staleDate: end),
                                           pushType: nil)
                 LATestLog.add("live window \(Int(ago)) min in")
+                if args.contains("-laMarkNow") { try? await Task.sleep(for: .seconds(1)); await mark(99) }
                 return
             }
             // `-laInitial N`: the fresh chain starts with only N scheduled (room to see how many one tap can add).
@@ -820,8 +828,11 @@ enum LATest {
         }
         var st = a.content.state
         st.markedAt = Date()
-        await a.update(.init(state: st, staleDate: st.end))
-        LATestLog.add("marked #\(n) · \(bg ? "background" : "fg")")
+        // Marked: photo + Tasbih for ~15 s, then iOS removes it on its own (owner's idea, Frank's proposal):
+        // ended now with the marked content and a dismissal 15 s out — nothing waits in shukr.
+        let content = ActivityContent(state: st, staleDate: nil)
+        await a.end(content, dismissalPolicy: .after(Date().addingTimeInterval(15)))
+        LATestLog.add("marked #\(n) · ended, dismissal in 15 s · \(bg ? "background" : "fg") · state now \(a.activityState)")
         // As many as iOS lets this tap add (owner: "top up as much as we can"): retry after short pauses.
         for attempt in 1...4 {
             let before = g.integer(forKey: "la.next")
