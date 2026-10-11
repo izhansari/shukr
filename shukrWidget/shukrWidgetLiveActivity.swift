@@ -170,7 +170,14 @@ private struct LALockCardBody: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .padding(.horizontal, 18).padding(.vertical, 12)
-        .background(alignment: .bottomLeading) { LAWash(state: state, ended: ended) }
+        // Our own solid surface under the wash: iOS draws `activityBackgroundTint` see-through, so the wallpaper showed
+        // through and a red wash over a blue sky read pink (owner's phone, 2026-10-11).
+        .background {
+            ZStack(alignment: .bottomLeading) {
+                WidgetSoft.surface(scheme)
+                LAWash(state: state, ended: ended)
+            }
+        }
         .activityBackgroundTint(WidgetSoft.surface(scheme))
         .activitySystemActionForegroundColor(.primary)
     }
