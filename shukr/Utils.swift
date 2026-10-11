@@ -1140,6 +1140,52 @@ struct BlurView: UIViewRepresentable {
     func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
 }
 
+/// A see-through frost: a blur held part of the way in (`amount` 0…1), so what's behind stays readable through it —
+/// the materials blur it away. (A paused animator holds the blur's radius; it's finished when the view goes.)
+struct LightFrost: UIViewRepresentable {
+    var amount: CGFloat = 0.3
+    var style: UIBlurEffect.Style = .systemThinMaterial
+
+    final class FrostView: UIVisualEffectView {
+        private var animator: UIViewPropertyAnimator?
+        var amount: CGFloat = 0.3 { didSet { animator?.fractionComplete = amount } }
+        var style: UIBlurEffect.Style = .systemThinMaterial
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil { start() } else { stop() }
+        }
+        override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+            super.traitCollectionDidChange(previous)
+            if window != nil { start() }   // light ⇄ dark: the material's colours change
+        }
+        private func start() {
+            stop()
+            effect = nil
+            let a = UIViewPropertyAnimator(duration: 1, curve: .linear) { [unowned self] in
+                self.effect = UIBlurEffect(style: self.style)
+            }
+            a.pausesOnCompletion = true
+            a.fractionComplete = amount
+            animator = a
+        }
+        private func stop() {
+            guard let a = animator else { return }
+            a.stopAnimation(true)
+            animator = nil
+        }
+        deinit { animator?.stopAnimation(true) }
+    }
+
+    func makeUIView(context: Context) -> FrostView {
+        let v = FrostView(effect: nil)
+        v.style = style
+        v.amount = amount
+        return v
+    }
+    func updateUIView(_ uiView: FrostView, context: Context) { uiView.amount = amount }
+}
+
 
 
 

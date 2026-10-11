@@ -302,6 +302,15 @@ struct shukrApp: App {
             } message: {
                 Text("The file may be from a newer shukr, or damaged. Ask them to share it again.")
             }
+            #if DEBUG
+            // `-setupRerunAfter N`: Settings → Run setup again, N s after launch (tests the rerun path).
+            .task {
+                let after = UserDefaults.standard.double(forKey: "setupRerunAfter")
+                guard after > 0 else { return }
+                try? await Task.sleep(for: .seconds(after))
+                NotificationCenter.default.post(name: FirstRunSetup.rerun, object: nil)
+            }
+            #endif
             .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.rerun)) { _ in
                 // Back to the Salah page (sheet closed) under it, so the hand-off lands on the circle.
                 sharedState.horizontalPage = .main

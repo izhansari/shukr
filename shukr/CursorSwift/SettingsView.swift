@@ -442,10 +442,10 @@ struct SettingsView: View {
                             Button {
                                 NotificationCenter.default.post(name: FirstRunSetup.rerun, object: nil)
                             } label: {
-                                Label("Run setup again", systemImage: "arrow.counterclockwise.circle")
+                                Label("Run setup from the start", systemImage: "arrow.counterclockwise.circle")
                             }
                         } footer: {
-                            Text("Beta builds only: the first-run setup, filled in with your settings.")
+                            Text("Beta builds only: the whole first-run setup from the hadith page, filled in with your settings.")
                         }
                     }
                     // The watch's pinch log (watch-pinch-log), for any TestFlight install with one: the only pinch watch

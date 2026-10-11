@@ -640,7 +640,7 @@ struct ZikrCardRequest: Identifiable {
 extension View {
     /// An existing zikr's card over everything (decision zikr-card-edit B): its page only shows it; this is where it
     /// changes. `onDelete`: Delete zikr was confirmed in the card's footer — the page asks and deletes.
-    /// `blursPage`: the page behind is blurred under a light dim, not darkened (the tasbeeh pause screen — owner).
+    /// `blursPage`: the page behind shows through a light frost, not darkened (the tasbeeh pause screen — owner).
     func zikrCardEditor(_ request: Binding<ZikrCardRequest?>, allowDelete: Bool = true, blursPage: Bool = false,
                         onDelete: @escaping (MantraModel) -> Void = { _ in }) -> some View {
         modifier(ZikrCardEditorPresenter(request: request, allowDelete: allowDelete, blursPage: blursPage, onDelete: onDelete))
@@ -677,7 +677,7 @@ struct ZikrCardEditor: View {
     var initialName = ""
     var startPane: MantraCardFields.Pane = .words
     var allowDelete = true
-    /// The page behind blurred under a light dim (the pause screen), not darkened.
+    /// The page behind shows through a light frost (the pause screen), not darkened.
     var blursPage = false
     /// Called once the card has faded: the presenter's flag goes back.
     let close: () -> Void
@@ -720,12 +720,10 @@ struct ZikrCardEditor: View {
         ZStack {
             Group {
                 if blursPage {
-                    // Floating over the session (owner): the pause screen blurred, a light dim over it.
-                    ZStack {
-                        Rectangle().fill(.ultraThinMaterial)
-                        Color.black.opacity(0.25)
-                    }
-                    .opacity(shown ? 1 : 0)
+                    // Floating over the session (owner): a frost you can still see the pause screen through
+                    // ("a little transparent, not fully blocking the items behind").
+                    LightFrost(amount: 0.12)
+                        .opacity(shown ? 1 : 0)
                 } else {
                     Color.black.opacity(shown ? 0.72 : 0)
                 }
