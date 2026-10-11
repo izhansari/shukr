@@ -98,12 +98,11 @@ struct LATestLiveActivity: Widget {
                         Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
                             .font(.subheadline).foregroundStyle(.secondary)
                     } else {
-                        HStack(spacing: 4) {
-                            Text(timerInterval: s.start...s.end, countsDown: true)
-                                .monospacedDigit().frame(maxWidth: 64, alignment: .leading)
-                            Text("left · ends \(s.end.formatted(date: .omitted, time: .shortened))")
-                        }
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        // The countdown on its own line (a timer Text takes all the width it's given), "ends" under it.
+                        Text(timerInterval: s.start...s.end, countsDown: true)
+                            .monospacedDigit().font(.subheadline.weight(.medium))
+                        Text("ends \(s.end.formatted(date: .omitted, time: .shortened))")
+                            .font(.subheadline).foregroundStyle(.secondary)
                     }
                 }
                 Spacer(minLength: 0)
@@ -166,6 +165,7 @@ private struct LAActions: View {
             Button(intent: LATestMarkIntent(n: n)) {
                 Label("Mark prayed", systemImage: "checkmark")
                     .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .lineLimit(1).fixedSize()
                     .padding(.horizontal, 14).padding(.vertical, 9)
                     .frame(maxWidth: compact ? .infinity : nil)
                     .background(Capsule().fill(LATestLiveActivity.sage.opacity(0.25)))
@@ -215,7 +215,10 @@ struct LAWindowRing: View {
                                     style: StrokeStyle(lineWidth: 6, lineCap: .round))
                         .frame(width: 90, height: 90)
                 } else {
+                    // Trimmed off the seam at the top: the stock ring's round start showed the gradient's last colour there.
                     Circle()
+                        .trim(from: 0.006, to: 0.98)
+                        .rotation(.degrees(-90))
                         .stroke(gradient, style: StrokeStyle(lineWidth: 6, lineCap: .butt))
                         .frame(width: 90, height: 90)
                         .mask { liveMask }

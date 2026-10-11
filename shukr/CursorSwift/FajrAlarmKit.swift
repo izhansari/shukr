@@ -717,6 +717,15 @@ enum LATest {
                 g.set(1, forKey: "la.next")
                 LATestLog.add("new chain: \(g.integer(forKey: "la.count")) windows every \(Int(g.double(forKey: "la.cadence"))) s")
             }
+            // `-laNowAgo N`: one window live now that began N minutes ago and lasts 90 (to see the ring's colours).
+            if let ago = arg("-laNowAgo") {
+                let start = Date().addingTimeInterval(-ago * 60), end = start.addingTimeInterval(90 * 60)
+                _ = try? Activity.request(attributes: LATestAttributes(n: 99),
+                                          content: .init(state: .init(label: "Asr", start: start, end: end, symbol: "sun.haze.fill"), staleDate: end),
+                                          pushType: nil)
+                LATestLog.add("live window \(Int(ago)) min in")
+                return
+            }
             handOver(reason: "launch")
         }
     }
