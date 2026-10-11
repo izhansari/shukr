@@ -1692,6 +1692,9 @@ struct LATunerView: View {
                 }
             }
             .onChange(of: t) { _, new in new.save(); note = "" }
+            .onAppear {   // DEBUG -laTimeStyle N (the sim's taps miss Menus)
+                if UserDefaults.standard.object(forKey: "laTimeStyle") != nil { t.timeLeftStyle = UserDefaults.standard.integer(forKey: "laTimeStyle") }
+            }
         }
     }
 
@@ -1749,6 +1752,9 @@ struct LATunerView: View {
             row("Prayer symbol size", "the sun / moon inside the ring", \.ringSymbolSize, 8...40, 1)
         }
         Section("Text") {
+            Picker("Time left as", selection: Binding(get: { t.timeLeftStyle ?? 0 }, set: { t.timeLeftStyle = $0 })) {
+                ForEach(LATimeLeft.styles.indices, id: \.self) { Text(LATimeLeft.styles[$0]).tag($0) }
+            }
             row("Name size", "\"Asr\"", \.titleSize, 10...36, 1)
             row("Time left size", "\"1 hour, 40 minutes left\" · \"Prayed 4:31 PM\"", \.timeLeftSize, 8...24, 1)
             row("Small line size", "\"ends 6:48 PM\" · \"Perfect · 100\"", \.endsSize, 8...20, 1)

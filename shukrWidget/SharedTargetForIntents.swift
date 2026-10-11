@@ -1866,6 +1866,10 @@ struct LATuning: Codable, Equatable {
     var islandTitleSize: Double = 18
     var islandLineSize: Double = 11
     var islandButtonSize: Double = 38
+    // How the time left is written — iOS's self-updating formats only (a Live Activity has no timeline): 0 "1 hour,
+    // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative) · 2 "1:39" (timer to the minute) · 3 "1:39:12". Optional so a
+    // saved tuning without it still decodes.
+    var timeLeftStyle: Int? = nil
 
     static let key = "la.tuning2"   // 2: his sim tuning became the defaults; earlier saved tunings are left behind
     static var current: LATuning {
@@ -2006,9 +2010,9 @@ struct LANameLines: View {
             } else {
                 let lastHalf = state.end.addingTimeInterval(-30 * 60)
                 ZStack(alignment: .leading) {
-                    LATimeLeft(end: state.end).foregroundStyle(.primary)
+                    LATimeLeft(end: state.end, style: t.timeLeftStyle ?? 0).foregroundStyle(.primary)
                         .mask { LAGate(from: nil, until: lastHalf) }
-                    LATimeLeft(end: state.end).foregroundStyle(.red)
+                    LATimeLeft(end: state.end, style: t.timeLeftStyle ?? 0).foregroundStyle(.red)
                         .mask { LAGate(from: lastHalf, until: nil) }
                 }
                 .font(.system(size: line))
@@ -2023,11 +2027,18 @@ struct LANameLines: View {
     }
 }
 
-/// "2 hours, 36 minutes left" — the system's live offset, hours and minutes only, ticking by itself.
+/// The time left, ticking by itself in a format iOS draws (`LATuning.timeLeftStyle`).
 struct LATimeLeft: View {
     let end: Date
+    var style = 0
+    static let styles = ["1 hour, 39 minutes", "1 hr, 39 min", "1:39", "1:39:12"]
     var body: some View {
-        Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.hour, .minute], maxFieldCount: 2, sign: .never))) left")
+        switch style {
+        case 1: Text("\(Text(end, style: .relative)) left")
+        case 2: Text("\(Text(.currentDate, format: .timer(countingDownIn: Date.now..<max(end, .now), maxPrecision: .seconds(60)))) left")
+        case 3: Text("\(Text(timerInterval: Date.now...max(end, .now), countsDown: true)) left")
+        default: Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.hour, .minute], maxFieldCount: 2, sign: .never))) left")
+        }
     }
 }
 
