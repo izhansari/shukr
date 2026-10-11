@@ -1634,7 +1634,7 @@ private struct LiveActivityPrayerCol: View {
 struct LATunerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var t = LATuning.current
-    @State private var kind = 0
+    @State private var kind = UserDefaults.standard.integer(forKey: "laTunerState")   // DEBUG -laTunerState N
     @State private var base = Date()
     @State private var note = ""
 

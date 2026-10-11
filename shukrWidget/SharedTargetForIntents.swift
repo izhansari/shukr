@@ -1829,45 +1829,45 @@ import SwiftUI
 /// The card's adjustable numbers. Defaults = what's on his phone now. Stored as JSON in the app group (`la.tuning`).
 struct LATuning: Codable, Equatable {
     // Card
-    var cardPaddingSides: Double = 16
-    var cardPaddingTopBottom: Double = 14
-    var cardMinHeight: Double = 124
-    var gapRingToText: Double = 16
-    var cardSurfaceGrey: Double = 0.10
+    var cardPaddingSides: Double = 15
+    var cardPaddingTopBottom: Double = 12
+    var cardMinHeight: Double = 88
+    var gapRingToText: Double = 12
+    var cardSurfaceGrey: Double = 0.14
     // Ring
-    var ringSize: Double = 78
-    var ringArcDiameter: Double = 0.81      // of the ring size
-    var ringBandWidth: Double = 10          // at the 90 pt design size
-    var ringArcWidth: Double = 4.5          // at the 90 pt design size
-    var ringSymbolSize: Double = 20
-    var ringBandLift: Double = 0.05
+    var ringSize: Double = 69
+    var ringArcDiameter: Double = 0.83      // of the ring size
+    var ringBandWidth: Double = 7          // at the 90 pt design size
+    var ringArcWidth: Double = 5.5          // at the 90 pt design size
+    var ringSymbolSize: Double = 17
+    var ringBandLift: Double = 0.11
     // Text
-    var titleSize: Double = 20
-    var timeLeftSize: Double = 14
-    var endsSize: Double = 12
+    var titleSize: Double = 19
+    var timeLeftSize: Double = 12
+    var endsSize: Double = 10
     var lineSpacing: Double = 2
     var textOffsetY: Double = 0
     // Glow
-    var glowStrength: Double = 0.20
+    var glowStrength: Double = 0.19
     var glowReach: Double = 0.52
-    var glowCentreX: Double = 0.12
-    var glowCentreY: Double = 0.5
+    var glowCentreX: Double = 0.11
+    var glowCentreY: Double = 0.73
     // Buttons
     var buttonSize: Double = 44
     var buttonSymbolSize: Double = 18
     var buttonStackGap: Double = 8
     var buttonOffsetX: Double = 0
     // 15 s bar
-    var barSideInset: Double = 18
-    var barBottomInset: Double = 7
-    var barThickness: Double = 1
+    var barSideInset: Double = 8
+    var barBottomInset: Double = 0
+    var barThickness: Double = 0.5
     // Dynamic Island (opened up)
-    var islandRingSize: Double = 68
+    var islandRingSize: Double = 55
     var islandTitleSize: Double = 18
-    var islandLineSize: Double = 12
+    var islandLineSize: Double = 11
     var islandButtonSize: Double = 38
 
-    static let key = "la.tuning"
+    static let key = "la.tuning2"   // 2: his sim tuning became the defaults; earlier saved tunings are left behind
     static var current: LATuning {
         guard let data = UserDefaults(suiteName: SharedStore.appGroup)?.data(forKey: key),
               let t = try? JSONDecoder().decode(LATuning.self, from: data) else { return LATuning() }
@@ -2076,9 +2076,12 @@ struct LAGlyphs: View {
     let t: LATuning
     var body: some View {
         if state.markedAt != nil {
+            // On the Lock Screen the pair fits the running card's row (the ring or the one button, whichever is taller), so
+            // marking never makes the card taller (owner).
+            let pair = onIsland ? size * 0.82 : min(size * 0.82, (max(t.ringSize, t.buttonSize) - t.buttonStackGap) / 2)
             VStack(spacing: t.buttonStackGap) {
-                LARoundButton(intent: LATestOpenIntent(what: "Photo", n: n), symbol: "camera", size: size * 0.82, symbolSize: t.buttonSymbolSize * 0.9, onIsland: onIsland, t: t)
-                LARoundButton(intent: LATestOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: size * 0.82, symbolSize: t.buttonSymbolSize * 0.9, onIsland: onIsland, t: t)
+                LARoundButton(intent: LATestOpenIntent(what: "Photo", n: n), symbol: "camera", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
+                LARoundButton(intent: LATestOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
             }
         } else if ended {
             LARoundButton(intent: LATestMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
