@@ -96,6 +96,9 @@ struct TourCoachStrip: View {
         todos.indices.first { !ticked.contains($0) && !locked.contains($0) } ?? max(todos.count - 1, 0)
     }
     private var currentDone: Bool { ticked.contains(current) }
+    /// A to-do just done: the strip's edge pulses green, then settles (owner: as the zikr practice box shows a
+    /// satisfied action).
+    @State private var pulse = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -197,12 +200,28 @@ struct TourCoachStrip: View {
                 .accessibilityLabel("What this step is about")
             }
         }
-        .padding(.leading, 14)
-        .padding(.trailing, onDetails == nil ? 16 : 6)
-        .frame(minHeight: 56)
+        // Room round the words (owner: two-line strips "cant breathe").
+        .padding(.leading, 16)
+        .padding(.trailing, onDetails == nil ? 18 : 8)
+        .padding(.vertical, 12)
+        .frame(minHeight: 60)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .tourBubble(RoundedRectangle(cornerRadius: 20, style: .continuous),
                     look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(TourInk.green.opacity(pulse ? 1 : 0), lineWidth: pulse ? 3 : 1.5)
+                .shadow(color: TourInk.green.opacity(pulse ? 0.55 : 0), radius: pulse ? 10 : 0)
+                .allowsHitTesting(false)
+        }
+        .onChange(of: ticked) { old, new in
+            guard new.count > old.count else { return }
+            withAnimation(.easeOut(duration: 0.15)) { pulse = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.45))
+                withAnimation(.easeOut(duration: 0.6)) { pulse = false }
+            }
+        }
         .contentShape(Rectangle())
         .allowsHitTesting(onDetails != nil || onBack != nil || extra != nil)
         .accessibilityElement(children: .combine)

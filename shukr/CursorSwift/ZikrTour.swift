@@ -451,9 +451,20 @@ struct ZikrTourBubble: View {
             // A step to read, with its button: its line, the button under it.
             let section = page.activeSection
             let line = section?.lead ?? section?.note ?? page.subline ?? ""
-            TourCoachStrip(chapter: section?.title ?? page.headline, todos: [line], ticked: [],
-                           extra: (primary, { tour.step == .offer ? showMe() : tour.next() }), extraProminent: true)
-                .frame(maxWidth: 400)
+            VStack(spacing: 8) {
+                TourCoachStrip(chapter: section?.title ?? page.headline, todos: [line], ticked: [],
+                               extra: (primary, { tour.step == .offer ? showMe() : tour.next() }), extraProminent: true)
+                    .frame(maxWidth: 400)
+                // The offer's other way (Skip to Settings / Not now): it was never on screen (the audit).
+                if tour.step == .offer, let secondary = page.secondary {
+                    Button(secondary) { tour.dismiss() }
+                        .buttonStyle(.plain)
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .padding(.horizontal, 14).padding(.vertical, 6)
+                        .tourBubble(Capsule(), look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+                }
+            }
         } else {
             TourCoachStrip(chapter: page.headline, lead: tour.step == .results ? page.activeSection?.lead : page.shortLead,
                            todos: page.currentTodos,

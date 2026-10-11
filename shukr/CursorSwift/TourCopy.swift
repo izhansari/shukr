@@ -63,7 +63,7 @@ enum TourCopy {
             "Hold the circle to mark Asr",
         ]
         static let noCompass = "No compass here? Skip it"
-        static let marked = "Marked. Asr has moved to your list. Swipe up to see it."
+        static let marked = "Asr has moved to your prayer list. Let’s look at that next. Swipe up to reveal it."
     }
 
     // MARK: 2 · Prayer List
@@ -84,6 +84,14 @@ enum TourCopy {
             "complete a prayer, or undo it",
             "edit when and where you prayed",
             "see how well you’re praying today",
+        ]
+
+        /// The chapter's one bubble before its to-dos (owner: the two steps' tooltips covered too much of the page).
+        static let canLead = "From here you can:"
+        static let canNow = [
+            "see the full day’s prayer times",
+            "mark and edit your prayers",
+            "see your performance at a glance",
         ]
 
         static let todos = [
@@ -130,7 +138,7 @@ enum TourCopy {
     enum Settings {
         static let title = "Settings"
 
-        static let getThereLead = "One tap away."
+        static let getThereLead = "You can navigate pages with the bottom bar as well."
         static let getThereTodo = "Tap Settings"
 
         static let hereStep = "What you set here"

@@ -59,7 +59,18 @@ import SwiftData
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-zikrUnlocked") { return false }
         #endif
-        return !unlocked && !ZikrTour.shared.active && !TourRuntime.shared.active
+        return !unlocked && !ZikrTour.shared.active && (!TourRuntime.shared.active || fromAppTour)
+    }
+
+    /// The app tour's Zikr chapter is this page (owner: "Show me should open the new Zikr tour … let that zikr tour
+    /// handle this part of app tour"): it covers the page while the app tour waits, and unlocking — or Skip to
+    /// Settings — hands back to it.
+    var fromAppTour = false
+
+    /// Skip to Settings, from the lock page in the app tour: the page stays locked, the tour goes on.
+    func skipFromAppTour() {
+        fromAppTour = false
+        TourRuntime.shared.zikrTourEnded()
     }
 
     /// The Zikr Tour reached its end.
@@ -67,6 +78,11 @@ import SwiftData
         guard !unlocked else { return }
         unlocked = true
         justUnlocked += 1
+        // Unlocked inside the app tour: on to its Settings chapter.
+        if fromAppTour {
+            fromAppTour = false
+            TourRuntime.shared.zikrTourEnded()
+        }
     }
     /// Bumped once on unlocking (the page's little moment).
     private(set) var justUnlocked = 0
@@ -305,6 +321,16 @@ struct ZikrLockCover: View {
                 .foregroundStyle(Color.primary.opacity(0.4))
                 .padding(.top, 4)
                 .opacity(stage >= 4 ? 1 : 0)
+            // In the app tour, a way past it (the audit: only Show me was offered).
+            if lock.fromAppTour {
+                Button(TourCopy.ZikrTour.skipToSettings) { lock.skipFromAppTour() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.55))
+                    .padding(.top, 18)
+                    .opacity(stage >= 4 ? 1 : 0)
+                    .allowsHitTesting(stage >= 4)
+            }
         }
     }
 

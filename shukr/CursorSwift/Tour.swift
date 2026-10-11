@@ -1514,51 +1514,36 @@ struct BubbleShape: Shape {
             return TourPage(headline: TourCopy.Welcome.title, subline: TourCopy.Welcome.line, sections: [intro],
                             primary: TourCopy.Welcome.button)
         case .circle:
+            // No colours demo (owner: "pretty self explanatory and the onboarding covers it"): what it shows, then try it.
             var shows = TourSection(id: "circle.shows", title: TourCopy.Circle.showsStep, blocks: [Self.circleBlocks[0]])
-            var colours = TourSection(id: "circle.colours", title: TourCopy.Circle.coloursStep, blocks: [Self.circleBlocks[1]])
-            var tryIt = TourSection(id: "circle.try", title: TourCopy.tryIt, tasks: TourCopy.Circle.todos)
+            let tryIt = TourSection(id: "circle.try", title: TourCopy.tryIt, tasks: TourCopy.Circle.todos)
             switch phase {
             case .learn:
-                return chapter(.circle, 0, of: 5, [shows], primary: TourCopy.continueButton)
-            case .learnMore:
-                shows.done = true
-                return chapter(.circle, 1, of: 5, [shows, colours],
-                               // The demo starts by itself (owner, 2026-10-06): no button until it has played.
-                               primary: sweepPlayed && !sweeping ? TourCopy.continueButton : nil,
-                               secondary: sweepPlayed && !sweeping ? TourCopy.Circle.playAgain : nil)
+                return chapter(.circle, 0, of: 4, [shows], primary: TourCopy.continueButton)
             default:
                 shows.done = true
-                colours.done = true
                 let marked = ticked.contains(2)
                 let done = Double(ticked.intersection([0, 1, 2]).count)
-                guard marked else { return chapter(.circle, 2 + done, of: 5, [shows, colours, tryIt], locked: lockedCircle) }
-                // Marked: the to-dos fold too, and the payoff — small enough to sit above the circle, the whole page
-                // under it free for the swipe.
-                tryIt.done = true
-                let payoff = TourSection(id: "circle.marked",
-                                         note: TourCopy.Circle.marked)
-                return chapter(.circle, 5, of: 5, [shows, colours, tryIt, payoff], locked: lockedCircle)
+                guard marked else { return chapter(.circle, 1 + done, of: 4, [shows, tryIt], locked: lockedCircle) }
+                // Marked: only the payoff (owner: no "3 done" fold, no back) — small enough to sit above the circle, the
+                // whole page under it free for the swipe.
+                let payoff = TourSection(id: "circle.marked", note: TourCopy.Circle.marked)
+                return chapter(.circle, 4, of: 4, [payoff], locked: lockedCircle)
             }
         case .list:
-            // Two short steps (owner: the first was still too long), one line a bullet.
-            var shows = TourSection(id: "list.shows", title: TourCopy.List.showsStep,
-                                    // Marked ones tuck away — said with how to get them back (owner: "only unmarked ones are
-                                    // shown" alone sounded like losing them).
-                                    blocks: [TourBlock(items: TourCopy.List.shows)])
-            var can = TourSection(id: "list.can", title: TourCopy.List.canStep,
-                                  // What, not how (owner): the gestures are the to-dos' job.
-                                  blocks: [TourBlock(items: TourCopy.List.can)])
-            guard phase != .learn else { return chapter(.list, 0, of: 6, [shows], primary: TourCopy.continueButton) }
-            shows.done = true
-            guard phase != .learnMore else { return chapter(.list, 1, of: 6, [shows, can], primary: TourCopy.continueButton) }
-            can.done = true
+            // One bubble, then the to-dos in the strip, then one line to close (owner: the two steps' tooltips covered
+            // too much of the page; done, no "2 done" fold or Try it).
+            let can = TourSection(id: "list.can", blocks: [TourBlock(lead: TourCopy.List.canLead, items: TourCopy.List.canNow)])
+            guard phase != .learn else { return chapter(.list, 0, of: 5, [can], primary: TourCopy.continueButton) }
             let all = ticked.isSuperset(of: [0, 1, 2, 3])
-            let tryIt = TourSection(id: "list.try", title: TourCopy.tryIt,
-                                    // The ones they can do now first, the waiting (greyed) ones after (owner).
-                                    tasks: TourCopy.List.todos,
-                                    note: all ? TourCopy.List.allDone : nil)
-            return chapter(.list, 2 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 6, [shows, can, tryIt],
-                           locked: lockedList, primary: all ? TourCopy.continueButton : nil)
+            guard !all else {
+                return chapter(.list, 5, of: 5, [TourSection(id: "list.done", note: TourCopy.List.allDone)],
+                               locked: lockedList, primary: TourCopy.continueButton)
+            }
+            // The ones they can do now first, the waiting (greyed) ones after (owner).
+            let tryIt = TourSection(id: "list.try", title: TourCopy.tryIt, tasks: TourCopy.List.todos)
+            return chapter(.list, 1 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 5, [tryIt],
+                           locked: lockedList)
         case .zikr:
             var there = TourSection(id: "zikr.go", title: TourCopy.getThere, lead: TourCopy.Zikr.getThereLead,
                                     tasks: [TourCopy.Zikr.getThereTodo])
@@ -1696,8 +1681,9 @@ struct BubbleShape: Shape {
     var canGoBack: Bool { previousPhase != nil }
     private var previousPhase: TourPhase? {
         switch (step, phase) {
-        case (.circle, .learnMore), (.list, .learnMore): .learn
-        case (.circle, .tryIt), (.list, .tryIt): .learnMore
+        // Marked: the payoff only, no way back (owner).
+        case (.circle, .tryIt): ticked.contains(2) ? nil : .learn
+        case (.list, .tryIt): .learn
         case (.zikr, .tryIt): .learn
         case (.settings, .last): .learn
         default: nil
@@ -1847,7 +1833,7 @@ struct BubbleShape: Shape {
 
         // 1 · The circle: learn (the colours demo, then Continue), then try.
         case (.intro, _, .next): go(to: .circle)
-        case (.circle, .learn, .next): setPhase(.learnMore)
+        case (.circle, .learn, .next): setPhase(.tryIt)
         case (.circle, .learnMore, .demo): playColors(run: run)
         case (.circle, .learnMore, .next) where sweepPlayed: setPhase(.tryIt)
         case (.circle, .learnMore, .next) where !sweeping: playColors(run: run)   // "See it in action"
@@ -1864,8 +1850,7 @@ struct BubbleShape: Shape {
             go(to: .list, after: 0.6)
 
         // 2 · The list: learn, then try.
-        case (.list, .learn, .next): setPhase(.learnMore)
-        case (.list, .learnMore, .next): setPhase(.tryIt)
+        case (.list, .learn, .next): setPhase(.tryIt)
         case (.list, .tryIt, .comingRowTapped): tick(0, flash: "comingRow")
         case (.list, .tryIt, .foldTapped): tick(1)   // no glow on unfolding (owner)
         case (.list, .tryIt, .markedRowTapped): tick(2, flash: "markedRow")
@@ -1876,7 +1861,12 @@ struct BubbleShape: Shape {
         // The Zikr page: the Zikr Tour takes chapter 3 from here (its offer first: Show me / Skip to Settings).
         case (.zikr, .go, .zikrPage):
             withAnimation(.smooth(duration: CircleMotion.standard)) { phase = .deep }
-            ZikrTour.shared.offer(inAppTour: true)
+            if ZikrLock.shared.unlocked {
+                ZikrTour.shared.offer(inAppTour: true)
+            } else {
+                // Still locked: the lock page is the chapter (the new Zikr Tour), with its own Skip to Settings.
+                ZikrLock.shared.fromAppTour = true
+            }
         case (.zikr, .learn, .next): setPhase(.tryIt)
         case (.zikr, .tryIt, .wheelScrolled): tick(0)
         case (.zikr, .tryIt, .exampleOption): tick(1)
@@ -1993,6 +1983,8 @@ struct BubbleShape: Shape {
 /// it only steps aside while something truly covers the page), the input guard, Skip tour, the invitation and Back to
 /// the tour. Watches the real state changes that tick the to-dos.
 struct TourLayer: View {
+    /// The tour's place at the top: under the top bar, where the strips sit (`TourOverlay`'s strip inset).
+    static let topInset: CGFloat = 112
     let covered: Bool
     @Environment(SharedStateClass.self) private var sharedState
     @EnvironmentObject private var viewModel: PrayerViewModel
@@ -2034,13 +2026,14 @@ struct TourLayer: View {
         // The door after the first-run setup, on the real day (decision onboarding-start A).
         if runtime.inviting, !covered, sharedState.horizontalPage == .main, sharedState.navPosition == .main {
             GeometryReader { geo in
-                let origin = geo.frame(in: .global).origin
-                let below = TourTargets.shared.frame("circle").map { $0.maxY - origin.y + 24 } ?? geo.size.height * 0.62
+                // At the top, where the tour's strips sit (owner: the bubbles and strips all at the top, "one easy place
+                // to follow"), clear of the circle.
                 TourInviteCard(onShow: { runtime.acceptInvite() }, onLater: { runtime.declineInvite() })
                     .frame(width: min(geo.size.width - 48, 320))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, below)
+                    // The strips' line from the screen's top (this layer starts below the safe area).
+                    .padding(.top, max(Self.topInset - geo.frame(in: .global).minY, 8))
             }
             .transition(.asymmetric(insertion: .identity, removal: .opacity))
             .onAppear {
