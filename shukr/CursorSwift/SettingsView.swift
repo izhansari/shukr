@@ -1734,59 +1734,77 @@ struct LATunerView: View {
 
     @ViewBuilder private var controls: some View {
         Section("Card") {
-            row("Side padding", "space inside the card, left and right", $t.cardPaddingSides, 0...40, 1)
-            row("Top / bottom padding", "space inside the card, above and below", $t.cardPaddingTopBottom, 0...40, 1)
-            row("Minimum height", "the card is never shorter than this", $t.cardMinHeight, 60...180, 1)
-            row("Gap: ring → text", "space between the ring and the name", $t.gapRingToText, 0...40, 1)
-            row("Background grey", "0 = black, higher = lighter", $t.cardSurfaceGrey, 0...0.3, 0.01)
+            row("Side padding", "space inside the card, left and right", \.cardPaddingSides, 0...40, 1)
+            row("Top / bottom padding", "space inside the card, above and below", \.cardPaddingTopBottom, 0...40, 1)
+            row("Minimum height", "the card is never shorter than this", \.cardMinHeight, 60...180, 1)
+            row("Gap: ring → text", "space between the ring and the name", \.gapRingToText, 0...40, 1)
+            row("Background grey", "0 = black, higher = lighter", \.cardSurfaceGrey, 0...0.3, 0.01)
         }
         Section("Ring") {
-            row("Ring size", "the ring's box on the left", $t.ringSize, 40...120, 1)
-            row("Ring diameter", "share of the box the ring fills", $t.ringArcDiameter, 0.5...1, 0.01)
-            row("Soft band width", "the raised band behind the arc", $t.ringBandWidth, 0...20, 0.5)
-            row("Arc width", "the coloured progress line", $t.ringArcWidth, 1...12, 0.5)
-            row("Band lift", "the light on the band's top-left edge", $t.ringBandLift, 0...0.3, 0.01)
-            row("Prayer symbol size", "the sun / moon inside the ring", $t.ringSymbolSize, 8...40, 1)
+            row("Ring size", "the ring's box on the left", \.ringSize, 40...120, 1)
+            row("Ring diameter", "share of the box the ring fills", \.ringArcDiameter, 0.5...1, 0.01)
+            row("Soft band width", "the raised band behind the arc", \.ringBandWidth, 0...20, 0.5)
+            row("Arc width", "the coloured progress line", \.ringArcWidth, 1...12, 0.5)
+            row("Band lift", "the light on the band's top-left edge", \.ringBandLift, 0...0.3, 0.01)
+            row("Prayer symbol size", "the sun / moon inside the ring", \.ringSymbolSize, 8...40, 1)
         }
         Section("Text") {
-            row("Name size", "\"Asr\"", $t.titleSize, 10...36, 1)
-            row("Time left size", "\"1 hour, 40 minutes left\" · \"Prayed 4:31 PM\"", $t.timeLeftSize, 8...24, 1)
-            row("Small line size", "\"ends 6:48 PM\" · \"Perfect · 100\"", $t.endsSize, 8...20, 1)
-            row("Line spacing", "space between the three lines", $t.lineSpacing, 0...12, 0.5)
-            row("Move text up / down", "negative = up", $t.textOffsetY, -20...20, 1)
+            row("Name size", "\"Asr\"", \.titleSize, 10...36, 1)
+            row("Time left size", "\"1 hour, 40 minutes left\" · \"Prayed 4:31 PM\"", \.timeLeftSize, 8...24, 1)
+            row("Small line size", "\"ends 6:48 PM\" · \"Perfect · 100\"", \.endsSize, 8...20, 1)
+            row("Line spacing", "space between the three lines", \.lineSpacing, 0...12, 0.5)
+            row("Move text up / down", "negative = up", \.textOffsetY, -20...20, 1)
         }
         Section("Glow") {
-            row("Strength", "how strong the colour is at the ring", $t.glowStrength, 0...0.6, 0.01)
-            row("Reach", "how far it spreads before it's gone", $t.glowReach, 0.1...1.2, 0.01)
-            row("Centre left / right", "0 = left edge, 1 = right edge", $t.glowCentreX, 0...1, 0.01)
-            row("Centre up / down", "0 = top, 1 = bottom", $t.glowCentreY, 0...1, 0.01)
+            row("Strength", "how strong the colour is at the ring", \.glowStrength, 0...0.6, 0.01)
+            row("Reach", "how far it spreads before it's gone", \.glowReach, 0.1...1.2, 0.01)
+            row("Centre left / right", "0 = left edge, 1 = right edge", \.glowCentreX, 0...1, 0.01)
+            row("Centre up / down", "0 = top, 1 = bottom", \.glowCentreY, 0...1, 0.01)
         }
         Section("Buttons") {
-            row("Button size", "the soft round disc", $t.buttonSize, 24...64, 1)
-            row("Symbol size", "the circle / camera / beads inside", $t.buttonSymbolSize, 8...32, 1)
-            row("Gap between camera and beads", "after marking", $t.buttonStackGap, 0...24, 1)
-            row("Move buttons left / right", "positive = right", $t.buttonOffsetX, -20...20, 1)
+            row("Button size", "the soft round disc", \.buttonSize, 24...64, 1)
+            row("Symbol size", "the circle / camera / beads inside", \.buttonSymbolSize, 8...32, 1)
+            row("Gap between camera and beads", "after marking", \.buttonStackGap, 0...24, 1)
+            row("Move buttons left / right", "positive = right", \.buttonOffsetX, -20...20, 1)
         }
         Section("15-second bar (after marking — pick Marked)") {
-            row("Side inset", "space from the card's left and right edges", $t.barSideInset, 0...60, 1)
-            row("Bottom inset", "space from the card's bottom edge", $t.barBottomInset, 0...30, 1)
-            row("Thickness", "1 = the system's own", $t.barThickness, 0.5...3, 0.1)
+            row("Side inset", "space from the card's left and right edges", \.barSideInset, 0...60, 1)
+            row("Bottom inset", "space from the card's bottom edge", \.barBottomInset, 0...30, 1)
+            row("Thickness", "1 = the system's own", \.barThickness, 0.5...3, 0.1)
         }
         Section("Dynamic Island (opened up — pick Island)") {
-            row("Ring size", "", $t.islandRingSize, 30...90, 1)
-            row("Name size", "", $t.islandTitleSize, 10...30, 1)
-            row("Line size", "", $t.islandLineSize, 8...20, 1)
-            row("Button size", "", $t.islandButtonSize, 24...56, 1)
+            row("Ring size", "", \.islandRingSize, 30...90, 1)
+            row("Name size", "", \.islandTitleSize, 10...30, 1)
+            row("Line size", "", \.islandLineSize, 8...20, 1)
+            row("Button size", "", \.islandButtonSize, 24...56, 1)
         }
     }
 
-    private func row(_ title: String, _ hint: String, _ value: Binding<Double>, _ range: ClosedRange<Double>, _ step: Double) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
+    /// One labelled slider. Changed from the original: "was 16" beside the value and a reset arrow for just this one.
+    private func row(_ title: String, _ hint: String, _ key: WritableKeyPath<LATuning, Double>, _ range: ClosedRange<Double>, _ step: Double) -> some View {
+        let value = Binding(get: { t[keyPath: key] }, set: { t[keyPath: key] = $0 })
+        let original = LATuning()[keyPath: key]
+        let changed = abs(t[keyPath: key] - original) > step / 2
+        let fmt: (Double) -> String = { step < 1 ? String(format: "%.2f", $0) : String(format: "%.0f", $0) }
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
                 Text(title).font(.subheadline)
                 Spacer()
-                Text(step < 1 ? String(format: "%.2f", value.wrappedValue) : String(format: "%.0f", value.wrappedValue))
-                    .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                if changed {
+                    Text("was \(fmt(original))").font(.caption.monospacedDigit()).foregroundStyle(.orange)
+                }
+                Text(fmt(t[keyPath: key]))
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(changed ? .primary : .secondary)
+                Button {
+                    t[keyPath: key] = original
+                } label: {
+                    Image(systemName: "arrow.counterclockwise").font(.footnote)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!changed)
+                .opacity(changed ? 1 : 0.25)
+                .accessibilityLabel("Reset \(title)")
             }
             if !hint.isEmpty { Text(hint).font(.caption2).foregroundStyle(.secondary) }
             Slider(value: value, in: range, step: step)
