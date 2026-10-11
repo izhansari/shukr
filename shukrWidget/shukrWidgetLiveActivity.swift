@@ -223,18 +223,18 @@ private struct LANameLines: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(ended ? "\(state.label) ended" : state.label)
-                .font(.system(size: big ? 26 : 22, weight: .light))
+                .font(.system(size: big ? 20 : 18, weight: .light))
                 .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             Group {
                 if let at = state.markedAt {
                     let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
                     Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
-                        .font(.system(size: big ? 16 : 13)).foregroundStyle(.primary)
+                        .font(.system(size: big ? 14 : 12)).foregroundStyle(.primary)
                     Text("\(PrayerScoring.grade(for: score).rawValue) · \(Int((score * 100).rounded()))")
-                        .font(.system(size: 13)).foregroundStyle(.secondary)
+                        .font(.system(size: 12)).foregroundStyle(.secondary)
                 } else if ended {
                     Text("\(state.end.formatted(date: .omitted, time: .shortened)) · not marked")
-                        .font(.system(size: big ? 16 : 13)).foregroundStyle(.secondary)
+                        .font(.system(size: big ? 14 : 12)).foregroundStyle(.secondary)
                 } else {
                     let lastHalf = state.end.addingTimeInterval(-30 * 60)
                     ZStack(alignment: .leading) {
@@ -243,10 +243,10 @@ private struct LANameLines: View {
                         LATimeLeft(end: state.end).foregroundStyle(.red)
                             .mask { LAGate(from: lastHalf, until: nil) }
                     }
-                    .font(.system(size: big ? 16 : 13))
+                    .font(.system(size: big ? 14 : 12))
                     if big {
                         Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
-                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -380,9 +380,9 @@ private struct LAGlyphs: View {
     let big: Bool
     var body: some View {
         if state.markedAt != nil {
-            VStack(spacing: 10) {
-                glyph(LATestOpenIntent(what: "Photo", n: n), "camera", 22)
-                glyph(LATestOpenIntent(what: "Tasbih", n: n), "circle.hexagonpath", 22)
+            VStack(spacing: 8) {
+                glyph(LATestOpenIntent(what: "Photo", n: n), "camera", big ? 24 : 22)
+                glyph(LATestOpenIntent(what: "Tasbih", n: n), "circle.hexagonpath", big ? 24 : 22)
             }
         } else if ended {
             glyph(LATestMarkIntent(n: n), "circle.dashed", big ? 30 : 26, dim: true)
@@ -390,15 +390,9 @@ private struct LAGlyphs: View {
             glyph(LATestMarkIntent(n: n), "circle", big ? 30 : 26)
         }
     }
+    /// The app's soft raised disc (owner: "i still want the soft look for buttons and rings").
     private func glyph<I: AppIntent>(_ intent: I, _ symbol: String, _ size: CGFloat, dim: Bool = false) -> some View {
-        Button(intent: intent) {
-            Image(systemName: symbol)
-                .font(.system(size: size, weight: .light))
-                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
-                .frame(width: 44, height: size + 14)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        LARoundButton(intent: intent, symbol: symbol, size: size * 1.45, onIsland: !big, dim: dim)
     }
 }
 
@@ -439,7 +433,9 @@ private struct LARoundButton<I: AppIntent>: View {
                 .frame(width: size, height: size)
                 .background {
                     if onIsland {
-                        Circle().fill(Color.white.opacity(0.12))
+                        Circle().fill(Color(white: 0.11))
+                            .shadow(color: .black, radius: 3, x: 1.5, y: 1.5)
+                            .shadow(color: .white.opacity(0.09), radius: 3, x: -1.5, y: -1.5)
                     } else {
                         Circle().fill(WidgetSoft.surface(scheme))
                             .shadow(color: WidgetSoft.shade(scheme), radius: 3, x: 1.5, y: 1.5)
@@ -511,9 +507,13 @@ struct LARing: View {
     var body: some View {
         ZStack {
             if onIsland {
-                Circle().stroke(Color.white.opacity(0.10), lineWidth: band)
+                Circle().stroke(Color(white: 0.11), lineWidth: band)
+                    .shadow(color: .black, radius: band * 0.6, x: band * 0.3, y: band * 0.3)
+                    .shadow(color: .white.opacity(0.09), radius: band * 0.9, x: -band * 0.3, y: -band * 0.3)
             } else {
+                // The app's raised soft band, a touch lifted on the dark card (light up-left, shade down-right).
                 WidgetSoftBand(width: band)
+                    .shadow(color: .white.opacity(0.05), radius: band * 0.5, x: -band * 0.25, y: -band * 0.25)
             }
             if let at = state.markedAt {
                 let c = PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at))
