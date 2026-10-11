@@ -640,15 +640,17 @@ struct ZikrCardRequest: Identifiable {
 extension View {
     /// An existing zikr's card over everything (decision zikr-card-edit B): its page only shows it; this is where it
     /// changes. `onDelete`: Delete zikr was confirmed in the card's footer — the page asks and deletes.
-    func zikrCardEditor(_ request: Binding<ZikrCardRequest?>, allowDelete: Bool = true,
+    /// `blursPage`: the page behind is blurred under a light dim, not darkened (the tasbeeh pause screen — owner).
+    func zikrCardEditor(_ request: Binding<ZikrCardRequest?>, allowDelete: Bool = true, blursPage: Bool = false,
                         onDelete: @escaping (MantraModel) -> Void = { _ in }) -> some View {
-        modifier(ZikrCardEditorPresenter(request: request, allowDelete: allowDelete, onDelete: onDelete))
+        modifier(ZikrCardEditorPresenter(request: request, allowDelete: allowDelete, blursPage: blursPage, onDelete: onDelete))
     }
 }
 
 private struct ZikrCardEditorPresenter: ViewModifier {
     @Binding var request: ZikrCardRequest?
     let allowDelete: Bool
+    var blursPage = false
     let onDelete: (MantraModel) -> Void
     @State private var cover: ZikrCardRequest?
 
@@ -659,7 +661,7 @@ private struct ZikrCardEditorPresenter: ViewModifier {
                 withTransaction(quiet) { cover = request }
             }
             .fullScreenCover(item: $cover) { r in
-                ZikrCardEditor(mantra: r.mantra, startPane: r.pane, allowDelete: allowDelete,
+                ZikrCardEditor(mantra: r.mantra, startPane: r.pane, allowDelete: allowDelete, blursPage: blursPage,
                                close: { request = nil }, onDelete: onDelete)
                     .presentationBackground(.clear)
             }
@@ -675,6 +677,8 @@ struct ZikrCardEditor: View {
     var initialName = ""
     var startPane: MantraCardFields.Pane = .words
     var allowDelete = true
+    /// The page behind blurred under a light dim (the pause screen), not darkened.
+    var blursPage = false
     /// Called once the card has faded: the presenter's flag goes back.
     let close: () -> Void
     var onCreate: (MantraModel) -> Void = { _ in }
@@ -714,9 +718,20 @@ struct ZikrCardEditor: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(shown ? 0.72 : 0)
-                .ignoresSafeArea()
-                .onTapGesture { cancel() }
+            Group {
+                if blursPage {
+                    // Floating over the session (owner): the pause screen blurred, a light dim over it.
+                    ZStack {
+                        Rectangle().fill(.ultraThinMaterial)
+                        Color.black.opacity(0.25)
+                    }
+                    .opacity(shown ? 1 : 0)
+                } else {
+                    Color.black.opacity(shown ? 0.72 : 0)
+                }
+            }
+            .ignoresSafeArea()
+            .onTapGesture { cancel() }
             VStack(spacing: 14) {
                 Spacer(minLength: 60)
                 MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: $quickAdd,

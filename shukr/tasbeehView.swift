@@ -1968,7 +1968,8 @@ struct tasbeehView: View {
         /// The well's scroll: at the top for a new zikr or a new height.
         @State private var wellScroll = ScrollPosition(edge: .top)
         /// The zikr's own page, opened by a tap on its card.
-        @State private var showZikrPage = false
+        /// The zikr's card editor over the pause screen.
+        @State private var cardEditing: ZikrCardRequest?
         @State private var bottomInset: CGFloat = 0
         /// The page's height inside the safe area: how much room the gaps get (`airScale`).
         @State private var pageHeight: CGFloat = 900
@@ -2170,17 +2171,16 @@ struct tasbeehView: View {
                             .layoutPriority(1)
                     }
                     // A tap among the zikr's name, its media and its text never resumes (only the page round them does):
-                    // a near-miss on ▶︎ resumed the session (owner). A tap on the card opens the zikr's own page to edit
-                    // it (decision pause-zikr-edit A); its name, ▶︎ and photo keep their own taps.
+                    // a near-miss on ▶︎ resumed the session (owner). A tap on the card opens just the zikr's card editor,
+                    // floating over the blurred pause screen (owner; it opened the zikr's whole page before); its name,
+                    // ▶︎ and photo keep their own taps. No delete from inside a session.
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        guard mantra != nil, !sharedState.isDoingPostNamazZikr else { return }
+                        guard let mantra, !sharedState.isDoingPostNamazZikr else { return }
                         triggerSomeVibration(type: .light)
-                        showZikrPage = true
+                        cardEditing = ZikrCardRequest(mantra: mantra)
                     }
-                    .sheet(isPresented: $showZikrPage) {
-                        if let mantra { MantraEditorView(mantra: mantra, inSession: true) }
-                    }
+                    .zikrCardEditor($cardEditing, allowDelete: false, blursPage: true)
                     .modifier(PauseLayerFade(shown: pauseShown, finishing: results != nil, resultsDelay: 0.22))
                     .allowsHitTesting(pauseShown)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.notes", $0) }
