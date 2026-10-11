@@ -425,6 +425,13 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   Every sheet / cover's content gets `.watchLookRoot()`; each root page `.watchPageBackground()`. DEBUG `-watchLook light|dark|auto`, `-watchPage 0|1|2`.
 - Untried on a real watch: wrist-down runtime, outbox catch-up, compass, memo, complications. DEBUG `-demoWatch`.
 
+**Prayer Live Activities** (research, DEBUG only — board MY4R; findings, logs, shots in shukrGit/board/mocks/prayer-live-activities/ and live-activity-looks/)
+- Look G (decision live-activity-look) in shukrWidgetLiveActivity.swift; everything that changes with time is a timer gate (`LAGate`) — iOS's
+  stale flag didn't flip on time. Harness `LATest` / `LAReal` at the end of FajrAlarmKit.swift; Settings → Live Activities (`LiveActivityPrefs`).
+- Rules found on phones: 5 held at most; scheduled starts fire on their own and wake / relaunch shukr (it can END then, not schedule); Mark
+  prayed may schedule; an open refills. Real mode (`-laReal`, on his 13 Pro Max only; `-laRealOff`) plans at every run. Log: app group
+  Library/Application Support/la-test.log (`devicectl device copy from --domain-type appGroupDataContainer …`).
+
 **Fajr alarm** (FajrAlarmKit.swift; iOS 26.1+ AlarmKit, else the Shortcut)
 - Same rule and keys (`alarmEnabled`, `alarmOffsetMinutes` 5-min steps, `alarmIsBefore`, `alarmIsFajr`); before the END of Fajr at least 10 min (`FajrAlarmRule`: setup's and Settings' wheels and the scheduler — owner: time to wake and make wudu). On 26.1+ the app sets
   one `.fixed` system alarm per day, up to 60 days ahead ("Fajr starts 5:37 AM"); its second button is **Snooze** (owner 2026-10-11: half-asleep he hits
