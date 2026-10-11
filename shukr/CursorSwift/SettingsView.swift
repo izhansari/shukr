@@ -305,14 +305,20 @@ struct SettingsView: View {
                         // (owner: "if reminders are off then no need to show this component. just show reminders are
                         // off... with a button to turn them on" — the rows above say so, with the button).
                         if !remindersOff {
-                        HStack(spacing: 8) {
-                            NotificationTile(prayer: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, accent: .green, inList: true)
-                            NotificationTile(prayer: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, accent: .green, inList: true)
-                            NotificationTile(prayer: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, accent: .green, inList: true)
-                            NotificationTile(prayer: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, accent: .green, inList: true)
-                            NotificationTile(prayer: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, accent: .green, inList: true)
+                        // Back to the bells (owner, with the picture of the old row), keeping the dots: black for each
+                        // notification it sends, grey otherwise.
+                        HStack {
+                            prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, dots: true)
+                            Divider()
+                            prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, dots: true)
+                            Divider()
+                            prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, dots: true)
+                            Divider()
+                            prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, dots: true)
+                            Divider()
+                            prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
                         }
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 4)
                         }
 
                         if isNotifPopupVisible && !remindersOff {
@@ -850,6 +856,9 @@ struct prayerCol: View {
     @Binding var notifIsOn: Bool
     @Binding var nudgeIsOn: Bool
     var accent: Color = .primary
+    /// Settings: how many notifications it sends, as three dots under the bell — black for each one it sends, grey
+    /// otherwise (owner: the old look, with the dots kept).
+    var dots = false
 
     var body: some View {
             // Unified Bell Button
@@ -877,8 +886,18 @@ struct prayerCol: View {
                         .foregroundColor(notifIsOn ? accent : .gray)
                         .contentTransition(.symbolEffect(.replace))
                         .frame(maxWidth: .infinity, alignment: .center)
-                    
-                    
+
+                    if dots {
+                        let sends = notifIsOn ? (nudgeIsOn ? 3 : 1) : 0
+                        HStack(spacing: 4) {
+                            ForEach(0..<3, id: \.self) { i in
+                                Circle()
+                                    .fill(i < sends ? Color.primary : Color.secondary.opacity(0.3))
+                                    .frame(width: 5, height: 5)
+                            }
+                        }
+                        .animation(.snappy(duration: 0.2), value: sends)
+                    }
 
                     Spacer()
                     

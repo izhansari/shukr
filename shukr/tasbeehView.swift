@@ -647,7 +647,7 @@ struct tasbeehView: View {
                 // counting in sets (decision top-bar-finish A; a tap turns sets off). The right side is always laid out,
                 // faded out and inert while paused: removing it popped the layout on every pause / resume.
                 HStack {
-                    PauseResumeButton(paused: paused, reduceMotion: reduceMotion, action: {
+                    PauseResumeButton(paused: paused, raised: ringAbove, reduceMotion: reduceMotion, action: {
                         if !paused { CountTips.shared.pausePressed() }
                         togglePause()
                     })
@@ -3302,60 +3302,56 @@ struct tasbeehView: View {
     /// (the pause screen's top row matches the bar).
     struct PauseResumeButton: View {
         let paused: Bool
+        /// The soft look's raised capsule; else a plain tint — as Finish (owner: "make resume button match the finished
+        /// button … just put green … text on it. otherwise match it and its animation exactly").
+        var raised = false
         var reduceMotion = false
         let action: () -> Void
 
-        /// Paused: the capsule's sizes, shared with the pause screen's unseen twin (`resumeLabel`).
-        static let resumeHeight: CGFloat = 40
-        static let resumePadding: CGFloat = 14
+        /// Paused: the capsule's sizes (Finish's), shared with the pause screen's unseen twin (`resumeLabel`).
+        static let resumeHeight: CGFloat = MinusFinishButton.finishHeight
+        static let resumePadding: CGFloat = MinusFinishButton.finishPadding
         static let barHeight: CGFloat = 56
-        /// The two symbols' own widths at their sizes (measured from the symbols, not guessed).
-        static let pauseWidth: CGFloat = symbolWidth("pause.fill", 24, .bold, fallback: 20)
-        static let chevronWidth: CGFloat = symbolWidth("chevron.left", 15, .semibold, fallback: 9)
-        private static func symbolWidth(_ name: String, _ size: CGFloat, _ weight: UIImage.SymbolWeight,
-                                        fallback: CGFloat) -> CGFloat {
-            UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: size, weight: weight))?
-                .size.width ?? fallback
-        }
+        static let pauseSize: CGFloat = MinusFinishButton.minusSize
+        /// "Resume"'s own width at its font, measured.
+        static let resumeTextWidth: CGFloat = {
+            let base = UIFont.systemFont(ofSize: 17, weight: .medium)
+            let font = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: 17) } ?? base
+            return ceil(("Resume" as NSString).size(withAttributes: [.font: font]).width)
+        }()
 
         var body: some View {
+            // Finish's morph, mirrored: ⏸ in its grey square shrinks away as the square widens into the capsule and
+            // "Resume" grows in; resuming plays it backwards.
             Button(action: action) {
-                HStack(spacing: 4) {
-                    // The two symbols crossfade in one slot, each at its own fixed size: the symbol-replace effect
-                    // shrank ⏸ (its bars thinning as the font size moved) and then popped a tiny ‹ in — a hiccup at
-                    // ~0.4 s on the owner's phone. The slot narrows from ⏸'s width to ‹'s.
-                    ZStack {
-                        Image(systemName: "pause.fill")
-                            .font(.system(size: 24, weight: .bold))
-                            .opacity(paused ? 0 : 1)
-                            .scaleEffect(paused ? 0.6 : 1)
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .semibold))
-                            .opacity(paused ? 1 : 0)
-                            .scaleEffect(paused ? 1 : 0.6)
-                    }
-                    .frame(width: paused ? Self.chevronWidth : Self.pauseWidth)
-                    if paused {
-                        Text("Resume")
-                            .font(.system(size: 17, weight: .medium, design: .rounded))
-                            .fixedSize()
-                            .transition(.opacity)
-                    }
+                ZStack {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Color.gray.opacity(0.3))
+                        .opacity(paused ? 0 : 1)
+                        .scaleEffect(paused ? 0.6 : 1)
+                    Text("Resume")
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.sage)
+                        .fixedSize()
+                        .opacity(paused ? 1 : 0)
+                        .scaleEffect(paused ? 1 : 0.6)
                 }
-                .foregroundStyle(paused ? Color.sage : Color.gray.opacity(0.3))
-                .padding(.horizontal, paused ? Self.resumePadding : 16)
-                .frame(minWidth: Self.barHeight)
-                .frame(height: paused ? Self.resumeHeight : Self.barHeight)
+                .frame(width: paused ? Self.resumeTextWidth + 2 * Self.resumePadding : Self.pauseSize,
+                       height: paused ? Self.resumeHeight : Self.pauseSize)
                 .background {
-                    RoundedRectangle(cornerRadius: paused ? Self.resumeHeight / 2 : 10, style: .continuous)
-                        .fill(paused ? Color.sage.opacity(0.10) : Color.gray.opacity(0.08))
-                }
-                // The word is laid out at its place at once; the button grows to it. Clipped to the button, the growing
-                // capsule reveals it (unclipped, it hung outside for a few frames each way).
-                .clipShape(RoundedRectangle(cornerRadius: paused ? Self.resumeHeight / 2 : 10, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: paused ? Self.resumeHeight / 2 : 10, style: .continuous)
-                        .strokeBorder(Color.sage.opacity(paused ? 0.7 : 0), lineWidth: 1.2)
+                    ZStack {
+                        Capsule().fill(Color.gray.opacity(0.08))
+                            .opacity(paused ? 0 : 1)
+                        Group {
+                            if raised {
+                                ThemedRaised(shape: Capsule(), radius: 4, offset: 2)
+                            } else {
+                                Capsule().fill(Color.primary.opacity(0.06))
+                            }
+                        }
+                        .opacity(paused ? 1 : 0)
+                    }
                 }
                 .frame(height: Self.barHeight)
                 .contentShape(Rectangle())
@@ -3367,12 +3363,11 @@ struct tasbeehView: View {
 
         /// The paused capsule's layout alone (no fill): the pause screen keeps its room with it, unseen.
         static var resumeLabel: some View {
-            HStack(spacing: 4) {
-                Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold)).frame(width: chevronWidth)
-                Text("Resume").font(.system(size: 17, weight: .medium, design: .rounded)).fixedSize()
-            }
-            .padding(.horizontal, resumePadding)
-            .frame(height: resumeHeight)
+            Text("Resume")
+                .font(.system(size: 17, weight: .medium, design: .rounded))
+                .fixedSize()
+                .padding(.horizontal, resumePadding)
+                .frame(height: resumeHeight)
         }
     }
 
