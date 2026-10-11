@@ -846,19 +846,29 @@ enum LATest {
             LATestLog.add("real mark \(st.label) \(st.start.formatted(date: .omitted, time: .shortened)) → \(done ? "marked in shukr" : "NOT marked (already done, not started, or no store)")")
         }
         st.markedAt = Date()
-        // Marked: photo + Tasbih for ~15 s, then iOS removes it on its own (owner's idea, Frank's proposal):
-        // ended now with the marked content and a dismissal 15 s out — nothing waits in shukr.
-        let content = ActivityContent(state: st, staleDate: nil)
-        await a.end(content, dismissalPolicy: .after(Date().addingTimeInterval(15)))
-        LATestLog.add("marked #\(n) · ended, dismissal in 15 s · \(bg ? "background" : "fg") · state now \(a.activityState)")
+        // Marked: photo + Tasbih for ~15 s (owner's idea). Ending it with a 15 s dismissal didn't hold on his phone —
+        // iOS removed it 28 ms later — so it stays LIVE in its marked look and shukr ends it itself after 15 s, still
+        // inside this tap's run. If iOS pauses shukr first, the next plan ends any card marked > 20 s ago.
+        let markedT0 = Date()
+        await a.update(ActivityContent(state: st, staleDate: nil))
+        LATestLog.add("marked #\(n) · live, marked look · \(bg ? "background" : "fg")")
         if LAReal.on {
             for attempt in 1...4 {   // as many as this tap may add (owner: "top up as much as we can")
                 let added = LAReal.plan(reason: "mark try \(attempt)")
                 if added == 0 { break }
                 try? await Task.sleep(for: .milliseconds(400))
             }
+            let wait = 15 - Date().timeIntervalSince(markedT0)
+            if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+            if a.activityState == .active {
+                await a.end(nil, dismissalPolicy: .immediate)
+                LATestLog.add(String(format: "ended #\(n) %.1f s after Mark prayed (shukr's own timer)", Date().timeIntervalSince(markedT0)))
+            } else {
+                LATestLog.add("#\(n) already \(a.activityState) after the 15 s")
+            }
             return
         }
+        await a.end(ActivityContent(state: st, staleDate: nil), dismissalPolicy: .after(Date().addingTimeInterval(15)))
         // As many as iOS lets this tap add (owner: "top up as much as we can"): retry after short pauses.
         for attempt in 1...4 {
             let before = g.integer(forKey: "la.next")
@@ -947,7 +957,13 @@ enum LAReal {
         var endedIDs = Set<String>()
         for a in all where a.activityState != .ended && a.activityState != .dismissed {
             let st = a.content.state
-            if st.markedAt != nil { continue }   // marked: its own 15 s dismissal
+            if let m = st.markedAt {
+                guard now.timeIntervalSince(m) > 20 else { continue }   // marked: its 15 s with photo + Tasbih
+                Task { await a.end(nil, dismissalPolicy: .immediate) }
+                endedIDs.insert(a.id)
+                ended.append("\(st.label) (marked \(Int(now.timeIntervalSince(m))) s ago — shukr was paused before its 15 s)")
+                continue
+            }
             var why: String?
             if !isReal(a.attributes.n) { why = "test window" }
             else if st.end <= now { why = "window over" }
