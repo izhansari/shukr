@@ -3175,7 +3175,7 @@ private struct AlarmDemo: View {
     private static let alarmGreen = Color(red: 0.43, green: 0.62, blue: 0.5)
 
     /// The pill at the top of the screen (owner: "the small bar one"): the alarm symbol, shaking, "shukr" over the alarm's
-    /// title in its green, then "I'm up" (sunrise) and Stop (✕) as round buttons.
+    /// title in its green, then Snooze (zzz) and Stop (✕) as round buttons.
     private func pill(_ first: (day: Date, alarm: Date, reference: Date)) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "alarm.fill")
@@ -3194,8 +3194,8 @@ private struct AlarmDemo: View {
                     .contentTransition(.numericText())
             }
             Spacer(minLength: 0)
-            Image(systemName: "sunrise.fill")
-                .font(.system(size: 17, weight: .semibold))
+            Image(systemName: "zzz")
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(Self.alarmGreen)
                 .frame(width: 38, height: 38)
                 .background(Circle().fill(Self.alarmGreen.opacity(0.28)))

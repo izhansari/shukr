@@ -17,6 +17,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import AlarmKit
 import AppIntents
 
@@ -44,6 +45,14 @@ enum FajrAlarms {
     }
 
     private static var group: UserDefaults? { UserDefaults(suiteName: SharedStore.appGroup) }
+
+    /// The alarm's second button snoozes (owner, 2026-10-11: "i usually click something random cuz im tired. id rather it
+    /// be a snooze than both buttons that stop the alarm"); it replaced "I'm up — open Fajr". iOS's own snooze length.
+    static let snoozeMinutes = 9
+    /// What the alarms are built like now; a plan re-sets every alarm made by an older one (they keep their buttons).
+    /// 2 = Snooze instead of "I'm up".
+    static let configVersion = 2
+    static let configKey = "alarmKitConfig"
 
     static var supported: Bool {
         if #available(iOS 26.1, *) { return true }
@@ -156,7 +165,11 @@ enum FajrAlarms {
         var have = Set<Int>()
         var cancelled = 0
         let tests = testIDs
-        for alarm in existing where alarm.state != .alerting {
+        // Alarms built by an older configuration (an "I'm up" button) are all re-set with the current one.
+        let rebuild = group?.integer(forKey: configKey) != configVersion
+        if rebuild { FajrAlarmLog.add("plan (\(reason)): re-setting every alarm with the current buttons (v\(configVersion): Snooze)") }
+        // Ringing or snoozing (counting down to ring again) is left alone: a plan while snoozed would cancel it as past.
+        for alarm in existing where alarm.state == .scheduled {
             // A test alarm is left alone until it's past (then it goes like any other).
             if tests.contains(alarm.id.uuidString) {
                 if case .fixed(let date)? = alarm.schedule, date > Date() { continue }
@@ -171,6 +184,11 @@ enum FajrAlarms {
                 continue
             }
             let key = Int(date.timeIntervalSince1970 / 60)
+            if rebuild && date > Date() && alarm.state == .scheduled {
+                try? AlarmManager.shared.cancel(id: alarm.id)
+                cancelled += 1
+                continue
+            }
             if date < Date() || !wantedKeys.contains(key) || have.contains(key) {
                 try? AlarmManager.shared.cancel(id: alarm.id)
                 cancelled += 1
@@ -214,6 +232,8 @@ enum FajrAlarms {
             }
         }
         if let last { group?.set(last.timeIntervalSince1970, forKey: throughKey) }
+        // Only once every wanted day got one (a failure part-way re-sets them all again next time).
+        if wanted.allSatisfy({ have.contains(Int($0.alarm.timeIntervalSince1970 / 60)) }) { group?.set(configVersion, forKey: configKey) }
         // What's held now, for the next plan's "went off" lines.
         let held = (try? AlarmManager.shared.alarms) ?? []
         group?.set(held.map(\.id.uuidString), forKey: "fajrAlarmLog.known")
@@ -294,7 +314,9 @@ enum FajrAlarms {
         return "\(idString.prefix(4)) set for \(when)\(test)"
     }
 
-    /// While shukr runs: a line whenever one of ours starts ringing (AlarmKit's own updates).
+    /// While shukr runs: a line whenever one of ours starts ringing, and a Snooze when one goes from ringing to counting
+    /// down (AlarmKit's own updates). iOS runs the snooze itself and doesn't run our secondary intent for it (sim,
+    /// 2026-10-11), so a snooze is only heard while shukr is running.
     @MainActor static func watch() {
         guard #available(iOS 26.1, *), watching == nil else { return }
         watching = Task { @MainActor in
@@ -302,6 +324,8 @@ enum FajrAlarms {
             for await alarms in AlarmManager.shared.alarmUpdates {
                 let now = Set(alarms.filter { $0.state == .alerting }.map(\.id))
                 for id in now.subtracting(ringing) { FajrAlarmLog.add("ringing: \(describe(id.uuidString))") }
+                let counting = Set(alarms.filter { $0.state == .countdown }.map(\.id))
+                for id in ringing.intersection(counting) { FajrAlarmLog.add("Snooze: \(describe(id.uuidString))") }
                 ringing = now
             }
         }
@@ -327,17 +351,21 @@ enum FajrAlarms {
         #endif
         let title: LocalizedStringResource = test ? "Test alarm from shukr"
             : "Fajr \(isFajr ? "starts" : "ends") \(shortTimePM(reference))"
+        // Snooze (the system's countdown: it rings again after `snoozeMinutes`), not a second way to stop it.
         let alert = AlarmPresentation.Alert(
             title: title,
-            secondaryButton: AlarmButton(text: "I'm up — open Fajr", textColor: .white, systemImageName: "sunrise.fill"),
-            secondaryButtonBehavior: .custom)
-        let attributes = AlarmAttributes(presentation: AlarmPresentation(alert: alert),
+            secondaryButton: AlarmButton(text: "Snooze", textColor: .white, systemImageName: "zzz"),
+            secondaryButtonBehavior: .countdown)
+        let countdown = AlarmPresentation.Countdown(title: test ? "Snoozing" : "Snoozing · Fajr \(isFajr ? "starts" : "ends") \(shortTimePM(reference))")
+        let attributes = AlarmAttributes(presentation: AlarmPresentation(alert: alert, countdown: countdown),
                                          metadata: FajrAlarmMetadata(),
                                          tintColor: Color(red: 0.43, green: 0.62, blue: 0.5))
-        return .alarm(schedule: .fixed(date), attributes: attributes,
-                      stopIntent: FajrAlarmStopIntent(alarmID: id.uuidString),
-                      secondaryIntent: FajrAlarmOpenIntent(alarmID: id.uuidString),
-                      sound: .default)
+        return AlarmManager.AlarmConfiguration(
+            countdownDuration: Alarm.CountdownDuration(preAlert: nil, postAlert: TimeInterval(snoozeMinutes * 60)),
+            schedule: .fixed(date), attributes: attributes,
+            stopIntent: FajrAlarmStopIntent(alarmID: id.uuidString),
+            secondaryIntent: FajrAlarmSnoozeIntent(alarmID: id.uuidString),
+            sound: .default)
     }
 }
 
@@ -362,7 +390,25 @@ struct FajrAlarmStopIntent: LiveActivityIntent {
     }
 }
 
-/// "I'm up — open Fajr": stops the alarm, opens shukr on the Salah page, tops up the next days.
+/// The alarm's Snooze: the system restarts its countdown; this only notes it in the log (the wake line on Alarm check).
+/// The sim didn't run it for a countdown button (2026-10-11) — kept in case a phone does; `watch` hears snoozes too.
+@available(iOS 26.1, *)
+struct FajrAlarmSnoozeIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "Snooze the Fajr alarm"
+    static let isDiscoverable = false
+    @Parameter(title: "Alarm") var alarmID: String
+
+    init() {}
+    init(alarmID: String) { self.alarmID = alarmID }
+
+    @MainActor func perform() async throws -> some IntentResult {
+        FajrAlarmLog.add("Snooze: \(FajrAlarms.describe(alarmID))")
+        return .result()
+    }
+}
+
+/// "I'm up — open Fajr" (alarms set before the Snooze button; kept so those still work until they're re-set): stops the
+/// alarm, opens shukr on the Salah page, tops up the next days.
 @available(iOS 26.1, *)
 struct FajrAlarmOpenIntent: LiveActivityIntent {
     static let title: LocalizedStringResource = "I'm up — open Fajr"
@@ -386,6 +432,8 @@ struct FajrAlarmOpenIntent: LiveActivityIntent {
 /// how reliable it'll be"): every alarm AlarmKit holds for shukr, checked against the rule — the wrong time for its
 /// day, two on one day, a day missing — and the log (FajrAlarmLog), newest first, to copy or share.
 struct FajrAlarmCheckView: View {
+    @Environment(\.modelContext) private var context
+    @State private var mornings: [FajrMorning] = []
     @State private var alarms: [(id: String, date: Date?, state: String, test: Bool)] = []
     @State private var wanted: [(alarm: Date, reference: Date)] = []
     @State private var log: [String] = []
@@ -415,6 +463,24 @@ struct FajrAlarmCheckView: View {
 
     var body: some View {
         List {
+            Section {
+                if mornings.isEmpty {
+                    Text("No alarm has rung yet").foregroundStyle(.secondary)
+                }
+                ForEach(mornings) { m in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(m.title).font(.subheadline.weight(.semibold))
+                        Text(m.line(fajrMarked: m.test ? nil : fajrMarked(for: m)))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 2)
+                }
+            } header: {
+                Text("Mornings")
+            } footer: {
+                Text("From the log: the alarm's time, every Snooze and Stop (shukr hears those), and when Fajr was marked. When it started ringing shows only if shukr happened to be running.")
+            }
             Section {
                 row("AlarmKit permission", permission)
                 row("shukr sets the alarms", FajrAlarms.isActive ? "yes" : "no (the Shortcut)")
@@ -474,7 +540,17 @@ struct FajrAlarmCheckView: View {
         alarms = FajrAlarms.scheduled()
         wanted = FajrAlarms.dates()
         log = FajrAlarmLog.lines()
+        mornings = FajrMorning.all(fromNewestFirst: log)
         copied = false
+    }
+
+    /// When that day's Fajr was marked (nil = not marked, or no row).
+    private func fajrMarked(for m: FajrMorning) -> FajrMorning.Marked {
+        guard let at = m.scheduled else { return .unknown }
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forRow: "Fajr", startingAt: at)))) ?? []
+        guard let fajr = rows.first(where: { $0.name == "Fajr" && $0.isCompleted }) ?? rows.first(where: { $0.name == "Fajr" })
+        else { return .unknown }
+        return fajr.isCompleted ? .at(fajr.timeAtComplete) : .notMarked
     }
 
     private func row(_ title: String, _ value: String) -> some View {
@@ -484,5 +560,113 @@ struct FajrAlarmCheckView: View {
     private func check(_ ok: Bool, _ text: String) -> some View {
         Label(text, systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
             .foregroundStyle(ok ? Color.green : Color.orange)
+    }
+}
+
+/// One alarm that rang, read back from the log (Alarm check's Mornings; owner, 2026-10-11: "i def want item 2", a wake
+/// line — alarm time, snoozes, stop, Fajr marked).
+struct FajrMorning: Identifiable {
+    enum Marked { case at(Date?), notMarked, unknown }
+    let id: String
+    var scheduledText: String
+    var scheduled: Date?
+    var test = false
+    var rang: Date?
+    var snoozes: [Date] = []
+    var stopped: Date?
+    /// "I'm up — open Fajr" (alarms set before Snooze).
+    var up: Date?
+    /// AlarmKit no longer had it at the next plan (it rang and ended).
+    var wentOff: Date?
+
+    var title: String {
+        let day = (scheduled ?? rang ?? snoozes.first ?? stopped ?? up)
+            .map { $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? scheduledText
+        return test ? "\(day) · test" : day
+    }
+
+    func line(fajrMarked: Marked?) -> String {
+        var parts: [String] = []
+        if let scheduled { parts.append("Alarm \(Self.clock(scheduled))") }
+        if let rang { parts.append("ringing at \(Self.clock(rang))") }
+        if !snoozes.isEmpty {
+            parts.append("snoozed \(snoozes.count)× (\(snoozes.map(Self.clock).joined(separator: ", ")))")
+        }
+        if let end = stopped ?? up {
+            let after = scheduled.map { " · \(Self.minutes(end.timeIntervalSince($0))) after" } ?? ""
+            parts.append("\(stopped != nil ? "stopped" : "I'm up") \(Self.clock(end))\(after)")
+        } else if snoozes.isEmpty, wentOff != nil {
+            parts.append("no Stop or Snooze heard")
+        }
+        switch fajrMarked {
+        case .at(let d)?: parts.append("Fajr marked" + (d.map { " \(Self.clock($0))" } ?? ""))
+        case .notMarked?: parts.append("Fajr not marked")
+        default: break
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private static func clock(_ d: Date) -> String { d.formatted(date: .omitted, time: .shortened) }
+    private static func minutes(_ t: TimeInterval) -> String {
+        let m = Int((t / 60).rounded())
+        return m < 60 ? "\(m) min" : "\(m / 60) h \(m % 60) min"
+    }
+
+    // MARK: Reading the log
+
+    /// Log lines look like "Oct 11 07:01:27 EDT  Stop: 8FD4 set for Sun, Oct 11 at 5:58 AM".
+    static func all(fromNewestFirst lines: [String]) -> [FajrMorning] {
+        var byID: [String: FajrMorning] = [:]
+        for line in lines.reversed() {
+            guard let gap = line.range(of: "  ") else { continue }
+            let event = line[gap.upperBound...]
+            let kinds = ["ringing: ", "Snooze: ", "Stop: ", "I'm up: ", "went off: "]
+            guard let kind = kinds.first(where: { event.hasPrefix($0) }),
+                  let when = stamp(String(line[..<gap.lowerBound])) else { continue }
+            let rest = event.dropFirst(kind.count)
+            let id = String(rest.prefix(4))
+            guard let setFor = rest.range(of: "set for ") else { continue }
+            var text = String(rest[setFor.upperBound...])
+            let test = text.contains("(test)")
+            if let paren = text.range(of: " (") { text = String(text[..<paren.lowerBound]) }
+            var m = byID[id] ?? FajrMorning(id: id, scheduledText: text, scheduled: scheduledDate(text, near: when), test: test)
+            if m.scheduled == nil, let d = scheduledDate(text, near: when) { m.scheduled = d; m.scheduledText = text }
+            m.test = m.test || test
+            switch kind {
+            case "ringing: ": m.rang = m.rang ?? when
+            // Heard twice (the intent and the app's own watch) within a minute = one snooze.
+            case "Snooze: ": if m.snoozes.last.map({ when.timeIntervalSince($0) > 60 }) ?? true { m.snoozes.append(when) }
+            case "Stop: ": m.stopped = when
+            case "I'm up: ": m.up = when
+            default: m.wentOff = when
+            }
+            byID[id] = m
+        }
+        return byID.values.sorted {
+            ($0.scheduled ?? $0.stopped ?? .distantPast) > ($1.scheduled ?? $1.stopped ?? .distantPast)
+        }
+    }
+
+    private static func clean(_ s: String) -> String {
+        s.replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{00A0}", with: " ")
+    }
+    /// The log's own stamp has no year: this year, or last year if that would be in the future.
+    private static func stamp(_ s: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d HH:mm:ss zzz"
+        f.defaultDate = Date()
+        guard let d = f.date(from: s) else { return nil }
+        return d > Date().addingTimeInterval(86_400) ? Calendar.current.date(byAdding: .year, value: -1, to: d) : d
+    }
+    /// "Sun, Oct 11 at 5:58 AM" (`FajrAlarmLog.day`), in the year of the event that mentions it.
+    private static func scheduledDate(_ s: String, near event: Date) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "EEE, MMM d 'at' h:mm a"
+        f.defaultDate = event
+        guard let d = f.date(from: clean(s)) else { return nil }
+        if d > event.addingTimeInterval(86_400) { return Calendar.current.date(byAdding: .year, value: -1, to: d) }
+        return d
     }
 }

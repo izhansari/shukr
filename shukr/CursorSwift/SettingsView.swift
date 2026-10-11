@@ -1379,7 +1379,7 @@ struct AlarmSettingsView: View {
                 Text("Set the rule once. shukr sets a real alarm for every day ahead, each at the right time as Fajr moves through the year. It rings like any alarm, even on silent or in a Focus.")
                     .font(.caption)
                     .foregroundColor(.gray)
-                Text("It keeps itself topped up: each time you stop it, and whenever shukr runs, the next days are set. Tap “I'm up — open Fajr” on the alarm to go straight to Fajr.")
+                Text("It keeps itself topped up: each time you stop it, and whenever shukr runs, the next days are set. Snooze rings it again in \(FajrAlarms.snoozeMinutes) minutes.")
                     .font(.caption)
                     .foregroundColor(.gray)
                 Text("Had the Shortcut automation? It no longer makes an alarm while shukr sets it — no need to delete it.")
