@@ -467,8 +467,9 @@ private struct LAWash: View {
     /// ellipse centred on the ring, the colour at 30 %, gone 62 % of the way out.
     private func wash(_ c: Color) -> some View {
         GeometryReader { g in
-            let rx = g.size.width * 1.2 * 0.62, ry = g.size.height * 1.4 * 0.62
-            EllipticalGradient(colors: [c.opacity(0.30), c.opacity(0)], center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5)
+            // Softer than Frank's numbers on the phone (owner: "could still be a little less"): 20 %, gone by 52 %.
+            let rx = g.size.width * 1.2 * 0.52, ry = g.size.height * 1.4 * 0.52
+            EllipticalGradient(colors: [c.opacity(0.20), c.opacity(0)], center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5)
                 .frame(width: rx * 2, height: ry * 2)
                 .position(x: g.size.width * 0.12, y: g.size.height * 0.5)
         }
