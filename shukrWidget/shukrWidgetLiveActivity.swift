@@ -98,16 +98,16 @@ struct LATestLiveActivity: Widget {
             let n = context.attributes.n
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    LAEnds(state: s, stale: stale) { e in LASideRing(state: s, ended: e, size: 62, onIsland: true) }
-                        .padding(.leading, 6).padding(.top, 6)
+                    LAEnds(state: s, stale: stale) { e in LASideRing(state: s, ended: e, size: 68, onIsland: true) }
+                        .padding(.leading, 4).padding(.top, 4)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     LAEnds(state: s, stale: stale) { e in LANameLines(state: s, ended: e, big: false) }
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    LAEnds(state: s, stale: stale) { e in LAButtons(state: s, n: n, ended: e, size: 38, onIsland: true) }
-                        .padding(.trailing, 6).padding(.top, 10)
+                    LAEnds(state: s, stale: stale) { e in LAGlyphs(state: s, n: n, ended: e, big: false) }
+                        .padding(.trailing, 4).padding(.top, 10)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     LADismissBar(state: s).padding(.horizontal, 24)
@@ -172,9 +172,10 @@ private struct LALockCardBody: View {
             LASideRing(state: state, ended: ended, size: 78, onIsland: false)
             LANameLines(state: state, ended: ended, big: true)
             Spacer(minLength: 0)
-            LAButtons(state: state, n: n, ended: ended, size: 44, onIsland: false)
+            LAGlyphs(state: state, n: n, ended: ended, big: true)
         }
-        .padding(.horizontal, 18).padding(.vertical, 14)
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .frame(minHeight: 124)
         // Our own solid surface under the glow: iOS draws `activityBackgroundTint` see-through, so the wallpaper showed
         // through and turned a red glow pink (owner's phone, 2026-10-11).
         .background {
@@ -197,10 +198,17 @@ private struct LASideRing: View {
     let onIsland: Bool
     var body: some View {
         ZStack {
-            LARing(state: state, ended: ended, size: size, onIsland: onIsland)
-            Image(systemName: state.markedAt == nil ? state.symbol : "checkmark")
-                .font(.system(size: size * 0.24, weight: .light))
-                .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            // Look D's ring (Frank's mock): the arc's circle 63 of 78, on a band about two and a half times its width.
+            LARing(state: state, ended: ended, size: size * 0.81, onIsland: onIsland, band: 10)
+            if let at = state.markedAt {
+                Image(systemName: "checkmark")
+                    .font(.system(size: size * 0.24, weight: .medium))
+                    .foregroundStyle(PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at)))
+            } else {
+                Image(systemName: state.symbol)
+                    .font(.system(size: size * 0.26, weight: .light))
+                    .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+            }
         }
         .frame(width: size, height: size)
     }
@@ -215,18 +223,18 @@ private struct LANameLines: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(ended ? "\(state.label) ended" : state.label)
-                .font(.system(size: big ? 24 : 19, weight: .light, design: .rounded))
+                .font(.system(size: big ? 26 : 22, weight: .light))
                 .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             Group {
                 if let at = state.markedAt {
                     let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
                     Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
-                        .foregroundStyle(.primary)
+                        .font(.system(size: big ? 16 : 13)).foregroundStyle(.primary)
                     Text("\(PrayerScoring.grade(for: score).rawValue) · \(Int((score * 100).rounded()))")
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 13)).foregroundStyle(.secondary)
                 } else if ended {
                     Text("\(state.end.formatted(date: .omitted, time: .shortened)) · not marked")
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: big ? 16 : 13)).foregroundStyle(.secondary)
                 } else {
                     let lastHalf = state.end.addingTimeInterval(-30 * 60)
                     ZStack(alignment: .leading) {
@@ -235,11 +243,13 @@ private struct LANameLines: View {
                         LATimeLeft(end: state.end).foregroundStyle(.red)
                             .mask { LAGate(from: lastHalf, until: nil) }
                     }
-                    Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
-                        .foregroundStyle(.secondary)
+                    .font(.system(size: big ? 16 : 13))
+                    if big {
+                        Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
+                    }
                 }
             }
-            .font(.system(size: big ? 14 : 12, weight: .regular, design: .rounded))
         }
         .lineLimit(1)
         .minimumScaleFactor(0.75)
@@ -361,6 +371,37 @@ private struct LACompactTrailing: View {
     }
 }
 
+/// Look D's right side: plain thin symbols, no disc — `circle` marks it (as on the widget); prayed → camera over the
+/// zikr beads; ended → a grey dashed circle (Qaza; never red — owner). Each still a 44 pt tap.
+private struct LAGlyphs: View {
+    let state: LATestAttributes.ContentState
+    let n: Int
+    let ended: Bool
+    let big: Bool
+    var body: some View {
+        if state.markedAt != nil {
+            VStack(spacing: 10) {
+                glyph(LATestOpenIntent(what: "Photo", n: n), "camera", 22)
+                glyph(LATestOpenIntent(what: "Tasbih", n: n), "circle.hexagonpath", 22)
+            }
+        } else if ended {
+            glyph(LATestMarkIntent(n: n), "circle.dashed", big ? 30 : 26, dim: true)
+        } else {
+            glyph(LATestMarkIntent(n: n), "circle", big ? 30 : 26)
+        }
+    }
+    private func glyph<I: AppIntent>(_ intent: I, _ symbol: String, _ size: CGFloat, dim: Bool = false) -> some View {
+        Button(intent: intent) {
+            Image(systemName: symbol)
+                .font(.system(size: size, weight: .light))
+                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                .frame(width: 44, height: size + 14)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// SF Symbols only, in the app's soft round button: `circle` marks it (as on the widget); prayed → camera + Tasbih (the
 /// Zikr tab's symbol); ended → a grey dashed circle, Mark as Qaza (never red — owner).
 private struct LAButtons: View {
@@ -426,8 +467,15 @@ private struct LAWash: View {
             }
         }
     }
+    /// Look D's halo exactly (Frank's mock: `radial-gradient(120% 140% at 12% 50%, colour 30%, transparent 62%)`): an
+    /// ellipse centred on the ring, the colour at 30 %, gone 62 % of the way out.
     private func wash(_ c: Color) -> some View {
-        RadialGradient(colors: [c.opacity(0.40), c.opacity(0.12), c.opacity(0)], center: UnitPoint(x: 0.17, y: 0.5), startRadius: 24, endRadius: 230)
+        GeometryReader { g in
+            let rx = g.size.width * 1.2 * 0.62, ry = g.size.height * 1.4 * 0.62
+            EllipticalGradient(colors: [c.opacity(0.30), c.opacity(0)], center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5)
+                .frame(width: rx * 2, height: ry * 2)
+                .position(x: g.size.width * 0.12, y: g.size.height * 0.5)
+        }
     }
 }
 
@@ -457,13 +505,15 @@ struct LARing: View {
     let ended: Bool
     let size: CGFloat
     var onIsland = false
+    /// The soft band's width at the 90 pt design size (the widget's 4.5; Look D's thicker band ~10).
+    var band: CGFloat = 4.5
 
     var body: some View {
         ZStack {
             if onIsland {
-                Circle().stroke(Color.white.opacity(0.16), lineWidth: 4.5)
+                Circle().stroke(Color.white.opacity(0.10), lineWidth: band)
             } else {
-                WidgetSoftBand(width: 4.5)
+                WidgetSoftBand(width: band)
             }
             if let at = state.markedAt {
                 let c = PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at))
