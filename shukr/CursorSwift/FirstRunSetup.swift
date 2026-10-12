@@ -100,7 +100,7 @@ enum FirstRunSetup {
     }
 
     /// Widget / control / Action-button launches set one of these before the app opens.
-    static let deepLinkFlags = ["widgetCompass", "widgetDailyAyah", "widgetNames", "widgetTasbeeh", "widgetZikrTask"]
+    static let deepLinkFlags = ["widgetCompass", "widgetDailyAyah", "widgetNames", "widgetTasbeeh", "widgetZikrTask", "widgetMemories"]
     static var openedFromDeepLink: Bool {
         let group = UserDefaults(suiteName: SharedStore.appGroup)
         return deepLinkFlags.contains { group?.bool(forKey: $0) == true }

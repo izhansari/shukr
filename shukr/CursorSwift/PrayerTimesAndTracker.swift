@@ -184,6 +184,16 @@ struct PrayerTimesView: View {
                 }
             }
             
+            // The Memories control / shortcut: its full-screen page over the Salah page.
+            if store.bool(forKey: "widgetMemories") {
+                store.set(false, forKey: "widgetMemories")
+                lastDeepLinkAt = Uptime.now
+                clearCovers {
+                    sharedState.go(to: .main, animated: false)
+                    MemoriesPresenter.shared.open = true
+                }
+            }
+
             // The Fajr alarm's "I'm up — open Fajr" (AlarmKit): the Salah page, nothing over it.
             if store.bool(forKey: "alarmOpenSalah") {
                 store.set(false, forKey: "alarmOpenSalah")

@@ -23,6 +23,33 @@
 			</array>
 		</dict>
 	</array>
+	<key>INAlternativeAppNames</key>
+	<array>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Shooker</string>
+			<key>INAlternativeAppNamePronunciationHint</key>
+			<string>shoo ker</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Shukur</string>
+			<key>INAlternativeAppNamePronunciationHint</key>
+			<string>shoo kur</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Shook her</string>
+			<key>INAlternativeAppNamePronunciationHint</key>
+			<string>shook her</string>
+		</dict>
+		<dict>
+			<key>INAlternativeAppName</key>
+			<string>Shukar</string>
+			<key>INAlternativeAppNamePronunciationHint</key>
+			<string>shoo kar</string>
+		</dict>
+	</array>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>

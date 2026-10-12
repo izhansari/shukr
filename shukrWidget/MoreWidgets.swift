@@ -725,3 +725,86 @@ struct TasbeehControl: ControlWidget {
         .description("Open shukr's zikr page.")
     }
 }
+
+/// Daily Ayah: straight to today's verse (owner: "it just takes them to that page").
+struct DailyAyahControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.ayah") {
+            ControlWidgetButton(action: OpenDailyAyahIntent()) {
+                Label("Daily Ayah", systemImage: "book")
+            }
+        }
+        .displayName("Daily Ayah")
+        .description("Open today's ayah in shukr.")
+    }
+}
+
+/// 99 Names: straight to the Names.
+struct NamesControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.names") {
+            ControlWidgetButton(action: OpenNamesIntent()) {
+                Label("99 Names", systemImage: "moon.stars")
+            }
+        }
+        .displayName("99 Names")
+        .description("Open the 99 Names in shukr.")
+    }
+}
+
+/// Memories: straight to your prayer photos.
+struct MemoriesControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.memories") {
+            ControlWidgetButton(action: OpenMemoriesIntent()) {
+                Label("Memories", systemImage: "photo.stack")
+            }
+        }
+        .displayName("Memories")
+        .description("Open your prayer photos in shukr.")
+    }
+}
+
+/// The prayer that matters now (owner: "tells them info about current or next prayer — the relevant one"): its name and
+/// "ends 6:48 PM" / "at 5:32 AM" — clock times, so it never goes stale between refreshes (the app reloads it on a
+/// mark and as prayers change). A tap opens the Salah page.
+struct PrayerControl: ControlWidget {
+    struct Value: Sendable { let name: String; let line: String; let symbol: String }
+
+    struct Provider: ControlValueProvider {
+        var previewValue: Value { Value(name: "Asr", line: "ends 6:48 PM", symbol: "sun.haze.fill") }
+        func currentValue() async throws -> Value {
+            guard let p = RelevantPrayer.now() else { return Value(name: "Prayers", line: "Open shukr", symbol: "clock") }
+            return Value(name: p.name,
+                         line: p.isOn ? "ends \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))",
+                         symbol: prayerIcon(for: p.name))
+        }
+    }
+
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.prayer", provider: Provider()) { value in
+            ControlWidgetButton(action: OpenSalahIntent()) {
+                Label {
+                    Text(value.name)
+                    Text(value.line)
+                } icon: {
+                    Image(systemName: value.symbol)
+                }
+            }
+        }
+        .displayName("Prayer")
+        .description("The prayer that's on, or the next one, and its time.")
+    }
+}
+
+/// Every control in one group (a WidgetBundle holds at most ten).
+struct ShukrControls: WidgetBundle {
+    var body: some Widget {
+        PrayerControl()
+        QiblaControl()
+        TasbeehControl()
+        DailyAyahControl()
+        NamesControl()
+        MemoriesControl()
+    }
+}

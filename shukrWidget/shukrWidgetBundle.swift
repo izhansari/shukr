@@ -17,8 +17,7 @@ struct shukrWidgetBundle: WidgetBundle {
         ZikrTasksWidget()
         NameOfTheDayWidget()
         DailyAyahWidget()
-        QiblaControl()
-        TasbeehControl()
+        ShukrControls().body   // Prayer, Qibla, Tasbeeh, Daily Ayah, 99 Names, Memories (MoreWidgets.swift)
         PrayerWindowLiveActivity()   // each prayer window as a Live Activity (PrayerLiveActivities.swift)
     }
 }

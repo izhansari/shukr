@@ -491,6 +491,7 @@ enum SharedStore {
 struct MarkCompleteIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Mark Prayer Complete"
     static var openAppWhenRun: Bool = false
+    static var isDiscoverable: Bool = false   // the widget's button; Shortcuts gets "Mark Prayer as Prayed"
 
     @Parameter(title: "Prayer") var prayerName: String
     @Parameter(title: "Start") var prayerStart: Date
@@ -551,6 +552,7 @@ extension SharedStore {
         // a late mark of yesterday's Isha from a notification left yesterday's score stale).
         group?.set(start.timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)
         WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
+        ControlCenter.shared.reloadControls(ofKind: "betternorms.shukr.control.prayer")   // its "ends …" moves on
         return true
     }
 
@@ -576,7 +578,7 @@ struct OpenTasbeehIntent: AppIntent {
 }
 
 struct OpenCompassIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open Compass"
+    static var title: LocalizedStringResource = "Open Qibla"
     static var openAppWhenRun: Bool = true
     
     func perform() async throws -> some IntentResult {
@@ -605,6 +607,7 @@ enum DeepLinkSignal {
 /// Widget → one zikr task: the Zikr page with that task's circle in the middle, ready to tap.
 struct OpenZikrTaskIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Zikr Task"
+    static var isDiscoverable: Bool = false   // a widget's own button, not a Shortcuts action
     static var openAppWhenRun: Bool = true
 
     @Parameter(title: "Task") var taskID: String
@@ -726,6 +729,7 @@ enum WidgetListState {
 
 struct showListToggleIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Screen"
+    static var isDiscoverable: Bool = false   // a widget's own button, not a Shortcuts action
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
@@ -745,6 +749,7 @@ struct showListToggleIntent: AppIntent {
 
 struct textToggleIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Screen"
+    static var isDiscoverable: Bool = false   // a widget's own button, not a Shortcuts action
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
@@ -1414,6 +1419,137 @@ struct SetFajrAlarmIntent: AppIntent {
 
 
 
+// MARK: - Siri and Shortcuts: asked in plain words (owner: "natural questions")
+
+/// The prayer that matters now: the one on and not yet marked, else the next to start (today's, then tomorrow's Fajr).
+enum RelevantPrayer {
+    struct Info { let name: String; let start: Date; let end: Date; let isOn: Bool }
+
+    static func now(_ now: Date = Date()) -> Info? {
+        guard let coords = try? PrayerUtils.getUserCoordinates() else { return nil }
+        let params = PrayerUtils.getCalculationParameters()
+        let cal = Calendar.current
+        let today = PrayerDay.date(for: now)
+        let done = SharedStore.completedPrayerNamesToday()
+        for offset in 0...1 {
+            guard let day = cal.date(byAdding: .day, value: offset, to: today),
+                  let times = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { continue }
+            let nextFajr = cal.date(byAdding: .day, value: 1, to: day)
+                .flatMap { try? PrayerUtils.getPrayerTimes(for: $0, coordinates: coords, params: params).fajr }
+            let windows = PrayerUtils.createWindowsFromTimes(times, on: day, nextFajr: nextFajr)
+            for name in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"] {
+                guard let (start, end, _) = windows[name] else { continue }
+                if offset == 0, start <= now, now < end, !done.contains(name) { return Info(name: name, start: start, end: end, isOn: true) }
+                if start > now { return Info(name: name, start: start, end: end, isOn: false) }
+            }
+        }
+        return nil
+    }
+
+    /// "27 minutes", "1 hour 5 minutes".
+    static func span(_ seconds: TimeInterval) -> String {
+        let m = max(1, Int((seconds / 60).rounded(.up)))
+        let h = m / 60, r = m % 60
+        let hours = h == 0 ? "" : h == 1 ? "1 hour" : "\(h) hours"
+        let mins = r == 0 ? "" : r == 1 ? "1 minute" : "\(r) minutes"
+        return [hours, mins].filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    static var noPlace: IntentDialog { "Open shukr once so it knows where you are." }
+}
+
+/// "What's the next prayer?" — answers at once (the old phrase asked which prayer).
+struct NextPrayerIntent: AppIntent {
+    static var title: LocalizedStringResource = "Next Prayer"
+    static var description = IntentDescription("The prayer that's on now, or the next one, and its time.")
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let p = RelevantPrayer.now() else { return .result(dialog: RelevantPrayer.noPlace) }
+        let now = Date()
+        if p.isOn {
+            return .result(dialog: "\(p.name) is on now. It ends in \(RelevantPrayer.span(p.end.timeIntervalSince(now))), at \(shortTimePM(p.end)).")
+        }
+        return .result(dialog: "\(p.name) starts in \(RelevantPrayer.span(p.start.timeIntervalSince(now))), at \(shortTimePM(p.start)).")
+    }
+}
+
+/// "How long is left?" — the prayer that's on, to its end.
+struct PrayerTimeLeftIntent: AppIntent {
+    static var title: LocalizedStringResource = "Time Left for Prayer"
+    static var description = IntentDescription("How long is left for the prayer that's on now.")
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let p = RelevantPrayer.now() else { return .result(dialog: RelevantPrayer.noPlace) }
+        let now = Date()
+        if p.isOn {
+            return .result(dialog: "\(RelevantPrayer.span(p.end.timeIntervalSince(now))) left for \(p.name). It ends at \(shortTimePM(p.end)).")
+        }
+        return .result(dialog: "No prayer is on right now. \(p.name) starts in \(RelevantPrayer.span(p.start.timeIntervalSince(now))).")
+    }
+}
+
+/// "I prayed" — marks the prayer that's on, scored now, without opening shukr. A LiveActivityIntent so it runs in shukr
+/// (its card goes, the app's list and streaks follow), as the widget's check does.
+struct MarkCurrentPrayerIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Mark Prayer as Prayed"
+    static var description = IntentDescription("Marks the prayer that's on now as prayed.")
+    static var openAppWhenRun: Bool = false
+
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let p = RelevantPrayer.now() else { return .result(dialog: RelevantPrayer.noPlace) }
+        guard p.isOn else {
+            return .result(dialog: "No prayer is on right now. \(p.name) starts at \(shortTimePM(p.start)).")
+        }
+        let now = Date()
+        let marked: Bool
+        if let hook = PrayerWindowHooks.widgetMark {
+            marked = await hook(p.name, p.start, p.end)
+        } else {
+            marked = SharedStore.markPrayerComplete(named: p.name, start: p.start, end: p.end)
+        }
+        guard marked else { return .result(dialog: "\(p.name) is already marked.") }
+        let grade = PrayerScoring.grade(for: PrayerScoring.score(start: p.start, end: p.end, markedAt: now)).rawValue
+        return .result(dialog: "\(p.name) marked as prayed. \(grade).")
+    }
+}
+
+/// "Start Tasbih Fatimah" — shukr opens into the 33 · 33 · 34 session (as the post-salah pill does).
+struct StartTasbihFatimahIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Tasbih Fatimah"
+    static var description = IntentDescription("Opens shukr into Tasbih Fatimah: 33 · 33 · 34.")
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "liveActivity.openTasbih")
+        DeepLinkSignal.post()
+        return .result()
+    }
+}
+
+/// Opens Memories (a control, a shortcut).
+struct OpenMemoriesIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Memories"
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "widgetMemories")
+        DeepLinkSignal.post()
+        return .result()
+    }
+}
+
+/// Opens the Salah page (the prayer control).
+struct OpenSalahIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Prayers"
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "alarmOpenSalah")
+        DeepLinkSignal.post()
+        return .result()
+    }
+}
+
 struct PrayerTimeShortcuts: AppShortcutsProvider {
     @AppShortcutsBuilder
     static var appShortcuts: [AppShortcut] {
@@ -1437,19 +1573,60 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         )
         
         AppShortcut(
-            intent: GetSomePrayerTimeIntent(),
+            intent: NextPrayerIntent(),
             phrases: [
-//                "Get next prayer time from \(.applicationName)",
-//                "Next prayer time from \(.applicationName)",
+                "Next prayer in ${applicationName}",
+                "What's the next prayer in ${applicationName}",
+                "Next prayer time from ${applicationName}",
                 "Get next prayer time from ${applicationName}",
-                "Next prayer time from ${applicationName}"//,
-//                "When is the next prayer",
-//                "What's the upcoming prayer time"
+                "When is the next prayer in ${applicationName}"
             ],
-            shortTitle: "Some Prayer Time",
+            shortTitle: "Next Prayer",
             systemImageName: "clock.fill"
         )
-        
+
+        AppShortcut(
+            intent: PrayerTimeLeftIntent(),
+            phrases: [
+                "How long is left in ${applicationName}",
+                "How much time is left in ${applicationName}",
+                "Time left in ${applicationName}"
+            ],
+            shortTitle: "Time Left",
+            systemImageName: "hourglass"
+        )
+
+        AppShortcut(
+            intent: MarkCurrentPrayerIntent(),
+            phrases: [
+                "I prayed in ${applicationName}",
+                "Mark my prayer in ${applicationName}",
+                "Mark prayer as prayed in ${applicationName}"
+            ],
+            shortTitle: "I Prayed",
+            systemImageName: "checkmark.circle"
+        )
+
+        AppShortcut(
+            intent: StartTasbihFatimahIntent(),
+            phrases: [
+                "Start Tasbih Fatimah in ${applicationName}",
+                "Tasbih Fatimah in ${applicationName}"
+            ],
+            shortTitle: "Tasbih Fatimah",
+            systemImageName: "circle.hexagonpath"
+        )
+
+        AppShortcut(
+            intent: OpenCompassIntent(),
+            phrases: [
+                "Show the qibla in ${applicationName}",
+                "Find the qibla in ${applicationName}"
+            ],
+            shortTitle: "Qibla",
+            systemImageName: "location.north.line.fill"
+        )
+
         AppShortcut(
             intent: GetOffsetTimeIntent(),
             phrases: [
