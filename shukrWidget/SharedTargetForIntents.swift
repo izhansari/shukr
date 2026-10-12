@@ -1891,18 +1891,17 @@ struct LATuning: Codable, Equatable {
     static let weights: [Font.Weight] = [.light, .regular, .medium, .semibold, .bold]
     static let weightNames = ["Light", "Regular", "Medium", "Semibold", "Bold"]
     var islandTimeSize: Double { get { islandTimeSizeOpt ?? 17 } set { islandTimeSizeOpt = newValue } }
-    /// The opened island's row: the button with the time's room above AND below it, so the button sits centred whether
-    /// the time shows (last half hour) or not; the ring's side takes the same height (owner: the ✓ sat low).
-    var islandRowHeight: Double { islandButtonSize + 2 * (islandTimeSize * 1.25 + 6) }
+    /// The opened island's row: room for "27m" over the button; the ring's side takes the same height.
+    var islandRowHeight: Double { islandButtonSize + islandTimeSize * 1.25 + 6 }
     /// The ended ring's dashes (owner: tunable): how many, how much of each step is dash, how bright, how thick (nil =
     /// the arc's width).
     var endedDashCountOpt: Double? = nil
     var endedDashShareOpt: Double? = nil
     var endedDashOpacityOpt: Double? = nil
     var endedDashWidthOpt: Double? = nil
-    var endedDashCount: Double { get { endedDashCountOpt ?? 8 } set { endedDashCountOpt = newValue } }
-    var endedDashShare: Double { get { endedDashShareOpt ?? 0.55 } set { endedDashShareOpt = newValue } }
-    var endedDashOpacity: Double { get { endedDashOpacityOpt ?? 0.7 } set { endedDashOpacityOpt = newValue } }
+    var endedDashCount: Double { get { endedDashCountOpt ?? 16 } set { endedDashCountOpt = newValue } }
+    var endedDashShare: Double { get { endedDashShareOpt ?? 0.5 } set { endedDashShareOpt = newValue } }
+    var endedDashOpacity: Double { get { endedDashOpacityOpt ?? 0.5 } set { endedDashOpacityOpt = newValue } }
     var endedDashWidth: Double { get { endedDashWidthOpt ?? ringArcWidth } set { endedDashWidthOpt = newValue } }
     // How the time left is written — iOS's self-updating formats only (a Live Activity has no timeline): 0 "1 hour,
     // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative; under an hour it ticks seconds) · 2 "1:39" · 3 "1:39:12" ·
@@ -2231,12 +2230,26 @@ struct LAIslandTrailing: View {
     var body: some View {
         Group {
             if state.markedAt == nil && !ended {
+                // Two layouts, switched by time (no update comes at the half hour): more than half an hour left, the ✓
+                // alone, centred; the last half hour, "27m" over it, the pair centred; ended, the dashed circle centred
+                // again (owner). ONE button whose face holds all three, so the press always shows on the one you see.
                 let room = t.islandTimeSize * 1.25
-                VStack(alignment: .trailing, spacing: 6) {
-                    LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular)).frame(height: room)
-                    LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
-                    Color.clear.frame(width: 1, height: room)   // the same room below: centred, time or not
+                let half = state.end.addingTimeInterval(-30 * 60)
+                let disc = LADisc(symbol: "checkmark", size: t.islandButtonSize, symbolSize: t.buttonSymbolSize, onIsland: true,
+                                  endsAt: live ? state.end : nil, t: t)
+                Button(intent: PrayerWindowMarkIntent(n: n)) {
+                    ZStack(alignment: .trailing) {
+                        disc.mask { LAGate(from: nil, until: half) }
+                        VStack(alignment: .trailing, spacing: 6) {
+                            LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular)).frame(height: room)
+                            disc
+                        }
+                        .mask { LAGate(from: half, until: state.end) }
+                        disc.mask { LAGate(from: state.end, until: nil) }
+                    }
+                    .frame(height: t.islandRowHeight)
                 }
+                .buttonStyle(LAPressStyle())
             } else {
                 LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
             }
@@ -2295,36 +2308,50 @@ struct LARoundButton<I: AppIntent>: View {
     /// The ✓ gives way to the dim dashed circle (Qaza) here, by itself.
     var endsAt: Date? = nil
     let t: LATuning
+    var body: some View {
+        Button(intent: intent) {
+            LADisc(symbol: symbol, size: size, symbolSize: symbolSize, onIsland: onIsland, dim: dim, endsAt: endsAt, t: t)
+        }
+        .buttonStyle(LAPressStyle())
+    }
+}
+
+/// A soft round button's face: the symbol on the raised disc.
+struct LADisc: View {
+    let symbol: String
+    let size: Double
+    let symbolSize: Double
+    var onIsland = false
+    var dim = false
+    var endsAt: Date? = nil
+    let t: LATuning
     private func glyph(_ name: String, dim: Bool) -> some View {
         Image(systemName: name)
             .font(.system(size: symbolSize, weight: .light))
             .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary.opacity(t.symbolOpacity)))
     }
     var body: some View {
-        Button(intent: intent) {
-            ZStack {
-                if let endsAt {
-                    glyph(symbol, dim: dim).mask { LAGate(from: nil, until: endsAt) }
-                    glyph("circle.dashed", dim: true).mask { LAGate(from: endsAt, until: nil) }
-                } else {
-                    glyph(symbol, dim: dim)
-                }
+        ZStack {
+            if let endsAt {
+                glyph(symbol, dim: dim).mask { LAGate(from: nil, until: endsAt) }
+                glyph("circle.dashed", dim: true).mask { LAGate(from: endsAt, until: nil) }
+            } else {
+                glyph(symbol, dim: dim)
             }
-                .frame(width: size, height: size)
-                .background {
-                    if onIsland {
-                        Circle().fill(LASoft.island)
-                            .shadow(color: .black, radius: 3, x: 1.5, y: 1.5)
-                            .shadow(color: .white.opacity(0.09), radius: 3, x: -1.5, y: -1.5)
-                            .shadow(color: .white.opacity(t.ringBandLift * 0.6), radius: 1.5, x: -1, y: -1)
-                    } else {
-                        Circle().fill(LASoft.surface(t))
-                            .shadow(color: LASoft.shade, radius: 3, x: 1.5, y: 1.5)
-                            .shadow(color: LASoft.light, radius: 3, x: -1.5, y: -1.5)
-                    }
-                }
         }
-        .buttonStyle(LAPressStyle())
+        .frame(width: size, height: size)
+        .background {
+            if onIsland {
+                Circle().fill(LASoft.island)
+                    .shadow(color: .black, radius: 3, x: 1.5, y: 1.5)
+                    .shadow(color: .white.opacity(0.09), radius: 3, x: -1.5, y: -1.5)
+                    .shadow(color: .white.opacity(t.ringBandLift * 0.6), radius: 1.5, x: -1, y: -1)
+            } else {
+                Circle().fill(LASoft.surface(t))
+                    .shadow(color: LASoft.shade, radius: 3, x: 1.5, y: 1.5)
+                    .shadow(color: LASoft.light, radius: 3, x: -1.5, y: -1.5)
+            }
+        }
     }
 }
 
