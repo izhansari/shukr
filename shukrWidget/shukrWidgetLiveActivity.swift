@@ -129,7 +129,13 @@ struct PrayerWindowLiveActivity: Widget {
                             }
                             .padding(.horizontal, 2)   // (−10 on the left cut the ring off — owner)
                         }
-                        LADismissBar(state: s).padding(.horizontal, 24)   // iOS's own bottom margin: at 6 pt it cut the bar off
+                        // The bar's room is kept before marking too: the island growing to fit it redrew the whole island in a
+                        // cross-fade (the sim); same size, iOS keeps the ring and name and swaps only what changed (owner).
+                        ZStack {
+                            Color.clear.frame(height: 4)
+                            LADismissBar(state: s).transition(.opacity)
+                        }
+                        .padding(.horizontal, 24)   // iOS's own bottom margin: at 6 pt it cut the bar off
                     }
                 }
             } compactLeading: {

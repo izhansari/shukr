@@ -2378,7 +2378,10 @@ struct LAGlyphs: View {
         if state.markedAt != nil {
             // On the Lock Screen the pair fits the running card's row (the ring or the one button, whichever is taller), so
             // marking never makes the card taller (owner).
-            let pair = onIsland ? size * 0.82 : min(size * 0.82, (max(t.ringSize, t.buttonSize) - t.buttonStackGap) / 2)
+            // The island too: the pair fits the ring's height, so marking never resizes the island (a resize cross-faded
+            // the whole island instead of swapping only what changed — owner).
+            let row = onIsland ? max(t.islandRingSize, t.islandButtonSize) : max(t.ringSize, t.buttonSize)
+            let pair = min(size * 0.82, (row - t.buttonStackGap) / 2)
             VStack(spacing: t.buttonStackGap) {
                 LARoundButton(intent: PrayerWindowOpenIntent(what: "Photo", n: n), symbol: "camera", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
                 LARoundButton(intent: PrayerWindowOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
