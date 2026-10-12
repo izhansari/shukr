@@ -384,13 +384,23 @@ struct YourRemindersView: View {
                 Text("Tap to switch: off · start · start + nudges. Fewer reminders a day schedule further ahead.")
             }
 
+            // One card (owner): the weeks, then the picked day's name and its total as the card's own row, then its
+            // prayers.
             Section {
                 ForEach(Array(stride(from: 0, to: days.count, by: 7)), id: \.self) { start in
                     weekStrip(days, from: start)
                 }
-            } header: { Text("Days ahead") }
-
-            Section {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(dayTitle(PrayerNotificationID.dayKey(day)))
+                        .font(.system(.headline, design: .rounded))
+                    Spacer()
+                    Text("\(dayItems.count) reminder\(dayItems.count == 1 ? "" : "s")")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                .padding(.top, 6)
+                .contentTransition(.opacity)
                 if rows.isEmpty {
                     Text("Nothing scheduled").foregroundStyle(.secondary)
                 }
@@ -400,13 +410,7 @@ struct YourRemindersView: View {
                     case .other(let item): otherRow(item)
                     }
                 }
-            } header: {
-                HStack {
-                    Text(dayTitle(PrayerNotificationID.dayKey(day)))
-                    Spacer()
-                    Text("\(dayItems.count) reminder\(dayItems.count == 1 ? "" : "s")")
-                }
-            }
+            } header: { Text("Days ahead") }
 
             Section("About your reminders") {
                 ForEach(ReminderWhy.allCases) { kind in

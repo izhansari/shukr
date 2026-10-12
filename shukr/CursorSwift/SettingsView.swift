@@ -254,13 +254,19 @@ struct SettingsView: View {
             VStack{
                 // Page header: back to the main page, title, light/dark/auto toggle.
                 HStack {
+                    // Glass circles (owner), as iOS 26's own bar buttons — our own glass, not the system toolbar's
+                    // (that left ghost circles on Memories).
                     Button(action: {
                         onBack()
                     }) {
                         Image(systemName: "chevron.left")
-                            .font(.title2)
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundColor(.primary)
+                            .frame(width: 44, height: 44)
+                            .barGlass(Circle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back")
                     
                     Spacer()
                     
@@ -270,6 +276,8 @@ struct SettingsView: View {
                     Spacer()
                     
                     ColorModeToggleButton(showFloatingMessage: $showFloatingMessage)
+                        .frame(width: 44, height: 44)
+                        .barGlass(Circle())
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)

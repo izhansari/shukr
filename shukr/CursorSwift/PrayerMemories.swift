@@ -2810,8 +2810,8 @@ struct PrayerPlaceMapSheet: View {
     }
 }
 
-private extension View {
-    /// The bottom bar's glass: Apple's Liquid Glass on iOS 26+, a material before.
+extension View {
+    /// The bottom bar's glass: Apple's Liquid Glass on iOS 26+, a material before (Memories' bar, Settings' top buttons).
     @ViewBuilder
     func barGlass<S: Shape>(_ shape: S) -> some View {
         if #available(iOS 26.0, *) {
