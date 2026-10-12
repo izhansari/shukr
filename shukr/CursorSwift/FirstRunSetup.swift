@@ -3594,11 +3594,14 @@ private struct ReviewStep: View {
                     .scrollBounceBehavior(.basedOnSize)
                     .scrollIndicators(.hidden)
                     .frame(height: max(0, min(rows, geo.size.height - 24)))
-                    // Clipped: its bottom fades out, so a cut row reads as "there's more" (Sami's idea), not a mistake.
+                    // Clipped: its last 70 pt fade out, so a cut row reads as "there's more" (Sami's idea), not a mistake —
+                    // a share of the card's height (18 %) was too little to see (owner).
                     .mask {
-                        if rows > geo.size.height - 24 {
-                            LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.82),
-                                                   .init(color: .black.opacity(0), location: 1)],
+                        let shown = max(1, min(rows, geo.size.height - 24))
+                        if rows > shown {
+                            LinearGradient(stops: [.init(color: .black, location: 0),
+                                                   .init(color: .black, location: max(0, 1 - 70 / shown)),
+                                                   .init(color: .black.opacity(0.05), location: 1)],
                                            startPoint: .top, endPoint: .bottom)
                         } else {
                             Color.black
