@@ -2140,7 +2140,7 @@ struct LANameLines: View {
                 Text("ends \((shownEnd ?? state.end).formatted(date: .omitted, time: .shortened))")
                     .font(.system(size: line)).foregroundStyle(.secondary)
             } else {
-                let lastHalf = state.end.addingTimeInterval(-30 * 60)
+                let lastHalf = LAGate.lastHalf(of: state.end)
                 Group {
                 ZStack(alignment: .leading) {
                     LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.primary)
@@ -2263,7 +2263,7 @@ struct LAIslandTime: View {
     var size: Double = 14
     var body: some View {
         LAMinutesLeft(end: end, size: size).foregroundStyle(.red).fontWeight(.semibold)
-            .mask { LAGate(from: end.addingTimeInterval(-30 * 60), until: end) }
+            .mask { LAGate(from: LAGate.lastHalf(of: end), until: end) }
     }
 }
 
@@ -2322,7 +2322,7 @@ struct LAIslandTrailing: View {
                 // alone, centred; the last half hour, "27m" over it, the pair centred; ended, the dashed circle centred
                 // again (owner). ONE button whose face holds all three, so the press always shows on the one you see.
                 let room = t.islandTimeSize * 1.25
-                let half = state.end.addingTimeInterval(-30 * 60)
+                let half = LAGate.lastHalf(of: state.end)
                 let disc = LADisc(symbol: "checkmark", size: t.islandButtonSize, symbolSize: t.buttonSymbolSize, onIsland: true,
                                   endsAt: live ? state.end : nil, t: t)
                 Button(intent: PrayerWindowMarkIntent(n: n)) {
@@ -2608,7 +2608,7 @@ struct LAGate: View {
     let from: Date?
     let until: Date?
     /// How a look gives way to the next when its time comes (owner, 2026-10-12: show both): 0 a 1 s wipe left to right
-    /// (the stock bar filling), 1 an instant flip, 2 a fade in 6 instant steps over 0.25 s (a blurred, soft-edged sweep
+    /// (the stock bar filling), 1 an instant flip, 2 a fade in 5 instant steps over 0.15 s (a blurred, soft-edged sweep
     /// froze on the Lock Screen: the blur stops the bar's live fill). App group `la.gateStyle`.
     static let styleKey = "la.gateStyle"
     /// Unset = the fade (owner: "I think I like fade").
@@ -2616,8 +2616,13 @@ struct LAGate: View {
         let g = UserDefaults(suiteName: SharedStore.appGroup)
         return g?.object(forKey: styleKey) == nil ? 2 : g?.integer(forKey: styleKey) ?? 2
     }
-    private static let steps = 6
-    private static let fadeLength: TimeInterval = 0.25   // owner: short (1.5 s read as lag, then 0.5 s): 6 steps at 24 a second
+    private static let steps = 5
+    private static let fadeLength: TimeInterval = 0.15   // owner: 0.15 s (1.5, 0.5, 0.25 read as lag)
+
+    /// When the last half hour's red begins: ~3 s after the time left turns "30" (owner: white "30" fades to red "30").
+    /// The minutes are floored, so the gate at end − 30:00 left a white "30 minutes" for a whole minute; and iOS turns
+    /// "31" into "30" late and unevenly (1 s, then 4 s after end − 31:00 on the sim's Lock Screen), so 7 s past it.
+    static func lastHalf(of end: Date) -> Date { end.addingTimeInterval(-31 * 60 + 7) }
 
     var body: some View {
         // An edge already passed when this is drawn is drawn solid: its stock bar re-filled on every update, sweeping a
