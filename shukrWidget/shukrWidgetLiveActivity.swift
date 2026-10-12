@@ -118,8 +118,7 @@ struct LATestLiveActivity: Widget {
                     LADismissBar(state: s).padding(.horizontal, 24)
                 }
             } compactLeading: {
-                LAEnds(state: s, stale: stale) { e in LARing(state: s, ended: e, size: 22, onIsland: true, t: t) }
-                    .overlay { Image(systemName: s.symbol).font(.system(size: 8, weight: .medium)) }
+                LACompactLeading(state: s, stale: stale, t: t)
             } compactTrailing: {
                 LAEnds(state: s, stale: stale) { e in LACompactTrailing(state: s, ended: e) }
             } minimal: {

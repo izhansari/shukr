@@ -1864,15 +1864,20 @@ struct LATuning: Codable, Equatable {
     var barBottomInset: Double = 0
     var barThickness: Double = 0.5
     // Dynamic Island (opened up)
-    var islandRingSize: Double = 55
-    var islandTitleSize: Double = 18
-    var islandLineSize: Double = 11
+    var islandRingSize: Double = 66
+    var islandTitleSize: Double = 20
+    var islandLineSize: Double = 13
     var islandButtonSize: Double = 38
     var islandTimeSizeOpt: Double? = nil        // nil = 17: the time left above the island's button
     /// The expanded island's layout (nil = 1), to compare on a phone (the simulator doesn't draw the island): 0 the ring beside the
     /// camera, the name under it (center region) · 1 ring + name together beside the camera, below it if too wide ·
     /// 2 ring + name and time + button as one row under the camera (leading / trailing with priority).
     var islandLayout: Int? = nil
+    /// The prayer name's weight: 0 light (nil) · 1 regular · 2 medium · 3 semibold · 4 bold — the card and the island apart.
+    var titleWeight: Int? = nil
+    var islandTitleWeight: Int? = nil
+    static let weights: [Font.Weight] = [.light, .regular, .medium, .semibold, .bold]
+    static let weightNames = ["Light", "Regular", "Medium", "Semibold", "Bold"]
     var islandTimeSize: Double { get { islandTimeSizeOpt ?? 17 } set { islandTimeSizeOpt = newValue } }
     // How the time left is written — iOS's self-updating formats only (a Live Activity has no timeline): 0 "1 hour,
     // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative; under an hour it ticks seconds) · 2 "1:39" · 3 "1:39:12" ·
@@ -1880,14 +1885,22 @@ struct LATuning: Codable, Equatable {
     // by timer gates. Optional so a saved tuning without it still decodes (renamed from timeLeftStyle so earlier picks drop).
     var timeLeftFormat: Int? = nil
 
-    static let key = "la.tuning2"   // 2: his sim tuning became the defaults; earlier saved tunings are left behind
+    /// Only what differs from the defaults is saved, laid over the defaults on reading — so a new default reaches every
+    /// value nobody tuned (a full save kept the old ones). 3: earlier full saves are left behind.
+    static let key = "la.tuning3"
+    private static func dict(_ t: LATuning) -> [String: Any] {
+        (try? JSONEncoder().encode(t)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    }
     static var current: LATuning {
         guard let data = UserDefaults(suiteName: SharedStore.appGroup)?.data(forKey: key),
-              let t = try? JSONDecoder().decode(LATuning.self, from: data) else { return LATuning() }
-        return t
+              let saved = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return LATuning() }
+        let merged = dict(LATuning()).merging(saved) { _, new in new }
+        return (try? JSONSerialization.data(withJSONObject: merged)).flatMap { try? JSONDecoder().decode(LATuning.self, from: $0) } ?? LATuning()
     }
     func save() {
-        if let data = try? JSONEncoder().encode(self) { UserDefaults(suiteName: SharedStore.appGroup)?.set(data, forKey: Self.key) }
+        let base = Self.dict(LATuning())
+        let changed = Self.dict(self).filter { k, v in !(base[k].map { "\($0)" == "\(v)" } ?? false) }
+        if let data = try? JSONSerialization.data(withJSONObject: changed) { UserDefaults(suiteName: SharedStore.appGroup)?.set(data, forKey: Self.key) }
     }
     var json: String {
         let e = JSONEncoder(); e.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -2007,7 +2020,7 @@ struct LANameLines: View {
         let small = big ? t.endsSize : t.islandLineSize
         VStack(alignment: .leading, spacing: t.lineSpacing) {
             Text(ended ? "\(state.label) ended" : state.label)
-                .font(.system(size: title, weight: .light))
+                .font(.system(size: title, weight: LATuning.weights[min(max((big ? t.titleWeight : t.islandTitleWeight) ?? 0, 0), 4)]))
                 .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             if let at = state.markedAt {
                 let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
@@ -2132,6 +2145,17 @@ struct LAIslandTime: View {
     var body: some View {
         LAMinutesLeft(end: end).foregroundStyle(.red).fontWeight(.semibold)
             .mask { LAGate(from: end.addingTimeInterval(-30 * 60), until: nil) }
+    }
+}
+
+/// The folded island's left side: the small ring with the prayer's symbol (its right side is `LACompactTrailing`).
+struct LACompactLeading: View {
+    let state: LATestAttributes.ContentState
+    let stale: Bool
+    let t: LATuning
+    var body: some View {
+        LAEnds(state: state, stale: stale) { e in LARing(state: state, ended: e, size: 22, onIsland: true, t: t) }
+            .overlay { Image(systemName: state.symbol).font(.system(size: 8, weight: .medium)) }
     }
 }
 

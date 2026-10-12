@@ -1642,6 +1642,7 @@ struct LATunerView: View {
 
     var body: some View {
         NavigationStack {
+            Group { if UserDefaults.standard.bool(forKey: "laIslandGallery") { LAIslandGallery(t: t) } else {
             VStack(spacing: 0) {
                 preview
                     .frame(height: 210)
@@ -1657,6 +1658,7 @@ struct LATunerView: View {
                 .onChange(of: kind) { _, _ in base = Date() }
                 if UserDefaults.standard.bool(forKey: "laFormatTest") { LAFormatTest() } else { Form { controls } }
             }
+            } }
             .navigationTitle("Live Activity look")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -1692,7 +1694,10 @@ struct LATunerView: View {
                 }
             }
             .onChange(of: t) { _, new in new.save(); note = "" }
-            .onAppear {   // DEBUG -laTimeStyle N (the sim's taps miss Menus)
+            .onAppear {   // DEBUG -laTimeStyle N, -laWeight N (the sim's taps miss Menus)
+                if UserDefaults.standard.object(forKey: "laWeight") != nil {
+                    t.titleWeight = UserDefaults.standard.integer(forKey: "laWeight"); t.islandTitleWeight = t.titleWeight
+                }
                 if UserDefaults.standard.object(forKey: "laTimeStyle") != nil { t.timeLeftFormat = UserDefaults.standard.integer(forKey: "laTimeStyle") }
             }
         }
@@ -1717,15 +1722,18 @@ struct LATunerView: View {
         if kind == 4 {
             // The Dynamic Island opened up, on black.
             // Only roughly the island: iOS places the regions round the camera itself (see board island-rules.md).
-            HStack(alignment: .center, spacing: 12) {
-                LAIslandRingAndName(state: s, ended: false, t: t)
-                Spacer(minLength: 0)
-                LAIslandTrailing(state: s, n: 0, ended: false, t: t)
+            VStack(spacing: 14) {
+                LAFoldedIsland(state: s, stale: false, t: t)
+                HStack(alignment: .center, spacing: 12) {
+                    LAIslandRingAndName(state: s, ended: false, t: t)
+                    Spacer(minLength: 0)
+                    LAIslandTrailing(state: s, n: 0, ended: false, t: t)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 16)
+                .background(Color.black)
+                .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
             }
-            .padding(.horizontal, 18).padding(.vertical, 16)
             .frame(maxWidth: .infinity)
-            .background(Color.black)
-            .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
             .environment(\.colorScheme, .dark)
             .padding(.horizontal, 10)
         } else {
@@ -1759,6 +1767,9 @@ struct LATunerView: View {
                 ForEach(LATimeLeft.offered, id: \.self) { Text(LATimeLeft.styles[$0]).tag($0) }
             }
             row("Name size", "\"Asr\"", \.titleSize, 10...36, 1)
+            Picker("Name weight", selection: Binding(get: { t.titleWeight ?? 0 }, set: { t.titleWeight = $0 })) {
+                ForEach(LATuning.weightNames.indices, id: \.self) { Text(LATuning.weightNames[$0]).tag($0) }
+            }
             row("Time left size", "\"1 hour, 40 minutes left\" · \"Prayed 4:31 PM\"", \.timeLeftSize, 8...24, 1)
             row("Small line size", "\"ends 6:48 PM\" · \"Perfect · 100\"", \.endsSize, 8...20, 1)
             row("Line spacing", "space between the three lines", \.lineSpacing, 0...12, 0.5)
@@ -1788,6 +1799,9 @@ struct LATunerView: View {
             row("Line size", "", \.islandLineSize, 8...20, 1)
             row("Button size", "", \.islandButtonSize, 24...56, 1)
             row("Time size", "\"27m\" over the button, last half hour only", \.islandTimeSize, 12...36, 1)
+            Picker("Name weight", selection: Binding(get: { t.islandTitleWeight ?? 0 }, set: { t.islandTitleWeight = $0 })) {
+                ForEach(LATuning.weightNames.indices, id: \.self) { Text(LATuning.weightNames[$0]).tag($0) }
+            }
             Picker("Layout", selection: Binding(get: { t.islandLayout ?? 1 }, set: { t.islandLayout = $0 })) {
                 Text("Ring by the camera, name under").tag(0)
                 Text("Ring + name together").tag(1)
@@ -1857,6 +1871,72 @@ struct LAFormatTest: View {
             }
         }.font(.system(size: 17)).padding()
         Spacer()
+    }
+}
+#endif
+
+#if DEBUG
+/// The island folded, drawn roughly as iOS does: a black pill with the camera in its middle, our two sides at its ends.
+struct LAFoldedIsland: View {
+    let state: LATestAttributes.ContentState
+    let stale: Bool
+    let t: LATuning
+    var body: some View {
+        HStack {
+            LACompactLeading(state: state, stale: stale, t: t).padding(.leading, 9)
+            Spacer(minLength: 0)
+            LAEnds(state: state, stale: stale) { e in LACompactTrailing(state: state, ended: e) }.padding(.trailing, 12)
+        }
+        .frame(width: 230, height: 37)
+        .background(Color.black, in: Capsule())
+        .environment(\.colorScheme, .dark)
+    }
+}
+
+/// DEBUG -laIslandGallery: the island folded and opened in each state, for screenshots.
+struct LAIslandGallery: View {
+    let t: LATuning
+    private let now = Date()
+    private func state(start: Double, end: Double, marked: Bool = false) -> LATestAttributes.ContentState {
+        .init(label: "Asr", start: now.addingTimeInterval(start * 60), end: now.addingTimeInterval(end * 60), symbol: prayerIcon(for: "Asr"),
+              markedAt: marked ? now : nil)
+    }
+    private var rows: [(String, LATestAttributes.ContentState, Bool)] {
+        [("Running · 1 hr 40 left", state(start: -40, end: 100), false),
+         ("Last half hour · 27 left", state(start: -113, end: 27), false),
+         ("Marked · Perfect", state(start: -20, end: 120, marked: true), false),
+         ("Marked · later", state(start: -95, end: 45, marked: true), false),
+         ("Ended, not marked", state(start: -145, end: -5), true)]
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Folded").font(.headline).foregroundStyle(.white)
+            ForEach(rows.indices, id: \.self) { i in
+                HStack {
+                    LAFoldedIsland(state: rows[i].1, stale: rows[i].2, t: t)
+                    Text(rows[i].0).font(.caption).foregroundStyle(.white.opacity(0.75))
+                }
+            }
+            Text("Opened").font(.headline).foregroundStyle(.white).padding(.top, 6)
+            ForEach([1, 2, 3], id: \.self) { i in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(rows[i].0).font(.caption).foregroundStyle(.white.opacity(0.75))
+                    HStack(alignment: .center, spacing: 12) {
+                        LAIslandRingAndName(state: rows[i].1, ended: false, t: t)
+                        Spacer(minLength: 0)
+                        LAIslandTrailing(state: rows[i].1, n: 0, ended: false, t: t)
+                    }
+                    .padding(.horizontal, 18).padding(.vertical, 14)
+                    .background(Color.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
+                    .environment(\.colorScheme, .dark)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12).padding(.top, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(LinearGradient(colors: [Color(red: 0.16, green: 0.22, blue: 0.30), Color(red: 0.05, green: 0.08, blue: 0.12)], startPoint: .top, endPoint: .bottom))
     }
 }
 #endif
