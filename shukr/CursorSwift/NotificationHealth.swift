@@ -220,15 +220,15 @@ struct NotificationHealthRows: View {
 
     private func statusRow(_ issues: [NotificationHealth.Issue]) -> some View {
         let (title, subtitle): (String, String) = {
-            if health.authorization == .notDetermined { return ("Reminders need notifications", "Allow them so shukr can remind you") }
+            if health.authorization == .notDetermined { return ("Notifications aren’t allowed yet", "Allow them so shukr can remind you") }
             switch issues.first {
-            case .off: return ("Reminders are off", "Notifications are off for shukr")
-            case .held: return ("Reminders may arrive late", "Held for the Scheduled Summary")
-            case .timeSensitiveOff: return ("Reminders are on", "Time Sensitive is off: Focus may hold them")
-            case .backgroundRefreshOff: return ("Reminders are on", "Background refresh is off: open shukr every few days")
+            case .off: return ("Notifications are off", "Off for shukr in iOS Settings")
+            case .held: return ("Notifications may arrive late", "Held for the Scheduled Summary")
+            case .timeSensitiveOff: return ("Notifications are on", "Time Sensitive is off: Focus may hold them")
+            case .backgroundRefreshOff: return ("Notifications are on", "Background refresh is off: open shukr every few days")
             case nil:
                 let through = health.scheduledThrough.map { " · scheduled through " + $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? ""
-                return ("Reminders are on", "On time" + through)
+                return ("Notifications are on", "On time" + through)
             }
         }()
         let fine = issues.isEmpty && health.authorization != .notDetermined
@@ -474,7 +474,7 @@ struct YourRemindersView: View {
 
     private var statusRow: some View {
         let off = health.authorization == .denied
-        let title = off ? "Reminders are off" : fine ? "Reminders are on" : "Reminders need a hand"
+        let title = off ? "Notifications are off" : fine ? "Notifications are on" : "Notifications need a hand"
         let through = health.scheduledThrough ?? pending.compactMap(\.date).max()
         let subtitle = off ? "Notifications are off for shukr"
             : fine ? "On time" + (through.map { d in

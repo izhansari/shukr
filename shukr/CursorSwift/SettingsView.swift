@@ -10,6 +10,21 @@ struct SettingsView: View {
     @EnvironmentObject var viewModel: PrayerViewModel
     /// Whether notifications can arrive at all: off or not yet allowed hides the per-prayer tiles.
     @ObservedObject private var notificationHealth = NotificationHealth.shared
+    /// Settings → Reminders' switch: which side shows (kept), and whether each side needs a look (its orange dot).
+    @AppStorage("settings.remindersTab") private var remindersTab = ReminderSwitch.notifications
+    @State private var liveActivitiesOn = LiveActivitySetupStep.systemEnabled
+    private var notificationsNeedYou: Bool {
+        #if DEBUG
+        if let d = UserDefaults.standard.string(forKey: "demoReminderBadge") { return d == "both" || d == "notifications" }   // -demoReminderBadge notifications|liveActivities|both
+        #endif
+        return notificationHealth.checked && (notificationHealth.authorization == .notDetermined || !notificationHealth.issues.isEmpty)
+    }
+    private var liveActivitiesNeedYou: Bool {
+        #if DEBUG
+        if let d = UserDefaults.standard.string(forKey: "demoReminderBadge") { return d == "both" || d == "liveActivities" }
+        #endif
+        return !liveActivitiesOn
+    }
     private var remindersOff: Bool {
         notificationHealth.checked
             && (notificationHealth.authorization == .notDetermined || notificationHealth.issues.contains(.off))
@@ -297,40 +312,51 @@ struct SettingsView: View {
                     
                     // Prayer photos' settings (Show where, Space used) live in Memories' own settings (owner).
 
-                    //MARK: - Notifications
-                    Section(header: headerWithInfoButton(title: "Notifications", isPopupVisible: $isNotifPopupVisible) ) {
-                        // Will they actually arrive? (NotificationHealth: off / held for the Scheduled
-                        // Summary / Time Sensitive / Background App Refresh.)
-                        NotificationHealthRows()
-                        // The same per-prayer tiles as setup's, in Settings' look. Only while notifications can arrive
-                        // (owner: "if reminders are off then no need to show this component. just show reminders are
-                        // off... with a button to turn them on" — the rows above say so, with the button).
-                        if !remindersOff {
-                        // Back to the bells (owner, with the picture of the old row), keeping the dots: black for each
-                        // notification it sends, grey otherwise.
-                        HStack {
-                            prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, dots: true)
-                            Divider()
-                            prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, dots: true)
-                            Divider()
-                            prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, dots: true)
-                            Divider()
-                            prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, dots: true)
-                            Divider()
-                            prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
+                    //MARK: - Reminders: notifications and Live Activities in one section, a switch on top (owner, decision
+                    // settings-alerts E): only the side picked shows — its status row, its five prayers, and on the Live
+                    // Activities side Card Appearance; a side with something wrong wears an orange dot on the switch.
+                    // Before iOS 26 there's no Live Activities side and no switch.
+                    Section(header: headerWithInfoButton(title: "Reminders", isPopupVisible: $isNotifPopupVisible) ) {
+                        if PrayerLiveActivities.supported {
+                            ReminderSwitch(tab: $remindersTab, notificationsNeedYou: notificationsNeedYou,
+                                           liveActivitiesNeedYou: liveActivitiesNeedYou)
+                                .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
+                                .listRowSeparator(.hidden)
                         }
-                        .padding(.vertical, 4)
-                        }
+                        if PrayerLiveActivities.supported && remindersTab == ReminderSwitch.liveActivities {
+                            LiveActivitySettingsRows(showInfo: isNotifPopupVisible)
+                        } else {
+                            // Will they actually arrive? (NotificationHealth: off / held for the Scheduled
+                            // Summary / Time Sensitive / Background App Refresh.)
+                            NotificationHealthRows()
+                            // The same per-prayer tiles as setup's, in Settings' look. Only while notifications can
+                            // arrive (owner: "if reminders are off then no need to show this component…").
+                            if !remindersOff {
+                            // Back to the bells (owner, with the picture of the old row), keeping the dots: black for each
+                            // notification it sends, grey otherwise.
+                            HStack {
+                                prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, dots: true)
+                                Divider()
+                                prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, dots: true)
+                                Divider()
+                                prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, dots: true)
+                                Divider()
+                                prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, dots: true)
+                                Divider()
+                                prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
+                            }
+                            .padding(.vertical, 4)
+                            }
 
-                        if isNotifPopupVisible && !remindersOff {
-                            NotificationDropdownInfo()
+                            if isNotifPopupVisible && !remindersOff {
+                                NotificationDropdownInfo()
+                            }
                         }
                     }
-                    
-                    
-                    // MARK: - Live Activities (iOS 26+: each window scheduled to start by itself)
-                    if PrayerLiveActivities.supported {
-                        LiveActivitySettingsSection().id("liveActivities")
+                    .id("liveActivities")
+                    .task {
+                        guard PrayerLiveActivities.supported else { return }
+                        for await on in ActivityAuthorizationInfo().activityEnablementUpdates { liveActivitiesOn = on }
                     }
 
                     // MARK: - Daily Alarm
@@ -897,6 +923,7 @@ struct prayerCol: View {
                         .foregroundColor(notifIsOn ? accent : .gray)
                         .contentTransition(.symbolEffect(.replace))
                         .frame(maxWidth: .infinity, alignment: .center)
+                        .frame(height: dots ? 22 : nil)   // Live Activities' columns match it
 
                     if dots {
                         let sends = notifIsOn ? (nudgeIsOn ? 3 : 1) : 0
@@ -1548,9 +1575,68 @@ import ActivityKit
 /// NotificationHealthRows' look — on, with how many windows are waiting and the next; or off for shukr in iOS, with the
 /// way back — then, while on, the five columns, each the prayer's own symbol (black = its window shows, grey = not).
 /// iOS 26+ only (scheduled starts); the section isn't shown before.
+/// Reminders' switch (owner, decision settings-alerts E): Notifications | Live Activities, a pill sliding under the side
+/// picked; a side with something wrong (off, or held) wears a small orange dot on its name, so it's found from the other.
+struct ReminderSwitch: View {
+    static let notifications = "notifications", liveActivities = "liveActivities"
+    @Binding var tab: String
+    let notificationsNeedYou: Bool
+    let liveActivitiesNeedYou: Bool
+    @Namespace private var pill
+
+    var body: some View {
+        HStack(spacing: 0) {
+            side(Self.notifications, "Notifications", notificationsNeedYou)
+            side(Self.liveActivities, "Live Activities", liveActivitiesNeedYou)
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(.tertiarySystemFill)))
+    }
+
+    private func side(_ id: String, _ title: String, _ needsYou: Bool) -> some View {
+        Button {
+            guard tab != id else { return }
+            withAnimation(.snappy(duration: 0.3)) { tab = id }
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: {
+            Text(title)
+                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                .foregroundStyle(.primary)
+                .overlay(alignment: .topTrailing) {
+                    if needsYou {
+                        Circle().fill(Color.orange).frame(width: 7, height: 7).offset(x: 9, y: -2)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background {
+                    if tab == id {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(Color(UIColor { $0.userInterfaceStyle == .dark ? .systemGray3 : .white }))
+                            .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
+                            .matchedGeometryEffect(id: "pill", in: pill)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title + (needsYou ? ", needs attention" : ""))
+        .accessibilityAddTraits(tab == id ? .isSelected : [])
+    }
+}
+
+/// The Live Activities side alone, in its own Section (DEBUG -laSettingsPreview).
 struct LiveActivitySettingsSection: View {
+    var body: some View { Section("Live Activities") { LiveActivitySettingsRows(showInfo: false) } }
+}
+
+/// Reminders' Live Activities side: its status row (as Notifications'), the five prayers in the bells' layout so a switch
+/// between the sides only swaps icons, then Card Appearance.
+struct LiveActivitySettingsRows: View {
+    /// The section's ⓘ is open: this side's explanation under it.
+    let showInfo: Bool
     @State private var enabled = ActivityAuthorizationInfo().areActivitiesEnabled
-    @State private var showInfo = false
     @State private var held = 0
     @State private var next: Date?
     @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var lookRaw = LiveActivityLook.system.rawValue
@@ -1559,7 +1645,7 @@ struct LiveActivitySettingsSection: View {
     #endif
 
     var body: some View {
-        Section {
+        Group {
             statusRow
             if !enabled {
                 Button(action: SettingsLinks.app) {
@@ -1578,14 +1664,14 @@ struct LiveActivitySettingsSection: View {
                     LiveActivityAppearancePage()
                 } label: {
                     HStack {
-                        Label("Card look", systemImage: "circle.lefthalf.filled")
+                        Label("Card Appearance", systemImage: "circle.lefthalf.filled")
                         Spacer()
                         Text((LiveActivityLook(rawValue: lookRaw) ?? .system).title).foregroundStyle(.secondary)
                     }
                 }
             }
             if showInfo && enabled {
-                Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it. Once its time is up it shows as ended until the next prayer's card starts or you open shukr. iOS keeps up to five waiting; opening shukr tops them up.")
+                Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it. Once its time is up it shows as ended until the next prayer's card starts or you open shukr. iOS keeps up to five waiting; marking them, or opening shukr, keeps the next ones coming.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -1597,16 +1683,6 @@ struct LiveActivitySettingsSection: View {
             }
             .sheet(isPresented: $showTuner) { LATunerView() }
             #endif
-        } header: {
-            HStack {
-                Text("Live Activities")
-                Spacer()
-                Button { withAnimation { showInfo.toggle() } } label: {
-                    Image(systemName: showInfo ? "info.circle.fill" : "info.circle")
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.green)
-            }
         }
         .task {
             refresh()
@@ -1630,7 +1706,9 @@ struct LiveActivitySettingsSection: View {
         let title = enabled ? "Live Activities are on" : "Live Activities are off"
         let detail: String = {
             guard enabled else { return "Turned off for shukr in iOS Settings" }
-            guard held > 0 else { return "None waiting · open shukr to set them up" }
+            guard held > 0 else {
+                return LiveActivityPrefs.prayers.contains(where: LiveActivityPrefs.isOn) ? "None waiting right now" : "No prayers turned on"
+            }
             let when = next.map { " · next " + $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) } ?? ""
             return "\(held) waiting\(when)"
         }()
@@ -1732,11 +1810,14 @@ private struct LiveActivityPrayerCol: View {
                     .font(.footnote)
                     .frame(maxWidth: .infinity, alignment: .center)
                 Spacer()
-                Image(systemName: prayerIcon(for: prayer))
-                    .symbolRenderingMode(.monochrome)
-                    .foregroundStyle(on ? Color.primary : Color.gray.opacity(0.45))
+                // The bells' place and size (owner: switching sides should be clean): the Lock Screen card, slashed off,
+                // then a gap as tall as the bells' dots.
+                Image(systemName: on ? "platter.filled.bottom.iphone" : "iphone.slash")
+                    .foregroundStyle(on ? Color.primary : Color.gray)
+                    .contentTransition(.symbolEffect(.replace))
                     .frame(maxWidth: .infinity, alignment: .center)
                     .frame(height: 22)
+                Color.clear.frame(height: 5)
                 Spacer()
                 Text(on ? "on" : "off")
                     .font(.caption)
