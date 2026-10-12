@@ -1767,7 +1767,7 @@ struct LATunerView: View {
                 ForEach(LATimeLeft.offered, id: \.self) { Text(LATimeLeft.styles[$0]).tag($0) }
             }
             row("Name size", "\"Asr\"", \.titleSize, 10...36, 1)
-            Picker("Name weight", selection: Binding(get: { t.titleWeight ?? 0 }, set: { t.titleWeight = $0 })) {
+            Picker("Name weight", selection: Binding(get: { t.titleWeight ?? 2 }, set: { t.titleWeight = $0 })) {
                 ForEach(LATuning.weightNames.indices, id: \.self) { Text(LATuning.weightNames[$0]).tag($0) }
             }
             row("Time left size", "\"1 hour, 40 minutes left\" · \"Prayed 4:31 PM\"", \.timeLeftSize, 8...24, 1)
@@ -1799,7 +1799,7 @@ struct LATunerView: View {
             row("Line size", "", \.islandLineSize, 8...20, 1)
             row("Button size", "", \.islandButtonSize, 24...56, 1)
             row("Time size", "\"27m\" over the button, last half hour only", \.islandTimeSize, 12...36, 1)
-            Picker("Name weight", selection: Binding(get: { t.islandTitleWeight ?? 0 }, set: { t.islandTitleWeight = $0 })) {
+            Picker("Name weight", selection: Binding(get: { t.islandTitleWeight ?? 2 }, set: { t.islandTitleWeight = $0 })) {
                 ForEach(LATuning.weightNames.indices, id: \.self) { Text(LATuning.weightNames[$0]).tag($0) }
             }
             Picker("Layout", selection: Binding(get: { t.islandLayout ?? 1 }, set: { t.islandLayout = $0 })) {

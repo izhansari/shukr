@@ -1837,8 +1837,8 @@ struct LATuning: Codable, Equatable {
     // Ring
     var ringSize: Double = 69
     var ringArcDiameter: Double = 0.83      // of the ring size
-    var ringBandWidth: Double = 7          // at the 90 pt design size
-    var ringArcWidth: Double = 5.5          // at the 90 pt design size
+    var ringBandWidth: Double = 5.5          // at the 90 pt design size
+    var ringArcWidth: Double = 3          // at the 90 pt design size
     var ringSymbolSize: Double = 17
     var ringBandLift: Double = 0.11
     // Text
@@ -1873,7 +1873,7 @@ struct LATuning: Codable, Equatable {
     /// camera, the name under it (center region) · 1 ring + name together beside the camera, below it if too wide ·
     /// 2 ring + name and time + button as one row under the camera (leading / trailing with priority).
     var islandLayout: Int? = nil
-    /// The prayer name's weight: 0 light (nil) · 1 regular · 2 medium · 3 semibold · 4 bold — the card and the island apart.
+    /// The prayer name's weight: 0 light · 1 regular · 2 medium (nil — owner) · 3 semibold · 4 bold — the card and the island apart.
     var titleWeight: Int? = nil
     var islandTitleWeight: Int? = nil
     static let weights: [Font.Weight] = [.light, .regular, .medium, .semibold, .bold]
@@ -1944,7 +1944,15 @@ struct LALockCard: View {
     let stale: Bool
     var t = LATuning.current
     var body: some View {
-        LAEnds(state: state, stale: stale) { e in LALockCardBody(state: state, n: n, ended: e, t: t) }
+        // The buttons are drawn ONCE, over both looks: inside LAEnds the ended copy sat on top and took the touch, so the
+        // visible button never showed its press (owner). The one button switches its own symbol at the end.
+        let unmarkedEnded = stale && state.markedAt == nil
+        LAEnds(state: state, stale: stale) { e in LALockCardBody(state: state, n: n, ended: e, t: t, liveButtons: true) }
+            .overlay(alignment: .trailing) {
+                LAGlyphs(state: state, n: n, ended: unmarkedEnded, size: t.buttonSize, onIsland: false, t: t, live: true)
+                    .offset(x: t.buttonOffsetX)
+                    .padding(.trailing, t.cardPaddingSides)
+            }
             .environment(\.colorScheme, .dark)
     }
 }
@@ -1956,12 +1964,15 @@ struct LALockCardBody: View {
     let n: Int
     let ended: Bool
     let t: LATuning
+    /// The card draws its buttons itself, once (LALockCard): here they only hold their place.
+    var liveButtons = false
     var body: some View {
         HStack(spacing: t.gapRingToText) {
             LASideRing(state: state, ended: ended, size: t.ringSize, symbolSize: t.ringSymbolSize, onIsland: false, t: t)
             LANameLines(state: state, ended: ended, big: true, t: t).offset(y: t.textOffsetY)
             Spacer(minLength: 0)
             LAGlyphs(state: state, n: n, ended: ended, size: t.buttonSize, onIsland: false, t: t).offset(x: t.buttonOffsetX)
+                .opacity(liveButtons ? 0 : 1).allowsHitTesting(!liveButtons)
         }
         .padding(.horizontal, t.cardPaddingSides).padding(.vertical, t.cardPaddingTopBottom)
         .frame(minHeight: t.cardMinHeight)
@@ -2020,7 +2031,7 @@ struct LANameLines: View {
         let small = big ? t.endsSize : t.islandLineSize
         VStack(alignment: .leading, spacing: t.lineSpacing) {
             Text(ended ? "\(state.label) ended" : state.label)
-                .font(.system(size: title, weight: LATuning.weights[min(max((big ? t.titleWeight : t.islandTitleWeight) ?? 0, 0), 4)]))
+                .font(.system(size: title, weight: LATuning.weights[min(max((big ? t.titleWeight : t.islandTitleWeight) ?? 2, 0), 4)]))
                 .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             if let at = state.markedAt {
                 let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
@@ -2144,7 +2155,7 @@ struct LAIslandTime: View {
     let end: Date
     var body: some View {
         LAMinutesLeft(end: end).foregroundStyle(.red).fontWeight(.semibold)
-            .mask { LAGate(from: end.addingTimeInterval(-30 * 60), until: nil) }
+            .mask { LAGate(from: end.addingTimeInterval(-30 * 60), until: end) }
     }
 }
 
@@ -2189,12 +2200,14 @@ struct LAIslandTrailing: View {
     let n: Int
     let ended: Bool
     let t: LATuning
+    /// Drawn once (not inside LAEnds — a hidden copy on top took the touch): the button switches at the end itself.
+    var live = false
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
             if state.markedAt == nil && !ended {
                 LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular))
             }
-            LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t)
+            LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
         }
         .padding(4)   // the soft disc's shadow, inside the region (it clips); "27m" lines up with the button's edge
     }
@@ -2209,6 +2222,8 @@ struct LAGlyphs: View {
     let size: Double
     let onIsland: Bool
     let t: LATuning
+    /// Drawn once over both looks: the mark button turns from ✓ to the dim dashed circle by itself at the window's end.
+    var live = false
     var body: some View {
         if state.markedAt != nil {
             // On the Lock Screen the pair fits the running card's row (the ring or the one button, whichever is taller), so
@@ -2221,7 +2236,8 @@ struct LAGlyphs: View {
         } else if ended {
             LARoundButton(intent: LATestMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
         } else {
-            LARoundButton(intent: LATestMarkIntent(n: n), symbol: "checkmark", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, t: t)
+            LARoundButton(intent: LATestMarkIntent(n: n), symbol: "checkmark", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland,
+                          endsAt: live ? state.end : nil, t: t)
         }
     }
 }
@@ -2243,12 +2259,24 @@ struct LARoundButton<I: AppIntent>: View {
     let symbolSize: Double
     var onIsland = false
     var dim = false
+    /// The ✓ gives way to the dim dashed circle (Qaza) here, by itself.
+    var endsAt: Date? = nil
     let t: LATuning
+    private func glyph(_ name: String, dim: Bool) -> some View {
+        Image(systemName: name)
+            .font(.system(size: symbolSize, weight: .light))
+            .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary.opacity(t.symbolOpacity)))
+    }
     var body: some View {
         Button(intent: intent) {
-            Image(systemName: symbol)
-                .font(.system(size: symbolSize, weight: .light))
-                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary.opacity(t.symbolOpacity)))
+            ZStack {
+                if let endsAt {
+                    glyph(symbol, dim: dim).mask { LAGate(from: nil, until: endsAt) }
+                    glyph("circle.dashed", dim: true).mask { LAGate(from: endsAt, until: nil) }
+                } else {
+                    glyph(symbol, dim: dim)
+                }
+            }
                 .frame(width: size, height: size)
                 .background {
                     if onIsland {

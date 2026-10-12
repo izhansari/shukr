@@ -111,7 +111,7 @@ struct LATestLiveActivity: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing, priority: layout == 2 ? 1 : 0) {
-                    LAEnds(state: s, stale: stale) { e in LAIslandTrailing(state: s, n: n, ended: e, t: t) }
+                    LAIslandTrailing(state: s, n: n, ended: stale, t: t, live: true)
                         .dynamicIsland(verticalPlacement: .belowIfTooWide)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
