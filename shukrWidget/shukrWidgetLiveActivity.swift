@@ -92,43 +92,17 @@ struct PrayerWindowLiveActivity: Widget {
             let stale = context.isStale && s.markedAt == nil
             let n = context.attributes.n
             let t = LATuning.current
-            let layout = t.islandArrangement ?? 3
             return DynamicIsland {
-                // (The island's builder takes no `if`: each region picks its own content.) Layout 3, the default: the
-                // whole row in the bottom region, under the camera — in 1 iOS put the ring + name below the camera (too
-                // wide beside it) but the ✓ beside it, so they never lined up (the sim's island, 2026-10-11).
-                DynamicIslandExpandedRegion(.leading, priority: layout == 2 ? 1 : 0) {
-                    if layout != 3 {
-                        LAEnds(state: s, stale: stale) { e in
-                            if layout == 0 { LAIslandLeading(state: s, ended: e, t: t) } else { LAIslandRingAndName(state: s, ended: e, t: t) }
-                        }
-                        .frame(maxWidth: layout == 0 ? nil : .infinity, alignment: .leading)
-                        .padding(.leading, 4)
-                        .dynamicIsland(verticalPlacement: .belowIfTooWide)
-                    }
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    if layout == 0 {
-                        LAEnds(state: s, stale: stale) { e in LANameLines(state: s, ended: e, big: false, t: t) }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                DynamicIslandExpandedRegion(.trailing, priority: layout == 2 ? 1 : 0) {
-                    if layout != 3 {
-                        LAIslandTrailing(state: s, n: n, ended: stale, t: t, live: true)
-                            .dynamicIsland(verticalPlacement: .belowIfTooWide)
-                    }
-                }
+                // The whole row under the camera (the bottom region): beside it iOS put the ring + name below the camera
+                // but the ✓ beside it, so they never lined up (the sim's island, 2026-10-11).
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 6) {
-                        if layout == 3 {
-                            HStack(spacing: 8) {
-                                LAEnds(state: s, stale: stale) { e in LAIslandRingAndName(state: s, ended: e, t: t) }
-                                Spacer(minLength: 0)
-                                LAIslandTrailing(state: s, n: n, ended: stale, t: t, live: true)
-                            }
-                            .padding(.horizontal, 2)   // (−10 on the left cut the ring off — owner)
+                        HStack(spacing: 8) {
+                            LAEnds(state: s, stale: stale) { e in LAIslandRingAndName(state: s, ended: e, t: t) }
+                            Spacer(minLength: 0)
+                            LAIslandTrailing(state: s, n: n, ended: stale, t: t, live: true)
                         }
+                        .padding(.horizontal, 2)   // (−10 on the left cut the ring off — owner)
                         // The bar's room is kept before marking too: the island growing to fit it redrew the whole island in a
                         // cross-fade (the sim); same size, iOS keeps the ring and name and swaps only what changed (owner).
                         ZStack {

@@ -1945,15 +1945,9 @@ struct LATunerView: View {
             row("Name size", "", \.islandTitleSize, 10...30, 1)
             row("Line size", "", \.islandLineSize, 8...20, 1)
             row("Button size", "", \.islandButtonSize, 24...56, 1)
-            row("Time size", "\"27m\" over the button, last half hour only", \.islandTimeSize, 12...36, 1)
+            row("Folded time size", "\"24m\" on the folded island, last half hour only", \.islandTimeSize, 12...36, 1)
             Picker("Name weight", selection: Binding(get: { t.islandTitleWeight ?? 2 }, set: { t.islandTitleWeight = $0 })) {
                 ForEach(LATuning.weightNames.indices, id: \.self) { Text(LATuning.weightNames[$0]).tag($0) }
-            }
-            Picker("Layout", selection: Binding(get: { t.islandArrangement ?? 3 }, set: { t.islandArrangement = $0 })) {
-                Text("Ring by the camera, name under").tag(0)
-                Text("Ring + name together").tag(1)
-                Text("One row under the camera").tag(2)
-                Text("All under the camera (default)").tag(3)
             }
         }
     }
@@ -2023,8 +2017,7 @@ struct LAFormatTest: View {
 }
 #endif
 
-#if DEBUG
-/// The island folded, drawn roughly as iOS does: a black pill with the camera in its middle, our two sides at its ends.
+/// (Every build: the setup's Live Activity page draws it too.) The island folded, drawn roughly as iOS does: a black pill with the camera in its middle, our two sides at its ends.
 struct LAFoldedIsland: View {
     let state: PrayerWindowAttributes.ContentState
     let stale: Bool
@@ -2040,6 +2033,8 @@ struct LAFoldedIsland: View {
         .environment(\.colorScheme, .dark)
     }
 }
+
+#if DEBUG
 
 /// DEBUG -laIslandGallery: the island folded and opened in each state, for screenshots.
 struct LAIslandGallery: View {

@@ -1930,11 +1930,7 @@ struct LATuning: Codable, Equatable {
     var islandTitleSize: Double = 20
     var islandLineSize: Double = 13
     var islandButtonSize: Double = 38
-    var islandTimeSizeOpt: Double? = nil        // nil = 17: the time left above the island's button
-    /// The expanded island's layout (nil = 3: the whole row under the camera), to compare on a phone (the simulator doesn't draw the island): 0 the ring beside the
-    /// camera, the name under it (center region) · 1 ring + name together beside the camera, below it if too wide ·
-    /// 2 ring + name and time + button as one row under the camera (leading / trailing with priority).
-    var islandArrangement: Int? = nil
+    var islandTimeSizeOpt: Double? = nil        // nil = 17: the folded island's "24m"
     /// The prayer name's weight: 0 light · 1 regular · 2 medium (nil — owner) · 3 semibold · 4 bold — the card and the island apart.
     var titleWeight: Int? = nil
     var islandTitleWeight: Int? = nil
@@ -2344,7 +2340,7 @@ struct LAIslandRingAndName: View {
     }
 }
 
-/// The island's right side: the time left over the mark button (Frank's mock); prayed → camera over tasbih.
+/// The island's right side: the mark button (Frank's mock); prayed → camera over tasbih.
 struct LAIslandTrailing: View {
     let state: PrayerWindowAttributes.ContentState
     let n: Int
@@ -2353,16 +2349,11 @@ struct LAIslandTrailing: View {
     /// Drawn once (not inside LAEnds — a hidden copy on top took the touch): the button switches at the end itself.
     var live = false
     var body: some View {
-        Group {
-            if false {
-                // (The time left lives in the name's lines now, as on the card — owner; "24m" only on the folded island.
-                // A button whose own contents switched layout by time took no tap on the island: keep the ✓ plain.)
-            } else {
-                LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
-            }
-        }
-        .frame(minHeight: t.islandRowHeight)
-        .padding(.vertical, 2)   // a flat disc now: no shadow room needed; "27m" lines up with the button's edge
+        // A plain ✓ that never changes layout (a button whose contents switched by time took no tap on the island); the
+        // time left is the name's middle line, as on the card — "24m" only on the folded island (owner).
+        LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
+            .frame(minHeight: t.islandRowHeight)
+            .padding(.vertical, 2)
     }
 }
 
