@@ -1553,6 +1553,7 @@ struct LiveActivitySettingsSection: View {
     @State private var showInfo = false
     @State private var held = 0
     @State private var next: Date?
+    @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var lookRaw = LiveActivityLook.system.rawValue
     #if DEBUG
     @State private var showTuner = false
     #endif
@@ -1572,6 +1573,16 @@ struct LiveActivitySettingsSection: View {
                     }
                 }
                 .padding(.vertical, 4)
+                // The card's own look, apart from the app's (owner): a page with the card and the four choices.
+                NavigationLink {
+                    LiveActivityAppearancePage()
+                } label: {
+                    HStack {
+                        Label("Card look", systemImage: "circle.lefthalf.filled")
+                        Spacer()
+                        Text((LiveActivityLook(rawValue: lookRaw) ?? .system).title).foregroundStyle(.secondary)
+                    }
+                }
             }
             if showInfo && enabled {
                 Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it. Once its time is up it shows as ended until the next prayer's card starts or you open shukr. iOS keeps up to five waiting; opening shukr tops them up.")
@@ -1637,6 +1648,67 @@ struct LiveActivitySettingsSection: View {
     }
 }
 
+/// Settings → Live Activities → Card look (owner, 2026-10-12): the Lock Screen card's own look, apart from the app's —
+/// System · Light · Dark · Follows the sun, as the widgets offer — over the setup page's moving card (Frank's
+/// `LiveActivityDemo`), which changes as one is picked. Cards already waiting are corrected at once (`plan`).
+struct LiveActivityAppearancePage: View {
+    @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var raw = LiveActivityLook.system.rawValue
+    @Environment(\.colorScheme) private var system
+    @State private var copy = LASetupCopy.shared
+    /// Follows the sun: which prayer the card shows (Asr light, Maghrib dark).
+    @State private var prayer = "Asr"
+    private var look: LiveActivityLook { LiveActivityLook(rawValue: raw) ?? .system }
+    private var scheme: ColorScheme { look.dark(for: prayer).map { $0 ? .dark : .light } ?? system }
+
+    var body: some View {
+        Form {
+            Section {
+                LiveActivityDemo(prayer: prayer, veil: .none, copy: copy, look: scheme)
+                    .animation(.easeInOut(duration: 0.35), value: scheme)
+                    .listRowInsets(EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14))
+                if look == .sun {
+                    Picker("Prayer", selection: $prayer.animation(.easeInOut(duration: 0.35))) {
+                        Text("Asr").tag("Asr")
+                        Text("Maghrib").tag("Maghrib")
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            Section {
+                ForEach(LiveActivityLook.allCases) { option in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.35)) { raw = option.rawValue }
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(option.title).foregroundStyle(.primary)
+                                Text(option.detail).font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if option == look {
+                                Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.sage)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            } footer: {
+                Text("Your Lock Screen card's look, apart from shukr's. The Dynamic Island is always black.")
+            }
+        }
+        .navigationTitle("Card look")
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: raw) { _, _ in PrayerLiveActivities.plan(reason: "card look: \(look.title)") }
+        .onAppear {   // DEBUG `-laLook light|dark|sun|system`: the page opened on one (the sim's taps miss rows)
+            #if DEBUG
+            if let l = UserDefaults.standard.string(forKey: "laLook"), LiveActivityLook(rawValue: l) != nil { raw = l }
+            #endif
+        }
+    }
+}
+
 /// One prayer: its name, its symbol (black = on, grey = off), "on" / "off" — a tap flips it.
 private struct LiveActivityPrayerCol: View {
     let prayer: String
@@ -1694,7 +1766,8 @@ struct LATunerView: View {
 
     var body: some View {
         NavigationStack {
-            Group { if UserDefaults.standard.bool(forKey: "laSettingsPreview") { Form { LiveActivitySettingsSection() } }   // DEBUG -laSettingsPreview
+            Group { if UserDefaults.standard.bool(forKey: "laLookPage") { LiveActivityAppearancePage() }   // DEBUG -laLookPage
+            else if UserDefaults.standard.bool(forKey: "laSettingsPreview") { Form { LiveActivitySettingsSection() } }   // DEBUG -laSettingsPreview
             else if UserDefaults.standard.bool(forKey: "laIslandGallery") { LAIslandGallery(t: t) } else {
             VStack(spacing: 0) {
                 preview

@@ -234,11 +234,15 @@ private struct LiveActivityTile: View {
 /// The real card (the Live Activity's own `LALockCardBody`, shared with the widget) in the setup's sage card, going
 /// through a prayer's life: it starts, counts down, turns red in the last half hour, and is marked (Photo / Tasbih) —
 /// the step under it lit as it goes. iOS off or too old: frosted over with what that means.
-private struct LiveActivityDemo: View {
+struct LiveActivityDemo: View {
     let prayer: String
     enum Veil { case none, off, old }
     let veil: Veil
     let copy: LASetupCopy
+    /// The card's look; nil = the Card look setting (`LiveActivityLook`) for this prayer, else the phone's. Settings'
+    /// Card look page passes the one being picked (Sami, 2026-10-12).
+    var look: ColorScheme? = nil
+    @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase = 1
     /// The moment the samples are drawn round (the card's timers count from now).
@@ -274,7 +278,7 @@ private struct LiveActivityDemo: View {
                 .contentTransition(.opacity)
                 ZStack {
                     LALockCardBody(state: sample(phase), n: 0, ended: false, t: t)
-                        .environment(\.colorScheme, .dark)
+                        .environment(\.colorScheme, look ?? LiveActivityLook.current.dark(for: prayer).map { $0 ? .dark : .light } ?? systemScheme)
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
                         .id("\(prayer)-\(phase)")

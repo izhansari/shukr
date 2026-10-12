@@ -1754,6 +1754,43 @@ enum LiveActivityPrefs {
     }
 }
 
+/// The Live Activity card's own look, apart from the app's (owner, 2026-10-12: "the same way … their widgets"): System
+/// (the phone's — the default, as the widgets), Light, Dark, Follows the sun (a window's card can't switch mid-way, so
+/// Dhuhr and Asr light, Fajr, Maghrib and Isha dark). Settings → Live Activities → Card look. App group.
+enum LiveActivityLook: String, CaseIterable, Identifiable {
+    case system, light, dark, sun
+    static let key = "liveActivity.look"
+    var id: String { rawValue }
+    static var current: LiveActivityLook {
+        UserDefaults(suiteName: SharedStore.appGroup)?.string(forKey: key).flatMap(LiveActivityLook.init(rawValue:)) ?? .system
+    }
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        case .sun: "Follows the sun"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .system: "Light or dark with your iPhone."
+        case .light: "Always light."
+        case .dark: "Always dark."
+        case .sun: "Dhuhr and Asr light; Fajr, Maghrib and Isha dark."
+        }
+    }
+    /// A prayer's card: dark or not; nil = the phone's.
+    func dark(for prayer: String) -> Bool? {
+        switch self {
+        case .system: nil
+        case .light: false
+        case .dark: true
+        case .sun: !(prayer == "Dhuhr" || prayer == "Asr")
+        }
+    }
+}
+
 /// A prayer window as a Live Activity (PrayerLiveActivities.swift plans them; the card is `PrayerWindowLiveActivity`).
 struct PrayerWindowAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
@@ -1762,8 +1799,7 @@ struct PrayerWindowAttributes: ActivityAttributes {
         var end: Date
         var symbol: String = "sun.max.fill"
         var markedAt: Date? = nil
-        /// The Lock Screen card's look, from the app's own setting (Light / Dark / Auto by the sun — Fajr, Maghrib and
-        /// Isha dark): nil = the phone's.
+        /// The Lock Screen card's look (`LiveActivityLook`): nil = the phone's.
         var dark: Bool? = nil
     }
     /// The window's id: its start in whole minutes since 1970 (so a window is never scheduled twice).

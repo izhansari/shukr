@@ -231,15 +231,8 @@ enum PrayerLiveActivities {
         return out.filter { $0.end > now && LiveActivityPrefs.isOn($0.name) }.sorted { $0.start < $1.start }
     }
 
-    /// The card's look, by the app's own setting (owner: everything keeps the app's light / dark / auto): Light, Dark, or
-    /// Auto = the sun's rule (light from sunrise to Maghrib) — so Dhuhr and Asr light, Fajr, Maghrib and Isha dark.
-    static func dark(for prayer: String) -> Bool {
-        switch UserDefaults.standard.integer(forKey: "modeToggleNew") {
-        case 1: return true
-        case 2: return !(prayer == "Dhuhr" || prayer == "Asr")
-        default: return false
-        }
-    }
+    /// The card's look: its own setting (`LiveActivityLook`, Settings → Live Activities → Card look), apart from the app's.
+    static func dark(for prayer: String) -> Bool? { LiveActivityLook.current.dark(for: prayer) }
 
     /// Prayed already? From the store (a card's or widget's mark goes there too; an unmark brings the card back).
     private static func done(_ w: Window) -> Bool {
