@@ -268,6 +268,17 @@ struct SettingsView: View {
         return nil
     }
     @State private var laStatus = LiveActivityStatus.shared
+    /// The card's last line: "Scheduled through …" on the left, "Next 1:05 PM" on the right.
+    private func footerLine(_ line: String, next: Date?) -> some View {
+        HStack(spacing: 8) {
+            Text(line)
+            Spacer(minLength: 8)
+            if let next { Text("Next \(YourNotificationsRow.when(next))").lineLimit(1) }
+        }
+        .font(.system(.footnote, design: .rounded))
+        .foregroundStyle(.secondary)
+    }
+
     /// "Fri, Oct 23".
     private static func throughDay(_ d: Date) -> String {
         d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
@@ -447,25 +458,18 @@ struct SettingsView: View {
                         // How far ahead the side showing is set up — inside the card, its last line (owner), on every side.
                         // On the notifications side the line is also the way into Your Notifications, the next one on its
                         // right (owner: no thick row of its own; "show it leads somewhere" — the chevron).
+                        // Every side: how far ahead, and the next one on the right (owner). Notifications lead to Your
+                        // Notifications, the alarm to Alarm check (beta builds; its old row is gone); Live Activities nowhere.
                         if let line = remindersFooter {
-                            if shownReminderTab == ReminderSwitch.notifications {
-                                NavigationLink {
-                                    YourRemindersView()
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        Text(line)
-                                        Spacer(minLength: 8)
-                                        if let next = notificationHealth.nextAt {
-                                            Text("Next \(YourNotificationsRow.when(next))").lineLimit(1)
-                                        }
-                                    }
-                                    .font(.system(.footnote, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                }
-                            } else {
-                                Text(line)
-                                    .font(.system(.footnote, design: .rounded))
-                                    .foregroundStyle(.secondary)
+                            switch shownReminderTab {
+                            case ReminderSwitch.notifications:
+                                NavigationLink { YourRemindersView() } label: { footerLine(line, next: notificationHealth.nextAt) }
+                            case ReminderSwitch.fajrAlarm where betaAccess.beta:
+                                NavigationLink { FajrAlarmCheckView() } label: { footerLine(line, next: fajrAlarmStatus.next) }
+                            case ReminderSwitch.fajrAlarm:
+                                footerLine(line, next: fajrAlarmStatus.next)
+                            default:
+                                footerLine(line, next: laStatus.next)
                             }
                         }
                     } header: {
@@ -1277,8 +1281,6 @@ struct AlarmSettingsView: View {
     
     // A flag to remember if user has already seen the “setup required” alert
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
-    @ObservedObject private var betaAccess = WhatsNewAccess.shared
-    @State private var showAlarmCheck = false
     @State private var alarmKitRefused = false
     
     /// The side's alerts and watchers, on its first row (a real one): on the Group they made an empty, zero-height row
@@ -1546,26 +1548,7 @@ struct AlarmSettingsView: View {
                     }
                     // (No "Let shukr set it" row — owner: only someone who set it up on the Shortcut before iOS 26.1 ever saw
                     // it, and switching the alarm off and on does the same.)
-                    // Beta: every alarm AlarmKit holds, checked against the rule, and the alarm's log (FajrAlarmKit.swift).
-                    if FajrAlarms.supported && betaAccess.beta {
-                        Button { showAlarmCheck = true } label: {
-                            // In the rows' column and the page's black (owner: no blue on this page).
-                            HStack(spacing: 12) {
-                                Image(systemName: "checklist").frame(width: 24)
-                                Text("Alarm check")
-                                Spacer()
-                            }
-                            .foregroundStyle(.primary)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .sheet(isPresented: $showAlarmCheck) {
-                            NavigationStack {
-                                FajrAlarmCheckView()
-                                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showAlarmCheck = false } } }
-                            }
-                        }
-                    }
+                    // (Alarm check is the card's last line now — "Next …" and its chevron, as on the notifications side.)
                 }
             }
         }
@@ -1580,6 +1563,8 @@ struct AlarmSettingsView: View {
     static let shared = FajrAlarmStatus()
     private(set) var allowed: Bool? = FajrAlarmStatus.readAllowed
     private(set) var through: Date? = FajrAlarms.scheduledThrough
+    /// The next time it rings (from the rule, as the alarms are set).
+    private(set) var next: Date? = FajrAlarms.dates(days: 2).first?.alarm
     /// DEBUG `-demoFajrAlarmAllowed`: reads as allowed (the simulator's alarms are refused; screenshots of the on side).
     private static var readAllowed: Bool? {
         #if DEBUG
@@ -1592,6 +1577,8 @@ struct AlarmSettingsView: View {
     func refresh() {
         let t = FajrAlarms.scheduledThrough
         if through != t { through = t }
+        let n = FajrAlarms.dates(days: 2).first?.alarm
+        if next != n { next = n }
         guard !heardFromIOS else { return }
         let a = Self.readAllowed
         if allowed != a { allowed = a }
