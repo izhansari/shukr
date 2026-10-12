@@ -2096,7 +2096,7 @@ struct LALastNote: View {
     static let room: CGFloat = 20
     static func shows(_ s: PrayerWindowAttributes.ContentState) -> Bool { s.last == true && s.markedAt == nil }
     var body: some View {
-        Text("Last card for now · open shukr to keep them coming")
+        Text("Last card · open shukr to keep these prayer cards coming")
             .font(.system(.caption2, design: .rounded))
             .foregroundStyle(.secondary)
             .lineLimit(1)
