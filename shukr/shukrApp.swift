@@ -135,6 +135,8 @@ struct shukrApp: App {
         // Apple Watch: prayer times, today's ✓s, zikr. Not on the in-memory fallback: the phone would confirm the
         // watch's marks and sessions into a store that's thrown away, and the watch would drop them.
         if !StoreFallback.active { WatchSync.shared.start(container: sharedModelContainer) }
+        // A notification action wakes shukr in the background: it re-plans the reminders too (NotificationScheduler).
+        NotificationScheduler.appContainer = sharedModelContainer
         NextLabelTuning.clearSavedTuningOnce()   // back to the original NEXT look (2026-09-27)
         #if DEBUG
         SalahLook.seedExploringDefaults()   // dev builds start the look exploration on Sunken well, no lines
@@ -332,6 +334,7 @@ struct shukrApp: App {
                 environmentLocationManager.clearComeback()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                NotificationScheduler.noteOpen()   // how often shukr is opened sets the reminders' runway
                 Task {
                     await notificationStatus.refresh()
                     await NotificationHealth.shared.refresh()   // will the reminders arrive? (off / summary / …)
@@ -540,6 +543,8 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         // scheduled it) rides along on every follow-up so "I already prayed" works from those too.
         let original = response.notification.request.content
         let subject = original.subtitle.isEmpty ? original.title : original.subtitle
+        // Every answer to a notification tops the plan up (plan v2): it may be all the app sees of someone for days.
+        DispatchQueue.main.async { NotificationScheduler.topUp(reason: "notification action") }
         let userInfo = original.userInfo
         // Zikr task reminders (ZikrReminders): Start now / tap, Later.
         if original.categoryIdentifier == ZikrReminders.category, let taskID = userInfo["zikrTaskID"] as? String {

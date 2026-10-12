@@ -256,7 +256,8 @@ class PrayerModel {
     /// cancelled now; the undated ids of older builds only for today).
     func cancelUpcomingNudges(){
         let center = UNUserNotificationCenter.current()
-        var identifiers = ["Mid", "End"].map { PrayerNotificationID.make(day: startTime, prayer: name, kind: $0) }
+        // By the prayer's own day, as they were scheduled: an Isha after midnight is the day before's (2.8.0).
+        var identifiers = ["Mid", "End"].map { PrayerNotificationID.make(dayKey: dayKey, prayer: name, kind: $0) }
         if Calendar.current.isDate(startTime, inSameDayAs: PrayerDay.date()) {
             identifiers += ["\(name)Mid", "\(name)End"]   // legacy, pre-2026-09-27
         }

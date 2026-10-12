@@ -69,7 +69,7 @@ final class NotificationHealth: ObservableObject {
             (r.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate()
                 ?? (r.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate()
         }
-        let keepAlive = pending.first { $0.identifier.hasPrefix(NotificationScheduler.keepAlivePrefix) }.flatMap(fire)
+        let keepAlive = pending.first { NotificationScheduler.isLastKeepAlive($0.identifier) }.flatMap(fire)
         let dates = pending.filter { !$0.identifier.hasPrefix(NotificationScheduler.keepAlivePrefix) }.compactMap(fire)
         let through = dates.max()
         let now = Date()
@@ -499,10 +499,13 @@ struct YourRemindersView: View {
         let through = health.scheduledThrough ?? pending.compactMap(\.date).max()
         let subtitle = off ? "Off for shukr in iOS Settings"
             : fine ? "On time" + (through.map { d in
-                // The runway in days (owner, reminders-runway): it grows when fewer reminders a day are scheduled.
+                // The runway in days (owner, reminders-runway): it grows when fewer reminders a day are scheduled; and
+                // how far the full days go (plan v2: "full reminders through Wed · starts through Sun").
                 let days = (Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()),
                                                             to: Calendar.current.startOfDay(for: d)).day ?? 0) + 1
-                return " · scheduled through " + d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " (\(days) days)"
+                let fullThrough = pending.filter { $0.kind == .halfway || $0.kind == .endingSoon }.compactMap(\.date).max()
+                let full = fullThrough.map { " · full reminders through " + $0.formatted(.dateTime.weekday(.abbreviated)) } ?? ""
+                return full + " · scheduled through " + d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " (\(days) days)"
             } ?? "")
             : "Tap to see what's in the way"
         return Button { whySheet = .onTime } label: {
@@ -553,18 +556,51 @@ struct YourRemindersView: View {
         }
     }
 
+    /// The 64 in parts (owner: show "that we have set aside some of that space"): prayer reminders, zikr reminders,
+    /// reminders to open shukr, anything else (snoozes), the slots kept for snoozes, and what's free.
     private var usageBar: some View {
-        let used = min(pending.count, NotificationScheduler.limit)
+        let limit = NotificationScheduler.limit
+        func n(_ kinds: [Kind]) -> Int { pending.filter { kinds.contains($0.kind) }.count }
+        let prayers = n([.start, .halfway, .endingSoon])
+        let zikr = n([.zikr, .zikrLater])
+        let open = n([.keepAlive])
+        let other = n([.snooze, .masjid, .other])
+        let used = min(prayers + zikr + open + other, limit)
+        let kept = min(NotificationScheduler.spare, limit - used)
+        let free = max(limit - used - kept, 0)
+        let parts: [(Int, Color, String)] = [
+            (prayers, green, "Prayers"), (zikr, Color(.systemTeal), "Zikr"), (open, Color(.systemOrange), "Open shukr"),
+            (other, Color(.systemIndigo), "Other"), (kept, Color(.systemGray3), "Kept for snoozes"),
+        ]
         return VStack(alignment: .leading, spacing: 8) {
-            Text("\(used) of \(NotificationScheduler.limit) in use · \(max(0, NotificationScheduler.limit - used)) free")
+            Text("\(used) of \(limit) in use · \(kept) kept for snoozes" + (free > 0 ? " · \(free) free" : ""))
                 .font(.footnote).foregroundStyle(.secondary)
             GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color(.systemGray5))
-                    Capsule().fill(green).frame(width: geo.size.width * CGFloat(used) / CGFloat(NotificationScheduler.limit))
+                HStack(spacing: 1.5) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                        if part.0 > 0 {
+                            Rectangle().fill(part.1).frame(width: max(geo.size.width * CGFloat(part.0) / CGFloat(limit) - 1.5, 2))
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
+                .background(Color(.systemGray5))
+                .clipShape(Capsule())
             }
             .frame(height: 6)
+            // The key, only for the parts there are.
+            HStack(spacing: 10) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                    if part.0 > 0 {
+                        HStack(spacing: 4) {
+                            Circle().fill(part.1).frame(width: 7, height: 7)
+                            Text("\(part.2) \(part.0)")
+                        }
+                    }
+                }
+            }
+            .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(.vertical, 4)
     }
@@ -913,7 +949,15 @@ struct YourRemindersView: View {
         // `-demoRemindersSample`: a full-looking week for screenshots (the simulator's notifications
         // can't be switched on): starts all week, nudges for two days, a few zikr and one "later".
         if ProcessInfo.processInfo.arguments.contains("-demoRemindersSample") {
-            pending = Self.sampleItems()
+            // The real plan when the store is there (plan v2's checks), else the stand-in week.
+            if let container = NotificationScheduler.appContainer {
+                let budget = NotificationScheduler.limit - NotificationScheduler.spare
+                pending = NotificationScheduler.choose(NotificationScheduler.plan(context: container.mainContext), budget: budget)
+                    .filter { Self.shown($0.id) }.map { item(id: $0.id, date: $0.date, content: $0.content) }
+                    .sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
+            } else {
+                pending = Self.sampleItems()
+            }
             loaded = true
             return
         }

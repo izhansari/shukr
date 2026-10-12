@@ -174,8 +174,9 @@ enum PrayerNotificationID {
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
     static func make(day: Date, prayer: String, kind: String) -> String {
-        "\(dayKey(day)).\(prayer)\(kind)"
+        make(dayKey: dayKey(day), prayer: prayer, kind: kind)
     }
+    static func make(dayKey: String, prayer: String, kind: String) -> String { "\(dayKey).\(prayer)\(kind)" }
     /// A "Nudge in 5 / 10 min" from a prayer's banner: `snooze.<day>.<prayer>.<uuid>` (audit B1) — marking the prayer
     /// removes every pending one under `snoozePrefix(day:prayer:)`. Not a planned reminder: `parse` says nil, so the
     /// scheduler's diff leaves them alone.

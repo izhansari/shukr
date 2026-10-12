@@ -3,9 +3,17 @@
 //  shukr
 //
 //  Every scheduled local notification goes through here (2026-09-27, notes #10). iOS keeps at
-//  most 64 pending per app, so this owns that budget:
-//  - Prayers ~7 days ahead: the next two prayer days get Start / Mid / End (nudges per Settings),
-//    days 3–7 Start only. Completed prayers are skipped.
+//  most 64 pending per app, so this owns that budget (plan v2, owner 2026-10-12, decisions notif-plan-review A /
+//  notif-plan-tradeoff C; board/brief-notif-plan-v2.md). Every request costs one slot, so filling them in order of
+//  value is the best use of the 64 (no packing puzzle) — the order is the algorithm (`Tier`):
+//  - today's and tomorrow's starts and today's zikr reminders, then a week of starts (the runway's floor),
+//  - the 30-minutes-left, then the halfway, for the next 3 prayer days ("full days"),
+//  - tomorrow's zikr reminders (zikr reminders never go further: they'd crowd out the prayers),
+//  - starts out to the runway — 2 × the longest gap between opening shukr lately, 7 to 14 days — then more full
+//    days within it, then starts as far as the slots go (30 days).
+//  Then the warnings, each moved on by every re-plan, so someone who opens shukr never sees them: easing off
+//  (the evening of the last full day), the heads-up (two days before the last start) and the last one.
+//  Completed prayers are skipped.
 //  - Ids carry the day ("2026-09-27.FajrStart", `PrayerNotificationID`), and only ids this
 //    scheduler owns are removed — never `removeAllPending…` — so "nudge me in 10 min" snoozes
 //    (and anything else) survive a reschedule.
@@ -37,12 +45,14 @@ enum NotificationScheduler {
     static let limit = 64
     /// Slots left for things scheduled outside the scheduler (snoozes).
     static let spare = 4
-    /// Every prayer start this far ahead comes first (the week, ahead of far zikr reminders).
+    /// The runway's floor: every prayer start of the next week comes before any later nudge.
     static let daysAhead = 7
-    /// …and then further, as far as the 64 allow (owner, reminders-runway A: "if they change it so less notifs come each
-    /// day, will they get a longer runway?" — now yes). Past `daysAhead` a start is the lowest priority, so it only takes
-    /// slots nothing nearer wants; the last-resort reminder still follows the last start that made it in.
-    static let maxDaysAhead = 12
+    /// The runway's ceiling, for someone who opens shukr rarely (`runwayDays`).
+    static let runwayMax = 14
+    /// Before shukr knows how often it's opened (owner, notif-plan-tradeoff C: 3 full days, starts to about day 10).
+    static let runwayNew = 10
+    /// Starts as far as the 64 allow (owner, reminders-runway A: fewer a day = a longer runway).
+    static let maxDaysAhead = 30
 
     /// One pending notification the scheduler wants. Lower `priority` wins when the budget is tight.
     struct Item {
@@ -61,13 +71,76 @@ enum NotificationScheduler {
     /// fits, "Open shukr to keep your prayer reminders coming". Every re-plan moves it later (a new id,
     /// the old one removed), so it only ever fires if shukr wasn't opened or refreshed in time.
     static let keepAlivePrefix = "keepalive."
+    /// The two earlier warnings share the prefix (owned, cleared once delivered, kept out of "scheduled through").
+    static let headsUpPrefix = keepAlivePrefix + "ahead."
+    static let easeOffPrefix = keepAlivePrefix + "ease."
+    /// The last one (not the heads-up or easing off): the Settings row's "reminder to open shukr" date.
+    static func isLastKeepAlive(_ id: String) -> Bool {
+        id.hasPrefix(keepAlivePrefix) && !id.hasPrefix(headsUpPrefix) && !id.hasPrefix(easeOffPrefix)
+    }
     static func keepAliveItem(after last: Date) -> Item {
         let date = last.addingTimeInterval(20 * 60)
-        let content = UNMutableNotificationContent()
-        content.title = "Open shukr to keep your prayer reminders coming"
-        content.body = "Your scheduled reminders end here. Opening shukr lines up the next week."
-        content.sound = .default
+        let content = warning(title: "Open shukr to keep your prayer reminders coming",
+                              body: "Your scheduled reminders end here. Opening shukr lines up the next days.")
         return Item(id: keepAlivePrefix + PrayerNotificationID.dayKey(date), date: date, priority: 0, content: content)
+    }
+    /// Two days before the last start (owner: one warning at the very end was "kind of risky").
+    static func headsUpItem(at date: Date, lastStart: Date) -> Item {
+        let day = lastStart.formatted(.dateTime.weekday(.wide))
+        let content = warning(title: "Your prayer reminders run until \(day)",
+                              body: "Open shukr any time before then to keep them coming.")
+        return Item(id: headsUpPrefix + PrayerNotificationID.dayKey(date), date: date, priority: 0, content: content)
+    }
+    /// The evening of the last full day (owner: "let the user know … we don't wanna bombard you").
+    static func easeOffItem(at date: Date) -> Item {
+        let content = warning(title: "Easing off your reminders",
+                              body: "You haven't opened shukr in a few days, so from tomorrow we'll just remind you when each prayer starts. Open shukr to bring back your halfway and 30-minute reminders.")
+        return Item(id: easeOffPrefix + PrayerNotificationID.dayKey(date), date: date, priority: 0, content: content)
+    }
+    /// The warnings come through a Focus and the Scheduled Summary like the prayers (they're what keeps them coming).
+    private static func warning(title: String, body: String) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.interruptionLevel = .timeSensitive
+        return content
+    }
+
+    // MARK: The runway: how often shukr is opened
+
+    /// When shukr was last opened (brought to the front), newest last; at most `opensKept`.
+    static let opensKey = "notifications.appOpens"
+    static let opensKept = 12
+    /// Opening shukr (the app's didBecomeActive): kept once an hour at most.
+    static func noteOpen(now: Date = Date()) {
+        var opens = UserDefaults.standard.array(forKey: opensKey) as? [Double] ?? []
+        if let last = opens.last, now.timeIntervalSince1970 - last < 3600 { return }
+        opens.append(now.timeIntervalSince1970)
+        UserDefaults.standard.set(Array(opens.suffix(opensKept)), forKey: opensKey)
+    }
+    /// How many days of starts to make sure of: twice the longest gap between opens in the last 30 days (now counts
+    /// as an open), 7 to 14. Someone who opens shukr daily gets 7 and the rest goes to full days; someone who comes back
+    /// weekly gets 14 before any extra full day. Until there are three opens: `runwayNew`.
+    static func runwayDays(now: Date = Date()) -> Int {
+        #if DEBUG
+        let forced = UserDefaults.standard.integer(forKey: "runwayDays")   // `-runwayDays N`
+        if forced > 0 { return forced }
+        #endif
+        let monthAgo = now.timeIntervalSince1970 - 30 * 86_400
+        let opens = (UserDefaults.standard.array(forKey: opensKey) as? [Double] ?? []).filter { $0 > monthAgo }
+            + [now.timeIntervalSince1970]
+        guard opens.count >= 3 else { return runwayNew }
+        let longest = zip(opens.dropFirst(), opens).map { $0 - $1 }.max() ?? 0
+        return min(max(daysAhead, Int((2 * longest / 86_400).rounded(.up))), runwayMax)
+    }
+
+    /// From outside the app's own views (a notification action woke it in the background): re-plans with the app's
+    /// store. Set by shukrApp's init.
+    static var appContainer: ModelContainer?
+    static func topUp(reason: String) {
+        guard let container = appContainer else { return }
+        reschedule(context: container.mainContext, reason: reason)
     }
 
     // MARK: Rescheduling
@@ -113,14 +186,7 @@ enum NotificationScheduler {
         let ownedPending = pending.filter { owns($0.identifier) }
         let others = pending.count - ownedPending.count
         let budget = max(limit - others - spare, 0)
-        // One slot is the last-resort reminder's, after the last prayer start that made it in — only
-        // with room for at least one start besides it, and only when prayer starts are scheduled at all
-        // (zikr reminders alone get no "keep your prayer reminders coming").
-        let sorted = items.sorted { ($0.priority, $0.date) < ($1.priority, $1.date) }
-        let reserve = budget >= 2 ? 1 : 0
-        var chosen = Array(sorted.prefix(max(budget - reserve, 0)))
-        let lastStart = chosen.filter { PrayerNotificationID.parse($0.id)?.kind == "Start" }.map(\.date).max()
-        if reserve == 1, let lastStart { chosen.append(keepAliveItem(after: lastStart)) }
+        let chosen = choose(items, budget: budget)
 
         // Only what changed (2026-09-27 review): while moving, the app re-plans every 500 m / 30 s,
         // and removing + re-adding ~55 requests each time was wasted work. A request is "the same"
@@ -173,6 +239,14 @@ enum NotificationScheduler {
         }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-logPendingNotifs") {
+            // The plan by prayer day, whether or not iOS took it (the simulator often isn't allowed notifications).
+            var byDay: [String: [String]] = [:]
+            for item in chosen {
+                let key = PrayerNotificationID.parse(item.id)?.dayKey ?? PrayerNotificationID.dayKey(PrayerDay.date(for: item.date))
+                let p = PrayerNotificationID.parse(item.id)
+                byDay[key, default: []].append(p.map { "\($0.prayer.prefix(2))\($0.kind.prefix(1))" } ?? (item.id.hasPrefix(headsUpPrefix) ? "HEADSUP" : item.id.hasPrefix(easeOffPrefix) ? "EASEOFF" : item.id.hasPrefix(keepAlivePrefix) ? "LAST" : "zikr"))
+            }
+            print("PLAN runway \(runwayDays()) · \(chosen.count) chosen of \(items.count) · budget \(budget)\n" + byDay.keys.sorted().map { "  \($0): " + byDay[$0]!.joined(separator: " ") }.joined(separator: "\n"))
             let deliveredKeepAlives = await center.deliveredNotifications().filter { $0.request.identifier.hasPrefix(keepAlivePrefix) }.count
             print("🔔 last-resort reminders: cleared \(stale.filter { $0.hasPrefix(keepAlivePrefix) }.count) delivered this run, \(deliveredKeepAlives) left")
             let now = await center.pendingNotificationRequests()
@@ -184,6 +258,52 @@ enum NotificationScheduler {
             print("PENDINGNOTIFS \(now.count)\n" + lines.joined(separator: "\n"))
         }
         #endif
+    }
+
+    /// The best `budget` requests: the plan's items in their tiers' order, then the warnings for where that leaves the
+    /// prayers. Room is kept for the three warnings first; whatever they don't need goes back to the next items.
+    static func choose(_ items: [Item], budget: Int) -> [Item] {
+        let sorted = items.sorted { ($0.priority, $0.date) < ($1.priority, $1.date) }
+        let held = budget >= 6 ? 3 : budget >= 2 ? 1 : 0
+        var chosen = Array(sorted.prefix(max(budget - held, 0)))
+        var warn = warnings(for: chosen, room: held)
+        let more = budget - chosen.count - warn.count
+        if more > 0 {
+            chosen += sorted.dropFirst(chosen.count).prefix(more)
+            warn = Array(warnings(for: chosen, room: held).prefix(max(budget - chosen.count, 0)))
+        }
+        return chosen + warn
+    }
+
+    /// The warnings for a chosen plan (prayer starts only: zikr reminders alone get none). The last one always; the
+    /// heads-up when the last start is more than two days out; easing off when a later day is starts-only although
+    /// some prayer is set to nudge. `room` caps them, most important first.
+    static func warnings(for chosen: [Item], room: Int) -> [Item] {
+        guard room > 0 else { return [] }
+        let parsed = chosen.compactMap { item in PrayerNotificationID.parse(item.id).map { (item, $0) } }
+        guard let lastStart = parsed.filter({ $0.1.kind == "Start" }).map(\.0.date).max() else { return [] }
+        var list = [keepAliveItem(after: lastStart)]
+        let now = Date(), cal = Calendar.current
+        // Heads-up: two days before the last start's day, 20 min after that day's Dhuhr (12:30 without times).
+        var headsUp: Item?
+        if let day = cal.date(byAdding: .day, value: -2, to: cal.startOfDay(for: PrayerDay.date(for: lastStart))) {
+            let noon = cal.date(bySettingHour: 12, minute: 30, second: 0, of: day) ?? day
+            let at = windows(for: day)?["Dhuhr"]?.start.addingTimeInterval(20 * 60) ?? noon
+            if at > now.addingTimeInterval(3600) { headsUp = headsUpItem(at: at, lastStart: lastStart) }
+        }
+        // Easing off: the last day with any nudge, if a starts-only day follows it and some prayer is set to nudge.
+        var easeOff: Item?
+        let anyNudges = PrayerNotificationID.prayers.contains { settings($0).notify && settings($0).nudges }
+        let nudges = parsed.filter { $0.1.kind != "Start" }
+        if anyNudges, let last = nudges.max(by: { $0.0.date < $1.0.date }), let lastKey = last.1.dayKey,
+           parsed.contains(where: { $0.1.kind == "Start" && ($0.1.dayKey ?? "") > lastKey }) {
+            let late = cal.date(bySettingHour: 21, minute: 30, second: 0, of: last.0.date) ?? last.0.date
+            let at = max(min(last.0.date.addingTimeInterval(20 * 60), late), now.addingTimeInterval(60))
+            // Within a day of the heads-up, the heads-up says it (one warning, not two).
+            if abs(at.timeIntervalSince(headsUp?.date ?? .distantPast)) > 30 * 3600 { easeOff = easeOffItem(at: at) }
+        }
+        list += [easeOff, headsUp].compactMap { $0 }
+        return Array(list.prefix(room))
     }
 
     /// "yyyy-MM-dd HH:mm|title|subtitle|body" — what makes two requests the same.
@@ -202,17 +322,36 @@ enum NotificationScheduler {
     static func plan(context: ModelContext,
                      todayOverride: [String: (start: Date, end: Date, window: TimeInterval)]? = nil) -> [Item] {
         let now = Date()
-        let horizon = now.addingTimeInterval(TimeInterval(daysAhead) * 86_400)
-        return prayerItems(context: context, todayOverride: todayOverride)
-            + ZikrReminders.items(context: context, now: now, horizon: horizon) { prayer, day in
-                windows(for: day)?[prayer]?.start
-            }
+        // Zikr reminders for today and tomorrow only (owner: four tasks a day for a week would be half the 64); later
+        // days are added as they come closer.
+        let todayKey = PrayerNotificationID.dayKey(PrayerDay.date(for: now))
+        let zikr = ZikrReminders.items(context: context, now: now, horizon: now.addingTimeInterval(48 * 3600)) { prayer, day in
+            windows(for: day)?[prayer]?.start
+        }.map { item in
+            Item(id: item.id, date: item.date,
+                 priority: PrayerNotificationID.dayKey(PrayerDay.date(for: item.date)) == todayKey ? Tier.now : Tier.zikrTomorrow,
+                 content: item.content)
+        }
+        return prayerItems(context: context, todayOverride: todayOverride) + zikr
+    }
+
+    /// The plan's order (lower first). Within a tier, sooner first — so full days and the runway grow without gaps.
+    enum Tier {
+        static let now = 0            // today's and tomorrow's starts, today's zikr reminders
+        static let week = 1           // the week's other starts (the runway's floor)
+        static let fullEnd = 2        // 30 minutes left, the next `nudgeDaysAhead` prayer days
+        static let fullMid = 3        // halfway, the same days
+        static let zikrTomorrow = 4
+        static let runway = 5         // starts out to `runwayDays`
+        static let moreEnd = 6        // more full days, within the runway
+        static let moreMid = 7
+        static let further = 8        // starts as far as the slots go
     }
 
     private static let defaults = UserDefaults.standard
-    /// How many prayer days still ahead get their nudges (halfway, 30 min left); later days get only
-    /// the start until they come this close (Upcoming reminders explains it from this).
-    static let nudgeDaysAhead = 2
+    /// How many prayer days still ahead are sure of their nudges (halfway, 30 min left; owner, notif-plan-tradeoff C:
+    /// "what if we made it 3 full days"); later days get them only with slots to spare within the runway.
+    static let nudgeDaysAhead = 3
     /// Settings → Notifications (standard defaults; unset → `NotificationDefaults`, like every view).
     static func settings(_ prayer: String) -> (notify: Bool, nudges: Bool) {
         let key = prayer.lowercased()
@@ -242,7 +381,7 @@ enum NotificationScheduler {
         let cal = Calendar.current
         let firstDay = cal.startOfDay(for: PrayerDay.date(for: now))
         let horizon = now.addingTimeInterval(TimeInterval(maxDaysAhead) * 86_400)
-        let week = now.addingTimeInterval(TimeInterval(daysAhead) * 86_400)
+        let runway = runwayDays(now: now)
 
         // Which prayers are already prayed, over the days covered.
         let lastDay = cal.date(byAdding: .day, value: maxDaysAhead + 1, to: firstDay) ?? firstDay
@@ -252,26 +391,30 @@ enum NotificationScheduler {
         let done = Set(((try? context.fetch(descriptor)) ?? []).map { $0.dayKey + $0.name })   // by prayer day
 
         var items: [Item] = []
-        var fullDays = 0   // prayer days with nudges: the next two that are still ahead
+        var index = 0   // prayer days still ahead, counted: 0 = the current one
         for offset in 0...(maxDaysAhead + 1) {
             guard let day = cal.date(byAdding: .day, value: offset, to: firstDay) else { continue }
             let dayWindows = offset == 0 ? (todayOverride ?? windows(for: day)) : windows(for: day)
             guard let dayWindows, let fajr = dayWindows["Fajr"]?.start, fajr < horizon else { continue }
             let stillAhead = dayWindows.values.contains { $0.end > now }
             guard stillAhead else { continue }
-            let withNudges = fullDays < nudgeDaysAhead
-            fullDays += 1
+            let i = index
+            index += 1
+            let full = i < nudgeDaysAhead
             for name in PrayerNotificationID.prayers {
                 guard let window = dayWindows[name], !done.contains(PrayerNotificationID.dayKey(day) + name) else { continue }
                 let s = settings(name)
                 guard s.notify else { continue }
-                let kinds = withNudges && s.nudges ? ["Start", "Mid", "End"] : ["Start"]
+                // Nudges only on days whose starts the runway is sure of (a nudge without its start would be odd).
+                let kinds = s.nudges && i < runway ? ["Start", "Mid", "End"] : ["Start"]
                 for kind in kinds {
                     guard let (date, content) = prayerNotification(kind, prayer: name, window: window),
                           date > now, date < horizon else { continue }
-                    // Near days: starts, then their nudges; the week's other starts after; past the week, last (they
-                    // take only what's left once far zikr reminders have theirs).
-                    let priority = withNudges ? (kind == "Start" ? 0 : 1) : (date < week ? 2 : 4)
+                    let priority = switch kind {
+                    case "Start": i < 2 ? Tier.now : i < daysAhead ? Tier.week : i < runway ? Tier.runway : Tier.further
+                    case "End": full ? Tier.fullEnd : Tier.moreEnd
+                    default: full ? Tier.fullMid : Tier.moreMid
+                    }
                     items.append(Item(id: PrayerNotificationID.make(day: day, prayer: name, kind: kind),
                                       date: date, priority: priority, content: content))
                 }

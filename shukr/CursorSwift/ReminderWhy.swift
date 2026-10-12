@@ -63,12 +63,14 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
     @MainActor func content(_ health: NotificationHealth, pendingCount: Int) -> Content {
         switch self {
         case .budget:
+            // Plan v2 in his words (owner, 2026-10-12): every slot used, nearest first.
             let n = NotificationScheduler.nudgeDaysAhead
-            let free = max(NotificationScheduler.limit - pendingCount, 0)
-            return Content(head: "iOS lets each app keep 64 notifications waiting. Here's how shukr spends them.", points: [
-                Point(big: "Every start, as far as they go", small: "Each prayer's start for the next \(NotificationScheduler.daysAhead) days, then further while slots are free — up to \(NotificationScheduler.maxDaysAhead) days. Fewer reminders a day means a longer runway.", symbol: "calendar", warn: false),
-                Point(big: "Nudges for the next \(n) days", small: "Halfway and 30 minutes left are added as each day comes closer (a filled dot under the day; an empty ring means starts only for now).", symbol: "bell.badge", warn: false),
-                Point(big: "\(free) slot\(free == 1 ? "" : "s") free", small: "Room for snoozes and zikr reminders.", symbol: "circle.dashed", warn: false),
+            let spare = NotificationScheduler.spare
+            return Content(head: "iOS lets each app keep 64 notifications waiting. shukr fills them, nearest first.", points: [
+                Point(big: "A week of starts, always", small: "Each prayer's start for at least the next \(NotificationScheduler.daysAhead) days — longer if you usually open shukr less often.", symbol: "calendar", warn: false),
+                Point(big: "Full reminders for the next \(n) days", small: "Halfway and 30 minutes left too, and for more days when there's room. After that, just the starts, so we never pile on (a filled dot under the day; an empty ring means starts only for now).", symbol: "bell.badge", warn: false),
+                Point(big: "Zikr reminders for today and tomorrow", small: "Later days are added as they come closer, so they never crowd out your prayers.", symbol: "circle.hexagonpath", warn: false),
+                Point(big: "\(spare) kept for snoozes", small: "Room for \u{201C}Nudge me in 5 minutes\u{201D} and similar. The rest go further ahead.", symbol: "circle.dashed", warn: false),
             ])
         case .topsUp:
             let lastRun = UserDefaults.standard.double(forKey: NotificationHealth.lastRefreshKey)
@@ -79,7 +81,7 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
                 bgOn ? Point(big: "Background App Refresh is on", small: "iOS wakes shukr now and then to add the next days." + ran, symbol: "arrow.triangle.2.circlepath", warn: false)
                      : Point(big: "Background App Refresh is off", small: "Turn it on in Settings, or open shukr every few days.", symbol: "arrow.triangle.2.circlepath", warn: true),
                 Point(big: "Opening shukr tops it up too", small: "Any time you open the app, the week refills.", symbol: "iphone", warn: false),
-                Point(big: "Never a silent stop", small: "If iOS can't refresh, your last reminder\(keep) asks you to open shukr.", symbol: "bell.badge", warn: false),
+                Point(big: "Never a silent stop", small: "If iOS can't refresh, shukr tells you first: when it eases off to just the starts, two days before your reminders run out, and at the last one\(keep).", symbol: "bell.badge", warn: false),
             ], fix: !bgOn)
         case .onTime:
             // His settings first (orange only where one is really in the way), then how iOS delivers, neutrally.
