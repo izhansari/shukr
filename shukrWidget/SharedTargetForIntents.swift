@@ -2498,7 +2498,7 @@ struct LALiveArc: View {
     private static let inApp = Bundle.main.bundleURL.pathExtension != "appex"
     var body: some View {
         if Self.inApp {
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
+            TimelineView(.animation(minimumInterval: 1.0 / 30)) { ctx in   // smooth: the setup / Card look demo plays a window in seconds
                 let f = min(max(ctx.date.timeIntervalSince(start) / max(end.timeIntervalSince(start), 1), 0), 1)
                 Circle().trim(from: 0, to: f)
                     .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))

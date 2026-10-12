@@ -244,26 +244,63 @@ struct LiveActivityDemo: View {
     var look: ColorScheme? = nil
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var phase = 1
-    /// The moment the samples are drawn round (the card's timers count from now).
-    @State private var base = Date()
+    /// When the current run began (the card's timers count from now, so the window is laid round the clock each frame).
+    @State private var runStart = Date()
     private let t = LATuning.current
 
     private var steps: [String] { [copy[.stepStart], copy[.stepLive], copy[.stepLast], copy[.stepDone]] }
 
-    /// The card at each step: just started, partway, the last half hour, marked.
-    private func sample(_ p: Int) -> PrayerWindowAttributes.ContentState {
-        let m = 60.0, sym = prayerIcon(for: prayer)
-        switch p {
-        case 0: return .init(label: prayer, start: base.addingTimeInterval(-1 * m), end: base.addingTimeInterval(139 * m), symbol: sym)
-        case 1: return .init(label: prayer, start: base.addingTimeInterval(-55 * m), end: base.addingTimeInterval(85 * m), symbol: sym)
-        case 2: return .init(label: prayer, start: base.addingTimeInterval(-118 * m), end: base.addingTimeInterval(22 * m), symbol: sym)
-        default: return .init(label: prayer, start: base.addingTimeInterval(-24 * m), end: base.addingTimeInterval(116 * m), symbol: sym,
-                              markedAt: base)
+    /// ONE card living through its window (owner, 2026-10-12: "one dynamic card … progressively change", not snapshots
+    /// cross-fading): a 140-minute window played in ~9 s — it starts, the ring fills and the time left counts down, turns
+    /// red in the last half hour — then it's marked (a fade: the real card changes there too), and it begins again.
+    private static let window = 140.0                       // minutes
+    private static let run: [(at: Double, minute: Double)] = [(0, 0), (1.2, 3), (6.6, 110), (9.0, 124)]   // seconds → minute
+    private static let markedFor = 3.4
+    private static var cycle: Double { run.last!.at + markedFor }
+
+    /// The window's minute at `s` seconds into the run (eased between the marks above); nil once marked.
+    private static func minute(at s: Double) -> Double? {
+        guard s < run.last!.at else { return nil }
+        for (a, b) in zip(run, run.dropFirst()) where s < b.at {
+            let x = (s - a.at) / (b.at - a.at)
+            let eased = x * x * (3 - 2 * x)
+            return a.minute + (b.minute - a.minute) * eased
         }
+        return run.last!.minute
+    }
+
+    private func state(at now: Date, minute: Double?) -> PrayerWindowAttributes.ContentState {
+        let m = 60.0, sym = prayerIcon(for: prayer)
+        guard let minute else {   // marked early in its window: Perfect, its green glow
+            let start = now.addingTimeInterval(-24 * m)
+            return .init(label: prayer, start: start, end: start.addingTimeInterval(Self.window * m), symbol: sym,
+                         markedAt: start.addingTimeInterval(22 * m))
+        }
+        let start = now.addingTimeInterval(-minute * m)
+        return .init(label: prayer, start: start, end: start.addingTimeInterval(Self.window * m), symbol: sym)
+    }
+
+    private func step(_ minute: Double?) -> Int {
+        guard let minute else { return 3 }
+        return minute < 3 ? 0 : minute < Self.window - 30 ? 1 : 2
     }
 
     var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || veil != .none)) { ctx in
+            let s = reduceMotion ? 3.5 : ctx.date.timeIntervalSince(runStart).truncatingRemainder(dividingBy: Self.cycle)
+            let minute = Self.minute(at: max(s, 0))
+            content(state: state(at: ctx.date, minute: minute), phase: step(minute))
+        }
+        .overlay { veilView }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(veil == .off ? "\(copy[.offTitle]). \(copy[.offBody])"
+                            : veil == .old ? "\(copy[.oldTitle]). \(copy[.oldBody])"
+                            : "\(prayer) on the Lock Screen: time left in a ring, and a button to mark it prayed.")
+        .task(id: prayer) { runStart = Date() }
+        .animation(.snappy(duration: 0.25), value: prayer)
+    }
+
+    private func content(state: PrayerWindowAttributes.ContentState, phase: Int) -> some View {
         VStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 10) {
                 // Which prayer this is, and where it shows — as the other pages label their card.
@@ -277,13 +314,14 @@ struct LiveActivityDemo: View {
                 .padding(.leading, 4)
                 .contentTransition(.opacity)
                 ZStack {
-                    LALockCardBody(state: sample(phase), n: 0, ended: false, t: t)
+                    LALockCardBody(state: state, n: 0, ended: false, t: t)
                         .environment(\.colorScheme, look ?? LiveActivityLook.current.dark(for: prayer).map { $0 ? .dark : .light } ?? systemScheme)
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-                        .id("\(prayer)-\(phase)")
+                        .id("\(prayer)-\(state.markedAt == nil)")   // the same card all through; only marking swaps it
                         .transition(.opacity)
                 }
+                .animation(.easeInOut(duration: 0.5), value: state.markedAt == nil)
                 // Only a picture: its buttons would run the real intents.
                 .allowsHitTesting(false)
                 .padding(.bottom, 4)
@@ -300,6 +338,7 @@ struct LiveActivityDemo: View {
                 ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
                     Text(s)
                         .font(.system(.caption, design: .rounded, weight: i == phase ? .semibold : .regular))
+                        .animation(.easeInOut(duration: 0.3), value: phase)
                         .foregroundStyle(i == phase ? Color.sage : .secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -307,7 +346,9 @@ struct LiveActivityDemo: View {
                 }
             }
         }
-        .overlay {
+    }
+
+    @ViewBuilder private var veilView: some View {
             if veil != .none {
                 ZStack {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -333,24 +374,6 @@ struct LiveActivityDemo: View {
                 .onTapGesture { if veil == .off { SettingsLinks.app() } }
                 .transition(.opacity)
             }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(veil == .off ? "\(copy[.offTitle]). \(copy[.offBody])"
-                            : veil == .old ? "\(copy[.oldTitle]). \(copy[.oldBody])"
-                            : "\(prayer) on the Lock Screen: time left in a ring, and a button to mark it prayed.")
-        .task(id: prayer) {
-            // Each step for a beat, the marked one a little longer; still (partway) with Reduce Motion.
-            base = Date()
-            guard !reduceMotion else { phase = 1; return }
-            phase = 0
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(phase == 3 ? 3.2 : 2.4))
-                if Task.isCancelled { break }
-                base = Date()
-                withAnimation(.easeInOut(duration: 0.35)) { phase = (phase + 1) % 4 }
-            }
-        }
-        .animation(.snappy(duration: 0.25), value: prayer)
     }
 }
 
