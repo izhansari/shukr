@@ -533,7 +533,7 @@ struct FirstRunSetupView: View {
     }
     var ackTitle: String {
         if case .city(let name) = comeback { return name.isEmpty ? "Using your city" : "Using \(name)" }
-        return "Location's back"
+        return "Location’s back"
     }
     var ackLine: String {
         switch comeback {
@@ -1867,7 +1867,7 @@ private struct WelcomeRingDemo: View {
         .opacity(shown ? 1 : 0)
         .offset(y: shown || reduceMotion ? 0 : 14)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("The prayer circle fills as a prayer's time passes: green is the best time, yellow on time, red almost gone.")
+        .accessibilityLabel("The prayer circle fills as a prayer’s time passes: green is the best time, yellow on time, red almost gone.")
         .accessibilityAction(named: "Play demo") { run += 1 }
         .task(id: run) {
             typealias T = CircleMotion.Setup
@@ -2081,7 +2081,7 @@ private struct LocationStep: View {
     private var offFrost: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(.ultraThinMaterial)
+                .fill(.regularMaterial)   // the same frost as every "off" card
                 // The rows' box spans the page (its 32 pt sides are padding): in 16 pt, like the notifications card.
                 .padding(.horizontal, 16).padding(.vertical, -4)
             VStack(spacing: 6) {
@@ -2380,7 +2380,7 @@ private struct PrayerTimesStep: View {
             note("Your madhab only moves Asr; the rest stay put.")
                 .padding(.bottom, 10)
             HStack(spacing: 14) {
-                card(title: "Shafi'i", note: "Maliki, Hanbali too", lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
+                card(title: "Shafi’i", note: "Maliki, Hanbali too", lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
                 card(title: "Hanafi", note: nil, lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
             }
             .padding(.horizontal, 24)
@@ -2439,7 +2439,7 @@ private struct PrayerTimesStep: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .accessibilityHint(lengths == 1 ? "Asr when a shadow is as long as the object" : "Asr when a shadow is twice the object's length")
+        .accessibilityHint(lengths == 1 ? "Asr when a shadow is as long as the object" : "Asr when a shadow is twice the object’s length")
     }
 }
 
@@ -2627,8 +2627,19 @@ private struct RemindersStep: View {
     @State private var focus = "Asr"
     /// "No thanks" asks once more (owner: "a little more friction … making sure they agree to losing out").
     @State private var confirmSkip = false
+    /// Their "no" here (confirmed): the page stays, frosted, as on Live Activities and the alarm (owner, decision
+    /// setup-no-thanks A) — kept, so coming back finds it as they left it.
+    @State private var declined = UserDefaults.standard.bool(forKey: RemindersStep.declinedKey)
+    static let declinedKey = "notifications.setupDeclined"
 
     private var allowed: Bool { notifications.isOn == true }
+    /// Off: refused at iOS's prompt, or a no here before iOS was asked.
+    private var off: Bool { notifications.isOn == false || (notifications.isOn == nil && declined) }
+
+    private func decline(_ no: Bool) {
+        UserDefaults.standard.set(no, forKey: Self.declinedKey)
+        withAnimation(.easeInOut(duration: 0.45)) { declined = no }
+    }
 
     private func state(_ prayer: String) -> Int {
         let pairs: [String: (Bool, Bool)] = ["Fajr": (fajrNotif, fajrNudges), "Dhuhr": (dhuhrNotif, dhuhrNudges), "Asr": (asrNotif, asrNudges),
@@ -2651,7 +2662,9 @@ private struct RemindersStep: View {
                         // Equal room above and below while it's alone; the room above goes once the tuner comes.
                         if !allowed { Spacer(minLength: 0) }
                         NotificationDemo(prayer: allowed ? focus : "Asr", state: allowed ? state(focus) : 2,
-                                         refused: notifications.isOn == false)
+                                         refused: off,
+                                         turnOn: notifications.isOn == false ? SettingsLinks.notifications
+                                             : { decline(false); notifications.request() })
                             .padding(.horizontal, 24)
                         if allowed {
                             VStack(spacing: 0) {
@@ -2673,14 +2686,18 @@ private struct RemindersStep: View {
                 .scrollIndicators(.hidden)
             }
             VStack(spacing: 0) {
-                if notifications.isOn == nil {
+                if off {
+                    // Off (their no, or iOS's): the preview says it, frosted over (owner); the way on is outlined, not the
+                    // filled Continue; a change of mind asks iOS after a no here, opens Settings after iOS's no.
+                    PrimaryButton(title: "Continue without notifications", outlined: true, action: next)
+                    if notifications.isOn == false {
+                        SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.notifications)
+                    } else {
+                        SecondaryButton(title: "I changed my mind") { decline(false); notifications.request() }
+                    }
+                } else if notifications.isOn == nil {
                     PrimaryButton(title: "Yes, remind me", outlined: true) { notifications.request() }
                     SecondaryButton(title: "No thanks, I’ll remember") { confirmSkip = true }
-                } else if notifications.isOn == false {
-                    // Refused: the preview says it, frosted over (owner); the way on is outlined, not the filled
-                    // Continue; Settings is the quiet way back.
-                    PrimaryButton(title: "Continue without notifications", outlined: true, action: next)
-                    SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.notifications)
                 } else {
                     PrimaryButton(title: "Continue", action: next)
                 }
@@ -2692,7 +2709,7 @@ private struct RemindersStep: View {
         .task { await notifications.refresh() }
         .alert("Go without notifications?", isPresented: $confirmSkip) {
             Button("Remind me", role: .cancel) { notifications.request() }
-            Button("Skip anyway", role: .destructive, action: next)
+            Button("Skip it", role: .destructive) { decline(true) }
         } message: {
             Text("You’d miss the nudge when a prayer is slipping by. It only comes if you haven’t prayed yet, so it’s never noise. You can turn them on later in Settings.")
         }
@@ -2835,6 +2852,8 @@ struct NotificationDemo: View {
     /// Notifications refused: the preview stays where it is, frosted over with what that means (owner: in place of
     /// a note above the button, and louder).
     var refused = false
+    /// A tap on the frost: iOS's Settings after iOS's no, asking iOS after a no on the page.
+    var turnOn: () -> Void = SettingsLinks.notifications
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -2947,8 +2966,10 @@ struct NotificationDemo: View {
             .overlay {
                 if refused {
                     ZStack {
+                        // The same frost on every "off" card (decision setup-no-thanks): thin read as muddy grey on the
+                        // alarm's dark card.
                         RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .fill(.ultraThinMaterial)
+                            .fill(.regularMaterial)
                             .padding(-8)
                         VStack(spacing: 6) {
                             Image(systemName: "bell.slash.fill")
@@ -2965,9 +2986,10 @@ struct NotificationDemo: View {
                         }
                         .padding(.horizontal, 20)
                     }
-                    // A tap goes where the words say: iOS's Settings → shukr → Notifications (owner).
+                    // A tap goes where the words say: iOS's Settings → shukr → Notifications (owner); before iOS has
+                    // asked, the ask itself.
                     .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous).inset(by: -8))
-                    .onTapGesture { SettingsLinks.notifications() }
+                    .onTapGesture { turnOn() }
                     .transition(.opacity)
                 }
             }
@@ -3063,12 +3085,22 @@ private struct FajrStep: View {
     @State private var answer: Bool? = nil
     /// "No thanks" asks once more, as on notifications (owner).
     @State private var confirmSkip = false
+    /// Their "no" here (confirmed): the alarm stays on the page, frosted (decision setup-no-thanks A); kept.
+    @State private var declined = UserDefaults.standard.bool(forKey: FajrStep.declinedKey)
+    static let declinedKey = "fajrAlarm.setupDeclined"
 
     private static let shortcutURL = URL(string: "https://www.icloud.com/shortcuts/6ebcfeb12813483992687461d027fd14")
 
     /// The alarm is on: allowed and switched on (before iOS 26.1, the Shortcut's switch alone).
     private var on: Bool { enabled && (!FajrAlarms.supported || answer == true) }
     private var refused: Bool { FajrAlarms.supported && answer == false }
+    /// Frosted: iOS refused alarms, or they said no here.
+    private var off: Bool { !on && (refused || declined) }
+
+    private func decline(_ no: Bool) {
+        UserDefaults.standard.set(no, forKey: Self.declinedKey)
+        withAnimation(.easeInOut(duration: 0.45)) { declined = no }
+    }
 
     var body: some View {
         // Laid out like the notifications page (owner: "show a graphic … the same way we did with notifs"): the ringing
@@ -3081,11 +3113,20 @@ private struct FajrStep: View {
                                   subtitle: "Set it once. It moves with Fajr every day, so there’s nothing to do before bed.")
                             .padding(.bottom, 18)
                         if !on { Spacer(minLength: 0) }
-                        AlarmDemo(days: upcoming, isFajr: isFajr, rule: ruleWords, refused: refused)
+                        AlarmDemo(days: upcoming, isFajr: isFajr, rule: ruleWords, off: off ? (refused ? .refused : .declined) : nil,
+                                  turnOn: refused ? SettingsLinks.app : { decline(false); turnOn() })
                             .padding(.horizontal, 24)
                         if on {
-                            tuner
-                                .transition(.opacity.combined(with: .offset(y: 16)))
+                            VStack(spacing: 0) {
+                                // The same short dash as the notifications and Live Activities pages: the alarm above,
+                                // its rule below.
+                                Capsule()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(width: 32, height: 3)
+                                    .padding(.top, 18).padding(.bottom, 16)
+                                tuner
+                            }
+                            .transition(.opacity.combined(with: .offset(y: 16)))
                         }
                         Spacer(minLength: 0)
                     }
@@ -3098,10 +3139,16 @@ private struct FajrStep: View {
             VStack(spacing: 0) {
                 if on {
                     PrimaryButton(title: "Continue") { saveDescription(); next() }
-                } else if refused {
-                    // Refused: the alarm says it, frosted over; the way on is outlined, Settings the quiet way back.
+                } else if off {
+                    // Off (their no, or iOS's): the alarm says it, frosted over; the way on is outlined (Fajr keeps its own
+                    // words — owner, decision setup-off-button B); a change of mind turns it on after a no here, opens
+                    // Settings after iOS's no.
                     PrimaryButton(title: "I’ll set my own alarm", outlined: true) { enabled = false; next() }
-                    SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.app)
+                    if refused {
+                        SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.app)
+                    } else {
+                        SecondaryButton(title: "I changed my mind") { decline(false); turnOn() }
+                    }
                 } else {
                     PrimaryButton(title: "Set my Fajr alarm", outlined: true, action: turnOn)
                     SecondaryButton(title: "No thanks, I’ll set my own alarm") { confirmSkip = true }
@@ -3110,10 +3157,10 @@ private struct FajrStep: View {
             .padding(.top, 8).padding(.bottom, 8)
         }
         .animation(.easeInOut(duration: 0.45), value: on)
-        .animation(.easeInOut(duration: 0.45), value: refused)
+        .animation(.easeInOut(duration: 0.45), value: off)
         .alert("Go without the Fajr alarm?", isPresented: $confirmSkip) {
             Button("Set my Fajr alarm", role: .cancel, action: turnOn)
-            Button("Skip it", role: .destructive) { enabled = false; next() }
+            Button("Skip it", role: .destructive) { enabled = false; decline(true) }
         } message: {
             Text("You’d check Fajr’s time each night and set an alarm yourself. You can turn it on later in Settings.")
         }
@@ -3153,7 +3200,6 @@ private struct FajrStep: View {
         VStack(spacing: 4) {
             Text("When should it ring?")
                 .font(.system(.headline, design: .rounded))
-                .padding(.top, 18)
             HStack(spacing: 0) {
                 Picker("Minutes", selection: $offset) {
                     ForEach(FajrAlarmRule.minutes(isFajr: isFajr), id: \.self) { Text("\($0) min").tag($0) }
@@ -3225,12 +3271,29 @@ extension AlarmDemo {
 /// The Fajr alarm as iOS shows it with the phone in use — the pill at the top (matched to a real AlarmKit test alarm,
 /// 2026-10-10: the green alarm symbol, "shukr" over "Fajr starts …", a sunrise button and ✕), the symbol shaking as it
 /// rings; then the same rule's time on days through the year: one rule, a time that follows Fajr. Refused: frosted over.
+/// The alarm with a slash through it, drawn as SF Symbols draw theirs (a cut either side of the line): there's no
+/// "alarm.slash", and the other "off" cards use bell.slash / iphone.slash / location.slash.
+private struct AlarmOffSymbol: View {
+    var body: some View {
+        ZStack {
+            Image(systemName: "alarm.fill")   // filled, as bell.slash.fill beside it
+            Capsule().frame(width: 6, height: 33).rotationEffect(.degrees(-45)).blendMode(.destinationOut)
+            Capsule().frame(width: 2.2, height: 31).rotationEffect(.degrees(-45))
+        }
+        .compositingGroup()
+    }
+}
+
 struct AlarmDemo: View {
     let days: [(day: Date, alarm: Date, reference: Date)]
     let isFajr: Bool
     /// The rule in words, for the card's label ("20 min before it starts").
     let rule: String
-    var refused = false
+    /// Frosted over: iOS refused alarms, or they said no on the page.
+    enum Off { case refused, declined }
+    var off: Off? = nil
+    /// A tap on the frost: Settings after iOS's no, turning it on after a no on the page.
+    var turnOn: () -> Void = {}
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The island has opened into the alarm (once, on arrival; the wheels only change its words).
     @State private var open = false
@@ -3244,7 +3307,7 @@ struct AlarmDemo: View {
             Image(systemName: "alarm.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(Self.alarmGreen)
-                .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.25)), isActive: open && !reduceMotion && !refused)
+                .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.25)), isActive: open && !reduceMotion && off == nil)
             VStack(alignment: .leading, spacing: 1) {
                 Text("shukr")
                     .font(.system(.footnote, design: .default))
@@ -3280,6 +3343,11 @@ struct AlarmDemo: View {
             Capsule().fill(.black)
                 .frame(width: open ? nil : 112, height: open ? nil : 34)
         }
+    }
+
+    private func offLine(_ off: Off) -> String {
+        off == .refused ? "shukr can’t ring at Fajr. Turn alarms on in Settings any time."
+            : "shukr won’t ring at Fajr. Turn it on in Settings any time."
     }
 
     var body: some View {
@@ -3336,20 +3404,20 @@ struct AlarmDemo: View {
             }
             .animation(.snappy, value: first.alarm)
             .overlay {
-                if refused {
+                if let off {
                     ZStack {
-                        // Thicker than the notifications' frost: over a dark card a thin one read as muddy grey.
+                        // Thicker than a thin frost: over a dark card a thin one read as muddy grey (now every "off" card's).
                         RoundedRectangle(cornerRadius: 24, style: .continuous)
                             .fill(.regularMaterial)
                             .padding(-8)
                         VStack(spacing: 6) {
-                            Image(systemName: "alarm")
+                            AlarmOffSymbol()
                                 .font(.system(size: 26))
                                 .foregroundStyle(.secondary)
                                 .padding(.bottom, 4)
-                            Text("Alarms are off")
+                            Text(off == .refused ? "Alarms are off" : "The Fajr alarm is off")
                                 .font(.system(.headline, design: .rounded))
-                            Text("shukr can’t ring at Fajr. Turn alarms on in Settings any time.")
+                            Text(offLine(off))
                                 .font(.system(.subheadline, design: .rounded))
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
@@ -3358,12 +3426,12 @@ struct AlarmDemo: View {
                         .padding(.horizontal, 20)
                     }
                     .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous).inset(by: -8))
-                    .onTapGesture { SettingsLinks.app() }
+                    .onTapGesture { turnOn() }
                     .transition(.opacity)
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(refused ? "Alarms are off. shukr can’t ring at Fajr. Turn alarms on in Settings any time."
+            .accessibilityLabel(off != nil ? "\(off == .refused ? "Alarms are off" : "The Fajr alarm is off"). \(offLine(off ?? .declined))"
                                 : "Fajr alarm, \(clockTime(first.alarm)) tomorrow, set once and moving with Fajr through the year.")
         }
     }
@@ -3388,8 +3456,8 @@ private struct MasjidStep: View {
     var body: some View {
         // Why to star (owner, decision setup-masjid-why: his words).
         StepScaffold(title: "Your masjid",
-                     subtitle: MasjidArrival.parked ? "Prayers you mark there are saved at your masjid, and Friday's Dhuhr counts as Jumu'ah."
-                        : "Prayers you mark there are saved at your masjid, and Friday's Dhuhr counts as Jumu'ah. shukr can also show a dua when you arrive and leave.") {
+                     subtitle: MasjidArrival.parked ? "Prayers you mark there are saved at your masjid, and Friday’s Dhuhr counts as Jumu’ah."
+                        : "Prayers you mark there are saved at your masjid, and Friday’s Dhuhr counts as Jumu’ah. shukr can also show a dua when you arrive and leave.") {
             VStack(spacing: 14) {
                 searchField
                 if query.trimmingCharacters(in: .whitespaces).isEmpty { list } else { searchList }
@@ -3469,7 +3537,7 @@ private struct MasjidStep: View {
             note(spinner: true, "Finding masajid near you…")
         } else if items.isEmpty {
             note(location.effectiveLocation == nil ? "Search for your masjid by name or city."
-                 : MosqueSearch.lastSearchFailed ? "Couldn't search right now. Try a name above, or star it on the map later."
+                 : MosqueSearch.lastSearchFailed ? "Couldn’t search right now. Try a name above, or star it on the map later."
                  : "No masajid found nearby. Search for yours by name above.")
         } else {
             // The nearest 15 in a card that scrolls inside itself (owner: "a scrollable list … so they only have to
@@ -3709,7 +3777,7 @@ private struct ReviewStep: View {
     var body: some View {
         VStack(spacing: 0) {
             // Not "all set" while it's still asking for something.
-            StepTitle(title: anyMissing ? "Almost set" : "You're all set!",
+            StepTitle(title: anyMissing ? "Almost set" : "You’re all set!",
                       subtitle: "Tap anything to change it.")
                 .contentTransition(.opacity)
                 .padding(.bottom, 8)
@@ -3849,7 +3917,7 @@ private struct ReviewStep: View {
     }
     private var methodValue: String {
         let m = method == AutoMethod.automatic ? "Automatic (\(AutoMethod.shortName(AutoMethod.resolved())))" : AutoMethod.shortName(method)
-        return "\(m) · \(school == 1 ? "Hanafi" : "Shafi'i")"
+        return "\(m) · \(school == 1 ? "Hanafi" : "Shafi’i")"
     }
     /// Settings' three states per prayer: off, start, nudge (nudge = start + the two nudges).
     private var remindersValue: String {

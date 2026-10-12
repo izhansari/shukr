@@ -121,7 +121,10 @@ struct LiveActivitySetupStep: View {
                 // Off (their no, or iOS's switch): the card says it, frosted over; the way on is outlined, a change of mind
                 // quiet — straight back on after a no here, iOS's Settings when its switch is off.
                 PrimaryButton(title: copy[.offContinue], outlined: true, action: next)
-                SecondaryButton(title: copy[.offSettings]) { if enabled { turnOn() } else { SettingsLinks.app() } }
+                // After iOS's switch: "… Open Settings", as the notifications and the alarm say (decision setup-no-thanks).
+                SecondaryButton(title: enabled ? copy[.offSettings] : "\(copy[.offSettings]). Open Settings") {
+                    if enabled { turnOn() } else { SettingsLinks.app() }
+                }
             case .old:
                 PrimaryButton(title: "Continue", action: next)
             }
@@ -415,7 +418,7 @@ struct LiveActivityDemo: View {
             case .cardLabel, .stepLive, .stepLast, .stepDone: return "The card"
             case .yes, .no, .tilesHeader, .tilesBody: return "Asking, then on"
             case .skipTitle, .skipBody, .skipKeep, .skipAnyway: return "No thanks (the alert)"
-            case .offTitle, .offBody, .offContinue, .offSettings: return "Off (a no here, or iOS's switch)"
+            case .offTitle, .offBody, .offContinue, .offSettings: return "Off (a no here, or iOS’s switch)"
             case .oldTitle, .oldBody: return "Before iOS 26"
             }
         }
@@ -424,7 +427,7 @@ struct LiveActivityDemo: View {
             switch self {
             case .title: return "Title"
             case .subtitle: return "Subtitle"
-            case .cardLabel: return "Card label (after the prayer's name)"
+            case .cardLabel: return "Card label (after the prayer’s name)"
             case .stepLive: return "Step 1"
             case .stepLast: return "Step 2"
             case .stepDone: return "Step 3"
@@ -445,7 +448,7 @@ struct LiveActivityDemo: View {
             }
         }
 
-        static let groups = ["Top", "The card", "Asking, then on", "No thanks (the alert)", "Off (a no here, or iOS's switch)", "Before iOS 26"]
+        static let groups = ["Top", "The card", "Asking, then on", "No thanks (the alert)", "Off (a no here, or iOS’s switch)", "Before iOS 26"]
     }
 
     /// The words as shipped. Kept honest about what it does (the audit, 2026-10-11): a card shows from a prayer's
@@ -467,7 +470,7 @@ struct LiveActivityDemo: View {
         .skipAnyway: "Skip it",
         .offTitle: "Live Activities are off",
         .offBody: "No countdown on your Lock Screen or in the Dynamic Island: you’ll open shukr to see how long is left. Turn them on in Settings any time.",
-        .offContinue: "Continue without them",
+        .offContinue: "Continue without Live Activities",
         .offSettings: "I changed my mind",
         .oldTitle: "Coming with iOS 26",
         .oldBody: "Your iPhone needs iOS 26 for this. Once you update, it’s waiting for you in Settings.",
@@ -588,7 +591,7 @@ struct LiveActivitySetupPreview: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 44, height: 44)
                 }
-                .accessibilityLabel("Edit this page's words")
+                .accessibilityLabel("Edit this page’s words")
             }
             .tint(.primary)
             .padding(.horizontal, 12)
