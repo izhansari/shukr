@@ -322,7 +322,7 @@ struct SettingsView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "book.closed").frame(width: 24)
-                                Text("School")
+                                Text("Madhab")
                             }
                         }
                         
