@@ -72,6 +72,8 @@ struct SettingsView: View {
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
     @State private var isNotifPopupVisible: Bool = false
+    /// Prayer Times' ⓘ: what a method, a madhab and the qibla's accuracy are (owner, decision settings-times-explainer A).
+    @State private var isTimesInfoVisible = false
     @State private var isStreakPopupVisible: Bool = false
     
     @State private var rotationAngle: Double = 0 // For rotating the symbol
@@ -277,7 +279,7 @@ struct SettingsView: View {
                     
                     //MARK: - Prayer Times: where you are and how the times are worked out (owner: Location and Calculation
                     // Method made one section)
-                    Section(header: Text("Prayer Times").id("settingsTop")) {
+                    Section(header: headerWithInfoButton(title: "Prayer Times", isPopupVisible: $isTimesInfoVisible).id("settingsTop")) {
                         // (Latitude / longitude are gone: the city says it — owner, settings-cleanup-1.)
                         if envLocationManager.isAuthorized {
                             // One row: the city, when it was last updated, and the row itself refreshes it
@@ -660,6 +662,9 @@ struct SettingsView: View {
             #endif
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
+        .infoModal(isPresented: $isTimesInfoVisible, title: "Prayer Times", symbol: "clock") {
+            PrayerTimesInfo(method: calculationMethod, school: school, qibla: qiblaSensitivity)
+        }
         // Reminders' ⓘ: a floating card for the side showing (owner: tooltips as a frosted modal).
         .infoModal(isPresented: $isNotifPopupVisible,
                    title: remindersTab == ReminderSwitch.liveActivities ? "Live Activities" : "Notifications",
@@ -1557,6 +1562,45 @@ struct ReminderSwitch: View {
             }
             .frame(maxWidth: .infinity)
             .accessibilityHidden(true)
+    }
+}
+
+/// Prayer Times' ⓘ (owner: the setup explains the method and madhab well and Settings lost it): what a method is, the
+/// setup's shadow drawings with today's Asr for each madhab, and what the qibla's ± means.
+struct PrayerTimesInfo: View {
+    let method: Int
+    let school: Int
+    let qibla: Double
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            InfoModalRow(symbol: "sun.horizon", title: "Method",
+                         text: "Fajr and Isha are timed by how far the sun is below the horizon. Each method uses its own angles, so pick the one your masjid uses. Automatic follows the country you're in.")
+            VStack(alignment: .leading, spacing: 10) {
+                InfoModalRow(symbol: "book.closed", title: "Madhab",
+                             text: "It only moves Asr: Asr begins when a post's shadow reaches its own length, or twice its length.")
+                HStack(spacing: 10) {
+                    madhab("Shafi'i", lengths: 1, school: 0)
+                    madhab("Hanafi", lengths: 2, school: 1)
+                }
+            }
+            InfoModalRow(symbol: "location.north.line", title: "Qibla Accuracy",
+                         text: "How close the arrow must point to count as facing the qibla: ± \(qibla.formatted(.number.precision(.fractionLength(0...1))))° means up to \(qibla.formatted(.number.precision(.fractionLength(0...1))))° either side. Lower is stricter.")
+        }
+    }
+
+    private func madhab(_ name: String, lengths: CGFloat, school s: Int) -> some View {
+        let picked = school == s
+        let asr = todaysTimes(method: method, school: s)?.asr
+        return VStack(spacing: 3) {
+            ShadowSketch(lengths: lengths, picked: picked).frame(height: 40)
+            Text(name).font(.system(.subheadline, design: .rounded, weight: picked ? .semibold : .regular))
+            Text(asr.map { "Asr \($0.formatted(date: .omitted, time: .shortened))" } ?? "Asr")
+                .font(.system(.caption, design: .rounded)).foregroundStyle(.secondary).monospacedDigit()
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.tertiarySystemFill)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(picked ? Color.sage : .clear, lineWidth: 1.2))
     }
 }
 

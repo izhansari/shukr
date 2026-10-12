@@ -2144,7 +2144,7 @@ private let methodRows: [(tag: Int, title: String, region: String)] = [
 ]
 
 /// Today's times for the saved location with a given method / school (for the live strip).
-private func todaysTimes(method: Int, school: Int) -> PrayerTimes? {
+func todaysTimes(method: Int, school: Int) -> PrayerTimes? {
     guard let coords = try? PrayerUtils.getUserCoordinates() else { return nil }
     let resolved = method == AutoMethod.automatic ? AutoMethod.resolved() : method
     return try? PrayerUtils.getPrayerTimes(for: Date(), coordinates: coords,
@@ -2504,7 +2504,7 @@ private struct TodayStrip: View {
 
 /// A post and its afternoon shadow, one length (Shafi'i) or two (Hanafi), and the sun's ray grazing the post's top down
 /// to the shadow's tip — why it's that long (owner: option B; the orange sun kept). Quiet greys; the shadow sage when picked.
-private struct ShadowSketch: View {
+struct ShadowSketch: View {
     let lengths: CGFloat
     var picked = false
     var body: some View {
