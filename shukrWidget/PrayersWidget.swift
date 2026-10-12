@@ -28,7 +28,8 @@ struct PrayersWidget: Widget {
         }
         .contentMarginsDisabled()
         .configurationDisplayName("Prayers")
-        .description("See todays prayers & how much time is left")
+        // Shown under the name in Edit Widget too: where its look is set now (owner: a caption, not a one-option picker).
+        .description("Today's prayers and how much time is left. Set its look in shukr → Settings → Appearance.")
         // + the Lock Screen (2026-09-26): a ring by the clock, a card under it, a line above it.
         .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular, .accessoryInline])
     }

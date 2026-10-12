@@ -82,18 +82,10 @@ enum WidgetStyle: String, AppEnum, CaseIterable {
     }
 }
 
-/// The widget's Style row now only points to the app (owner: "in the widget settings … it says change in shukr settings").
-enum WidgetStyleNote: String, AppEnum, CaseIterable {
-    case inShukr
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Style"
-    static var caseDisplayRepresentations: [WidgetStyleNote: DisplayRepresentation] = [
-        .inShukr: DisplayRepresentation(title: "Change in shukr Settings"),
-    ]
-}
 
 struct ConfigurationAppIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Prayers"
-    static var description = IntentDescription("Today's prayers and how much time is left.")
+    static var description = IntentDescription("Today's prayers and how much time is left. Set its look in shukr → Settings → Appearance.")
 
     /// Defaults are the corners the widget always had, so existing widgets don't change.
     @Parameter(title: "Bottom left", default: .qibla)
@@ -111,16 +103,11 @@ struct ConfigurationAppIntent: WidgetConfigurationIntent {
     @Parameter(title: "Style", description: "Home Screen only: the Lock Screen widgets follow the system.", default: .system)
     var style: WidgetStyle?
 
-    /// What Edit Widget shows for the look: "Change in shukr Settings".
-    @Parameter(title: "Style", description: "Set the look for every Prayers widget in shukr → Settings → Appearance.", default: .inShukr)
-    var styleNote: WidgetStyleNote?
-
     static var parameterSummary: some ParameterSummary {
         Summary {
             \.$bottomLeft
             \.$bottomRight
             \.$scoreColors
-            \.$styleNote
         }
     }
 
