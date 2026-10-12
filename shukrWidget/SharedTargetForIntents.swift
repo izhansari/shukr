@@ -2084,7 +2084,7 @@ struct LATimeLeft: View {
     }
 }
 
-/// After Mark prayed: how long until the card goes (15 s) — a thin sage bar, full at the tap, emptying right to left.
+/// After Mark prayed: how long until the card goes (15 s) — a thin grey bar, full at the tap, emptying right to left.
 struct LADismissBar: View {
     let state: LATestAttributes.ContentState
     static let seconds: TimeInterval = 15
@@ -2092,7 +2092,7 @@ struct LADismissBar: View {
         if let at = state.markedAt {
             ProgressView(timerInterval: at...at.addingTimeInterval(Self.seconds), countsDown: true) { EmptyView() } currentValueLabel: { EmptyView() }
                 .progressViewStyle(.linear)
-                .tint(Color(red: 0.43, green: 0.62, blue: 0.5))
+                .tint(Color(white: 0.55))   // neutral: sage clashed with a yellow / red ring (owner)
                 .labelsHidden()
         }
     }
