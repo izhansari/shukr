@@ -70,6 +70,7 @@ struct SettingsView: View {
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var liveActivityLookRaw = LiveActivityLook.system.rawValue
     @State private var isAppearanceInfoVisible = false
+    @AppStorage("widgetStyle", store: UserDefaults(suiteName: SharedStore.appGroup)) private var widgetStyleRaw = "system"   // WidgetStyle (shukrWidget/AppIntent.swift)
     
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
@@ -522,6 +523,21 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        // Every Prayers widget's look (decision widget-style-shared A): the widget's own settings say
+                        // "Change in shukr Settings" — iOS never lets the app change those.
+                        Picker(selection: $widgetStyleRaw) {
+                            // WidgetStyle's cases and titles (the widget's own file isn't in the app target).
+                            Text("System").tag("system")
+                            Text("Light").tag("light")
+                            Text("Dark").tag("dark")
+                            Text("Follows the sun").tag("auto")
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "square.grid.2x2").frame(width: 24)
+                                Text("Widgets")
+                            }
+                        }
+                        .onChange(of: widgetStyleRaw) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
                     } header: {
                         // What each look means is in the ⓘ (owner: not as text under the section).
                         headerWithInfoButton(title: "Appearance", isPopupVisible: $isAppearanceInfoVisible)
@@ -1863,7 +1879,7 @@ struct AppearanceInfo: View {
             InfoModalRow(symbol: "platter.filled.bottom.iphone", title: "Live Activity card",
                          text: "Its own look on your Lock Screen. System follows your iPhone; Follows the sun is light for Dhuhr and Asr, dark for Fajr, Maghrib and Isha.")
             InfoModalRow(symbol: "square.grid.2x2", title: "Widgets",
-                         text: "They follow your iPhone's light or dark mode.")
+                         text: "Every Prayers widget on your Home Screen. System follows your iPhone; Follows the sun is dark from Maghrib until sunrise. Lock Screen widgets follow your iPhone.")
         }
     }
 }

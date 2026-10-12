@@ -73,6 +73,22 @@ enum WidgetStyle: String, AppEnum, CaseIterable {
         .dark: DisplayRepresentation(title: "Dark"),
         .auto: DisplayRepresentation(title: "Follows the sun", subtitle: "Dark from Maghrib until sunrise"),
     ]
+
+    /// Set in shukr (Settings → Appearance → Widgets) for every Prayers widget (owner, decision widget-style-shared A:
+    /// iOS never lets the app change a widget's own settings, so the choice lives here, in the app group).
+    static let sharedKey = "widgetStyle"
+    static var shared: WidgetStyle? {
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.string(forKey: sharedKey).flatMap(WidgetStyle.init(rawValue:))
+    }
+}
+
+/// The widget's Style row now only points to the app (owner: "in the widget settings … it says change in shukr settings").
+enum WidgetStyleNote: String, AppEnum, CaseIterable {
+    case inShukr
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Style"
+    static var caseDisplayRepresentations: [WidgetStyleNote: DisplayRepresentation] = [
+        .inShukr: DisplayRepresentation(title: "Change in shukr Settings"),
+    ]
 }
 
 struct ConfigurationAppIntent: WidgetConfigurationIntent {
@@ -90,9 +106,23 @@ struct ConfigurationAppIntent: WidgetConfigurationIntent {
     @Parameter(title: "Score colours", default: true)
     var scoreColors: Bool?
 
-    /// System (follows the phone; the default) · Light · Dark · Follows the sun (Maghrib → sunrise dark).
+    /// The old per-widget Style: hidden from Edit Widget now (not in `parameterSummary`), read once to carry a choice
+    /// already made into shukr's shared setting. Kept under its name so saved values aren't misread.
     @Parameter(title: "Style", description: "Home Screen only: the Lock Screen widgets follow the system.", default: .system)
     var style: WidgetStyle?
+
+    /// What Edit Widget shows for the look: "Change in shukr Settings".
+    @Parameter(title: "Style", description: "Set the look for every Prayers widget in shukr → Settings → Appearance.", default: .inShukr)
+    var styleNote: WidgetStyleNote?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary {
+            \.$bottomLeft
+            \.$bottomRight
+            \.$scoreColors
+            \.$styleNote
+        }
+    }
 
     /// The corners as picked — the same button on both is allowed (owner, 2026-09-27: "fine if
     /// they put the same thing twice"); it used to swap in another one silently.

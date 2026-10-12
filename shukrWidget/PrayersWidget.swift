@@ -115,6 +115,15 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
     // manager rewrote lastCityName on every fix, and cross-process defaults changes invalidate
     // every @AppStorage in the app — the Settings pickers flickered because of it (2026-09-25).
 
+    /// shukr's shared Style (Settings → Appearance → Widgets). Not set yet: a look picked on this widget before it moved to
+    /// the app is carried over once (owner's own widget), else System.
+    static func style(carrying old: WidgetStyle?) -> WidgetStyle {
+        if let shared = WidgetStyle.shared { return shared }
+        guard let old, old != .system else { return .system }
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(old.rawValue, forKey: WidgetStyle.sharedKey)
+        return old
+    }
+
     func placeholder(in context: Context) -> PrayersWidgetEntry {
         // Provide a placeholder with *dummy* prayer times so SwiftUI can render a preview
         let dummyCoordinates = Coordinates(latitude: 0, longitude: 0)
@@ -384,7 +393,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             rightCorner: configuration?.corners.right ?? .tasbeeh,
             scoreColors: configuration?.scoreColors ?? true,
             ringAbove: 0.6,
-            style: configuration?.style ?? .system
+            style: Self.style(carrying: configuration?.style)
         )
         #if DEBUG
         // Screenshots (`-demoWidget` in the app): fixed scores / corners instead of the store's.
