@@ -2272,7 +2272,11 @@ struct LACompactLeading: View {
     let stale: Bool
     let t: LATuning
     var body: some View {
-        LAEnds(state: state, stale: stale) { e in LARing(state: state, ended: e, size: 22, onIsland: true, t: t) }
+        // Room round the ring inside LAEnds' masks (each is exactly its content's box): the band, the arc and the glow are
+        // stroked on the ring's edge and half of them was cut off (owner: "looks broken in bottom and left side"). The
+        // negative padding gives the room back, so the island lays it out at 22 pt as before.
+        LAEnds(state: state, stale: stale) { e in LARing(state: state, ended: e, size: 22, onIsland: true, t: t).padding(6) }
+            .padding(-6)
             .overlay { Image(systemName: state.symbol).font(.system(size: 8, weight: .medium)) }
     }
 }
