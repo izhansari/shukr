@@ -1653,7 +1653,7 @@ private struct RevealPart: ViewModifier {
     }
 }
 
-private struct StepTitle: View {
+struct StepTitle: View {
     let title: String
     let subtitle: String?
     var body: some View {

@@ -1794,6 +1794,7 @@ struct PrayerTimesView: View {
         @State private var demoAlarmCheck = false
         @State private var demoLATuner = false
         @State private var demoPileMock: String?
+        @State private var demoLiveActivityStep = false
         struct MockVariant: Identifiable { let id: String }
         #endif
         /// The pill's camera is open for this prayer (PrayerPhotos.swift).
@@ -2077,6 +2078,10 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(2))
                     demoLATuner = true
                 }
+                if ProcessInfo.processInfo.arguments.contains("-demoLiveActivityStep") {
+                    try? await Task.sleep(for: .seconds(2))
+                    demoLiveActivityStep = true
+                }
                 if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoPileMock"),
                    i + 1 < ProcessInfo.processInfo.arguments.count {
                     try? await Task.sleep(for: .seconds(2))
@@ -2087,6 +2092,10 @@ struct PrayerTimesView: View {
             .fullScreenCover(item: Binding(get: { demoPileMock.map { MockVariant(id: $0) } }, set: { demoPileMock = $0?.id })) { v in
                 MemoriesPileMock(variant: v.id)
             }
+            // `-demoLiveActivityStep`: the Live Activity setup page, not in the setup yet (LiveActivitySetupStep.swift).
+            #if DEBUG
+            .fullScreenCover(isPresented: $demoLiveActivityStep) { LiveActivitySetupPreview() }
+            #endif
             // `-demoAlarmCheck`: Settings' Alarm check page (FajrAlarmKit.swift).
             .sheet(isPresented: $demoAlarmCheck) { NavigationStack { FajrAlarmCheckView() } }
             // `-laTuner`: Settings → Live Activities → Tune the card's look.

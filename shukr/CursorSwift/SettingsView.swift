@@ -76,6 +76,7 @@ struct SettingsView: View {
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
     @State private var showWhatsNew = false
     @State private var showRingPlayground = false
+    @State private var showLiveActivitySetup = false
     @State private var showNextPlayground = false
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
@@ -528,6 +529,8 @@ struct SettingsView: View {
                     if showDevStuff {
                         Section {
                             Button("Ring playground…") { showRingPlayground = true }
+                            // Not in the setup yet: the page on its own, its words editable from its ⚙ (owner).
+                            Button("Live Activity setup page…") { showLiveActivitySetup = true }
                             Button("NEXT label playground…") { showNextPlayground = true }
                             // Plays the prayer-begins moment on the Salah circle (visual only: no test
                             // times, no prayer rows or notifications touched).
@@ -619,6 +622,9 @@ struct SettingsView: View {
             #endif
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
+        #if DEBUG
+        .fullScreenCover(isPresented: $showLiveActivitySetup) { LiveActivitySetupPreview() }
+        #endif
         .sheet(isPresented: $showWhatsNew) { WhatsNewView().stageCover("whatsNew") }
         #if DEBUG
         .task {

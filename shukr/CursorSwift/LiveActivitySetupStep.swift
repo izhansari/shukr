@@ -1,0 +1,542 @@
+//
+//  LiveActivitySetupStep.swift
+//  shukr
+//
+//  The setup page for prayer Live Activities, built like the notifications and Fajr alarm pages: the real card in the
+//  sage preview, iOS's answer checked the same way, the prayers to show as tiles once it's on. Not in the setup yet
+//  (owner, 2026-10-11: "Don't actually put this page in the onboarding yet. I just want to fix it up") — DEBUG opens it
+//  from Settings → My Dev Stuff → Live Activity setup page, or `-demoLiveActivityStep`. Every word is in
+//  `LASetupCopy`, which the ⚙ (DEBUG) edits live, with a "Preview as" to see each state on one phone.
+//
+//  Before iOS 26 (scheduled starts need it) the page still shows, with the card frosted over and "Coming with iOS 26":
+//  they learn it's there for when they update (owner: "it might be nice for them to know").
+//
+
+import SwiftUI
+import ActivityKit
+
+struct LiveActivitySetupStep: View {
+    let next: () -> Void
+    @State private var copy = LASetupCopy.shared
+    @Environment(\.scenePhase) private var scenePhase
+    /// iOS's switch for shukr's Live Activities (Settings → shukr → Live Activities); on unless they turned it off.
+    @State private var enabled = LiveActivitySetupStep.systemEnabled
+    /// Their answer on this page: nil not asked, true show them, false not.
+    @State private var answer: Bool? = nil
+    /// "No thanks" asks once more, as the notifications and the alarm do (owner).
+    @State private var confirmSkip = false
+    /// The prayer the preview shows once the tiles are up: the last tile tapped (Asr to begin).
+    @State private var focus = "Asr"
+    @State private var prefs: [String: Bool] = LiveActivitySetupStep.savedPrefs
+    #if DEBUG
+    @State private var showCopyTuner = false
+    #endif
+
+    /// The page's states; `real` (only as "Preview as") follows the phone.
+    enum Mode: String, CaseIterable, Identifiable {
+        case real = "Real", ask = "Ask", on = "On", off = "Off in Settings", old = "Before iOS 26"
+        var id: String { rawValue }
+    }
+
+    static var systemEnabled: Bool { PrayerLiveActivities.supported && ActivityAuthorizationInfo().areActivitiesEnabled }
+    static var savedPrefs: [String: Bool] {
+        Dictionary(uniqueKeysWithValues: LiveActivityPrefs.prayers.map { ($0, LiveActivityPrefs.isOn($0)) })
+    }
+
+    private var mode: Mode {
+        if copy.preview != .real { return copy.preview }
+        if !PrayerLiveActivities.supported { return .old }
+        if !enabled { return .off }
+        return answer == true ? .on : .ask
+    }
+
+    var body: some View {
+        let m = mode
+        // Laid out as the notifications page: the card in the middle of the free space while it's alone, gliding up as
+        // the tiles come in under it once it's on. Scrolls only if a small screen needs it.
+        VStack(spacing: 0) {
+            GeometryReader { geo in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        StepTitle(title: copy[.title], subtitle: copy[.subtitle])
+                            .padding(.bottom, 22)
+                        if m != .on { Spacer(minLength: 0) }
+                        LiveActivityDemo(prayer: m == .on ? focus : "Asr", veil: m == .off ? .off : m == .old ? .old : .none,
+                                         copy: copy)
+                            .padding(.horizontal, 24)
+                        if m == .on {
+                            VStack(spacing: 0) {
+                                Capsule()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(width: 32, height: 3)
+                                    .padding(.top, 18).padding(.bottom, 16)
+                                tiles
+                            }
+                            .transition(.opacity.combined(with: .offset(y: 16)))
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.bottom, 16)
+                    .frame(minHeight: geo.size.height)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.hidden)
+            }
+            buttons(m)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+        }
+        .animation(.easeInOut(duration: 0.45), value: m)
+        #if DEBUG
+        .overlay(alignment: .topTrailing) {
+            Button { showCopyTuner = true } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 8)
+            .accessibilityLabel("Edit this page's words")
+        }
+        .sheet(isPresented: $showCopyTuner) {
+            LASetupCopyPanel()
+                .presentationDetents([.medium, .large])
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+        }
+        #endif
+        .alert(copy[.skipTitle], isPresented: $confirmSkip) {
+            Button(copy[.skipKeep], role: .cancel, action: turnOn)
+            Button(copy[.skipAnyway], role: .destructive) { turnOff(); next() }
+        } message: {
+            Text(copy[.skipBody])
+        }
+        .task { await watchSwitch() }
+        // Back from Settings: their switch may have changed.
+        .onChange(of: scenePhase) { _, phase in if phase == .active { enabled = Self.systemEnabled } }
+    }
+
+    @ViewBuilder private func buttons(_ m: Mode) -> some View {
+        VStack(spacing: 0) {
+            switch m {
+            case .ask, .real:
+                PrimaryButton(title: copy[.yes], outlined: true, action: turnOn)
+                SecondaryButton(title: copy[.no]) { confirmSkip = true }
+            case .on:
+                PrimaryButton(title: "Continue", action: next)
+            case .off:
+                // iOS has them off: the card says it, frosted over; the way on is outlined, Settings the quiet way back.
+                PrimaryButton(title: copy[.offContinue], outlined: true, action: next)
+                SecondaryButton(title: copy[.offSettings], action: SettingsLinks.app)
+            case .old:
+                PrimaryButton(title: "Continue", action: next)
+            }
+        }
+    }
+
+    /// Which prayers show one: a tile each, on or off (the same keys as Settings → Live Activities).
+    private var tiles: some View {
+        VStack(spacing: 12) {
+            VStack(spacing: 4) {
+                Text(copy[.tilesHeader])
+                    .font(.system(.headline, design: .rounded))
+                Text(copy[.tilesBody])
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                ForEach(LiveActivityPrefs.prayers, id: \.self) { p in
+                    LiveActivityTile(prayer: p, isOn: prefs[p] ?? true) { set(p, on: !(prefs[p] ?? true)) }
+                }
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 8)
+    }
+
+    /// "Show my prayers": on, every prayer as set (all five unless changed), and the next windows planned now — iOS asks
+    /// its own "Allow Live Activities?" the first time one shows.
+    private func turnOn() {
+        withAnimation(.easeInOut(duration: 0.45)) { answer = true }
+        if copy.preview == .real { PrayerLiveActivities.plan(reason: "setup") }
+    }
+
+    /// "Skip it": every prayer off (Settings turns them back on).
+    private func turnOff() {
+        answer = false
+        guard copy.preview == .real else { return }
+        let group = UserDefaults(suiteName: SharedStore.appGroup)
+        for p in LiveActivityPrefs.prayers { group?.set(false, forKey: LiveActivityPrefs.key(p)) }
+        prefs = Self.savedPrefs
+        PrayerLiveActivities.plan(reason: "setup skipped")
+    }
+
+    private func set(_ prayer: String, on: Bool) {
+        focus = prayer
+        prefs[prayer] = on
+        triggerSomeVibration(type: .light)
+        guard copy.preview == .real else { return }
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(on, forKey: LiveActivityPrefs.key(prayer))
+        PrayerLiveActivities.plan(reason: "setup tile")
+    }
+
+    /// iOS's switch as it changes while the page is up (it can be flipped from Control Center's Settings, or the Lock
+    /// Screen's own "Don't Allow").
+    private func watchSwitch() async {
+        guard PrayerLiveActivities.supported else { return }
+        for await on in ActivityAuthorizationInfo().activityEnablementUpdates {
+            withAnimation(.easeInOut(duration: 0.45)) { enabled = on }
+        }
+    }
+}
+
+/// One prayer as a tile: its symbol and On / Off. Sage when on, like the notifications' tiles; a tap flips it and puts
+/// that prayer in the card above.
+private struct LiveActivityTile: View {
+    let prayer: String
+    let isOn: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            VStack(spacing: 6) {
+                Text(prayer)
+                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Image(systemName: prayerIcon(for: prayer))
+                    .font(.system(size: 18))
+                    .frame(height: 22)
+                Text(isOn ? "On" : "Off")
+                    .font(.system(.caption2, design: .rounded, weight: .semibold))
+            }
+            .foregroundStyle(isOn ? Color.white : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isOn ? Color.sage : Color(.secondarySystemBackground))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(isOn ? 0 : 0.06), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.06), radius: 3, y: 2)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(TilePressStyle())
+        .animation(.snappy(duration: 0.2), value: isOn)
+        .accessibilityLabel("\(prayer) on the Lock Screen")
+        .accessibilityValue(isOn ? "on" : "off")
+    }
+}
+
+/// The real card (the Live Activity's own `LALockCardBody`, shared with the widget) in the setup's sage card, going
+/// through a prayer's life: it starts, counts down, turns red in the last half hour, and is marked (Photo / Tasbih) —
+/// the step under it lit as it goes. iOS off or too old: frosted over with what that means.
+private struct LiveActivityDemo: View {
+    let prayer: String
+    enum Veil { case none, off, old }
+    let veil: Veil
+    let copy: LASetupCopy
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase = 1
+    /// The moment the samples are drawn round (the card's timers count from now).
+    @State private var base = Date()
+    private let t = LATuning.current
+
+    private var steps: [String] { [copy[.stepStart], copy[.stepLive], copy[.stepLast], copy[.stepDone]] }
+
+    /// The card at each step: just started, partway, the last half hour, marked.
+    private func sample(_ p: Int) -> PrayerWindowAttributes.ContentState {
+        let m = 60.0, sym = prayerIcon(for: prayer)
+        switch p {
+        case 0: return .init(label: prayer, start: base.addingTimeInterval(-1 * m), end: base.addingTimeInterval(139 * m), symbol: sym)
+        case 1: return .init(label: prayer, start: base.addingTimeInterval(-55 * m), end: base.addingTimeInterval(85 * m), symbol: sym)
+        case 2: return .init(label: prayer, start: base.addingTimeInterval(-118 * m), end: base.addingTimeInterval(22 * m), symbol: sym)
+        default: return .init(label: prayer, start: base.addingTimeInterval(-24 * m), end: base.addingTimeInterval(116 * m), symbol: sym,
+                              markedAt: base)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
+                // Which prayer this is, and where it shows — as the other pages label their card.
+                HStack(spacing: 6) {
+                    Text(prayer).fontWeight(.semibold)
+                    Text("·")
+                    Text(copy[.cardLabel])
+                }
+                .font(.system(.caption, design: .rounded))
+                .foregroundStyle(Color.primary.opacity(0.7))
+                .padding(.leading, 4)
+                .contentTransition(.opacity)
+                ZStack {
+                    LALockCardBody(state: sample(phase), n: 0, ended: false, t: t)
+                        .environment(\.colorScheme, .dark)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+                        .id("\(prayer)-\(phase)")
+                        .transition(.opacity)
+                }
+                // Only a picture: its buttons would run the real intents.
+                .allowsHitTesting(false)
+                .padding(.bottom, 4)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity)
+            .background {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
+                                         startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            // The steps of a prayer's card; the one showing in sage.
+            HStack(spacing: 0) {
+                ForEach(Array(steps.enumerated()), id: \.offset) { i, s in
+                    Text(s)
+                        .font(.system(.caption, design: .rounded, weight: i == phase ? .semibold : .regular))
+                        .foregroundStyle(i == phase ? Color.sage : .secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .overlay {
+            if veil != .none {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(.regularMaterial)
+                        .padding(-8)
+                    VStack(spacing: 6) {
+                        Image(systemName: veil == .off ? "rectangle.slash" : "iphone.gen3")
+                            .font(.system(size: 26))
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 4)
+                        Text(copy[veil == .off ? .offTitle : .oldTitle])
+                            .font(.system(.headline, design: .rounded))
+                        Text(copy[veil == .off ? .offBody : .oldBody])
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 20)
+                }
+                // Off: a tap goes where the words say (Settings → shukr). Too old: nothing to open.
+                .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous).inset(by: -8))
+                .onTapGesture { if veil == .off { SettingsLinks.app() } }
+                .transition(.opacity)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(veil == .off ? "\(copy[.offTitle]). \(copy[.offBody])"
+                            : veil == .old ? "\(copy[.oldTitle]). \(copy[.oldBody])"
+                            : "\(prayer) on the Lock Screen: time left in a ring, and a button to mark it prayed.")
+        .task(id: prayer) {
+            // Each step for a beat, the marked one a little longer; still (partway) with Reduce Motion.
+            base = Date()
+            guard !reduceMotion else { phase = 1; return }
+            phase = 0
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(phase == 3 ? 3.2 : 2.4))
+                if Task.isCancelled { break }
+                base = Date()
+                withAnimation(.easeInOut(duration: 0.35)) { phase = (phase + 1) % 4 }
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: prayer)
+    }
+}
+
+/// Every word on the page, editable live from the ⚙ (owner: "add a tuner setting … so that I can go ahead and change
+/// the copy"). Changes are kept on this phone (UserDefaults) until they're copied into the defaults below.
+@MainActor @Observable final class LASetupCopy {
+    static let shared = LASetupCopy()
+
+    enum Key: String, CaseIterable, Identifiable {
+        case title, subtitle, cardLabel, stepStart, stepLive, stepLast, stepDone
+        case yes, no, tilesHeader, tilesBody
+        case skipTitle, skipBody, skipKeep, skipAnyway
+        case offTitle, offBody, offContinue, offSettings
+        case oldTitle, oldBody
+        var id: String { rawValue }
+
+        /// Where it shows, for the tuner's sections.
+        var group: String {
+            switch self {
+            case .title, .subtitle: return "Top"
+            case .cardLabel, .stepStart, .stepLive, .stepLast, .stepDone: return "The card"
+            case .yes, .no, .tilesHeader, .tilesBody: return "Asking, then on"
+            case .skipTitle, .skipBody, .skipKeep, .skipAnyway: return "No thanks (the alert)"
+            case .offTitle, .offBody, .offContinue, .offSettings: return "Off in iOS Settings"
+            case .oldTitle, .oldBody: return "Before iOS 26"
+            }
+        }
+
+        var name: String {
+            switch self {
+            case .title: return "Title"
+            case .subtitle: return "Subtitle"
+            case .cardLabel: return "Card label (after the prayer's name)"
+            case .stepStart: return "Step 1"
+            case .stepLive: return "Step 2"
+            case .stepLast: return "Step 3"
+            case .stepDone: return "Step 4"
+            case .yes: return "Yes button"
+            case .no: return "No button"
+            case .tilesHeader: return "Tiles header"
+            case .tilesBody: return "Tiles line"
+            case .skipTitle: return "Alert title"
+            case .skipBody: return "Alert message"
+            case .skipKeep: return "Alert: keep"
+            case .skipAnyway: return "Alert: skip"
+            case .offTitle: return "Frost title"
+            case .offBody: return "Frost line"
+            case .offContinue: return "Continue button"
+            case .offSettings: return "Settings link"
+            case .oldTitle: return "Frost title"
+            case .oldBody: return "Frost line"
+            }
+        }
+
+        static let groups = ["Top", "The card", "Asking, then on", "No thanks (the alert)", "Off in iOS Settings", "Before iOS 26"]
+    }
+
+    /// The words as shipped. Kept honest about what it does (the audit, 2026-10-11): a card shows from a prayer's
+    /// start until it's marked, and marking or opening shukr keeps the next ones coming.
+    static let defaults: [Key: String] = [
+        .title: "Your prayer on the Lock Screen",
+        .subtitle: "From the moment a prayer starts, see how long is left at a glance, and mark it prayed without opening shukr.",
+        .cardLabel: "Lock Screen",
+        .stepStart: "Starts",
+        .stepLive: "Counts down",
+        .stepLast: "Last 30 min",
+        .stepDone: "Marked",
+        .yes: "Show my prayers",
+        .no: "No thanks",
+        .tilesHeader: "Which prayers?",
+        .tilesBody: "Each one shows from its start until you mark it. Marking them, or opening shukr, keeps the next ones coming.",
+        .skipTitle: "Go without Live Activities?",
+        .skipBody: "You’d open shukr to see how long is left. Your reminders still come either way. You can turn these on later in Settings.",
+        .skipKeep: "Show my prayers",
+        .skipAnyway: "Skip it",
+        .offTitle: "Live Activities are off",
+        .offBody: "iOS has them turned off for shukr. Turn them on in Settings any time.",
+        .offContinue: "Continue without them",
+        .offSettings: "I changed my mind. Open Settings",
+        .oldTitle: "Coming with iOS 26",
+        .oldBody: "Your iPhone needs iOS 26 for this. Once you update, it’s waiting for you in Settings.",
+    ]
+
+    private static let storeKey = "laSetupCopy.v1"
+    private static let previewKey = "laSetupCopy.preview"
+
+    /// His changes (only what differs from the defaults).
+    private(set) var changed: [String: String]
+    /// "Preview as": the state the page shows (Real follows the phone).
+    var preview: LiveActivitySetupStep.Mode {
+        didSet { UserDefaults.standard.set(preview.rawValue, forKey: Self.previewKey) }
+    }
+
+    private init() {
+        changed = UserDefaults.standard.dictionary(forKey: Self.storeKey) as? [String: String] ?? [:]
+        #if DEBUG
+        preview = LiveActivitySetupStep.Mode(rawValue: UserDefaults.standard.string(forKey: Self.previewKey) ?? "") ?? .real
+        #else
+        preview = .real
+        #endif
+    }
+
+    subscript(_ key: Key) -> String { changed[key.rawValue] ?? Self.defaults[key] ?? "" }
+
+    func isChanged(_ key: Key) -> Bool { changed[key.rawValue] != nil }
+
+    func set(_ key: Key, _ text: String) {
+        if text == Self.defaults[key] { changed[key.rawValue] = nil } else { changed[key.rawValue] = text }
+        UserDefaults.standard.set(changed, forKey: Self.storeKey)
+    }
+
+    func reset() {
+        changed = [:]
+        UserDefaults.standard.removeObject(forKey: Self.storeKey)
+    }
+
+    /// Every changed line, ready to paste to the team.
+    var summary: String {
+        let lines = Key.allCases.compactMap { k -> String? in
+            guard let v = changed[k.rawValue] else { return nil }
+            return "\(k.group) · \(k.name): \(v)"
+        }
+        return lines.isEmpty ? "Live Activity page: no changes from the defaults." : "Live Activity page copy:\n" + lines.joined(separator: "\n")
+    }
+}
+
+#if DEBUG
+/// The ⚙'s sheet: every line of the page as a text field (green = changed), "Preview as" to see each state, Copy and
+/// Reset. Half height, so the page stays in view and changes as he types.
+struct LASetupCopyPanel: View {
+    @State private var copy = LASetupCopy.shared
+    @State private var copied = false
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Preview as", selection: Bindable(copy).preview) {
+                        ForEach(LiveActivitySetupStep.Mode.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                } footer: {
+                    Text("Real follows this phone. The others show that state with nothing saved or scheduled.")
+                }
+                ForEach(LASetupCopy.Key.groups, id: \.self) { group in
+                    Section(group) {
+                        ForEach(LASetupCopy.Key.allCases.filter { $0.group == group }) { k in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(k.name)
+                                    .font(.caption)
+                                    .foregroundStyle(copy.isChanged(k) ? Color.sage : .secondary)
+                                TextField(LASetupCopy.defaults[k] ?? "", text: Binding(get: { copy[k] }, set: { copy.set(k, $0) }),
+                                          axis: .vertical)
+                                    .font(.subheadline)
+                            }
+                        }
+                    }
+                }
+                Section {
+                    Button("Copy changes") { UIPasteboard.general.string = copy.summary; copied = true }
+                    Button("Reset to defaults", role: .destructive) { copy.reset() }
+                }
+            }
+            .navigationTitle("Live Activity page words")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+            .alert("Copied", isPresented: $copied) { Button("OK") {} } message: { Text("Paste them to Frank.") }
+        }
+    }
+}
+
+/// The page on its own, for looking at it (DEBUG): ✕ closes, and so does its Continue.
+struct LiveActivitySetupPreview: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        LiveActivitySetupStep(next: { dismiss() })
+            .padding(.top, 8)
+            .overlay(alignment: .topLeading) {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .padding(.leading, 8)
+                .accessibilityLabel("Close")
+            }
+    }
+}
+#endif
