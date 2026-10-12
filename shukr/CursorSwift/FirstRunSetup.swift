@@ -3568,12 +3568,11 @@ private struct ReviewStep: View {
                       subtitle: "Tap anything to change it.")
                 .contentTransition(.opacity)
                 .padding(.bottom, 8)
-            // The list in its own card (owner: "so its clear its a list"), centred in the room between the title and the
-            // buttons, the free space shared evenly above and below; it scrolls only if a small screen needs it.
+            // The list in its own card (owner: "so its clear its a list"), a little below the title — not centred (owner:
+            // "just give it some padding or spacing from the top only"); it scrolls only if a small screen needs it.
             GeometryReader { geo in
             ScrollView {
                 VStack(spacing: 0) {
-                Spacer(minLength: 0)
                 VStack(spacing: 0) {
                     // Two lines a row, always (owner: never more than a page): a permission not given says so on the
                     // value line, with its way to change their mind at the end of it.
@@ -3597,7 +3596,8 @@ private struct ReviewStep: View {
                 .padding(.horizontal, 20)
                 Spacer(minLength: 0)
                 }
-                .padding(.vertical, 8)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
                 .frame(minHeight: geo.size.height)
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -3824,7 +3824,7 @@ private struct ReviewStep: View {
             .overlay(alignment: .bottom) {
                 // A whole point, not a pixel: the list starts between pixels, so a one-pixel line was split over two
                 // and came out a pale grey in light mode on his phone (owner). A point covers whole pixels wherever it lands.
-                if !last { Rectangle().fill(Color(.separator).opacity(0.55)).frame(height: 1) }
+                if !last { Rectangle().fill(Color(.separator)).frame(height: 1) }   // full strength (owner: "really faint")
             }
         }
         .buttonStyle(.plain)
@@ -3886,6 +3886,8 @@ private struct BismillahCapsule: View {
                 // reads there as it does on dark.
                 .shadow(color: scheme == .dark ? .clear : Color(red: 0.16, green: 0.56, blue: 0.32).opacity(0.5),
                         radius: 18, y: 7)
+                // and a black drop shadow under it all, off the white page (owner: "more of a black shadow").
+                .shadow(color: scheme == .dark ? .clear : .black.opacity(0.3), radius: 12, y: 8)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
