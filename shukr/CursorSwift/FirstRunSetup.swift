@@ -327,7 +327,8 @@ struct FirstRunSetupView: View {
                         case .location: LocationStep(locationOnly: mode == .locationOnly, next: { advance(to: .method) })
                         case .method, .madhab:
                             PrayerTimesStep(asr: step == .madhab,
-                                            next: { advance(to: step == .madhab ? .appearance : .madhab) })
+                                            next: { advance(to: step == .madhab ? .appearance : .madhab) },
+                                            change: { go(.method) })
                         case .appearance: AppearanceStep(next: { advance(to: .reminders) })
                         case .reminders: RemindersStep(next: {
                             NotificationScheduler.reschedule(context: context, reason: "setup reminders")
@@ -2180,6 +2181,8 @@ private struct PrayerTimesStep: View {
     /// The Asr (madhab) step; else the method.
     let asr: Bool
     let next: () -> Void
+    /// Back to the method: part 2's method line.
+    let change: () -> Void
     @EnvironmentObject private var viewModel: PrayerViewModel
     @EnvironmentObject private var location: EnvLocationManager
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
@@ -2200,7 +2203,11 @@ private struct PrayerTimesStep: View {
             ZStack(alignment: .top) {
                 if asr {
                     VStack(spacing: 0) {
+                        // The method picked in part 1, one quiet line (owner: "show the selected calc method on the 2nd
+                        // step page too") — it comes and goes with the rest of part 2, nothing travels.
+                        pickedMethod
                         section(2, "When does Asr begin?")
+                            .padding(.top, 16)
                         asrPart.padding(.top, 4)
                         Spacer(minLength: 0)
                     }
@@ -2264,6 +2271,42 @@ private struct PrayerTimesStep: View {
     private static let oneAtATime = AnyTransition.asymmetric(
         insertion: .opacity.animation(.easeOut(duration: 0.25).delay(0.2)),
         removal: .opacity.animation(.easeIn(duration: 0.15)))
+
+    /// "✓  Calculation method · Automatic (ISNA)   Change", a hairline under it; a tap goes back to part 1.
+    private var pickedMethod: some View {
+        let name = method == AutoMethod.automatic
+            ? "Automatic (\(AutoMethod.shortName(AutoMethod.resolved())))"
+            : (rows.first { $0.tag == method }?.title ?? "")
+        return VStack(spacing: 10) {
+            Button(action: change) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(Color.sage)
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                    }
+                    .frame(width: 20, height: 20)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Calculation method")
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text(name)
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Text("Change")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(Color.sage)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Change the calculation method")
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+        }
+        .padding(.horizontal, 24)
+    }
 
     private func note(_ text: String) -> some View {
         Text(text)
