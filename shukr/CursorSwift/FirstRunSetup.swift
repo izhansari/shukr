@@ -3676,11 +3676,13 @@ private struct ReviewStep: View {
         return [nudge > 0 ? "nudges for \(nudge)" : nil, start > 0 ? "start for \(start)" : nil, off > 0 ? "off for \(off)" : nil]
             .compactMap { $0 }.joined(separator: " · ").capitalizedFirst
     }
+    /// Before iOS 26.1 shukr can't set the alarm itself: the row just says so, grey (owner: "so they know").
     private var alarmValue: String {
         #if DEBUG
         if Self.demoAlarm == "on" { return PrayerUtils.alarmRuleText(offset: 10, isBefore: true, isStart: true) }
+        if Self.demoAlarm == "old" { return "Needs iOS 26.1" }   // -demoReviewAlarm old
         #endif
-        guard alarmOn else { return "Off" }
+        guard alarmOn else { return FajrAlarms.supported ? "Off" : "Needs iOS 26.1" }
         return PrayerUtils.alarmRuleText(offset: alarmOffset, isBefore: alarmBefore, isStart: alarmFajr)
     }
     /// The prayers that get a card: "Dhuhr, Asr, Maghrib" (the default), "All five", "Off"; before iOS 26, that it needs it.
@@ -3767,7 +3769,7 @@ private struct ReviewStep: View {
         if FajrAlarms.supported && alarmsAllowed == false {
             return Fix(value: "Off in iOS Settings", action: "Turn on", run: SettingsLinks.app)
         }
-        if !alarmOn { return Fix(value: "Skipped", action: "Set up") { jump(.fajr) } }
+        if !alarmOn && FajrAlarms.supported { return Fix(value: "Skipped", action: "Set up") { jump(.fajr) } }
         return nil
     }
 
@@ -3854,7 +3856,9 @@ private struct BismillahCapsule: View {
                 }
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(Color(.secondarySystemFill).opacity(0.7), lineWidth: 1))
-                .shadow(color: .black.opacity(0.15), radius: 5)
+                // Lifted off the page (owner: "so it doesnt feel super flat"): a tight contact shadow and a soft one below.
+                .shadow(color: .black.opacity(0.14), radius: 3, y: 2)
+                .shadow(color: .black.opacity(0.22), radius: 16, y: 10)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
