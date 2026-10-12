@@ -485,14 +485,7 @@ struct YourRemindersView: View {
         // Pushed, not a sheet (owner) — Notification settings.
         .navigationDestination(item: $whySheet) { ReminderWhySheet(kind: $0, pendingCount: pending.count) }
         // Why only 64? / Tops itself up: a sheet over the page in glass (owner).
-        .sheet(item: $whyGlass) { kind in
-            NavigationStack {
-                ReminderWhySheet(kind: kind, pendingCount: pending.count, glass: true)
-            }
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .modifier(GlassSheetBackground())
-        }
+        .sheet(item: $whyGlass) { ReminderWhyGlassSheet(kind: $0, pendingCount: pending.count) }
     }
 
     private static let prayerKinds: [Kind] = [.start, .halfway, .endingSoon, .snooze]
@@ -622,7 +615,15 @@ struct YourRemindersView: View {
                             .foregroundStyle(picked ? Color.white : off == 0 ? green : enabled ? Color(.label) : Color(.tertiaryLabel))
                             .frame(width: 32, height: 32)
                             .background(Circle().fill(picked ? green : .clear))
-                        Circle().fill(nudged ? Color(.tertiaryLabel) : .clear).frame(width: 4, height: 4)
+                        // Under the number: a filled dot for a full day, an empty ring for a starts-only one (owner) — the
+                        // same reading as the line under the picked day (`startsOnly`).
+                        let planned = dayItems.contains { Self.prayerKinds.contains($0.kind) }
+                        let startsOnly = planned && Self.startsOnly(dayItems)
+                        ZStack {
+                            Circle().fill(Color(.tertiaryLabel)).opacity(planned && !startsOnly ? 1 : 0)
+                            Circle().stroke(Color(.tertiaryLabel), lineWidth: 1).opacity(startsOnly ? 1 : 0)
+                        }
+                        .frame(width: 5, height: 5)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
@@ -797,14 +798,19 @@ struct YourRemindersView: View {
     /// The picked day at a glance (owner: "whether that day is a full day, like it respects our settings properly, or …
     /// where we only show the starts"): read from what's scheduled — a prayer set to Nudge that has its start but no
     /// nudge yet makes it a starts-only day for now (NotificationScheduler adds nudges `nudgeDaysAhead` days out).
-    @ViewBuilder private func dayFullness(prayers: [String], dayItems: [Item], dayKey: String) -> some View {
-        let planned = dayItems.contains { Self.prayerKinds.contains($0.kind) }
-        let startsOnly = prayers.contains { p in
+    /// A prayer set to Nudge has its start that day but no nudge yet.
+    private static func startsOnly(_ dayItems: [Item]) -> Bool {
+        PrayerNotificationID.prayers.contains { p in
             let setting = NotificationScheduler.settings(p)
             let mine = dayItems.filter { $0.prayer == p }
             return setting.notify && setting.nudges && mine.contains { $0.kind == .start }
                 && !mine.contains { $0.kind == .halfway || $0.kind == .endingSoon }
         }
+    }
+
+    @ViewBuilder private func dayFullness(prayers: [String], dayItems: [Item], dayKey: String) -> some View {
+        let planned = dayItems.contains { Self.prayerKinds.contains($0.kind) }
+        let startsOnly = Self.startsOnly(dayItems)
         if planned {
             HStack(spacing: 6) {
                 Image(systemName: startsOnly ? "circle.dashed" : "checkmark.circle.fill")

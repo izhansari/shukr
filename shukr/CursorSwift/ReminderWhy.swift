@@ -67,7 +67,7 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
             let free = max(NotificationScheduler.limit - pendingCount, 0)
             return Content(head: "iOS lets each app keep 64 notifications waiting. Here's how shukr spends them.", points: [
                 Point(big: "Every start, as far as they go", small: "Each prayer's start for the next \(NotificationScheduler.daysAhead) days, then further while slots are free — up to \(NotificationScheduler.maxDaysAhead) days. Fewer reminders a day means a longer runway.", symbol: "calendar", warn: false),
-                Point(big: "Nudges for the next \(n) days", small: "Halfway and 30 minutes left are added as each day comes closer (the days with a dot).", symbol: "bell.badge", warn: false),
+                Point(big: "Nudges for the next \(n) days", small: "Halfway and 30 minutes left are added as each day comes closer (a filled dot under the day; an empty ring means starts only for now).", symbol: "bell.badge", warn: false),
                 Point(big: "\(free) slot\(free == 1 ? "" : "s") free", small: "Room for snoozes and zikr reminders.", symbol: "circle.dashed", warn: false),
             ])
         case .topsUp:
@@ -129,8 +129,6 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
 struct ReminderWhySheet: View {
     let kind: ReminderWhy
     var pendingCount = 0
-    /// In a glass sheet: the list's own background steps aside so the glass shows round the cards.
-    var glass = false
     @ObservedObject private var health = NotificationHealth.shared
 
     var body: some View {
@@ -169,8 +167,6 @@ struct ReminderWhySheet: View {
         }
         .listStyle(.insetGrouped)
         .listSectionSpacing(14)
-        .scrollContentBackground(glass ? .hidden : .automatic)
-        .containerBackground(glass ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Color(.systemGroupedBackground)), for: .navigation)
         .fontDesign(.rounded)
         .navigationTitle(kind.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -201,13 +197,78 @@ struct ReminderWhySheet: View {
     }
 }
 
-/// A sheet in glass: iOS 26's own Liquid Glass (left alone — a background of ours would replace it); before, a material.
-struct GlassSheetBackground: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-        } else {
-            content.presentationBackground(.regularMaterial)
+/// Why only 64? / Tops itself up as a sheet (owner: "pop up as sheets – glass material"; then, after the first try was
+/// "pretty terrible": no title bar repeating the headline, the rows on the frost itself with hairlines — not grey cards
+/// on glass —, a frost thick enough that the page's colours don't smudge through, and the sheet as tall as what it says).
+struct ReminderWhyGlassSheet: View {
+    let kind: ReminderWhy
+    var pendingCount = 0
+    @ObservedObject private var health = NotificationHealth.shared
+    @State private var height: CGFloat = 0
+
+    var body: some View {
+        let c = kind.content(health, pendingCount: pendingCount)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(c.head)
+                    .font(.system(.title2, design: .rounded, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 20)
+                group(c.explainHead == nil ? nil : "Your settings", c.points)
+                if c.fix {
+                    Button("Fix in Settings") {
+                        kind == .topsUp ? SettingsLinks.app() : SettingsLinks.notifications()
+                    }
+                    .font(.system(.body, design: .rounded, weight: .medium))
+                    .foregroundStyle(Color.sage)
+                    .padding(.top, 14)
+                }
+                if let head = c.explainHead {
+                    group(head, c.explain).padding(.top, 22)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 30)
+            .padding(.bottom, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .fontDesign(.rounded)
+        // As tall as its words (a guessed half height cut Tops itself up off at its third row); the rest scrolls.
+        .presentationDetents(height > 0 ? [.height(min(height, UIScreen.main.bounds.height * 0.85))] : [.medium])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(.regularMaterial)
+        .task { await health.refresh() }
+    }
+
+    @ViewBuilder private func group(_ title: String?, _ points: [ReminderWhy.Point]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let title {
+                Text(title.uppercased())
+                    .font(.system(.caption, design: .rounded, weight: .semibold)).tracking(0.6)
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 8)
+            }
+            ForEach(points.indices, id: \.self) { i in
+                if i > 0 { Divider().padding(.leading, 40) }
+                row(points[i]).padding(.vertical, 10)
+            }
+        }
+    }
+
+    private func row(_ p: ReminderWhy.Point) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: p.symbol)
+                .font(.system(size: 17))
+                .foregroundStyle(p.neutral ? Color.secondary : p.warn ? Color.orange : Color(.systemGreen))
+                .frame(width: 28, height: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.big).font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(p.warn && !p.neutral ? Color.orange : .primary)
+                Text(p.small).font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }
