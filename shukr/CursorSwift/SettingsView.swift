@@ -302,16 +302,27 @@ struct SettingsView: View {
                             .tint(.green)
                         }
                         // The method, the school and the qibla's accuracy, under the place (owner: one section, Prayer Times).
-                        Picker("Method", selection: $calculationMethod) {
+                        Picker(selection: $calculationMethod) {
                             // Follows the country you're in (AutoMethod) — the setup's default.
                             Text(automaticLabel).tag(AutoMethod.automatic)
                             ForEach(calculationMethods, id: \.0) { method in
                                 Text(method.1).tag(method.0)
                             }
+                        } label: {
+                            // A symbol each, in the qibla row's column (owner: the section reads uniform).
+                            HStack(spacing: 12) {
+                                Image(systemName: "sun.horizon").frame(width: 24)
+                                Text("Method")
+                            }
                         }
-                        Picker("School", selection: $school) {
+                        Picker(selection: $school) {
                             ForEach(schools, id: \.0) { school in
                                 Text(school.1).tag(school.0)
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "book.closed").frame(width: 24)
+                                Text("School")
                             }
                         }
                         
@@ -1737,14 +1748,13 @@ private struct LiveActivityPrayerCol: View {
                     .font(.footnote)
                     .frame(maxWidth: .infinity, alignment: .center)
                 Spacer()
-                // The bells' place and size (owner: switching sides should be clean): the Lock Screen card, slashed off,
-                // then a gap as tall as the bells' dots.
+                // The bells' place and size (owner: switching sides should be clean): the Lock Screen card, slashed off;
+                // no gap for the dots — "on / off" sits where the bells' dots are (owner).
                 Image(systemName: on ? "platter.filled.bottom.iphone" : "iphone.slash")
                     .foregroundStyle(on ? Color.primary : Color.gray)
                     .contentTransition(.symbolEffect(.replace))
                     .frame(maxWidth: .infinity, alignment: .center)
                     .frame(height: 22)
-                Color.clear.frame(height: 5)
                 Spacer()
                 Text(on ? "on" : "off")
                     .font(.caption)
