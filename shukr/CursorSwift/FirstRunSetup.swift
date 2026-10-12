@@ -3573,19 +3573,13 @@ private struct ReviewStep: View {
                     // Two lines a row, always (owner: never more than a page): a permission not given says so on the
                     // value line, with its way to change their mind at the end of it.
                     row("location.fill", "Location", locationFix?.value ?? locationValue, step: .location, fix: locationFix)
-                    divider
                     row("clock", "Prayer Times", methodValue, step: .method)
-                    divider
                     row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
-                    divider
                     row("bell", "Notifications", notificationsFix?.value ?? remindersValue, step: .reminders, fix: notificationsFix)
-                    divider
                     row("platter.filled.bottom.iphone", "Live Activities", liveActivityFix?.value ?? liveActivityValue,
                         step: .liveActivities, fix: liveActivityFix)
-                    divider
                     row("alarm", "Fajr Alarm", alarmFix?.value ?? alarmValue, step: .fajr, fix: alarmFix)
-                    divider
-                    row("building.columns", "Your Masjid", masjidValue, step: .masjid)
+                    row("building.columns", "Your Masjid", masjidValue, step: .masjid, last: true)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -3645,9 +3639,11 @@ private struct ReviewStep: View {
         }
     }
 
-    /// Full width (owner), and every one alike: Divider() landed on fractional y's between rows of text and some came out
-    /// faint; each row is a whole number of points tall (`rowHeight`), so they all sit on the same pixel boundary.
-    private var divider: some View { Divider() }
+    /// The lines between rows: full width (owner), and every one alike. Each is drawn on its row's bottom edge, adding no
+    /// height — as separate Divider()s each added a third of a point, so every line fell on a different fraction of a pixel
+    /// and they came out crisp, faint, faint, crisp. Now the rows (`rowHeight`, whole points) step evenly and the lines
+    /// all land the same way.
+    @Environment(\.displayScale) private var displayScale
     /// 52 pt: all seven rows, the two-line note and its buttons fit a 6.1" iPhone (393 × 852) with nothing scrolled (owner).
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 52
 
@@ -3783,7 +3779,7 @@ private struct ReviewStep: View {
         return nil
     }
 
-    private func row(_ symbol: String, _ title: String, _ value: String, step: SetupStep, fix: Fix? = nil) -> some View {
+    private func row(_ symbol: String, _ title: String, _ value: String, step: SetupStep, fix: Fix? = nil, last: Bool = false) -> some View {
         Button { jump(step) } label: {
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: symbol)
@@ -3808,6 +3804,9 @@ private struct ReviewStep: View {
             }
             .frame(height: rowHeight.rounded())
             .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                if !last { Rectangle().fill(Color(.separator)).frame(height: 1 / displayScale) }
+            }
         }
         .buttonStyle(.plain)
         .overlay(alignment: .trailing) {
@@ -3832,6 +3831,7 @@ private struct ReviewStep: View {
 private struct BismillahCapsule: View {
     let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     @State private var noiseOpacity: Double = 0.2
 
     var body: some View {
@@ -3856,9 +3856,11 @@ private struct BismillahCapsule: View {
                 }
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(Color(.secondarySystemFill).opacity(0.7), lineWidth: 1))
-                // Lifted off the page (owner: "so it doesnt feel super flat"): a tight contact shadow and a soft one below.
-                .shadow(color: .black.opacity(0.14), radius: 3, y: 2)
-                .shadow(color: .black.opacity(0.22), radius: 16, y: 10)
+                // Its pop, in light and dark alike (owner: a black shadow is lost on the dark page): a fine light rim along
+                // the top, as if lit from above, and a soft sage glow under it.
+                .overlay(Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0)],
+                                                              startPoint: .top, endPoint: .center), lineWidth: 1))
+                .shadow(color: Color.sage.opacity(scheme == .dark ? 0.6 : 0.45), radius: scheme == .dark ? 18 : 14, y: 6)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
