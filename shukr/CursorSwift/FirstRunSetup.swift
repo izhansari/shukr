@@ -317,6 +317,7 @@ struct FirstRunSetupView: View {
                         .onGeometryChange(for: CGPoint.self) { geo in
                             let f = geo.frame(in: .global); return CGPoint(x: f.midX, y: f.midY)
                         } action: { if !leaving { ringCentre = $0 } }
+                        .padding(.top, -10)   // up into the bar's empty middle, between ‹ and Skip (owner: more room)
                         .opacity(leaving ? 0 : 1)
                         .opacity(reveal >= 1 ? 1 : 0)
                         .zIndex(1)
@@ -341,7 +342,7 @@ struct FirstRunSetupView: View {
                     }
                     // The last step of an edit from the review: its "Continue" reads "Done".
                     .environment(\.setupReturnsToReview, editing != nil && step == lastEditedStep)
-                    .padding(.top, 16)          // every title at the same height under the ring
+                    .padding(.top, 10)          // every title at the same height under the ring
                     // Method → Asr is one page (owner): the today strip stays and only the top changes.
                     .id(step == .madhab ? SetupStep.method : step)
                     .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
@@ -1577,8 +1578,8 @@ private struct SetupOpening: View {
 /// a sixth per group, the step's symbol inside. `handoff`: it becomes the welcome's ring — 150 pt,
 /// a 1.2 pt sage hairline with its soft glow, empty inside.
 struct SetupRing: View {
-    /// A little smaller than it was (76), with the title under it, so the top doesn't take a third of the page (owner).
-    static let size: CGFloat = 62
+    /// A little smaller than it was (76; 62 was too small — owner), with the title under it, so the top doesn't take a third of the page (owner).
+    static let size: CGFloat = 70
     let progress: Double
     let symbol: String
     var handoff = false
@@ -1596,7 +1597,7 @@ struct SetupRing: View {
                     .rotationEffect(.degrees(-90))
                     .shadow(color: Color.sage.opacity(handoff ? 0.45 : 0), radius: 8)
                 Image(systemName: symbol)
-                    .font(.system(size: 19, weight: .light))
+                    .font(.system(size: 20, weight: .light))
                     .foregroundStyle(Color.sage)
                     .contentTransition(.symbolEffect(.replace))
                     .opacity(handoff ? 0 : 1)
@@ -1666,12 +1667,12 @@ struct StepTitle: View {
     var body: some View {
         VStack(spacing: 6) {
             Text(title)
-                .font(.system(.title, design: .rounded, weight: .light))
+                .font(.system(.largeTitle, design: .rounded, weight: .light))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             if let subtitle {
                 Text(subtitle)
-                    .font(.system(.subheadline, design: .rounded, weight: .light))
+                    .font(.system(.callout, design: .rounded, weight: .light))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
