@@ -297,8 +297,10 @@ enum NotificationScheduler {
         let nudges = parsed.filter { $0.1.kind != "Start" }
         if anyNudges, let last = nudges.max(by: { $0.0.date < $1.0.date }), let lastKey = last.1.dayKey,
            parsed.contains(where: { $0.1.kind == "Start" && ($0.1.dayKey ?? "") > lastKey }) {
+            // After that day's last prayer reminder (on his phone it came 10 min before Isha's start), by 9:30 PM.
+            let dayLast = parsed.filter { $0.1.dayKey == lastKey }.map(\.0.date).max() ?? last.0.date
             let late = cal.date(bySettingHour: 21, minute: 30, second: 0, of: last.0.date) ?? last.0.date
-            let at = max(min(last.0.date.addingTimeInterval(20 * 60), late), now.addingTimeInterval(60))
+            let at = max(min(dayLast.addingTimeInterval(20 * 60), late), now.addingTimeInterval(60))
             // Within a day of the heads-up, the heads-up says it (one warning, not two).
             if abs(at.timeIntervalSince(headsUp?.date ?? .distantPast)) > 30 * 3600 { easeOff = easeOffItem(at: at) }
         }
