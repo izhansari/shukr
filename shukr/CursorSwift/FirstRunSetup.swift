@@ -2348,152 +2348,53 @@ private struct PrayerTimesStep: View {
         return VStack(spacing: 0) {
             note("Your madhab only moves Asr; the rest stay put.")
                 .padding(.bottom, 10)
-            #if DEBUG
-            // `-madhabCardStyle 1|2|3`: the redesign's layouts on the real page (owner picks; then one stays).
-            let style = UserDefaults.standard.integer(forKey: "madhabCardStyle")
-            #else
-            let style = 0
-            #endif
-            #if DEBUG
-            let rows = style == 3
-            #else
-            let rows = false
-            #endif
-            if rows {
-                #if DEBUG
-                VStack(spacing: 10) {
-                    rowCard(title: "Shafi'i", rule: "shadow as long as the object · Maliki, Hanbali too", lengths: 1,
-                            asr: shafiAsr, selected: school != 1) { school = 0 }
-                    rowCard(title: "Hanafi", rule: "shadow twice the object's length", lengths: 2,
-                            asr: hanafiAsr, selected: school == 1) { school = 1 }
-                }
-                .padding(.horizontal, 24)
-                #endif
-            } else {
-                HStack(spacing: 14) {
-                    card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
-                         lengths: 1, asr: shafiAsr, selected: school != 1, style: style) { school = 0 }
-                    card(title: "Hanafi", note: nil, rule: "when a shadow is twice the object's length",
-                         lengths: 2, asr: hanafiAsr, selected: school == 1, style: style) { school = 1 }
-                }
-                .padding(.horizontal, 24)
+            HStack(spacing: 14) {
+                card(title: "Shafi'i", note: "Maliki, Hanbali too", lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
+                card(title: "Hanafi", note: nil, lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
             }
+            .padding(.horizontal, 24)
         }
     }
 
-    #if DEBUG
-    private func calmCard(_ selected: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(selected ? Color.sage : .clear, lineWidth: 1.5))
-    }
-    private func pickMark(_ on: Bool) -> some View {
-        Image(systemName: on ? "checkmark.circle.fill" : "circle")
-            .font(.system(size: 20, weight: .light))
-            .foregroundStyle(on ? Color.sage : Color.secondary.opacity(0.4))
-    }
-    /// Style 3: a row, the drawing beside the words.
-    private func rowCard(title: String, rule: String, lengths: CGFloat, asr: Date?, selected: Bool,
-                         pick: @escaping () -> Void) -> some View {
-        Button { withAnimation(.snappy(duration: 0.3)) { pick() } } label: {
-            HStack(spacing: 12) {
-                CalmRay(lengths: lengths, picked: selected).frame(width: 96, height: 44)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(title).font(.system(.body, design: .rounded, weight: .medium))
-                        Spacer()
-                        Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
-                            .font(.system(.body, design: .rounded, weight: .light)).monospacedDigit()
-                    }
-                    Text(rule).font(.system(.caption, design: .rounded, weight: .light)).foregroundStyle(.secondary).lineLimit(2)
-                }
-                pickMark(selected)
-            }
-            .padding(.vertical, 10).padding(.horizontal, 12)
-            .background(calmCard(selected))
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-    #endif
-
-    private func card(title: String, note: String?, rule: String, lengths: CGFloat, asr: Date?,
-                      selected: Bool, style: Int = 0, pick: @escaping () -> Void) -> some View {
+    /// Compact (owner, 2026-10-12, layout 2 of the redesign): the drawing (option B — the sun's ray over the post to the
+    /// shadow's tip), the name, Asr's time, a one-line rule; the pick a sage outline and a ✓ in the corner, no mint fill.
+    private func card(title: String, note: String?, lengths: CGFloat, asr: Date?,
+                      selected: Bool, pick: @escaping () -> Void) -> some View {
         Button {
             withAnimation(.snappy(duration: 0.3)) { pick() }
         } label: {
-            #if DEBUG
-            if style == 1 {
-                VStack(spacing: 6) {
-                    CalmRay(lengths: lengths, picked: selected).frame(height: 50)
-                    Text(title).font(.system(.title3, design: .rounded))
-                    Text(note ?? " ").font(.caption).foregroundStyle(.tertiary)
-                    Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
-                        .font(.system(.title2, design: .rounded, weight: .light)).monospacedDigit()
-                        .minimumScaleFactor(0.7).lineLimit(1)
-                    Text(rule).font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-                    pickMark(selected)
-                }
-                .padding(.vertical, 10).padding(.horizontal, 12)
-                .frame(maxWidth: .infinity)
-                .background(calmCard(selected))
-            } else if style == 2 {
-                VStack(spacing: 4) {
-                    CalmRay(lengths: lengths, picked: selected).frame(height: 46).padding(.top, 4)
-                    Text(title).font(.system(.title3, design: .rounded))
-                    Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
-                        .font(.system(.title3, design: .rounded, weight: .light)).monospacedDigit()
-                        .minimumScaleFactor(0.7).lineLimit(1)
-                    Text(lengths == 1 ? "shadow = its length" : "shadow = twice its length")
-                        .font(.system(.caption, design: .rounded, weight: .light)).foregroundStyle(.secondary)
-                    Text(note ?? " ").font(.caption2).foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 10).padding(.horizontal, 10)
-                .frame(maxWidth: .infinity)
-                .background(calmCard(selected))
-                .overlay(alignment: .topTrailing) { pickMark(selected).padding(8) }
-            } else {
-                legacyCard(title: title, note: note, rule: rule, lengths: lengths, asr: asr, selected: selected)
-            }
-            #else
-            legacyCard(title: title, note: note, rule: rule, lengths: lengths, asr: asr, selected: selected)
-            #endif
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    private func legacyCard(title: String, note: String?, rule: String, lengths: CGFloat, asr: Date?, selected: Bool) -> some View {
-            // Compact: they share the page with the folded method row and today's times.
-            VStack(spacing: 8) {
-                ShadowSketch(lengths: lengths)
-                    .frame(height: 40)
-                VStack(spacing: 2) {
-                    Text(title).font(.system(.title3, design: .rounded))
-                    Text(note ?? " ").font(.caption).foregroundStyle(.tertiary)
-                }
+            VStack(spacing: 4) {
+                ShadowSketch(lengths: lengths, picked: selected)
+                    .frame(height: 46)
+                    .padding(.top, 4)
+                Text(title).font(.system(.title3, design: .rounded))
                 Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
-                    .font(.system(.title2, design: .rounded, weight: .light))
+                    .font(.system(.title3, design: .rounded, weight: .light))
                     .monospacedDigit()
                     .minimumScaleFactor(0.7)
                     .lineLimit(1)
-                    .foregroundStyle(selected ? Color.sage : .primary)
-                Text(rule)
-                    .font(.system(.footnote, design: .rounded, weight: .light))
+                Text(lengths == 1 ? "shadow = its length" : "shadow = twice its length")
+                    .font(.system(.caption, design: .rounded, weight: .light))
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                // The same pick mark as the other choices in setup (Appearance, the method list), so both cards
-                // read as choices (owner).
+                Text(note ?? " ").font(.caption2).foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground))
+                    .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(selected ? Color.sage : .clear, lineWidth: 1.5)))
+            // The same pick mark as setup's other choices, in the corner.
+            .overlay(alignment: .topTrailing) {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20, weight: .light))
                     .foregroundStyle(selected ? Color.sage : Color.secondary.opacity(0.4))
+                    .padding(8)
             }
-            .padding(.vertical, 10)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 22).fill(selected ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(selected ? Color.sage.opacity(0.6) : .clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHint(lengths == 1 ? "Asr when a shadow is as long as the object" : "Asr when a shadow is twice the object's length")
     }
 }
 
@@ -2543,24 +2444,29 @@ private struct TodayStrip: View {
     }
 }
 
-/// A post and its afternoon shadow: one length (Shafi'i) or two (Hanafi), with the sun.
+/// A post and its afternoon shadow, one length (Shafi'i) or two (Hanafi), and the sun's ray grazing the post's top down
+/// to the shadow's tip — why it's that long (owner: option B; the orange sun kept). Quiet greys; the shadow sage when picked.
 private struct ShadowSketch: View {
     let lengths: CGFloat
+    var picked = false
     var body: some View {
         Canvas { ctx, size in
-            // The same scale in both cards, so the shadows compare: room for two lengths.
-            let unit = min(size.height * 0.6, (size.width - 40) / 2.2)
-            let groundY = size.height - 4
-            let postX: CGFloat = 32
-            ctx.stroke(Path { p in p.move(to: CGPoint(x: 6, y: groundY)); p.addLine(to: CGPoint(x: size.width - 6, y: groundY)) },
-                       with: .color(.secondary.opacity(0.3)), lineWidth: 1)
-            ctx.stroke(Path { p in p.move(to: CGPoint(x: postX, y: groundY)); p.addLine(to: CGPoint(x: postX + unit * lengths, y: groundY)) },
-                       with: .color(Color.sage.opacity(0.8)), style: StrokeStyle(lineWidth: 4, lineCap: .round))
-            ctx.stroke(Path { p in p.move(to: CGPoint(x: postX, y: groundY)); p.addLine(to: CGPoint(x: postX, y: groundY - unit)) },
-                       with: .color(.primary.opacity(0.7)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-            // The sun behind the post, lower when the shadow is longer (later in the afternoon).
-            let sunY = groundY - unit * (lengths == 1 ? 1.1 : 0.62)
-            ctx.fill(Path(ellipseIn: CGRect(x: 8, y: sunY - 6, width: 12, height: 12)), with: .color(.orange.opacity(0.75)))
+            let groundY = size.height - 3
+            let post = size.height * 0.55
+            let postX = (size.width - post * 2) / 2 + 8          // room for the longest (Hanafi) shadow, centred
+            let tip = CGPoint(x: postX + post * lengths, y: groundY)
+            let top = CGPoint(x: postX, y: groundY - post)
+            // The sun up the ray, inside the drawing (further out it was cut off at the top).
+            let back = CGPoint(x: top.x - (tip.x - top.x) * 0.3, y: top.y - (tip.y - top.y) * 0.3)
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: 4, y: groundY)); p.addLine(to: CGPoint(x: size.width - 4, y: groundY)) },
+                       with: .color(.primary.opacity(0.12)), lineWidth: 1)
+            ctx.stroke(Path { p in p.move(to: back); p.addLine(to: tip) },
+                       with: .color(.primary.opacity(0.22)), style: StrokeStyle(lineWidth: 1, dash: [2.5, 3]))
+            ctx.fill(Path(ellipseIn: CGRect(x: back.x - 6, y: back.y - 6, width: 12, height: 12)), with: .color(.orange.opacity(0.75)))
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: postX, y: groundY)); p.addLine(to: tip) },
+                       with: .color(picked ? Color.sage : .primary.opacity(0.3)), style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: postX, y: groundY)); p.addLine(to: top) },
+                       with: .color(.primary.opacity(0.75)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
         }
         .accessibilityHidden(true)
     }
