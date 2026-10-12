@@ -489,7 +489,15 @@ struct YourRemindersView: View {
         // Pushed, not a sheet (owner) — Notification settings.
         .navigationDestination(item: $whySheet) { ReminderWhySheet(kind: $0, pendingCount: pending.count) }
         // Why only 64? / Tops itself up: a sheet over the page in glass (owner).
-        .sheet(item: $whyGlass) { ReminderWhyGlassSheet(kind: $0, pendingCount: pending.count) }
+        // Why only 64? / Tops itself up: the app's floating ⓘ card (owner: "use the tooltip modal … just no sheets").
+        .infoModal(isPresented: Binding(get: { whyGlass == .budget }, set: { if !$0 { whyGlass = nil } }),
+                   title: ReminderWhy.budget.title, symbol: ReminderWhy.budget.symbol(health)) {
+            ReminderWhyInfo(kind: .budget, pendingCount: pending.count)
+        }
+        .infoModal(isPresented: Binding(get: { whyGlass == .topsUp }, set: { if !$0 { whyGlass = nil } }),
+                   title: ReminderWhy.topsUp.title, symbol: ReminderWhy.topsUp.symbol(health)) {
+            ReminderWhyInfo(kind: .topsUp, pendingCount: pending.count)
+        }
     }
 
     private static let prayerKinds: [Kind] = [.start, .halfway, .endingSoon, .snooze]
@@ -658,7 +666,7 @@ struct YourRemindersView: View {
                         // Under the number: a filled dot for a full day, an empty ring for a starts-only one (owner) — the
                         // same reading as the line under the picked day (`startsOnly`).
                         let planned = dayItems.contains { Self.prayerKinds.contains($0.kind) }
-                        let startsOnly = planned && Self.startsOnly(dayItems)
+                        let startsOnly = planned && !Self.isFull(dayItems, day: d)   // not full: the empty ring
                         ZStack {
                             Circle().fill(Color(.tertiaryLabel)).opacity(planned && !startsOnly ? 1 : 0)
                             Circle().stroke(Color(.tertiaryLabel), lineWidth: 1).opacity(startsOnly ? 1 : 0)
@@ -846,23 +854,40 @@ struct YourRemindersView: View {
     /// where we only show the starts"): read from what's scheduled — a prayer set to Nudge that has its start but no
     /// nudge yet makes it a starts-only day for now (NotificationScheduler adds nudges `nudgeDaysAhead` days out).
     /// A prayer set to Nudge has its start that day but no nudge yet.
-    private static func startsOnly(_ dayItems: [Item]) -> Bool {
-        PrayerNotificationID.prayers.contains { p in
+    /// The day has everything its settings ask for (owner: the dots must say full vs not). Plan v2 adds nudges to later
+    /// days only while slots are free, so a day can be partly full: some nudges, not all. For each prayer that's on: every
+    /// notification it would send that's still ahead must be there — its start, and on Nudge its halfway (windows of 90
+    /// min+) and 30 minutes left. A prayer with nothing today was prayed or has passed.
+    private static func isFull(_ dayItems: [Item], day: Date) -> Bool {
+        guard let windows = NotificationScheduler.windows(for: day) else { return true }
+        let now = Date()
+        let isToday = Calendar.current.isDate(day, inSameDayAs: PrayerDay.date())
+        for p in PrayerNotificationID.prayers {
             let setting = NotificationScheduler.settings(p)
+            guard setting.notify, let w = windows[p] else { continue }
             let mine = dayItems.filter { $0.prayer == p }
-            return setting.notify && setting.nudges && mine.contains { $0.kind == .start }
-                && !mine.contains { $0.kind == .halfway || $0.kind == .endingSoon }
+            if mine.isEmpty && isToday { continue }
+            var wanted: [(Kind, String)] = [(.start, "Start")]
+            if setting.nudges {
+                if w.window >= NotificationScheduler.halfwayMinimumWindow { wanted.append((.halfway, "Mid")) }
+                wanted.append((.endingSoon, "End"))
+            }
+            for (kind, name) in wanted {
+                guard let (at, _) = NotificationScheduler.prayerNotification(name, prayer: p, window: w), at > now else { continue }
+                if !mine.contains(where: { $0.kind == kind }) { return false }
+            }
         }
+        return true
     }
 
     @ViewBuilder private func dayFullness(prayers: [String], dayItems: [Item], dayKey: String) -> some View {
         let planned = dayItems.contains { Self.prayerKinds.contains($0.kind) }
-        let startsOnly = Self.startsOnly(dayItems)
+        let startsOnly = Self.dayKeyFormatter.date(from: dayKey).map { !Self.isFull(dayItems, day: $0) } ?? false
         if planned {
             HStack(spacing: 6) {
                 Image(systemName: startsOnly ? "circle.dashed" : "checkmark.circle.fill")
                     .foregroundStyle(startsOnly ? Color.secondary : green)
-                Text(startsOnly ? "Starts only for now · nudges added \(nudgesAddedOn(dayKey) ?? "closer to the day")"
+                Text(startsOnly ? "Not every nudge yet · added \(nudgesAddedOn(dayKey) ?? "closer to the day")"
                                 : "Full day · everything you set")
                     .foregroundStyle(startsOnly ? Color.secondary : Color.primary)
             }
