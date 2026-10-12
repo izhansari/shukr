@@ -1808,9 +1808,12 @@ struct PrayerTimesView: View {
                 return PrayerPhotoTarget(key: PrayerPhotos.key(dayKey: PrayerDay.key(), name: name), title: "\(name) · 4:52 PM")
             }
             #endif
+            let _ = PrayerPhotoRevision.shared.value   // re-read when a photo is added from the row's editor
             guard let name = live.postSalahNudge,
                   let row = viewModel.todaysPrayers.first(where: { ($0.name == name || $0.displayName == name) && $0.isCompleted }),
-                  Date() < row.endTime else { return nil }
+                  Date() < row.endTime,
+                  // Already has its photo (taken from the row's hold editor): no camera in the pill (owner).
+                  !PrayerPhotos.exists(for: row) else { return nil }
             return PrayerPhotoTarget.forMarked(row)
         }
 
@@ -2452,8 +2455,17 @@ struct TodaysPrayerListView: View {
 
     /// Done prayers fold out of the list so it only shows what's left; all five come back once
     /// the day is complete. A prayer just marked stays while the circle's marking moment runs (the stage's `heldRow`:
-    /// one clock, the moment's).
-    private var lingering: Set<String> { CircleStage.shared.heldRow.map { [$0] } ?? [] }
+    /// one clock, the moment's), and then for as long as its post-salah pill is up (owner: "it's really annoying when I
+    /// mark something as done and then I go to edit it … it goes away") — not the day's last prayer: all five come back
+    /// then anyway, and holding it would keep the day's page waiting.
+    @Environment(PagerLiveState.self) private var pagerLive: PagerLiveState?
+    private var lingering: Set<String> {
+        var rows: Set<String> = CircleStage.shared.heldRow.map { [$0] } ?? []
+        if let pill = pagerLive?.postSalahNudge, viewModel.todaysPrayers.contains(where: { !$0.isCompleted }) {
+            rows.insert(pill)
+        }
+        return rows
+    }
     /// "3 done" row tapped: show the done ones too (to check a score or unmark one).
     /// "N done" tapped (shared with the soft looks' footer in the chrome, SoftDoneFooter).
     private var fold = PrayerListFold.shared
@@ -2614,9 +2626,9 @@ struct TodaysPrayerListView: View {
             perfectPulse += 1
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-        // A marked row folds when the circle's moment releases it.
+        // A marked row folds when the circle's moment and its pill have both let it go.
         .animation(motion.animation(springy: CircleMotion.rowFold).map { CircleMotion.movement($0, reduced: reduceMotion) },
-                   value: CircleStage.shared.heldRow)
+                   value: lingering)
         .onChange(of: allDone) { _, isDone in
             if isDone { showDone = false }   // the day's complete: everything's back anyway
         }
