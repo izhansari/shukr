@@ -54,8 +54,16 @@ import SwiftData
         }
     }
 
-    /// Locked now: not unlocked, and no tour is running on the page.
+    /// Settings' "Take the zikr tour again" (owner: "i dont want it to lock it fr tho. if theyve already finished it"):
+    /// the lock's page plays again over a tab that stays theirs. Nothing is stored: leaving the page, Not now or the
+    /// tour's end closes it, and a relaunch never brings it back.
+    private(set) var replaying = false
+    func replay() { replaying = true }
+    func endReplay() { replaying = false }
+
+    /// Locked now: not unlocked (or the tour being replayed), and no tour is running on the page.
     var locked: Bool {
+        if replaying { return !ZikrTour.shared.active }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-zikrUnlocked") { return false }
         #endif
@@ -75,6 +83,7 @@ import SwiftData
 
     /// The Zikr Tour reached its end.
     func unlock() {
+        replaying = false
         guard !unlocked else { return }
         unlocked = true
         justUnlocked += 1
@@ -321,6 +330,16 @@ struct ZikrLockCover: View {
                 .foregroundStyle(Color.primary.opacity(0.4))
                 .padding(.top, 4)
                 .opacity(stage >= 4 ? 1 : 0)
+            // A replay from Settings: a way out that leaves Zikr as it was (open).
+            if lock.replaying {
+                Button("Not now") { triggerSomeVibration(type: .light); lock.endReplay() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.55))
+                    .padding(.top, 18)
+                    .opacity(stage >= 4 ? 1 : 0)
+                    .allowsHitTesting(stage >= 4)
+            }
             // In the app tour, a way past it (the audit: only Show me was offered).
             if lock.fromAppTour {
                 Button(TourCopy.ZikrTour.skipToSettings) { lock.skipFromAppTour() }
@@ -1088,6 +1107,7 @@ struct ZikrLockCover: View {
     /// Leaving the page: ready to build again next time.
     private func leave() {
         run?.cancel()
+        lock.endReplay()
         withAnimation(.easeIn(duration: 0.15)) { stage = 0; itemsShown = 0 }
         armed = false
     }

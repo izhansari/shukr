@@ -1540,8 +1540,11 @@ struct ZikrTourAgainRow: View {
     var body: some View {
         Button {
             triggerSomeVibration(type: .light)
-            ZikrLock.shared.setLockedForTesting(true)
-            Task { @MainActor in _ = await sharedState.navigate(to: .zikr) }
+            // Replayed, never locked again (owner): on the Zikr page first, so the lock's page arrives there.
+            Task { @MainActor in
+                _ = await sharedState.navigate(to: .zikr)
+                ZikrLock.shared.replay()
+            }
         } label: {
             Label {
                 Text("Take the zikr tour again")
