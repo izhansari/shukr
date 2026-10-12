@@ -2201,13 +2201,19 @@ private struct PrayerTimesStep: View {
             // One title for both steps (owner): the two questions are its numbered parts, so nothing at the top swaps.
             StepTitle(title: "Your prayer times", subtitle: nil)
                 .padding(.bottom, 14)
-            section(1, "Your calculation method", current: !asr)
-            if !asr {
+            if asr {
+                // Answered: one quiet line (owner: "fold this more or make it less loud … while still a different
+                // section") — the tick, the pick in plain type, Change; no card, no sage fill.
+                foldedMethod
+                    .transition(.opacity)
+            } else {
+                section(1, "Your calculation method", current: true)
                 note("Each method sets Fajr and Isha by a different angle of the sun. Pick the one your masjid uses.")
                     .transition(.opacity)
+                methodCard
+                    .padding(.top, 10)
+                    .transition(.opacity)
             }
-            methodCard
-                .padding(.top, 10)
             section(2, "When does Asr begin?", current: asr)
                 .padding(.top, asr ? 14 : 18)
             if asr {
@@ -2264,6 +2270,44 @@ private struct PrayerTimesStep: View {
         }
         .padding(.horizontal, 24)
         .accessibilityElement(children: .combine)
+    }
+
+    /// Part 1 once answered: "✓  Calculation method · Automatic (ISNA)   Change" on one quiet line, a hairline under it.
+    private var foldedMethod: some View {
+        let picked = rows.first { $0.tag == method }
+        let name = method == AutoMethod.automatic
+            ? "Automatic (\(AutoMethod.shortName(AutoMethod.resolved())))"
+            : (picked?.title ?? "")
+        return VStack(spacing: 10) {
+            Button(action: change) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(Color.sage)
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                    }
+                    .frame(width: 20, height: 20)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Calculation method")
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Text(name)
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.primary.opacity(0.85))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    Spacer()
+                    Text("Change")
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(Color.sage)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Change the calculation method")
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+        }
+        .padding(.horizontal, 24)
     }
 
     private func note(_ text: String) -> some View {
@@ -2353,6 +2397,20 @@ private struct PrayerTimesStep: View {
                 card(title: "Hanafi", note: nil, lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
             }
             .padding(.horizontal, 24)
+            // Back below the cards now there's room (owner): how far apart, and what to do if unsure.
+            if let s = shafiAsr, let h = hanafiAsr {
+                let gap = Int((h.timeIntervalSince(s) / 60).rounded())
+                if gap > 0 {
+                    Text("Hanafi Asr is \(gap) min later today.")
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 12)
+                }
+            }
+            Text("Not sure? Go with what your masjid uses.")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .padding(.top, 4)
         }
     }
 
