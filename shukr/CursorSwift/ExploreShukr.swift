@@ -84,7 +84,15 @@ struct ExploreShukrPage: View {
                         VStack(spacing: 0) {
                             ForEach(Array(using.enumerated()), id: \.element) { i, f in
                                 if i > 0 { Divider().padding(.leading, 56) }
-                                usingRow(f)
+                                // Still readable (owner: using it doesn't mean knowing it): its card, steps open.
+                                NavigationLink {
+                                    ScrollView { card(f, open: true).padding(16) }
+                                        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+                                        .navigationTitle(title(f))
+                                        .navigationBarTitleDisplayMode(.inline)
+                                        .fontDesign(.rounded)
+                                } label: { usingRow(f) }
+                                .buttonStyle(.plain)
                             }
                         }
                         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
@@ -131,40 +139,40 @@ struct ExploreShukrPage: View {
         .padding(.bottom, 4)
     }
 
-    @ViewBuilder private func card(_ f: Feature) -> some View {
+    @ViewBuilder private func card(_ f: Feature, open: Bool = false) -> some View {
         switch f {
         case .home:
-            ExploreCard(title: "Home Screen widget",
+            ExploreCard(startOpen: open, title: "Home Screen widget",
                         why: "Your prayer's ring where you'll see it all day. Tap the check to mark it, without opening shukr.",
                         steps: [("hand.tap", "Touch and hold an empty spot on your Home Screen"),
                                 ("plus.circle", "Tap Edit, then Add Widget"),
                                 ("magnifyingglass", "Search shukr, pick Prayers, tap Add Widget")],
                         note: "Zikr, Name of the Day and Daily Ayah widgets are there too.") { HomeScreenPicture() }
         case .lock:
-            ExploreCard(title: "Lock Screen widget",
+            ExploreCard(startOpen: open, title: "Lock Screen widget",
                         why: "See how long is left every time you pick up your phone. In the last hour the circle counts down.",
                         steps: [("lock", "Touch and hold your Lock Screen, then tap Customize"),
                                 ("rectangle.on.rectangle", "Pick your Lock Screen, then tap under the clock"),
                                 ("magnifyingglass", "Find shukr and tap the circle or the line")]) { LockScreenPicture() }
         case .controls:
-            ExploreCard(title: "Control Center",
+            ExploreCard(startOpen: open, title: "Control Center",
                         why: "Qibla and Tasbeeh one swipe away, even inside another app. Each opens straight to it.",
                         steps: [("arrow.down.right", "Swipe down from the top-right corner"),
                                 ("plus", "Tap + at the top left, then Add a Control"),
                                 ("magnifyingglass", "Search shukr, add Qibla and Tasbeeh")],
                         note: "They work on the Lock Screen and the Action button too.") { ControlCenterPicture() }
         case .siri:
-            ExploreCard(title: "Siri and Shortcuts",
+            ExploreCard(startOpen: open, title: "Siri and Shortcuts",
                         why: "Ask “Next prayer time from shukr” hands-free, or build prayer times into your own automations.",
                         shortcuts: true) { SiriPicture() }
         case .watch:
-            ExploreCard(title: "Apple Watch",
+            ExploreCard(startOpen: open, title: "Apple Watch",
                         why: "Mark prayers from your wrist, count zikr with the Crown or Double Tap, and find the qibla.",
                         steps: [("applewatch", "Open the Watch app on your iPhone"),
                                 ("arrow.down", "Scroll to Available Apps"),
                                 ("square.and.arrow.down", "Tap Install next to shukr")]) { WatchPicture() }
         case .memories:
-            ExploreCard(title: "Memories",
+            ExploreCard(startOpen: open, title: "Memories",
                         why: "After you mark a prayer, take a photo — both cameras at once. Look back day by day, or on this day years ago.",
                         action: ("Open Memories", { MemoriesPresenter.shared.open = true })) { MemoriesPicture() }
         }
@@ -184,15 +192,30 @@ struct ExploreShukrPage: View {
             Text(title)
             Spacer()
             Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.sage)
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 50)
+        .contentShape(Rectangle())
+    }
+
+    private func title(_ f: Feature) -> String {
+        switch f {
+        case .home: "Home Screen widget"
+        case .lock: "Lock Screen widget"
+        case .controls: "Control Center"
+        case .siri: "Siri and Shortcuts"
+        case .watch: "Apple Watch"
+        case .memories: "Memories"
+        }
     }
 }
 
 // MARK: - The card
 
 private struct ExploreCard<Picture: View>: View {
+    /// Opened from "Already using": the steps shown from the start.
+    var startOpen = false
     let title: String
     let why: String
     var steps: [(String, String)]? = nil
@@ -260,6 +283,7 @@ private struct ExploreCard<Picture: View>: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+        .onAppear { if startOpen { open = true } }
     }
 
     /// The card's one button: a sage capsule, full width.
