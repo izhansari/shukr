@@ -3461,10 +3461,15 @@ private struct ReviewStep: View {
     @State private var liveActivitiesOn = LiveActivitySetupStep.systemEnabled
     /// "Continue with limited features" tapped: bismillah comes in.
     @State private var goLimited = false
+    /// Bumped when the nudge turns Live Activities on (their switches live in the app group, which nothing observes here).
+    @State private var liveActivitiesTick = 0
+    @AppStorage("alarmTimeSetFor", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmTimeSetFor = ""
+    @AppStorage("alarmDescription", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmDescription = ""
 
-    // One more nudge before bismillah while location or notifications aren't on (owner: "bro the experience really
-    // isnt gonna be great without those permissions"); the alarm isn't part of it. Location's losses in the owner's
-    // order: times that follow you, the qibla, prayer pins (not mosques).
+    // One more nudge before bismillah while something isn't on (owner: "bro the experience really isnt gonna be great
+    // without those permissions"). Location and notifications first, as they were (their note covers both); only once
+    // they're on, the extras one at a time in the list's order: Live Activities, then the Fajr alarm (owner, 2026-10-12).
+    // Location's losses in the owner's order: times that follow you, the qibla, prayer pins (not mosques).
     private var locationMissing: Bool {
         #if DEBUG
         if let m = Self.demoMissing { return m == "both" || m == "location" }   // -demoReviewMissing location|notifications|both
@@ -3480,28 +3485,66 @@ private struct ReviewStep: View {
     #if DEBUG
     private static let demoMissing = UserDefaults.standard.string(forKey: "demoReviewMissing")
     #endif
-    private var limited: Bool { (locationMissing || notificationsMissing) && !goLimited }
+    /// Live Activities count when iOS has them off or none are on (a no on its page); never before iOS 26.
+    private var liveActivitiesMissing: Bool {
+        let s = liveActivityState
+        return s.supported && (!s.allowed || s.prayers.isEmpty)
+    }
+    /// The alarm counts when it's off (skipped or a no) or iOS refused alarms.
+    private var alarmMissing: Bool { !alarmOn || (FajrAlarms.supported && alarmsAllowed == false) }
+    private var essentialsMissing: Bool { locationMissing || notificationsMissing }
+    private var limited: Bool { (essentialsMissing || liveActivitiesMissing || alarmMissing) && !goLimited }
     private var limitedNote: String {
         switch (locationMissing, notificationsMissing) {
         case (true, true): return "Without these: no prayer notifications, and times and qibla that won’t follow you."
         case (true, false): return "Without location, your times won’t follow you, the qibla will be off and prayers won’t be pinned."
-        default: return "Without notifications, you’ll miss the nudge before a prayer slips by."
+        case (false, true): return "Without notifications, you’ll miss the nudge before a prayer slips by."
+        default:
+            return liveActivitiesMissing
+                ? "Without Live Activities, you’ll open shukr to see how long is left in a prayer."
+                : "Without the Fajr alarm, you’ll check Fajr’s time and set an alarm yourself each night."
         }
     }
-    /// One at a time: location first, then notifications — iOS asks if it never has, else Settings.
+    private var limitedButton: String {
+        locationMissing ? "Turn on location" : notificationsMissing ? "Turn on notifications"
+            : liveActivitiesMissing ? "Turn on Live Activities" : "Turn on the Fajr alarm"
+    }
+    /// One at a time, in the list's order — iOS asks if it never has, else Settings; a no in shukr turns straight on.
     private func turnOnMissing() {
         if locationMissing {
             if location.authorizationStatus == .notDetermined { location.requestLocationPermission() } else { SettingsLinks.app() }
-        } else if notifications.isOn == nil {
-            notifications.request()
+        } else if notificationsMissing {
+            if notifications.isOn == nil { notifications.request() } else { SettingsLinks.notifications() }
+        } else if liveActivitiesMissing {
+            if !liveActivityState.allowed { SettingsLinks.app(); return }
+            // A no on its page: back to the prayers it starts with, as its "I changed my mind" does.
+            let group = UserDefaults(suiteName: SharedStore.appGroup)
+            for p in LiveActivityPrefs.prayers { group?.removeObject(forKey: LiveActivityPrefs.key(p)) }
+            UserDefaults.standard.set(true, forKey: LiveActivitySetupStep.answerKey)
+            PrayerLiveActivities.plan(reason: "setup review")
+            liveActivitiesTick += 1
+        } else if FajrAlarms.supported && alarmsAllowed == false {
+            SettingsLinks.app()
+        } else if FajrAlarms.supported {
+            // As its page's "Set my Fajr alarm": on, and iOS asks; the rule is the one shown on the row.
+            alarmOn = true
+            Task { @MainActor in
+                let ok = await FajrAlarms.enable()
+                alarmsAllowed = ok
+                if !ok { alarmOn = false }
+                else if let calc = try? PrayerUtils.calculateAlarmDescription() {
+                    alarmTimeSetFor = shortTimePM(calc.time)
+                    alarmDescription = calc.description
+                }
+            }
         } else {
-            SettingsLinks.notifications()
+            jump(.fajr)   // before iOS 26.1 it's set up through the Shortcut, on its page
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Not "all set" while it's still asking for location / notifications.
+            // Not "all set" while it's still asking for something.
             StepTitle(title: limited ? "Almost set" : "You're all set",
                       subtitle: "Tap anything to change it.")
                 .contentTransition(.opacity)
@@ -3542,12 +3585,12 @@ private struct ReviewStep: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 32)
                             .padding(.bottom, 12)
-                        PrimaryButton(title: locationMissing ? "Turn on location" : "Turn on notifications", outlined: true,
-                                      action: turnOnMissing)
+                        PrimaryButton(title: limitedButton, outlined: true, action: turnOnMissing)
                         SecondaryButton(title: "Continue with limited features") { goLimited = true }
                     }
                     .padding(.top, 8)
-                    .padding(.bottom, 8)
+                    // Lower, into the room above the home indicator (owner: more breathing room for the list).
+                    .padding(.bottom, -10)
                     .transition(.opacity.animation(.easeOut(duration: 0.2)))
                 } else {
                     BismillahCapsule(action: done)
@@ -3625,6 +3668,7 @@ private struct ReviewStep: View {
         default: break
         }
         #endif
+        _ = liveActivitiesTick
         return (PrayerLiveActivities.supported, liveActivitiesOn, LiveActivityPrefs.prayers.filter { LiveActivityPrefs.isOn($0) })
     }
     private var masjidValue: String {
@@ -3642,14 +3686,11 @@ private struct ReviewStep: View {
     }
 
     private var locationFix: Fix? {
-        if !location.isAuthorized && !location.hasManualLocation {
-            return Fix(action: "Set up") { jump(.location) }
-        }
         if !location.isAuthorized && location.authorizationStatus == .notDetermined {
-            // A city picked before iOS ever asked: ask now (Settings has nothing to turn on yet).
-            return Fix(action: "Allow") { location.requestLocationPermission() }
+            // Never asked: a city picked before iOS asked, or the step skipped — ask now (Settings has nothing yet).
+            return Fix(value: "Not allowed yet", action: "Allow") { location.requestLocationPermission() }
         }
-        if !location.isAuthorized { return Fix(action: "Turn on", run: SettingsLinks.app) }
+        if !location.isAuthorized { return Fix(value: "Off in iOS Settings", action: "Turn on", run: SettingsLinks.app) }
         if location.authorizationStatus == .authorizedWhenInUse {
             return Fix(action: "Always") { LocationUpgrade.askForAlways(location) }
         }
@@ -3662,12 +3703,12 @@ private struct ReviewStep: View {
     /// Time Sensitive off.
     private var notificationsFix: Fix? {
         switch notifications.isOn {
-        case .some(false): return Fix(value: "Off", action: "Turn on", run: SettingsLinks.notifications)
-        case .none: return Fix(value: "Not on yet", action: "Allow") { notifications.request() }
+        case .some(false): return Fix(value: "Off in iOS Settings", action: "Turn on", run: SettingsLinks.notifications)
+        case .none: return Fix(value: "Not allowed yet", action: "Allow") { notifications.request() }
         default:
             // Allowed, but every prayer switched off: nothing will come.
             let anyOn = [fajrNotif, dhuhrNotif, asrNotif, maghribNotif, ishaNotif].contains(true)
-            if !anyOn { return Fix(value: "All five off", action: "Set up") { jump(.reminders) } }
+            if !anyOn { return Fix(value: "Off", action: "Set up") { jump(.reminders) } }
             if health.issues.contains(.held) {
                 return Fix(value: "Held for the Scheduled Summary", action: "Fix", run: SettingsLinks.notifications)
             }
@@ -3680,7 +3721,7 @@ private struct ReviewStep: View {
     /// No alarm because iOS said no: Settings; skipped before being asked: back to its step.
     private var alarmFix: Fix? {
         if FajrAlarms.supported && alarmsAllowed == false {
-            return Fix(value: "Alarms are off for shukr", action: "Turn on", run: SettingsLinks.app)
+            return Fix(value: "Off in iOS Settings", action: "Turn on", run: SettingsLinks.app)
         }
         if !alarmOn { return Fix(value: "Off", action: "Set up") { jump(.fajr) } }
         return nil
@@ -3691,7 +3732,7 @@ private struct ReviewStep: View {
     private var liveActivityFix: Fix? {
         let s = liveActivityState
         guard s.supported else { return nil }
-        if !s.allowed { return Fix(value: "Live Activities are off for shukr", action: "Turn on", run: SettingsLinks.app) }
+        if !s.allowed { return Fix(value: "Off in iOS Settings", action: "Turn on", run: SettingsLinks.app) }
         if s.prayers.isEmpty { return Fix(value: "Off", action: "Set up") { jump(.liveActivities) } }
         return nil
     }
