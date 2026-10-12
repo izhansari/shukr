@@ -2689,7 +2689,7 @@ private struct RemindersStep: View {
                 if off {
                     // Off (their no, or iOS's): the preview says it, frosted over (owner); the way on is outlined, not the
                     // filled Continue; a change of mind asks iOS after a no here, opens Settings after iOS's no.
-                    PrimaryButton(title: "Continue without notifications", outlined: true, action: next)
+                    PrimaryButton(title: "I’ll go without reminders", outlined: true, action: next)
                     if notifications.isOn == false {
                         SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.notifications)
                     } else {
@@ -2709,7 +2709,7 @@ private struct RemindersStep: View {
         .task { await notifications.refresh() }
         .alert("Go without notifications?", isPresented: $confirmSkip) {
             Button("Remind me", role: .cancel) { notifications.request() }
-            Button("Skip it", role: .destructive) { decline(true) }
+            Button("Skip anyway", role: .destructive) { decline(true) }
         } message: {
             Text("You’d miss the nudge when a prayer is slipping by. It only comes if you haven’t prayed yet, so it’s never noise. You can turn them on later in Settings.")
         }
@@ -3160,7 +3160,7 @@ private struct FajrStep: View {
         .animation(.easeInOut(duration: 0.45), value: off)
         .alert("Go without the Fajr alarm?", isPresented: $confirmSkip) {
             Button("Set my Fajr alarm", role: .cancel, action: turnOn)
-            Button("Skip it", role: .destructive) { enabled = false; decline(true) }
+            Button("Skip anyway", role: .destructive) { enabled = false; decline(true) }
         } message: {
             Text("You’d check Fajr’s time each night and set an alarm yourself. You can turn it on later in Settings.")
         }

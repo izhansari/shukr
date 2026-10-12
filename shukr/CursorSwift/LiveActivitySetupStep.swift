@@ -167,7 +167,7 @@ struct LiveActivitySetupStep: View {
         PrayerLiveActivities.plan(reason: "setup")
     }
 
-    /// "Skip it": every prayer off (Settings turns them back on); the page stays, frosted, until Continue.
+    /// "Skip anyway": every prayer off (Settings turns them back on); the page stays, frosted, until Continue.
     private func turnOff() {
         withAnimation(.easeInOut(duration: 0.45)) { answer = false }
         guard shown == nil else { return }
@@ -467,10 +467,10 @@ struct LiveActivityDemo: View {
         .skipTitle: "Go without Live Activities?",
         .skipBody: "You’d lose the countdown on your Lock Screen and in the Dynamic Island, and marking a prayer from there. Your notifications still come either way.",
         .skipKeep: "Show my prayers",
-        .skipAnyway: "Skip it",
+        .skipAnyway: "Skip anyway",
         .offTitle: "Live Activities are off",
         .offBody: "No countdown on your Lock Screen or in the Dynamic Island: you’ll open shukr to see how long is left. Turn them on in Settings any time.",
-        .offContinue: "Continue without Live Activities",
+        .offContinue: "I’ll go without Live Activities",
         .offSettings: "I changed my mind",
         .oldTitle: "Coming with iOS 26",
         .oldBody: "Your iPhone needs iOS 26 for this. Once you update, it’s waiting for you in Settings.",
