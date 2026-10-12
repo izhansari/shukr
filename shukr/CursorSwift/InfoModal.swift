@@ -81,6 +81,9 @@ struct InfoModal<Content: View>: View {
     @ViewBuilder let content: () -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
+    /// The explanation's own height: the card is as tall as it needs, up to 60 % of the screen, then it scrolls inside
+    /// (owner: small phones).
+    @State private var contentHeight: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -111,7 +114,17 @@ struct InfoModal<Content: View>: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Close")
                 }
-                content()
+                GeometryReader { geo in
+                    ScrollView {
+                        content()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollIndicators(.automatic)
+                    .frame(height: geo.size.height)
+                }
+                .frame(height: min(max(contentHeight, 1), UIScreen.main.bounds.height * 0.6))
             }
             .padding(22)
             .frame(maxWidth: 440, alignment: .leading)

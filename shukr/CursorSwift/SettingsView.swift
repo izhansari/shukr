@@ -435,13 +435,13 @@ struct SettingsView: View {
                     
                     
                     
-                    // The first-run tour again, for everyone (Tour.swift).
-                    Section {
+                    // The tours again, for everyone (Tour.swift, CountTips.swift), under their own label (owner).
+                    Section(header: Text("Tours")) {
                         Button {
                             NotificationCenter.default.post(name: TourRuntime.start, object: nil)
                         } label: {
                             Label {
-                                Text("Show me around again")
+                                Text("Show me the app tour again")
                             } icon: {
                                 Image(systemName: "hand.point.up.left").foregroundStyle(Color(.label))
                             }
@@ -663,7 +663,7 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
         .infoModal(isPresented: $isTimesInfoVisible, title: "Prayer Times", symbol: "clock") {
-            PrayerTimesInfo(method: calculationMethod, school: school, qibla: qiblaSensitivity)
+            PrayerTimesInfo(qibla: qiblaSensitivity)
         }
         // Reminders' ⓘ: a floating card for the side showing (owner: tooltips as a frosted modal).
         .infoModal(isPresented: $isNotifPopupVisible,
@@ -1149,7 +1149,7 @@ struct AlarmSettingsView: View {
         
         Section(header:
                     HStack {
-            Text("Alarm Settings")
+            Text("Fajr Alarm")
             Spacer()
             Button(action: {
                 withAnimation {
@@ -1169,7 +1169,7 @@ struct AlarmSettingsView: View {
                     // Alarm Settings' ⓘ: a floating card (owner: tooltips as a frosted modal).
                     .infoModal(isPresented: $isAlarmInfoVisible, title: "Fajr Alarm", symbol: "alarm") { alarmInfoView }
                 
-                Toggle("Schedule Daily Fajr Alarm", isOn: Binding(
+                Toggle("Daily alarm", isOn: Binding(
                     get: { self.alarmEnabled },
                     set: { newValue in
                         // Animate changes
@@ -1568,8 +1568,9 @@ struct ReminderSwitch: View {
 /// Prayer Times' ⓘ (owner: the setup explains the method and madhab well and Settings lost it): what a method is, the
 /// setup's shadow drawings with today's Asr for each madhab, and what the qibla's ± means.
 struct PrayerTimesInfo: View {
-    let method: Int
-    let school: Int
+    // The same keys as the Prayer Times rows: a tap on a madhab picks it (owner), and Settings' own onChange re-plans.
+    @AppStorage("calculationMethod", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var method: Int = 2
+    @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var school: Int = 0
     let qibla: Double
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1577,7 +1578,7 @@ struct PrayerTimesInfo: View {
                          text: "Fajr and Isha are timed by how far the sun is below the horizon. Each method uses its own angles, so pick the one your masjid uses. Automatic follows the country you're in.")
             VStack(alignment: .leading, spacing: 10) {
                 InfoModalRow(symbol: "book.closed", title: "Madhab",
-                             text: "It only moves Asr: Asr begins when a post's shadow reaches its own length, or twice its length.")
+                             text: "It only moves Asr: Asr begins when a post's shadow reaches its own length, or twice its length. Tap yours.")
                 HStack(spacing: 10) {
                     madhab("Shafi'i", lengths: 1, school: 0)
                     madhab("Hanafi", lengths: 2, school: 1)
@@ -1591,7 +1592,11 @@ struct PrayerTimesInfo: View {
     private func madhab(_ name: String, lengths: CGFloat, school s: Int) -> some View {
         let picked = school == s
         let asr = todaysTimes(method: method, school: s)?.asr
-        return VStack(spacing: 3) {
+        return Button {
+            guard school != s else { return }
+            withAnimation(.snappy(duration: 0.25)) { school = s }
+            UISelectionFeedbackGenerator().selectionChanged()
+        } label: { VStack(spacing: 3) {
             ShadowSketch(lengths: lengths, picked: picked).frame(height: 40)
             Text(name).font(.system(.subheadline, design: .rounded, weight: picked ? .semibold : .regular))
             Text(asr.map { "Asr \($0.formatted(date: .omitted, time: .shortened))" } ?? "Asr")
@@ -1601,6 +1606,16 @@ struct PrayerTimesInfo: View {
         .frame(maxWidth: .infinity)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.tertiarySystemFill)))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(picked ? Color.sage : .clear, lineWidth: 1.2))
+        .overlay(alignment: .topTrailing) {
+            Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 16, weight: .light))
+                .foregroundStyle(picked ? Color.sage : Color.secondary.opacity(0.4))
+                .padding(6)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(TilePressStyle())
+        .accessibilityAddTraits(picked ? .isSelected : [])
     }
 }
 

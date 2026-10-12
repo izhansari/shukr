@@ -283,7 +283,7 @@ enum TourCopy {
         static let endButton = "Done"
         static let practiceTitle = "Practice"   // the practice session's name in History
         // Settings, under "Show me around again"
-        static let againRow = "Show counting tips again"
+        static let againRow = "Show me the counting tips again"
         static let againArmed = "Ready — start a freestyle session"
     }
 
