@@ -3484,6 +3484,7 @@ private struct ReviewStep: View {
     }
     #if DEBUG
     private static let demoMissing = UserDefaults.standard.string(forKey: "demoReviewMissing")
+    private static let demoAlarm = UserDefaults.standard.string(forKey: "demoReviewAlarm")
     #endif
     /// Live Activities count when iOS has them off or none are on (a no on its page); never before iOS 26.
     private var liveActivitiesMissing: Bool {
@@ -3491,9 +3492,29 @@ private struct ReviewStep: View {
         return s.supported && (!s.allowed || s.prayers.isEmpty)
     }
     /// The alarm counts when it's off (skipped or a no) or iOS refused alarms.
-    private var alarmMissing: Bool { !alarmOn || (FajrAlarms.supported && alarmsAllowed == false) }
+    /// The alarm counts when it's off (skipped or a no) or iOS refused alarms — only on iOS 26.1+, where shukr can set it
+    /// itself (owner: before that "they legit cant do anything ab it until they update").
+    private var alarmMissing: Bool {
+        #if DEBUG
+        if let a = Self.demoAlarm { return a == "off" }   // -demoReviewAlarm off|on
+        #endif
+        return FajrAlarms.supported && (!alarmOn || alarmsAllowed == false)
+    }
     private var essentialsMissing: Bool { locationMissing || notificationsMissing }
-    private var limited: Bool { (essentialsMissing || liveActivitiesMissing || alarmMissing) && !goLimited }
+    /// Anything still off: the title says "Almost set" while there is (owner), even after Continue with limited features.
+    private var anyMissing: Bool { essentialsMissing || liveActivitiesMissing || alarmMissing }
+    /// The nudge shows until it's all on or they continue with what they have.
+    private var limited: Bool { anyMissing && !goLimited }
+    /// Continue with limited features asks first, listing every thing they'd go without (owner).
+    @State private var confirmLimited = false
+    private var missingList: String {
+        var lines: [String] = []
+        if locationMissing { lines.append("Location: your times won’t follow you, the qibla will be off and prayers won’t be pinned.") }
+        if notificationsMissing { lines.append("Notifications: no nudge before a prayer slips by.") }
+        if liveActivitiesMissing { lines.append("Live Activities: no countdown on your Lock Screen or in the Dynamic Island.") }
+        if alarmMissing { lines.append("Fajr Alarm: no alarm for Fajr; you’ll set your own each night.") }
+        return lines.map { "• " + $0 }.joined(separator: "\n")
+    }
     private var limitedNote: String {
         switch (locationMissing, notificationsMissing) {
         case (true, true): return "Without these: no prayer notifications, and times and qibla that won’t follow you."
@@ -3525,7 +3546,7 @@ private struct ReviewStep: View {
             liveActivitiesTick += 1
         } else if FajrAlarms.supported && alarmsAllowed == false {
             SettingsLinks.app()
-        } else if FajrAlarms.supported {
+        } else {
             // As its page's "Set my Fajr alarm": on, and iOS asks; the rule is the one shown on the row.
             alarmOn = true
             Task { @MainActor in
@@ -3537,15 +3558,13 @@ private struct ReviewStep: View {
                     alarmDescription = calc.description
                 }
             }
-        } else {
-            jump(.fajr)   // before iOS 26.1 it's set up through the Shortcut, on its page
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             // Not "all set" while it's still asking for something.
-            StepTitle(title: limited ? "Almost set" : "You're all set",
+            StepTitle(title: anyMissing ? "Almost set" : "You're all set!",
                       subtitle: "Tap anything to change it.")
                 .contentTransition(.opacity)
                 .padding(.bottom, 16)
@@ -3586,7 +3605,7 @@ private struct ReviewStep: View {
                             .padding(.horizontal, 32)
                             .padding(.bottom, 12)
                         PrimaryButton(title: limitedButton, outlined: true, action: turnOnMissing)
-                        SecondaryButton(title: "Continue with limited features") { goLimited = true }
+                        SecondaryButton(title: "Continue with limited features") { confirmLimited = true }
                     }
                     .padding(.top, 8)
                     // Lower, into the room above the home indicator (owner: more breathing room for the list).
@@ -3603,6 +3622,19 @@ private struct ReviewStep: View {
             }
             .animation(.easeInOut(duration: 0.3), value: limited)
         }
+        .alert("Continue with limited features?", isPresented: $confirmLimited) {
+            Button(limitedButton, role: .cancel, action: turnOnMissing)
+            Button("Continue anyway", role: .destructive) { goLimited = true }
+        } message: {
+            Text("You’d go without:\n" + missingList)
+        }
+        #if DEBUG
+        .task {   // -demoReviewConfirmLimited: the Continue-with-limited-features alert, for a screenshot
+            guard ProcessInfo.processInfo.arguments.contains("-demoReviewConfirmLimited") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            confirmLimited = true
+        }
+        #endif
         .task {
             alarmsAllowed = FajrAlarms.allowed
             await notifications.refresh()
@@ -3645,6 +3677,9 @@ private struct ReviewStep: View {
             .compactMap { $0 }.joined(separator: " · ").capitalizedFirst
     }
     private var alarmValue: String {
+        #if DEBUG
+        if Self.demoAlarm == "on" { return PrayerUtils.alarmRuleText(offset: 10, isBefore: true, isStart: true) }
+        #endif
         guard alarmOn else { return "Off" }
         return PrayerUtils.alarmRuleText(offset: alarmOffset, isBefore: alarmBefore, isStart: alarmFajr)
     }
@@ -3686,6 +3721,9 @@ private struct ReviewStep: View {
     }
 
     private var locationFix: Fix? {
+        #if DEBUG
+        if let m = Self.demoMissing { return m == "both" || m == "location" ? Fix(value: "Not allowed yet", action: "Allow") {} : nil }
+        #endif
         if !location.isAuthorized && location.authorizationStatus == .notDetermined {
             // Never asked: a city picked before iOS asked, or the step skipped — ask now (Settings has nothing yet).
             return Fix(value: "Not allowed yet", action: "Allow") { location.requestLocationPermission() }
@@ -3702,13 +3740,16 @@ private struct ReviewStep: View {
     /// The same checks as Settings' status (NotificationHealth): off, not asked, held for the Scheduled Summary,
     /// Time Sensitive off.
     private var notificationsFix: Fix? {
+        #if DEBUG
+        if let m = Self.demoMissing { return m == "both" || m == "notifications" ? Fix(value: "Not allowed yet", action: "Allow") {} : nil }
+        #endif
         switch notifications.isOn {
         case .some(false): return Fix(value: "Off in iOS Settings", action: "Turn on", run: SettingsLinks.notifications)
         case .none: return Fix(value: "Not allowed yet", action: "Allow") { notifications.request() }
         default:
             // Allowed, but every prayer switched off: nothing will come.
             let anyOn = [fajrNotif, dhuhrNotif, asrNotif, maghribNotif, ishaNotif].contains(true)
-            if !anyOn { return Fix(value: "Off", action: "Set up") { jump(.reminders) } }
+            if !anyOn { return Fix(value: "Skipped", action: "Set up") { jump(.reminders) } }
             if health.issues.contains(.held) {
                 return Fix(value: "Held for the Scheduled Summary", action: "Fix", run: SettingsLinks.notifications)
             }
@@ -3720,10 +3761,13 @@ private struct ReviewStep: View {
     }
     /// No alarm because iOS said no: Settings; skipped before being asked: back to its step.
     private var alarmFix: Fix? {
+        #if DEBUG
+        if let a = Self.demoAlarm { return a == "off" ? Fix(value: "Skipped", action: "Set up") {} : nil }
+        #endif
         if FajrAlarms.supported && alarmsAllowed == false {
             return Fix(value: "Off in iOS Settings", action: "Turn on", run: SettingsLinks.app)
         }
-        if !alarmOn { return Fix(value: "Off", action: "Set up") { jump(.fajr) } }
+        if !alarmOn { return Fix(value: "Skipped", action: "Set up") { jump(.fajr) } }
         return nil
     }
 
@@ -3733,7 +3777,7 @@ private struct ReviewStep: View {
         let s = liveActivityState
         guard s.supported else { return nil }
         if !s.allowed { return Fix(value: "Off in iOS Settings", action: "Turn on", run: SettingsLinks.app) }
-        if s.prayers.isEmpty { return Fix(value: "Off", action: "Set up") { jump(.liveActivities) } }
+        if s.prayers.isEmpty { return Fix(value: "Skipped", action: "Set up") { jump(.liveActivities) } }
         return nil
     }
 
