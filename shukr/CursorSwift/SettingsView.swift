@@ -68,6 +68,7 @@ struct SettingsView: View {
     
     @AppStorage("modeToggle") var colorModeToggle = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+    @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var liveActivityLookRaw = LiveActivityLook.system.rawValue
     
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
@@ -494,6 +495,38 @@ struct SettingsView: View {
                     
                     
                     
+                    //MARK: - Appearance: every look in one place (owner, settings-appearance): the app's, the Live Activity
+                    // card's (was Reminders → Card Appearance); widgets follow the iPhone (nothing of ours to set).
+                    Section {
+                        Picker(selection: $colorModeToggleNew) {
+                            Text("Light").tag(0)
+                            Text("Dark").tag(1)
+                            Text("Auto").tag(2)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "circle.lefthalf.filled").frame(width: 24)
+                                Text("App")
+                            }
+                        }
+                        if PrayerLiveActivities.supported {
+                            NavigationLink {
+                                LiveActivityAppearancePage()
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "platter.filled.bottom.iphone").frame(width: 24)
+                                    Text("Live Activity card")
+                                    Spacer(minLength: 8)
+                                    Text((LiveActivityLook(rawValue: liveActivityLookRaw) ?? .system).title)
+                                        .foregroundStyle(.secondary).lineLimit(1)
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Appearance")
+                    } footer: {
+                        Text("Auto follows the sun: light from Fajr, dark after Maghrib. Widgets follow your iPhone’s light or dark mode.")
+                    }
+
                     // The tours again, for everyone (Tour.swift, CountTips.swift), under their own label (owner).
                     Section(header: Text("Tours")) {
                         Button {
@@ -1884,8 +1917,6 @@ struct LiveActivitySettingsRows: View {
     let showInfo: Bool
     @State private var enabled = ActivityAuthorizationInfo().areActivitiesEnabled
     @State private var status = LiveActivityStatus.shared
-    @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var lookRaw = LiveActivityLook.system.rawValue
-
     var body: some View {
         Group {
             // On: no row (decision reminders-status-row B) — "Scheduled through …" sits under the card. Off: this row,
@@ -1903,20 +1934,7 @@ struct LiveActivitySettingsRows: View {
                     }
                 }
                 .padding(.vertical, 4)
-                // The card's own look, apart from the app's (owner): a page with the card and the four choices.
-                NavigationLink {
-                    LiveActivityAppearancePage()
-                } label: {
-                    HStack {
-                        Label {
-                            Text("Card Appearance")
-                        } icon: {
-                            Image(systemName: "circle.lefthalf.filled").foregroundStyle(.primary)   // black, as the qibla's (owner)
-                        }
-                        Spacer()
-                        Text((LiveActivityLook(rawValue: lookRaw) ?? .system).title).foregroundStyle(.secondary)
-                    }
-                }
+                // (The card's look moved to Settings → Appearance — owner, settings-appearance.)
             }
         }
         .task {
