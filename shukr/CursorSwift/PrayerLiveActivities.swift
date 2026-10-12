@@ -277,6 +277,8 @@ enum PrayerLiveActivities {
         let liveStarts = all.filter { $0.activityState == .active && $0.content.state.markedAt == nil }.map(\.content.state.start)
         var ended: [String] = []
         var corrected: [String] = []
+        /// One update per card, sent at the end: a correction and the last card's note together (two raced).
+        var updates: [String: (Activity<PrayerWindowAttributes>, PrayerWindowAttributes.ContentState)] = [:]
         var endedIDs = Set<String>()
         var ending: [Task<Void, Never>] = []
         func end(_ a: Activity<PrayerWindowAttributes>, _ why: String) {
@@ -315,7 +317,7 @@ enum PrayerLiveActivities {
                     // and the end time; a pending card's start alert keeps its old time until the next open (Frank).
                     var fixed = st
                     fixed.start = w.start; fixed.end = w.end; fixed.dark = dark(for: w.name)
-                    Task { await a.update(ActivityContent(state: fixed, staleDate: w.end)) }
+                    updates[a.id] = (a, fixed)
                     corrected.append("\(st.label) to \(w.start.formatted(date: .omitted, time: .shortened))–\(w.end.formatted(date: .omitted, time: .shortened)) (kept)")
                 }
             }
@@ -342,6 +344,7 @@ enum PrayerLiveActivities {
         live = live.filter { !endedIDs.contains($0.id) }
         var held = Set(live.map(\.attributes.n))
         var added: [String] = []
+        var requested: [Activity<PrayerWindowAttributes>] = []
         var failed: String?
         for w in want where !held.contains(w.id) && !live.contains(where: { matches($0.content.state, w) }) {
             guard held.count < 5 else { break }
@@ -350,13 +353,13 @@ enum PrayerLiveActivities {
                                                             dark: dark(for: w.name))
             do {
                 if w.start > now {
-                    _ = try Activity.request(attributes: PrayerWindowAttributes(n: w.id), content: .init(state: state, staleDate: w.end),
+                    requested.append(try Activity.request(attributes: PrayerWindowAttributes(n: w.id), content: .init(state: state, staleDate: w.end),
                                              pushType: nil, style: .standard,
                                              alertConfiguration: AlertConfiguration(title: "\(w.name) has started",
                                                                                     body: "ends \(w.end.formatted(date: .omitted, time: .shortened))", sound: .default),
-                                             start: w.start)
+                                             start: w.start))
                 } else {
-                    _ = try Activity.request(attributes: PrayerWindowAttributes(n: w.id), content: .init(state: state, staleDate: w.end), pushType: nil)
+                    requested.append(try Activity.request(attributes: PrayerWindowAttributes(n: w.id), content: .init(state: state, staleDate: w.end), pushType: nil))
                 }
                 held.insert(w.id)
                 added.append("\(w.name) \(w.start.formatted(.dateTime.weekday(.abbreviated).hour().minute()))")
@@ -365,7 +368,24 @@ enum PrayerLiveActivities {
                 break
             }
         }
+        // The last card queued says so (owner): nothing follows it until shukr opens and plans again — then the note moves
+        // to the new last one, corrected in place.
+        var holding = Activity<PrayerWindowAttributes>.activities.filter {
+            !endedIDs.contains($0.id) && $0.content.state.markedAt == nil
+                && ($0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale)
+        }
+        for r in requested where !holding.contains(where: { $0.id == r.id }) { holding.append(r) }
+        let lastStart = holding.map { (updates[$0.id]?.1 ?? $0.content.state).start }.max()
+        var lastLabel: String?
+        for a in holding {
+            var st = updates[a.id]?.1 ?? a.content.state
+            let isLast = st.start == lastStart
+            if isLast { lastLabel = "\(st.label) \(st.start.formatted(.dateTime.weekday(.abbreviated).hour().minute()))" }
+            if (st.last ?? false) != isLast { st.last = isLast ? true : nil; updates[a.id] = (a, st) }
+        }
+        for (_, u) in updates { Task { await u.0.update(ActivityContent(state: u.1, staleDate: u.1.end)) } }
         var line = "plan (\(reason)\(bg ? ", bg" : "")): holding \(held.count)"
+        if let lastLabel { line += " · last \(lastLabel)" }
         if !ended.isEmpty { line += " · ended " + ended.joined(separator: ", ") }
         if !corrected.isEmpty { line += " · corrected " + corrected.joined(separator: ", ") }
         if !added.isEmpty { line += " · added " + added.joined(separator: ", ") }
@@ -393,7 +413,7 @@ enum PrayerLiveActivities {
 
     #if DEBUG
     /// `-laEndAll` ends every card; `-laNowAgo N [-laLength M]` puts up a stand-in window that began N min ago (left alone
-    /// by the planner; testIslandLook); `-laMarkNow` marks it; `-laMarkLive` marks whatever window is live. True = handled.
+    /// by the planner; testIslandLook; `-laLast` gives it the last card's note); `-laMarkNow` marks it; `-laMarkLive` marks whatever window is live. True = handled.
     @MainActor private static func debugLaunch() -> Bool {
         let args = ProcessInfo.processInfo.arguments
         func arg(_ k: String) -> Double? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? Double(args[$0 + 1]) : nil } }
@@ -408,7 +428,8 @@ enum PrayerLiveActivities {
             if let ago = arg("-laNowAgo") {
                 let start = Date().addingTimeInterval(-ago * 60), end = start.addingTimeInterval((arg("-laLength") ?? 90) * 60)
                 _ = try? Activity.request(attributes: PrayerWindowAttributes(n: 99),
-                                          content: .init(state: .init(label: "Asr", start: start, end: end, symbol: prayerIcon(for: "Asr")), staleDate: end),
+                                          content: .init(state: .init(label: "Asr", start: start, end: end, symbol: prayerIcon(for: "Asr"),
+                                                                      last: args.contains("-laLast") ? true : nil), staleDate: end),
                                           pushType: nil)
                 if args.contains("-laMarkNow") { try? await Task.sleep(for: .seconds(1)); await mark(99) }
                 return

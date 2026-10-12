@@ -1804,6 +1804,9 @@ struct PrayerWindowAttributes: ActivityAttributes {
         var markedAt: Date? = nil
         /// The Lock Screen card's look (`LiveActivityLook`): nil = the phone's.
         var dark: Bool? = nil
+        /// The last card shukr has queued (owner): nothing comes after it until shukr opens, so it says so at its foot.
+        /// Optional, so cards already held decode.
+        var last: Bool? = nil
     }
     /// The window's id: its start in whole minutes since 1970 (so a window is never scheduled twice).
     var n: Int
@@ -2038,6 +2041,8 @@ struct LALockCard: View {
                 LAGlyphs(state: state, n: n, ended: unmarkedEnded, size: t.buttonSize, onIsland: false, t: t, live: true)
                     .offset(x: t.buttonOffsetX)
                     .padding(.trailing, t.cardPaddingSides)
+                    // Level with the ring's row, not the middle of a card grown by the last card's note.
+                    .padding(.bottom, LALastNote.shows(state) ? LALastNote.room : 0)
             }
             .environment(\.colorScheme, state.dark.map { $0 ? .dark : .light } ?? system)
     }
@@ -2063,6 +2068,8 @@ struct LALockCardBody: View {
         }
         .padding(.horizontal, t.cardPaddingSides).padding(.vertical, t.cardPaddingTopBottom)
         .frame(minHeight: t.cardMinHeight)
+        // The last card queued: a line at its foot, centred (owner) — the row above keeps its size.
+        .padding(.bottom, LALastNote.shows(state) ? LALastNote.room : 0)
         // Our own solid surface under the glow: iOS draws `activityBackgroundTint` see-through (the wallpaper turned a red
         // glow pink on his phone).
         .background {
@@ -2075,8 +2082,26 @@ struct LALockCardBody: View {
             LADismissBar(state: state).scaleEffect(x: 1, y: t.barThickness)
                 .padding(.horizontal, t.barSideInset).padding(.bottom, t.barBottomInset)
         }
+        .overlay(alignment: .bottom) {
+            if LALastNote.shows(state) { LALastNote().padding(.bottom, 10) }
+        }
         .activityBackgroundTint(LASoft.surface(t, scheme))
         .activitySystemActionForegroundColor(.primary)
+    }
+}
+
+/// The last card shukr has queued says so (owner: "the last one … open the app if you want to keep receiving them"): one
+/// quiet line at the card's foot, centred. Not once marked (the card is going), never on the island.
+struct LALastNote: View {
+    static let room: CGFloat = 20
+    static func shows(_ s: PrayerWindowAttributes.ContentState) -> Bool { s.last == true && s.markedAt == nil }
+    var body: some View {
+        Text("Last card for now · open shukr to keep them coming")
+            .font(.system(.caption2, design: .rounded))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .frame(maxWidth: .infinity)
     }
 }
 

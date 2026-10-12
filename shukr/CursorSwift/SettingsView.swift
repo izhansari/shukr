@@ -2075,7 +2075,7 @@ struct LATunerView: View {
     @State private var base = Date()
     @State private var note = ""
 
-    private let kinds = ["Running", "Last ½ hr", "Marked", "Ended", "Island"]
+    private let kinds = ["Running", "Last ½ hr", "Marked", "Ended", "Island", "Last card"]
 
     var body: some View {
         NavigationStack {
@@ -2084,7 +2084,7 @@ struct LATunerView: View {
             else if UserDefaults.standard.bool(forKey: "laIslandGallery") { LAIslandGallery(t: t) } else {
             VStack(spacing: 0) {
                 preview
-                    .frame(height: kind == 4 ? 330 : 210)
+                    .frame(height: kind == 4 ? 330 : kind == 5 ? 240 : 210)
                     .frame(maxWidth: .infinity)
                     .background(LinearGradient(colors: [Color(red: 0.16, green: 0.22, blue: 0.30), Color(red: 0.05, green: 0.08, blue: 0.12)],
                                                startPoint: .top, endPoint: .bottom))
@@ -2152,6 +2152,7 @@ struct LATunerView: View {
         case 1 where UserDefaults.standard.object(forKey: "laPreviewLeft") != nil, 4 where UserDefaults.standard.object(forKey: "laPreviewLeft") != nil:   // DEBUG -laPreviewLeft seconds
             return .init(label: "Asr", start: base.addingTimeInterval(-110 * m), end: base.addingTimeInterval(UserDefaults.standard.double(forKey: "laPreviewLeft")), symbol: prayerIcon(for: "Asr"))
         case 1: return .init(label: "Asr", start: base.addingTimeInterval(-110 * m), end: base.addingTimeInterval(20 * m), symbol: prayerIcon(for: "Asr"))
+        case 5: return .init(label: "Asr", start: base.addingTimeInterval(-40 * m), end: base.addingTimeInterval(100 * m), symbol: prayerIcon(for: "Asr"), last: true)
         default: return .init(label: "Asr", start: base.addingTimeInterval(-40 * m), end: base.addingTimeInterval(100 * m), symbol: prayerIcon(for: "Asr"))
         }
     }
