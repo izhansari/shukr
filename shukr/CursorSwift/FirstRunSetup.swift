@@ -327,8 +327,7 @@ struct FirstRunSetupView: View {
                         case .location: LocationStep(locationOnly: mode == .locationOnly, next: { advance(to: .method) })
                         case .method, .madhab:
                             PrayerTimesStep(asr: step == .madhab,
-                                            next: { advance(to: step == .madhab ? .appearance : .madhab) },
-                                            change: { go(.method) })
+                                            next: { advance(to: step == .madhab ? .appearance : .madhab) })
                         case .appearance: AppearanceStep(next: { advance(to: .reminders) })
                         case .reminders: RemindersStep(next: {
                             NotificationScheduler.reschedule(context: context, reason: "setup reminders")
@@ -2181,18 +2180,10 @@ private struct PrayerTimesStep: View {
     /// The Asr (madhab) step; else the method.
     let asr: Bool
     let next: () -> Void
-    /// Back to the method: the folded row's "Change".
-    let change: () -> Void
     @EnvironmentObject private var viewModel: PrayerViewModel
     @EnvironmentObject private var location: EnvLocationManager
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
-    /// One row's height, so the folded card fits exactly one.
-    @State private var rowHeight: CGFloat = 60
-    /// Part 1's pieces travel into the folded line (owner: "show movement so the user can follow"): the badge, the
-    /// title (into "Calculation method"), the picked row's name.
-    @Namespace private var fold
-
 
     /// Automatic follows where you are: offered only with location on (owner); a picked city chooses for itself.
     private var rows: [(tag: Int, title: String, region: String)] {
@@ -2204,33 +2195,32 @@ private struct PrayerTimesStep: View {
             // One title for both steps (owner): the two questions are its numbered parts, so nothing at the top swaps.
             StepTitle(title: "Your prayer times", subtitle: nil)
                 .padding(.bottom, 14)
-            if asr {
-                // Answered: one quiet line (owner: "fold this more or make it less loud … while still a different
-                // section") — the tick, the pick in plain type, Change; no card, no sage fill.
-                foldedMethod
-                    .transition(.opacity.animation(.easeOut(duration: 0.2)))
-            } else {
-                VStack(spacing: 0) {
-                    section(1, "Your calculation method", current: true)
-                    note("Each method sets Fajr and Isha by a different angle of the sun. Pick the one your masjid uses.")
-                    methodCard
-                        .padding(.top, 10)
+            // One part on the page at a time (owner: the fold kept glitching): Continue fades part 1 out completely, then
+            // part 2 fades in where it stood — never both at once. Back (‹) returns to part 1 the same way.
+            ZStack(alignment: .top) {
+                if asr {
+                    VStack(spacing: 0) {
+                        section(2, "When does Asr begin?")
+                        asrPart.padding(.top, 4)
+                        Spacer(minLength: 0)
+                    }
+                    .transition(Self.oneAtATime)
+                } else {
+                    VStack(spacing: 0) {
+                        section(1, "Your calculation method")
+                        note("Each method sets Fajr and Isha by a different angle of the sun. Pick the one your masjid uses.")
+                        methodCard
+                            .padding(.top, 10)
+                    }
+                    .transition(Self.oneAtATime)
                 }
-                // Gone at once, so the heading below slides up through clear space (not over fading rows).
-                .transition(.opacity.animation(.linear(duration: 0.06)))
             }
-            section(2, "When does Asr begin?", current: asr)
-                .padding(.top, asr ? 14 : 18)
-            if asr {
-                asrPart
-                    .padding(.top, 4)
-                    // In just behind the fold; out at once going back.
-                    // In once the heading has slid up into place (fading in under it, they crossed — owner).
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 10))
-                                                .animation(.easeOut(duration: 0.28).delay(0.32)),
-                                            removal: .opacity.animation(.easeIn(duration: 0.12))))
-                Spacer(minLength: 0)
-            }
+            .frame(maxHeight: .infinity, alignment: .top)
+            // The same short dash as the notifications / Live Activities pages: the question above, today's times below.
+            Capsule()
+                .fill(Color.secondary.opacity(0.3))
+                .frame(width: 32, height: 3)
+                .padding(.top, 16)
             TodayStrip(method: method, school: school, highlightAsr: asr)
                 .padding(.top, 8)
                 .padding(.bottom, 16)
@@ -2254,86 +2244,26 @@ private struct PrayerTimesStep: View {
         }
     }
 
-    /// "1  Your calculation method": the part being answered is full strength, the other faint; a done one is ticked.
-    private func section(_ number: Int, _ title: String, current: Bool) -> some View {
-        let done = number == 1 && asr
-        let on = current || done
-        return HStack(spacing: 10) {
-            // Both looks always there, only their opacity changing: restyled in flight, the number slid apart from its
-            // circle as the heading moved up (owner: glitchy).
+    /// "1  Your calculation method": the part on the page, its number in a sage circle.
+    private func section(_ number: Int, _ title: String) -> some View {
+        HStack(spacing: 10) {
             ZStack {
-                ZStack {
-                    Circle().strokeBorder(Color.secondary.opacity(0.4), lineWidth: 1)
-                    Text("\(number)").font(.system(.caption, design: .rounded, weight: .semibold)).foregroundStyle(.secondary)
-                }
-                .opacity(on ? 0 : 1)
-                ZStack {
-                    Circle().fill(Color.sage)
-                    Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-                        .opacity(done ? 1 : 0)
-                    Text("\(number)").font(.system(.caption, design: .rounded, weight: .semibold)).foregroundStyle(.white)
-                        .opacity(done ? 0 : 1)
-                }
-                .opacity(on ? 1 : 0)
+                Circle().fill(Color.sage)
+                Text("\(number)").font(.system(.caption, design: .rounded, weight: .semibold)).foregroundStyle(.white)
             }
             .frame(width: 22, height: 22)
-            .modifier(FoldMatch(on: number == 1, id: "badge", in: fold))   // only part 1's travels (part 2's lagged its text)
-            // One weight, only the colour easing: a weight change redrew the text in flight (ghosting as it moved).
             Text(title)
                 .font(.system(.title3, design: .rounded, weight: .medium))
-                .foregroundStyle(Color.primary.opacity(current ? 1 : 0.4))
             Spacer()
         }
         .padding(.horizontal, 24)
         .accessibilityElement(children: .combine)
     }
 
-    /// Part 1 swapping between the list and its folded line: the old one goes first (quick), the new one fades in after
-    /// it — both at once ghosted one over the other (owner).
-    private static let swapIn = AnyTransition.asymmetric(
-        insertion: .opacity.animation(.easeOut(duration: 0.2).delay(0.2)),
-        removal: .opacity.animation(.easeIn(duration: 0.12)))
-
-    /// Part 1 once answered: "✓  Calculation method · Automatic (ISNA)   Change" on one quiet line, a hairline under it.
-    private var foldedMethod: some View {
-        let picked = rows.first { $0.tag == method }
-        let name = method == AutoMethod.automatic
-            ? "Automatic (\(AutoMethod.shortName(AutoMethod.resolved())))"
-            : (picked?.title ?? "")
-        return VStack(spacing: 10) {
-            Button(action: change) {
-                HStack(spacing: 10) {
-                    ZStack {
-                        Circle().fill(Color.sage)
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
-                    }
-                    .frame(width: 20, height: 20)
-                    .matchedGeometryEffect(id: "badge", in: fold)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Calculation method")
-                            .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(.secondary)
-                        Text(name)
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(.primary.opacity(0.85))
-                            .lineLimit(1)
-                            .fixedSize()   // whole while it travels (the row's narrower frame cut it to "Automatic (IS…")
-                            .matchedGeometryEffect(id: "name", in: fold)
-                    }
-                    Spacer()
-                    Text("Change")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(Color.sage)
-                        .transition(Self.swapIn)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint("Change the calculation method")
-            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
-        }
-        .padding(.horizontal, 24)
-    }
+    /// The old part goes first; the new one fades in only once it's gone (both at once ghosted one over the other).
+    private static let oneAtATime = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeOut(duration: 0.25).delay(0.2)),
+        removal: .opacity.animation(.easeIn(duration: 0.15)))
 
     private func note(_ text: String) -> some View {
         Text(text)
@@ -2347,23 +2277,17 @@ private struct PrayerTimesStep: View {
 
     /// Its own card (owner: "more like its own component so its clear its scrollable … selected one needs to be
     /// clearer"): a rounded list the rows scroll inside, the scroll bar flashing as it appears, the pick filled in sage.
-    /// On the Asr step only the pick stays, folded to one row with "Change".
     private var methodCard: some View {
         ScrollView {
             VStack(spacing: 4) {
-                ForEach(rows.filter { !asr || $0.tag == method }, id: \.tag) { row in
+                ForEach(rows, id: \.tag) { row in
                     methodRow(row)
-                        .transition(.opacity)
                 }
             }
             .padding(6)
         }
-        .scrollDisabled(asr)
-        .scrollIndicators(asr ? .hidden : .visible)
         .scrollIndicatorsFlash(onAppear: true)
-        .frame(height: asr ? rowHeight + 12 : nil)
-        .frame(maxHeight: asr ? nil : .infinity)
-        .layoutPriority(1)   // never squeezed: the Asr part above gives way first
+        .frame(maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemBackground)))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .padding(.horizontal, 20)
@@ -2372,29 +2296,21 @@ private struct PrayerTimesStep: View {
     private func methodRow(_ row: (tag: Int, title: String, region: String)) -> some View {
         let picked = method == row.tag
         return Button {
-            if asr { change() } else { withAnimation(.snappy(duration: 0.25)) { method = row.tag } }
+            withAnimation(.snappy(duration: 0.25)) { method = row.tag }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.title)
                         .font(.system(.body, design: .rounded, weight: picked ? .semibold : .regular))
-                        .matchedGeometryEffect(id: picked ? "name" : "name\(row.tag)", in: fold)
                     Text(row.tag == 0 ? "Follows where you are · \(AutoMethod.shortName(AutoMethod.resolved())) here" : row.region)
                         .font(.system(.footnote, design: .rounded, weight: .light))
                         .foregroundStyle(picked || row.tag == 0 ? Color.sage : .secondary)
                         .contentTransition(.opacity)
                 }
                 Spacer()
-                ZStack(alignment: .trailing) {
-                    Text("Change")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(Color.sage)
-                        .opacity(asr ? 1 : 0)
-                    Image(systemName: picked ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 20, weight: .light))
-                        .foregroundStyle(picked ? Color.sage : Color.secondary.opacity(0.4))
-                        .opacity(asr ? 0 : 1)
-                }
+                Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(picked ? Color.sage : Color.secondary.opacity(0.4))
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 14)
@@ -2405,11 +2321,9 @@ private struct PrayerTimesStep: View {
                         .strokeBorder(Color.sage.opacity(picked ? 0.45 : 0), lineWidth: 1))
             }
             .contentShape(Rectangle())
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if picked { rowHeight = $0 } }
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(picked ? .isSelected : [])
-        .accessibilityHint(asr ? "Change the calculation method" : "")
     }
 
     private var asrPart: some View {
@@ -2479,17 +2393,6 @@ private struct PrayerTimesStep: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityHint(lengths == 1 ? "Asr when a shadow is as long as the object" : "Asr when a shadow is twice the object's length")
-    }
-}
-
-/// A matched-geometry id only when `on`.
-private struct FoldMatch: ViewModifier {
-    let on: Bool
-    let id: String
-    let ns: Namespace.ID
-    init(on: Bool, id: String, in ns: Namespace.ID) { self.on = on; self.id = id; self.ns = ns }
-    func body(content: Content) -> some View {
-        if on { content.matchedGeometryEffect(id: id, in: ns) } else { content }
     }
 }
 
