@@ -192,7 +192,8 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "location.fill")
-                    .foregroundStyle(Color.green)
+                    .foregroundStyle(Color(.label))   // the page's other leading symbols' color (owner)
+                    .frame(width: 24)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(viewModel.cityName ?? "Finding your city…")
                         .foregroundStyle(.primary)
@@ -274,8 +275,9 @@ struct SettingsView: View {
                 ScrollViewReader { proxy in
                 Form {
                     
-                    //MARK: - Location Info
-                    Section(header: Text("Location").id("settingsTop")) {
+                    //MARK: - Prayer Times: where you are and how the times are worked out (owner: Location and Calculation
+                    // Method made one section)
+                    Section(header: Text("Prayer Times").id("settingsTop")) {
                         // (Latitude / longitude are gone: the city says it — owner, settings-cleanup-1.)
                         if envLocationManager.isAuthorized {
                             // One row: the city, when it was last updated, and the row itself refreshes it
@@ -285,6 +287,7 @@ struct SettingsView: View {
                             if let cityName = viewModel.cityName {
                                 HStack {
                                     Image(systemName: "mappin.and.ellipse")
+                                        .frame(width: 24)
                                     Text("City")
                                     Spacer()
                                     Text(cityName)
@@ -298,6 +301,41 @@ struct SettingsView: View {
                             Button("Use My Location", action: SettingsLinks.app)
                             .tint(.green)
                         }
+                        // The method, the school and the qibla's accuracy, under the place (owner: one section, Prayer Times).
+                        Picker("Method", selection: $calculationMethod) {
+                            // Follows the country you're in (AutoMethod) — the setup's default.
+                            Text(automaticLabel).tag(AutoMethod.automatic)
+                            ForEach(calculationMethods, id: \.0) { method in
+                                Text(method.1).tag(method.0)
+                            }
+                        }
+                        Picker("School", selection: $school) {
+                            ForEach(schools, id: \.0) { school in
+                                Text(school.1).tag(school.0)
+                            }
+                        }
+                        
+                        // Qibla sensitivity: ± buttons that repeat (and speed up) while held.
+                        HStack(spacing: 12) {
+                            Image(systemName: "location.north.line")
+                                .frame(width: 24)
+                            Text("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°")
+                                .monospacedDigit()
+                            Spacer()
+                            HoldRepeatStepper(value: $qiblaSensitivity,
+                                              in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
+                                              step: 0.5)
+                        }
+                    }
+                    .onChange(of: calculationMethod) { _, new in
+                        viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
+                        WidgetCenter.shared.reloadAllTimelines()
+                        WatchSync.shared.send()
+                    }
+                    .onChange(of: school) { _, new in
+                        viewModel.fetchPrayerTimes(cameFrom: "onChange school")
+                        WidgetCenter.shared.reloadAllTimelines()
+                        WatchSync.shared.send()
                     }
                     .onChange(of: viewModel.cityName) { _, name in
                         // A real place only: "Error fetching city" / "Unknown" aren't an update (Bradley's review).
@@ -381,44 +419,6 @@ struct SettingsView: View {
                     // (The Masjid section — duas when you arrive and leave — is parked: it didn't fire until the app was
                     // opened (owner, settings-cleanup-1). `MasjidArrival.parked` turns it off for anyone who had it on.)
 
-                    //MARK: - Calculation Method
-                    Section(header: Text("Calculation Method")) {
-                        Picker("Method", selection: $calculationMethod) {
-                            // Follows the country you're in (AutoMethod) — the setup's default.
-                            Text(automaticLabel).tag(AutoMethod.automatic)
-                            ForEach(calculationMethods, id: \.0) { method in
-                                Text(method.1).tag(method.0)
-                            }
-                        }
-                        Picker("School", selection: $school) {
-                            ForEach(schools, id: \.0) { school in
-                                Text(school.1).tag(school.0)
-                            }
-                        }
-                        
-                        // Qibla sensitivity: ± buttons that repeat (and speed up) while held.
-                        HStack(spacing: 12) {
-                            Image(systemName: "location.north.line")
-                                .frame(width: 24)
-                            Text("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°")
-                                .monospacedDigit()
-                            Spacer()
-                            HoldRepeatStepper(value: $qiblaSensitivity,
-                                              in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
-                                              step: 0.5)
-                        }
-                        
-                    }
-                    .onChange(of: calculationMethod) { _, new in
-                        viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
-                        WidgetCenter.shared.reloadAllTimelines()
-                        WatchSync.shared.send()
-                    }
-                    .onChange(of: school) { _, new in
-                        viewModel.fetchPrayerTimes(cameFrom: "onChange school")
-                        WidgetCenter.shared.reloadAllTimelines()
-                        WatchSync.shared.send()
-                    }
                     
                     
                     
@@ -1508,54 +1508,44 @@ import ActivityKit
 /// NotificationHealthRows' look — on, with how many windows are waiting and the next; or off for shukr in iOS, with the
 /// way back — then, while on, the five columns, each the prayer's own symbol (black = its window shows, grey = not).
 /// iOS 26+ only (scheduled starts); the section isn't shown before.
-/// Reminders' switch (owner, decision settings-alerts E): Notifications | Live Activities, a pill sliding under the side
-/// picked; a side with something wrong (off, or held) wears a small orange dot on its name, so it's found from the other.
+/// Reminders' switch (owner, decision settings-alerts E): iOS's own segmented control (owner: "so it feels right and
+/// familiar"; a hand-made one didn't take taps in its List row), with a small orange dot laid over the end of a side's name
+/// when something there is wrong, so it's found from the other side.
 struct ReminderSwitch: View {
     static let notifications = "notifications", liveActivities = "liveActivities"
     @Binding var tab: String
     let notificationsNeedYou: Bool
     let liveActivitiesNeedYou: Bool
-    @Namespace private var pill
 
     var body: some View {
-        HStack(spacing: 0) {
-            side(Self.notifications, "Notifications", notificationsNeedYou)
-            side(Self.liveActivities, "Live Activities", liveActivitiesNeedYou)
+        Picker("Reminders", selection: $tab.animation(.snappy(duration: 0.3))) {
+            Text("Notifications").tag(Self.notifications)
+            Text("Live Activities").tag(Self.liveActivities)
         }
-        .padding(2)
-        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Color(.tertiarySystemFill)))
+        .pickerStyle(.segmented)
+        // The control can't hold a badge: each half carries an invisible copy of its title with the dot at its corner.
+        .overlay {
+            HStack(spacing: 0) {
+                badge("Notifications", notificationsNeedYou)
+                badge("Live Activities", liveActivitiesNeedYou)
+            }
+            .allowsHitTesting(false)
+        }
+        .accessibilityValue(notificationsNeedYou || liveActivitiesNeedYou
+                            ? "\(notificationsNeedYou ? "Notifications" : "Live Activities") needs attention" : "")
     }
 
-    private func side(_ id: String, _ title: String, _ needsYou: Bool) -> some View {
-        Button {
-            guard tab != id else { return }
-            withAnimation(.snappy(duration: 0.3)) { tab = id }
-            UISelectionFeedbackGenerator().selectionChanged()
-        } label: {
-            Text(title)
-                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                .foregroundStyle(.primary)
-                .overlay(alignment: .topTrailing) {
-                    if needsYou {
-                        Circle().fill(Color.orange).frame(width: 7, height: 7).offset(x: 9, y: -2)
-                            .accessibilityHidden(true)
-                    }
+    private func badge(_ title: String, _ needsYou: Bool) -> some View {
+        Text(title)
+            .font(.system(size: 13, weight: .medium))
+            .hidden()
+            .overlay(alignment: .topTrailing) {
+                if needsYou {
+                    Circle().fill(Color.orange).frame(width: 7, height: 7).offset(x: 9, y: -3)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 7)
-                .background {
-                    if tab == id {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(Color(UIColor { $0.userInterfaceStyle == .dark ? .systemGray3 : .white }))
-                            .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
-                            .matchedGeometryEffect(id: "pill", in: pill)
-                    }
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title + (needsYou ? ", needs attention" : ""))
-        .accessibilityAddTraits(tab == id ? .isSelected : [])
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
     }
 }
 
