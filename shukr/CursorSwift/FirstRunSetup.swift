@@ -2354,7 +2354,13 @@ private struct PrayerTimesStep: View {
             #else
             let style = 0
             #endif
-            if style == 3 {
+            #if DEBUG
+            let rows = style == 3
+            #else
+            let rows = false
+            #endif
+            if rows {
+                #if DEBUG
                 VStack(spacing: 10) {
                     rowCard(title: "Shafi'i", rule: "shadow as long as the object · Maliki, Hanbali too", lengths: 1,
                             asr: shafiAsr, selected: school != 1) { school = 0 }
@@ -2362,6 +2368,7 @@ private struct PrayerTimesStep: View {
                             asr: hanafiAsr, selected: school == 1) { school = 1 }
                 }
                 .padding(.horizontal, 24)
+                #endif
             } else {
                 HStack(spacing: 14) {
                     card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
