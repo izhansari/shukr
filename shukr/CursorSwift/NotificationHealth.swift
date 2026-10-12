@@ -740,7 +740,12 @@ struct YourRemindersView: View {
         let (symbol, title, what): (String, String, String) = switch item.kind {
         case .zikr, .zikrLater: ("circle.dotted.circle", item.title.isEmpty ? "Zikr reminder" : item.title, "Zikr reminder")
         case .masjid: ("building.columns", item.title.isEmpty ? "Masjid dua" : item.title, "Masjid dua")
-        case .keepAlive: ("arrow.clockwise.circle", "Open shukr", "Keeps your reminders coming")
+        // Plan v2's three warnings, each saying what it is.
+        case .keepAlive where item.id.hasPrefix(NotificationScheduler.headsUpPrefix):
+            ("calendar.badge.exclamationmark", "Heads-up", "Your reminders run out in 2 days")
+        case .keepAlive where item.id.hasPrefix(NotificationScheduler.easeOffPrefix):
+            ("bell.badge", "Easing off", "Just the starts from the next day")
+        case .keepAlive: ("arrow.clockwise.circle", "Open shukr", "The last reminder before they run out")
         default: ("bell", line(for: item), "Reminder")
         }
         return HStack(spacing: 12) {
@@ -824,7 +829,9 @@ struct YourRemindersView: View {
         case .snooze: [item.prayer, item.title.isEmpty ? "nudge me later" : "\u{201C}\(item.title)\u{201D}"]
             .compactMap { $0 }.joined(separator: " · ")
         case .masjid: [item.title, item.subtitle].filter { !$0.isEmpty }.joined(separator: " · ")
-        case .keepAlive: "Reminder to open shukr"
+        case .keepAlive: item.id.hasPrefix(NotificationScheduler.headsUpPrefix) ? "Heads-up: reminders run out in 2 days"
+            : item.id.hasPrefix(NotificationScheduler.easeOffPrefix) ? "Easing off to just the starts"
+            : "Reminder to open shukr"
         case .other: item.title.isEmpty ? "Reminder" : item.title
         }
     }
@@ -868,9 +875,10 @@ struct YourRemindersView: View {
         let today = PrayerDay.date()
         if PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(today) { return "later today" }
         if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today),
-           PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(tomorrow) { return "tomorrow" }
-        // The date, not the weekday (owner: "Nudges added 22nd").
-        return Self.ordinal.string(from: NSNumber(value: Calendar.current.component(.day, from: before)))
+           PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(tomorrow) { return "by tomorrow" }
+        // The date, not the weekday (owner: "Nudges added 22nd"). "By": the 3 sure days are a floor — opening shukr
+        // often brings full days sooner (plan v2's runway).
+        return "by the " + (Self.ordinal.string(from: NSNumber(value: Calendar.current.component(.day, from: before))) ?? "")
     }
     private static let ordinal: NumberFormatter = { let f = NumberFormatter(); f.numberStyle = .ordinal; return f }()
 
