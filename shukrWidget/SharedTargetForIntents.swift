@@ -1848,11 +1848,11 @@ struct LATuning: Codable, Equatable {
     var cardSurfaceGrey: Double = 0.14
     // Ring
     var ringSize: Double = 69
-    var ringArcDiameter: Double = 0.83      // of the ring size
+    var ringArcDiameter: Double = 0.8      // of the ring size
     var ringBandWidth: Double = 5.5          // at the 90 pt design size
-    var ringArcWidth: Double = 3          // at the 90 pt design size
+    var ringArcWidth: Double = 2          // at the 90 pt design size
     var ringSymbolSize: Double = 17
-    var ringBandLift: Double = 0.11
+    var ringBandLift: Double = 0.1
     // Text
     var titleSize: Double = 19
     var timeLeftSize: Double = 12
@@ -1860,9 +1860,9 @@ struct LATuning: Codable, Equatable {
     var lineSpacing: Double = 2
     var textOffsetY: Double = 0
     // Glow
-    var glowStrength: Double = 0.45
-    var glowReach: Double = 0.64
-    var glowCentreX: Double = 0.05
+    var glowStrength: Double = 0.16
+    var glowReach: Double = 0.51
+    var glowCentreX: Double = 0.19
     var glowCentreY: Double = 0.5
     // Buttons
     var buttonSize: Double = 44
@@ -1872,9 +1872,9 @@ struct LATuning: Codable, Equatable {
     var buttonSymbolOpacity: Double? = nil   // nil = 0.65: the symbols a little dull, not stark white (owner)
     var symbolOpacity: Double { get { buttonSymbolOpacity ?? 0.65 } set { buttonSymbolOpacity = newValue } }
     // 15 s bar
-    var barSideInset: Double = 8
+    var barSideInset: Double = 5
     var barBottomInset: Double = 0
-    var barThickness: Double = 0.5
+    var barThickness: Double = 0.8
     // Dynamic Island (opened up)
     var islandRingSize: Double = 66
     var islandTitleSize: Double = 20

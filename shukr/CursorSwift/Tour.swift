@@ -2782,13 +2782,19 @@ struct TourSheetTip: View {
 /// compass's red dot sits over it when that's needed too.
 struct TourMenuBadge: View {
     @AppStorage(TourRuntime.completedKey) private var completed = false
+    /// The invitation answered with Later, or the tour skipped (`doneKey`, set by both): only then is the dot worth
+    /// showing (owner, 2026-10-11: "dont show it until it matters"); never while the invitation or a tour is up.
+    @AppStorage(TourRuntime.doneKey) private var answered = false
     var body: some View {
+        let show = answered && !completed && !TourRuntime.shared.active && !ZikrTour.shared.active
         Circle()
             .fill(TourInk.green)
             .frame(width: 8, height: 8)
             // The app tour not yet taken to its end (the Zikr Tour's dot is on the Zikr tab now, with its lock).
-            .opacity(completed || TourRuntime.shared.active || ZikrTour.shared.active ? 0 : 1)
-            .animation(.easeInOut(duration: 0.3), value: completed)
+            // It arrives once the card has gone: grows in with a small spring, never just appears (owner).
+            .scaleEffect(show ? 1 : 0.1)
+            .opacity(show ? 1 : 0)
+            .animation(show ? .spring(response: 0.45, dampingFraction: 0.55).delay(0.6) : .easeOut(duration: 0.25), value: show)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
