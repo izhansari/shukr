@@ -253,9 +253,29 @@ struct SettingsView: View {
         return f.localizedString(for: date, relativeTo: now).replacingOccurrences(of: ".", with: "")
     }
 
+    /// The switch's sides: Notifications · Live Activities (iOS 26+) · Fajr Alarm, each with its orange dot.
+    private var reminderSides: [ReminderSwitch.Side] {
+        var sides = [ReminderSwitch.Side(id: ReminderSwitch.notifications, title: "Notifications", needsYou: notificationsNeedYou)]
+        if PrayerLiveActivities.supported {
+            sides.append(.init(id: ReminderSwitch.liveActivities, title: "Live Activities", needsYou: liveActivitiesNeedYou))
+        }
+        sides.append(.init(id: ReminderSwitch.fajrAlarm, title: "Fajr Alarm", needsYou: fajrAlarmStatus.needsYou))
+        return sides
+    }
+    /// The side showing (a Live Activities pick kept from a newer iOS falls back to Notifications).
+    private var shownReminderTab: String {
+        remindersTab == ReminderSwitch.liveActivities && !PrayerLiveActivities.supported ? ReminderSwitch.notifications : remindersTab
+    }
+    @State private var fajrAlarmStatus = FajrAlarmStatus.shared
+    @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var fajrAlarmOn = false
+
     /// Under the Reminders card (decision reminders-status-row B): how far ahead the side showing is set up.
     @ViewBuilder private var remindersFooter: some View {
-        if PrayerLiveActivities.supported && remindersTab == ReminderSwitch.liveActivities {
+        if shownReminderTab == ReminderSwitch.fajrAlarm {
+            if fajrAlarmOn, FajrAlarms.isActive, !fajrAlarmStatus.needsYou, let through = fajrAlarmStatus.through {
+                Text("Scheduled through \(Self.throughDay(through))")
+            }
+        } else if shownReminderTab == ReminderSwitch.liveActivities {
             if liveActivitiesOn {
                 if let through = laStatus.through {
                     Text("Scheduled through \(Self.throughDay(through))")
@@ -409,14 +429,14 @@ struct SettingsView: View {
                     // Activities side Card Appearance; a side with something wrong wears an orange dot on the switch.
                     // Before iOS 26 there's no Live Activities side and no switch.
                     Section {
-                        if PrayerLiveActivities.supported {
-                            ReminderSwitch(tab: $remindersTab, notificationsNeedYou: notificationsNeedYou,
-                                           liveActivitiesNeedYou: liveActivitiesNeedYou)
-                                .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
-                                .listRowSeparator(.hidden)
-                        }
-                        if PrayerLiveActivities.supported && remindersTab == ReminderSwitch.liveActivities {
+                        ReminderSwitch(tab: $remindersTab, sides: reminderSides)
+                            .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
+                            .listRowSeparator(.hidden)
+                        if shownReminderTab == ReminderSwitch.liveActivities {
                             LiveActivitySettingsRows(showInfo: false)
+                        } else if shownReminderTab == ReminderSwitch.fajrAlarm {
+                            // Fajr Alarm lives here now (owner): its own section is gone.
+                            AlarmSettingsView()
                         } else {
                             // Will they actually arrive? (NotificationHealth: off / held for the Scheduled
                             // Summary / Time Sensitive / Background App Refresh.)
@@ -452,9 +472,6 @@ struct SettingsView: View {
                         for await on in ActivityAuthorizationInfo().activityEnablementUpdates { liveActivitiesOn = on }
                     }
 
-                    // MARK: - Daily Alarm
-                    AlarmSettingsView()
-                        .id(SettingsJump.fajrAlarm)
                     
                     
                     
@@ -502,8 +519,10 @@ struct SettingsView: View {
                     // mid-swipe stalled the pager, Sami's round D run) — then this row for its last step.
                     // The day page's "Set a Fajr alarm ›": the alarm row, once the page is at rest (DaySummary.swift).
                     .onChange(of: SettingsJump.shared.count) { _, _ in
+                        let target = SettingsJump.shared.target
+                        if target == SettingsJump.fajrAlarm { remindersTab = ReminderSwitch.fajrAlarm }
                         withAnimation(.smooth(duration: CircleMotion.standard)) {
-                            proxy.scrollTo(SettingsJump.shared.target, anchor: .center)
+                            proxy.scrollTo(target == SettingsJump.fajrAlarm ? "liveActivities" : target, anchor: .center)
                         }
                     }
                     .onChange(of: TourRuntime.shared.settingsScroll.1) { _, _ in
@@ -713,10 +732,14 @@ struct SettingsView: View {
         }
         // Reminders' ⓘ: a floating card for the side showing (owner: tooltips as a frosted modal).
         .infoModal(isPresented: $isNotifPopupVisible,
-                   title: remindersTab == ReminderSwitch.liveActivities ? "Live Activities" : "Notifications",
-                   symbol: remindersTab == ReminderSwitch.liveActivities ? "platter.filled.bottom.iphone" : "bell") {
-            if PrayerLiveActivities.supported && remindersTab == ReminderSwitch.liveActivities {
+                   title: shownReminderTab == ReminderSwitch.liveActivities ? "Live Activities"
+                        : shownReminderTab == ReminderSwitch.fajrAlarm ? "Fajr Alarm" : "Notifications",
+                   symbol: shownReminderTab == ReminderSwitch.liveActivities ? "platter.filled.bottom.iphone"
+                        : shownReminderTab == ReminderSwitch.fajrAlarm ? "alarm" : "bell") {
+            if shownReminderTab == ReminderSwitch.liveActivities {
                 LiveActivityInfo()
+            } else if shownReminderTab == ReminderSwitch.fajrAlarm {
+                FajrAlarmInfo()
             } else {
                 NotificationDropdownInfo()
             }
@@ -1142,11 +1165,13 @@ struct StreakDropdownInfo: View {
 }
 
 
+/// Reminders' Fajr Alarm side (owner, 2026-10-12: "put fajr alarm in reminders tab switcher"): refused in iOS Settings →
+/// the warning row and its way back; else the switch, and while on "Rings · 20 min before Fajr starts", which opens
+/// setup's three wheels in place (an iOS-style inline picker: wheels always open would turn under a scrolling finger),
+/// the result in green and Fajr's time as its proof. A change is saved and re-planned a beat after the wheels stop.
 struct AlarmSettingsView: View {
     @EnvironmentObject var viewModel: PrayerViewModel
     
-    // Whether or not to show the informational text section
-    @State private var isAlarmInfoVisible: Bool = false
     
     // Local state to manage alert presentation
     @State private var isShowingShortcutAlert: Bool = false
@@ -1175,6 +1200,110 @@ struct AlarmSettingsView: View {
     @State private var showAlarmCheck = false
     @State private var alarmKitRefused = false
     
+    private var toggleRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "alarm")
+                .frame(width: 24)   // the qibla row's column (owner: it sat right against the words)
+            Toggle("Daily alarm", isOn: Binding(
+                get: { alarmEnabled },
+                set: { newValue in
+                    withAnimation { alarmEnabled = newValue }
+                    // iOS 26.1+: shukr sets real alarms itself (asks once); no Shortcut.
+                    if FajrAlarms.supported {
+                        Task { @MainActor in
+                            if newValue {
+                                if !(await FajrAlarms.enable()) {
+                                    withAnimation { alarmEnabled = false }
+                                    alarmKitRefused = true
+                                }
+                            } else {
+                                await FajrAlarms.plan(reason: "switched off")
+                            }
+                            status.refresh()
+                        }
+                        return
+                    }
+                    if newValue && !didShowAlarmSetupAlert {
+                        isShowingShortcutAlert = true
+                        didShowAlarmSetupAlert = true
+                    }
+                }
+            ))
+        }
+    }
+
+    /// "Rings · 20 min before Fajr starts" — a tap opens / closes the wheels under it.
+    private var ruleRow: some View {
+        Button {
+            withAnimation(.snappy(duration: 0.3)) { isEditingAlarm.toggle() }
+            if !isEditingAlarm { saveTask?.cancel(); saveRule() }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "clock").frame(width: 24)
+                Text("Rings").foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Text(ruleText)
+                    .foregroundStyle(isEditingAlarm ? Color.green : .secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .contentTransition(.numericText())
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isEditingAlarm ? 90 : 0))
+            }
+            .contentShape(Rectangle())
+        }
+        // Plain: our colours and the full-width hit area (iOS 26 restyles a Form's buttons).
+        .buttonStyle(.plain)
+        .accessibilityHint(isEditingAlarm ? "Closes the time picker" : "Opens the time picker")
+    }
+
+    /// Setup's three wheels (owner: "it's perfected in onboarding"), then the result big and Fajr's time as its proof.
+    private var wheels: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 0) {
+                // 5-minute steps (owner, 2026-09-29); before the end of Fajr from 10 (FajrAlarmRule).
+                Picker("Minutes", selection: $alarmOffsetMinutes) {
+                    ForEach(FajrAlarmRule.minutes(isFajr: alarmIsFajr), id: \.self) { Text("\($0) min").tag($0) }
+                }
+                Picker("Before or after", selection: $alarmIsBefore) {
+                    Text("before").tag(true)
+                    if alarmIsFajr { Text("after").tag(false) }
+                }
+                // The start / end of Fajr (stored as alarmIsFajr true / false).
+                Picker("Start or end of Fajr", selection: $alarmIsFajr) {
+                    Text("Fajr starts").tag(true)
+                    if alarmIsBefore { Text("Fajr ends").tag(false) }
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(height: 100)
+            .clipped()
+            Text(timeOfCalcAlarmText)
+                .font(.headline.weight(.semibold))
+                .fontDesign(.rounded)
+                .foregroundStyle(Color.green)   // Settings' green (owner, note C9FB37FF)
+                .contentTransition(.numericText())
+            Text(fajrTimeRangeText)
+                .foregroundStyle(.secondary)
+                .font(.footnote)
+        }
+        .padding(.bottom, 4)
+        .transition(.opacity)
+        // The divider under the wheels runs the card's full width.
+        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+    }
+
+    /// The row's words for the Shortcut (alarmTimeSetFor / alarmDescription) and the alarms ahead.
+    private func saveRule() {
+        if let calc = try? PrayerUtils.calculateAlarmDescription() {
+            if alarmTimeSetFor != shortTimePM(calc.time) { alarmTimeSetFor = shortTimePM(calc.time) }
+            if alarmDescription != calc.description { alarmDescription = calc.description }
+        }
+        Task { await FajrAlarms.plan(reason: "rule changed"); status.refresh() }
+    }
+
     // ------------------------------------------
     // MARK: - Computed Helpers
     // ------------------------------------------
@@ -1219,187 +1348,78 @@ struct AlarmSettingsView: View {
     // MARK: - Body
     // ------------------------------------------
     
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var status = FajrAlarmStatus.shared
+    @State private var saveTask: Task<Void, Never>?
+
+    /// The rule in words for the row: "20 min before Fajr starts", "When Fajr ends".
+    private var ruleText: String {
+        let edge = alarmIsFajr ? "starts" : "ends"
+        return alarmOffsetMinutes == 0 ? "When Fajr \(edge)" : "\(alarmOffsetMinutes) min \(alarmIsBefore ? "before" : "after") Fajr \(edge)"
+    }
+    private var ruleKey: [Int] { [alarmOffsetMinutes, alarmIsBefore ? 1 : 0, alarmIsFajr ? 1 : 0] }
+
     var body: some View {
-        
-        Section(header:
-                    HStack {
-            Text("Fajr Alarm")
-            Spacer()
-            Button(action: {
-                withAnimation {
-                    isAlarmInfoVisible.toggle()
+        Group {
+            if FajrAlarms.supported && status.allowed == false {
+                // Refused in iOS Settings: as Live Activities' side says it, with the way back.
+                HStack(spacing: 14) {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(Color.orange.opacity(0.9))
+                        .frame(width: 30)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Alarms are off").font(.system(.body, design: .rounded)).foregroundStyle(.primary)
+                        Text("Off for shukr in iOS Settings").font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                    }
                 }
-            }) {
-                Image(systemName: "info.circle")
-                    .foregroundColor(.green)
-            }
-        }
-        ) {
-            
-            // Toggle to enable/disable alarm
-            HStack(spacing: 12) {
-                Image(systemName: "alarm")
-                    .frame(width: 24)   // the qibla row's column (owner: it sat right against the words)
-                    // Alarm Settings' ⓘ: a floating card (owner: tooltips as a frosted modal).
-                    .infoModal(isPresented: $isAlarmInfoVisible, title: "Fajr Alarm", symbol: "alarm") { alarmInfoView }
-                
-                Toggle("Daily alarm", isOn: Binding(
-                    get: { self.alarmEnabled },
-                    set: { newValue in
-                        // Animate changes
-                        withAnimation {
-                            self.alarmEnabled = newValue
-                        }
-                        // iOS 26.1+: shukr sets real alarms itself (asks once); no Shortcut.
-                        if FajrAlarms.supported {
-                            Task { @MainActor in
-                                if newValue {
-                                    if !(await FajrAlarms.enable()) {
-                                        withAnimation { alarmEnabled = false }
-                                        alarmKitRefused = true
-                                    }
-                                } else {
-                                    await FajrAlarms.plan(reason: "switched off")
-                                }
-                            }
-                            return
-                        }
-                        // If user just turned it ON and has never seen the alert, show it now
-                        if newValue && !didShowAlarmSetupAlert {
-                            isShowingShortcutAlert = true
+                .padding(.vertical, 2)
+                Button(action: SettingsLinks.app) {
+                    Text("Turn on alarms").font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
+                }
+            } else {
+                toggleRow
+                if alarmEnabled {
+                    ruleRow
+                    if isEditingAlarm { wheels }
+                    if !FajrAlarms.supported {
+                        // Before iOS 26.1 the Shortcut sets it (setup's words).
+                        Button {
                             didShowAlarmSetupAlert = true
+                            if let shortcutURL { UIApplication.shared.open(shortcutURL) }
+                        } label: {
+                            Label("Get the Shortcut", systemImage: "square.and.arrow.down")
+                                .font(.system(.subheadline, design: .rounded, weight: .medium))
+                                .foregroundStyle(Color.sage)
                         }
+                        .buttonStyle(.plain)
                     }
-                ))
-            }
-            .alert("Alarms are off for shukr", isPresented: $alarmKitRefused) {
-                Button("Open Settings", action: SettingsLinks.app)
-                Button("Not now", role: .cancel) {}
-            } message: {
-                Text("To set your Fajr alarm, allow shukr to schedule alarms in Settings.")
-            }
-            // Present an alert the first time user toggles the alarm ON
-            .alert("Shortcut Required", isPresented: $isShowingShortcutAlert) {
-                Button("Get Shortcut") {
-                    if let shortcutURL {
-                        UIApplication.shared.open(shortcutURL)
-                    }
-                }
-                Button("Cancel", role: .cancel) {
-                    didShowAlarmSetupAlert = false
-                    alarmEnabled = false
-                }
-            } message: {
-                Text("This only works if you set up a shortcut automation. Tap “Get Shortcut” to install it, then tap the info button above for setup steps.")
-            }
-            
-            // If alarm is enabled, show the detail controls
-            if alarmEnabled {
-                if isEditingAlarm{
-                    VStack{
-                        
-                        HStack {
-                            // 5-minute steps (owner, 2026-09-29); before the end of Fajr from 10 (FajrAlarmRule).
-                            Picker("", selection: $alarmOffsetMinutes) {
-                                ForEach(FajrAlarmRule.minutes(isFajr: alarmIsFajr), id: \.self) { number in
-                                    Text("\(number) min").tag(number)
-                                }
+                    // iOS 26.1+ but still the Shortcut (from before): one tap to let shukr take over.
+                    if FajrAlarms.supported && !alarmKitActive {
+                        Button {
+                            Task { @MainActor in
+                                if !(await FajrAlarms.enable()) { alarmKitRefused = true }
+                                status.refresh()
                             }
-                            .pickerStyle(.wheel)
-                            
-                            // Picker for "Before"/"After"
-                            Picker("", selection: $alarmIsBefore) {
-                                Text("Before").tag(true)
-                                // Only show "After" if user picked Fajr
-                                if alarmIsFajr {
-                                    Text("After").tag(false)
-                                }
-                            }
-                            .pickerStyle(.wheel)
-                            
-                            // Picker for the start / end of Fajr (stored as alarmIsFajr true / false)
-                            Picker("", selection: $alarmIsFajr) {
-                                Text("Start").tag(true)
-                                // Only show "End" if user picked "Before"
-                                if alarmIsBefore {
-                                    Text("End").tag(false)
-                                }
-                            }
-                            .pickerStyle(.wheel)
-                            
+                        } label: {
+                            // A fix, worded and coloured as the other sides' fixes.
+                            Text("Let shukr set it (no Shortcut needed)")
+                                .font(.system(.subheadline, design: .rounded, weight: .medium))
+                                .foregroundStyle(Color.sage)
                         }
-                        .frame(height: 100) // Adjust this value to your preferred height
-                        .clipped() // This ensures the picker doesn't overflow its frame
-                        
-                        // The result big, the Fajr time under it as the proof (owner, 2026-09-29).
-                        Text(timeOfCalcAlarmText)
-                            .font(.headline.weight(.semibold))
-                            .fontDesign(.rounded)
-                            .foregroundStyle(Color.green)   // Settings' green (owner, note C9FB37FF)
-
-                        Text(fajrTimeRangeText)
-                            .foregroundStyle(.secondary)
-                            .font(.footnote)
-                    }
-                    // The divider under the wheels runs the card's full width (it started at the
-                    // centred text, ~200 pt in — owner).
-                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
-                    
-                }
-                    
-                    Button(action: {
-                        withAnimation {
-                            isEditingAlarm.toggle()
-                            do{
-                                let calculatedAlarm = try PrayerUtils.calculateAlarmDescription()
-                                let resultTime = calculatedAlarm.time
-                                alarmTimeSetFor = shortTimePM(resultTime)
-                                alarmDescription = calculatedAlarm.description
-                            }
-                            catch{
-                                print("Error: \(error.localizedDescription)")
-                            }
-                        }
-                        // A new rule: the alarms ahead move with it.
-                        if !isEditingAlarm { Task { await FajrAlarms.plan(reason: "rule changed") } }
-                    }) {
-                        HStack {
-                            Text(isEditingAlarm ? "Save" : alarmDescription)
-                                .foregroundStyle(isEditingAlarm ? Color.green : Color.gray)
-                                .font(isEditingAlarm ? .body.weight(.medium) : .subheadline)
-                            Spacer()
-                            Image(systemName: isEditingAlarm ? "square.and.arrow.down" : "pencil") // Add the pencil icon here
-                                .foregroundStyle(isEditingAlarm ? Color.green : Color.gray) // Match the color with text
-                        }
-                        .contentShape(Rectangle())   // the whole row taps, not just the text
-                    }
-                    // Plain: keep our colours and the full-width hit area. iOS 26 restyles a
-                    // Form's buttons (tint + label-only hit area), which broke this row's look.
-                    .buttonStyle(.plain)
-
-                    // iOS 26.1+: who sets it. shukr (AlarmKit) — how far ahead; or still the
-                    // Shortcut (from before) — one tap to let shukr take over.
-                    if FajrAlarms.supported && !isEditingAlarm {
-                        // shukr sets it: nothing more to say here (owner, settings-cleanup-1: no "every day through …"
-                        // line, no test alarm).
-                        if !alarmKitActive {
-                            Button {
-                                Task { @MainActor in
-                                    if !(await FajrAlarms.enable()) { alarmKitRefused = true }
-                                }
-                            } label: {
-                                Label("Let shukr set it (no Shortcut needed)", systemImage: "alarm.waves.left.and.right")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundStyle(Color.green)
-                            }
-                            .buttonStyle(.plain)
-                        }
+                        .buttonStyle(.plain)
                     }
                     // Beta: every alarm AlarmKit holds, checked against the rule, and the alarm's log (FajrAlarmKit.swift).
-                    if FajrAlarms.supported && !isEditingAlarm && betaAccess.beta {
+                    if FajrAlarms.supported && betaAccess.beta {
                         Button { showAlarmCheck = true } label: {
-                            Label("Alarm check", systemImage: "checklist")
-                                .font(.footnote.weight(.medium))
+                            // In the rows' column and the page's black (owner: no blue on this page).
+                            HStack(spacing: 12) {
+                                Image(systemName: "checklist").frame(width: 24)
+                                Text("Alarm check")
+                                Spacer()
+                            }
+                            .foregroundStyle(.primary)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .sheet(isPresented: $showAlarmCheck) {
@@ -1409,9 +1429,37 @@ struct AlarmSettingsView: View {
                             }
                         }
                     }
+                }
             }
-            
         }
+        .alert("Alarms are off for shukr", isPresented: $alarmKitRefused) {
+            Button("Open Settings", action: SettingsLinks.app)
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("To set your Fajr alarm, allow shukr to schedule alarms in Settings.")
+        }
+        // Before iOS 26.1: the first switch-on says the Shortcut is needed.
+        .alert("Shortcut Required", isPresented: $isShowingShortcutAlert) {
+            Button("Get Shortcut") {
+                if let shortcutURL { UIApplication.shared.open(shortcutURL) }
+            }
+            Button("Cancel", role: .cancel) {
+                didShowAlarmSetupAlert = false
+                alarmEnabled = false
+            }
+        } message: {
+            Text("This only works if you set up a shortcut automation. Tap “Get Shortcut” to install it, then tap the info button above for setup steps.")
+        }
+        // The wheels stopped: the row's words and the alarms ahead follow (no Save any more).
+        .onChange(of: ruleKey) { _, _ in
+            saveTask?.cancel()
+            saveTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.8))
+                guard !Task.isCancelled else { return }
+                saveRule()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { status.refresh() } }
         .onAppear{
             // nil until there's a location (no GPS fix yet at first launch); Settings is mounted
             // at launch, so a force unwrap here crashed the app.
@@ -1433,6 +1481,40 @@ struct AlarmSettingsView: View {
             }
         }
     }
+
+
+}
+
+
+/// AlarmKit's answer and how far ahead it's set, for the Fajr Alarm side, its dot on the switch and the line under it.
+@MainActor @Observable final class FajrAlarmStatus {
+    static let shared = FajrAlarmStatus()
+    private(set) var allowed: Bool? = FajrAlarmStatus.readAllowed
+    private(set) var through: Date? = FajrAlarms.scheduledThrough
+    /// DEBUG `-demoFajrAlarmAllowed`: reads as allowed (the simulator's alarms are refused; screenshots of the on side).
+    private static var readAllowed: Bool? {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoFajrAlarmAllowed") { return true }
+        #endif
+        return FajrAlarms.allowed
+    }
+    func refresh() {
+        let a = Self.readAllowed, t = FajrAlarms.scheduledThrough
+        if allowed != a { allowed = a }
+        if through != t { through = t }
+    }
+    /// Refused in iOS Settings (the switch's orange dot).
+    var needsYou: Bool { FajrAlarms.supported && allowed == false }
+}
+
+/// Reminders' ⓘ on the Fajr Alarm side: iOS 26.1+ a small version of setup's alarm page; older, the Shortcut's steps.
+struct FajrAlarmInfo: View {
+    @AppStorage("alarmOffsetMinutes", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmOffsetMinutes: Int = 0
+    @AppStorage("alarmIsBefore", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmIsBefore: Bool = true
+    @AppStorage("alarmIsFajr", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmIsFajr: Bool = true
+    private var shortcutURL: URL? { URL(string: "https://www.icloud.com/shortcuts/6ebcfeb12813483992687461d027fd14") }
+
+    var body: some View { alarmInfoView }
 
     // ------------------------------------------
     // MARK: - Info Section
@@ -1635,27 +1717,24 @@ struct ZikrTourAgainRow: View {
 /// familiar"; a hand-made one didn't take taps in its List row), with a small orange dot laid over the end of a side's name
 /// when something there is wrong, so it's found from the other side.
 struct ReminderSwitch: View {
-    static let notifications = "notifications", liveActivities = "liveActivities"
+    static let notifications = "notifications", liveActivities = "liveActivities", fajrAlarm = "fajrAlarm"
+    struct Side { let id: String; let title: String; let needsYou: Bool }
     @Binding var tab: String
-    let notificationsNeedYou: Bool
-    let liveActivitiesNeedYou: Bool
+    let sides: [Side]
 
     var body: some View {
         Picker("Reminders", selection: $tab.animation(.snappy(duration: 0.3))) {
-            Text("Notifications").tag(Self.notifications)
-            Text("Live Activities").tag(Self.liveActivities)
+            ForEach(sides, id: \.id) { Text($0.title).tag($0.id) }
         }
         .pickerStyle(.segmented)
-        // The control can't hold a badge: each half carries an invisible copy of its title with the dot at its corner.
+        // The control can't hold a badge: each segment carries an invisible copy of its title with the dot at its corner.
         .overlay {
             HStack(spacing: 0) {
-                badge("Notifications", notificationsNeedYou)
-                badge("Live Activities", liveActivitiesNeedYou)
+                ForEach(sides, id: \.id) { badge($0.title, $0.needsYou) }
             }
             .allowsHitTesting(false)
         }
-        .accessibilityValue(notificationsNeedYou || liveActivitiesNeedYou
-                            ? "\(notificationsNeedYou ? "Notifications" : "Live Activities") needs attention" : "")
+        .accessibilityValue(sides.filter(\.needsYou).map { "\($0.title) needs attention" }.joined(separator: ", "))
     }
 
     private func badge(_ title: String, _ needsYou: Bool) -> some View {
