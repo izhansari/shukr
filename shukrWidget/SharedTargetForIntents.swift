@@ -1941,8 +1941,8 @@ struct LATuning: Codable, Equatable {
     static let weights: [Font.Weight] = [.light, .regular, .medium, .semibold, .bold]
     static let weightNames = ["Light", "Regular", "Medium", "Semibold", "Bold"]
     var islandTimeSize: Double { get { islandTimeSizeOpt ?? 17 } set { islandTimeSizeOpt = newValue } }
-    /// The opened island's row: room for "27m" over the button; the ring's side takes the same height.
-    var islandRowHeight: Double { islandButtonSize + islandTimeSize * 1.25 + 6 }
+    /// The opened island's row: the button's height (the time sits beside it now); the ring's side takes the same.
+    var islandRowHeight: Double { islandButtonSize }
     /// The ended ring's dashes (owner: tunable): how many, how much of each step is dash, how bright, how thick (nil =
     /// the arc's width).
     var endedDashCountOpt: Double? = nil
@@ -2181,8 +2181,7 @@ struct LATimeLeft: View {
             let hour = end.addingTimeInterval(-3600), minute = end.addingTimeInterval(-60)
             ZStack(alignment: .leading) {
                 Text("\(Text(end, style: .relative))\(left)").mask { LAGate(from: nil, until: hour) }
-                Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.minute], maxFieldCount: 1, sign: .never)))\(left)")
-                    .mask { LAGate(from: hour, until: minute) }
+                LAMinuteWords(end: end, left: left).mask { LAGate(from: hour, until: minute) }
                 Text("under a minute\(left)").mask { LAGate(from: minute, until: nil) }
             }
         case 1: Text("\(Text(end, style: .relative))\(left)")
@@ -2224,6 +2223,45 @@ struct LACompactTrailing: View {
 /// are words), so this is the stock "27:08" countdown set flush right, its ":08" hidden under a mask the width of ":00",
 /// and an "m" in that place. (Clipping it to the width of "00" from the left worked in the app but drew only the "m" on the
 /// island: iOS lays a timer text out at its widest.) Under a minute: "<1m".
+/// "30 minutes left" from the per-second countdown, so the number turns exactly on time (iOS's own minute text turned
+/// 1–4 s late, and the red last half hour has to start just after "30" — owner): the stock "30:08" set so its digits
+/// land on a hidden "00", the rest masked off, then " minutes left". "0" room under ten minutes; "1 minute left"; the
+/// last minute is the caller's. Never fixedSize on the timer (an unbounded ideal width crashed the widget).
+struct LAMinuteWords: View {
+    let end: Date
+    var left = " left"
+    var body: some View {
+        let ten = end.addingTimeInterval(-10 * 60), two = end.addingTimeInterval(-2 * 60)
+        ZStack(alignment: .leading) {
+            words(room: "00").mask { LAGate(from: nil, until: ten) }
+            words(room: "0").mask { LAGate(from: ten, until: two) }
+            Text("1 minute\(left)").mask { LAGate(from: two, until: nil) }
+        }
+        .monospacedDigit()
+    }
+    private func words(room: String) -> some View {
+        HStack(spacing: 0) {
+            Text(room).hidden()
+            Text(" minutes\(left)")
+        }
+        .overlay(alignment: .leading) {
+            // "00:00" laid out (hidden), the timer flush right over it: its digits fall on the "00".
+            HStack(spacing: 0) { Text(room).hidden(); Text(":00").hidden() }
+                .overlay(alignment: .trailing) {
+                    Text(timerInterval: Date.now...max(end, Date.now), countsDown: true, showsHours: false)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 400, alignment: .trailing)
+                }
+                .mask {
+                    HStack(spacing: 0) {
+                        Text(room).hidden().overlay(Color.black)
+                        Text(":00").hidden()
+                    }
+                }
+        }
+    }
+}
+
 struct LAMinutesLeft: View {
     let end: Date
     /// The font size it's drawn at: its width is set from it (≈ "00m"), since the timer text claims room for far more
@@ -2318,32 +2356,19 @@ struct LAIslandTrailing: View {
     var body: some View {
         Group {
             if state.markedAt == nil && !ended {
-                // Two layouts, switched by time (no update comes at the half hour): more than half an hour left, the ✓
-                // alone, centred; the last half hour, "27m" over it, the pair centred; ended, the dashed circle centred
-                // again (owner). ONE button whose face holds all three, so the press always shows on the one you see.
-                let room = t.islandTimeSize * 1.25
-                let half = LAGate.lastHalf(of: state.end)
-                let disc = LADisc(symbol: "checkmark", size: t.islandButtonSize, symbolSize: t.buttonSymbolSize, onIsland: true,
-                                  endsAt: live ? state.end : nil, t: t)
-                Button(intent: PrayerWindowMarkIntent(n: n)) {
-                    ZStack(alignment: .trailing) {
-                        disc.mask { LAGate(from: nil, until: half) }
-                        VStack(alignment: .trailing, spacing: 6) {
-                            LAIslandTime(end: state.end, size: t.islandTimeSize).font(.system(size: t.islandTimeSize, weight: .regular)).frame(height: room)
-                            disc
-                        }
-                        .mask { LAGate(from: half, until: state.end) }
-                        disc.mask { LAGate(from: state.end, until: nil) }
-                    }
-                    .frame(height: t.islandRowHeight)
+                // "27m" to the LEFT of the ✓ in the last half hour, the ✓ a plain button that never moves: a button whose
+                // own contents switched layout by time took no tap on the island (the sim, 2026-10-12), so nothing in or
+                // around it moves now — the time's room is kept, empty until then.
+                HStack(spacing: 8) {
+                    LAIslandTime(end: state.end, size: t.islandTimeSize).font(.system(size: t.islandTimeSize, weight: .regular))
+                    LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
                 }
-                .buttonStyle(LAPressStyle())
             } else {
                 LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
             }
         }
         .frame(minHeight: t.islandRowHeight)
-        .padding(4)   // the soft disc's shadow, inside the region (it clips); "27m" lines up with the button's edge
+        .padding(.vertical, 2)   // a flat disc now: no shadow room needed; "27m" lines up with the button's edge
     }
 }
 
@@ -2442,10 +2467,8 @@ struct LADisc: View {
         .frame(width: size, height: size)
         .background {
             if onIsland {
-                Circle().fill(LASoft.island)
-                    .shadow(color: .black, radius: 3, x: 1.5, y: 1.5)
-                    .shadow(color: .white.opacity(0.09), radius: 3, x: -1.5, y: -1.5)
-                    .shadow(color: .white.opacity(t.ringBandLift * 0.6), radius: 1.5, x: -1, y: -1)
+                // On the island's black a plain grey disc (owner): the soft shadows only showed as clipped corners.
+                Circle().fill(Color(white: 0.19))
             } else {
                 Circle().fill(LASoft.surface(t, scheme))
                     .shadow(color: LASoft.shade(scheme), radius: 3, x: 1.5, y: 1.5)
@@ -2619,10 +2642,10 @@ struct LAGate: View {
     private static let steps = 5
     private static let fadeLength: TimeInterval = 0.15   // owner: 0.15 s (1.5, 0.5, 0.25 read as lag)
 
-    /// When the last half hour's red begins: ~3 s after the time left turns "30" (owner: white "30" fades to red "30").
-    /// The minutes are floored, so the gate at end − 30:00 left a white "30 minutes" for a whole minute; and iOS turns
-    /// "31" into "30" late and unevenly (1 s, then 4 s after end − 31:00 on the sim's Lock Screen), so 7 s past it.
-    static func lastHalf(of end: Date) -> Date { end.addingTimeInterval(-31 * 60 + 7) }
+    /// When the last half hour's red begins: 1 s after the time left turns "30" (owner: white "30" fades to red "30").
+    /// The words under an hour come from the per-second countdown (LAMinuteWords), which reads "30" from end − 30:59, so
+    /// the red starts a second later (owner: "30 for 1 second"). iOS's own minute text turned 1–4 s late.
+    static func lastHalf(of end: Date) -> Date { end.addingTimeInterval(-31 * 60 + 2) }
 
     var body: some View {
         // An edge already passed when this is drawn is drawn solid: its stock bar re-filled on every update, sweeping a
