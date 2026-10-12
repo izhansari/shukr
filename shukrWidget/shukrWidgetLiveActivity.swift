@@ -129,7 +129,7 @@ struct PrayerWindowLiveActivity: Widget {
                             }
                             .padding(.leading, -10).padding(.trailing, 2)   // the region's left margin is wider (the sim's island)
                         }
-                        LADismissBar(state: s).padding(.horizontal, 24)
+                        LADismissBar(state: s).padding(.horizontal, 24)   // on the island's bottom edge, as on the card (owner)
                     }
                 }
             } compactLeading: {
@@ -139,6 +139,7 @@ struct PrayerWindowLiveActivity: Widget {
             } minimal: {
                 LAEnds(state: s, stale: stale) { e in LARing(state: s, ended: e, size: 22, onIsland: true, t: t) }
             }
+            .contentMargins(.bottom, 9, for: .expanded)   // the 15 s bar near the island's bottom edge
         }
     }
 }

@@ -2136,9 +2136,6 @@ struct LANameLines: View {
             } else if ended {
                 Text("\(state.end.formatted(date: .omitted, time: .shortened)) · not marked")
                     .font(.system(size: line)).foregroundStyle(.secondary)
-            } else if !big {
-                Text("ends \((shownEnd ?? state.end).formatted(date: .omitted, time: .shortened))")
-                    .font(.system(size: line)).foregroundStyle(.secondary)
             } else {
                 let lastHalf = LAGate.lastHalf(of: state.end)
                 Group {
@@ -2150,10 +2147,9 @@ struct LANameLines: View {
                         .mask { LAGate(from: lastHalf, until: nil) }
                 }
                 .font(.system(size: line))
-                if big {
-                    Text("ends \((shownEnd ?? state.end).formatted(date: .omitted, time: .shortened))")
-                        .font(.system(size: small)).foregroundStyle(.secondary)
-                }
+                // The island too (owner: the time between the two lines, as on the card; "24m" only folded).
+                Text("ends \((shownEnd ?? state.end).formatted(date: .omitted, time: .shortened))")
+                    .font(.system(size: small)).foregroundStyle(.secondary)
                 }
                 .transition(LATransitions.line)
             }
@@ -2355,14 +2351,9 @@ struct LAIslandTrailing: View {
     var live = false
     var body: some View {
         Group {
-            if state.markedAt == nil && !ended {
-                // "27m" to the LEFT of the ✓ in the last half hour, the ✓ a plain button that never moves: a button whose
-                // own contents switched layout by time took no tap on the island (the sim, 2026-10-12), so nothing in or
-                // around it moves now — the time's room is kept, empty until then.
-                HStack(spacing: 8) {
-                    LAIslandTime(end: state.end, size: t.islandTimeSize).font(.system(size: t.islandTimeSize, weight: .regular))
-                    LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
-                }
+            if false {
+                // (The time left lives in the name's lines now, as on the card — owner; "24m" only on the folded island.
+                // A button whose own contents switched layout by time took no tap on the island: keep the ✓ plain.)
             } else {
                 LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
             }
