@@ -215,9 +215,18 @@ struct SettingsView: View {
                 }
                 .frame(width: 20)
                 Spacer(minLength: 8)
-                Text(viewModel.cityName ?? "Finding…")
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                // (No "Location updated" line any more — owner. A failed refresh says why here, in orange, for its few
+                // seconds; the spinner and ✓ by "Location" show the rest.)
+                Group {
+                    if case .failed(let why) = refreshState {
+                        Text(why).foregroundStyle(.orange)
+                    } else {
+                        Text(viewModel.cityName ?? "Finding…").foregroundStyle(.secondary)
+                    }
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .contentTransition(.opacity)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
@@ -226,35 +235,6 @@ struct SettingsView: View {
         .accessibilityHint("Updates your location and prayer times")
     }
 
-    /// Under the Prayer Times card (owner: the row is one line now): "Location updated 2 min ago", or what's happening /
-    /// went wrong; nothing before the first update is known.
-    @ViewBuilder private var locationFooter: some View {
-        Group {
-            switch refreshState {
-            case .failed(let why):
-                Text(why).foregroundStyle(.orange)
-            case .working:
-                Text("Updating your location…")
-            default:
-                if locationUpdatedAt > 0 {
-                    TimelineView(.periodic(from: .now, by: 30)) { context in
-                        Text("Location updated \(Self.updatedPhrase(Date(timeIntervalSince1970: locationUpdatedAt), now: context.date))")
-                    }
-                }
-            }
-        }
-        .contentTransition(.opacity)
-    }
-
-    /// "just now" under a minute, else "2 min ago" / "3 hr ago" / "yesterday".
-    private static func updatedPhrase(_ date: Date, now: Date) -> String {
-        if now.timeIntervalSince(date) < 60 { return "just now" }
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
-        f.dateTimeStyle = .named
-        // "2 min ago", not "2 min. ago" (owner).
-        return f.localizedString(for: date, relativeTo: now).replacingOccurrences(of: ".", with: "")
-    }
 
     /// The switch's sides: Notifications · Live Activities (iOS 26+) · Fajr Alarm, each with its orange dot.
     private var reminderSides: [ReminderSwitch.Side] {
@@ -273,22 +253,18 @@ struct SettingsView: View {
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var fajrAlarmOn = false
 
     /// Under the Reminders card (decision reminders-status-row B): how far ahead the side showing is set up.
-    @ViewBuilder private var remindersFooter: some View {
+    private var remindersFooter: String? {
         if shownReminderTab == ReminderSwitch.fajrAlarm {
-            if fajrAlarmOn, FajrAlarms.isActive, !fajrAlarmStatus.needsYou, let through = fajrAlarmStatus.through {
-                Text("Scheduled through \(Self.throughDay(through))")
-            }
+            guard fajrAlarmOn, FajrAlarms.isActive, !fajrAlarmStatus.needsYou, let through = fajrAlarmStatus.through else { return nil }
+            return "Scheduled through \(Self.throughDay(through))"
         } else if shownReminderTab == ReminderSwitch.liveActivities {
-            if liveActivitiesOn {
-                if let through = laStatus.through {
-                    Text("Scheduled through \(Self.throughDay(through))")
-                } else if laStatus.held == 0 && LiveActivityPrefs.prayers.contains(where: LiveActivityPrefs.isOn) {
-                    Text("None waiting right now")
-                }
-            }
+            guard liveActivitiesOn else { return nil }
+            if let through = laStatus.through { return "Scheduled through \(Self.throughDay(through))" }
+            return laStatus.held == 0 && LiveActivityPrefs.prayers.contains(where: LiveActivityPrefs.isOn) ? "None waiting right now" : nil
         } else if !remindersOff, let through = notificationHealth.scheduledThrough {
-            Text("Scheduled through \(Self.throughDay(through))")
+            return "Scheduled through \(Self.throughDay(through))"
         }
+        return nil
     }
     @State private var laStatus = LiveActivityStatus.shared
     /// "Fri, Oct 23".
@@ -400,8 +376,6 @@ struct SettingsView: View {
                         }
                     } header: {
                         headerWithInfoButton(title: "Prayer Times", isPopupVisible: $isTimesInfoVisible).id("settingsTop")
-                    } footer: {
-                        if envLocationManager.isAuthorized { locationFooter }
                     }
                     .onChange(of: calculationMethod) { _, new in
                         viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
@@ -432,9 +406,15 @@ struct SettingsView: View {
                     // Activities side Card Appearance; a side with something wrong wears an orange dot on the switch.
                     // Before iOS 26 there's no Live Activities side and no switch.
                     Section {
+                        // The switch, in the card (owner: not apart from its component). Its separator isn't hidden but
+                        // painted in the card's own colour, edge to edge: hidden, a hairline seam of the page showed
+                        // under it whenever the card landed on a fractional pixel (the bug the owner first met with the
+                        // Fajr alarm).
                         ReminderSwitch(tab: $remindersTab, sides: reminderSides)
                             .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
-                            .listRowSeparator(.hidden)
+                            .listRowSeparatorTint(Color(.secondarySystemGroupedBackground))
+                            .alignmentGuide(.listRowSeparatorLeading) { _ in -12 }   // the card's edges (the row is 12 in)
+                            .alignmentGuide(.listRowSeparatorTrailing) { d in d.width + 12 }
                         if shownReminderTab == ReminderSwitch.liveActivities {
                             LiveActivitySettingsRows(showInfo: false)
                         } else if shownReminderTab == ReminderSwitch.fajrAlarm {
@@ -464,10 +444,14 @@ struct SettingsView: View {
                             YourNotificationsRow()
                             }
                         }
+                        // How far ahead the side showing is set up — inside the card, its last line (owner), on every side.
+                        if let line = remindersFooter {
+                            Text(line)
+                                .font(.system(.footnote, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
                     } header: {
                         headerWithInfoButton(title: "Reminders", isPopupVisible: $isNotifPopupVisible)
-                    } footer: {
-                        remindersFooter
                     }
                     .id("liveActivities")
 
@@ -796,6 +780,7 @@ struct SettingsView: View {
             guard PrayerLiveActivities.supported else { return }
             for await on in ActivityAuthorizationInfo().activityEnablementUpdates where liveActivitiesOn != on { liveActivitiesOn = on }
         }
+        .task { await notificationHealth.refresh() }   // was NotificationHealthRows' own (see there)
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             fajrAlarmStatus.refresh()
             if PrayerLiveActivities.supported {
@@ -1277,6 +1262,60 @@ struct AlarmSettingsView: View {
     @State private var showAlarmCheck = false
     @State private var alarmKitRefused = false
     
+    /// The side's alerts and watchers, on its first row (a real one): on the Group they made an empty, zero-height row
+    /// in the List — the hairline under the switch (owner: "a bug … when i first made the fajr alarm").
+    private func hooked<V: View>(_ row: V) -> some View {
+        row
+        .alert("Alarms are off for shukr", isPresented: $alarmKitRefused) {
+            Button("Open Settings", action: SettingsLinks.app)
+            Button("Not now", role: .cancel) {}
+            } message: {
+            Text("To set your Fajr alarm, allow shukr to schedule alarms in Settings.")
+            }
+            // Before iOS 26.1: the first switch-on says the Shortcut is needed.
+            .alert("Shortcut Required", isPresented: $isShowingShortcutAlert) {
+            Button("Get Shortcut") {
+                if let shortcutURL { UIApplication.shared.open(shortcutURL) }
+            }
+            Button("Cancel", role: .cancel) {
+                didShowAlarmSetupAlert = false
+                alarmEnabled = false
+            }
+            } message: {
+            Text("This only works if you set up a shortcut automation. Tap “Get Shortcut” to install it, then tap the info button above for setup steps.")
+            }
+            // The wheels stopped: the row's words and the alarms ahead follow (no Save any more).
+            .onChange(of: ruleKey) { _, _ in
+            saveTask?.cancel()
+            saveTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.8))
+                guard !Task.isCancelled else { return }
+                saveRule()
+            }
+            }
+            .onChange(of: scenePhase) { _, phase in if phase == .active { status.refresh() } }
+            .onAppear{
+            // nil until there's a location (no GPS fix yet at first launch); Settings is mounted
+            // at launch, so a force unwrap here crashed the app.
+            if let sunrise = viewModel.getNextPrayerTime(for: "sunrise") { nextSunriseTime = sunrise }
+            if let fajr = viewModel.getNextPrayerTime(for: "fajr") { nextFajrTime = fajr }
+            // 5-minute steps: an older value (e.g. 7) snaps to the nearest step.
+            if alarmOffsetMinutes % 5 != 0 { alarmOffsetMinutes = min(60, Int((Double(alarmOffsetMinutes) / 5).rounded()) * 5) }
+            let floored = FajrAlarmRule.clamp(alarmOffsetMinutes, isFajr: alarmIsFajr)
+            if floored != alarmOffsetMinutes { alarmOffsetMinutes = floored }
+            }
+            // Picking the end of Fajr lifts 0 / 5 minutes to 10.
+            .onChange(of: alarmIsFajr) { _, isFajr in
+            let floored = FajrAlarmRule.clamp(alarmOffsetMinutes, isFajr: isFajr)
+            if floored != alarmOffsetMinutes { alarmOffsetMinutes = floored }
+            }
+            .onChange(of: alarmEnabled){_, newValue in
+                if newValue {
+                    isEditingAlarm = true
+            }
+            }
+    }
+
     private var toggleRow: some View {
         HStack(spacing: 12) {
             Image(systemName: "alarm")
@@ -1442,7 +1481,7 @@ struct AlarmSettingsView: View {
                 // Not allowed yet (asks, and turns the alarm on) or refused in iOS Settings (the way back there): as the
                 // notifications side says each.
                 let refused = status.allowed == false
-                HStack(spacing: 14) {
+                hooked(HStack(spacing: 14) {
                     Image(systemName: "exclamationmark.circle")
                         .font(.system(size: 24, weight: .light))
                         .foregroundStyle(Color.orange.opacity(0.9))
@@ -1454,7 +1493,7 @@ struct AlarmSettingsView: View {
                             .font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
                     }
                 }
-                .padding(.vertical, 2)
+                .padding(.vertical, 2))
                 Button {
                     guard !refused else { SettingsLinks.app(); return }
                     Task { @MainActor in
@@ -1470,7 +1509,7 @@ struct AlarmSettingsView: View {
                         .font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
                 }
             } else {
-                toggleRow
+                hooked(toggleRow)
                 if alarmEnabled {
                     ruleRow
                     if isEditingAlarm { wheels }
@@ -1509,54 +1548,6 @@ struct AlarmSettingsView: View {
                         }
                     }
                 }
-            }
-        }
-        .alert("Alarms are off for shukr", isPresented: $alarmKitRefused) {
-            Button("Open Settings", action: SettingsLinks.app)
-            Button("Not now", role: .cancel) {}
-        } message: {
-            Text("To set your Fajr alarm, allow shukr to schedule alarms in Settings.")
-        }
-        // Before iOS 26.1: the first switch-on says the Shortcut is needed.
-        .alert("Shortcut Required", isPresented: $isShowingShortcutAlert) {
-            Button("Get Shortcut") {
-                if let shortcutURL { UIApplication.shared.open(shortcutURL) }
-            }
-            Button("Cancel", role: .cancel) {
-                didShowAlarmSetupAlert = false
-                alarmEnabled = false
-            }
-        } message: {
-            Text("This only works if you set up a shortcut automation. Tap “Get Shortcut” to install it, then tap the info button above for setup steps.")
-        }
-        // The wheels stopped: the row's words and the alarms ahead follow (no Save any more).
-        .onChange(of: ruleKey) { _, _ in
-            saveTask?.cancel()
-            saveTask = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(0.8))
-                guard !Task.isCancelled else { return }
-                saveRule()
-            }
-        }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { status.refresh() } }
-        .onAppear{
-            // nil until there's a location (no GPS fix yet at first launch); Settings is mounted
-            // at launch, so a force unwrap here crashed the app.
-            if let sunrise = viewModel.getNextPrayerTime(for: "sunrise") { nextSunriseTime = sunrise }
-            if let fajr = viewModel.getNextPrayerTime(for: "fajr") { nextFajrTime = fajr }
-            // 5-minute steps: an older value (e.g. 7) snaps to the nearest step.
-            if alarmOffsetMinutes % 5 != 0 { alarmOffsetMinutes = min(60, Int((Double(alarmOffsetMinutes) / 5).rounded()) * 5) }
-            let floored = FajrAlarmRule.clamp(alarmOffsetMinutes, isFajr: alarmIsFajr)
-            if floored != alarmOffsetMinutes { alarmOffsetMinutes = floored }
-        }
-        // Picking the end of Fajr lifts 0 / 5 minutes to 10.
-        .onChange(of: alarmIsFajr) { _, isFajr in
-            let floored = FajrAlarmRule.clamp(alarmOffsetMinutes, isFajr: isFajr)
-            if floored != alarmOffsetMinutes { alarmOffsetMinutes = floored }
-        }
-        .onChange(of: alarmEnabled){_, newValue in
-                if newValue {
-                    isEditingAlarm = true
             }
         }
     }
@@ -1818,33 +1809,64 @@ struct ReminderSwitch: View {
     struct Side { let id: String; let title: String; let needsYou: Bool }
     @Binding var tab: String
     let sides: [Side]
+    @Namespace private var pill
 
+    /// Liquid Glass like the page's top buttons (owner): a glass capsule, the picked side on a soft pill that slides,
+    /// an orange dot on a side that needs a look. Plain buttons: it sits in the section's header, not in a row (the
+    /// system segmented control couldn't be glass, and in a row a hand-made one lost taps).
     var body: some View {
-        Picker("Reminders", selection: $tab.animation(.snappy(duration: 0.3))) {
-            ForEach(sides, id: \.id) { Text($0.title).tag($0.id) }
+        HStack(spacing: 0) {
+            ForEach(sides, id: \.id) { side in
+                let picked = tab == side.id
+                Button {
+                    guard !picked else { return }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.snappy(duration: 0.3)) { tab = side.id }
+                } label: {
+                    Text(side.title)
+                        .font(.system(size: 14, weight: picked ? .semibold : .medium, design: .rounded))
+                        .foregroundStyle(picked ? Color.primary : Color.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .overlay(alignment: .topTrailing) {
+                            if side.needsYou {
+                                Circle().fill(Color.orange).frame(width: 7, height: 7).offset(x: 9, y: -3)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background {
+                            if picked {
+                                Capsule().fill(Color.primary.opacity(0.1))
+                                    .matchedGeometryEffect(id: "pill", in: pill)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(picked ? .isSelected : [])
+                .accessibilityHint(side.needsYou ? "Needs attention" : "")
+            }
         }
-        .pickerStyle(.segmented)
-        // The control can't hold a badge: each segment carries an invisible copy of its title with the dot at its corner.
-        .overlay {
-            HStack(spacing: 0) {
-                ForEach(sides, id: \.id) { badge($0.title, $0.needsYou) }
+        .padding(4)
+        .modifier(StillGlass())
+    }
+}
+
+/// Liquid Glass behind the switch, as a layer of its own that takes no touches (glass on the buttons' container took
+/// their taps); a material before iOS 26.
+private struct StillGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background {
+            Group {
+                if #available(iOS 26.0, *) {
+                    Color.clear.glassEffect(.regular, in: Capsule())
+                } else {
+                    Capsule().fill(.regularMaterial)
+                }
             }
             .allowsHitTesting(false)
         }
-        .accessibilityValue(sides.filter(\.needsYou).map { "\($0.title) needs attention" }.joined(separator: ", "))
-    }
-
-    private func badge(_ title: String, _ needsYou: Bool) -> some View {
-        Text(title)
-            .font(.system(size: 13, weight: .medium))
-            .hidden()
-            .overlay(alignment: .topTrailing) {
-                if needsYou {
-                    Circle().fill(Color.orange).frame(width: 7, height: 7).offset(x: 9, y: -3)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityHidden(true)
     }
 }
 

@@ -225,7 +225,8 @@ struct NotificationHealthRows: View {
                 }
             }
         }
-        .task { await health.refresh() }
+        // (No `.task` here: with nothing to show it made an empty, zero-height row — a hairline under the switch.
+        // Settings refreshes the health on appear.)
     }
 
     private func statusRow(_ issues: [NotificationHealth.Issue]) -> some View {
