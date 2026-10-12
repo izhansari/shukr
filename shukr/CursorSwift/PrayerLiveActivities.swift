@@ -231,6 +231,16 @@ enum PrayerLiveActivities {
         return out.filter { $0.end > now && LiveActivityPrefs.isOn($0.name) }.sorted { $0.start < $1.start }
     }
 
+    /// The card's look, by the app's own setting (owner: everything keeps the app's light / dark / auto): Light, Dark, or
+    /// Auto = the sun's rule (light from sunrise to Maghrib) — so Dhuhr and Asr light, Fajr, Maghrib and Isha dark.
+    static func dark(for prayer: String) -> Bool {
+        switch UserDefaults.standard.integer(forKey: "modeToggleNew") {
+        case 1: return true
+        case 2: return !(prayer == "Dhuhr" || prayer == "Asr")
+        default: return false
+        }
+    }
+
     /// Prayed already? From the store (a card's or widget's mark goes there too; an unmark brings the card back).
     private static func done(_ w: Window) -> Bool {
         guard let c = SharedStore.widgetContainer else { return false }
@@ -304,14 +314,14 @@ enum PrayerLiveActivities {
             else if let latest = liveStarts.max(), st.start < latest, a.activityState != .pending { end(a, "next prayer began") }
             else if !LiveActivityPrefs.isOn(st.label) { end(a, "turned off") }
             else if !want.contains(where: { matches(st, $0) }) { end(a, "no such window now") }
-            else if let w = want.first(where: { matches(st, $0) }), moved(st, w) {
-                if !bg && a.activityState == .pending {
+            else if let w = want.first(where: { matches(st, $0) }), moved(st, w) || st.dark != dark(for: w.name) {
+                if moved(st, w) && !bg && a.activityState == .pending {
                     end(a, "times moved")   // re-added below at the new time, its start alert with it
                 } else {
                     // Live (or from the background, where a new one can't be asked for): corrected in place — the ring
                     // and the end time; a pending card's start alert keeps its old time until the next open (Frank).
                     var fixed = st
-                    fixed.start = w.start; fixed.end = w.end
+                    fixed.start = w.start; fixed.end = w.end; fixed.dark = dark(for: w.name)
                     Task { await a.update(ActivityContent(state: fixed, staleDate: w.end)) }
                     corrected.append("\(st.label) to \(w.start.formatted(date: .omitted, time: .shortened))–\(w.end.formatted(date: .omitted, time: .shortened)) (kept)")
                 }
@@ -343,7 +353,8 @@ enum PrayerLiveActivities {
         for w in want where !held.contains(w.id) && !live.contains(where: { matches($0.content.state, w) }) {
             guard held.count < 5 else { break }
             if w.start <= now && done(w) { continue }   // under way but already prayed
-            let state = PrayerWindowAttributes.ContentState(label: w.name, start: w.start, end: w.end, symbol: prayerIcon(for: w.name))
+            let state = PrayerWindowAttributes.ContentState(label: w.name, start: w.start, end: w.end, symbol: prayerIcon(for: w.name),
+                                                            dark: dark(for: w.name))
             do {
                 if w.start > now {
                     _ = try Activity.request(attributes: PrayerWindowAttributes(n: w.id), content: .init(state: state, staleDate: w.end),

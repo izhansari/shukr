@@ -1685,6 +1685,8 @@ struct LATunerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var t = LATuning.current
     @State private var kind = UserDefaults.standard.integer(forKey: "laTunerState")   // DEBUG -laTunerState N
+    /// The card's look in the preview (the real card takes the app's Light / Dark / Auto). DEBUG `-laLight YES`.
+    @State private var previewDark = !UserDefaults.standard.bool(forKey: "laLight")
     @State private var base = Date()
     @State private var note = ""
 
@@ -1794,7 +1796,7 @@ struct LATunerView: View {
             .padding(.horizontal, 10)
         } else {
             LALockCardBody(state: s, n: 0, ended: kind == 3, t: t)
-                .environment(\.colorScheme, .dark)
+                .environment(\.colorScheme, previewDark ? .dark : .light)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .padding(.horizontal, 16)
         }
@@ -1804,6 +1806,10 @@ struct LATunerView: View {
 
     @ViewBuilder private var controls: some View {
         Section("Card") {
+            Picker("Preview look", selection: $previewDark) {
+                Text("Light").tag(false)
+                Text("Dark").tag(true)
+            }
             row("Side padding", "space inside the card, left and right", \.cardPaddingSides, 0...40, 1)
             row("Top / bottom padding", "space inside the card, above and below", \.cardPaddingTopBottom, 0...40, 1)
             row("Minimum height", "the card is never shorter than this", \.cardMinHeight, 60...180, 1)

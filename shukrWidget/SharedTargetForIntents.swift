@@ -1762,6 +1762,9 @@ struct PrayerWindowAttributes: ActivityAttributes {
         var end: Date
         var symbol: String = "sun.max.fill"
         var markedAt: Date? = nil
+        /// The Lock Screen card's look, from the app's own setting (Light / Dark / Auto by the sun — Fajr, Maghrib and
+        /// Isha dark): nil = the phone's.
+        var dark: Bool? = nil
     }
     /// The window's id: its start in whole minutes since 1970 (so a window is never scheduled twice).
     var n: Int
@@ -1942,9 +1945,13 @@ struct LATuning: Codable, Equatable {
 
 /// The app's soft look, dark (the card is always dark — owner).
 enum LASoft {
-    static func surface(_ t: LATuning) -> Color { Color(white: t.cardSurfaceGrey) }
-    static let shade = Color.black.opacity(0.75)
-    static let light = Color.white.opacity(0.06)
+    /// The card's surface: the dark grey (tunable), or the app's light soft surface (asset NeuRing, light).
+    static func surface(_ t: LATuning, _ scheme: ColorScheme = .dark) -> Color {
+        scheme == .dark ? Color(white: t.cardSurfaceGrey) : Color(red: 0.890, green: 0.898, blue: 0.933)
+    }
+    /// The soft look's two shadows (assets NeuDarkShad / NeuLightShad in light; deeper in dark).
+    static func shade(_ scheme: ColorScheme = .dark) -> Color { scheme == .dark ? .black.opacity(0.75) : .black.opacity(0.22) }
+    static func light(_ scheme: ColorScheme = .dark) -> Color { scheme == .dark ? .white.opacity(0.06) : .white }
     /// The island is black: its soft pieces are a dark grey raised off it.
     static let island = Color(white: 0.11)
 }
@@ -1975,6 +1982,7 @@ struct LALockCard: View {
     let n: Int
     let stale: Bool
     var t = LATuning.current
+    @Environment(\.colorScheme) private var system
     var body: some View {
         // The buttons are drawn ONCE, over both looks: inside LAEnds the ended copy sat on top and took the touch, so the
         // visible button never showed its press (owner). The one button switches its own symbol at the end.
@@ -1985,7 +1993,7 @@ struct LALockCard: View {
                     .offset(x: t.buttonOffsetX)
                     .padding(.trailing, t.cardPaddingSides)
             }
-            .environment(\.colorScheme, .dark)
+            .environment(\.colorScheme, state.dark.map { $0 ? .dark : .light } ?? system)
     }
 }
 
@@ -1998,6 +2006,7 @@ struct LALockCardBody: View {
     let t: LATuning
     /// The card draws its buttons itself, once (LALockCard): here they only hold their place.
     var liveButtons = false
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         HStack(spacing: t.gapRingToText) {
             LASideRing(state: state, ended: ended, size: t.ringSize, symbolSize: t.ringSymbolSize, onIsland: false, t: t)
@@ -2012,7 +2021,7 @@ struct LALockCardBody: View {
         // glow pink on his phone).
         .background {
             ZStack {
-                LASoft.surface(t)
+                LASoft.surface(t, scheme)
                 LAWash(state: state, ended: ended, t: t)
             }
         }
@@ -2020,7 +2029,7 @@ struct LALockCardBody: View {
             LADismissBar(state: state).scaleEffect(x: 1, y: t.barThickness)
                 .padding(.horizontal, t.barSideInset).padding(.bottom, t.barBottomInset)
         }
-        .activityBackgroundTint(LASoft.surface(t))
+        .activityBackgroundTint(LASoft.surface(t, scheme))
         .activitySystemActionForegroundColor(.primary)
     }
 }
@@ -2348,6 +2357,7 @@ struct LADisc: View {
             .font(.system(size: symbolSize, weight: .light))
             .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary.opacity(t.symbolOpacity)))
     }
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         ZStack {
             if let endsAt {
@@ -2365,9 +2375,9 @@ struct LADisc: View {
                     .shadow(color: .white.opacity(0.09), radius: 3, x: -1.5, y: -1.5)
                     .shadow(color: .white.opacity(t.ringBandLift * 0.6), radius: 1.5, x: -1, y: -1)
             } else {
-                Circle().fill(LASoft.surface(t))
-                    .shadow(color: LASoft.shade, radius: 3, x: 1.5, y: 1.5)
-                    .shadow(color: LASoft.light, radius: 3, x: -1.5, y: -1.5)
+                Circle().fill(LASoft.surface(t, scheme))
+                    .shadow(color: LASoft.shade(scheme), radius: 3, x: 1.5, y: 1.5)
+                    .shadow(color: LASoft.light(scheme), radius: 3, x: -1.5, y: -1.5)
             }
         }
     }
@@ -2431,11 +2441,12 @@ struct LASoftBand: View {
     let width: Double
     let t: LATuning
     var surface: Color? = nil
+    @Environment(\.colorScheme) private var scheme
     var body: some View {
         Circle()
-            .stroke(surface ?? LASoft.surface(t), lineWidth: width)
-            .shadow(color: LASoft.shade, radius: width * 0.6, x: width * 0.3, y: width * 0.3)
-            .shadow(color: LASoft.light, radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
+            .stroke(surface ?? LASoft.surface(t, scheme), lineWidth: width)
+            .shadow(color: LASoft.shade(surface == nil ? scheme : .dark), radius: width * 0.6, x: width * 0.3, y: width * 0.3)
+            .shadow(color: LASoft.light(surface == nil ? scheme : .dark), radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
             .shadow(color: .white.opacity(t.ringBandLift), radius: width * 0.5, x: -width * 0.25, y: -width * 0.25)
     }
 }
