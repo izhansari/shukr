@@ -218,3 +218,159 @@ private struct SketchBars: View {
     }
 }
 #endif
+
+#if DEBUG
+/// Full cards with option B, calmer colours (owner: "really naive and a little Android"): three layouts, each with its
+/// height, for the little room left once the method folds. `-laTuner YES -madhabCards YES`.
+struct MadhabCardMocks: View {
+    @State private var pick = 0
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 26) {
+                layout("1 · Today's card, option B, calmer colours") { l1 }
+                layout("2 · Shorter: the check in the corner, a one-line rule") { l2 }
+                layout("3 · Rows: the drawing beside the words") { l3 }
+            }
+            .padding(.vertical, 16)
+        }
+    }
+
+    private func layout<V: View>(_ title: String, @ViewBuilder _ v: () -> V) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title).font(.system(.subheadline, design: .rounded, weight: .semibold)).padding(.horizontal, 24)
+            v().padding(.horizontal, 24)
+                .overlay(alignment: .bottomTrailing) { HeightTag() }
+        }
+    }
+
+    // 1: the card as it is, graphic B, no mint fill — the pick is a sage outline + check.
+    private var l1: some View {
+        HStack(spacing: 14) {
+            ForEach(0..<2) { i in
+                Button { pick = i } label: {
+                    VStack(spacing: 6) {
+                        CalmRay(lengths: CGFloat(i + 1), picked: pick == i).frame(height: 50)
+                        Text(i == 0 ? "Shafi'i" : "Hanafi").font(.system(.title3, design: .rounded))
+                        Text(i == 0 ? "Maliki, Hanbali too" : " ").font(.caption).foregroundStyle(.tertiary)
+                        Text(i == 0 ? "Asr 4:14 PM" : "Asr 5:02 PM")
+                            .font(.system(.title2, design: .rounded, weight: .light)).monospacedDigit()
+                        Text(i == 0 ? "when a shadow is as long as the object" : "when a shadow is twice the object's length")
+                            .font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                        mark(pick == i)
+                    }
+                    .padding(.vertical, 10).padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(card(pick == i))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // 2: shorter — the check in the top corner, "1 shadow-length" / "2 shadow-lengths" under the time.
+    private var l2: some View {
+        HStack(spacing: 14) {
+            ForEach(0..<2) { i in
+                Button { pick = i } label: {
+                    VStack(spacing: 4) {
+                        CalmRay(lengths: CGFloat(i + 1), picked: pick == i).frame(height: 46).padding(.top, 4)
+                        Text(i == 0 ? "Shafi'i" : "Hanafi").font(.system(.title3, design: .rounded))
+                        Text(i == 0 ? "Asr 4:14 PM" : "Asr 5:02 PM")
+                            .font(.system(.title3, design: .rounded, weight: .light)).monospacedDigit()
+                        Text(i == 0 ? "shadow = its length" : "shadow = twice its length")
+                            .font(.system(.caption, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 10).padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(card(pick == i))
+                    .overlay(alignment: .topTrailing) { mark(pick == i).padding(8) }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // 3: two rows, the drawing on the left.
+    private var l3: some View {
+        VStack(spacing: 10) {
+            ForEach(0..<2) { i in
+                Button { pick = i } label: {
+                    HStack(spacing: 12) {
+                        CalmRay(lengths: CGFloat(i + 1), picked: pick == i).frame(width: 96, height: 44)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(i == 0 ? "Shafi'i" : "Hanafi").font(.system(.body, design: .rounded, weight: .medium))
+                                Spacer()
+                                Text(i == 0 ? "Asr 4:14 PM" : "Asr 5:02 PM")
+                                    .font(.system(.body, design: .rounded, weight: .light)).monospacedDigit()
+                            }
+                            Text(i == 0 ? "shadow as long as the object · Maliki, Hanbali too" : "shadow twice the object's length")
+                                .font(.system(.caption, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        mark(pick == i)
+                    }
+                    .padding(.vertical, 10).padding(.horizontal, 12)
+                    .background(card(pick == i))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func card(_ picked: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 20)
+            .fill(Color(.secondarySystemBackground))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(picked ? Color.sage : .clear, lineWidth: 1.5))
+    }
+
+    private func mark(_ on: Bool) -> some View {
+        Image(systemName: on ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 20, weight: .light))
+            .foregroundStyle(on ? Color.sage : Color.secondary.opacity(0.4))
+    }
+}
+
+/// Option B in quiet tones: grey sun and ray, ink post, the shadow grey — sage only on the picked card.
+struct CalmRay: View {
+    let lengths: CGFloat
+    let picked: Bool
+    var body: some View {
+        Canvas { ctx, size in
+            let groundY = size.height - 3
+            let post = size.height * 0.6
+            let total = post * 2
+            let postX = (size.width - total) / 2 + 8
+            let tip = CGPoint(x: postX + post * lengths, y: groundY)
+            let top = CGPoint(x: postX, y: groundY - post)
+            let dx = tip.x - top.x, dy = tip.y - top.y
+            let back = CGPoint(x: top.x - dx * 0.38, y: top.y - dy * 0.38)
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: 4, y: groundY)); p.addLine(to: CGPoint(x: size.width - 4, y: groundY)) },
+                       with: .color(.primary.opacity(0.12)), lineWidth: 1)
+            ctx.stroke(Path { p in p.move(to: back); p.addLine(to: tip) },
+                       with: .color(.primary.opacity(0.22)), style: StrokeStyle(lineWidth: 1, dash: [2.5, 3]))
+            // The sun: a soft ring, not an orange dot.
+            ctx.stroke(Path(ellipseIn: CGRect(x: back.x - 5.5, y: back.y - 5.5, width: 11, height: 11)),
+                       with: .color(.primary.opacity(0.45)), lineWidth: 1.2)
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: postX, y: groundY)); p.addLine(to: tip) },
+                       with: .color(picked ? Color.sage : .primary.opacity(0.3)), style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: postX, y: groundY)); p.addLine(to: top) },
+                       with: .color(.primary.opacity(0.75)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+        }
+    }
+}
+
+/// The block's height in points, small, for comparing what fits.
+private struct HeightTag: View {
+    @State private var h: CGFloat = 0
+    var body: some View {
+        Color.clear
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h = $0 }
+            .overlay(alignment: .bottomTrailing) {
+                Text("\(Int(h)) pt").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.red)
+                    .offset(y: 14).padding(.trailing, 24)
+            }
+    }
+}
+#endif

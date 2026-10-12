@@ -2348,21 +2348,115 @@ private struct PrayerTimesStep: View {
         return VStack(spacing: 0) {
             note("Your madhab only moves Asr; the rest stay put.")
                 .padding(.bottom, 10)
-            HStack(spacing: 14) {
-                card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
-                     lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
-                card(title: "Hanafi", note: nil, rule: "when a shadow is twice the object's length",
-                     lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
+            #if DEBUG
+            // `-madhabCardStyle 1|2|3`: the redesign's layouts on the real page (owner picks; then one stays).
+            let style = UserDefaults.standard.integer(forKey: "madhabCardStyle")
+            #else
+            let style = 0
+            #endif
+            if style == 3 {
+                VStack(spacing: 10) {
+                    rowCard(title: "Shafi'i", rule: "shadow as long as the object · Maliki, Hanbali too", lengths: 1,
+                            asr: shafiAsr, selected: school != 1) { school = 0 }
+                    rowCard(title: "Hanafi", rule: "shadow twice the object's length", lengths: 2,
+                            asr: hanafiAsr, selected: school == 1) { school = 1 }
+                }
+                .padding(.horizontal, 24)
+            } else {
+                HStack(spacing: 14) {
+                    card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
+                         lengths: 1, asr: shafiAsr, selected: school != 1, style: style) { school = 0 }
+                    card(title: "Hanafi", note: nil, rule: "when a shadow is twice the object's length",
+                         lengths: 2, asr: hanafiAsr, selected: school == 1, style: style) { school = 1 }
+                }
+                .padding(.horizontal, 24)
             }
-            .padding(.horizontal, 24)
         }
     }
 
+    #if DEBUG
+    private func calmCard(_ selected: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemBackground))
+            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(selected ? Color.sage : .clear, lineWidth: 1.5))
+    }
+    private func pickMark(_ on: Bool) -> some View {
+        Image(systemName: on ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 20, weight: .light))
+            .foregroundStyle(on ? Color.sage : Color.secondary.opacity(0.4))
+    }
+    /// Style 3: a row, the drawing beside the words.
+    private func rowCard(title: String, rule: String, lengths: CGFloat, asr: Date?, selected: Bool,
+                         pick: @escaping () -> Void) -> some View {
+        Button { withAnimation(.snappy(duration: 0.3)) { pick() } } label: {
+            HStack(spacing: 12) {
+                CalmRay(lengths: lengths, picked: selected).frame(width: 96, height: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(title).font(.system(.body, design: .rounded, weight: .medium))
+                        Spacer()
+                        Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
+                            .font(.system(.body, design: .rounded, weight: .light)).monospacedDigit()
+                    }
+                    Text(rule).font(.system(.caption, design: .rounded, weight: .light)).foregroundStyle(.secondary).lineLimit(2)
+                }
+                pickMark(selected)
+            }
+            .padding(.vertical, 10).padding(.horizontal, 12)
+            .background(calmCard(selected))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+    #endif
+
     private func card(title: String, note: String?, rule: String, lengths: CGFloat, asr: Date?,
-                      selected: Bool, pick: @escaping () -> Void) -> some View {
+                      selected: Bool, style: Int = 0, pick: @escaping () -> Void) -> some View {
         Button {
             withAnimation(.snappy(duration: 0.3)) { pick() }
         } label: {
+            #if DEBUG
+            if style == 1 {
+                VStack(spacing: 6) {
+                    CalmRay(lengths: lengths, picked: selected).frame(height: 50)
+                    Text(title).font(.system(.title3, design: .rounded))
+                    Text(note ?? " ").font(.caption).foregroundStyle(.tertiary)
+                    Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
+                        .font(.system(.title2, design: .rounded, weight: .light)).monospacedDigit()
+                        .minimumScaleFactor(0.7).lineLimit(1)
+                    Text(rule).font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    pickMark(selected)
+                }
+                .padding(.vertical, 10).padding(.horizontal, 12)
+                .frame(maxWidth: .infinity)
+                .background(calmCard(selected))
+            } else if style == 2 {
+                VStack(spacing: 4) {
+                    CalmRay(lengths: lengths, picked: selected).frame(height: 46).padding(.top, 4)
+                    Text(title).font(.system(.title3, design: .rounded))
+                    Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
+                        .font(.system(.title3, design: .rounded, weight: .light)).monospacedDigit()
+                        .minimumScaleFactor(0.7).lineLimit(1)
+                    Text(lengths == 1 ? "shadow = its length" : "shadow = twice its length")
+                        .font(.system(.caption, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                    Text(note ?? " ").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .padding(.vertical, 10).padding(.horizontal, 10)
+                .frame(maxWidth: .infinity)
+                .background(calmCard(selected))
+                .overlay(alignment: .topTrailing) { pickMark(selected).padding(8) }
+            } else {
+                legacyCard(title: title, note: note, rule: rule, lengths: lengths, asr: asr, selected: selected)
+            }
+            #else
+            legacyCard(title: title, note: note, rule: rule, lengths: lengths, asr: asr, selected: selected)
+            #endif
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func legacyCard(title: String, note: String?, rule: String, lengths: CGFloat, asr: Date?, selected: Bool) -> some View {
             // Compact: they share the page with the folded method row and today's times.
             VStack(spacing: 8) {
                 ShadowSketch(lengths: lengths)
@@ -2393,9 +2487,6 @@ private struct PrayerTimesStep: View {
             .frame(maxWidth: .infinity)
             .background(RoundedRectangle(cornerRadius: 22).fill(selected ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
             .overlay(RoundedRectangle(cornerRadius: 22).stroke(selected ? Color.sage.opacity(0.6) : .clear, lineWidth: 1))
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
