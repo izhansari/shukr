@@ -3465,8 +3465,21 @@ private struct ReviewStep: View {
     // One more nudge before bismillah while location or notifications aren't on (owner: "bro the experience really
     // isnt gonna be great without those permissions"); the alarm isn't part of it. Location's losses in the owner's
     // order: times that follow you, the qibla, prayer pins (not mosques).
-    private var locationMissing: Bool { !location.isAuthorized }
-    private var notificationsMissing: Bool { notifications.isOn != true }
+    private var locationMissing: Bool {
+        #if DEBUG
+        if let m = Self.demoMissing { return m == "both" || m == "location" }   // -demoReviewMissing location|notifications|both
+        #endif
+        return !location.isAuthorized
+    }
+    private var notificationsMissing: Bool {
+        #if DEBUG
+        if let m = Self.demoMissing { return m == "both" || m == "notifications" }
+        #endif
+        return notifications.isOn != true
+    }
+    #if DEBUG
+    private static let demoMissing = UserDefaults.standard.string(forKey: "demoReviewMissing")
+    #endif
     private var limited: Bool { (locationMissing || notificationsMissing) && !goLimited }
     private var limitedNote: String {
         switch (locationMissing, notificationsMissing) {
@@ -3490,7 +3503,7 @@ private struct ReviewStep: View {
         VStack(spacing: 0) {
             // Not "all set" while it's still asking for location / notifications.
             StepTitle(title: limited ? "Almost set" : "You're all set",
-                      subtitle: "Tap anything to change it. It's all in Settings later, too.")
+                      subtitle: "Tap anything to change it.")
                 .contentTransition(.opacity)
                 .padding(.bottom, 16)
             ScrollView {
@@ -3499,7 +3512,7 @@ private struct ReviewStep: View {
                     // value line, with its way to change their mind at the end of it.
                     row("location.fill", "Location", locationFix?.value ?? locationValue, step: .location, fix: locationFix)
                     divider
-                    row("clock", "Prayer times", methodValue, step: .method)
+                    row("clock", "Prayer Times", methodValue, step: .method)
                     divider
                     row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
                     divider
@@ -3508,9 +3521,9 @@ private struct ReviewStep: View {
                     row("platter.filled.bottom.iphone", "Live Activities", liveActivityFix?.value ?? liveActivityValue,
                         step: .liveActivities, fix: liveActivityFix)
                     divider
-                    row("alarm", "Fajr alarm", alarmFix?.value ?? alarmValue, step: .fajr, fix: alarmFix)
+                    row("alarm", "Fajr Alarm", alarmFix?.value ?? alarmValue, step: .fajr, fix: alarmFix)
                     divider
-                    row("building.columns", "Your masjid", masjidValue, step: .masjid)
+                    row("building.columns", "Your Masjid", masjidValue, step: .masjid)
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 16)
@@ -3557,7 +3570,11 @@ private struct ReviewStep: View {
         }
     }
 
-    private var divider: some View { Divider().padding(.leading, 44) }
+    /// Full width (owner), and every one alike: Divider() landed on fractional y's between rows of text and some came out
+    /// faint; each row is a whole number of points tall (`rowHeight`), so they all sit on the same pixel boundary.
+    private var divider: some View { Divider() }
+    /// 52 pt: all seven rows, the two-line note and its buttons fit a 6.1" iPhone (393 × 852) with nothing scrolled (owner).
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 52
 
     // MARK: values
 
@@ -3687,7 +3704,8 @@ private struct ReviewStep: View {
                     .foregroundStyle(Color.sage)
                     .frame(width: 30, height: 24)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(.body, design: .rounded))
+                    // The row's name reads as its title (owner: "more prominent").
+                    Text(title).font(.system(.body, design: .rounded, weight: .medium))
                     HStack(spacing: 4) {
                         if fix != nil {
                             Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
@@ -3701,6 +3719,7 @@ private struct ReviewStep: View {
                 Spacer(minLength: fix == nil ? 8 : 84)
                 Image(systemName: "chevron.right").font(.footnote.weight(.medium)).foregroundStyle(.tertiary)
             }
+            .frame(height: rowHeight.rounded())
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -3715,7 +3734,6 @@ private struct ReviewStep: View {
                     .padding(.trailing, 18)
             }
         }
-        .padding(.vertical, 8)
     }
 }
 
