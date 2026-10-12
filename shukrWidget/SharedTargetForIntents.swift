@@ -2002,14 +2002,16 @@ struct LAEnds<Content: View>: View {
     let stale: Bool
     @ViewBuilder let content: (_ ended: Bool) -> Content
     var body: some View {
-        if state.markedAt != nil {
-            content(false)
-        } else if stale {
-            content(true)
-        } else {
-            ZStack {
-                content(false).mask { LAGate(from: nil, until: state.end) }
-                content(true).mask { LAGate(from: state.end, until: nil) }
+        // ONE structure in every state (owner: "the shared elements stay … just the new stuff animates in"): when the
+        // card is marked or goes stale only the masks change, so iOS keeps the name, the ring, the card itself, and fades
+        // just what's new or gone (an if / else here swapped the whole card in a cross-fade).
+        let marked = state.markedAt != nil
+        ZStack {
+            content(false).mask {
+                if marked { Color.white } else if stale { Color.clear } else { LAGate(from: nil, until: state.end) }
+            }
+            content(true).mask {
+                if marked { Color.clear } else if stale { Color.white } else { LAGate(from: state.end, until: nil) }
             }
         }
     }
@@ -2088,10 +2090,12 @@ struct LASideRing: View {
                 Image(systemName: "checkmark")
                     .font(.system(size: symbolSize * 0.9, weight: .medium))
                     .foregroundStyle(PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at)))
+                    .transition(LATransitions.swap)
             } else {
                 Image(systemName: state.symbol)
                     .font(.system(size: symbolSize, weight: .light))
                     .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                    .transition(LATransitions.swap)
             }
         }
         .frame(width: size, height: size)
@@ -2115,10 +2119,13 @@ struct LANameLines: View {
                 .foregroundStyle(ended ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
             if let at = state.markedAt {
                 let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
-                Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
-                    .font(.system(size: line)).foregroundStyle(.primary)
-                Text("\(PrayerScoring.grade(for: score).rawValue) · \(Int((score * 100).rounded()))")
-                    .font(.system(size: small)).foregroundStyle(.secondary)
+                Group {
+                    Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: line)).foregroundStyle(.primary)
+                    Text("\(PrayerScoring.grade(for: score).rawValue) · \(Int((score * 100).rounded()))")
+                        .font(.system(size: small)).foregroundStyle(.secondary)
+                }
+                .transition(LATransitions.line)
             } else if ended {
                 Text("\(state.end.formatted(date: .omitted, time: .shortened)) · not marked")
                     .font(.system(size: line)).foregroundStyle(.secondary)
@@ -2127,6 +2134,7 @@ struct LANameLines: View {
                     .font(.system(size: line)).foregroundStyle(.secondary)
             } else {
                 let lastHalf = state.end.addingTimeInterval(-30 * 60)
+                Group {
                 ZStack(alignment: .leading) {
                     LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.primary)
                         .mask { LAGate(from: nil, until: lastHalf) }
@@ -2138,6 +2146,8 @@ struct LANameLines: View {
                     Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
                         .font(.system(size: small)).foregroundStyle(.secondary)
                 }
+                }
+                .transition(LATransitions.line)
             }
         }
         .lineLimit(1)
@@ -2345,13 +2355,24 @@ struct LAGlyphs: View {
                 LARoundButton(intent: PrayerWindowOpenIntent(what: "Photo", n: n), symbol: "camera", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
                 LARoundButton(intent: PrayerWindowOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
             }
+            .transition(LATransitions.swap)
         } else if ended {
             LARoundButton(intent: PrayerWindowMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
+                .transition(LATransitions.swap)
         } else {
             LARoundButton(intent: PrayerWindowMarkIntent(n: n), symbol: "checkmark", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland,
                           endsAt: live ? state.end : nil, t: t)
+                .transition(LATransitions.swap)
         }
     }
+}
+
+/// What changes when the card is updated (marked): what stays keeps its place, the new grows / rises in and the old
+/// fades out (owner: "feels like one living card"). iOS plays transitions with its own timing (animation modifiers are
+/// ignored), up to 2 s.
+enum LATransitions {
+    static let swap = AnyTransition.asymmetric(insertion: .scale(scale: 0.6).combined(with: .opacity), removal: .scale(scale: 0.8).combined(with: .opacity))
+    static let line = AnyTransition.asymmetric(insertion: .offset(y: 6).combined(with: .opacity), removal: .opacity)
 }
 
 /// Pressed: a touch darker and smaller.
@@ -2574,23 +2595,66 @@ struct LARing: View {
 struct LAGate: View {
     let from: Date?
     let until: Date?
+    /// How a look gives way to the next when its time comes (owner, 2026-10-12: show both): 0 a 1 s wipe left to right
+    /// (the stock bar filling), 1 an instant flip, 2 a fade in 8 instant steps over 1.5 s (a blurred, soft-edged sweep
+    /// froze on the Lock Screen: the blur stops the bar's live fill). App group `la.gateStyle`.
+    static let styleKey = "la.gateStyle"
+    static var style: Int { UserDefaults(suiteName: SharedStore.appGroup)?.integer(forKey: styleKey) ?? 0 }
+    private static let steps = 8
+    private static let fadeLength: TimeInterval = 1.5
+
     var body: some View {
         // An edge already passed when this is drawn is drawn solid: its stock bar re-filled on every update, sweeping a
         // look across the card (owner). Only edges still to come are bars (empty until then, so nothing moves).
         let now = Date()
+        let style = Self.style
         Group {
-            if let from, from > now { edge(from, fill: .white, ground: .black, lift: -0.35) } else { Color.white }
+            if let from, from > now {
+                if style == 2 { fadeIn(from, now: now) } else { edge(from, fill: .white, ground: .black, lift: -0.35, span: style == 1 ? 0.05 : 1) }
+            } else { Color.white }
         }
         .mask {
-            if let until { if until > now { edge(until, fill: .black, ground: .white, lift: 0.2) } else { Color.clear } } else { Color.white }
+            if let until {
+                if until > now {
+                    if style == 2 { fadeOut(until, now: now) } else { edge(until, fill: .black, ground: .white, lift: 0.2, span: style == 1 ? 0.05 : 1) }
+                } else { Color.clear }
+            } else { Color.white }
         }
     }
 
-    private func edge(_ t: Date, fill: Color, ground: Color, lift: Double) -> some View {
+    /// Coverage rising k/N as the N layers switch on one by one (layer i at 1/(N−i+1) opacity — "over" adds up linearly).
+    private func fadeIn(_ t: Date, now: Date) -> some View {
+        let n = Self.steps, dt = Self.fadeLength / Double(n)
+        return ZStack {
+            ForEach(1...n, id: \.self) { i in
+                let at = t.addingTimeInterval(Double(i - 1) * dt)
+                Group {
+                    if at > now { edge(at, fill: .white, ground: .black, lift: -0.35, span: 0.05) } else { Color.white }
+                }
+                .opacity(1 / Double(n - i + 1))
+            }
+        }
+    }
+
+    /// Coverage falling 1 − k/N: layer j (opacity 1/j) switches off j-th.
+    private func fadeOut(_ t: Date, now: Date) -> some View {
+        let n = Self.steps, dt = Self.fadeLength / Double(n)
+        return ZStack {
+            ForEach(1...n, id: \.self) { j in
+                let at = t.addingTimeInterval(Double(j - 1) * dt)
+                Group {
+                    if at > now { edge(at, fill: .black, ground: .white, lift: 0.2, span: 0.05) } else { Color.clear }
+                }
+                .opacity(1 / Double(j))
+            }
+        }
+    }
+
+    private func edge(_ t: Date, fill: Color, ground: Color, lift: Double, span: TimeInterval) -> some View {
         GeometryReader { geo in
             ZStack {
                 ground
-                ProgressView(timerInterval: t...t.addingTimeInterval(1), countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
+                ProgressView(timerInterval: t...t.addingTimeInterval(span), countsDown: false) { EmptyView() } currentValueLabel: { EmptyView() }
                     .progressViewStyle(.linear)
                     .tint(fill)
                     .labelsHidden()

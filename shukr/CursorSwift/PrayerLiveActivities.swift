@@ -395,6 +395,7 @@ enum PrayerLiveActivities {
     @MainActor private static func debugLaunch() -> Bool {
         let args = ProcessInfo.processInfo.arguments
         func arg(_ k: String) -> Double? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? Double(args[$0 + 1]) : nil } }
+        if let g = arg("-laGate") { UserDefaults(suiteName: SharedStore.appGroup)?.set(Int(g), forKey: LAGate.styleKey) }   // 0 wipe · 1 flip · 2 soft
         guard args.contains("-laEndAll") || args.contains("-laNowAgo") || args.contains("-laMarkLive") else { return false }
         if args.contains("-laNowAgo") || args.contains("-laEndAll") { holdPlans = args.contains("-laNowAgo") }   // at once: a plan from the first foreground beat it
         Task { @MainActor in
