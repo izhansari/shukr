@@ -1826,74 +1826,35 @@ struct ReminderSwitch: View {
     struct Side { let id: String; let title: String; let needsYou: Bool }
     @Binding var tab: String
     let sides: [Side]
-    @Namespace private var glass
 
-    /// Real Liquid Glass (owner: "like real liquid glass that does the animation"), as iOS 26's own controls do it: a
-    /// quiet track, and the picked side on an interactive glass capsule that answers the press and flows to the next
-    /// side (one glass shape in a GlassEffectContainer, `glassEffectID`). Before iOS 26, a material pill that slides.
+    /// The system's segmented control (owner: "real liquid glass that does the animation"): on iOS 26 its picked segment
+    /// turns into a Liquid Glass bubble you can press and drag between sides — a hand-made switch can't follow the finger.
     var body: some View {
-        // The glass is a layer of its own under the words (drawn as the labels' background it covered them — the
-        // picked side's name came out blurred).
-        buttons
-            .background { glassLayer }
-            .padding(4)
-            .background(Capsule().fill(Color.primary.opacity(0.07)))
-    }
-
-    /// One slot per side; the picked slot holds the glass, which flows to the next slot when the pick changes.
-    @ViewBuilder private var glassLayer: some View {
-        let slots = HStack(spacing: 0) {
-            ForEach(sides, id: \.id) { side in
-                ZStack { if tab == side.id { pill } }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        Picker("Reminders", selection: $tab.animation(.snappy(duration: 0.3))) {
+            ForEach(sides, id: \.id) { Text($0.title).tag($0.id) }
+        }
+        .pickerStyle(.segmented)
+        // The control can't hold a badge: each segment carries an invisible copy of its title with the dot at its corner.
+        .overlay {
+            HStack(spacing: 0) {
+                ForEach(sides, id: \.id) { badge($0.title, $0.needsYou) }
             }
+            .allowsHitTesting(false)
         }
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer { slots }
-        } else {
-            slots
-        }
+        .accessibilityValue(sides.filter(\.needsYou).map { "\($0.title) needs attention" }.joined(separator: ", "))
     }
 
-    @ViewBuilder private var pill: some View {
-        if #available(iOS 26.0, *) {
-            Color.clear
-                .glassEffect(.regular.interactive(), in: Capsule())
-                .glassEffectID("picked", in: glass)
-        } else {
-            Capsule().fill(.regularMaterial)
-                .matchedGeometryEffect(id: "picked", in: glass)
-        }
-    }
-
-    private var buttons: some View {
-        HStack(spacing: 0) {
-            ForEach(sides, id: \.id) { side in
-                let picked = tab == side.id
-                Button {
-                    guard !picked else { return }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    withAnimation(.bouncy(duration: 0.4, extraBounce: 0.08)) { tab = side.id }
-                } label: {
-                    Text(side.title)
-                        .font(.system(size: 14, weight: picked ? .semibold : .medium, design: .rounded))
-                        .foregroundStyle(picked ? Color.primary : Color.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .overlay(alignment: .topTrailing) {
-                            if side.needsYou {
-                                Circle().fill(Color.orange).frame(width: 7, height: 7).offset(x: 9, y: -3)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .contentShape(Capsule())
+    private func badge(_ title: String, _ needsYou: Bool) -> some View {
+        Text(title)
+            .font(.system(size: 13, weight: .medium))
+            .hidden()
+            .overlay(alignment: .topTrailing) {
+                if needsYou {
+                    Circle().fill(Color.orange).frame(width: 7, height: 7).offset(x: 9, y: -3)
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(picked ? .isSelected : [])
-                .accessibilityHint(side.needsYou ? "Needs attention" : "")
             }
-        }
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
     }
 }
 
