@@ -313,8 +313,6 @@ struct YourRemindersView: View {
     @State private var selectedDay = Self.debugInt("remindersDay")
     /// The explanation open as a sheet (ReminderWhy). DEBUG `-remindersSheet N` opens one (screenshots).
     @State private var whySheet: ReminderWhy?
-    /// Each prayer's ⓘ: Settings' notifications card.
-    @State private var showBellsInfo = false
     /// Opened from Settings with something wrong: that explanation's sheet comes up over the page, once.
     var openWith: ReminderWhy? = nil
     @State private var openedWith = false
@@ -412,23 +410,7 @@ struct YourRemindersView: View {
                 whyRow(.topsUp)
             }
 
-            Section {
-                HStack {
-                    prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, dots: true)
-                    Divider()
-                    prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, dots: true)
-                    Divider()
-                    prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, dots: true)
-                    Divider()
-                    prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, dots: true)
-                    Divider()
-                    prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
-                }
-                .padding(.vertical, 4)
-            } header: {
-                // Settings' own bells and their ⓘ (owner): the same tiles, the same card, no caption.
-                headerWithInfoButton(title: "Each prayer", isPopupVisible: $showBellsInfo)
-            }
+            // (The per-prayer bells live in Settings only — owner: "we don't need it there".)
 
             // One card (owner): the weeks, then the picked day's name and its total as the card's own row, then its
             // prayers.
@@ -436,14 +418,18 @@ struct YourRemindersView: View {
                 ForEach(Array(stride(from: 0, to: days.count, by: 7)), id: \.self) { start in
                     weekStrip(days, from: start)
                 }
-                HStack(alignment: .firstTextBaseline) {
-                    Text(dayTitle(PrayerNotificationID.dayKey(day)))
-                        .font(.system(.headline, design: .rounded))
-                    Spacer()
-                    Text("\(dayItems.count) notification\(dayItems.count == 1 ? "" : "s")")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(dayTitle(PrayerNotificationID.dayKey(day)))
+                            .font(.system(.headline, design: .rounded))
+                        Spacer()
+                        Text("\(dayItems.count) notification\(dayItems.count == 1 ? "" : "s")")
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                    // Full day, or starts only for now (owner), under the day's name.
+                    dayFullness(prayers: prayers, dayItems: dayItems, dayKey: PrayerNotificationID.dayKey(day))
                 }
                 .padding(.top, 6)
                 .contentTransition(.opacity)
@@ -495,7 +481,6 @@ struct YourRemindersView: View {
         .sheet(item: $previewCard) { issue in
             ReminderHealthCard(issue: issue) { previewCard = nil }
         }
-        .infoModal(isPresented: $showBellsInfo, title: "Notifications", symbol: "bell") { NotificationDropdownInfo() }
         // Pushed, not a sheet (owner).
         .navigationDestination(item: $whySheet) { ReminderWhySheet(kind: $0, pendingCount: pending.count) }
     }
@@ -794,6 +779,31 @@ struct YourRemindersView: View {
 
     /// A starts-only day's nudges are planned once it's within `nudgeDaysAhead` prayer days — i.e.
     /// the day before it, when shukr re-plans (opening it, or iOS's background refresh).
+    /// The picked day at a glance (owner: "whether that day is a full day, like it respects our settings properly, or …
+    /// where we only show the starts"): read from what's scheduled — a prayer set to Nudge that has its start but no
+    /// nudge yet makes it a starts-only day for now (NotificationScheduler adds nudges `nudgeDaysAhead` days out).
+    @ViewBuilder private func dayFullness(prayers: [String], dayItems: [Item], dayKey: String) -> some View {
+        let planned = dayItems.contains { Self.prayerKinds.contains($0.kind) }
+        let startsOnly = prayers.contains { p in
+            let setting = NotificationScheduler.settings(p)
+            let mine = dayItems.filter { $0.prayer == p }
+            return setting.notify && setting.nudges && mine.contains { $0.kind == .start }
+                && !mine.contains { $0.kind == .halfway || $0.kind == .endingSoon }
+        }
+        if planned {
+            HStack(spacing: 6) {
+                Image(systemName: startsOnly ? "circle.dashed" : "checkmark.circle.fill")
+                    .foregroundStyle(startsOnly ? Color.secondary : green)
+                Text(startsOnly ? "Starts only for now · nudges added \(nudgesAddedOn(dayKey) ?? "closer to the day")"
+                                : "Full day · everything you set")
+                    .foregroundStyle(startsOnly ? Color.secondary : Color.primary)
+            }
+            .font(.system(.subheadline, design: .rounded))
+            .contentTransition(.opacity)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
     private func nudgesAddedOn(_ key: String) -> String? {
         guard let day = Self.dayKeyFormatter.date(from: key),
               let before = Calendar.current.date(byAdding: .day, value: -(NotificationScheduler.nudgeDaysAhead - 1), to: day)
