@@ -598,7 +598,8 @@ struct SettingsView: View {
                     .onChange(of: SettingsJump.shared.count) { _, _ in
                         let target = SettingsJump.shared.target
                         let side = target == SettingsJump.fajrAlarm ? ReminderSwitch.fajrAlarm
-                            : target == SettingsJump.liveActivities ? ReminderSwitch.liveActivities : nil
+                            : target == SettingsJump.liveActivities ? ReminderSwitch.liveActivities
+                            : target == SettingsJump.notifications ? ReminderSwitch.notifications : nil
                         if let side { remindersTab = side }
                         withAnimation(.smooth(duration: CircleMotion.standard)) {
                             proxy.scrollTo(side != nil ? "liveActivities" : target, anchor: .center)

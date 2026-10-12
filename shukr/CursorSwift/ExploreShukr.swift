@@ -19,7 +19,9 @@ import WatchConnectivity
 /// haven't tried and moves what they use to a quiet list). Siri can't be read, so it's always to try.
 @MainActor @Observable final class ExploreState {
     var homeWidget = false
+    var moreWidgets = false
     var lockWidget = false
+    var notifications = false
     var controls = false
     var watchPaired = false
     var watchInstalled = false
@@ -31,8 +33,12 @@ import WatchConnectivity
             WidgetCenter.shared.getCurrentConfigurations { c.resume(returning: (try? $0.get()) ?? []) }
         }
         let lock: Set<WidgetFamily> = [.accessoryCircular, .accessoryRectangular, .accessoryInline]
-        homeWidget = configs.contains { !lock.contains($0.family) }
+        homeWidget = configs.contains { !lock.contains($0.family) && $0.kind == WidgetKinds.prayers }
+        moreWidgets = configs.contains { !lock.contains($0.family) && $0.kind != WidgetKinds.prayers }
         lockWidget = configs.contains { lock.contains($0.family) }
+        await NotificationHealth.shared.refresh()
+        let a = NotificationHealth.shared.authorization
+        notifications = a == .authorized || a == .provisional || a == .ephemeral
         if let added = try? await ControlCenter.shared.currentControls() {
             controls = added.contains { $0.kind.hasPrefix("betternorms.shukr.control") }
         }
@@ -50,7 +56,7 @@ struct ExploreShukrPage: View {
     @State private var state = ExploreState()
 
     private enum Feature: String, CaseIterable, Identifiable {
-        case home, lock, controls, siri, watch, memories
+        case home, lock, moreWidgets, controls, siri, notifications, watch, memories
         var id: String { rawValue }
     }
 
@@ -58,6 +64,8 @@ struct ExploreShukrPage: View {
         switch f {
         case .home: state.homeWidget
         case .lock: state.lockWidget
+        case .moreWidgets: state.moreWidgets
+        case .notifications: state.notifications
         case .controls: state.controls
         case .siri: false
         case .watch: state.watchInstalled
@@ -142,48 +150,100 @@ struct ExploreShukrPage: View {
     @ViewBuilder private func card(_ f: Feature, open: Bool = false) -> some View {
         switch f {
         case .home:
-            ExploreCard(startOpen: open, title: "Home Screen widget",
-                        why: "Your prayer's ring where you'll see it all day. Tap the check to mark it, without opening shukr.",
+            ExploreCard(startOpen: open, title: "Prayers widget",
+                        why: "Your prayer at a glance on your Home Screen, and you can mark it without opening shukr.",
+                        features: [("checkmark.circle", "Mark it there", "Tap the circle in the corner. It's scored at the tap, like in the app."),
+                                   ("circle.dashed", "A ring that grades you", "Green while it's at its best, then yellow, then red as time runs out."),
+                                   ("hand.tap", "Tap the ring", "Switch between time left and when it ends. In the last hour it counts down."),
+                                   ("list.bullet", "Today at a glance", "The arrow opens all five times. Tap a prayer there to mark it."),
+                                   ("square.grid.2x2", "Your corners", "Two buttons of your choice: Qibla, Tasbeeh, Daily Ayah or 99 Names.")],
                         steps: [("hand.tap", "Touch and hold an empty spot on your Home Screen"),
                                 ("plus.circle", "Tap Edit, then Add Widget"),
                                 ("magnifyingglass", "Search shukr, pick Prayers, tap Add Widget")],
-                        note: "Zikr, Name of the Day and Daily Ayah widgets are there too.") { HomeScreenPicture() }
+                        note: "Choose its corners by holding it and tapping Edit Widget. Its look is in Settings → Appearance.") { HomeScreenPicture() }
         case .lock:
-            ExploreCard(startOpen: open, title: "Lock Screen widget",
-                        why: "See how long is left every time you pick up your phone. In the last hour the circle counts down.",
+            ExploreCard(startOpen: open, title: "Lock Screen widgets",
+                        why: "See how long is left every time you pick up your phone, without unlocking it.",
+                        features: [("circle", "The circle", "The prayer's ring as it fills. In its last hour it shows the minutes left."),
+                                   ("rectangle", "The line", "A live countdown to the end, with a bar that fills."),
+                                   ("textformat", "Above the clock", "“Asr · ends 6:48 PM”, in a single line."),
+                                   ("square.stack", "Zikr and the Names too", "What's left of today's zikr, and the Name of the Day.")],
                         steps: [("lock", "Touch and hold your Lock Screen, then tap Customize"),
                                 ("rectangle.on.rectangle", "Pick your Lock Screen, then tap under the clock"),
-                                ("magnifyingglass", "Find shukr and tap the circle or the line")]) { LockScreenPicture() }
+                                ("magnifyingglass", "Find shukr and tap the ones you want")],
+                        note: "For the line above the clock, tap the date instead.") { LockScreenPicture() }
+        case .moreWidgets:
+            ExploreCard(startOpen: open, title: "More widgets",
+                        why: "Zikr, the 99 Names and the Quran on your Home Screen.",
+                        features: [("circle.hexagonpath", "Zikr", "Today's tasks and how many are left. Tap a task to start it."),
+                                   ("moon.stars", "Name of the Day", "One of Allah's 99 Names each day, with its meaning."),
+                                   ("book", "Daily Ayah", "Today's verse, once you've revealed it in shukr. It never spoils the reveal.")],
+                        steps: [("hand.tap", "Touch and hold an empty spot on your Home Screen"),
+                                ("plus.circle", "Tap Edit, then Add Widget"),
+                                ("magnifyingglass", "Search shukr and swipe to the one you want")]) { MoreWidgetsPicture() }
         case .controls:
             ExploreCard(startOpen: open, title: "Control Center",
-                        why: "Qibla and Tasbeeh one swipe away, even inside another app. Each opens straight to it.",
+                        why: "shukr a swipe away, even inside another app.",
+                        features: [("clock", "Prayer", "The prayer that's on, or the next one, and its time."),
+                                   ("location.north.line", "Qibla and Tasbeeh", "Straight to the qibla map, or your zikr."),
+                                   ("book", "Daily Ayah, 99 Names, Memories", "Each opens straight to it.")],
                         steps: [("arrow.down.right", "Swipe down from the top-right corner"),
                                 ("plus", "Tap + at the top left, then Add a Control"),
-                                ("magnifyingglass", "Search shukr, add Qibla and Tasbeeh")],
-                        note: "They work on the Lock Screen and the Action button too.") { ControlCenterPicture() }
+                                ("magnifyingglass", "Search shukr and add the ones you want")],
+                        note: "They work on the Lock Screen's buttons and the Action button too.") { ControlCenterPicture() }
         case .siri:
-            ExploreCard(startOpen: open, title: "Siri and Shortcuts",
-                        why: "Ask “Next prayer time from shukr” hands-free, or build prayer times into your own automations.",
+            ExploreCard(startOpen: open, title: "Siri",
+                        why: "Ask without picking up your phone. Say “in shukr” at the end.",
+                        features: [("clock", "“What's the next prayer in shukr”", "The prayer and how long until it starts."),
+                                   ("hourglass", "“How long is left in shukr”", "Time left for the prayer that's on."),
+                                   ("checkmark.circle", "“I prayed in shukr”", "Marks it, and tells you how you did."),
+                                   ("circle.hexagonpath", "“Start Tasbih Fatimah in shukr”", "Opens straight into 33 · 33 · 34.")],
                         shortcuts: true) { SiriPicture() }
+        case .notifications:
+            ExploreCard(startOpen: open, title: "Notifications you can answer",
+                        why: "Hold a prayer's notification to answer it, without opening shukr.",
+                        features: [("checkmark.circle", "“I already prayed”", "Marks it right from the notification."),
+                                   ("clock.arrow.circlepath", "“Nudge in 5 minutes”", "Or 10. It comes back when you said."),
+                                   ("bell.badge", "Halfway and 30 minutes left", "On Nudge, two more if you haven't marked it yet.")],
+                        action: ("Choose your nudges", { openNotificationSettings() })) { NotificationsPicture() }
         case .watch:
             ExploreCard(startOpen: open, title: "Apple Watch",
-                        why: "Mark prayers from your wrist, count zikr with the Crown or Double Tap, and find the qibla.",
+                        why: "Your prayers and your zikr on your wrist.",
+                        features: [("hand.tap", "Mark prayers", "Hold the ring to mark. Undo if you slip."),
+                                   ("digitalcrown.horizontal.arrow.clockwise", "Count your way", "Tap, Double Tap with your fingers, or turn the Crown."),
+                                   ("location.north.line", "The qibla", "A map that turns with you and taps your wrist when you face it."),
+                                   ("applewatch.watchface", "On your watch face", "The prayer's ring as a complication.")],
                         steps: [("applewatch", "Open the Watch app on your iPhone"),
                                 ("arrow.down", "Scroll to Available Apps"),
                                 ("square.and.arrow.down", "Tap Install next to shukr")]) { WatchPicture() }
         case .memories:
             ExploreCard(startOpen: open, title: "Memories",
-                        why: "After you mark a prayer, take a photo — both cameras at once. Look back day by day, or on this day years ago.",
+                        why: "A photo after you pray, kept day by day.",
+                        features: [("camera", "Both cameras at once", "Where you are, and you, after you mark a prayer."),
+                                   ("magnifyingglass", "Find any of them", "By prayer, place, note or date. Hijri dates too."),
+                                   ("calendar", "On this day", "What you saw a year ago.")],
                         action: ("Open Memories", { MemoriesPresenter.shared.open = true })) { MemoriesPicture() }
+        }
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    /// Back to Settings, on Reminders' Notifications side (where each prayer's nudges are chosen).
+    private func openNotificationSettings() {
+        dismiss()
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.45))   // the pop first, so the scroll lands
+            SettingsJump.shared.request(SettingsJump.notifications)
         }
     }
 
     private func usingRow(_ f: Feature) -> some View {
         let (symbol, title): (String, String) = switch f {
-        case .home: ("square.grid.2x2", "Home Screen widget")
-        case .lock: ("lock.rectangle", "Lock Screen widget")
+        case .home: ("square.grid.2x2", "Prayers widget")
+        case .lock: ("lock.rectangle", "Lock Screen widgets")
+        case .moreWidgets: ("rectangle.3.group", "More widgets")
+        case .notifications: ("bell.badge", "Notifications you can answer")
         case .controls: ("switch.2", "Control Center")
-        case .siri: ("waveform", "Siri and Shortcuts")
+        case .siri: ("waveform", "Siri")
         case .watch: ("applewatch", "Apple Watch")
         case .memories: ("photo.stack", "Memories")
         }
@@ -201,10 +261,12 @@ struct ExploreShukrPage: View {
 
     private func title(_ f: Feature) -> String {
         switch f {
-        case .home: "Home Screen widget"
-        case .lock: "Lock Screen widget"
+        case .home: "Prayers widget"
+        case .lock: "Lock Screen widgets"
+        case .moreWidgets: "More widgets"
+        case .notifications: "Notifications"
         case .controls: "Control Center"
-        case .siri: "Siri and Shortcuts"
+        case .siri: "Siri"
         case .watch: "Apple Watch"
         case .memories: "Memories"
         }
@@ -218,6 +280,8 @@ private struct ExploreCard<Picture: View>: View {
     var startOpen = false
     let title: String
     let why: String
+    /// What's good about it: a symbol, a short name, a line.
+    var features: [(String, String, String)] = []
     var steps: [(String, String)]? = nil
     var note: String? = nil
     var action: (String, () -> Void)? = nil
@@ -242,6 +306,24 @@ private struct ExploreCard<Picture: View>: View {
                 Text(title).font(.system(.title3, design: .rounded, weight: .semibold))
                 Text(why).font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            if !features.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(Array(features.enumerated()), id: \.offset) { _, f in
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: f.0)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundStyle(Color.sage)
+                                .frame(width: 26, height: 22)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(f.1).font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                Text(f.2).font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
             }
             if let steps {
                 if open {
@@ -311,6 +393,7 @@ private struct ShownPrayer {
     let start: Date
     let end: Date
     var minutesLeft: Int { max(1, Int(end.timeIntervalSinceNow / 60)) }
+    var isOn: Bool { Date() >= start && Date() < end }
     var left: String {
         let m = minutesLeft
         return m >= 60 ? "\(m / 60) hr \(m % 60) min" : "\(m) min"
@@ -358,6 +441,8 @@ private struct HomeScreenPicture: View {
                 HStack {
                     Image(systemName: "location.north.line")
                     Spacer()
+                    Image(systemName: "chevron.up").font(.system(size: 9, weight: .semibold))
+                    Spacer()
                     Image(systemName: "circle.hexagonpath")
                 }
                 .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -365,6 +450,10 @@ private struct HomeScreenPicture: View {
             }
             .padding(12)
             .frame(width: 124, height: 132)
+            // The mark check, top left (the widget's own).
+            .overlay(alignment: .topLeading) {
+                Image(systemName: "circle").font(.system(size: 15, weight: .light)).foregroundStyle(.secondary).padding(10)
+            }
             .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(.systemBackground)))
             .shadow(color: .black.opacity(0.12), radius: 6, y: 3)
             // App icons around it, as on a Home Screen.
@@ -387,6 +476,10 @@ private struct LockScreenPicture: View {
     var body: some View {
         let p = ShownPrayer.now
         VStack(spacing: 10) {
+            // The line above the clock.
+            Label("\(p.name) · \(p.isOn ? "ends" : "at") \(shortTimePM(p.isOn ? p.end : p.start))", systemImage: prayerIcon(for: p.name))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.85))
             // A Lock Screen's clock: no AM / PM.
             Text(Date.now.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
                 .font(.system(size: 46, weight: .semibold, design: .rounded))
@@ -516,5 +609,72 @@ private struct MemoriesPicture: View {
                     .shadow(color: .black.opacity(0.15), radius: 5, y: 3)
             }
         }
+    }
+}
+
+
+/// Three small widgets: Zikr, Name of the Day, Daily Ayah (veiled until revealed).
+private struct MoreWidgetsPicture: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            tile {
+                VStack(spacing: 4) {
+                    MiniRing(progress: 0.6, width: 5).frame(width: 46, height: 46)
+                        .overlay(Text("2").font(.system(size: 15, weight: .semibold, design: .rounded)))
+                    Text("left today").font(.system(size: 10, design: .rounded)).foregroundStyle(.secondary)
+                }
+            }
+            tile {
+                VStack(spacing: 4) {
+                    Text("ٱلرَّحْمَٰنُ").font(.system(size: 20))
+                    Text("Ar-Raḥmān").font(.system(size: 11, weight: .semibold, design: .rounded))
+                    Text("The Most Merciful").font(.system(size: 9, design: .rounded)).foregroundStyle(.secondary)
+                }
+            }
+            tile {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(0..<4, id: \.self) { i in
+                        Capsule().fill(Color.primary.opacity(0.15)).frame(width: [62, 70, 54, 40][i], height: 6)
+                    }
+                    Text("tap to reveal").font(.system(size: 9, design: .rounded)).foregroundStyle(.secondary).padding(.top, 2)
+                }
+            }
+        }
+    }
+
+    private func tile<C: View>(@ViewBuilder _ c: () -> C) -> some View {
+        c()
+            .frame(width: 96, height: 96)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.systemBackground)))
+            .shadow(color: .black.opacity(0.1), radius: 5, y: 2)
+    }
+}
+
+/// A prayer notification held open: its buttons.
+private struct NotificationsPicture: View {
+    var body: some View {
+        let p = ShownPrayer.now
+        VStack(spacing: 6) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.sage).frame(width: 30, height: 30)
+                    .overlay(Image(systemName: prayerIcon(for: p.name)).font(.system(size: 13)).foregroundStyle(.white))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("\(p.name) 🟢").font(.system(size: 13, weight: .semibold))
+                    Text("Pray by \(shortTimePM(p.end))").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.systemBackground)))
+            VStack(spacing: 0) {
+                ForEach(["I already prayed", "Nudge in 5 minutes", "Nudge in 10 minutes"], id: \.self) { b in
+                    Text(b).font(.system(size: 13)).frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                    if b != "Nudge in 10 minutes" { Divider() }
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.systemBackground).opacity(0.85)))
+        }
+        .frame(width: 240)
     }
 }

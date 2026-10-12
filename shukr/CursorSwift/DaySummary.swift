@@ -58,6 +58,8 @@ extension DayPrayer {
     static let fajrAlarm = "fajrAlarm"
     /// Reminders' Live Activities side (Explore shukr's Set it up).
     static let liveActivities = "liveActivitiesSide"
+    /// Reminders' Notifications side (Explore's notifications card).
+    static let notifications = "notificationsSide"
 }
 
 /// The day's five prayers round the circle (Fajr at the top, clockwise), on the ring's own band.
