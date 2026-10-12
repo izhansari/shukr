@@ -1718,7 +1718,7 @@ private struct LiveActivityPrayerCol: View {
     init(prayer: String, changed: @escaping () -> Void = {}) {
         self.prayer = prayer
         self.changed = changed
-        _on = AppStorage(wrappedValue: true, LiveActivityPrefs.key(prayer), store: UserDefaults(suiteName: SharedStore.appGroup))
+        _on = AppStorage(wrappedValue: LiveActivityPrefs.onByDefault.contains(prayer), LiveActivityPrefs.key(prayer), store: UserDefaults(suiteName: SharedStore.appGroup))
     }
 
     var body: some View {

@@ -28,13 +28,9 @@ struct LiveActivitySetupStep: View {
     /// The prayer the preview shows once the tiles are up: the last tile tapped (Asr to begin).
     @State private var focus = "Asr"
     @State private var prefs: [String: Bool] = LiveActivitySetupStep.savedPrefs
-    #if DEBUG
-    @State private var showCopyTuner = false
-    #endif
-
     /// The page's states; `real` (only as "Preview as") follows the phone.
     enum Mode: String, CaseIterable, Identifiable {
-        case real = "Real", ask = "Ask", on = "On", off = "Off in Settings", old = "Before iOS 26"
+        case real = "Real", ask = "Ask", on = "On", declined = "Said no", off = "Off in Settings", old = "Before iOS 26"
         var id: String { rawValue }
     }
 
@@ -47,7 +43,11 @@ struct LiveActivitySetupStep: View {
         if copy.preview != .real { return copy.preview }
         if !PrayerLiveActivities.supported { return .old }
         if !enabled { return .off }
-        return answer == true ? .on : .ask
+        switch answer {
+        case true?: return .on
+        case false?: return .declined
+        case nil: return .ask
+        }
     }
 
     var body: some View {
@@ -61,7 +61,7 @@ struct LiveActivitySetupStep: View {
                         StepTitle(title: copy[.title], subtitle: copy[.subtitle])
                             .padding(.bottom, 22)
                         if m != .on { Spacer(minLength: 0) }
-                        LiveActivityDemo(prayer: m == .on ? focus : "Asr", veil: m == .off ? .off : m == .old ? .old : .none,
+                        LiveActivityDemo(prayer: m == .on ? focus : "Asr", veil: m == .off ? .off : m == .old ? .old : m == .declined ? .declined : .none,
                                          copy: copy)
                             .padding(.horizontal, 24)
                         if m == .on {
@@ -87,27 +87,9 @@ struct LiveActivitySetupStep: View {
                 .padding(.bottom, 8)
         }
         .animation(.easeInOut(duration: 0.45), value: m)
-        #if DEBUG
-        .overlay(alignment: .topTrailing) {
-            Button { showCopyTuner = true } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 17))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 44, height: 44)
-            }
-            .buttonStyle(.plain)
-            .padding(.trailing, 8)
-            .accessibilityLabel("Edit this page's words")
-        }
-        .sheet(isPresented: $showCopyTuner) {
-            LASetupCopyPanel()
-                .presentationDetents([.medium, .large])
-                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-        }
-        #endif
         .alert(copy[.skipTitle], isPresented: $confirmSkip) {
             Button(copy[.skipKeep], role: .cancel, action: turnOn)
-            Button(copy[.skipAnyway], role: .destructive) { turnOff(); next() }
+            Button(copy[.skipAnyway], role: .destructive, action: turnOff)
         } message: {
             Text(copy[.skipBody])
         }
@@ -124,6 +106,10 @@ struct LiveActivitySetupStep: View {
                 SecondaryButton(title: copy[.no]) { confirmSkip = true }
             case .on:
                 PrimaryButton(title: "Continue", action: next)
+            case .declined:
+                // Said no: the card says what that means, frosted over; the way on is outlined, a change of mind quiet.
+                PrimaryButton(title: copy[.declinedContinue], outlined: true, action: next)
+                SecondaryButton(title: copy[.declinedUndo], action: turnOn)
             case .off:
                 // iOS has them off: the card says it, frosted over; the way on is outlined, Settings the quiet way back.
                 PrimaryButton(title: copy[.offContinue], outlined: true, action: next)
@@ -148,7 +134,7 @@ struct LiveActivitySetupStep: View {
             }
             HStack(spacing: 8) {
                 ForEach(LiveActivityPrefs.prayers, id: \.self) { p in
-                    LiveActivityTile(prayer: p, isOn: prefs[p] ?? true) { set(p, on: !(prefs[p] ?? true)) }
+                    LiveActivityTile(prayer: p, isOn: prefs[p] ?? false) { set(p, on: !(prefs[p] ?? false)) }
                 }
             }
         }
@@ -156,16 +142,21 @@ struct LiveActivitySetupStep: View {
         .padding(.top, 8)
     }
 
-    /// "Show my prayers": on, every prayer as set (all five unless changed), and the next windows planned now — iOS asks
-    /// its own "Allow Live Activities?" the first time one shows.
+    /// "Show my prayers": on, the prayers as set (Dhuhr, Asr and Maghrib unless changed), the next windows planned now —
+    /// iOS asks its own "Allow Live Activities?" the first time one shows. After a "no", the tiles come back as they were.
     private func turnOn() {
+        if answer == false, copy.preview == .real {
+            let group = UserDefaults(suiteName: SharedStore.appGroup)
+            for p in LiveActivityPrefs.prayers { group?.removeObject(forKey: LiveActivityPrefs.key(p)) }
+            prefs = Self.savedPrefs
+        }
         withAnimation(.easeInOut(duration: 0.45)) { answer = true }
         if copy.preview == .real { PrayerLiveActivities.plan(reason: "setup") }
     }
 
-    /// "Skip it": every prayer off (Settings turns them back on).
+    /// "Skip it": every prayer off (Settings turns them back on); the page stays, frosted, until Continue.
     private func turnOff() {
-        answer = false
+        withAnimation(.easeInOut(duration: 0.45)) { answer = false }
         guard copy.preview == .real else { return }
         let group = UserDefaults(suiteName: SharedStore.appGroup)
         for p in LiveActivityPrefs.prayers { group?.set(false, forKey: LiveActivityPrefs.key(p)) }
@@ -176,7 +167,6 @@ struct LiveActivitySetupStep: View {
     private func set(_ prayer: String, on: Bool) {
         focus = prayer
         prefs[prayer] = on
-        triggerSomeVibration(type: .light)
         guard copy.preview == .real else { return }
         UserDefaults(suiteName: SharedStore.appGroup)?.set(on, forKey: LiveActivityPrefs.key(prayer))
         PrayerLiveActivities.plan(reason: "setup tile")
@@ -192,23 +182,27 @@ struct LiveActivitySetupStep: View {
     }
 }
 
-/// One prayer as a tile: its symbol and On / Off. Sage when on, like the notifications' tiles; a tap flips it and puts
-/// that prayer in the card above.
+/// One prayer as a tile, the notifications' tile with two states (owner: "very similar to the component that we use for
+/// notifications"): the name, the Lock Screen card symbol (slashed when off), On / Off — solid sage when on, grey off. A
+/// tap flips it and puts that prayer in the card above.
 private struct LiveActivityTile: View {
     let prayer: String
     let isOn: Bool
     let toggle: () -> Void
 
     var body: some View {
-        Button(action: toggle) {
+        Button {
+            toggle()
+            triggerSomeVibration(type: .light)
+        } label: {
             VStack(spacing: 6) {
                 Text(prayer)
                     .font(.system(.caption, design: .rounded, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Image(systemName: prayerIcon(for: prayer))
+                Image(systemName: isOn ? "platter.filled.bottom.iphone" : "iphone.slash")
                     .font(.system(size: 18))
-                    .frame(height: 22)
+                    .contentTransition(.symbolEffect(.replace))
                 Text(isOn ? "On" : "Off")
                     .font(.system(.caption2, design: .rounded, weight: .semibold))
             }
@@ -236,7 +230,7 @@ private struct LiveActivityTile: View {
 /// the step under it lit as it goes. iOS off or too old: frosted over with what that means.
 struct LiveActivityDemo: View {
     let prayer: String
-    enum Veil { case none, off, old }
+    enum Veil { case none, declined, off, old }
     let veil: Veil
     let copy: LASetupCopy
     /// The card's look; nil = the Card look setting (`LiveActivityLook`) for this prayer, else the phone's. Settings'
@@ -294,6 +288,7 @@ struct LiveActivityDemo: View {
         .overlay { veilView }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(veil == .off ? "\(copy[.offTitle]). \(copy[.offBody])"
+                            : veil == .declined ? "\(copy[.declinedTitle]). \(copy[.declinedBody])"
                             : veil == .old ? "\(copy[.oldTitle]). \(copy[.oldBody])"
                             : "\(prayer) on the Lock Screen: time left in a ring, and a button to mark it prayed.")
         .task(id: prayer) { runStart = Date() }
@@ -355,13 +350,13 @@ struct LiveActivityDemo: View {
                         .fill(.regularMaterial)
                         .padding(-8)
                     VStack(spacing: 6) {
-                        Image(systemName: veil == .off ? "rectangle.slash" : "iphone.gen3")
+                        Image(systemName: veil == .old ? "iphone.gen3" : "iphone.slash")
                             .font(.system(size: 26))
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
-                        Text(copy[veil == .off ? .offTitle : .oldTitle])
+                        Text(copy[veil == .off ? .offTitle : veil == .declined ? .declinedTitle : .oldTitle])
                             .font(.system(.headline, design: .rounded))
-                        Text(copy[veil == .off ? .offBody : .oldBody])
+                        Text(copy[veil == .off ? .offBody : veil == .declined ? .declinedBody : .oldBody])
                             .font(.system(.subheadline, design: .rounded))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -386,6 +381,7 @@ struct LiveActivityDemo: View {
         case title, subtitle, cardLabel, stepStart, stepLive, stepLast, stepDone
         case yes, no, tilesHeader, tilesBody
         case skipTitle, skipBody, skipKeep, skipAnyway
+        case declinedTitle, declinedBody, declinedContinue, declinedUndo
         case offTitle, offBody, offContinue, offSettings
         case oldTitle, oldBody
         var id: String { rawValue }
@@ -397,6 +393,7 @@ struct LiveActivityDemo: View {
             case .cardLabel, .stepStart, .stepLive, .stepLast, .stepDone: return "The card"
             case .yes, .no, .tilesHeader, .tilesBody: return "Asking, then on"
             case .skipTitle, .skipBody, .skipKeep, .skipAnyway: return "No thanks (the alert)"
+            case .declinedTitle, .declinedBody, .declinedContinue, .declinedUndo: return "After a no (frosted)"
             case .offTitle, .offBody, .offContinue, .offSettings: return "Off in iOS Settings"
             case .oldTitle, .oldBody: return "Before iOS 26"
             }
@@ -419,6 +416,10 @@ struct LiveActivityDemo: View {
             case .skipBody: return "Alert message"
             case .skipKeep: return "Alert: keep"
             case .skipAnyway: return "Alert: skip"
+            case .declinedTitle: return "Frost title"
+            case .declinedBody: return "Frost line"
+            case .declinedContinue: return "Continue button"
+            case .declinedUndo: return "Change of mind"
             case .offTitle: return "Frost title"
             case .offBody: return "Frost line"
             case .offContinue: return "Continue button"
@@ -428,13 +429,13 @@ struct LiveActivityDemo: View {
             }
         }
 
-        static let groups = ["Top", "The card", "Asking, then on", "No thanks (the alert)", "Off in iOS Settings", "Before iOS 26"]
+        static let groups = ["Top", "The card", "Asking, then on", "No thanks (the alert)", "After a no (frosted)", "Off in iOS Settings", "Before iOS 26"]
     }
 
     /// The words as shipped. Kept honest about what it does (the audit, 2026-10-11): a card shows from a prayer's
     /// start until it's marked, and marking or opening shukr keeps the next ones coming.
     static let defaults: [Key: String] = [
-        .title: "Your prayer on the Lock Screen",
+        .title: "On your Lock Screen",
         .subtitle: "From the moment a prayer starts, see how long is left at a glance, and mark it prayed without opening shukr.",
         .cardLabel: "Lock Screen",
         .stepStart: "Starts",
@@ -442,13 +443,17 @@ struct LiveActivityDemo: View {
         .stepLast: "Last 30 min",
         .stepDone: "Marked",
         .yes: "Show my prayers",
-        .no: "No thanks",
+        .no: "No thanks, I’ll check the app",
         .tilesHeader: "Which prayers?",
-        .tilesBody: "Each one shows from its start until you mark it. Marking them, or opening shukr, keeps the next ones coming.",
+        .tilesBody: "We show the daytime prayers, the ones a busy day pushes back. Each shows from its start until you mark it, and marking them keeps the next ones coming.",
         .skipTitle: "Go without Live Activities?",
-        .skipBody: "You’d open shukr to see how long is left. Your reminders still come either way. You can turn these on later in Settings.",
+        .skipBody: "You’d lose the countdown on your Lock Screen and marking a prayer from there. Your reminders still come either way.",
         .skipKeep: "Show my prayers",
         .skipAnyway: "Skip it",
+        .declinedTitle: "No Live Activities",
+        .declinedBody: "You’ll open shukr to see how long is left in a prayer. Turn them on any time in Settings.",
+        .declinedContinue: "Continue without them",
+        .declinedUndo: "I changed my mind",
         .offTitle: "Live Activities are off",
         .offBody: "iOS has them turned off for shukr. Turn them on in Settings any time.",
         .offContinue: "Continue without them",
@@ -550,20 +555,42 @@ struct LASetupCopyPanel: View {
 /// The page on its own, for looking at it (DEBUG): ✕ closes, and so does its Continue.
 struct LiveActivitySetupPreview: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var showCopyTuner = false
+
+    /// Where it would sit in the setup: after notifications, before the Fajr alarm (the ring between theirs).
+    static let progress = (SetupStep.reminders.progress + SetupStep.fajr.progress) / 2
+    static let symbol = "platter.filled.bottom.iphone"
+
     var body: some View {
-        LiveActivitySetupStep(next: { dismiss() })
-            .padding(.top, 8)
-            .overlay(alignment: .topLeading) {
+        // The setup's own top (FirstRunSetupView): the bar (✕ where its back chevron is, the ⚙ where Skip is), then the
+        // ring with the step's symbol and progress, then the step.
+        VStack(spacing: 0) {
+            HStack {
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
+                    Image(systemName: "xmark").font(.body.weight(.medium))
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Close")
+                Spacer()
+                Button { showCopyTuner = true } label: {
+                    Image(systemName: "gearshape").font(.body)
                         .foregroundStyle(.secondary)
                         .frame(width: 44, height: 44)
                 }
-                .buttonStyle(.plain)
-                .padding(.leading, 8)
-                .accessibilityLabel("Close")
+                .accessibilityLabel("Edit this page's words")
             }
+            .tint(.primary)
+            .padding(.horizontal, 12)
+            .frame(height: 44)
+            SetupRing(progress: Self.progress, symbol: Self.symbol)
+                .padding(.top, 4)
+            LiveActivitySetupStep(next: { dismiss() })
+        }
+        .sheet(isPresented: $showCopyTuner) {
+            LASetupCopyPanel()
+                .presentationDetents([.medium, .large])
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+        }
     }
 }
 #endif

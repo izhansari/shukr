@@ -1749,8 +1749,11 @@ enum WidgetSpeedTest {
 enum LiveActivityPrefs {
     static let prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
     static func key(_ prayer: String) -> String { "liveActivity.\(prayer)" }
+    /// The daytime prayers by default (owner: "only the midday prayers, like Dhuhr, Asr, and Maghrib … off for Fajr and
+    /// Isha"): a busy day pushes them back, and with iOS's five at a time, three a day reach further ahead.
+    static let onByDefault: Set<String> = ["Dhuhr", "Asr", "Maghrib"]
     static func isOn(_ prayer: String) -> Bool {
-        UserDefaults(suiteName: SharedStore.appGroup)?.object(forKey: key(prayer)) as? Bool ?? true
+        UserDefaults(suiteName: SharedStore.appGroup)?.object(forKey: key(prayer)) as? Bool ?? onByDefault.contains(prayer)
     }
 }
 
