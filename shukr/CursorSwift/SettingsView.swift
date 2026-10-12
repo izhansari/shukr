@@ -327,10 +327,10 @@ struct SettingsView: View {
                     }
                     
                     
-                    #if DEBUG
-                    // MARK: - Live Activities (MY4R, research builds only until the feature ships)
-                    LiveActivitySettingsSection()
-                    #endif
+                    // MARK: - Live Activities (iOS 26+: each window scheduled to start by itself)
+                    if PrayerLiveActivities.supported {
+                        LiveActivitySettingsSection().id("liveActivities")
+                    }
 
                     // MARK: - Daily Alarm
                     AlarmSettingsView()
@@ -604,9 +604,9 @@ struct SettingsView: View {
                 }
                 #if DEBUG
                 .task {   // `-settingsScrollTo lockTime`: Settings opened on the Lock Screen time-left picker
-                    guard UserDefaults.standard.string(forKey: "settingsScrollTo") == "lockTime" else { return }
+                    guard let to = UserDefaults.standard.string(forKey: "settingsScrollTo") else { return }   // + liveActivities
                     try? await Task.sleep(for: .seconds(2.5))
-                    proxy.scrollTo("lockTime", anchor: .center)
+                    proxy.scrollTo(to, anchor: .center)
                 }
                 #endif
                 }
@@ -1535,44 +1535,51 @@ struct HoldRepeatStepper: View {
 }
 
 
-#if DEBUG
 import ActivityKit
 
 /// Settings → Live Activities (owner, 2026-10-11: "keep this setting different from the notifications … turn it on or
-/// off for live activities for each prayer"): the notifications row's five columns, each the prayer's own symbol —
-/// black when its window shows as a Live Activity, grey when not. While iOS has Live Activities off for shukr, only that
-/// line and the way to Settings.
+/// off for live activities for each prayer"). Like Notifications (owner: "keep it consistent"): a status row in
+/// NotificationHealthRows' look — on, with how many windows are waiting and the next; or off for shukr in iOS, with the
+/// way back — then, while on, the five columns, each the prayer's own symbol (black = its window shows, grey = not).
+/// iOS 26+ only (scheduled starts); the section isn't shown before.
 struct LiveActivitySettingsSection: View {
     @State private var enabled = ActivityAuthorizationInfo().areActivitiesEnabled
     @State private var showInfo = false
+    @State private var held = 0
+    @State private var next: Date?
+    #if DEBUG
     @State private var showTuner = false
+    #endif
 
     var body: some View {
         Section {
-            if enabled {
+            statusRow
+            if !enabled {
+                Button(action: SettingsLinks.app) {
+                    Text("Turn on Live Activities").font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
+                }
+            } else {
                 HStack {
                     ForEach(Array(LiveActivityPrefs.prayers.enumerated()), id: \.offset) { i, prayer in
                         if i > 0 { Divider() }
-                        LiveActivityPrayerCol(prayer: prayer)
+                        LiveActivityPrayerCol(prayer: prayer) { refresh() }
                     }
                 }
                 .padding(.vertical, 4)
-            } else {
-                Label("Live Activities are off for shukr", systemImage: "exclamationmark.circle")
-                    .foregroundStyle(.orange)
-                Button("Turn them on in Settings") { SettingsLinks.app() }
             }
             if showInfo && enabled {
-                Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it or the next prayer begins.")
+                Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it or the next prayer begins. iOS keeps up to five waiting; opening shukr tops them up.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            #if DEBUG
             Button {
                 showTuner = true
             } label: {
                 Label("Tune the card's look", systemImage: "slider.horizontal.3")
             }
             .sheet(isPresented: $showTuner) { LATunerView() }
+            #endif
         } header: {
             HStack {
                 Text("Live Activities")
@@ -1585,18 +1592,54 @@ struct LiveActivitySettingsSection: View {
             }
         }
         .task {
-            for await on in ActivityAuthorizationInfo().activityEnablementUpdates { enabled = on }
+            refresh()
+            for await on in ActivityAuthorizationInfo().activityEnablementUpdates {
+                enabled = on
+                if on { PrayerLiveActivities.plan(reason: "Live Activities turned on") }
+                refresh()
+            }
         }
+    }
+
+    private func refresh() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))   // a toggle's re-plan first
+            (held, next) = PrayerLiveActivities.status()
+        }
+    }
+
+    /// Notifications' status row: a light symbol in green (or soft orange), a rounded title, a light detail.
+    private var statusRow: some View {
+        let title = enabled ? "Live Activities are on" : "Live Activities are off"
+        let detail: String = {
+            guard enabled else { return "Turned off for shukr in iOS Settings" }
+            guard held > 0 else { return "None waiting · open shukr to set them up" }
+            let when = next.map { " · next " + $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) } ?? ""
+            return "\(held) waiting\(when)"
+        }()
+        return HStack(spacing: 14) {
+            Image(systemName: enabled ? "checkmark.circle" : "exclamationmark.circle")
+                .font(.system(size: 24, weight: .light))
+                .foregroundStyle(enabled ? Color(.systemGreen) : Color.orange.opacity(0.9))
+                .frame(width: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(.body, design: .rounded)).foregroundStyle(.primary)
+                Text(detail).font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 
 /// One prayer: its name, its symbol (black = on, grey = off), "on" / "off" — a tap flips it.
 private struct LiveActivityPrayerCol: View {
     let prayer: String
+    var changed: () -> Void = {}
     @AppStorage private var on: Bool
 
-    init(prayer: String) {
+    init(prayer: String, changed: @escaping () -> Void = {}) {
         self.prayer = prayer
+        self.changed = changed
         _on = AppStorage(wrappedValue: true, LiveActivityPrefs.key(prayer), store: UserDefaults(suiteName: SharedStore.appGroup))
     }
 
@@ -1604,7 +1647,7 @@ private struct LiveActivityPrayerCol: View {
         Button {
             on.toggle()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            Task { @MainActor in LAReal.plan(reason: "Settings: \(prayer) \(on ? "on" : "off")") }
+            Task { @MainActor in PrayerLiveActivities.plan(reason: "Settings: \(prayer) \(on ? "on" : "off")"); changed() }
         } label: {
             VStack {
                 Text(prayer)
@@ -1627,6 +1670,7 @@ private struct LiveActivityPrayerCol: View {
     }
 }
 
+#if DEBUG
 /// The Live Activity card's tuner (owner, 2026-10-11: "give me a tuner to adjust the ui layout, gradient, font size,
 /// positions … easily labeled … and not hiding the ui so i can see the changes"). The very card the Lock Screen draws
 /// (shared views), pinned at the top; its state picked under it; labelled sliders below. Every change is saved to the
@@ -1642,7 +1686,8 @@ struct LATunerView: View {
 
     var body: some View {
         NavigationStack {
-            Group { if UserDefaults.standard.bool(forKey: "laIslandGallery") { LAIslandGallery(t: t) } else {
+            Group { if UserDefaults.standard.bool(forKey: "laSettingsPreview") { Form { LiveActivitySettingsSection() } }   // DEBUG -laSettingsPreview
+            else if UserDefaults.standard.bool(forKey: "laIslandGallery") { LAIslandGallery(t: t) } else {
             VStack(spacing: 0) {
                 preview
                     .frame(height: 210)
@@ -1705,7 +1750,7 @@ struct LATunerView: View {
 
     // MARK: The pinned preview
 
-    private var sample: LATestAttributes.ContentState {
+    private var sample: PrayerWindowAttributes.ContentState {
         let m: Double = 60
         switch kind {
         case 2: return .init(label: "Asr", start: base.addingTimeInterval(-25 * m), end: base.addingTimeInterval(115 * m), symbol: prayerIcon(for: "Asr"), markedAt: base)
@@ -1846,11 +1891,11 @@ struct LATunerView: View {
     private func apply() async {
         t.save()
         var n = 0
-        for a in Activity<LATestAttributes>.activities where a.activityState == .active || a.activityState == .stale {
+        for a in Activity<PrayerWindowAttributes>.activities where a.activityState == .active || a.activityState == .stale {
             await a.update(a.content)
             n += 1
         }
-        LATestLog.add("tuning applied to \(n) card(s): " + t.json.replacingOccurrences(of: "\n", with: " "))
+        PrayerWindowLog.add("tuning applied to \(n) card(s): " + t.json.replacingOccurrences(of: "\n", with: " "))
         note = n == 0 ? "Saved — no card on the Lock Screen right now" : "Saved and redrawn on the Lock Screen"
     }
 }
@@ -1878,7 +1923,7 @@ struct LAFormatTest: View {
 #if DEBUG
 /// The island folded, drawn roughly as iOS does: a black pill with the camera in its middle, our two sides at its ends.
 struct LAFoldedIsland: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let stale: Bool
     let t: LATuning
     var body: some View {
@@ -1897,11 +1942,11 @@ struct LAFoldedIsland: View {
 struct LAIslandGallery: View {
     let t: LATuning
     private let now = Date()
-    private func state(start: Double, end: Double, marked: Bool = false) -> LATestAttributes.ContentState {
+    private func state(start: Double, end: Double, marked: Bool = false) -> PrayerWindowAttributes.ContentState {
         .init(label: "Asr", start: now.addingTimeInterval(start * 60), end: now.addingTimeInterval(end * 60), symbol: prayerIcon(for: "Asr"),
               markedAt: marked ? now : nil)
     }
-    private var rows: [(String, LATestAttributes.ContentState, Bool)] {
+    private var rows: [(String, PrayerWindowAttributes.ContentState, Bool)] {
         [("Running · 1 hr 40 left", state(start: -40, end: 100), false),
          ("Last half hour · 27 left", state(start: -113, end: 27), false),
          ("Marked · Perfect", state(start: -20, end: 120, marked: true), false),

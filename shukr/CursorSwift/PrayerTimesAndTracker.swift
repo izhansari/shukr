@@ -173,10 +173,9 @@ struct PrayerTimesView: View {
             // widget's page opened behind it (owner, 2026-09-26).
             let zikrTaskID = store.string(forKey: "widgetZikrTask")
             if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
-            #if DEBUG
-            // A Live Activity's Tasbih (MY4R): Tasbih Fatimah, as the post-salah pill opens it.
-            if store.bool(forKey: LAReal.openTasbihKey) {
-                store.set(false, forKey: LAReal.openTasbihKey)
+            // A Live Activity's Tasbih: Tasbih Fatimah, as the post-salah pill opens it.
+            if store.bool(forKey: PrayerLiveActivities.openTasbihKey) {
+                store.set(false, forKey: PrayerLiveActivities.openTasbihKey)
                 lastDeepLinkAt = Uptime.now
                 clearCovers {
                     sharedState.horizontalPage = .main
@@ -184,7 +183,7 @@ struct PrayerTimesView: View {
                     showTasbeehPage = true
                 }
             }
-            #endif
+            
             // The Fajr alarm's "I'm up — open Fajr" (AlarmKit): the Salah page, nothing over it.
             if store.bool(forKey: "alarmOpenSalah") {
                 store.set(false, forKey: "alarmOpenSalah")
@@ -2039,15 +2038,14 @@ struct PrayerTimesView: View {
                     .id(live.postSalahNudge)   // a new mark: a new pill, its 15 s from the start (audit A)
                 }
             }
-            #if DEBUG
-            // A Live Activity's Photo (MY4R): the same camera as the pill's, for that prayer.
-            .onReceive(NotificationCenter.default.publisher(for: LAReal.openPhoto)) { note in
+            // A Live Activity's Photo: the same camera as the pill's, for that prayer.
+            .onReceive(NotificationCenter.default.publisher(for: PrayerLiveActivities.openPhoto)) { note in
                 guard let name = note.object as? String,
                       let row = viewModel.todaysPrayers.first(where: { $0.name == name && $0.isCompleted }),
                       let target = PrayerPhotoTarget.forMarked(row) else { return }
                 prayerPhoto = target
             }
-            #endif
+            
             // The pill's camera: a photo of the prayer just marked (PrayerPhotos.swift).
             .fullScreenCover(item: $prayerPhoto) { target in
                 PrayerPhotoCapture(target: target) { prayerPhoto = nil }

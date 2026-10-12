@@ -22,6 +22,12 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         todaysPrayers.first { $0.name == name && abs($0.startTime.timeIntervalSince(start)) < 120 }
     }
 
+    /// A fresh fix for a prayer marked from outside (a widget's mark, run in the app — PrayerLiveActivities).
+    func setLocation(_ location: CLLocation, on row: PrayerModel) {
+        row.setPrayerLocation(with: location)
+        try? context.save()
+    }
+
     init(context: ModelContext, envLocationManager: EnvLocationManager) {
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>PrayerViewModel initialized")
         self.context = context
@@ -696,11 +702,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         try? context.save()
         WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
         WatchSync.shared.send()                    // the watch's ✓s
-        #if DEBUG
-        // Live Activities (MY4R): a mark ends its card at once, an unmark brings it back while its window is open
+        // Live Activities: a mark ends its card at once, an unmark brings it back while its window is open
         // (owner: "we should show the live activity so long as unmarked") — re-planned now, while shukr is in front.
-        Task { @MainActor in LAReal.plan(reason: "a prayer marked / unmarked / edited in shukr") }
-        #endif
+        Task { @MainActor in PrayerLiveActivities.plan(reason: "a prayer marked / unmarked / edited in shukr") }
     }
     
     /*

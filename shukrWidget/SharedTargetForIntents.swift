@@ -2,6 +2,7 @@
 // MARK: - Intents
 
 import AppIntents
+import ActivityKit
 import WidgetKit
 #if canImport(AlarmKit)
 import AlarmKit
@@ -485,7 +486,9 @@ enum SharedStore {
     }
 }
 
-struct MarkCompleteIntent: AppIntent {
+/// A LiveActivityIntent so it runs in shukr's process (owner, 2026-10-11): the prayer's Live Activity card goes at once,
+/// and the app can take a fresh location for it (S9FJ) — from the widget's own process it could do neither.
+struct MarkCompleteIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Mark Prayer Complete"
     static var openAppWhenRun: Bool = false
 
@@ -503,7 +506,11 @@ struct MarkCompleteIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         let t0 = ContinuousClock.now
         WidgetPerf.log("mark \(prayerName) start")
-        SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
+        if let hook = PrayerWindowHooks.widgetMark {
+            _ = await hook(prayerName, prayerStart, prayerEnd)
+        } else {
+            SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
+        }
         WidgetPerf.log("mark \(prayerName) done \(WidgetPerf.ms(since: t0)) ms")
         return .result()
     }
@@ -629,7 +636,7 @@ struct OpenDailyAyahIntent: AppIntent {
 /// Widget times list (`WidgetListMarks`): a started row marks its prayer,
 /// scored at the tap like the corner check, and the list stays up another `openFor` so the filled
 /// circle is seen (the mark reloads the timeline).
-struct MarkFromListIntent: AppIntent {
+struct MarkFromListIntent: LiveActivityIntent {   // in shukr's process, like MarkCompleteIntent
     static var title: LocalizedStringResource = "Mark Prayer Complete from the List"
     static var openAppWhenRun: Bool = false
     static var isDiscoverable: Bool = false
@@ -649,7 +656,13 @@ struct MarkFromListIntent: AppIntent {
         let store = UserDefaults(suiteName: SharedStore.appGroup)
         store?.set(true, forKey: WidgetListState.openKey)
         store?.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
-        if !SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd) {
+        let marked: Bool
+        if let hook = PrayerWindowHooks.widgetMark {
+            marked = await hook(prayerName, prayerStart, prayerEnd)
+        } else {
+            marked = SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
+        }
+        if !marked {
             WidgetCenter.shared.reloadAllTimelines()   // nothing marked: still keep the list up
         }
         return .result()
@@ -1731,8 +1744,6 @@ enum WidgetSpeedTest {
 #endif
 
 
-#if DEBUG
-import ActivityKit
 /// Which prayers get a Live Activity for their window (owner, 2026-10-11: its own setting, not the notifications' —
 /// "two very different features"). App group, on by default for all five.
 enum LiveActivityPrefs {
@@ -1743,39 +1754,36 @@ enum LiveActivityPrefs {
     }
 }
 
-/// DEBUG Live Activity research (MY4R, 2026-10-11): a stand-in prayer window, and a log both processes write.
-struct LATestAttributes: ActivityAttributes {
+/// A prayer window as a Live Activity (PrayerLiveActivities.swift plans them; the card is `PrayerWindowLiveActivity`).
+struct PrayerWindowAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var label: String
         var start: Date
         var end: Date
         var symbol: String = "sun.max.fill"
         var markedAt: Date? = nil
-        /// The app's look for this window (its light / dark / follows-the-sun setting, worked out by the app when it
-        /// schedules); nil = the phone's.
-        var dark: Bool? = nil
     }
+    /// The window's id: its start in whole minutes since 1970 (so a window is never scheduled twice).
     var n: Int
 }
 
-/// The test window's Mark prayed (runs in shukr's process): marks the stand-in window (never a real prayer), times a
-/// location fix (S9FJ), refills the schedule. The app target supplies `LATestHooks.mark`.
-struct LATestMarkIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Mark test window prayed"
+/// The card's ✓ (runs in shukr's process, as every LiveActivityIntent does): marks the real prayer and turns the card.
+struct PrayerWindowMarkIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Mark prayer prayed"
     static var isDiscoverable = false
     @Parameter(title: "Window") var n: Int
     init() {}
     init(n: Int) { self.n = n }
     func perform() async throws -> some IntentResult {
-        LATestLog.add("Mark prayed tapped on #\(n)")
-        await LATestHooks.mark?(n)
+        PrayerWindowLog.add("Mark prayed tapped on #\(n)")
+        await PrayerWindowHooks.mark?(n)
         return .result()
     }
 }
 
-/// After marking: the post-salah actions open shukr (the real routing comes with the feature).
-struct LATestOpenIntent: LiveActivityIntent {
-    static var title: LocalizedStringResource = "Open after a test window"
+/// After marking: Photo (the prayer's camera) or Tasbih (Tasbih Fatimah) — opens shukr.
+struct PrayerWindowOpenIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Open after a prayer"
     static var isDiscoverable = false
     static var openAppWhenRun = true
     @Parameter(title: "What") var what: String
@@ -1783,27 +1791,33 @@ struct LATestOpenIntent: LiveActivityIntent {
     init() {}
     init(what: String, n: Int) { self.what = what; self.n = n }
     func perform() async throws -> some IntentResult {
-        LATestLog.add("\(what) tapped on #\(n) (opens shukr)")
-        await LATestHooks.open?(n, what)
+        PrayerWindowLog.add("\(what) tapped on #\(n) (opens shukr)")
+        await PrayerWindowHooks.open?(n, what)
         return .result()
     }
 }
 
-enum LATestHooks {
+/// Set by the app at launch (an intent's run is always in the app's process).
+enum PrayerWindowHooks {
     nonisolated(unsafe) static var mark: ((Int) async -> Void)?
     nonisolated(unsafe) static var open: ((Int, String) async -> Void)?
+    /// A widget's mark, run in the app (owner: the card goes at once; and a fresh location — S9FJ). Returns whether it marked.
+    nonisolated(unsafe) static var widgetMark: ((String, Date, Date) async -> Bool)?
 }
 
-enum LATestLog {
+/// What the Live Activities did, both processes — app group Library/Application Support/live-activities.log (1 MB cap).
+enum PrayerWindowLog {
     static var url: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")?
-            .appendingPathComponent("Library/Application Support/la-test.log", isDirectory: false)
+            .appendingPathComponent("Library/Application Support/live-activities.log", isDirectory: false)
     }
-    private static let queue = DispatchQueue(label: "shukr.laTestLog")
+    private static let queue = DispatchQueue(label: "shukr.liveActivityLog")
     static func add(_ line: String) {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "MMM d HH:mm:ss.SSS"
         let text = "\(f.string(from: Date()))  [\(Bundle.main.bundleURL.pathExtension == "appex" ? "ext" : "app")] \(line)\n"
+        #if DEBUG
         print("🟣 \(line)")
+        #endif
         queue.sync {
             guard let url else { return }
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -1817,9 +1831,7 @@ enum LATestLog {
         }
     }
 }
-#endif
 
-#if DEBUG
 import SwiftUI
 
 // MARK: - Prayer Live Activity card (MY4R), shared by the widget extension (the real card) and the app (the tuner's
@@ -1920,7 +1932,7 @@ enum LASoft {
 /// The running look until the window ends, the ended look from then on — by itself (timer gates), because iOS's stale
 /// flag didn't flip at the stale date. Marked, or already stale: just that one look.
 struct LAEnds<Content: View>: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let stale: Bool
     @ViewBuilder let content: (_ ended: Bool) -> Content
     var body: some View {
@@ -1939,7 +1951,7 @@ struct LAEnds<Content: View>: View {
 
 /// The Lock Screen card (always dark).
 struct LALockCard: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let n: Int
     let stale: Bool
     var t = LATuning.current
@@ -1960,7 +1972,7 @@ struct LALockCard: View {
 /// Look D's layout in the soft look: the soft ring with the prayer's symbol on the left, the name and two lines beside
 /// it, the soft round buttons on the right, the score colour glowing out from the ring; once prayed, the 15 s bar.
 struct LALockCardBody: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let n: Int
     let ended: Bool
     let t: LATuning
@@ -1995,7 +2007,7 @@ struct LALockCardBody: View {
 
 /// The soft ring with the prayer's symbol inside (a ✓ in its score colour once prayed).
 struct LASideRing: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let ended: Bool
     let size: Double
     let symbolSize: Double
@@ -2021,7 +2033,7 @@ struct LASideRing: View {
 /// The name, then: the time left (red in the last half hour) + "ends 6:48 PM"; prayed: "Prayed 4:31 PM" +
 /// "Perfect · 100"; ended: "Asr ended" + "6:48 PM · not marked".
 struct LANameLines: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let ended: Bool
     let big: Bool
     let t: LATuning
@@ -2097,7 +2109,7 @@ struct LATimeLeft: View {
 
 /// After Mark prayed: how long until the card goes (15 s) — a thin grey bar, full at the tap, emptying right to left.
 struct LADismissBar: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     static let seconds: TimeInterval = 15
     var body: some View {
         if let at = state.markedAt {
@@ -2111,7 +2123,7 @@ struct LADismissBar: View {
 
 /// The island's small right side: empty — the ring says enough — until the last half hour: "27m" in red (owner).
 struct LACompactTrailing: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let ended: Bool
     var body: some View {
         if state.markedAt == nil && !ended {
@@ -2161,7 +2173,7 @@ struct LAIslandTime: View {
 
 /// The folded island's left side: the small ring with the prayer's symbol (its right side is `LACompactTrailing`).
 struct LACompactLeading: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let stale: Bool
     let t: LATuning
     var body: some View {
@@ -2172,7 +2184,7 @@ struct LACompactLeading: View {
 
 /// The island's left side: the soft ring.
 struct LAIslandLeading: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let ended: Bool
     let t: LATuning
     var body: some View {
@@ -2183,7 +2195,7 @@ struct LAIslandLeading: View {
 
 /// The island's ring with the name beside it (layouts 1 and 2 — Frank's mock).
 struct LAIslandRingAndName: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let ended: Bool
     let t: LATuning
     var body: some View {
@@ -2196,7 +2208,7 @@ struct LAIslandRingAndName: View {
 
 /// The island's right side: the time left over the mark button (Frank's mock); prayed → camera over tasbih.
 struct LAIslandTrailing: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let n: Int
     let ended: Bool
     let t: LATuning
@@ -2216,7 +2228,7 @@ struct LAIslandTrailing: View {
 /// The right side: the soft round buttons — a ✓ marks it (owner: the circle looked odd); prayed → camera over the zikr beads;
 /// ended → a grey dashed circle (Qaza; never red — owner).
 struct LAGlyphs: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let n: Int
     let ended: Bool
     let size: Double
@@ -2230,13 +2242,13 @@ struct LAGlyphs: View {
             // marking never makes the card taller (owner).
             let pair = onIsland ? size * 0.82 : min(size * 0.82, (max(t.ringSize, t.buttonSize) - t.buttonStackGap) / 2)
             VStack(spacing: t.buttonStackGap) {
-                LARoundButton(intent: LATestOpenIntent(what: "Photo", n: n), symbol: "camera", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
-                LARoundButton(intent: LATestOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
+                LARoundButton(intent: PrayerWindowOpenIntent(what: "Photo", n: n), symbol: "camera", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
+                LARoundButton(intent: PrayerWindowOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
             }
         } else if ended {
-            LARoundButton(intent: LATestMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
+            LARoundButton(intent: PrayerWindowMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
         } else {
-            LARoundButton(intent: LATestMarkIntent(n: n), symbol: "checkmark", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland,
+            LARoundButton(intent: PrayerWindowMarkIntent(n: n), symbol: "checkmark", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland,
                           endsAt: live ? state.end : nil, t: t)
         }
     }
@@ -2298,7 +2310,7 @@ struct LARoundButton<I: AppIntent>: View {
 /// The score colour glowing out from the ring (Look D's halo), in the colour of the grade now (changes by itself);
 /// prayed: its score's colour; ended: none.
 struct LAWash: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let ended: Bool
     let t: LATuning
     /// The island: a round glow this wide, centred on the ring (the island has no background of ours to fill).
@@ -2334,7 +2346,7 @@ struct LAWash: View {
 /// window's score is still 0.99999…, which counts as Perfect).
 enum LAGrades {
     struct Span { let grade: PrayerScoring.Grade; let color: Color; let from: Date?; let until: Date? }
-    static func spans(_ s: LATestAttributes.ContentState) -> [Span] {
+    static func spans(_ s: PrayerWindowAttributes.ContentState) -> [Span] {
         let changes = PrayerScoring.gradeChanges(start: s.start, end: s.end)
         let starts: [Date?] = [nil] + changes.map { Optional($0) }
         return starts.enumerated().map { i, from in
@@ -2410,7 +2422,7 @@ struct LALiveArc: View {
 /// The ring at its 90 pt design size, scaled: one colour at a time (an arc per grade, each shown only while its grade
 /// lasts). Prayed: the whole ring in its score. Ended: 8 grey dashes.
 struct LARing: View {
-    let state: LATestAttributes.ContentState
+    let state: PrayerWindowAttributes.ContentState
     let ended: Bool
     let size: Double
     var onIsland = false
@@ -2478,4 +2490,4 @@ struct LAGate: View {
         }
     }
 }
-#endif
+

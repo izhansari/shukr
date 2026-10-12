@@ -188,40 +188,6 @@ final class LiveActivityUITests: XCTestCase {
         sleep(1)
     }
 
-    func testLiveActivityChain() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-laTest", "-laCadence", "90", "-laCount", "10"]
-        app.launch()
-        sleep(4)
-        XCUIDevice.shared.press(.home)
-        sleep(26)                              // the first window starts 20 s after launch
-        shot("01 compact island")
-        expandIsland()
-        shot("02 expanded")
-        tree("02 tree")
-        let mark = springboard.buttons["Mark prayed"]
-        if mark.waitForExistence(timeout: 3) {
-            mark.tap()
-            sleep(4)
-            expandIsland()
-            shot("03 marked expanded")
-        } else {
-            shot("03 no Mark prayed button found")
-        }
-        collapse()
-        // The Lock Screen look: Notification Center shows Live Activities as on the Lock Screen.
-        springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.002))
-            .press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.7)))
-        sleep(2)
-        shot("04 lock screen look")
-        tree("04 tree")
-        XCUIDevice.shared.press(.home)
-        sleep(70)                              // window 2 starts 90 s after window 1: the hand-over
-        shot("05 window 2 compact")
-        expandIsland()
-        shot("06 window 2 expanded")
-        collapse()
-    }
 
     /// The island and the card for one window live now: a long one, then one in its last half hour, then marked.
     func testIslandLook() throws {
@@ -255,33 +221,5 @@ final class LiveActivityUITests: XCTestCase {
         }
     }
 
-    /// Mark prayed on whatever window is live (no app launch): does the button's run get to schedule more?
-    func testMarkLiveWindow() throws {
-        XCUIDevice.shared.press(.home)
-        sleep(2)
-        expandIsland()
-        shot("10 before mark")
-        let mark = springboard.buttons["Mark prayed"]
-        if mark.waitForExistence(timeout: 3) {
-            mark.tap()
-            sleep(5)
-            expandIsland()
-            shot("11 after mark")
-            collapse()
-        } else {
-            shot("11 no Mark prayed")
-            tree("11 tree")
-        }
-    }
 
-    /// Lock the phone, wait through the next start, and look at the real Lock Screen.
-    func testLockedStart() throws {
-        XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
-        sleep(3)
-        shot("20 locked, before")
-        sleep(80)
-        shot("21 locked, after the next start")
-        sleep(2)
-        shot("22 locked, 2 s later")
-    }
 }

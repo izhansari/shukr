@@ -212,7 +212,7 @@ struct shukrApp: App {
         if ProcessInfo.processInfo.arguments.contains("-alarmCheck") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { AlarmSelfTest.run() }   // after migrateDefaults
         }
-        Task { @MainActor in LATest.onLaunch() }   // Live Activity research (MY4R)
+        Task { @MainActor in PrayerLiveActivities.onLaunch() }   // each prayer window as a Live Activity (iOS 26+)
         // `-alarmTestIn N`: one real AlarmKit test alarm N seconds from now, titled like a Fajr one ("Fajr starts …"),
         // to see what iOS shows (in use: the banner on top; locked: the Lock Screen) and match setup's picture to it.
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-alarmTestIn"),

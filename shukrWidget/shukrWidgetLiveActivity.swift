@@ -81,12 +81,11 @@ extension shukrWidgetAttributes.ContentState {
 }
 
 
-#if DEBUG
-/// DEBUG Live Activity research (MY4R): the prayer window card. Its views (and `LATuning`, the tuner's numbers) live in
-/// SharedTargetForIntents.swift so the app's tuner can preview the very same card.
-struct LATestLiveActivity: Widget {
+/// A prayer window's card (Lock Screen) and Dynamic Island. Its views (and `LATuning`, the look's numbers) live in
+/// SharedTargetForIntents.swift so the app's DEBUG tuner can preview the very same card.
+struct PrayerWindowLiveActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: LATestAttributes.self) { context in
+        ActivityConfiguration(for: PrayerWindowAttributes.self) { context in
             LALockCard(state: context.state, n: context.attributes.n, stale: context.isStale)
         } dynamicIsland: { context in
             let s = context.state
@@ -127,4 +126,3 @@ struct LATestLiveActivity: Widget {
         }
     }
 }
-#endif
