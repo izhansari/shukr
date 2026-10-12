@@ -267,7 +267,6 @@ struct SettingsView: View {
         remindersTab == ReminderSwitch.liveActivities && !PrayerLiveActivities.supported ? ReminderSwitch.notifications : remindersTab
     }
     @State private var fajrAlarmStatus = FajrAlarmStatus.shared
-    @Environment(\.scenePhase) private var settingsScenePhase
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var fajrAlarmOn = false
 
     /// Under the Reminders card (decision reminders-status-row B): how far ahead the side showing is set up.
@@ -468,14 +467,7 @@ struct SettingsView: View {
                         remindersFooter
                     }
                     .id("liveActivities")
-                    .task {
-                        guard PrayerLiveActivities.supported else { return }
-                        for await on in ActivityAuthorizationInfo().activityEnablementUpdates { liveActivitiesOn = on }
-                    }
-                    // The alarm's permission for its dot, whatever side shows (it was re-read only on the alarm side —
-                    // a change in iOS Settings left the dot stale).
-                    .onAppear { fajrAlarmStatus.refresh() }
-                    .onChange(of: settingsScenePhase) { _, phase in if phase == .active { fajrAlarmStatus.refresh() } }
+
 
                     
                     
@@ -732,6 +724,20 @@ struct SettingsView: View {
             #endif
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
+        // The Reminders switch's dots, live (owner: turned off in iOS, back through the app switcher, no badge until a
+        // force quit): iOS's own change streams while the page lives, plus one re-read each time the app comes back —
+        // nothing polls. Notifications are re-read on every return by the app (shukrApp).
+        .task {
+            guard PrayerLiveActivities.supported else { return }
+            for await on in ActivityAuthorizationInfo().activityEnablementUpdates where liveActivitiesOn != on { liveActivitiesOn = on }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            fajrAlarmStatus.refresh()
+            if PrayerLiveActivities.supported {
+                let on = ActivityAuthorizationInfo().areActivitiesEnabled
+                if liveActivitiesOn != on { liveActivitiesOn = on }
+            }
+        }
         .infoModal(isPresented: $isTimesInfoVisible, title: "Prayer Times", symbol: "clock") {
             PrayerTimesInfo(qibla: qiblaSensitivity)
         }
@@ -1503,10 +1509,27 @@ struct AlarmSettingsView: View {
         #endif
         return FajrAlarms.allowed
     }
+    /// iOS has spoken through its update stream: that answer stands (a plain read could be the stale one).
+    @ObservationIgnored private var heardFromIOS = false
     func refresh() {
-        let a = Self.readAllowed, t = FajrAlarms.scheduledThrough
-        if allowed != a { allowed = a }
+        let t = FajrAlarms.scheduledThrough
         if through != t { through = t }
+        guard !heardFromIOS else { return }
+        let a = Self.readAllowed
+        if allowed != a { allowed = a }
+    }
+    /// One watcher for the app's life: iOS's own updates, the moment the answer changes.
+    private init() {
+        #if DEBUG
+        guard !ProcessInfo.processInfo.arguments.contains("-demoFajrAlarmAllowed") else { return }
+        #endif
+        FajrAlarms.watchAuthorization { [weak self] answer in
+            guard let self else { return }
+            self.heardFromIOS = true
+            if self.allowed != answer { self.allowed = answer }
+            let t = FajrAlarms.scheduledThrough
+            if self.through != t { self.through = t }
+        }
     }
     /// Not allowed yet, or refused in iOS Settings (the switch's orange dot — owner: "the permission was never given
     /// or it was turned off, but we're not putting a badge on that"), as notifications count "not allowed yet".

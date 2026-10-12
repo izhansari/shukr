@@ -85,6 +85,18 @@ enum FajrAlarms {
     }
 
     /// AlarmKit's answer so far: nil = not asked yet (or no AlarmKit), true = allowed, false = refused.
+    /// iOS's answer each time it changes (Settings → shukr → Alarms), for as long as the app runs — iOS tells us, nothing
+    /// polls. `authorizationState` read on its own could stay at the old answer until a relaunch (owner: turned off in
+    /// iOS, back through the app switcher, no badge until a force quit).
+    @MainActor static func watchAuthorization(_ changed: @escaping @MainActor (Bool?) -> Void) {
+        guard #available(iOS 26.1, *) else { return }
+        Task { @MainActor in
+            for await state in AlarmManager.shared.authorizationUpdates {
+                changed(state == .authorized ? true : state == .denied ? false : nil)
+            }
+        }
+    }
+
     @MainActor static var allowed: Bool? {
         guard #available(iOS 26.1, *) else { return nil }
         switch AlarmManager.shared.authorizationState {
