@@ -118,6 +118,9 @@ enum NotificationScheduler {
         if let last = opens.last, now.timeIntervalSince1970 - last < 3600 { return }
         opens.append(now.timeIntervalSince1970)
         UserDefaults.standard.set(Array(opens.suffix(opensKept)), forKey: opensKey)
+        #if DEBUG
+        NotificationPlanLog.write("open noted (\(min(opens.count, opensKept)) kept) → runway \(runwayDays(now: now))")
+        #endif
     }
     /// How many days of starts to make sure of: twice the longest gap between opens in the last 30 days (now counts
     /// as an open), 7 to 14. Someone who opens shukr daily gets 7 and the rest goes to full days; someone who comes back
@@ -139,6 +142,9 @@ enum NotificationScheduler {
     /// store. Set by shukrApp's init.
     static var appContainer: ModelContainer?
     static func topUp(reason: String) {
+        #if DEBUG
+        NotificationPlanLog.write("top-up asked: \(reason)\(appContainer == nil ? " — no store, skipped" : "")")
+        #endif
         guard let container = appContainer else { return }
         reschedule(context: container.mainContext, reason: reason)
     }
@@ -187,6 +193,16 @@ enum NotificationScheduler {
         let others = pending.count - ownedPending.count
         let budget = max(limit - others - spare, 0)
         let chosen = choose(items, budget: budget)
+        #if DEBUG
+        do {
+            let parsed = chosen.compactMap { item in PrayerNotificationID.parse(item.id).map { ($0, item.date) } }
+            func when(_ d: Date?) -> String { d.map { $0.formatted(.dateTime.month(.abbreviated).day().hour().minute()) } ?? "–" }
+            let full = parsed.filter { $0.0.kind != "Start" }.map(\.1).max()
+            let last = parsed.filter { $0.0.kind == "Start" }.map(\.1).max()
+            func warn(_ prefix: String) -> String { when(chosen.first { $0.id.hasPrefix(prefix) }?.date) }
+            NotificationPlanLog.write("plan (\(reason.isEmpty ? "–" : reason)): runway \(runwayDays()) · \(chosen.count) of \(items.count), budget \(budget), \(others) other · full through \(when(full)) · last start \(when(last)) · ease \(warn(easeOffPrefix)) · ahead \(warn(headsUpPrefix)) · last \(when(chosen.first { isLastKeepAlive($0.id) }?.date))")
+        }
+        #endif
 
         // Only what changed (2026-09-27 review): while moving, the app re-plans every 500 m / 30 s,
         // and removing + re-adding ~55 requests each time was wasted work. A request is "the same"
@@ -511,3 +527,35 @@ enum NotificationDefaults {
         }
     }
 }
+
+#if DEBUG
+/// The plan's own log on the phone (DEBUG builds), like CompassLog: every re-plan and why, opens noted, top-ups asked
+/// for (a notification action), in Library/Caches/notifications.log (the last ~200 KB). Pull it with
+/// `xcrun devicectl device copy from --device <udid> --domain-type appDataContainer
+///  --domain-identifier com.betternorms.shukr --source Library/Caches/notifications.log --destination <file>`.
+enum NotificationPlanLog {
+    private static let queue = DispatchQueue(label: "shukr.notificationPlanLog", qos: .utility)
+    private static let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appending(path: "notifications.log")
+    private static let stamp: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MM-dd HH:mm:ss"; return f
+    }()
+
+    static func write(_ line: String) {
+        let text = "\(stamp.string(from: Date())) \(line)\n"
+        queue.async {
+            let fm = FileManager.default
+            if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 200_000 {
+                try? fm.removeItem(at: url)
+            }
+            if let handle = try? FileHandle(forWritingTo: url) {
+                handle.seekToEndOfFile()
+                handle.write(Data(text.utf8))
+                try? handle.close()
+            } else {
+                try? Data(text.utf8).write(to: url)
+            }
+        }
+    }
+}
+#endif
