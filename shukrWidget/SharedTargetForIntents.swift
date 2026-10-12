@@ -2145,14 +2145,9 @@ struct LANameLines: View {
                 ZStack(alignment: .leading) {
                     LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.primary)
                         .mask { LAGate(from: nil, until: lastHalf) }
-                    // Bold by a second copy 0.4 pt over, not .semibold: the same glyphs as the white line, so the fade between
-                    // them never doubles the words (semibold's letters are wider — owner).
-                    ZStack(alignment: .leading) {
-                        LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard)
-                        LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).offset(x: 0.4)
-                    }
-                    .foregroundStyle(.red)
-                    .mask { LAGate(from: lastHalf, until: nil) }
+                    // Real semibold (owner: "rather have it bold in red than avoid the doubling"; the fade is short enough).
+                    LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.red).fontWeight(.semibold)
+                        .mask { LAGate(from: lastHalf, until: nil) }
                 }
                 .font(.system(size: line))
                 if big {
@@ -2613,7 +2608,7 @@ struct LAGate: View {
     let from: Date?
     let until: Date?
     /// How a look gives way to the next when its time comes (owner, 2026-10-12: show both): 0 a 1 s wipe left to right
-    /// (the stock bar filling), 1 an instant flip, 2 a fade in 8 instant steps over 0.6 s (a blurred, soft-edged sweep
+    /// (the stock bar filling), 1 an instant flip, 2 a fade in 6 instant steps over 0.25 s (a blurred, soft-edged sweep
     /// froze on the Lock Screen: the blur stops the bar's live fill). App group `la.gateStyle`.
     static let styleKey = "la.gateStyle"
     /// Unset = the fade (owner: "I think I like fade").
@@ -2621,8 +2616,8 @@ struct LAGate: View {
         let g = UserDefaults(suiteName: SharedStore.appGroup)
         return g?.object(forKey: styleKey) == nil ? 2 : g?.integer(forKey: styleKey) ?? 2
     }
-    private static let steps = 10
-    private static let fadeLength: TimeInterval = 0.5   // 1.5 read as lag (owner): 10 steps at 20 a second
+    private static let steps = 6
+    private static let fadeLength: TimeInterval = 0.25   // owner: short (1.5 s read as lag, then 0.5 s): 6 steps at 24 a second
 
     var body: some View {
         // An edge already passed when this is drawn is drawn solid: its stock bar re-filled on every update, sweeping a
