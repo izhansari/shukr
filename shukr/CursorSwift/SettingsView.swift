@@ -441,14 +441,31 @@ struct SettingsView: View {
                                 prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
                             }
                             .padding(.vertical, 4)
-                            YourNotificationsRow()
                             }
                         }
                         // How far ahead the side showing is set up — inside the card, its last line (owner), on every side.
+                        // On the notifications side the line is also the way into Your Notifications, the next one on its
+                        // right (owner: no thick row of its own; "show it leads somewhere" — the chevron).
                         if let line = remindersFooter {
-                            Text(line)
-                                .font(.system(.footnote, design: .rounded))
-                                .foregroundStyle(.secondary)
+                            if shownReminderTab == ReminderSwitch.notifications {
+                                NavigationLink {
+                                    YourRemindersView()
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Text(line)
+                                        Spacer(minLength: 8)
+                                        if let next = notificationHealth.nextAt {
+                                            Text("Next \(YourNotificationsRow.when(next))").lineLimit(1)
+                                        }
+                                    }
+                                    .font(.system(.footnote, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                }
+                            } else {
+                                Text(line)
+                                    .font(.system(.footnote, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     } header: {
                         headerWithInfoButton(title: "Reminders", isPopupVisible: $isNotifPopupVisible)
@@ -1809,19 +1826,54 @@ struct ReminderSwitch: View {
     struct Side { let id: String; let title: String; let needsYou: Bool }
     @Binding var tab: String
     let sides: [Side]
-    @Namespace private var pill
+    @Namespace private var glass
 
-    /// Liquid Glass like the page's top buttons (owner): a glass capsule, the picked side on a soft pill that slides,
-    /// an orange dot on a side that needs a look. Plain buttons: it sits in the section's header, not in a row (the
-    /// system segmented control couldn't be glass, and in a row a hand-made one lost taps).
+    /// Real Liquid Glass (owner: "like real liquid glass that does the animation"), as iOS 26's own controls do it: a
+    /// quiet track, and the picked side on an interactive glass capsule that answers the press and flows to the next
+    /// side (one glass shape in a GlassEffectContainer, `glassEffectID`). Before iOS 26, a material pill that slides.
     var body: some View {
+        // The glass is a layer of its own under the words (drawn as the labels' background it covered them — the
+        // picked side's name came out blurred).
+        buttons
+            .background { glassLayer }
+            .padding(4)
+            .background(Capsule().fill(Color.primary.opacity(0.07)))
+    }
+
+    /// One slot per side; the picked slot holds the glass, which flows to the next slot when the pick changes.
+    @ViewBuilder private var glassLayer: some View {
+        let slots = HStack(spacing: 0) {
+            ForEach(sides, id: \.id) { side in
+                ZStack { if tab == side.id { pill } }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer { slots }
+        } else {
+            slots
+        }
+    }
+
+    @ViewBuilder private var pill: some View {
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .glassEffectID("picked", in: glass)
+        } else {
+            Capsule().fill(.regularMaterial)
+                .matchedGeometryEffect(id: "picked", in: glass)
+        }
+    }
+
+    private var buttons: some View {
         HStack(spacing: 0) {
             ForEach(sides, id: \.id) { side in
                 let picked = tab == side.id
                 Button {
                     guard !picked else { return }
                     UISelectionFeedbackGenerator().selectionChanged()
-                    withAnimation(.snappy(duration: 0.3)) { tab = side.id }
+                    withAnimation(.bouncy(duration: 0.4, extraBounce: 0.08)) { tab = side.id }
                 } label: {
                     Text(side.title)
                         .font(.system(size: 14, weight: picked ? .semibold : .medium, design: .rounded))
@@ -1835,37 +1887,12 @@ struct ReminderSwitch: View {
                         }
                         .frame(maxWidth: .infinity)
                         .frame(height: 36)
-                        .background {
-                            if picked {
-                                Capsule().fill(Color.primary.opacity(0.1))
-                                    .matchedGeometryEffect(id: "pill", in: pill)
-                            }
-                        }
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(picked ? .isSelected : [])
                 .accessibilityHint(side.needsYou ? "Needs attention" : "")
             }
-        }
-        .padding(4)
-        .modifier(StillGlass())
-    }
-}
-
-/// Liquid Glass behind the switch, as a layer of its own that takes no touches (glass on the buttons' container took
-/// their taps); a material before iOS 26.
-private struct StillGlass: ViewModifier {
-    func body(content: Content) -> some View {
-        content.background {
-            Group {
-                if #available(iOS 26.0, *) {
-                    Color.clear.glassEffect(.regular, in: Capsule())
-                } else {
-                    Capsule().fill(.regularMaterial)
-                }
-            }
-            .allowsHitTesting(false)
         }
     }
 }
