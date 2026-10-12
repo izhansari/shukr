@@ -2603,12 +2603,12 @@ struct LAGate: View {
     let from: Date?
     let until: Date?
     /// How a look gives way to the next when its time comes (owner, 2026-10-12: show both): 0 a 1 s wipe left to right
-    /// (the stock bar filling), 1 an instant flip, 2 a fade in 8 instant steps over 1.5 s (a blurred, soft-edged sweep
+    /// (the stock bar filling), 1 an instant flip, 2 a fade in 8 instant steps over 0.6 s (a blurred, soft-edged sweep
     /// froze on the Lock Screen: the blur stops the bar's live fill). App group `la.gateStyle`.
     static let styleKey = "la.gateStyle"
     static var style: Int { UserDefaults(suiteName: SharedStore.appGroup)?.integer(forKey: styleKey) ?? 0 }
     private static let steps = 8
-    private static let fadeLength: TimeInterval = 1.5
+    private static let fadeLength: TimeInterval = 0.6   // 1.5 read as lag (owner): 8 steps at ~13 a second
 
     var body: some View {
         // An edge already passed when this is drawn is drawn solid: its stock bar re-filled on every update, sweeping a
