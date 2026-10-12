@@ -83,6 +83,7 @@ struct SettingsView: View {
     
     // for the floating message
     @State private var showFloatingMessage = false // State to control visibility
+    @State private var modeMessageWork: DispatchWorkItem?
     
     // For minimizing and expanding the devSection
     /// DEBUG: tap the "Sneak Peek" header, or launch with `-devStuff`.
@@ -297,10 +298,10 @@ struct SettingsView: View {
                         .font(.headline)
                     
                     Spacer()
-                    
-                    ColorModeToggleButton(showFloatingMessage: $showFloatingMessage)
-                        .frame(width: 44, height: 44)
-                        .barGlass(Circle())
+
+                    // (No look button up here any more — Appearance → App does it, owner. An empty slot keeps the
+                    // title centred.)
+                    Color.clear.frame(width: 44, height: 44)
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -502,6 +503,7 @@ struct SettingsView: View {
                     // card's (was Reminders → Card Appearance); widgets follow the iPhone (nothing of ours to set).
                     Section {
                         Picker(selection: $colorModeToggleNew) {
+                            Text("System").tag(3)
                             Text("Light").tag(0)
                             Text("Dark").tag(1)
                             Text("Auto").tag(2)
@@ -511,16 +513,22 @@ struct SettingsView: View {
                                 Text("App")
                             }
                         }
+                        .onChange(of: colorModeToggleNew) { _, _ in
+                            // The little pill under the header, as the old top-right button showed (owner).
+                            showTemporaryMessage(workItem: &modeMessageWork, boolToShow: $showFloatingMessage, delay: 2)
+                        }
                         if PrayerLiveActivities.supported {
                             NavigationLink {
-                                LiveActivityAppearancePage()
+                                // It hands its pick back: a write through its own handle on the app group didn't reach this
+                                // row (owner: "doesn't show it when changing and coming back").
+                                LiveActivityAppearancePage { liveActivityLookRaw = $0 }
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: "platter.filled.bottom.iphone").frame(width: 24)
-                                    Text("Live Activity card")
+                                    Text("Live Activity card").lineLimit(1).layoutPriority(1)   // never two lines
                                     Spacer(minLength: 8)
                                     Text((LiveActivityLook(rawValue: liveActivityLookRaw) ?? .system).title)
-                                        .foregroundStyle(.secondary).lineLimit(1)
+                                        .foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                                 }
                             }
                         }
@@ -535,7 +543,7 @@ struct SettingsView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "square.grid.2x2").frame(width: 24)
-                                Text("Widgets")
+                                Text("Prayers widget")   // only the Prayers widget follows it (owner: not all widgets)
                             }
                         }
                         .onChange(of: widgetStyleRaw) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
@@ -891,12 +899,6 @@ struct SettingsView: View {
         .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
         .navigationBarBackButtonHidden(false)
         
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                ColorModeToggleButton(showFloatingMessage: $showFloatingMessage)
-
-            }
-        }
         // The pushed Settings only: the pager's page refetches when it's paged away from (PrayerTimesAndTracker). Under a
         // pushed page (Your tasks) the pager's copy was told disappear / appear on every update, the fetch published,
         // and the two fed each other at 100 % CPU.
@@ -920,10 +922,10 @@ struct floatingMessageView: View {
     
     private func capsule(for mode: Int) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: mode == 0 ? "sun.max.fill" : mode == 1 ? "moon.fill" : "circle.lefthalf.filled")
+            Image(systemName: mode == 0 ? "sun.max.fill" : mode == 1 ? "moon.fill" : mode == 3 ? "iphone" : "circle.lefthalf.filled")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.green)
-            Text(mode == 0 ? "Light mode" : mode == 1 ? "Dark mode" : "Auto · follows the sun")
+            Text(mode == 0 ? "Light mode" : mode == 1 ? "Dark mode" : mode == 3 ? "System · follows your iPhone" : "Auto · follows the sun")
                 .font(.system(size: 15, weight: .regular, design: .rounded))
         }
         .padding(.horizontal, 18)
@@ -940,7 +942,7 @@ struct floatingMessageView: View {
             // per mode, crossfaded: morphing one capsule's width while its text swapped drew it
             // off-centre for a moment on each switch (owner).
             ZStack {
-                ForEach([0, 1, 2], id: \.self) { mode in
+                ForEach([0, 1, 2, 3], id: \.self) { mode in
                     if mode == colorModeToggleNew {
                         capsule(for: mode)
                             .transition(.opacity.combined(with: .scale(scale: 0.96)))
@@ -1883,13 +1885,14 @@ struct AppearanceInfo: View {
                     .accessibilityAddTraits(mode == tag ? .isSelected : [])
                 }
             }
+            InfoModalRow(symbol: "iphone", title: "System", text: "Follows your iPhone's light or dark mode.")
             InfoModalRow(symbol: "sun.max", title: "Light and Dark", text: "The app stays that way all day.")
             InfoModalRow(symbol: "circle.lefthalf.filled", title: "Auto",
                          text: "Follows the sun: light from Fajr, dark after Maghrib.")
             InfoModalRow(symbol: "platter.filled.bottom.iphone", title: "Live Activity card",
                          text: "Its own look on your Lock Screen. System follows your iPhone; Follows the sun is light for Dhuhr and Asr, dark for Fajr, Maghrib and Isha.")
-            InfoModalRow(symbol: "square.grid.2x2", title: "Widgets",
-                         text: "Every Prayers widget on your Home Screen. System follows your iPhone; Follows the sun is dark from Maghrib until sunrise. Lock Screen widgets follow your iPhone.")
+            InfoModalRow(symbol: "square.grid.2x2", title: "Prayers widget",
+                         text: "Every Prayers widget on your Home Screen. System follows your iPhone; Follows the sun is dark from Maghrib until sunrise. Other widgets and the Lock Screen follow your iPhone.")
         }
     }
 }
@@ -2059,7 +2062,11 @@ struct LiveActivitySettingsRows: View {
 /// System · Light · Dark · Follows the sun, as the widgets offer — over the setup page's moving card (Frank's
 /// `LiveActivityDemo`), which changes as one is picked. Cards already waiting are corrected at once (`plan`).
 struct LiveActivityAppearancePage: View {
+    /// Called with each pick, for the Settings row (see where it's pushed).
+    var picked: (String) -> Void = { _ in }
     @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var raw = LiveActivityLook.system.rawValue
+    /// The moving card waits until the page has slid in (owner: "lag when opening"): it starts after the push.
+    @State private var started = false
     @Environment(\.colorScheme) private var system
     @State private var copy = LASetupCopy.shared
     /// Follows the sun: which prayer the card shows (Asr light, Maghrib dark).
@@ -2070,7 +2077,7 @@ struct LiveActivityAppearancePage: View {
     var body: some View {
         Form {
             Section {
-                LiveActivityDemo(prayer: prayer, veil: .none, copy: copy, look: scheme)
+                LiveActivityDemo(prayer: prayer, veil: .none, copy: copy, look: scheme, paused: !started)
                     .animation(.easeInOut(duration: 0.35), value: scheme)
                     .listRowInsets(EdgeInsets(top: 14, leading: 14, bottom: 14, trailing: 14))
                 if look == .sun {
@@ -2107,7 +2114,14 @@ struct LiveActivityAppearancePage: View {
         }
         .navigationTitle("Card look")
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: raw) { _, _ in PrayerLiveActivities.plan(reason: "card look: \(look.title)") }
+        .onChange(of: raw) { _, new in
+            picked(new)
+            PrayerLiveActivities.plan(reason: "card look: \(look.title)")
+        }
+        .task {
+            try? await Task.sleep(for: .milliseconds(450))
+            started = true
+        }
         .onAppear {   // DEBUG `-laLook light|dark|sun|system`: the page opened on one (the sim's taps miss rows)
             #if DEBUG
             if let l = UserDefaults.standard.string(forKey: "laLook"), LiveActivityLook(rawValue: l) != nil { raw = l }

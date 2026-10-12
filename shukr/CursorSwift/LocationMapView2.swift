@@ -915,8 +915,9 @@ struct LocationMapContentView: View {
     @AppStorage(MapModes.satelliteKey) private var satellite = false
     /// Light / dark / auto from Settings (0 light, 1 dark, 2 by the sun), like the rest of the app.
     @AppStorage("modeToggleNew") private var colorMode = 0
+    @Environment(\.colorScheme) private var systemScheme
     private var appDark: Bool {
-        colorMode == 1 || (colorMode == 2 && !prayerViewModel.isDaytime)
+        colorMode == 1 || (colorMode == 2 && !prayerViewModel.isDaytime) || (colorMode == 3 && systemScheme == .dark)
     }
     @EnvironmentObject private var prayerViewModel: PrayerViewModel
     @Environment(\.modelContext) private var context

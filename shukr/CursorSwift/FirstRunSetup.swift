@@ -3812,7 +3812,7 @@ private struct ReviewStep: View {
                             // the value line, with its way to change their mind at the end of it.
                             row("location.fill", "Location", locationFix?.value ?? locationValue, step: .location, fix: locationFix)
                             row("clock", "Prayer Times", methodValue, step: .method)
-                            row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
+                            row("circle.lefthalf.filled", "Appearance", (mode == 3 ? "System" : ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)]), step: .appearance)
                             row("bell", "Notifications", notificationsFix?.value ?? remindersValue, step: .reminders, fix: notificationsFix)
                             row("platter.filled.bottom.iphone", "Live Activities", liveActivityFix?.value ?? liveActivityValue,
                                 step: .liveActivities, fix: liveActivityFix)

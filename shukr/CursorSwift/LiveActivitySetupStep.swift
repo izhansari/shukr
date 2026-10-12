@@ -250,6 +250,8 @@ struct LiveActivityDemo: View {
     /// The card's look; nil = the Card look setting (`LiveActivityLook`) for this prayer, else the phone's. Settings'
     /// Card look page passes the one being picked (Sami, 2026-10-12).
     var look: ColorScheme? = nil
+    /// Held still (the Card look page starts it once it has slid in).
+    var paused = false
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// When the current run began (the card's timers count from now, so the window is laid round the clock each frame).
@@ -260,7 +262,9 @@ struct LiveActivityDemo: View {
 
     /// The window's real end today (its "ends" line keeps it while the window plays in seconds — owner: "the end time
     /// would stay fixed"); a round time if there's no place yet.
-    private var shownEnd: Date {
+    @State private var shownEnd: Date = Calendar.current.date(bySettingHour: 18, minute: 48, second: 0, of: Date()) ?? Date()
+    /// Worked out once per prayer (it worked the day's times out 30 times a second).
+    private static func end(for prayer: String) -> Date {
         if let w = prayerWindowToday(prayer) { return w.end }
         return Calendar.current.date(bySettingHour: 18, minute: 48, second: 0, of: Date()) ?? Date()
     }
@@ -301,7 +305,7 @@ struct LiveActivityDemo: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || veil != .none)) { ctx in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || veil != .none || paused)) { ctx in
             let s = reduceMotion ? 3.5 : ctx.date.timeIntervalSince(runStart).truncatingRemainder(dividingBy: Self.cycle)
             let minute = Self.minute(at: max(s, 0))
             content(state: state(at: ctx.date, minute: minute), phase: step(minute))
@@ -311,7 +315,8 @@ struct LiveActivityDemo: View {
         .accessibilityLabel(veil == .off ? "\(copy[.offTitle]). \(copy[.offBody])"
                             : veil == .old ? "\(copy[.oldTitle]). \(copy[.oldBody])"
                             : "\(prayer) on the Lock Screen and in the Dynamic Island: time left in a ring, and a button to mark it prayed.")
-        .task(id: prayer) { runStart = Date() }
+        .task(id: prayer) { runStart = Date(); shownEnd = Self.end(for: prayer) }
+        .onChange(of: paused) { _, p in if !p { runStart = Date() } }
         .animation(.snappy(duration: 0.25), value: prayer)
     }
 

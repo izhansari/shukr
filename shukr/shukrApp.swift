@@ -343,6 +343,7 @@ struct shukrApp: App {
             .preferredColorScheme(
                 colorModeToggleNew == 0 ? .light :
                     colorModeToggleNew == 1 ? .dark :
+                    colorModeToggleNew == 3 ? nil :   // System: the iPhone's own (owner)
                     (prayerViewModel.isDaytime ? .light : .dark)
             )
             // The watch follows the same setting (Settings' toggle, the setup's step).

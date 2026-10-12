@@ -11,6 +11,7 @@
 
 import Foundation
 import WatchConnectivity
+import UIKit
 import SwiftData
 
 final class WatchSync: NSObject, WCSessionDelegate {
@@ -48,7 +49,12 @@ final class WatchSync: NSObject, WCSessionDelegate {
             "completed": Array(SharedStore.completedPrayerNamesToday()).sorted(),
             "completedDay": dayStart.timeIntervalSince1970,
             // Light / dark / auto, the phone's Settings (0 / 1 / 2): the watch follows it (owner, watch-appearance).
-            "appearance": UserDefaults.standard.integer(forKey: "modeToggleNew"),
+            // System (3) isn't a watch setting: the iPhone's look right now, light or dark.
+            "appearance": { () -> Int in
+                let m = UserDefaults.standard.integer(forKey: "modeToggleNew")
+                guard m == 3 else { return m }
+                return UIScreen.main.traitCollection.userInterfaceStyle == .dark ? 1 : 0
+            }(),
         ]
         context.merge(WatchZikrSync.payload()) { current, _ in current }
         guard lastSent != (context as NSDictionary) else { return }
