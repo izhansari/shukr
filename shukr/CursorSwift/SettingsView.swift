@@ -38,7 +38,7 @@ struct SettingsView: View {
     
     // The compass reads this from the app-group suite (QiblaSettings); writing it to the standard
     // suite here is why the stepper never changed anything.
-    @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var qiblaSensitivity: Double = 3.5
+    @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var qiblaSensitivity: Double = 5
     
     @AppStorage("fajrNotif") var fajrNotif: Bool = NotificationDefaults.notify("Fajr")
     @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = NotificationDefaults.notify("Dhuhr")
@@ -92,6 +92,7 @@ struct SettingsView: View {
     @State private var showWhatsNew = false
     @State private var showRingPlayground = false
     @State private var showLiveActivitySetup = false
+    @State private var showLATuner = false
     @State private var showNextPlayground = false
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
@@ -324,7 +325,7 @@ struct SettingsView: View {
                                 .listRowSeparator(.hidden)
                         }
                         if PrayerLiveActivities.supported && remindersTab == ReminderSwitch.liveActivities {
-                            LiveActivitySettingsRows(showInfo: isNotifPopupVisible)
+                            LiveActivitySettingsRows(showInfo: false)
                         } else {
                             // Will they actually arrive? (NotificationHealth: off / held for the Scheduled
                             // Summary / Time Sensitive / Background App Refresh.)
@@ -346,10 +347,6 @@ struct SettingsView: View {
                                 prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
                             }
                             .padding(.vertical, 4)
-                            }
-
-                            if isNotifPopupVisible && !remindersOff {
-                                NotificationDropdownInfo()
                             }
                         }
                     }
@@ -400,8 +397,9 @@ struct SettingsView: View {
                         }
                         
                         // Qibla sensitivity: ± buttons that repeat (and speed up) while held.
-                        HStack {
+                        HStack(spacing: 12) {
                             Image(systemName: "location.north.line")
+                                .frame(width: 24)
                             Text("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°")
                                 .monospacedDigit()
                             Spacer()
@@ -429,28 +427,18 @@ struct SettingsView: View {
                         Button {
                             NotificationCenter.default.post(name: TourRuntime.start, object: nil)
                         } label: {
-                            Label("Show me around again", systemImage: "hand.point.up.left")
+                            Label {
+                                Text("Show me around again")
+                            } icon: {
+                                Image(systemName: "hand.point.up.left").foregroundStyle(Color(.label))
+                            }
                         }
+                        .tint(Color(.label))   // the qibla row's colors, no blue on this page (owner)
                         // The tour ends here (audit J): its last bubble points at this row.
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("tourAgainRow", $0) }
                         // The first freestyle session's tips again (owner: a way to see them without the whole tour).
                         CountingTipsAgainRow()
-                        #if DEBUG
-                        // Dev builds: Zikr locked as a new person sees it, or open (ZikrLock; owner: "i wanna be able to
-                        // test in my dev build").
-                        Toggle(isOn: Binding(get: { !ZikrLock.shared.unlocked },
-                                             set: { ZikrLock.shared.setLockedForTesting($0) })) {
-                            Label("Zikr locked (test)", systemImage: "lock")
-                        }
-                        // Page 3's trial layouts, to see on the phone (decision first-zikr-choice).
-                        Picker(selection: $firstZikrChoice) {
-                            Text("One zikr").tag("one")
-                            Text("Choose: cards").tag("cards")
-                            Text("Choose: swipe").tag("swipe")
-                        } label: {
-                            Label("First zikr page (test)", systemImage: "rectangle.stack")
-                        }
-                        #endif
+                            .tint(Color(.label))
                     }
                     .id("tourAgainRow")
                     // The tour's Settings card (v2): the top on arrival — the page has come to rest by then (scrolling
@@ -468,18 +456,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    if betaAccess.available {
-                        // (Lock Screen time left is "27m" for good — owner, settings-cleanup-1; the picker is gone.)
-                        Section {
-                            Button {
-                                NotificationCenter.default.post(name: FirstRunSetup.rerun, object: nil)
-                            } label: {
-                                Label("Run setup from the start", systemImage: "arrow.counterclockwise.circle")
-                            }
-                        } footer: {
-                            Text("Beta builds only: the whole first-run setup from the hadith page, filled in with your settings.")
-                        }
-                    }
                     // The watch's pinch log (watch-pinch-log), for any TestFlight install with one: the only pinch watch
                     // is a TestFlight one, with no feedback pull.
                     if betaAccess.beta, let log = WatchSync.pinchLog {
@@ -553,6 +529,31 @@ struct SettingsView: View {
                     // My Dev Stuff, grouped (owner, settings-cleanup-1: "it's a lot of stuff in there and it's not really
                     // ordered"). Pickers for looks already decided stay only where the app still reads them.
                     if showDevStuff {
+                        Section {
+                            // Moved here from the page (owner, settings cleanup 2026-10-12).
+                            Button {
+                                NotificationCenter.default.post(name: FirstRunSetup.rerun, object: nil)
+                            } label: {
+                                Label("Run setup from the start", systemImage: "arrow.counterclockwise.circle")
+                            }
+                            // Zikr locked as a new person sees it, or open (ZikrLock; owner: "i wanna be able to test
+                            // in my dev build").
+                            Toggle(isOn: Binding(get: { !ZikrLock.shared.unlocked },
+                                                 set: { ZikrLock.shared.setLockedForTesting($0) })) {
+                                Label("Zikr locked (test)", systemImage: "lock")
+                            }
+                            // Page 3's trial layouts (decision first-zikr-choice); release builds always show cards.
+                            Picker(selection: $firstZikrChoice) {
+                                Text("One zikr").tag("one")
+                                Text("Choose: cards").tag("cards")
+                                Text("Choose: swipe").tag("swipe")
+                            } label: {
+                                Label("First zikr page (test)", systemImage: "rectangle.stack")
+                            }
+                            // The Live Activity card's tuner (was under Live Activities on the page).
+                            Button("Live Activity card tuner…") { showLATuner = true }
+                        } header: { Text("Dev · Setup, zikr & Live Activity") }
+
                         Section {
                             Button("Ring playground…") { showRingPlayground = true }
                             // The setup's Live Activity page on its own, its words editable from its ⚙ (owner).
@@ -648,8 +649,19 @@ struct SettingsView: View {
             #endif
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
+        // Reminders' ⓘ: a floating card for the side showing (owner: tooltips as a frosted modal).
+        .infoModal(isPresented: $isNotifPopupVisible,
+                   title: remindersTab == ReminderSwitch.liveActivities ? "Live Activities" : "Notifications",
+                   symbol: remindersTab == ReminderSwitch.liveActivities ? "platter.filled.bottom.iphone" : "bell") {
+            if PrayerLiveActivities.supported && remindersTab == ReminderSwitch.liveActivities {
+                LiveActivityInfo()
+            } else {
+                NotificationDropdownInfo()
+            }
+        }
         #if DEBUG
         .fullScreenCover(isPresented: $showLiveActivitySetup) { LiveActivitySetupPreview() }
+        .sheet(isPresented: $showLATuner) { LATunerView() }
         #endif
         .sheet(isPresented: $showWhatsNew) { WhatsNewView().stageCover("whatsNew") }
         #if DEBUG
@@ -983,89 +995,19 @@ struct NotificationDropdownInfo: View {
         (fajrNotif && fajrNudges && hasNoHalfwayToday("Fajr")) || (maghribNotif && maghribNudges && hasNoHalfwayToday("Maghrib"))
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Information:")
-            
-            HStack{
-                Image(systemName: "bell.slash.fill")
-                Text("Off: No notifications will be sent for this prayer.")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-            
-            HStack{
-                Image(systemName: "bell.fill")
-                Text("Start: One notification when the prayer starts.")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-            
-            HStack{
-                Image(systemName: "bell.badge.fill")
-                // What NotificationScheduler sends: Mid = halfway through the window, End = 30 min before it ends.
-                Text("Nudge: If you haven't marked the prayer yet, you also get a notification halfway through its time and with 30 minutes left.")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Tap a prayer's bell to change it.")
+                .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
+            InfoModalRow(symbol: "bell.slash.fill", title: "Off", text: "No notifications for this prayer.")
+            InfoModalRow(symbol: "bell.fill", title: "Start", text: "One notification when the prayer starts.")
+            // What NotificationScheduler sends: Mid = halfway through the window, End = 30 min before it ends.
+            InfoModalRow(symbol: "bell.badge.fill", title: "Nudge",
+                         text: "If you haven't marked it yet, one more halfway through its time and one with 30 minutes left.")
             if shortOnNudge {
-                HStack {
-                    Image(systemName: "circle.dotted")
-                    Text("Fajr and Maghrib are usually too short for a halfway nudge.")
-                        .font(.caption)
-                }
-                .foregroundColor(.gray)
+                InfoModalRow(symbol: "circle.dotted", title: "Short prayers",
+                             text: "Fajr and Maghrib are usually too short for a halfway nudge.")
             }
-            
         }
-        HStack{
-
-            Text("Test Start")
-                .frame(maxWidth: .infinity)
-                .onTapGesture{
-                    let content = UNMutableNotificationContent()
-                    content.categoryIdentifier = "Round1_Snooze" // Associate the category
-
-                    let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
-                    content.title = "\(randPrayerName) 🟢"
-                    content.subtitle = "Pray by \(shortTimePM(Date()))"
-                    content.body = "\(randPrayerName) has started"
-                    content.sound = UNNotificationSound.default
-                    content.interruptionLevel = .timeSensitive
-                    addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)
-                }
-                .font(.subheadline)
-                .foregroundColor(.gray)
-            
-            Spacer()
-            Divider()
-            Spacer()
-
-            Text("Test Nudge")
-                .frame(maxWidth: .infinity)
-                .onTapGesture {
-                    let content = UNMutableNotificationContent()
-                    content.categoryIdentifier = "Round1_Snooze" // Associate the category
-
-                    let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
-                    let randNudge = [
-                        (title: "\(randPrayerName) 🟡", body: "Halfway through \(randPrayerName)"),
-                        (title: "\(randPrayerName) 🔴", body: "Only 30 minutes left")
-                    ]
-                        .randomElement()!
-                    content.title = randNudge.title
-                    content.subtitle = "Pray by \(shortTimePM(Date().addingTimeInterval(45 * 60)))"
-                    content.body = randNudge.body
-                    content.sound = UNNotificationSound.default
-                    content.interruptionLevel = .timeSensitive
-                    addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)
-                }
-                .font(.subheadline)
-                .foregroundColor(.gray)
-
-        }
-        .padding(.horizontal)
-
     }
     
     func addToNotificationCenterBySeconds(identifier: String, content: UNMutableNotificationContent, sec: Double){
@@ -1205,9 +1147,11 @@ struct AlarmSettingsView: View {
         ) {
             
             // Toggle to enable/disable alarm
-            HStack {
+            HStack(spacing: 12) {
                 Image(systemName: "alarm")
-//                    .foregroundColor(.gray)
+                    .frame(width: 24)   // the qibla row's column (owner: it sat right against the words)
+                    // Alarm Settings' ⓘ: a floating card (owner: tooltips as a frosted modal).
+                    .infoModal(isPresented: $isAlarmInfoVisible, title: "Fajr Alarm", symbol: "alarm") { alarmInfoView }
                 
                 Toggle("Schedule Daily Fajr Alarm", isOn: Binding(
                     get: { self.alarmEnabled },
@@ -1377,10 +1321,6 @@ struct AlarmSettingsView: View {
                     }
             }
             
-            // Info Block
-            if isAlarmInfoVisible {
-                alarmInfoView
-            }
         }
         .onAppear{
             // nil until there's a location (no GPS fix yet at first launch); Settings is mounted
@@ -1412,20 +1352,15 @@ struct AlarmSettingsView: View {
     @ViewBuilder
     private var alarmInfoView: some View {
         if FajrAlarms.supported {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Information:")
-                Text("Set the rule once. shukr sets a real alarm for every day ahead, each at the right time as Fajr moves through the year. It rings like any alarm, even on silent or in a Focus.")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                Text("It keeps itself topped up: each time you stop it, and whenever shukr runs, the next days are set. Snooze rings it again in \(FajrAlarms.snoozeMinutes) minutes.")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                Text("Had the Shortcut automation? It no longer makes an alarm while shukr sets it — no need to delete it.")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-                Text("Where to see it: alarms an app sets (Apple's AlarmKit) don't appear in the Clock app's list — only Clock's own do. When it rings it takes over the Lock Screen like any alarm, with \"shukr\" under the title, even on silent or in a Focus (and on your Apple Watch if it's paired).")
-                    .font(.caption)
-                    .foregroundColor(.gray)
+            VStack(alignment: .leading, spacing: 14) {
+                InfoModalRow(symbol: "alarm", title: "Set it once",
+                             text: "shukr sets a real alarm for every day ahead, at the right time as Fajr moves through the year. It rings even on silent or in a Focus.")
+                InfoModalRow(symbol: "clock.arrow.circlepath", title: "It tops itself up",
+                             text: "Each time you stop it, and whenever shukr runs, the next days are set. Snooze rings it again in \(FajrAlarms.snoozeMinutes) minutes.")
+                InfoModalRow(symbol: "eye", title: "Where to see it",
+                             text: "Alarms an app sets don't appear in the Clock app's list. When it rings it takes over the Lock Screen like any alarm, with \"shukr\" under the title, and on your Apple Watch if it's paired.")
+                InfoModalRow(symbol: "square.stack.3d.up.slash", title: "Had the Shortcut?",
+                             text: "It no longer makes an alarm while shukr sets it, so there's no need to delete it.")
             }
         } else {
             shortcutInfoView
@@ -1437,8 +1372,6 @@ struct AlarmSettingsView: View {
     @ViewBuilder
     private var shortcutInfoView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Information:")
-            
             Text("No more mental math to set up daily Fajr alarms! Define your rules once. I'll dynamically set daily Fajr alarms for you!")
                 .font(.caption)
                 .foregroundColor(.gray)
@@ -1626,6 +1559,22 @@ struct ReminderSwitch: View {
     }
 }
 
+/// Reminders' ⓘ on the Live Activities side.
+struct LiveActivityInfo: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Tap a prayer to turn its card on or off.")
+                .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
+            InfoModalRow(symbol: "platter.filled.bottom.iphone", title: "From the moment it starts",
+                         text: "The prayer shows on your Lock Screen and in the Dynamic Island: its ring, the time left, and a button to mark it.")
+            InfoModalRow(symbol: "checkmark.circle", title: "Mark it there",
+                         text: "Marking it from the card counts like marking it in shukr; then the card offers a photo and Tasbih Fatimah.")
+            InfoModalRow(symbol: "clock.arrow.circlepath", title: "Kept coming",
+                         text: "iOS holds a few at a time. Marking them, or opening shukr, sets up the next ones.")
+        }
+    }
+}
+
 /// The Live Activities side alone, in its own Section (DEBUG -laSettingsPreview).
 struct LiveActivitySettingsSection: View {
     var body: some View { Section("Live Activities") { LiveActivitySettingsRows(showInfo: false) } }
@@ -1640,9 +1589,6 @@ struct LiveActivitySettingsRows: View {
     @State private var held = 0
     @State private var next: Date?
     @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var lookRaw = LiveActivityLook.system.rawValue
-    #if DEBUG
-    @State private var showTuner = false
-    #endif
 
     var body: some View {
         Group {
@@ -1664,25 +1610,16 @@ struct LiveActivitySettingsRows: View {
                     LiveActivityAppearancePage()
                 } label: {
                     HStack {
-                        Label("Card Appearance", systemImage: "circle.lefthalf.filled")
+                        Label {
+                            Text("Card Appearance")
+                        } icon: {
+                            Image(systemName: "circle.lefthalf.filled").foregroundStyle(.primary)   // black, as the qibla's (owner)
+                        }
                         Spacer()
                         Text((LiveActivityLook(rawValue: lookRaw) ?? .system).title).foregroundStyle(.secondary)
                     }
                 }
             }
-            if showInfo && enabled {
-                Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it. Once its time is up it shows as ended until the next prayer's card starts or you open shukr. iOS keeps up to five waiting; marking them, or opening shukr, keeps the next ones coming.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            #if DEBUG
-            Button {
-                showTuner = true
-            } label: {
-                Label("Tune the card's look", systemImage: "slider.horizontal.3")
-            }
-            .sheet(isPresented: $showTuner) { LATunerView() }
-            #endif
         }
         .task {
             refresh()

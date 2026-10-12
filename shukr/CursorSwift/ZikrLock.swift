@@ -1154,7 +1154,12 @@ enum FirstZikrChoiceLayout: String {
     case cards, swipe
     /// The cards unless the dev picker says otherwise ("one" = the one-zikr page).
     static var current: FirstZikrChoiceLayout? {
+        // Cards for everyone (owner, 2026-10-12: "lock in the default as cards"); only DEBUG's My Dev Stuff tries others.
+        #if DEBUG
         FirstZikrChoiceLayout(rawValue: UserDefaults.standard.string(forKey: "firstZikrChoice") ?? "cards")
+        #else
+        .cards
+        #endif
     }
 }
 

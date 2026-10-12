@@ -270,6 +270,7 @@ struct shukrApp: App {
                     // state of this page's circle (circle step 3b; LostPageLayer), so it stays up as location
                     // comes back and hands off on the same ring.
                     PrayerTimesView()
+                        .infoModalHost()   // Settings' ⓘ cards float over the whole page (InfoModal.swift)
                         .transition(.blurReplace())
                 } else if !setupShowing {
                     // No location at all (refused with no city): just the setup's location step.

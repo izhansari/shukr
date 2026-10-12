@@ -13,7 +13,7 @@ import CoreMotion
 
 //used by pulseCircle
 struct QiblaSettings {
-    @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) static var alignmentThreshold: Double = 3.5
+    @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) static var alignmentThreshold: Double = 5
     static let minThreshold: Double = 1.0  // More precise
     static let maxThreshold: Double = 15.0 // More forgiving
 

@@ -132,7 +132,7 @@ enum WatchZikrSync {
             "zikrTasks": rows,
             // Sorted: an unchanged set must compare equal, or every save resends the context.
             "zikrSessions": Set(sessions.map(\.id.uuidString)).union(recentReceived()).sorted(),
-            "qiblaSensitivity": UserDefaults(suiteName: SharedStore.appGroup)?.object(forKey: "qibla_sensitivity") as? Double ?? 3.5,
+            "qiblaSensitivity": UserDefaults(suiteName: SharedStore.appGroup)?.object(forKey: "qibla_sensitivity") as? Double ?? 5,
             // Marks and undos the phone has handled, apart: the watch clears each from its outbox
             // only when its own kind is confirmed (an undo isn't dropped when just its mark is).
             "markIDs": receivedMarks.filter { ($0.value.first ?? 0) > 0 }.keys.sorted(),

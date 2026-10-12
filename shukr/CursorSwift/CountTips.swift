@@ -458,9 +458,13 @@ struct CountingTipsAgainRow: View {
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { armed = false }
             }
         } label: {
-            Label(armed ? TourCopy.Session.againArmed : TourCopy.Session.againRow,
-                  systemImage: armed ? "checkmark" : "hand.tap")
-                .contentTransition(.opacity)
+            // In Settings' black, as the qibla row (owner: no blue on that page).
+            Label {
+                Text(armed ? TourCopy.Session.againArmed : TourCopy.Session.againRow)
+            } icon: {
+                Image(systemName: armed ? "checkmark" : "hand.tap").foregroundStyle(Color(.label))
+            }
+            .contentTransition(.opacity)
         }
     }
 }
