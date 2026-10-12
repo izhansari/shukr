@@ -3805,7 +3805,9 @@ private struct ReviewStep: View {
             .frame(height: rowHeight.rounded())
             .contentShape(Rectangle())
             .overlay(alignment: .bottom) {
-                if !last { Rectangle().fill(Color(.separator)).frame(height: 1 / displayScale) }
+                // A whole point, not a pixel: the list starts between pixels, so a one-pixel line was split over two
+                // and came out a pale grey in light mode on his phone (owner). A point covers whole pixels wherever it lands.
+                if !last { Rectangle().fill(Color(.separator).opacity(0.55)).frame(height: 1) }
             }
         }
         .buttonStyle(.plain)
@@ -3863,8 +3865,10 @@ private struct BismillahCapsule: View {
                                                               startPoint: .top, endPoint: .center), lineWidth: 1))
                 .shadow(color: scheme == .dark ? Color.sage.opacity(0.6) : .black.opacity(0.14),
                         radius: scheme == .dark ? 18 : 2, y: scheme == .dark ? 6 : 1)
-                .shadow(color: scheme == .dark ? .clear : Color(red: 0.10, green: 0.28, blue: 0.18).opacity(0.38),
-                        radius: 14, y: 9)
+                // Light: a brighter, more saturated green round it (owner: the sage "blends in" on white), so the glow
+                // reads there as it does on dark.
+                .shadow(color: scheme == .dark ? .clear : Color(red: 0.16, green: 0.56, blue: 0.32).opacity(0.5),
+                        radius: 18, y: 7)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
