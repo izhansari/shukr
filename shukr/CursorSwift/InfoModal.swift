@@ -87,9 +87,10 @@ struct InfoModal<Content: View>: View {
 
     var body: some View {
         ZStack {
-            // A very light frost: the page stays in view behind it, softened (owner: "a very transparent material").
+            // A light frost: the page stays in view behind it, softened (owner: "a very transparent material", then
+            // "blur out background a little more").
             Rectangle().fill(.ultraThinMaterial)
-                .opacity(shown ? 0.75 : 0)
+                .opacity(shown ? 0.9 : 0)   // 0.75 read barely blurred, 1 hid the page
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture { dismiss() }
@@ -131,7 +132,8 @@ struct InfoModal<Content: View>: View {
             .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
             .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).strokeBorder(Color.primary.opacity(0.06), lineWidth: 1))
             .shadow(color: .black.opacity(0.18), radius: 26, y: 10)
-            .padding(.horizontal, 22)
+            // A little wider than Settings' cards (owner): they sit 16–20 pt in from the edges, this 10.
+            .padding(.horizontal, 10)
             .scaleEffect(shown || reduceMotion ? 1 : 0.94)
             .opacity(shown ? 1 : 0)
         }

@@ -3132,11 +3132,7 @@ private struct FajrStep: View {
         .onChange(of: scenePhase) { _, phase in if phase == .active { answer = FajrAlarms.allowed } }
     }
 
-    /// The rule in words for the alarm card's label: "20 min before it starts", "When it ends".
-    private var ruleWords: String {
-        let edge = isFajr ? "starts" : "ends"
-        return offset == 0 ? "When it \(edge)" : "\(offset) min \(isBefore ? "before" : "after") it \(edge)"
-    }
+    private var ruleWords: String { AlarmDemo.ruleWords(offset: offset, isBefore: isBefore, isFajr: isFajr) }
 
     /// "Set my Fajr alarm": on, and (iOS 26.1+) iOS asks; a no frosts the alarm over.
     private func turnOn() {
@@ -3192,18 +3188,8 @@ private struct FajrStep: View {
         }
     }
 
-    /// The rule's alarm on days through the year — tomorrow, then a week, a month and three months on — so the preview
-    /// shows the time moving with Fajr while the rule stays the same.
     private var upcoming: [(day: Date, alarm: Date, reference: Date)] {
-        guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
-        let params = PrayerUtils.getCalculationParameters()
-        let cal = Calendar.current
-        return [1, 8, 31, 91].compactMap { ahead in
-            guard let day = cal.date(byAdding: .day, value: ahead, to: cal.startOfDay(for: Date())),
-                  let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { return nil }
-            let ref = isFajr ? t.fajr : t.sunrise
-            return (day, ref.addingTimeInterval(Double(offset * 60) * (isBefore ? -1 : 1)), ref)
-        }
+        AlarmDemo.upcoming(offset: offset, isBefore: isBefore, isFajr: isFajr)
     }
 
     /// What Settings' Save writes, so its row reads right.
@@ -3214,10 +3200,32 @@ private struct FajrStep: View {
     }
 }
 
+extension AlarmDemo {
+    /// The rule in words for the alarm card's label: "20 min before it starts", "When it ends".
+    static func ruleWords(offset: Int, isBefore: Bool, isFajr: Bool) -> String {
+        let edge = isFajr ? "starts" : "ends"
+        return offset == 0 ? "When it \(edge)" : "\(offset) min \(isBefore ? "before" : "after") it \(edge)"
+    }
+
+    /// The rule's alarm on days through the year — tomorrow, then a week, a month and three months on — so the preview
+    /// shows the time moving with Fajr while the rule stays the same.
+    static func upcoming(offset: Int, isBefore: Bool, isFajr: Bool) -> [(day: Date, alarm: Date, reference: Date)] {
+        guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
+        let params = PrayerUtils.getCalculationParameters()
+        let cal = Calendar.current
+        return [1, 8, 31, 91].compactMap { ahead in
+            guard let day = cal.date(byAdding: .day, value: ahead, to: cal.startOfDay(for: Date())),
+                  let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { return nil }
+            let ref = isFajr ? t.fajr : t.sunrise
+            return (day, ref.addingTimeInterval(Double(offset * 60) * (isBefore ? -1 : 1)), ref)
+        }
+    }
+}
+
 /// The Fajr alarm as iOS shows it with the phone in use — the pill at the top (matched to a real AlarmKit test alarm,
 /// 2026-10-10: the green alarm symbol, "shukr" over "Fajr starts …", a sunrise button and ✕), the symbol shaking as it
 /// rings; then the same rule's time on days through the year: one rule, a time that follows Fajr. Refused: frosted over.
-private struct AlarmDemo: View {
+struct AlarmDemo: View {
     let days: [(day: Date, alarm: Date, reference: Date)]
     let isFajr: Bool
     /// The rule in words, for the card's label ("20 min before it starts").

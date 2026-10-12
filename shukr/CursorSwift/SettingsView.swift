@@ -364,9 +364,13 @@ struct SettingsView: View {
                         HStack(spacing: 12) {
                             Image(systemName: "location.north.line")
                                 .frame(width: 24)
-                            Text("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°")
+                            // One line like the rows above it (owner): "Qibla", its value in the pickers' grey, then − +.
+                            Text("Qibla")
+                            Spacer(minLength: 8)
+                            Text("± \(qiblaSensitivity.formatted(.number.precision(.fractionLength(0...1))))°")
                                 .monospacedDigit()
-                            Spacer()
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
                             HoldRepeatStepper(value: $qiblaSensitivity,
                                               in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
                                               step: 0.5)
@@ -1068,7 +1072,7 @@ struct NotificationDropdownInfo: View {
                 choice(1, symbol: "bell.fill", title: "Start", text: "One when the prayer starts.")
                 // What NotificationScheduler sends: Mid = halfway through the window, End = 30 min before it ends.
                 choice(2, symbol: "bell.badge.fill", title: "Nudge",
-                       text: "If you haven't marked it yet, one halfway through and one with 30 minutes left.")
+                       text: "If unmarked, one halfway through and another when 30 minutes left.")
             }
             if shortOnNudge {
                 InfoModalRow(symbol: "circle.dotted", title: "Short prayers",
@@ -1438,15 +1442,25 @@ struct AlarmSettingsView: View {
     @ViewBuilder
     private var alarmInfoView: some View {
         if FajrAlarms.supported {
+            // A small version of setup's Fajr alarm page (owner): its line, the ringing alarm over this rule's time
+            // through the year, then the rest said shorter so it fits a 6.1" phone.
             VStack(alignment: .leading, spacing: 14) {
-                InfoModalRow(symbol: "alarm", title: "Set it once",
-                             text: "shukr sets a real alarm for every day ahead, at the right time as Fajr moves through the year. It rings even on silent or in a Focus.")
+                Text("Set it once. It moves with Fajr every day, so there’s nothing to do before bed.")
+                    .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ScaledToFit {
+                    AlarmDemo(days: AlarmDemo.upcoming(offset: alarmOffsetMinutes, isBefore: alarmIsBefore, isFajr: alarmIsFajr),
+                              isFajr: alarmIsFajr,
+                              rule: AlarmDemo.ruleWords(offset: alarmOffsetMinutes, isBefore: alarmIsBefore, isFajr: alarmIsFajr))
+                }
+                InfoModalRow(symbol: "alarm", title: "A real alarm",
+                             text: "It rings even on silent or in a Focus, and on a paired Apple Watch. Snooze rings it again in \(FajrAlarms.snoozeMinutes) minutes.")
                 InfoModalRow(symbol: "clock.arrow.circlepath", title: "It tops itself up",
-                             text: "Each time you stop it, and whenever shukr runs, the next days are set. Snooze rings it again in \(FajrAlarms.snoozeMinutes) minutes.")
-                InfoModalRow(symbol: "eye", title: "Where to see it",
-                             text: "Alarms an app sets don't appear in the Clock app's list. When it rings it takes over the Lock Screen like any alarm, with \"shukr\" under the title, and on your Apple Watch if it's paired.")
+                             text: "Stopping it, or opening shukr, sets the next days.")
+                InfoModalRow(symbol: "eye", title: "Not in the Clock app",
+                             text: "Alarms an app sets aren't in Clock's list. When it rings, \"shukr\" shows under the title.")
                 InfoModalRow(symbol: "square.stack.3d.up.slash", title: "Had the Shortcut?",
-                             text: "It no longer makes an alarm while shukr sets it, so there's no need to delete it.")
+                             text: "It no longer makes an alarm, so there's no need to delete it.")
             }
         } else {
             shortcutInfoView
