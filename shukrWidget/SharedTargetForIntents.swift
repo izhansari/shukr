@@ -1857,6 +1857,8 @@ struct LATuning: Codable, Equatable {
     var buttonSymbolSize: Double = 18
     var buttonStackGap: Double = 8
     var buttonOffsetX: Double = 0
+    var buttonSymbolOpacity: Double? = nil   // nil = 0.65: the symbols a little dull, not stark white (owner)
+    var symbolOpacity: Double { get { buttonSymbolOpacity ?? 0.65 } set { buttonSymbolOpacity = newValue } }
     // 15 s bar
     var barSideInset: Double = 8
     var barBottomInset: Double = 0
@@ -1867,9 +1869,10 @@ struct LATuning: Codable, Equatable {
     var islandLineSize: Double = 11
     var islandButtonSize: Double = 38
     // How the time left is written — iOS's self-updating formats only (a Live Activity has no timeline): 0 "1 hour,
-    // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative) · 2 "1:39" (timer to the minute) · 3 "1:39:12". Optional so a
-    // saved tuning without it still decodes.
-    var timeLeftStyle: Int? = nil
+    // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative; under an hour it ticks seconds) · 2 "1:39" · 3 "1:39:12" ·
+    // 4 (nil, the default — owner: no seconds) relative over an hour, then "59 minutes", then "under a minute", switched
+    // by timer gates. Optional so a saved tuning without it still decodes (renamed from timeLeftStyle so earlier picks drop).
+    var timeLeftFormat: Int? = nil
 
     static let key = "la.tuning2"   // 2: his sim tuning became the defaults; earlier saved tunings are left behind
     static var current: LATuning {
@@ -2010,9 +2013,9 @@ struct LANameLines: View {
             } else {
                 let lastHalf = state.end.addingTimeInterval(-30 * 60)
                 ZStack(alignment: .leading) {
-                    LATimeLeft(end: state.end, style: t.timeLeftStyle ?? 0).foregroundStyle(.primary)
+                    LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.primary)
                         .mask { LAGate(from: nil, until: lastHalf) }
-                    LATimeLeft(end: state.end, style: t.timeLeftStyle ?? 0).foregroundStyle(.red)
+                    LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.red).fontWeight(.semibold)
                         .mask { LAGate(from: lastHalf, until: nil) }
                 }
                 .font(.system(size: line))
@@ -2027,13 +2030,24 @@ struct LANameLines: View {
     }
 }
 
-/// The time left, ticking by itself in a format iOS draws (`LATuning.timeLeftStyle`).
+/// The time left, ticking by itself in a format iOS draws (`LATuning.timeLeftFormat`).
 struct LATimeLeft: View {
     let end: Date
     var style = 0
-    static let styles = ["1 hour, 39 minutes", "1 hr, 39 min", "1:39", "1:39:12"]
+    static let styles = ["1 hour, 39 minutes", "1 hr, 39 min · 19 min, 56 sec", "1:39", "1:39:12", "1 hr, 39 min · 59 minutes"]
+    static let standard = 4
     var body: some View {
         switch style {
+        case 4:
+            // Relative drops to "19 min, 56 sec" under an hour and ticks; offset, minutes only, floors to "0 minutes" in the
+            // last one — so three layers, each shown only in its own stretch (the sim: 1 hr, 0 min → 59 minutes on time).
+            let hour = end.addingTimeInterval(-3600), minute = end.addingTimeInterval(-60)
+            ZStack(alignment: .leading) {
+                Text("\(Text(end, style: .relative)) left").mask { LAGate(from: nil, until: hour) }
+                Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.minute], maxFieldCount: 1, sign: .never))) left")
+                    .mask { LAGate(from: hour, until: minute) }
+                Text("under a minute left").mask { LAGate(from: minute, until: nil) }
+            }
         case 1: Text("\(Text(end, style: .relative)) left")
         case 2: Text("\(Text(.currentDate, format: .timer(countingDownIn: Date.now..<max(end, .now), maxPrecision: .seconds(60)))) left")
         case 3: Text("\(Text(timerInterval: Date.now...max(end, .now), countsDown: true)) left")
@@ -2076,7 +2090,7 @@ struct LACompactTrailing: View {
     }
 }
 
-/// The right side: the soft round buttons — `circle` marks it (as on the widget); prayed → camera over the zikr beads;
+/// The right side: the soft round buttons — a ✓ marks it (owner: the circle looked odd); prayed → camera over the zikr beads;
 /// ended → a grey dashed circle (Qaza; never red — owner).
 struct LAGlyphs: View {
     let state: LATestAttributes.ContentState
@@ -2097,7 +2111,7 @@ struct LAGlyphs: View {
         } else if ended {
             LARoundButton(intent: LATestMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
         } else {
-            LARoundButton(intent: LATestMarkIntent(n: n), symbol: "circle", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, t: t)
+            LARoundButton(intent: LATestMarkIntent(n: n), symbol: "checkmark", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, t: t)
         }
     }
 }
@@ -2124,7 +2138,7 @@ struct LARoundButton<I: AppIntent>: View {
         Button(intent: intent) {
             Image(systemName: symbol)
                 .font(.system(size: symbolSize, weight: .light))
-                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+                .foregroundStyle(dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary.opacity(t.symbolOpacity)))
                 .frame(width: size, height: size)
                 .background {
                     if onIsland {

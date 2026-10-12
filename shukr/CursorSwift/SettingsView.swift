@@ -1693,7 +1693,7 @@ struct LATunerView: View {
             }
             .onChange(of: t) { _, new in new.save(); note = "" }
             .onAppear {   // DEBUG -laTimeStyle N (the sim's taps miss Menus)
-                if UserDefaults.standard.object(forKey: "laTimeStyle") != nil { t.timeLeftStyle = UserDefaults.standard.integer(forKey: "laTimeStyle") }
+                if UserDefaults.standard.object(forKey: "laTimeStyle") != nil { t.timeLeftFormat = UserDefaults.standard.integer(forKey: "laTimeStyle") }
             }
         }
     }
@@ -1703,9 +1703,11 @@ struct LATunerView: View {
     private var sample: LATestAttributes.ContentState {
         let m: Double = 60
         switch kind {
-        case 1: return .init(label: "Asr", start: base.addingTimeInterval(-110 * m), end: base.addingTimeInterval(20 * m), symbol: prayerIcon(for: "Asr"))
         case 2: return .init(label: "Asr", start: base.addingTimeInterval(-25 * m), end: base.addingTimeInterval(115 * m), symbol: prayerIcon(for: "Asr"), markedAt: base)
         case 3: return .init(label: "Asr", start: base.addingTimeInterval(-145 * m), end: base.addingTimeInterval(-5 * m), symbol: prayerIcon(for: "Asr"))
+        case 1 where UserDefaults.standard.object(forKey: "laPreviewLeft") != nil:   // DEBUG -laPreviewLeft seconds
+            return .init(label: "Asr", start: base.addingTimeInterval(-110 * m), end: base.addingTimeInterval(UserDefaults.standard.double(forKey: "laPreviewLeft")), symbol: prayerIcon(for: "Asr"))
+        case 1: return .init(label: "Asr", start: base.addingTimeInterval(-110 * m), end: base.addingTimeInterval(20 * m), symbol: prayerIcon(for: "Asr"))
         default: return .init(label: "Asr", start: base.addingTimeInterval(-40 * m), end: base.addingTimeInterval(100 * m), symbol: prayerIcon(for: "Asr"))
         }
     }
@@ -1752,7 +1754,7 @@ struct LATunerView: View {
             row("Prayer symbol size", "the sun / moon inside the ring", \.ringSymbolSize, 8...40, 1)
         }
         Section("Text") {
-            Picker("Time left as", selection: Binding(get: { t.timeLeftStyle ?? 0 }, set: { t.timeLeftStyle = $0 })) {
+            Picker("Time left as", selection: Binding(get: { t.timeLeftFormat ?? LATimeLeft.standard }, set: { t.timeLeftFormat = $0 })) {
                 ForEach(LATimeLeft.styles.indices, id: \.self) { Text(LATimeLeft.styles[$0]).tag($0) }
             }
             row("Name size", "\"Asr\"", \.titleSize, 10...36, 1)
@@ -1768,6 +1770,7 @@ struct LATunerView: View {
             row("Centre up / down", "0 = top, 1 = bottom", \.glowCentreY, 0...1, 0.01)
         }
         Section("Buttons") {
+            row("Symbol brightness", "1 = full white; lower = duller", \.symbolOpacity, 0.2...1, 0.05)
             row("Button size", "the soft round disc", \.buttonSize, 24...64, 1)
             row("Symbol size", "the circle / camera / beads inside", \.buttonSymbolSize, 8...32, 1)
             row("Gap between camera and beads", "after marking", \.buttonStackGap, 0...24, 1)
