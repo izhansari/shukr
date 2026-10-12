@@ -33,6 +33,8 @@ final class NotificationHealth: ObservableObject {
     /// one before the last-resort reminder, and that reminder's date.
     @Published private(set) var pendingCount = 0
     @Published private(set) var scheduledThrough: Date?
+    /// How many are waiting, the last-resort reminder left out (Settings' "12 scheduled through …").
+    @Published private(set) var scheduledCount = 0
     /// The next one to arrive (Settings' Your Notifications row: "Next 4:53 PM").
     @Published private(set) var nextAt: Date?
     @Published private(set) var keepAliveDate: Date?
@@ -72,6 +74,7 @@ final class NotificationHealth: ObservableObject {
         let keepAlive = pending.first { NotificationScheduler.isLastKeepAlive($0.identifier) }.flatMap(fire)
         let dates = pending.filter { !$0.identifier.hasPrefix(NotificationScheduler.keepAlivePrefix) }.compactMap(fire)
         let through = dates.max()
+        if scheduledCount != dates.count { scheduledCount = dates.count }
         let now = Date()
         let next = dates.filter { $0 > now }.min()
         if nextAt != next { nextAt = next }

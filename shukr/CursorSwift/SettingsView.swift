@@ -254,29 +254,29 @@ struct SettingsView: View {
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var fajrAlarmOn = false
 
     /// Under the Reminders card (decision reminders-status-row B): how far ahead the side showing is set up.
+    /// "12 scheduled through Sun, Oct 18" (owner): how many, and how far.
     private var remindersFooter: String? {
+        func line(_ n: Int, _ through: Date) -> String { "\(n) scheduled through \(Self.throughDay(through))" }
         if shownReminderTab == ReminderSwitch.fajrAlarm {
             guard fajrAlarmOn, FajrAlarms.isActive, !fajrAlarmStatus.needsYou, let through = fajrAlarmStatus.through else { return nil }
-            return "Scheduled through \(Self.throughDay(through))"
+            return line(fajrAlarmStatus.count, through)
         } else if shownReminderTab == ReminderSwitch.liveActivities {
             guard liveActivitiesOn else { return nil }
-            if let through = laStatus.through { return "Scheduled through \(Self.throughDay(through))" }
+            if let through = laStatus.through { return line(laStatus.held, through) }
             return laStatus.held == 0 && LiveActivityPrefs.prayers.contains(where: LiveActivityPrefs.isOn) ? "None waiting right now" : nil
         } else if !remindersOff, let through = notificationHealth.scheduledThrough {
-            return "Scheduled through \(Self.throughDay(through))"
+            return line(notificationHealth.scheduledCount, through)
         }
         return nil
     }
     @State private var laStatus = LiveActivityStatus.shared
-    /// The card's last line: "Scheduled through …" on the left, "Next 1:05 PM" on the right.
-    private func footerLine(_ line: String, next: Date?) -> some View {
-        HStack(spacing: 8) {
-            Text(line)
-            Spacer(minLength: 8)
-            if let next { Text("Next \(YourNotificationsRow.when(next))").lineLimit(1) }
-        }
-        .font(.system(.footnote, design: .rounded))
-        .foregroundStyle(.secondary)
+    /// The card's last line, small and grey; where it leads, the row's chevron says so.
+    private func footerLine(_ line: String) -> some View {
+        Text(line)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .font(.system(.footnote, design: .rounded))
+            .foregroundStyle(.secondary)
     }
 
     /// "Fri, Oct 23".
@@ -458,18 +458,18 @@ struct SettingsView: View {
                         // How far ahead the side showing is set up — inside the card, its last line (owner), on every side.
                         // On the notifications side the line is also the way into Your Notifications, the next one on its
                         // right (owner: no thick row of its own; "show it leads somewhere" — the chevron).
-                        // Every side: how far ahead, and the next one on the right (owner). Notifications lead to Your
-                        // Notifications, the alarm to Alarm check (beta builds; its old row is gone); Live Activities nowhere.
+                        // Every side: how many and how far, a chevron to the list (owner). Notifications → Your Notifications,
+                        // Live Activities → the cards waiting, the alarm → Alarm check (beta builds).
                         if let line = remindersFooter {
                             switch shownReminderTab {
                             case ReminderSwitch.notifications:
-                                NavigationLink { YourRemindersView() } label: { footerLine(line, next: notificationHealth.nextAt) }
+                                NavigationLink { YourRemindersView() } label: { footerLine(line) }
                             case ReminderSwitch.fajrAlarm where betaAccess.beta:
-                                NavigationLink { FajrAlarmCheckView() } label: { footerLine(line, next: fajrAlarmStatus.next) }
+                                NavigationLink { FajrAlarmCheckView() } label: { footerLine(line) }
                             case ReminderSwitch.fajrAlarm:
-                                footerLine(line, next: fajrAlarmStatus.next)
+                                footerLine(line)
                             default:
-                                footerLine(line, next: laStatus.next)
+                                NavigationLink { ScheduledLiveActivitiesPage() } label: { footerLine(line) }
                             }
                         }
                     } header: {
@@ -1565,6 +1565,9 @@ struct AlarmSettingsView: View {
     private(set) var through: Date? = FajrAlarms.scheduledThrough
     /// The next time it rings (from the rule, as the alarms are set).
     private(set) var next: Date? = FajrAlarms.dates(days: 2).first?.alarm
+    /// Fajr alarms set ahead (test alarms left out).
+    private(set) var count = FajrAlarmStatus.heldCount
+    private static var heldCount: Int { FajrAlarms.scheduled().filter { !$0.test && ($0.date ?? .distantPast) > Date() }.count }
     /// DEBUG `-demoFajrAlarmAllowed`: reads as allowed (the simulator's alarms are refused; screenshots of the on side).
     private static var readAllowed: Bool? {
         #if DEBUG
@@ -1579,6 +1582,8 @@ struct AlarmSettingsView: View {
         if through != t { through = t }
         let n = FajrAlarms.dates(days: 2).first?.alarm
         if next != n { next = n }
+        let c = Self.heldCount
+        if count != c { count = c }
         guard !heardFromIOS else { return }
         let a = Self.readAllowed
         if allowed != a { allowed = a }
@@ -1973,6 +1978,96 @@ struct LiveActivityInfo: View {
             if next != s.next { next = s.next }
             if through != s.through { through = s.through }
         }
+    }
+}
+
+/// Settings → Reminders → Live Activities → the card's last line (owner: "build its page to display the scheduled
+/// ones"): every prayer card iOS holds for shukr, by day — its window, and whether it's on now or still to come.
+struct ScheduledLiveActivitiesPage: View {
+    struct Card: Identifiable {
+        let id: String
+        let name: String
+        let symbol: String
+        let start: Date
+        let end: Date
+        let marked: Bool
+    }
+    @State private var cards: [Card] = []
+    @State private var loaded = false
+
+    var body: some View {
+        List {
+            if loaded && cards.isEmpty {
+                Section {
+                    Text("None waiting right now. Opening shukr sets up the next ones.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            ForEach(days, id: \.self) { day in
+                Section(Self.dayTitle(day)) {
+                    ForEach(cards.filter { Calendar.current.isDate($0.start, inSameDayAs: day) }) { row($0) }
+                }
+            }
+            Section {
+            } footer: {
+                Text("iOS holds five at a time. Each time you mark one or open shukr, the next ones are set up.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .fontDesign(.rounded)
+        .navigationTitle("Live Activities")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { load(); LiveActivityStatus.shared.refresh() }
+        .refreshable { load() }
+        // Back in Settings, its line counts what this page showed (a card can end in between).
+        .onDisappear { LiveActivityStatus.shared.refresh() }
+    }
+
+    private var days: [Date] {
+        var seen: [Date] = []
+        for c in cards {
+            let d = Calendar.current.startOfDay(for: c.start)
+            if !seen.contains(d) { seen.append(d) }
+        }
+        return seen
+    }
+
+    private func row(_ c: Card) -> some View {
+        let now = Date()
+        let state = c.marked ? "Marked" : now >= c.start && now < c.end ? "On now" : now >= c.end ? "Ended" : "Waiting"
+        return HStack(spacing: 12) {
+            Image(systemName: c.symbol).frame(width: 26).foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(c.name)
+                Text("\(c.start.formatted(date: .omitted, time: .shortened)) – \(c.end.formatted(date: .omitted, time: .shortened))")
+                    .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+            }
+            Spacer(minLength: 8)
+            Text(state)
+                .font(.subheadline.weight(state == "On now" ? .semibold : .regular))
+                .foregroundStyle(state == "On now" ? Color.green : .secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func load() {
+        if #available(iOS 26.0, *) {
+            cards = Activity<PrayerWindowAttributes>.activities
+                .filter { $0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale }
+                .map { a in
+                    let st = a.content.state
+                    return Card(id: a.id, name: st.label, symbol: st.symbol, start: st.start, end: st.end, marked: st.markedAt != nil)
+                }
+                .sorted { $0.start < $1.start }
+        }
+        loaded = true
+    }
+
+    /// "Today", "Tomorrow", else "Wed, Oct 14".
+    static func dayTitle(_ d: Date) -> String {
+        if Calendar.current.isDateInToday(d) { return "Today" }
+        if Calendar.current.isDateInTomorrow(d) { return "Tomorrow" }
+        return d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
 }
 
