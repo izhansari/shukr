@@ -267,6 +267,7 @@ struct SettingsView: View {
         remindersTab == ReminderSwitch.liveActivities && !PrayerLiveActivities.supported ? ReminderSwitch.notifications : remindersTab
     }
     @State private var fajrAlarmStatus = FajrAlarmStatus.shared
+    @Environment(\.scenePhase) private var settingsScenePhase
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var fajrAlarmOn = false
 
     /// Under the Reminders card (decision reminders-status-row B): how far ahead the side showing is set up.
@@ -471,6 +472,10 @@ struct SettingsView: View {
                         guard PrayerLiveActivities.supported else { return }
                         for await on in ActivityAuthorizationInfo().activityEnablementUpdates { liveActivitiesOn = on }
                     }
+                    // The alarm's permission for its dot, whatever side shows (it was re-read only on the alarm side —
+                    // a change in iOS Settings left the dot stale).
+                    .onAppear { fajrAlarmStatus.refresh() }
+                    .onChange(of: settingsScenePhase) { _, phase in if phase == .active { fajrAlarmStatus.refresh() } }
 
                     
                     
@@ -1359,21 +1364,36 @@ struct AlarmSettingsView: View {
 
     var body: some View {
         Group {
-            if FajrAlarms.supported && status.allowed == false {
-                // Refused in iOS Settings: as Live Activities' side says it, with the way back.
+            if FajrAlarms.supported && status.allowed != true {
+                // Not allowed yet (asks, and turns the alarm on) or refused in iOS Settings (the way back there): as the
+                // notifications side says each.
+                let refused = status.allowed == false
                 HStack(spacing: 14) {
                     Image(systemName: "exclamationmark.circle")
                         .font(.system(size: 24, weight: .light))
                         .foregroundStyle(Color.orange.opacity(0.9))
                         .frame(width: 30)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Alarms are off").font(.system(.body, design: .rounded)).foregroundStyle(.primary)
-                        Text("Off for shukr in iOS Settings").font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                        Text(refused ? "Alarms are off" : "Alarms aren’t allowed yet")
+                            .font(.system(.body, design: .rounded)).foregroundStyle(.primary)
+                        Text(refused ? "Off for shukr in iOS Settings" : "Allow them so shukr can wake you for Fajr")
+                            .font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
                     }
                 }
                 .padding(.vertical, 2)
-                Button(action: SettingsLinks.app) {
-                    Text("Turn on alarms").font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
+                Button {
+                    guard !refused else { SettingsLinks.app(); return }
+                    Task { @MainActor in
+                        if await FajrAlarms.enable() {
+                            withAnimation { alarmEnabled = true }   // allowed: on, and its wheels open
+                        } else {
+                            alarmKitRefused = true
+                        }
+                        status.refresh()
+                    }
+                } label: {
+                    Text(refused ? "Turn on alarms" : "Allow alarms")
+                        .font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
                 }
             } else {
                 toggleRow
@@ -1488,8 +1508,9 @@ struct AlarmSettingsView: View {
         if allowed != a { allowed = a }
         if through != t { through = t }
     }
-    /// Refused in iOS Settings (the switch's orange dot).
-    var needsYou: Bool { FajrAlarms.supported && allowed == false }
+    /// Not allowed yet, or refused in iOS Settings (the switch's orange dot — owner: "the permission was never given
+    /// or it was turned off, but we're not putting a badge on that"), as notifications count "not allowed yet".
+    var needsYou: Bool { FajrAlarms.supported && allowed != true }
 }
 
 /// Reminders' ⓘ on the Fajr Alarm side: iOS 26.1+ a small version of setup's alarm page; older, the Shortcut's steps.
