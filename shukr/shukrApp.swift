@@ -270,7 +270,6 @@ struct shukrApp: App {
                     // state of this page's circle (circle step 3b; LostPageLayer), so it stays up as location
                     // comes back and hands off on the same ring.
                     PrayerTimesView()
-                        .infoModalHost()   // Settings' ⓘ cards float over the whole page (InfoModal.swift)
                         .transition(.blurReplace())
                 } else if !setupShowing {
                     // No location at all (refused with no city): just the setup's location step.
@@ -281,6 +280,9 @@ struct shukrApp: App {
                 }
             }
             .environmentObject(prayerViewModel)
+            // The ⓘ cards float over everything the stack shows, pushed pages too (Your reminders) — on PrayerTimesView
+            // they opened under a pushed page (InfoModal.swift).
+            .infoModalHost()
             .overlay {
                 if setupShowing {
                     FirstRunSetupView(onFinish: {

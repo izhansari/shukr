@@ -272,6 +272,8 @@ struct YourRemindersView: View {
     @State private var selectedDay = Self.debugInt("remindersDay")
     /// The explanation open as a sheet (ReminderWhy). DEBUG `-remindersSheet N` opens one (screenshots).
     @State private var whySheet: ReminderWhy?
+    /// Each prayer's ⓘ: Settings' notifications card.
+    @State private var showBellsInfo = false
     /// Opened from Settings with something wrong: that explanation's sheet comes up over the page, once.
     var openWith: ReminderWhy? = nil
     @State private var openedWith = false
@@ -372,21 +374,20 @@ struct YourRemindersView: View {
 
             Section {
                 HStack {
-                    prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
+                    prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, dots: true)
                     Divider()
-                    prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
+                    prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, dots: true)
                     Divider()
-                    prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
+                    prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, dots: true)
                     Divider()
-                    prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
+                    prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, dots: true)
                     Divider()
-                    prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
+                    prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
                 }
-                .padding(.vertical, 6)
+                .padding(.vertical, 4)
             } header: {
-                Text("Each prayer")
-            } footer: {
-                Text("Tap to switch: off · start · start + nudges. Fewer reminders a day schedule further ahead.")
+                // Settings' own bells and their ⓘ (owner): the same tiles, the same card, no caption.
+                headerWithInfoButton(title: "Each prayer", isPopupVisible: $showBellsInfo)
             }
 
             // One card (owner): the weeks, then the picked day's name and its total as the card's own row, then its
@@ -454,6 +455,7 @@ struct YourRemindersView: View {
         .sheet(item: $previewCard) { issue in
             ReminderHealthCard(issue: issue) { previewCard = nil }
         }
+        .infoModal(isPresented: $showBellsInfo, title: "Notifications", symbol: "bell") { NotificationDropdownInfo() }
         // Pushed, not a sheet (owner).
         .navigationDestination(item: $whySheet) { ReminderWhySheet(kind: $0, pendingCount: pending.count) }
     }
