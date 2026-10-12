@@ -69,6 +69,7 @@ struct SettingsView: View {
     @AppStorage("modeToggle") var colorModeToggle = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var liveActivityLookRaw = LiveActivityLook.system.rawValue
+    @State private var isAppearanceInfoVisible = false
     
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
@@ -522,9 +523,8 @@ struct SettingsView: View {
                             }
                         }
                     } header: {
-                        Text("Appearance")
-                    } footer: {
-                        Text("Auto follows the sun: light from Fajr, dark after Maghrib. Widgets follow your iPhone’s light or dark mode.")
+                        // What each look means is in the ⓘ (owner: not as text under the section).
+                        headerWithInfoButton(title: "Appearance", isPopupVisible: $isAppearanceInfoVisible)
                     }
 
                     // Explore shukr (owner, settings-explore): the features people don't find, a card each.
@@ -786,6 +786,9 @@ struct SettingsView: View {
                 let on = ActivityAuthorizationInfo().areActivitiesEnabled
                 if liveActivitiesOn != on { liveActivitiesOn = on }
             }
+        }
+        .infoModal(isPresented: $isAppearanceInfoVisible, title: "Appearance", symbol: "circle.lefthalf.filled") {
+            AppearanceInfo()
         }
         .infoModal(isPresented: $isTimesInfoVisible, title: "Prayer Times", symbol: "clock") {
             PrayerTimesInfo(qibla: qiblaSensitivity)
@@ -1826,6 +1829,42 @@ struct ReminderSwitch: View {
             }
             .frame(maxWidth: .infinity)
             .accessibilityHidden(true)
+    }
+}
+
+/// Appearance's ⓘ (owner): setup's three swatches — a tap picks, as the madhab tiles do in Prayer Times' — then what each
+/// look means, the Live Activity card's, and the widgets'.
+struct AppearanceInfo: View {
+    @AppStorage("modeToggleNew") private var mode = 0
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                ForEach([(0, "Light"), (1, "Dark"), (2, "Auto")], id: \.0) { tag, title in
+                    Button {
+                        guard mode != tag else { return }
+                        withAnimation(.easeInOut(duration: 0.3)) { mode = tag }
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        VStack(spacing: 6) {
+                            AppearanceSwatch(tag: tag)
+                                .frame(height: 84)
+                                .overlay(RoundedRectangle(cornerRadius: 18)
+                                    .stroke(mode == tag ? Color.sage : Color.secondary.opacity(0.25), lineWidth: mode == tag ? 2 : 1))
+                            Text(title).font(.system(.subheadline, design: .rounded, weight: mode == tag ? .semibold : .regular))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(mode == tag ? .isSelected : [])
+                }
+            }
+            InfoModalRow(symbol: "sun.max", title: "Light and Dark", text: "The app stays that way all day.")
+            InfoModalRow(symbol: "circle.lefthalf.filled", title: "Auto",
+                         text: "Follows the sun: light from Fajr, dark after Maghrib.")
+            InfoModalRow(symbol: "platter.filled.bottom.iphone", title: "Live Activity card",
+                         text: "Its own look on your Lock Screen. System follows your iPhone; Follows the sun is light for Dhuhr and Asr, dark for Fajr, Maghrib and Isha.")
+            InfoModalRow(symbol: "square.grid.2x2", title: "Widgets",
+                         text: "They follow your iPhone's light or dark mode.")
+        }
     }
 }
 

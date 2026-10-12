@@ -2562,7 +2562,7 @@ private struct AppearanceStep: View {
 
 /// A tiny Salah page: the circle on the page's colour. Auto is split light / dark with the sun and
 /// the moon.
-private struct AppearanceSwatch: View {
+struct AppearanceSwatch: View {
     let tag: Int
     var body: some View {
         ZStack {
