@@ -194,19 +194,21 @@ enum AlarmSelfTest {
 #endif
 
 enum SetupStep: String, CaseIterable, Identifiable {
-    case welcome, location, method, madhab, appearance, reminders, fajr, masjid, review
+    case welcome, location, method, madhab, appearance, reminders, liveActivities, fajr, masjid, review
     var id: String { rawValue }
 
-    /// The ring: a sixth per group (location · prayer times · appearance · notifications · Fajr · masjid). The method and
-    /// Asr steps are their own group: they're how the times are worked out, not where you are (owner).
+    /// The ring: a seventh per group (location · prayer times · appearance · notifications · Live Activities · Fajr ·
+    /// masjid). The method and Asr steps are their own group: they're how the times are worked out, not where you are
+    /// (owner). Live Activities sit after notifications (decision la-setup-position A).
     var progress: Double {
         switch self {
         case .welcome: 0
-        case .location: 1 / 6
-        case .method, .madhab: 2 / 6
-        case .appearance: 3 / 6
-        case .reminders: 4 / 6
-        case .fajr: 5 / 6
+        case .location: 1 / 7
+        case .method, .madhab: 2 / 7
+        case .appearance: 3 / 7
+        case .reminders: 4 / 7
+        case .liveActivities: 5 / 7
+        case .fajr: 6 / 7
         case .masjid, .review: 1
         }
     }
@@ -217,6 +219,7 @@ enum SetupStep: String, CaseIterable, Identifiable {
         case .method, .madhab: "clock"   // the review's "Prayer times" row too
         case .appearance: "circle.lefthalf.filled"
         case .reminders: "bell"
+        case .liveActivities: "platter.filled.bottom.iphone"
         case .fajr: "alarm"
         case .masjid: "building.columns"
         case .review: "checkmark"
@@ -327,8 +330,9 @@ struct FirstRunSetupView: View {
                         case .appearance: AppearanceStep(next: { advance(to: .reminders) })
                         case .reminders: RemindersStep(next: {
                             NotificationScheduler.reschedule(context: context, reason: "setup reminders")
-                            advance(to: .fajr)
+                            advance(to: .liveActivities)
                         })
+                        case .liveActivities: LiveActivitySetupStep(next: { advance(to: .fajr) })
                         case .fajr: FajrStep(next: { advance(to: .masjid) })
                         case .masjid: MasjidStep(next: { advance(to: .review) })
                         case .review: ReviewStep(jump: { editing = $0; go($0) }, done: enterApp)
@@ -2624,7 +2628,7 @@ private struct RemindersStep: View {
                 } else if notifications.isOn == false {
                     // Refused: the preview says it, frosted over (owner); the way on is outlined, not the filled
                     // Continue; Settings is the quiet way back.
-                    PrimaryButton(title: "Continue without reminders", outlined: true, action: next)
+                    PrimaryButton(title: "Continue without notifications", outlined: true, action: next)
                     SecondaryButton(title: "I changed my mind. Open Settings", action: SettingsLinks.notifications)
                 } else {
                     PrimaryButton(title: "Continue", action: next)
@@ -2635,7 +2639,7 @@ private struct RemindersStep: View {
         }
         .animation(.easeInOut(duration: 0.45), value: notifications.isOn)
         .task { await notifications.refresh() }
-        .alert("Go without reminders?", isPresented: $confirmSkip) {
+        .alert("Go without notifications?", isPresented: $confirmSkip) {
             Button("Remind me", role: .cancel) { notifications.request() }
             Button("Skip anyway", role: .destructive, action: next)
         } message: {
@@ -3453,6 +3457,8 @@ private struct ReviewStep: View {
     @Environment(\.scenePhase) private var scenePhase
     /// iOS's answer on alarms (nil not asked), re-read on return from Settings.
     @State private var alarmsAllowed: Bool? = nil
+    /// iOS's switch for shukr's Live Activities, re-read on return from Settings.
+    @State private var liveActivitiesOn = LiveActivitySetupStep.systemEnabled
     /// "Continue with limited features" tapped: bismillah comes in.
     @State private var goLimited = false
 
@@ -3464,9 +3470,9 @@ private struct ReviewStep: View {
     private var limited: Bool { (locationMissing || notificationsMissing) && !goLimited }
     private var limitedNote: String {
         switch (locationMissing, notificationsMissing) {
-        case (true, true): return "Without these: no prayer reminders, and times and qibla that won’t follow you."
+        case (true, true): return "Without these: no prayer notifications, and times and qibla that won’t follow you."
         case (true, false): return "Without location, your times won’t follow you, the qibla will be off and prayers won’t be pinned."
-        default: return "Without notifications, you’ll miss reminders before a prayer slips by."
+        default: return "Without notifications, you’ll miss the nudge before a prayer slips by."
         }
     }
     /// One at a time: location first, then notifications — iOS asks if it never has, else Settings.
@@ -3498,6 +3504,9 @@ private struct ReviewStep: View {
                     row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
                     divider
                     row("bell", "Notifications", notificationsFix?.value ?? remindersValue, step: .reminders, fix: notificationsFix)
+                    divider
+                    row("platter.filled.bottom.iphone", "Live Activities", liveActivityFix?.value ?? liveActivityValue,
+                        step: .liveActivities, fix: liveActivityFix)
                     divider
                     row("alarm", "Fajr alarm", alarmFix?.value ?? alarmValue, step: .fajr, fix: alarmFix)
                     divider
@@ -3543,7 +3552,9 @@ private struct ReviewStep: View {
             await notifications.refresh()
             await health.refresh()
         }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { alarmsAllowed = FajrAlarms.allowed } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { alarmsAllowed = FajrAlarms.allowed; liveActivitiesOn = LiveActivitySetupStep.systemEnabled }
+        }
     }
 
     private var divider: some View { Divider().padding(.leading, 44) }
@@ -3576,6 +3587,28 @@ private struct ReviewStep: View {
     private var alarmValue: String {
         guard alarmOn else { return "Off" }
         return PrayerUtils.alarmRuleText(offset: alarmOffset, isBefore: alarmBefore, isStart: alarmFajr)
+    }
+    /// The prayers that get a card: "Dhuhr, Asr, Maghrib" (the default), "All five", "Off"; before iOS 26, that it needs it.
+    private var liveActivityValue: String {
+        let s = liveActivityState
+        if !s.supported { return "Needs iOS 26" }
+        if s.prayers.isEmpty { return "Off" }
+        return s.prayers.count == 5 ? "All five" : s.prayers.joined(separator: ", ")
+    }
+    /// What the row reads from (the phone; DEBUG `-demoReviewLA old|iosOff|off|one|all` stands in for each state).
+    private var liveActivityState: (supported: Bool, allowed: Bool, prayers: [String]) {
+        #if DEBUG
+        switch UserDefaults.standard.string(forKey: "demoReviewLA") {
+        case "old": return (false, false, [])
+        case "iosOff": return (true, false, ["Dhuhr", "Asr", "Maghrib"])
+        case "off": return (true, true, [])
+        case "one": return (true, true, ["Asr"])
+        case "all": return (true, true, LiveActivityPrefs.prayers)
+        case "default": return (true, true, ["Dhuhr", "Asr", "Maghrib"])
+        default: break
+        }
+        #endif
+        return (PrayerLiveActivities.supported, liveActivitiesOn, LiveActivityPrefs.prayers.filter { LiveActivityPrefs.isOn($0) })
     }
     private var masjidValue: String {
         let names = MosqueFavorites.all.map(\.name)
@@ -3633,6 +3666,16 @@ private struct ReviewStep: View {
             return Fix(value: "Alarms are off for shukr", action: "Turn on", run: SettingsLinks.app)
         }
         if !alarmOn { return Fix(value: "Off", action: "Set up") { jump(.fajr) } }
+        return nil
+    }
+
+    /// As the alarm's: iOS has them off → Settings; every prayer off (a no on the page) → back to its step. Before iOS
+    /// 26 nothing to fix — the value says it needs it.
+    private var liveActivityFix: Fix? {
+        let s = liveActivityState
+        guard s.supported else { return nil }
+        if !s.allowed { return Fix(value: "Live Activities are off for shukr", action: "Turn on", run: SettingsLinks.app) }
+        if s.prayers.isEmpty { return Fix(value: "Off", action: "Set up") { jump(.liveActivities) } }
         return nil
     }
 

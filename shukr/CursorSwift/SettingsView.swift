@@ -529,7 +529,7 @@ struct SettingsView: View {
                     if showDevStuff {
                         Section {
                             Button("Ring playground…") { showRingPlayground = true }
-                            // Not in the setup yet: the page on its own, its words editable from its ⚙ (owner).
+                            // The setup's Live Activity page on its own, its words editable from its ⚙ (owner).
                             Button("Live Activity setup page…") { showLiveActivitySetup = true }
                             Button("NEXT label playground…") { showNextPlayground = true }
                             // Plays the prayer-begins moment on the Salah circle (visual only: no test

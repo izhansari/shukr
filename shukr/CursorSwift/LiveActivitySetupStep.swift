@@ -3,10 +3,10 @@
 //  shukr
 //
 //  The setup page for prayer Live Activities, built like the notifications and Fajr alarm pages: the real card in the
-//  sage preview, iOS's answer checked the same way, the prayers to show as tiles once it's on. Not in the setup yet
-//  (owner, 2026-10-11: "Don't actually put this page in the onboarding yet. I just want to fix it up") — DEBUG opens it
-//  from Settings → My Dev Stuff → Live Activity setup page, or `-demoLiveActivityStep`. Every word is in
-//  `LASetupCopy`, which the ⚙ (DEBUG) edits live, with a "Preview as" to see each state on one phone.
+//  sage preview, iOS's answer checked the same way, the prayers to show as tiles once it's on. In the setup
+//  after Prayer notifications (`SetupStep.liveActivities`, decision la-setup-position A), with a review row. DEBUG also
+//  opens it alone from Settings → My Dev Stuff → Live Activity setup page, or `-demoLiveActivityStep`, where its ⚙ edits
+//  every word (`LASetupCopy`) live, with a "Preview as" to see each state on one phone.
 //
 //  Before iOS 26 (scheduled starts need it) the page still shows, with the card frosted over and "Coming with iOS 26":
 //  they learn it's there for when they update (owner: "it might be nice for them to know").
@@ -17,12 +17,18 @@ import ActivityKit
 
 struct LiveActivitySetupStep: View {
     let next: () -> Void
+    /// The page on its own (Settings → My Dev Stuff): only there does the ⚙'s "Preview as" apply — a state left picked
+    /// there showed in the real setup.
+    var previewing = false
     @State private var copy = LASetupCopy.shared
     @Environment(\.scenePhase) private var scenePhase
     /// iOS's switch for shukr's Live Activities (Settings → shukr → Live Activities); on unless they turned it off.
     @State private var enabled = LiveActivitySetupStep.systemEnabled
-    /// Their answer on this page: nil not asked, true show them, false not.
-    @State private var answer: Bool? = nil
+    /// Their answer on this page: nil not asked, true show them, false not — kept, so coming back (from the review, or
+    /// back from the alarm) finds the page as they left it.
+    @State private var answer: Bool? = LiveActivitySetupStep.savedAnswer
+    static let answerKey = "liveActivity.setupAnswer"
+    static var savedAnswer: Bool? { UserDefaults.standard.object(forKey: answerKey) as? Bool }
     /// "No thanks" asks once more, as the notifications and the alarm do (owner).
     @State private var confirmSkip = false
     /// The prayer the preview shows once the tiles are up: the last tile tapped (Asr to begin).
@@ -39,8 +45,11 @@ struct LiveActivitySetupStep: View {
         Dictionary(uniqueKeysWithValues: LiveActivityPrefs.prayers.map { ($0, LiveActivityPrefs.isOn($0)) })
     }
 
+    /// The state "Preview as" shows instead of the phone's (the page on its own only); nil = the real one.
+    private var shown: Mode? { previewing && copy.preview != .real ? copy.preview : nil }
+
     private var mode: Mode {
-        if copy.preview != .real { return copy.preview }
+        if let shown { return shown }
         if !PrayerLiveActivities.supported { return .old }
         // A no here and iOS's switch off read the same: the card frosted with what they'd lose (owner).
         if !enabled || answer == false { return .off }
@@ -139,19 +148,22 @@ struct LiveActivitySetupStep: View {
     /// "Show my prayers": on, the prayers as set (Dhuhr, Asr and Maghrib unless changed), the next windows planned now —
     /// iOS asks its own "Allow Live Activities?" the first time one shows. After a "no", the tiles come back as they were.
     private func turnOn() {
-        if answer == false, copy.preview == .real {
+        if answer == false, shown == nil {
             let group = UserDefaults(suiteName: SharedStore.appGroup)
             for p in LiveActivityPrefs.prayers { group?.removeObject(forKey: LiveActivityPrefs.key(p)) }
             prefs = Self.savedPrefs
         }
         withAnimation(.easeInOut(duration: 0.45)) { answer = true }
-        if copy.preview == .real { PrayerLiveActivities.plan(reason: "setup") }
+        guard shown == nil else { return }
+        UserDefaults.standard.set(true, forKey: Self.answerKey)
+        PrayerLiveActivities.plan(reason: "setup")
     }
 
     /// "Skip it": every prayer off (Settings turns them back on); the page stays, frosted, until Continue.
     private func turnOff() {
         withAnimation(.easeInOut(duration: 0.45)) { answer = false }
-        guard copy.preview == .real else { return }
+        guard shown == nil else { return }
+        UserDefaults.standard.set(false, forKey: Self.answerKey)
         let group = UserDefaults(suiteName: SharedStore.appGroup)
         for p in LiveActivityPrefs.prayers { group?.set(false, forKey: LiveActivityPrefs.key(p)) }
         prefs = Self.savedPrefs
@@ -161,7 +173,7 @@ struct LiveActivitySetupStep: View {
     private func set(_ prayer: String, on: Bool) {
         focus = prayer
         prefs[prayer] = on
-        guard copy.preview == .real else { return }
+        guard shown == nil else { return }
         UserDefaults(suiteName: SharedStore.appGroup)?.set(on, forKey: LiveActivityPrefs.key(prayer))
         PrayerLiveActivities.plan(reason: "setup tile")
     }
@@ -551,9 +563,9 @@ struct LiveActivitySetupPreview: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showCopyTuner = false
 
-    /// Where it would sit in the setup: after notifications, before the Fajr alarm (the ring between theirs).
-    static let progress = (SetupStep.reminders.progress + SetupStep.fajr.progress) / 2
-    static let symbol = "platter.filled.bottom.iphone"
+    /// Its place in the setup (after notifications, before the Fajr alarm — decision la-setup-position A).
+    static let progress = SetupStep.liveActivities.progress
+    static let symbol = SetupStep.liveActivities.symbol
 
     var body: some View {
         // The setup's own top (FirstRunSetupView): the bar (✕ where its back chevron is, the ⚙ where Skip is), then the
@@ -578,7 +590,7 @@ struct LiveActivitySetupPreview: View {
             .frame(height: 44)
             SetupRing(progress: Self.progress, symbol: Self.symbol)
                 .padding(.top, 4)
-            LiveActivitySetupStep(next: { dismiss() })
+            LiveActivitySetupStep(next: { dismiss() }, previewing: true)
                 .padding(.top, 26)          // as FirstRunSetupView: every title at the same height under the ring
         }
         .fontDesign(.rounded)
