@@ -2606,7 +2606,11 @@ struct LAGate: View {
     /// (the stock bar filling), 1 an instant flip, 2 a fade in 8 instant steps over 0.6 s (a blurred, soft-edged sweep
     /// froze on the Lock Screen: the blur stops the bar's live fill). App group `la.gateStyle`.
     static let styleKey = "la.gateStyle"
-    static var style: Int { UserDefaults(suiteName: SharedStore.appGroup)?.integer(forKey: styleKey) ?? 0 }
+    /// Unset = the fade (owner: "I think I like fade").
+    static var style: Int {
+        let g = UserDefaults(suiteName: SharedStore.appGroup)
+        return g?.object(forKey: styleKey) == nil ? 2 : g?.integer(forKey: styleKey) ?? 2
+    }
     private static let steps = 8
     private static let fadeLength: TimeInterval = 0.6   // 1.5 read as lag (owner): 8 steps at ~13 a second
 

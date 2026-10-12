@@ -1879,7 +1879,7 @@ struct LATunerView: View {
 
     @ViewBuilder private var controls: some View {
         Section("Card") {
-            Picker("Timed changes", selection: Binding(get: { UserDefaults(suiteName: SharedStore.appGroup)?.integer(forKey: LAGate.styleKey) ?? 0 },
+            Picker("Timed changes", selection: Binding(get: { LAGate.style },
                                                        set: { UserDefaults(suiteName: SharedStore.appGroup)?.set($0, forKey: LAGate.styleKey); t.lineSpacing += 0 })) {
                 Text("1 s wipe").tag(0)
                 Text("Instant").tag(1)
