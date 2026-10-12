@@ -449,7 +449,7 @@ struct SettingsView: View {
                             NotificationCenter.default.post(name: TourRuntime.start, object: nil)
                         } label: {
                             Label {
-                                Text("Show me the app tour again")
+                                Text("Take the app tour again")
                             } icon: {
                                 Image(systemName: "hand.point.up.left").foregroundStyle(Color(.label))
                             }
@@ -457,9 +457,8 @@ struct SettingsView: View {
                         .tint(Color(.label))   // the qibla row's colors, no blue on this page (owner)
                         // The tour ends here (audit J): its last bubble points at this row.
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("tourAgainRow", $0) }
-                        // The first freestyle session's tips again (owner: a way to see them without the whole tour).
-                        CountingTipsAgainRow()
-                            .tint(Color(.label))
+                        // The Zikr tour again (owner): the Zikr page locked as a new person sees it, and there.
+                        ZikrTourAgainRow()
                     }
                     .id("tourAgainRow")
                     // The tour's Settings card (v2): the top on arrival — the page has come to rest by then (scrolling
@@ -557,6 +556,8 @@ struct SettingsView: View {
                             } label: {
                                 Label("Run setup from the start", systemImage: "arrow.counterclockwise.circle")
                             }
+                            // The first freestyle session's tips again (was under Tours; the Zikr tour took its place).
+                            CountingTipsAgainRow()
                             // Zikr locked as a new person sees it, or open (ZikrLock; owner: "i wanna be able to test
                             // in my dev build").
                             Toggle(isOn: Binding(get: { !ZikrLock.shared.unlocked },
@@ -1532,6 +1533,26 @@ import ActivityKit
 /// NotificationHealthRows' look — on, with how many windows are waiting and the next; or off for shukr in iOS, with the
 /// way back — then, while on, the five columns, each the prayer's own symbol (black = its window shows, grey = not).
 /// iOS 26+ only (scheduled starts); the section isn't shown before.
+/// Settings → Tours → Take the zikr tour again (owner): the Zikr tab locked again as a new person sees it (ZikrLock), and
+/// the pager on it, where its lock page starts the tour. Its own view, so Settings' big Form never reads shared state.
+struct ZikrTourAgainRow: View {
+    @Environment(SharedStateClass.self) private var sharedState
+    var body: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            ZikrLock.shared.setLockedForTesting(true)
+            Task { @MainActor in _ = await sharedState.navigate(to: .zikr) }
+        } label: {
+            Label {
+                Text("Take the zikr tour again")
+            } icon: {
+                Image(systemName: "hands.and.sparkles").foregroundStyle(Color(.label))
+            }
+        }
+        .tint(Color(.label))
+    }
+}
+
 /// Reminders' switch (owner, decision settings-alerts E): iOS's own segmented control (owner: "so it feels right and
 /// familiar"; a hand-made one didn't take taps in its List row), with a small orange dot laid over the end of a side's name
 /// when something there is wrong, so it's found from the other side.
@@ -1817,8 +1838,11 @@ private struct LiveActivityPrayerCol: View {
                 Spacer()
                 // The bells' place and size (owner: switching sides should be clean): the Lock Screen card, slashed off;
                 // no gap for the dots — "on / off" sits where the bells' dots are (owner).
+                // As much black as the filled bells when on (owner: hard to tell on from off): a heavier symbol in the
+                // label color; off a light grey slash, as the bells' off.
                 Image(systemName: on ? "platter.filled.bottom.iphone" : "iphone.slash")
-                    .foregroundStyle(on ? Color.primary : Color.gray)
+                    .font(.system(size: 20, weight: on ? .bold : .light))
+                    .foregroundStyle(on ? Color.primary : Color.gray.opacity(0.55))
                     .contentTransition(.symbolEffect(.replace))
                     .frame(maxWidth: .infinity, alignment: .center)
                     .frame(height: 22)
