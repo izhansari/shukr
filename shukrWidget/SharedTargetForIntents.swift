@@ -1908,8 +1908,8 @@ struct LATuning: Codable, Equatable {
     var ringBandLift: Double = 0.1
     // Text
     var titleSize: Double = 19
-    var timeLeftSize: Double = 12
-    var endsSize: Double = 10
+    var timeLeftSize: Double = 13   // 12 read too small on his phone (owner, 2026-10-12)
+    var endsSize: Double = 11
     var lineSpacing: Double = 2
     var textOffsetY: Double = 0
     // Glow
