@@ -1429,6 +1429,99 @@ struct SetFajrAlarmIntent: AppIntent {
 
 
 
+// MARK: - Prayer times, asked for in Shortcuts
+
+/// Which prayer "Get Prayer Time" means, from now.
+enum PrayerPick: String, AppEnum {
+    case current, previous, next
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Which prayer"
+    static var caseDisplayRepresentations: [PrayerPick: DisplayRepresentation] = [
+        .current: DisplayRepresentation(title: "Current", subtitle: "The prayer whose time it is now"),
+        .previous: DisplayRepresentation(title: "Previous", subtitle: "The one before it"),
+        .next: DisplayRepresentation(title: "Next", subtitle: "The next to start"),
+    ]
+}
+
+/// The five prayers' windows from yesterday to tomorrow, in order (Isha to 11:59 PM, as everywhere).
+enum PrayerWindows {
+    struct Window { let name: String; let start: Date; let end: Date }
+
+    static func around(_ now: Date = Date()) -> [Window] {
+        guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
+        let params = PrayerUtils.getCalculationParameters()
+        let cal = Calendar.current
+        let today = PrayerDay.date(for: now)
+        var all: [Window] = []
+        for offset in -1...1 {
+            guard let day = cal.date(byAdding: .day, value: offset, to: today),
+                  let times = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { continue }
+            let nextFajr = cal.date(byAdding: .day, value: 1, to: day)
+                .flatMap { try? PrayerUtils.getPrayerTimes(for: $0, coordinates: coords, params: params).fajr }
+            let w = PrayerUtils.createWindowsFromTimes(times, on: day, nextFajr: nextFajr)
+            for name in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"] {
+                if let (a, b, _) = w[name] { all.append(Window(name: name, start: a, end: b)) }
+            }
+        }
+        return all.sorted { $0.start < $1.start }
+    }
+
+    static func pick(_ which: PrayerPick, now: Date = Date()) -> Window? {
+        let all = around(now)
+        let current = all.last { $0.start <= now && now < $0.end }
+        switch which {
+        case .current: return current
+        case .next: return all.first { $0.start > now }
+        case .previous:
+            if let current, let i = all.firstIndex(where: { $0.start == current.start }), i > 0 { return all[i - 1] }
+            return all.last { $0.end <= now }
+        }
+    }
+}
+
+/// "Get Prayer Time": the current, previous or next prayer — its name, start and end.
+struct GetPrayerTimeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Prayer Time"
+    static var description = IntentDescription("The current, previous or next prayer and its start time. Current is the prayer whose time it is now (between Sunrise and Dhuhr there is none).")
+
+    @Parameter(title: "Which prayer", default: .next) var which: PrayerPick
+
+    static var parameterSummary: some ParameterSummary { Summary("Get the \(\.$which) prayer's time") }
+
+    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
+        guard let w = PrayerWindows.pick(which) else {
+            if which == .current, let n = PrayerWindows.pick(.next) {
+                return .result(value: n.start, dialog: "No prayer is on right now. \(n.name) starts at \(shortTimePM(n.start)).")
+            }
+            throw PrayerTimeUnavailable()
+        }
+        let line: IntentDialog = switch which {
+        case .current: "It's \(w.name), from \(shortTimePM(w.start)) to \(shortTimePM(w.end))."
+        case .previous: "The previous prayer was \(w.name), at \(shortTimePM(w.start))."
+        case .next: "The next prayer is \(w.name), at \(shortTimePM(w.start))."
+        }
+        return .result(value: w.start, dialog: line)
+    }
+}
+
+/// "Get Today's Prayer Times": all five for today, as lines ("Fajr 5:37 AM").
+struct GetTodaysPrayerTimesIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Today's Prayer Times"
+    static var description = IntentDescription("Today's five prayer times, with your method and madhab — as a list you can show, speak or send.")
+
+    func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog {
+        // The prayer day's five (after midnight, before Fajr, still yesterday's — as everywhere in shukr).
+        let day = PrayerDay.date()
+        let five = Array(PrayerWindows.around().filter { Calendar.current.isDate($0.start, inSameDayAs: day) }.prefix(5))
+        guard !five.isEmpty else { throw PrayerTimeUnavailable() }
+        let lines = five.map { "\($0.name) \(shortTimePM($0.start))" }
+        return .result(value: lines, dialog: IntentDialog(stringLiteral: lines.joined(separator: "\n")))
+    }
+}
+
+struct PrayerTimeUnavailable: Error, CustomLocalizedStringResourceConvertible {
+    var localizedStringResource: LocalizedStringResource { "Open shukr once so it knows where you are." }
+}
+
 // MARK: - The Fajr alarm's time, for any shortcut
 
 /// "Autopilot Fajr Alarm Time" (owner: usable in any shortcut — lights on at that time): the next time your Fajr alarm
@@ -1597,6 +1690,9 @@ struct OpenSalahIntent: AppIntent {
 }
 
 struct PrayerTimeShortcuts: AppShortcutsProvider {
+    /// The tiles in the Shortcuts app, in shukr's sage (owner: "add color to match our branding").
+    static var shortcutTileColor: ShortcutTileColor = .grayGreen
+
     @AppShortcutsBuilder
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -1661,6 +1757,26 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Tasbih Fatimah",
             systemImageName: "circle.hexagonpath"
+        )
+
+        AppShortcut(
+            intent: GetTodaysPrayerTimesIntent(),
+            phrases: [
+                "Prayer times today in ${applicationName}",
+                "Today's prayer times in ${applicationName}"
+            ],
+            shortTitle: "Today's Times",
+            systemImageName: "list.bullet.clipboard"
+        )
+
+        AppShortcut(
+            intent: GetPrayerTimeIntent(),
+            phrases: [
+                "Get a prayer time in ${applicationName}",
+                "Previous prayer in ${applicationName}"
+            ],
+            shortTitle: "Prayer Time",
+            systemImageName: "clock.arrow.2.circlepath"
         )
 
         AppShortcut(
