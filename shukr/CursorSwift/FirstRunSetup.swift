@@ -3327,9 +3327,10 @@ private struct MasjidStep: View {
     @FocusState private var typing: Bool
 
     var body: some View {
+        // Why to star (owner, decision setup-masjid-why: his words).
         StepScaffold(title: "Your masjid",
-                     subtitle: MasjidArrival.parked ? "Star the one you pray at."
-                        : "Star the one you pray at. shukr can show a dua when you arrive and when you leave.") {
+                     subtitle: MasjidArrival.parked ? "Prayers you mark there are saved at your masjid, and Friday's Dhuhr counts as Jumu'ah."
+                        : "Prayers you mark there are saved at your masjid, and Friday's Dhuhr counts as Jumu'ah. shukr can also show a dua when you arrive and leave.") {
             VStack(spacing: 14) {
                 searchField
                 if query.trimmingCharacters(in: .whitespaces).isEmpty { list } else { searchList }
