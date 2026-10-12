@@ -1902,7 +1902,7 @@ struct WatchLookHelp: View {
                 Label("iPhone — the same as shukr on your iPhone (Settings there)", systemImage: "iphone")
                 Label("Light — always light", systemImage: "sun.max")
                 Label("Dark — always dark", systemImage: "moon")
-                Label("Auto — follows the sun: light from sunrise, dark from Maghrib", systemImage: "sun.horizon")
+                Label("Sun — light after Fajr, dark at Maghrib", systemImage: "sun.horizon")
                 Text("With your wrist down the watch always goes dark.")
                     .foregroundStyle(.secondary)
             }

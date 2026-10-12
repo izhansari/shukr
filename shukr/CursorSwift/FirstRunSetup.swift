@@ -2527,9 +2527,9 @@ private struct AppearanceStep: View {
 
     var body: some View {
         StepScaffold(title: "Light or dark?",
-                     subtitle: "Auto follows the sun: light from Fajr, dark after Maghrib.") {
+                     subtitle: "Sun: light after Fajr, dark at Maghrib.") {
             HStack(spacing: 14) {
-                ForEach([(0, "Light"), (1, "Dark"), (2, "Auto")], id: \.0) { tag, title in
+                ForEach([(0, "Light"), (1, "Dark"), (2, "Sun")], id: \.0) { tag, title in
                     Button {
                         withAnimation(.easeInOut(duration: 0.35)) { mode = tag }
                     } label: {
@@ -2549,7 +2549,7 @@ private struct AppearanceStep: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(tag == 2 ? "Auto, recommended" : title)
+                    .accessibilityLabel(tag == 2 ? "Sun, recommended" : title)
                     .accessibilityAddTraits(mode == tag ? .isSelected : [])
                 }
             }
@@ -3812,7 +3812,7 @@ private struct ReviewStep: View {
                             // the value line, with its way to change their mind at the end of it.
                             row("location.fill", "Location", locationFix?.value ?? locationValue, step: .location, fix: locationFix)
                             row("clock", "Prayer Times", methodValue, step: .method)
-                            row("circle.lefthalf.filled", "Appearance", (mode == 3 ? "System" : ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)]), step: .appearance)
+                            row("circle.lefthalf.filled", "Appearance", (mode == 3 ? "System" : ["Light", "Dark", "Sun"][min(max(mode, 0), 2)]), step: .appearance)
                             row("bell", "Notifications", notificationsFix?.value ?? remindersValue, step: .reminders, fix: notificationsFix)
                             row("platter.filled.bottom.iphone", "Live Activities", liveActivityFix?.value ?? liveActivityValue,
                                 step: .liveActivities, fix: liveActivityFix)

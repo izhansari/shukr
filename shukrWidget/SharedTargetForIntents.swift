@@ -2005,7 +2005,7 @@ enum LiveActivityLook: String, CaseIterable, Identifiable {
         case .system: "System"
         case .light: "Light"
         case .dark: "Dark"
-        case .sun: "Follows the sun"
+        case .sun: "Sun"
         }
     }
     var detail: String {
@@ -2013,7 +2013,7 @@ enum LiveActivityLook: String, CaseIterable, Identifiable {
         case .system: "Light or dark with your iPhone."
         case .light: "Always light."
         case .dark: "Always dark."
-        case .sun: "Dhuhr and Asr light; Fajr, Maghrib and Isha dark."
+        case .sun: "Light after Fajr, dark at Maghrib."
         }
     }
     /// A prayer's card: dark or not; nil = the phone's.

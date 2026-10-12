@@ -514,7 +514,7 @@ struct SettingsView: View {
                             Text("System").tag(3)
                             Text("Light").tag(0)
                             Text("Dark").tag(1)
-                            Text("Auto").tag(2)
+                            Text("Sun").tag(2)
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "circle.lefthalf.filled").frame(width: 24)
@@ -547,7 +547,7 @@ struct SettingsView: View {
                             Text("System").tag("system")
                             Text("Light").tag("light")
                             Text("Dark").tag("dark")
-                            Text("Follows the sun").tag("auto")
+                            Text("Sun").tag("auto")
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "square.grid.2x2").frame(width: 24)
@@ -935,7 +935,7 @@ struct floatingMessageView: View {
             Image(systemName: mode == 0 ? "sun.max.fill" : mode == 1 ? "moon.fill" : mode == 3 ? "iphone" : "circle.lefthalf.filled")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(Color.green)
-            Text(mode == 0 ? "Light mode" : mode == 1 ? "Dark mode" : mode == 3 ? "System · follows your iPhone" : "Auto · follows the sun")
+            Text(mode == 0 ? "Light mode" : mode == 1 ? "Dark mode" : mode == 3 ? "System · follows your iPhone" : "Sun · light after Fajr, dark at Maghrib")
                 .font(.system(size: 15, weight: .regular, design: .rounded))
         }
         .padding(.horizontal, 18)
@@ -1865,7 +1865,7 @@ struct AppearanceInfo: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
-                ForEach([(0, "Light"), (1, "Dark"), (2, "Auto")], id: \.0) { tag, title in
+                ForEach([(0, "Light"), (1, "Dark"), (2, "Sun")], id: \.0) { tag, title in
                     Button {
                         guard mode != tag else { return }
                         withAnimation(.easeInOut(duration: 0.3)) { mode = tag }
@@ -1885,12 +1885,12 @@ struct AppearanceInfo: View {
             }
             InfoModalRow(symbol: "iphone", title: "System", text: "Follows your iPhone's light or dark mode.")
             InfoModalRow(symbol: "sun.max", title: "Light and Dark", text: "The app stays that way all day.")
-            InfoModalRow(symbol: "circle.lefthalf.filled", title: "Auto",
-                         text: "Follows the sun: light from Fajr, dark after Maghrib.")
+            InfoModalRow(symbol: "circle.lefthalf.filled", title: "Sun",
+                         text: "Light after Fajr, dark at Maghrib.")
             InfoModalRow(symbol: "platter.filled.bottom.iphone", title: "Live Activity card",
-                         text: "Its own look on your Lock Screen. System follows your iPhone; Follows the sun is light for Dhuhr and Asr, dark for Fajr, Maghrib and Isha.")
+                         text: "Its own look on your Lock Screen. System follows your iPhone; Sun is light after Fajr, dark at Maghrib.")
             InfoModalRow(symbol: "square.grid.2x2", title: "Prayers widget",
-                         text: "Every Prayers widget on your Home Screen. System follows your iPhone; Follows the sun is dark from Maghrib until sunrise. Other widgets and the Lock Screen follow your iPhone.")
+                         text: "Every Prayers widget on your Home Screen. System follows your iPhone; Sun is light after Fajr, dark at Maghrib. Other widgets and the Lock Screen follow your iPhone.")
         }
     }
 }

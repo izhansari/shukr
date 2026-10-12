@@ -59,10 +59,9 @@ struct BottomRightOptions: DynamicOptionsProvider {
 }
 
 /// The home-screen Prayers widget's look (Edit Widget, owner 2026-09-28). System follows the phone
-/// (what every widget did before, so nothing changes unasked); "Follows the sun" (`auto`, the name
-/// the owner picked — "Auto" sounded like System) is the app's own auto mode, "Auto · follows the
-/// sun": dark from Maghrib until sunrise, light between. The Lock Screen ignores it (the system
-/// tints it). Order: System · Light · Dark · Follows the sun.
+/// (what every widget did before, so nothing changes unasked); "Sun" (`auto`; every look picker says
+/// "Sun" now — owner, 2026-10-12) is the app's own sun mode: light after Fajr, dark at Maghrib. The Lock
+/// Screen ignores it (the system tints it). Order: System · Light · Dark · Sun.
 enum WidgetStyle: String, AppEnum, CaseIterable {
     case system, light, dark, auto
 
@@ -71,7 +70,7 @@ enum WidgetStyle: String, AppEnum, CaseIterable {
         .system: DisplayRepresentation(title: "System"),
         .light: DisplayRepresentation(title: "Light"),
         .dark: DisplayRepresentation(title: "Dark"),
-        .auto: DisplayRepresentation(title: "Follows the sun", subtitle: "Dark from Maghrib until sunrise"),
+        .auto: DisplayRepresentation(title: "Sun", subtitle: "Light after Fajr, dark at Maghrib"),
     ]
 
     /// Set in shukr (Settings → Appearance → Widgets) for every Prayers widget (owner, decision widget-style-shared A:

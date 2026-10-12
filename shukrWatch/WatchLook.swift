@@ -32,7 +32,7 @@ enum WatchLookChoice: String, CaseIterable {
         case .sync: "iPhone"
         case .light: "Light"
         case .dark: "Dark"
-        case .auto: "Auto"
+        case .auto: "Sun"
         }
     }
     var next: Self { Self.allCases[(Self.allCases.firstIndex(of: self)! + 1) % Self.allCases.count] }
