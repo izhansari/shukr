@@ -3594,6 +3594,16 @@ private struct ReviewStep: View {
                     .scrollBounceBehavior(.basedOnSize)
                     .scrollIndicators(.hidden)
                     .frame(height: max(0, min(rows, geo.size.height - 24)))
+                    // Clipped: its bottom fades out, so a cut row reads as "there's more" (Sami's idea), not a mistake.
+                    .mask {
+                        if rows > geo.size.height - 24 {
+                            LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.82),
+                                                   .init(color: .black.opacity(0), location: 1)],
+                                           startPoint: .top, endPoint: .bottom)
+                        } else {
+                            Color.black
+                        }
+                    }
                     .background {
                         RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .fill(Color(.secondarySystemBackground))

@@ -17,6 +17,9 @@ import ActivityKit
 
 struct LiveActivitySetupStep: View {
     let next: () -> Void
+    /// Opened from the review to change it: if they haven't said no, they're on (the review row says so), so it opens on
+    /// the tiles — no asking again (owner: "take me to the page where I can just change the configuration").
+    @Environment(\.setupReturnsToReview) private var fromReview
     /// The page on its own (Settings → My Dev Stuff): only there does the ⚙'s "Preview as" apply — a state left picked
     /// there showed in the real setup.
     var previewing = false
@@ -53,7 +56,7 @@ struct LiveActivitySetupStep: View {
         if !PrayerLiveActivities.supported { return .old }
         // A no here and iOS's switch off read the same: the card frosted with what they'd lose (owner).
         if !enabled || answer == false { return .off }
-        return answer == true ? .on : .ask
+        return answer == true || fromReview ? .on : .ask
     }
 
     var body: some View {
