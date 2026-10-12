@@ -2145,8 +2145,14 @@ struct LANameLines: View {
                 ZStack(alignment: .leading) {
                     LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.primary)
                         .mask { LAGate(from: nil, until: lastHalf) }
-                    LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.red).fontWeight(.semibold)
-                        .mask { LAGate(from: lastHalf, until: nil) }
+                    // Bold by a second copy 0.4 pt over, not .semibold: the same glyphs as the white line, so the fade between
+                    // them never doubles the words (semibold's letters are wider — owner).
+                    ZStack(alignment: .leading) {
+                        LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard)
+                        LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).offset(x: 0.4)
+                    }
+                    .foregroundStyle(.red)
+                    .mask { LAGate(from: lastHalf, until: nil) }
                 }
                 .font(.system(size: line))
                 if big {
@@ -2615,8 +2621,8 @@ struct LAGate: View {
         let g = UserDefaults(suiteName: SharedStore.appGroup)
         return g?.object(forKey: styleKey) == nil ? 2 : g?.integer(forKey: styleKey) ?? 2
     }
-    private static let steps = 8
-    private static let fadeLength: TimeInterval = 0.6   // 1.5 read as lag (owner): 8 steps at ~13 a second
+    private static let steps = 10
+    private static let fadeLength: TimeInterval = 0.5   // 1.5 read as lag (owner): 10 steps at 20 a second
 
     var body: some View {
         // An edge already passed when this is drawn is drawn solid: its stock bar re-filled on every update, sweeping a
