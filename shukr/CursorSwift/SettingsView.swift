@@ -1858,10 +1858,11 @@ struct LATunerView: View {
             Picker("Name weight", selection: Binding(get: { t.islandTitleWeight ?? 2 }, set: { t.islandTitleWeight = $0 })) {
                 ForEach(LATuning.weightNames.indices, id: \.self) { Text(LATuning.weightNames[$0]).tag($0) }
             }
-            Picker("Layout", selection: Binding(get: { t.islandLayout ?? 1 }, set: { t.islandLayout = $0 })) {
+            Picker("Layout", selection: Binding(get: { t.islandArrangement ?? 3 }, set: { t.islandArrangement = $0 })) {
                 Text("Ring by the camera, name under").tag(0)
                 Text("Ring + name together").tag(1)
                 Text("One row under the camera").tag(2)
+                Text("All under the camera (default)").tag(3)
             }
         }
     }

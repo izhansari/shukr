@@ -97,6 +97,7 @@ enum PrayerLiveActivities {
         let wait = 15 - Date().timeIntervalSince(t0)
         if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
         if a.activityState == .active { await a.end(nil, dismissalPolicy: .immediate) }
+        plan(reason: "card ✓, after its 15 s")   // its slot is free now (the 5 were full at the tap — Frank)
     }
 
     /// Cards turning to their marked look right now (`plan` leaves them be).
@@ -220,7 +221,8 @@ enum PrayerLiveActivities {
         for d in 0...1 {
             guard let day = cal.date(byAdding: .day, value: d, to: cal.startOfDay(for: now)),
                   let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { continue }
-            let ishaEnd = cal.date(byAdding: .minute, value: 24 * 60 - 1, to: cal.startOfDay(for: day)) ?? t.isha.addingTimeInterval(3 * 3600)
+            // 11:59 PM by the clock (minutes from midnight were an hour off on a DST day — Frank).
+            let ishaEnd = cal.date(bySettingHour: 23, minute: 59, second: 0, of: day) ?? t.isha.addingTimeInterval(3 * 3600)
             out += [Window(name: "Fajr", start: t.fajr, end: t.sunrise), Window(name: "Dhuhr", start: t.dhuhr, end: t.asr),
                     Window(name: "Asr", start: t.asr, end: t.maghrib), Window(name: "Maghrib", start: t.maghrib, end: t.isha),
                     Window(name: "Isha", start: t.isha, end: ishaEnd)]
@@ -235,8 +237,27 @@ enum PrayerLiveActivities {
     }
 
     /// End what shouldn't be showing, then add windows up to iOS's 5. Returns how many it added.
+    /// A held card matching a wanted window: the same prayer on the same day, its start within 45 min — times that moved
+    /// a little (a new place, method or madhab) keep their card rather than lose it from the background, where it can't be
+    /// put back (Frank: a significant-change relaunch re-plans in the background within 10–25 s).
+    private static func matches(_ st: PrayerWindowAttributes.ContentState, _ w: Window) -> Bool {
+        st.label == w.name && abs(st.start.timeIntervalSince(w.start)) < 45 * 60
+    }
+
+    #if DEBUG
+    /// `-laNowAgo`: the stand-in alone — no planning for 10 min (the sim's real windows took the island; iOS relaunches
+    /// shukr without the args, so it's kept in UserDefaults). `-laEndAll` alone lifts it.
+    @MainActor static var holdPlans: Bool {
+        get { Date().timeIntervalSince1970 - UserDefaults.standard.double(forKey: "la.debugHoldAt") < 600 }
+        set { UserDefaults.standard.set(newValue ? Date().timeIntervalSince1970 : 0, forKey: "la.debugHoldAt") }
+    }
+    #endif
+
     @MainActor @discardableResult static func plan(reason: String, retry: Bool = false) -> Int {
         guard #available(iOS 26.0, *), ActivityAuthorizationInfo().areActivitiesEnabled else { return 0 }
+        #if DEBUG
+        if holdPlans { return 0 }
+        #endif
         let now = Date()
         let bg = UIApplication.shared.applicationState == .background
         let want = windows(now: now)
@@ -251,6 +272,14 @@ enum PrayerLiveActivities {
             endedIDs.insert(a.id)
             ended.append("\(a.content.state.label) \(a.content.state.start.formatted(date: .omitted, time: .shortened)) (\(why))")
         }
+        // iOS ends a card itself after 8 h (an Isha) but leaves it on the Lock Screen up to 4 h more: once its window is
+        // over or another prayer began, clear it (it sat beside Fajr's — Frank).
+        for a in all where a.activityState == .ended {
+            let st = a.content.state
+            if st.end <= now || liveStarts.contains(where: { $0 > st.start }) {
+                Task { await a.end(nil, dismissalPolicy: .immediate) }
+            }
+        }
         for a in all where a.activityState != .ended && a.activityState != .dismissed {
             let st = a.content.state
             if marking.contains(a.attributes.n) { continue }
@@ -264,7 +293,9 @@ enum PrayerLiveActivities {
             }
             if st.end <= now { end(a, "window over") }
             else if let latest = liveStarts.max(), st.start < latest, a.activityState != .pending { end(a, "next prayer began") }
-            else if !wantIDs.contains(a.attributes.n) { end(a, "turned off / times moved") }
+            else if !LiveActivityPrefs.isOn(st.label) { end(a, "turned off") }
+            else if !want.contains(where: { matches(st, $0) }) { end(a, "no such window now") }
+            else if !bg, a.activityState == .pending, !wantIDs.contains(a.attributes.n) { end(a, "times moved") }   // re-added below at the new time
             else if a.activityState != .pending, done(Window(name: st.label, start: st.start, end: st.end)) { end(a, "prayed") }
         }
         var live = Activity<PrayerWindowAttributes>.activities.filter {
@@ -276,7 +307,7 @@ enum PrayerLiveActivities {
         var shouldHold: [Int] = []
         for w in want where shouldHold.count < 5 - markedHeld {
             if w.start <= now && done(w) { continue }
-            shouldHold.append(w.id)
+            shouldHold.append(live.first(where: { matches($0.content.state, w) })?.attributes.n ?? w.id)
         }
         var room = bg ? 0 : shouldHold.filter { id in !live.contains { $0.attributes.n == id } }.count - (5 - live.count)
         for a in live.sorted(by: { $0.content.state.start > $1.content.state.start })
@@ -289,7 +320,7 @@ enum PrayerLiveActivities {
         var held = Set(live.map(\.attributes.n))
         var added: [String] = []
         var failed: String?
-        for w in want where !held.contains(w.id) {
+        for w in want where !held.contains(w.id) && !live.contains(where: { matches($0.content.state, w) }) {
             guard held.count < 5 else { break }
             if w.start <= now && done(w) { continue }   // under way but already prayed
             let state = PrayerWindowAttributes.ContentState(label: w.name, start: w.start, end: w.end, symbol: prayerIcon(for: w.name))
@@ -340,6 +371,7 @@ enum PrayerLiveActivities {
         let args = ProcessInfo.processInfo.arguments
         func arg(_ k: String) -> Double? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? Double(args[$0 + 1]) : nil } }
         guard args.contains("-laEndAll") || args.contains("-laNowAgo") || args.contains("-laMarkLive") else { return false }
+        if args.contains("-laNowAgo") || args.contains("-laEndAll") { holdPlans = args.contains("-laNowAgo") }   // at once: a plan from the first foreground beat it
         Task { @MainActor in
             if args.contains("-laEndAll") {
                 for a in Activity<PrayerWindowAttributes>.activities { await a.end(nil, dismissalPolicy: .immediate) }

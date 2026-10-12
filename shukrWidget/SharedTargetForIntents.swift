@@ -1881,10 +1881,10 @@ struct LATuning: Codable, Equatable {
     var islandLineSize: Double = 13
     var islandButtonSize: Double = 38
     var islandTimeSizeOpt: Double? = nil        // nil = 17: the time left above the island's button
-    /// The expanded island's layout (nil = 1), to compare on a phone (the simulator doesn't draw the island): 0 the ring beside the
+    /// The expanded island's layout (nil = 3: the whole row under the camera), to compare on a phone (the simulator doesn't draw the island): 0 the ring beside the
     /// camera, the name under it (center region) · 1 ring + name together beside the camera, below it if too wide ·
     /// 2 ring + name and time + button as one row under the camera (leading / trailing with priority).
-    var islandLayout: Int? = nil
+    var islandArrangement: Int? = nil
     /// The prayer name's weight: 0 light · 1 regular · 2 medium (nil — owner) · 3 semibold · 4 bold — the card and the island apart.
     var titleWeight: Int? = nil
     var islandTitleWeight: Int? = nil
@@ -2147,29 +2147,38 @@ struct LACompactTrailing: View {
 }
 
 /// "27m": the minutes left, by itself, for the last half hour. iOS has no such format (its minute-precision countdowns
-/// are words), so this is the stock "27:08" timer cut to its minutes digits (clipped to the width of "00", then "0" under
-/// ten minutes — a timer gate swaps them) with an "m" after it. Nothing before the last half hour.
+/// are words), so this is the stock "27:08" countdown set flush right, its ":08" hidden under a mask the width of ":00",
+/// and an "m" in that place. (Clipping it to the width of "00" from the left worked in the app but drew only the "m" on the
+/// island: iOS lays a timer text out at its widest.) Under a minute: "<1m".
 struct LAMinutesLeft: View {
     let end: Date
+    /// The font size it's drawn at: its width is set from it (≈ "00m"), since the timer text claims room for far more
+    /// (that widened the folded island; a hidden "00m" as the frame garbled the digits on the island).
+    var size: Double = 14
     var body: some View {
-        let ten = end.addingTimeInterval(-10 * 60), one = end.addingTimeInterval(-60)
+        let one = end.addingTimeInterval(-60)
+        // Never fixedSize here: in a widget a timer text's ideal width is unbounded, and the gates' GeometryReaders then
+        // crashed the extension (the card vanished). A fixed room instead, the time flush right in it, clipped below.
         ZStack(alignment: .trailing) {
-            digits("00").mask { LAGate(from: nil, until: ten) }
-            digits("0").mask { LAGate(from: ten, until: one) }
-            Text("<1m").mask { LAGate(from: one, until: nil) }
+            // The "m" sits in the ":00"'s room, which is wider: pulled right by the difference so "24m" ends at the edge.
+            minutes.padding(.trailing, -size * 0.62).frame(width: size * 4, alignment: .trailing).mask { LAGate(from: nil, until: one) }
+            Text("<1m").lineLimit(1).frame(width: size * 4, alignment: .trailing).mask { LAGate(from: one, until: nil) }
         }
         .monospacedDigit()
+        .frame(width: size * 2.8, alignment: .trailing)
+        .clipped()
     }
-    private func digits(_ room: String) -> some View {
-        HStack(spacing: 0) {
-            Text(room).hidden()
-                .overlay(alignment: .leading) {
-                    Text(timerInterval: Date.now...max(end, Date.now), countsDown: true, showsHours: false)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize()
+    private var minutes: some View {
+        ZStack(alignment: .trailing) {
+            Text(timerInterval: Date.now...max(end, Date.now), countsDown: true, showsHours: false)
+                .multilineTextAlignment(.trailing)
+                .mask {
+                    HStack(spacing: 0) {
+                        Color.black
+                        Text(":00").hidden()   // the seconds' room: masked away
+                    }
                 }
-                .clipped()
-            Text("m")
+            Text(":00").hidden().overlay(alignment: .leading) { Text("m") }   // the "m" where ":08" was
         }
     }
 }
@@ -2177,8 +2186,9 @@ struct LAMinutesLeft: View {
 /// The island's time left over its button: only in the last half hour, "27m" in red (owner: the ring says enough before).
 struct LAIslandTime: View {
     let end: Date
+    var size: Double = 14
     var body: some View {
-        LAMinutesLeft(end: end).foregroundStyle(.red).fontWeight(.semibold)
+        LAMinutesLeft(end: end, size: size).foregroundStyle(.red).fontWeight(.semibold)
             .mask { LAGate(from: end.addingTimeInterval(-30 * 60), until: end) }
     }
 }
@@ -2241,7 +2251,7 @@ struct LAIslandTrailing: View {
                     ZStack(alignment: .trailing) {
                         disc.mask { LAGate(from: nil, until: half) }
                         VStack(alignment: .trailing, spacing: 6) {
-                            LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular)).frame(height: room)
+                            LAIslandTime(end: state.end, size: t.islandTimeSize).font(.system(size: t.islandTimeSize, weight: .regular)).frame(height: room)
                             disc
                         }
                         .mask { LAGate(from: half, until: state.end) }
