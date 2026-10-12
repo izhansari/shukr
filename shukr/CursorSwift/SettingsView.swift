@@ -1766,7 +1766,8 @@ struct LATunerView: View {
 
     var body: some View {
         NavigationStack {
-            Group { if UserDefaults.standard.bool(forKey: "laLookPage") { LiveActivityAppearancePage() }   // DEBUG -laLookPage
+            Group { if UserDefaults.standard.bool(forKey: "madhabMocks") { MadhabSketchMocks() }   // DEBUG -madhabMocks
+            else if UserDefaults.standard.bool(forKey: "laLookPage") { LiveActivityAppearancePage() }   // DEBUG -laLookPage
             else if UserDefaults.standard.bool(forKey: "laSettingsPreview") { Form { LiveActivitySettingsSection() } }   // DEBUG -laSettingsPreview
             else if UserDefaults.standard.bool(forKey: "laIslandGallery") { LAIslandGallery(t: t) } else {
             VStack(spacing: 0) {
