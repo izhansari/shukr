@@ -563,6 +563,7 @@ extension SharedStore {
 
 struct OpenTasbeehIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Tasbeeh"
+    static var description = IntentDescription("Opens shukr's Zikr page.")
     static var openAppWhenRun: Bool = true
     
     func perform() async throws -> some IntentResult {
@@ -579,6 +580,7 @@ struct OpenTasbeehIntent: AppIntent {
 
 struct OpenCompassIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Qibla"
+    static var description = IntentDescription("Opens shukr's qibla map, turned so the qibla points up.")
     static var openAppWhenRun: Bool = true
     
     func perform() async throws -> some IntentResult {
@@ -627,6 +629,7 @@ struct OpenZikrTaskIntent: AppIntent {
 /// Widget → the Daily Ayah page (one-shot flag read on activation, like the compass one).
 struct OpenDailyAyahIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Daily Ayah"
+    static var description = IntentDescription("Opens today's ayah in shukr.")
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
@@ -698,6 +701,7 @@ struct AskUnmarkPrayerIntent: AppIntent {
 /// Widget → the 99 Names page.
 struct OpenNamesIntent: AppIntent {
     static var title: LocalizedStringResource = "Open 99 Names"
+    static var description = IntentDescription("Opens the 99 Names in shukr.")
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
@@ -998,7 +1002,9 @@ struct PrayerUtils {
     }
     
 
-    static func calculateAlarmDescription() throws -> (description: String, time: Date) {
+    /// `ignoringSwitch`: the rule's time even with the Daily alarm off (the "Autopilot Fajr Alarm Time" action, for any
+    /// shortcut).
+    static func calculateAlarmDescription(ignoringSwitch: Bool = false) throws -> (description: String, time: Date) {
         print("hellow")
         let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")!
         let alarmEnabled = store.bool(forKey: "alarmEnabled")
@@ -1014,7 +1020,7 @@ struct PrayerUtils {
 
         print("1")
 
-        guard alarmEnabled else {
+        guard alarmEnabled || ignoringSwitch else {
             print("hellow3")
             throw AlarmDisabledError()
         }
@@ -1177,7 +1183,7 @@ enum ReferencePoint: String, AppEnum {
 /// Intent: Get Time of Chosen Prayer
 struct GetSomePrayerTimeIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Time of Chosen Prayer"
-    static var description: LocalizedStringResource = "Returns the time for the selected prayer."
+    static var description: LocalizedStringResource = "The next start time of the prayer you pick (today's, or tomorrow's once it has passed)."
     
     @Parameter(title: "Prayer", description: "Select which prayer time you want.")
     var prayer: enumPrayer
@@ -1206,7 +1212,7 @@ struct GetSomePrayerTimeIntent: AppIntent {
 /// Intent: Get Next Fajr Time
 struct GetNextFajrIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Next Fajr Time"
-    static var description: LocalizedStringResource = "Returns the next Fajr prayer time."
+    static var description: LocalizedStringResource = "When Fajr next starts, with your method and madhab."
     
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
@@ -1224,7 +1230,7 @@ struct GetNextFajrIntent: AppIntent {
 /// Intent: Get Offset Time Relative to Any Prayer
 struct GetOffsetTimeIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Offset Time Relative to Prayer"
-    static var description: LocalizedStringResource = "Returns a time offset from any prayer."
+    static var description: LocalizedStringResource = "A time some minutes before or after a prayer — e.g. 15 minutes before Maghrib."
     
     @Parameter(title: "Minutes", description: "Number of minutes to offset.")
     var offsetMinutes: Int
@@ -1346,9 +1352,13 @@ enum FajrAlarmLog {
     static var text: String { queue.sync { url.flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "" } }
 }
 
+/// The first Shortcut's step, kept for automations already made from it: it still stops them when the alarm is off or
+/// shukr sets it itself, so they never make a second alarm. Hidden from the actions list: new shortcuts use
+/// `FajrAlarmTimeIntent` (never blocks) and `FajrAlarmShortcutCheckIntent` (owner, 2026-10-12).
 struct SetFajrAlarmIntent: AppIntent {
-    static var title: LocalizedStringResource = "Autopilot Fajr Alarm Time"
-    static var description: LocalizedStringResource = "Dynamically returns a time offset from Fajr or Sunrise (rules defined in the Shukr app settings)"
+    static var title: LocalizedStringResource = "Autopilot Fajr Alarm Time (legacy)"
+    static var description: LocalizedStringResource = "Used by the first version of shukr's Fajr alarm Shortcut. New shortcuts: use Autopilot Fajr Alarm Time."
+    static var isDiscoverable: Bool = false
 
 //    private let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
     
@@ -1418,6 +1428,40 @@ struct SetFajrAlarmIntent: AppIntent {
 
 
 
+
+// MARK: - The Fajr alarm's time, for any shortcut
+
+/// "Autopilot Fajr Alarm Time" (owner: usable in any shortcut — lights on at that time): the next time your Fajr alarm
+/// rule gives (Settings → Reminders → Fajr Alarm), whether or not the alarm is on. Never stops a shortcut.
+struct FajrAlarmTimeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Autopilot Fajr Alarm Time"
+    static var description = IntentDescription("The next time your Fajr alarm rule gives — e.g. 20 minutes before Fajr starts — from Settings → Reminders → Fajr Alarm. Use it in any shortcut: lights, music, a Focus.")
+
+    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
+        let calc = try PrayerUtils.calculateAlarmDescription(ignoringSwitch: true)
+        FajrAlarmLog.add("Shortcut asked the rule's time: \(FajrAlarmLog.day(calc.time))")
+        return .result(value: calc.time, dialog: "Your Fajr alarm time is \(shortTimePM(calc.time)).")
+    }
+}
+
+/// "Should a Shortcut Set the Fajr Alarm?": true only when the Daily alarm is on and shukr isn't setting it itself
+/// (iOS 26.1+). shukr's Clock-alarm Shortcut checks this first, so there's never a second alarm.
+struct FajrAlarmShortcutCheckIntent: AppIntent {
+    static var title: LocalizedStringResource = "Should a Shortcut Set the Fajr Alarm?"
+    static var description = IntentDescription("Yes when your Daily Fajr alarm is on and shukr isn't already setting it itself. Check it before making a Clock alarm, so you never get two.")
+
+    func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
+        let g = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+        let on = g?.bool(forKey: "alarmEnabled") == true
+        var shukrSetsIt = g?.bool(forKey: "alarmKitActive") == true
+        #if canImport(AlarmKit)
+        if #available(iOS 26.1, *), AlarmManager.shared.authorizationState == .denied { shukrSetsIt = false }
+        #endif
+        let answer = on && !shukrSetsIt
+        FajrAlarmLog.add("Shortcut asked whether to set the alarm: \(answer) (switch \(on), shukr sets it \(shukrSetsIt))")
+        return .result(value: answer)
+    }
+}
 
 // MARK: - Siri and Shortcuts: asked in plain words (owner: "natural questions")
 
@@ -1529,6 +1573,7 @@ struct StartTasbihFatimahIntent: AppIntent {
 /// Opens Memories (a control, a shortcut).
 struct OpenMemoriesIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Memories"
+    static var description = IntentDescription("Opens your prayer photos in shukr.")
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
@@ -1541,6 +1586,7 @@ struct OpenMemoriesIntent: AppIntent {
 /// Opens the Salah page (the prayer control).
 struct OpenSalahIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Prayers"
+    static var description = IntentDescription("Opens shukr on today's prayers.")
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
@@ -1615,6 +1661,16 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Tasbih Fatimah",
             systemImageName: "circle.hexagonpath"
+        )
+
+        AppShortcut(
+            intent: FajrAlarmTimeIntent(),
+            phrases: [
+                "When is my Fajr alarm in ${applicationName}",
+                "Fajr alarm time in ${applicationName}"
+            ],
+            shortTitle: "Fajr Alarm Time",
+            systemImageName: "alarm"
         )
 
         AppShortcut(
