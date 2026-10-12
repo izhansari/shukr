@@ -74,6 +74,9 @@ struct MainCircleView: View {
     /// thing at 70%" (ask opening-ring-fill).
     @State private var arcSweep: Double?
     @State private var arcSweepTask: Task<Void, Never>?
+    /// The sweep is moving: the 1 s tick waits (a tick redraws the arc with animations off, and that snapped the sweep to
+    /// its end mid-way — owner: "sometimes it just jumps").
+    @State private var sweeping = false
     /// What the circle shows at rest, from the data: the morning card's session while it's up, else the prayers'.
     private var derivedFace: CircleFace {
         if let lost = CircleStage.shared.lost, !lost.landed { return .lost }
@@ -487,7 +490,9 @@ struct MainCircleView: View {
         .onChange(of: summaryWantsScore) { _, score in flipSummary(to: score) }
         // The welcome on this circle: its arc waits at nothing under the mark (it's hidden then, so this is unseen),
         // and sweeps out from the start as the words come in on the landing.
-        .onChange(of: openingHidesWords) { _, hidden in
+        // `initial`: the opening can already cover the circle when it first appears (a cold launch), and then the arc
+        // never went to nothing — it was simply there when the ring landed.
+        .onChange(of: openingHidesWords, initial: true) { _, hidden in
             // The opening gone before it landed (a widget sent the app elsewhere): the arc back as it is, no sweep.
             if !hidden, CircleStage.shared.opening == nil {
                 arcSweepTask?.cancel()
@@ -546,6 +551,7 @@ struct MainCircleView: View {
         // timer was replaced before it ever fired: `currentTime` froze and a prayer that had started
         // showed an empty ring (owner, 2026-09-27: Isha 8:28 PM, empty; fixed by leaving the app).
         .onReceive(Self.ticker) { newTime in
+            guard !sweeping else { return }
             // A plain tick moves the arc a fraction of a pixel: no animation. Its spring (`animationStyle`) ran most of
             // every second, so the idle page drew at the display's rate (idle-cpu). A tick into a new colour keeps it.
             if tickChangesColor(to: newTime) {
@@ -663,10 +669,14 @@ struct MainCircleView: View {
         arcSweepTask?.cancel()
         guard arcSweep != nil, shownStatus == .current, !shownIsPreview else { quietly { arcSweep = nil }; return }
         arcSweepTask = Task { @MainActor in
-            defer { quietly { arcSweep = nil } }
+            defer { sweeping = false; quietly { arcSweep = nil } }
             // The words in first, round an empty ring; then the arc (sweeping under their fade-in, it was most of the
             // way out before it could be seen).
             guard await CircleGate.pause(CircleMomentTiming.in) else { return }
+            // The clock now (the ring is still empty, so unseen), then no ticks until it's out.
+            sweeping = true
+            quietly { currentTime = Date() }
+            guard await CircleGate.nextFrame() else { return }
             await CircleMotion.animate(CircleMotion.Opening.arcSweep) { arcSweep = 1 }
         }
     }
