@@ -360,9 +360,10 @@ struct YourRemindersView: View {
         return List {
             Section {
                 statusRow
-                usageBar
-            } footer: {
-                Text("iOS lets each app keep 64 notifications waiting. shukr plans as far ahead as they allow and tops them up when you open it.")
+                // The bar opens every scheduled reminder (owner: its own chevron; the "All N scheduled" row is gone).
+                NavigationLink { allScheduled } label: { usageBar }
+                // Why the bar stops at 64, right under it (owner).
+                whyRow(.budget)
             }
 
             Section {
@@ -406,37 +407,18 @@ struct YourRemindersView: View {
                 }
                 ForEach(rows) { row in
                     switch row.kind {
-                    case .prayer(let name): prayerRow(name, dayItems, dayKey: PrayerNotificationID.dayKey(day))
+                    case .prayer(let name):
+                        // A prayer switched off sends nothing: not listed (owner).
+                        if NotificationScheduler.settings(name).notify {
+                            prayerRow(name, dayItems, dayKey: PrayerNotificationID.dayKey(day))
+                        }
                     case .other(let item): otherRow(item)
                     }
                 }
             } header: { Text("Days ahead") }
 
             Section("About your reminders") {
-                ForEach(ReminderWhy.allCases) { kind in
-                    Button { whySheet = kind } label: {
-                        // Explicit colours: inside a Button's label the hierarchical styles took the tint (blue rows).
-                        HStack(spacing: 12) {
-                            let bad = kind.needsHand(health)
-                            Image(systemName: kind.symbol(health))
-                                .foregroundStyle(kind == .onTime ? (bad ? Color.orange : green) : Color(.secondaryLabel))
-                                .frame(width: 26)
-                            Text(kind.title).foregroundStyle(Color(.label))
-                            Spacer()
-                            if bad {
-                                Text("Needs a look").font(.subheadline).foregroundStyle(.orange)
-                                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
-                            } else if kind == .onTime {
-                                Text("All set").font(.subheadline).foregroundStyle(Color(.secondaryLabel))
-                            }
-                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
-                        }
-                    }
-                }
-            }
-
-            Section {
-                NavigationLink("All \(pending.count) scheduled") { allScheduled }
+                ForEach(ReminderWhy.allCases.filter { $0 != .budget }) { kind in whyRow(kind) }
             }
         }
         .listStyle(.insetGrouped)
@@ -501,6 +483,28 @@ struct YourRemindersView: View {
     }
 
     /// One colour: used in green, free in grey; the numbers in words.
+    /// One of the "why" rows: its symbol, title, and a look-at-it note when it needs one; opens its explanation.
+    private func whyRow(_ kind: ReminderWhy) -> some View {
+        Button { whySheet = kind } label: {
+            // Explicit colours: inside a Button's label the hierarchical styles took the tint (blue rows).
+            HStack(spacing: 12) {
+                let bad = kind.needsHand(health)
+                Image(systemName: kind.symbol(health))
+                    .foregroundStyle(kind == .onTime ? (bad ? Color.orange : green) : Color(.secondaryLabel))
+                    .frame(width: 26)
+                Text(kind.title).foregroundStyle(Color(.label))
+                Spacer()
+                if bad {
+                    Text("Needs a look").font(.subheadline).foregroundStyle(.orange)
+                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+                } else if kind == .onTime {
+                    Text("All set").font(.subheadline).foregroundStyle(Color(.secondaryLabel))
+                }
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
+            }
+        }
+    }
+
     private var usageBar: some View {
         let used = min(pending.count, NotificationScheduler.limit)
         return VStack(alignment: .leading, spacing: 8) {
@@ -800,10 +804,9 @@ struct YourRemindersView: View {
     private func dayTitle(_ key: String) -> String {
         let today = PrayerNotificationID.dayKey(PrayerDay.date())
         let tomorrow = PrayerNotificationID.dayKey(Calendar.current.date(byAdding: .day, value: 1, to: PrayerDay.date()) ?? Date())
-        if key == today { return "Today" }
-        if key == tomorrow { return "Tomorrow" }
-        // The weekday alone: the card's date sits beside it.
-        return Self.dayKeyFormatter.date(from: key).map { $0.formatted(.dateTime.weekday(.wide)) } ?? key
+        _ = (today, tomorrow)
+        // The calendar day (owner): "Sun, Oct 11".
+        return Self.dayKeyFormatter.date(from: key).map { $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? key
     }
 
     private static let dayKeyFormatter: DateFormatter = {
