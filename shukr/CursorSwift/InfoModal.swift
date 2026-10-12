@@ -81,8 +81,8 @@ struct InfoModal<Content: View>: View {
     @ViewBuilder let content: () -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
-    /// The explanation's own height: the card is as tall as it needs, up to 60 % of the screen, then it scrolls inside
-    /// (owner: small phones).
+    /// The explanation's own height: the card is as tall as it needs, up to two thirds of the screen, then it scrolls
+    /// inside (owner: small phones; the Reminders cards carry setup's pictures — on a 6.1" phone they just fit).
     @State private var contentHeight: CGFloat = 0
 
     var body: some View {
@@ -124,7 +124,7 @@ struct InfoModal<Content: View>: View {
                     .scrollIndicators(.automatic)
                     .frame(height: geo.size.height)
                 }
-                .frame(height: min(max(contentHeight, 1), UIScreen.main.bounds.height * 0.6))
+                .frame(height: min(max(contentHeight, 1), UIScreen.main.bounds.height * 0.66))
             }
             .padding(22)
             .frame(maxWidth: 440, alignment: .leading)
@@ -141,6 +141,32 @@ struct InfoModal<Content: View>: View {
 
     private func dismiss() {
         withAnimation(.easeOut(duration: 0.2)) { shown = false } completion: { close() }
+    }
+}
+
+/// A picture laid out as on setup's page and scaled down to fit (the Reminders ⓘ cards: setup's previews, which are
+/// built for a 6.1" phone's page — 345 pt — and would crowd if laid out narrower). Never scaled up.
+struct ScaledToFit<Content: View>: View {
+    var designWidth: CGFloat = 345
+    @ViewBuilder let content: Content
+    @State private var available: CGFloat = 0
+    @State private var natural: CGFloat = 0
+
+    var body: some View {
+        let scale = available > 0 ? min(1, available / designWidth) : 1
+        // The room is whatever the parent offers (an empty view takes exactly that); the picture is laid out at its own
+        // width over it and shrunk from the top — so it never widens the card (it did on a 6.3" phone).
+        Color.clear
+            .frame(maxWidth: .infinity)
+            .frame(height: natural * scale)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { available = $0 }
+            .overlay(alignment: .top) {
+                content
+                    .frame(width: designWidth)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { natural = $0 }
+                    .scaleEffect(scale, anchor: .top)
+            }
     }
 }
 

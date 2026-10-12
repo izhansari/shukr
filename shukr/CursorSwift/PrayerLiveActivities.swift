@@ -383,10 +383,12 @@ enum PrayerLiveActivities {
     }
 
     /// Settings' status: how many windows are held and the next one.
-    @MainActor static func status() -> (held: Int, next: Date?) {
-        guard #available(iOS 26.0, *) else { return (0, nil) }
+    /// The cards iOS holds, the next to start, and the last one's start (Settings' "Scheduled through …").
+    @MainActor static func status() -> (held: Int, next: Date?, through: Date?) {
+        guard #available(iOS 26.0, *) else { return (0, nil, nil) }
         let held = Activity<PrayerWindowAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale }
-        return (held.count, held.map(\.content.state.start).filter { $0 > Date() }.min())
+        let starts = held.map(\.content.state.start)
+        return (held.count, starts.filter { $0 > Date() }.min(), starts.max())
     }
 
     #if DEBUG

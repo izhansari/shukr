@@ -2828,7 +2828,7 @@ struct TilePressStyle: ButtonStyle {
 /// selector"), in the words and at the times shukr really sends them (NotificationScheduler): 🟢 as it starts, 🟡 halfway
 /// through (only for a window of 90 min+), 🔴 with 30 minutes left — each arriving on top of the last like iOS stacks
 /// them. Off shows nothing coming; Start only the 🟢; Nudge all of them. Today's times, from the method and school picked.
-private struct NotificationDemo: View {
+struct NotificationDemo: View {
     let prayer: String
     /// 0 off · 1 start · 2 nudge.
     let state: Int

@@ -253,6 +253,26 @@ struct SettingsView: View {
         return f.localizedString(for: date, relativeTo: now).replacingOccurrences(of: ".", with: "")
     }
 
+    /// Under the Reminders card (decision reminders-status-row B): how far ahead the side showing is set up.
+    @ViewBuilder private var remindersFooter: some View {
+        if PrayerLiveActivities.supported && remindersTab == ReminderSwitch.liveActivities {
+            if liveActivitiesOn {
+                if let through = laStatus.through {
+                    Text("Scheduled through \(Self.throughDay(through))")
+                } else if laStatus.held == 0 && LiveActivityPrefs.prayers.contains(where: LiveActivityPrefs.isOn) {
+                    Text("None waiting right now")
+                }
+            }
+        } else if !remindersOff, let through = notificationHealth.scheduledThrough {
+            Text("Scheduled through \(Self.throughDay(through))")
+        }
+    }
+    @State private var laStatus = LiveActivityStatus.shared
+    /// "Fri, Oct 23".
+    private static func throughDay(_ d: Date) -> String {
+        d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+    }
+
     var body: some View {
         ZStack{
             VStack{
@@ -384,7 +404,7 @@ struct SettingsView: View {
                     // settings-alerts E): only the side picked shows — its status row, its five prayers, and on the Live
                     // Activities side Card Appearance; a side with something wrong wears an orange dot on the switch.
                     // Before iOS 26 there's no Live Activities side and no switch.
-                    Section(header: headerWithInfoButton(title: "Reminders", isPopupVisible: $isNotifPopupVisible) ) {
+                    Section {
                         if PrayerLiveActivities.supported {
                             ReminderSwitch(tab: $remindersTab, notificationsNeedYou: notificationsNeedYou,
                                            liveActivitiesNeedYou: liveActivitiesNeedYou)
@@ -414,8 +434,13 @@ struct SettingsView: View {
                                 prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
                             }
                             .padding(.vertical, 4)
+                            YourNotificationsRow()
                             }
                         }
+                    } header: {
+                        headerWithInfoButton(title: "Reminders", isPopupVisible: $isNotifPopupVisible)
+                    } footer: {
+                        remindersFooter
                     }
                     .id("liveActivities")
                     .task {
@@ -1027,20 +1052,48 @@ struct NotificationDropdownInfo: View {
     private var shortOnNudge: Bool {
         (fajrNotif && fajrNudges && hasNoHalfwayToday("Fajr")) || (maghribNotif && maghribNudges && hasNoHalfwayToday("Maghrib"))
     }
+    /// The preview's setting: the row last tapped (Nudge to begin, as setup's page opens).
+    @State private var shown = 2
+
+    /// A small version of setup's notifications page (owner: "baby versions of their onboarding pages"): its line, its
+    /// preview (Asr), and Off / Start / Nudge, each playing in the preview when tapped.
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Tap a prayer's bell to change it.")
+            Text("Not just when it starts: if you haven’t prayed, we’ll nudge you at halfway and 30 minutes left.")
                 .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
-            InfoModalRow(symbol: "bell.slash.fill", title: "Off", text: "No notifications for this prayer.")
-            InfoModalRow(symbol: "bell.fill", title: "Start", text: "One notification when the prayer starts.")
-            // What NotificationScheduler sends: Mid = halfway through the window, End = 30 min before it ends.
-            InfoModalRow(symbol: "bell.badge.fill", title: "Nudge",
-                         text: "If you haven't marked it yet, one more halfway through its time and one with 30 minutes left.")
+                .fixedSize(horizontal: false, vertical: true)
+            ScaledToFit { NotificationDemo(prayer: "Asr", state: shown) }
+            VStack(spacing: 2) {
+                choice(0, symbol: "bell.slash.fill", title: "Off", text: "No notifications for this prayer.")
+                choice(1, symbol: "bell.fill", title: "Start", text: "One when the prayer starts.")
+                // What NotificationScheduler sends: Mid = halfway through the window, End = 30 min before it ends.
+                choice(2, symbol: "bell.badge.fill", title: "Nudge",
+                       text: "If you haven't marked it yet, one halfway through and one with 30 minutes left.")
+            }
             if shortOnNudge {
                 InfoModalRow(symbol: "circle.dotted", title: "Short prayers",
                              text: "Fajr and Maghrib are usually too short for a halfway nudge.")
+                    .padding(.horizontal, 8)   // in the choices' column
             }
+            Text("Tap a prayer's bell to change it.")
+                .font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
         }
+    }
+
+    private func choice(_ state: Int, symbol: String, title: String, text: String) -> some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeInOut(duration: 0.2)) { shown = state }
+        } label: {
+            InfoModalRow(symbol: symbol, title: title, text: text)
+                .padding(.vertical, 6).padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color.sage.opacity(shown == state ? 0.14 : 0)))
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(shown == state ? .isSelected : [])
     }
     
     func addToNotificationCenterBySeconds(identifier: String, content: UNMutableNotificationContent, sec: Double){
@@ -1661,16 +1714,37 @@ struct PrayerTimesInfo: View {
 
 /// Reminders' ⓘ on the Live Activities side.
 struct LiveActivityInfo: View {
+    @State private var copy = LASetupCopy.shared
+    /// A small version of setup's Live Activities page (owner): its line, its moving card, and what to know about it.
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Tap a prayer to turn its card on or off.")
+            Text(copy[.subtitle])
                 .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
-            InfoModalRow(symbol: "platter.filled.bottom.iphone", title: "From the moment it starts",
-                         text: "The prayer shows on your Lock Screen and in the Dynamic Island: its ring, the time left, and a button to mark it.")
+                .fixedSize(horizontal: false, vertical: true)
+            ScaledToFit { LiveActivityDemo(prayer: "Asr", veil: .none, copy: copy) }
             InfoModalRow(symbol: "checkmark.circle", title: "Mark it there",
-                         text: "Marking it from the card counts like marking it in shukr; then the card offers a photo and Tasbih Fatimah.")
+                         text: "It counts like marking it in shukr; then the card offers a photo and Tasbih Fatimah.")
             InfoModalRow(symbol: "clock.arrow.circlepath", title: "Kept coming",
                          text: "iOS holds a few at a time. Marking them, or opening shukr, sets up the next ones.")
+            Text("Tap a prayer to turn its card on or off.")
+                .font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// What iOS holds of shukr's cards, for the Live Activities side and the line under its card.
+@MainActor @Observable final class LiveActivityStatus {
+    static let shared = LiveActivityStatus()
+    private(set) var held = 0
+    private(set) var next: Date?
+    private(set) var through: Date?
+    func refresh() {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))   // a toggle's re-plan first
+            let s = PrayerLiveActivities.status()
+            if held != s.held { held = s.held }
+            if next != s.next { next = s.next }
+            if through != s.through { through = s.through }
         }
     }
 }
@@ -1686,13 +1760,14 @@ struct LiveActivitySettingsRows: View {
     /// The section's ⓘ is open: this side's explanation under it.
     let showInfo: Bool
     @State private var enabled = ActivityAuthorizationInfo().areActivitiesEnabled
-    @State private var held = 0
-    @State private var next: Date?
+    @State private var status = LiveActivityStatus.shared
     @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var lookRaw = LiveActivityLook.system.rawValue
 
     var body: some View {
         Group {
-            statusRow
+            // On: no row (decision reminders-status-row B) — "Scheduled through …" sits under the card. Off: this row,
+            // in the warning style, with its way back.
+            if !enabled { statusRow }
             if !enabled {
                 Button(action: SettingsLinks.app) {
                     Text("Turn on Live Activities").font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
@@ -1731,23 +1806,18 @@ struct LiveActivitySettingsRows: View {
         }
     }
 
-    private func refresh() {
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(300))   // a toggle's re-plan first
-            (held, next) = PrayerLiveActivities.status()
-        }
-    }
+    private func refresh() { status.refresh() }
 
     /// Notifications' status row: a light symbol in green (or soft orange), a rounded title, a light detail.
     private var statusRow: some View {
         let title = enabled ? "Live Activities are on" : "Live Activities are off"
         let detail: String = {
             guard enabled else { return "Turned off for shukr in iOS Settings" }
-            guard held > 0 else {
+            guard status.held > 0 else {
                 return LiveActivityPrefs.prayers.contains(where: LiveActivityPrefs.isOn) ? "None waiting right now" : "No prayers turned on"
             }
-            let when = next.map { " · next " + $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) } ?? ""
-            return "\(held) waiting\(when)"
+            let when = status.next.map { " · next " + $0.formatted(.dateTime.weekday(.abbreviated).hour().minute()) } ?? ""
+            return "\(status.held) waiting\(when)"
         }()
         return HStack(spacing: 14) {
             Image(systemName: enabled ? "checkmark.circle" : "exclamationmark.circle")

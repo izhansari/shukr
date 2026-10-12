@@ -33,6 +33,8 @@ final class NotificationHealth: ObservableObject {
     /// one before the last-resort reminder, and that reminder's date.
     @Published private(set) var pendingCount = 0
     @Published private(set) var scheduledThrough: Date?
+    /// The next one to arrive (Settings' Your Notifications row: "Next 4:53 PM").
+    @Published private(set) var nextAt: Date?
     @Published private(set) var keepAliveDate: Date?
 
     enum Issue: String {
@@ -68,7 +70,11 @@ final class NotificationHealth: ObservableObject {
                 ?? (r.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate()
         }
         let keepAlive = pending.first { $0.identifier.hasPrefix(NotificationScheduler.keepAlivePrefix) }.flatMap(fire)
-        let through = pending.filter { !$0.identifier.hasPrefix(NotificationScheduler.keepAlivePrefix) }.compactMap(fire).max()
+        let dates = pending.filter { !$0.identifier.hasPrefix(NotificationScheduler.keepAlivePrefix) }.compactMap(fire)
+        let through = dates.max()
+        let now = Date()
+        let next = dates.filter { $0 > now }.min()
+        if nextAt != next { nextAt = next }
         if pendingCount != pending.count { pendingCount = pending.count }
         if scheduledThrough != through { scheduledThrough = through }
         if keepAliveDate != keepAlive { keepAliveDate = keepAlive }
@@ -199,9 +205,13 @@ struct NotificationHealthRows: View {
                 // Always the way into Your reminders; with something wrong the page opens with that explanation's sheet
                 // already up (owner: "clicking that thing in the settings should take us to that sheet"; Bradley's
                 // review: the page itself must stay reachable in every state).
-                NavigationLink {
-                    YourRemindersView(openWith: issues.isEmpty ? nil : ReminderWhy.forIssues(issues))
-                } label: { statusRow(issues) }
+                // All well: no row (owner, decision reminders-status-row B — the tiles first, Your Notifications under
+                // them, "Scheduled through …" under the card). Something in the way: this row, in the warning style.
+                if !issues.isEmpty || health.authorization == .notDetermined {
+                    NavigationLink {
+                        YourRemindersView(openWith: issues.isEmpty ? nil : ReminderWhy.forIssues(issues))
+                    } label: { statusRow(issues) }
+                }
                 if health.authorization == .notDetermined {
                     fix("Allow notifications") { NotificationStatus.shared.request() }
                 }
@@ -250,6 +260,37 @@ struct NotificationHealthRows: View {
         Button(action: tap) {
             Text(title).font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
         }
+    }
+}
+
+/// Settings → Reminders, under the tiles (decision reminders-status-row B): the way into Your Notifications, the next one
+/// on the right — as Card Appearance sits on the Live Activities side.
+struct YourNotificationsRow: View {
+    @ObservedObject private var health = NotificationHealth.shared
+
+    var body: some View {
+        NavigationLink {
+            YourRemindersView()
+        } label: {
+            HStack {
+                Label {
+                    Text("Your Notifications")
+                } icon: {
+                    Image(systemName: "calendar.badge.clock").foregroundStyle(.primary)
+                }
+                Spacer(minLength: 8)
+                if let next = health.nextAt {
+                    Text("Next \(Self.when(next))").foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
+    }
+
+    /// "4:53 PM" today, else "Mon 4:53 PM".
+    static func when(_ date: Date) -> String {
+        Calendar.current.isDateInToday(date)
+            ? date.formatted(date: .omitted, time: .shortened)
+            : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
     }
 }
 
