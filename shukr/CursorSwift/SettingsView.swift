@@ -1716,9 +1716,9 @@ struct LATunerView: View {
         let s = sample
         if kind == 4 {
             // The Dynamic Island opened up, on black.
-            HStack(alignment: .top, spacing: 12) {
-                LAIslandLeading(state: s, ended: false, t: t)
-                LANameLines(state: s, ended: false, big: false, t: t).padding(.top, 10)
+            // Only roughly the island: iOS places the regions round the camera itself (see board island-rules.md).
+            HStack(alignment: .center, spacing: 12) {
+                LAIslandRingAndName(state: s, ended: false, t: t)
                 Spacer(minLength: 0)
                 LAIslandTrailing(state: s, n: 0, ended: false, t: t)
             }
@@ -1787,8 +1787,12 @@ struct LATunerView: View {
             row("Name size", "", \.islandTitleSize, 10...30, 1)
             row("Line size", "", \.islandLineSize, 8...20, 1)
             row("Button size", "", \.islandButtonSize, 24...56, 1)
-            row("Time size", "\"2 hr, 35 min\" · \"27 minutes\" over the button", \.islandTimeSize, 12...36, 1)
-            row("Glow reach", "how far the colour spreads round the ring", \.islandGlow, 0...3, 0.05)
+            row("Time size", "\"27m\" over the button, last half hour only", \.islandTimeSize, 12...36, 1)
+            Picker("Layout", selection: Binding(get: { t.islandLayout ?? 1 }, set: { t.islandLayout = $0 })) {
+                Text("Ring by the camera, name under").tag(0)
+                Text("Ring + name together").tag(1)
+                Text("One row under the camera").tag(2)
+            }
         }
     }
 
@@ -1842,24 +1846,17 @@ struct LATunerView: View {
 /// DEBUG -laFormatTest: which self-updating formats give "2:36" / "27".
 struct LAFormatTest: View {
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach([9360.0, 1630.0, 50.0], id: \.self) { left in
-                    let end = Date.now.addingTimeInterval(left)
-                    let r = Date.now..<end
-                    Text("— \(Int(left)) s left").bold()
-                    Text("A \(Text(.currentDate, format: .timer(countingDownIn: r, maxPrecision: .seconds(60))))")
-                    Text("B \(Text(.currentDate, format: .timer(countingDownIn: r, maxFieldCount: 2)))")
-                    Text("C \(Text(.currentDate, format: .timer(countingDownIn: r, maxFieldCount: 2, maxPrecision: .seconds(60))))")
-                    Text("D \(Text(.currentDate, format: .timer(countingDownIn: r, showsHours: false, maxFieldCount: 1)))")
-                    Text("E \(Text(.currentDate, format: .timer(countingDownIn: r, showsHours: false, maxFieldCount: 1, maxPrecision: .seconds(60))))")
-                    Text("F \(Text(.currentDate, format: .timer(countingDownIn: r)))")
-                    Text("G \(Text(.currentDate, format: .timer(countingDownIn: r, maxPrecision: .seconds(1))))")
-                    Text("H \(Text(timerInterval: Date.now...end, countsDown: true, showsHours: false))")
-                    Text("I \(Text(.currentDate, format: .timer(countingDownIn: r, showsHours: true, maxFieldCount: 2, maxPrecision: .seconds(1))))")
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach([1630.0, 605.0, 595.0, 50.0], id: \.self) { left in
+                let end = Date.now.addingTimeInterval(left)
+                HStack {
+                    Text("\(Int(left)) s").frame(width: 70, alignment: .leading)
+                    LAMinutesLeft(end: end).foregroundStyle(.red).fontWeight(.semibold)
+                    Text(timerInterval: Date.now...end, countsDown: true, showsHours: false).foregroundStyle(.secondary)
                 }
-            }.font(.system(size: 13)).monospacedDigit().padding()
-        }
+            }
+        }.font(.system(size: 17)).padding()
+        Spacer()
     }
 }
 #endif

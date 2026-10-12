@@ -1869,9 +1869,11 @@ struct LATuning: Codable, Equatable {
     var islandLineSize: Double = 11
     var islandButtonSize: Double = 38
     var islandTimeSizeOpt: Double? = nil        // nil = 17: the time left above the island's button
-    var islandGlowOpt: Double? = nil            // nil = 1.5: the island's glow radius, × the ring size
+    /// The expanded island's layout (nil = 1), to compare on a phone (the simulator doesn't draw the island): 0 the ring beside the
+    /// camera, the name under it (center region) · 1 ring + name together beside the camera, below it if too wide ·
+    /// 2 ring + name and time + button as one row under the camera (leading / trailing with priority).
+    var islandLayout: Int? = nil
     var islandTimeSize: Double { get { islandTimeSizeOpt ?? 17 } set { islandTimeSizeOpt = newValue } }
-    var islandGlow: Double { get { islandGlowOpt ?? 1.5 } set { islandGlowOpt = newValue } }
     // How the time left is written — iOS's self-updating formats only (a Live Activity has no timeline): 0 "1 hour,
     // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative; under an hour it ticks seconds) · 2 "1:39" · 3 "1:39:12" ·
     // 4 (nil, the default — owner: no seconds) relative over an hour, then "59 minutes", then "under a minute", switched
@@ -2083,59 +2085,77 @@ struct LADismissBar: View {
     }
 }
 
-/// The island's small right side: time left; prayed → the grade in its colour; ended → "ended".
+/// The island's small right side: empty — the ring says enough — until the last half hour: "27m" in red (owner).
 struct LACompactTrailing: View {
     let state: LATestAttributes.ContentState
     let ended: Bool
     var body: some View {
-        Group {
-            if let at = state.markedAt {
-                let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
-                Text(PrayerScoring.grade(for: score).rawValue).foregroundStyle(PrayerScoring.color(for: score))
-            } else if ended {
-                Text("ended").foregroundStyle(.secondary)
-            } else {
-                let half = state.end.addingTimeInterval(-30 * 60)
-                ZStack(alignment: .trailing) {
-                    Text(timerInterval: state.start...state.end, countsDown: true).foregroundStyle(.primary)
-                        .mask { LAGate(from: nil, until: half) }
-                    Text(timerInterval: state.start...state.end, countsDown: true).foregroundStyle(.red)
-                        .mask { LAGate(from: half, until: nil) }
-                }
-                .monospacedDigit()
-            }
+        if state.markedAt == nil && !ended {
+            LAIslandTime(end: state.end)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .frame(maxWidth: 64)
         }
-        .font(.system(size: 14, weight: .medium, design: .rounded))
-        .frame(maxWidth: 64)
     }
 }
 
-/// The island's time left over its button: the card's words without "left" — "2 hr, 35 min", "45 minutes", then in the
-/// last half hour red and semibold. (Frank's mock had "2:36" / "27m": iOS's countdowns drop to words once the seconds go
-/// — the sim, 2026-10-11: `.timer(…, maxPrecision: 60 s)` = "2 hours, 35 minutes", only "2:35:58" stays in digits.)
+/// "27m": the minutes left, by itself, for the last half hour. iOS has no such format (its minute-precision countdowns
+/// are words), so this is the stock "27:08" timer cut to its minutes digits (clipped to the width of "00", then "0" under
+/// ten minutes — a timer gate swaps them) with an "m" after it. Nothing before the last half hour.
+struct LAMinutesLeft: View {
+    let end: Date
+    var body: some View {
+        let ten = end.addingTimeInterval(-10 * 60), one = end.addingTimeInterval(-60)
+        ZStack(alignment: .trailing) {
+            digits("00").mask { LAGate(from: nil, until: ten) }
+            digits("0").mask { LAGate(from: ten, until: one) }
+            Text("<1m").mask { LAGate(from: one, until: nil) }
+        }
+        .monospacedDigit()
+    }
+    private func digits(_ room: String) -> some View {
+        HStack(spacing: 0) {
+            Text(room).hidden()
+                .overlay(alignment: .leading) {
+                    Text(timerInterval: Date.now...max(end, Date.now), countsDown: true, showsHours: false)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize()
+                }
+                .clipped()
+            Text("m")
+        }
+    }
+}
+
+/// The island's time left over its button: only in the last half hour, "27m" in red (owner: the ring says enough before).
 struct LAIslandTime: View {
     let end: Date
     var body: some View {
-        let half = end.addingTimeInterval(-30 * 60)
-        ZStack(alignment: .trailing) {
-            LATimeLeft(end: end, style: LATimeLeft.standard, suffix: false).foregroundStyle(.primary)
-                .mask { LAGate(from: nil, until: half) }
-            LATimeLeft(end: end, style: LATimeLeft.standard, suffix: false).foregroundStyle(.red).fontWeight(.semibold)
-                .mask { LAGate(from: half, until: nil) }
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
+        LAMinutesLeft(end: end).foregroundStyle(.red).fontWeight(.semibold)
+            .mask { LAGate(from: end.addingTimeInterval(-30 * 60), until: nil) }
     }
 }
 
-/// The island's left side: the soft ring with the score colour glowing round it.
+/// The island's left side: the soft ring.
 struct LAIslandLeading: View {
     let state: LATestAttributes.ContentState
     let ended: Bool
     let t: LATuning
     var body: some View {
+        // No glow: the island is always black and each region clips to its own box (the glow came out a square).
         LASideRing(state: state, ended: ended, size: t.islandRingSize, symbolSize: t.islandRingSize * 0.26, onIsland: true, t: t)
-            .background { LAWash(state: state, ended: ended, t: t, islandRadius: t.islandRingSize * t.islandGlow / 2 + t.islandRingSize / 2) }
+    }
+}
+
+/// The island's ring with the name beside it (layouts 1 and 2 — Frank's mock).
+struct LAIslandRingAndName: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    let t: LATuning
+    var body: some View {
+        HStack(spacing: 12) {
+            LAIslandLeading(state: state, ended: ended, t: t)
+            LANameLines(state: state, ended: ended, big: false, t: t)
+        }
     }
 }
 
@@ -2151,6 +2171,7 @@ struct LAIslandTrailing: View {
                 LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular))
             }
             LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t)
+                .padding(4)   // the soft disc's shadow, inside the region (it clips)
         }
     }
 }

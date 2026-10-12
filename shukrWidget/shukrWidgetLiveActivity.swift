@@ -93,18 +93,26 @@ struct LATestLiveActivity: Widget {
             let stale = context.isStale && s.markedAt == nil
             let n = context.attributes.n
             let t = LATuning.current
+            let layout = t.islandLayout ?? 1
             return DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    LAEnds(state: s, stale: stale) { e in LAIslandLeading(state: s, ended: e, t: t) }
-                        .padding(.leading, 6).padding(.top, 4)
+                // (The island's builder takes no `if`: each region picks its own content.)
+                DynamicIslandExpandedRegion(.leading, priority: layout == 2 ? 1 : 0) {
+                    LAEnds(state: s, stale: stale) { e in
+                        if layout == 0 { LAIslandLeading(state: s, ended: e, t: t) } else { LAIslandRingAndName(state: s, ended: e, t: t) }
+                    }
+                    .frame(maxWidth: layout == 0 ? nil : .infinity, alignment: .leading)
+                    .padding(.leading, 4)
+                    .dynamicIsland(verticalPlacement: .belowIfTooWide)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    LAEnds(state: s, stale: stale) { e in LANameLines(state: s, ended: e, big: false, t: t) }
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 14).padding(.leading, 6)
+                    if layout == 0 {
+                        LAEnds(state: s, stale: stale) { e in LANameLines(state: s, ended: e, big: false, t: t) }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                DynamicIslandExpandedRegion(.trailing) {
+                DynamicIslandExpandedRegion(.trailing, priority: layout == 2 ? 1 : 0) {
                     LAEnds(state: s, stale: stale) { e in LAIslandTrailing(state: s, n: n, ended: e, t: t) }
-                        .padding(.trailing, 6).padding(.top, 4)
+                        .dynamicIsland(verticalPlacement: .belowIfTooWide)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     LADismissBar(state: s).padding(.horizontal, 24)
