@@ -284,39 +284,43 @@ struct SettingsView: View {
         d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
 
+    /// Settings' header — back, title — laid over the list, as a system bar is (owner: the see-through top of Your
+    /// Notifications): the list scrolls on under it, softened at the edge (iOS 26's scroll edge effect via `safeAreaBar`;
+    /// a bar material before).
+    private var settingsHeader: some View {
+        HStack {
+            // Glass circles (owner), as iOS 26's own bar buttons — our own glass, not the system toolbar's
+            // (that left ghost circles on Memories).
+            Button(action: {
+                onBack()
+            }) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .frame(width: 44, height: 44)
+                    .barGlass(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+            
+            Spacer()
+            
+            Text("Settings")
+                .font(.headline)
+            
+            Spacer()
+
+            // (No look button up here any more — Appearance → App does it, owner. An empty slot keeps the
+            // title centred.)
+            Color.clear.frame(width: 44, height: 44)
+    }
+    .padding(.horizontal)
+    .padding(.top, 8)
+    }
+
     var body: some View {
         ZStack{
             VStack{
-                // Page header: back to the main page, title, light/dark/auto toggle.
-                HStack {
-                    // Glass circles (owner), as iOS 26's own bar buttons — our own glass, not the system toolbar's
-                    // (that left ghost circles on Memories).
-                    Button(action: {
-                        onBack()
-                    }) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .frame(width: 44, height: 44)
-                            .barGlass(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Back")
-                    
-                    Spacer()
-                    
-                    Text("Settings")
-                        .font(.headline)
-                    
-                    Spacer()
-
-                    // (No look button up here any more — Appearance → App does it, owner. An empty slot keeps the
-                    // title centred.)
-                    Color.clear.frame(width: 44, height: 44)
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-                
                 ScrollViewReader { proxy in
                 Form {
                     
@@ -793,6 +797,7 @@ struct SettingsView: View {
                 }
                 #endif
                 }
+                .modifier(OverListHeader { settingsHeader })
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
@@ -2592,3 +2597,19 @@ struct LAIslandGallery: View {
     }
 }
 #endif
+
+
+/// A header the list scrolls under: iOS 26's `safeAreaBar` (the scroll edge effect softens what passes beneath), a bar
+/// material before.
+private struct OverListHeader<Header: View>: ViewModifier {
+    @ViewBuilder let header: () -> Header
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.safeAreaBar(edge: .top) { header().padding(.bottom, 6) }
+        } else {
+            content.safeAreaInset(edge: .top, spacing: 0) {
+                header().padding(.bottom, 6).background(.bar)
+            }
+        }
+    }
+}
