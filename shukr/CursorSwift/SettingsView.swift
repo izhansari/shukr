@@ -1690,7 +1690,7 @@ struct LATunerView: View {
             else if UserDefaults.standard.bool(forKey: "laIslandGallery") { LAIslandGallery(t: t) } else {
             VStack(spacing: 0) {
                 preview
-                    .frame(height: 210)
+                    .frame(height: kind == 4 ? 330 : 210)
                     .frame(maxWidth: .infinity)
                     .background(LinearGradient(colors: [Color(red: 0.16, green: 0.22, blue: 0.30), Color(red: 0.05, green: 0.08, blue: 0.12)],
                                                startPoint: .top, endPoint: .bottom))
@@ -1767,16 +1767,21 @@ struct LATunerView: View {
         if kind == 4 {
             // The Dynamic Island opened up, on black.
             // Only roughly the island: iOS places the regions round the camera itself (see board island-rules.md).
-            VStack(spacing: 14) {
-                LAFoldedIsland(state: s, stale: false, t: t)
-                HStack(alignment: .center, spacing: 12) {
-                    LAIslandRingAndName(state: s, ended: false, t: t)
-                    Spacer(minLength: 0)
-                    LAIslandTrailing(state: s, n: 0, ended: false, t: t)
+            // Opened in both states (owner): more than half an hour left, then the last half hour with "27m".
+            let later = PrayerWindowAttributes.ContentState(label: "Asr", start: base.addingTimeInterval(-40 * 60), end: base.addingTimeInterval(100 * 60), symbol: prayerIcon(for: "Asr"))
+            let soon = PrayerWindowAttributes.ContentState(label: "Asr", start: base.addingTimeInterval(-113 * 60), end: base.addingTimeInterval(27 * 60), symbol: prayerIcon(for: "Asr"))
+            VStack(spacing: 10) {
+                LAFoldedIsland(state: soon, stale: false, t: t)
+                ForEach([later, soon], id: \.end) { st in
+                    HStack(alignment: .center, spacing: 12) {
+                        LAIslandRingAndName(state: st, ended: false, t: t)
+                        Spacer(minLength: 0)
+                        LAIslandTrailing(state: st, n: 0, ended: false, t: t)
+                    }
+                    .padding(.horizontal, 18).padding(.vertical, 8)
+                    .background(Color.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
                 }
-                .padding(.horizontal, 18).padding(.vertical, 16)
-                .background(Color.black)
-                .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
             }
             .frame(maxWidth: .infinity)
             .environment(\.colorScheme, .dark)
@@ -1819,6 +1824,12 @@ struct LATunerView: View {
             row("Small line size", "\"ends 6:48 PM\" · \"Perfect · 100\"", \.endsSize, 8...20, 1)
             row("Line spacing", "space between the three lines", \.lineSpacing, 0...12, 0.5)
             row("Move text up / down", "negative = up", \.textOffsetY, -20...20, 1)
+        }
+        Section("Ended ring (pick Ended)") {
+            row("Dashes", "how many round the ring", \.endedDashCount, 3...24, 1)
+            row("Dash length", "share of each step that's dash", \.endedDashShare, 0.1...0.95, 0.05)
+            row("Dash brightness", "1 = full grey", \.endedDashOpacity, 0.1...1, 0.05)
+            row("Dash width", "at the 90 pt design size", \.endedDashWidth, 0.5...10, 0.5)
         }
         Section("Glow (only once marked Perfect — pick Marked)") {
             row("Strength", "how strong the colour is at the ring", \.glowStrength, 0...0.6, 0.01)

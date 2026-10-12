@@ -1845,7 +1845,7 @@ struct LATuning: Codable, Equatable {
     var cardPaddingTopBottom: Double = 12
     var cardMinHeight: Double = 88
     var gapRingToText: Double = 12
-    var cardSurfaceGrey: Double = 0.14
+    var cardSurfaceGrey: Double = 0.12
     // Ring
     var ringSize: Double = 69
     var ringArcDiameter: Double = 0.8      // of the ring size
@@ -1891,6 +1891,19 @@ struct LATuning: Codable, Equatable {
     static let weights: [Font.Weight] = [.light, .regular, .medium, .semibold, .bold]
     static let weightNames = ["Light", "Regular", "Medium", "Semibold", "Bold"]
     var islandTimeSize: Double { get { islandTimeSizeOpt ?? 17 } set { islandTimeSizeOpt = newValue } }
+    /// The opened island's row: the button with the time's room above AND below it, so the button sits centred whether
+    /// the time shows (last half hour) or not; the ring's side takes the same height (owner: the ✓ sat low).
+    var islandRowHeight: Double { islandButtonSize + 2 * (islandTimeSize * 1.25 + 6) }
+    /// The ended ring's dashes (owner: tunable): how many, how much of each step is dash, how bright, how thick (nil =
+    /// the arc's width).
+    var endedDashCountOpt: Double? = nil
+    var endedDashShareOpt: Double? = nil
+    var endedDashOpacityOpt: Double? = nil
+    var endedDashWidthOpt: Double? = nil
+    var endedDashCount: Double { get { endedDashCountOpt ?? 8 } set { endedDashCountOpt = newValue } }
+    var endedDashShare: Double { get { endedDashShareOpt ?? 0.55 } set { endedDashShareOpt = newValue } }
+    var endedDashOpacity: Double { get { endedDashOpacityOpt ?? 0.7 } set { endedDashOpacityOpt = newValue } }
+    var endedDashWidth: Double { get { endedDashWidthOpt ?? ringArcWidth } set { endedDashWidthOpt = newValue } }
     // How the time left is written — iOS's self-updating formats only (a Live Activity has no timeline): 0 "1 hour,
     // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative; under an hour it ticks seconds) · 2 "1:39" · 3 "1:39:12" ·
     // 4 (nil, the default — owner: no seconds) relative over an hour, then "59 minutes", then "under a minute", switched
@@ -2203,6 +2216,7 @@ struct LAIslandRingAndName: View {
             LAIslandLeading(state: state, ended: ended, t: t)
             LANameLines(state: state, ended: ended, big: false, t: t)
         }
+        .frame(minHeight: t.islandRowHeight + 8)   // the button side's height (+ its 4 pt padding), centred alike
     }
 }
 
@@ -2215,12 +2229,19 @@ struct LAIslandTrailing: View {
     /// Drawn once (not inside LAEnds — a hidden copy on top took the touch): the button switches at the end itself.
     var live = false
     var body: some View {
-        VStack(alignment: .trailing, spacing: 6) {
+        Group {
             if state.markedAt == nil && !ended {
-                LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular))
+                let room = t.islandTimeSize * 1.25
+                VStack(alignment: .trailing, spacing: 6) {
+                    LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular)).frame(height: room)
+                    LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
+                    Color.clear.frame(width: 1, height: room)   // the same room below: centred, time or not
+                }
+            } else {
+                LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
             }
-            LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t, live: live)
         }
+        .frame(minHeight: t.islandRowHeight)
         .padding(4)   // the soft disc's shadow, inside the region (it clips); "27m" lines up with the button's edge
     }
 }
@@ -2436,8 +2457,9 @@ struct LARing: View {
                 Circle().stroke(c, style: StrokeStyle(lineWidth: arc, lineCap: .round))
                     .shadow(color: c.opacity(0.45), radius: 3)
             } else if ended {
-                let gap = CGFloat.pi * 90 / 8
-                Circle().stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: arc, lineCap: .round, dash: [gap * 0.55, gap * 0.45]))
+                let step = CGFloat.pi * 90 / max(t.endedDashCount.rounded(), 1)
+                Circle().stroke(Color.secondary.opacity(t.endedDashOpacity),
+                                style: StrokeStyle(lineWidth: t.endedDashWidth, lineCap: .round, dash: [step * t.endedDashShare, step * (1 - t.endedDashShare)]))
                     .rotationEffect(.degrees(-90))
             } else {
                 ForEach(Array(LAGrades.spans(state).enumerated()), id: \.offset) { _, span in
