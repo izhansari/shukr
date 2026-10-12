@@ -3569,39 +3569,43 @@ private struct ReviewStep: View {
                 .contentTransition(.opacity)
                 .padding(.bottom, 8)
             // The list in its own card (owner: "so its clear its a list"), a little below the title — not centred (owner:
-            // "just give it some padding or spacing from the top only"); it scrolls only if a small screen needs it.
+            // "just give it some padding or spacing from the top only"). The card is as tall as its rows, or the room left
+            // if that's less: then the rows scroll inside it and the title and buttons stay put (owner: the worst case on a
+            // 6.1" phone — location and notifications both off — runs a few points over with the roomier rows).
             GeometryReader { geo in
-            ScrollView {
+                let rows = 7 * rowHeight.rounded() + 8
                 VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    // Two lines a row, always (owner: never more than a page): a permission not given says so on the
-                    // value line, with its way to change their mind at the end of it.
-                    row("location.fill", "Location", locationFix?.value ?? locationValue, step: .location, fix: locationFix)
-                    row("clock", "Prayer Times", methodValue, step: .method)
-                    row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
-                    row("bell", "Notifications", notificationsFix?.value ?? remindersValue, step: .reminders, fix: notificationsFix)
-                    row("platter.filled.bottom.iphone", "Live Activities", liveActivityFix?.value ?? liveActivityValue,
-                        step: .liveActivities, fix: liveActivityFix)
-                    row("alarm", "Fajr Alarm", alarmFix?.value ?? alarmValue, step: .fajr, fix: alarmFix)
-                    row("building.columns", "Your Masjid", masjidValue, step: .masjid, last: true)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 4)
-                .background {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color(.secondarySystemBackground))
-                        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1))
-                }
-                .padding(.horizontal, 20)
-                Spacer(minLength: 0)
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            // Two lines a row, always (owner: never more than a page): a permission not given says so on
+                            // the value line, with its way to change their mind at the end of it.
+                            row("location.fill", "Location", locationFix?.value ?? locationValue, step: .location, fix: locationFix)
+                            row("clock", "Prayer Times", methodValue, step: .method)
+                            row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
+                            row("bell", "Notifications", notificationsFix?.value ?? remindersValue, step: .reminders, fix: notificationsFix)
+                            row("platter.filled.bottom.iphone", "Live Activities", liveActivityFix?.value ?? liveActivityValue,
+                                step: .liveActivities, fix: liveActivityFix)
+                            row("alarm", "Fajr Alarm", alarmFix?.value ?? alarmValue, step: .fajr, fix: alarmFix)
+                            row("building.columns", "Your Masjid", masjidValue, step: .masjid, last: true)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 4)
+                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollIndicators(.hidden)
+                    .frame(height: max(0, min(rows, geo.size.height - 24)))
+                    .background {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(Color(.secondarySystemBackground))
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1))
+                    .padding(.horizontal, 20)
+                    Spacer(minLength: 0)
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 8)
-                .frame(minHeight: geo.size.height)
-            }
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollIndicators(.hidden)
             }
             // Both sit on the bottom edge, out then in: the nudge goes, then bismillah rises into its own place (crossfaded,
             // bismillah came in over the buttons, mid-height, then dropped).
@@ -3619,8 +3623,9 @@ private struct ReviewStep: View {
                         SecondaryButton(title: "Continue with limited features") { confirmLimited = true }
                     }
                     .padding(.top, 8)
-                    // Lower, into the room above the home indicator (owner: more breathing room for the list).
-                    .padding(.bottom, -10)
+                    // Lower, into the room above the home indicator (owner: more breathing room for the list) — only where
+                    // there is one: on a phone without (an SE) it pushed the last line off the screen.
+                    .padding(.bottom, Self.homeIndicatorRoom > 0 ? -10 : 8)
                     .transition(.opacity.animation(.easeOut(duration: 0.2)))
                 } else {
                     BismillahCapsule(action: done)
@@ -3661,8 +3666,13 @@ private struct ReviewStep: View {
     /// and they came out crisp, faint, faint, crisp. Now the rows (`rowHeight`, whole points) step evenly and the lines
     /// all land the same way.
     @Environment(\.displayScale) private var displayScale
-    /// 52 pt: all seven rows, the two-line note and its buttons fit a 6.1" iPhone (393 × 852) with nothing scrolled (owner).
-    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 52
+    /// The room iOS keeps under the content for the home indicator (0 on a phone with a Home button).
+    private static var homeIndicatorRoom: CGFloat {
+        (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom ?? 0
+    }
+    /// 56 pt (owner: more breathing room): on a 6.1" iPhone everything fits except the worst case (location and
+    /// notifications both off), where the card scrolls its last few points.
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 56
 
     // MARK: values
 
@@ -3800,9 +3810,9 @@ private struct ReviewStep: View {
         Button { jump(step) } label: {
             HStack(alignment: .center, spacing: 14) {
                 Image(systemName: symbol)
-                    .font(.system(size: 18, weight: .light))
+                    .font(.system(size: 21, weight: .light))
                     .foregroundStyle(Color.sage)
-                    .frame(width: 30, height: 24)
+                    .frame(width: 32, height: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     // The row's name reads as its title (owner: "more prominent").
                     Text(title).font(.system(.body, design: .rounded, weight: .medium))
