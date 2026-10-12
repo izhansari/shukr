@@ -360,10 +360,9 @@ struct YourRemindersView: View {
         let others = dayItems.filter { !Self.prayerKinds.contains($0.kind) }
         let rows = dayRows(prayers: prayers, others: others, dayItems: dayItems, day: day)
         return List {
-            // Notification settings first (owner: "at the very top of the page").
-            Section { whyRow(.onTime) }
-
             Section {
+                // The status and Notification settings in one row (owner): the settings row's shield, the status's words,
+                // a tap opens Notification settings.
                 statusRow
                 // The bar opens every scheduled reminder (owner: its own chevron; the "All N scheduled" row is gone).
                 NavigationLink { allScheduled } label: { usageBar }
@@ -400,7 +399,7 @@ struct YourRemindersView: View {
                     Text(dayTitle(PrayerNotificationID.dayKey(day)))
                         .font(.system(.headline, design: .rounded))
                     Spacer()
-                    Text("\(dayItems.count) reminder\(dayItems.count == 1 ? "" : "s")")
+                    Text("\(dayItems.count) notification\(dayItems.count == 1 ? "" : "s")")
                         .font(.system(.subheadline, design: .rounded))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -425,11 +424,11 @@ struct YourRemindersView: View {
         }
         .listStyle(.insetGrouped)
         .fontDesign(.rounded)
-        .navigationTitle("Your reminders")
+        .navigationTitle("Your Notifications")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("Your reminders").font(.system(.headline, design: .rounded, weight: .regular))
+                Text("Your Notifications").font(.system(.headline, design: .rounded, weight: .regular))
             }
         }
         .refreshable { await load() }
@@ -462,28 +461,39 @@ struct YourRemindersView: View {
 
     private static let prayerKinds: [Kind] = [.start, .halfway, .endingSoon, .snooze]
 
+    /// Notifications are on / off / need a hand, how far ahead they're planned, and the way into Notification settings
+    /// (merged, owner): the shield is green with a check when his iOS settings let them through, orange when not.
     private var statusRow: some View {
         let off = health.authorization == .denied
+        let bad = ReminderWhy.onTime.needsHand(health)
         let title = off ? "Notifications are off" : fine ? "Notifications are on" : "Notifications need a hand"
         let through = health.scheduledThrough ?? pending.compactMap(\.date).max()
-        let subtitle = off ? "Notifications are off for shukr"
+        let subtitle = off ? "Off for shukr in iOS Settings"
             : fine ? "On time" + (through.map { d in
                 // The runway in days (owner, reminders-runway): it grows when fewer reminders a day are scheduled.
                 let days = (Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()),
                                                             to: Calendar.current.startOfDay(for: d)).day ?? 0) + 1
                 return " · scheduled through " + d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " (\(days) days)"
             } ?? "")
-            : "See Notification settings below"
-        return HStack(spacing: 14) {
-            Image(systemName: fine ? "checkmark.circle" : "exclamationmark.circle")
-                .font(.system(size: 26, weight: .light))
-                .foregroundStyle(fine ? green : Color.orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(subtitle).font(.footnote).foregroundStyle(.secondary)
+            : "Tap to see what's in the way"
+        return Button { whySheet = .onTime } label: {
+            HStack(spacing: 14) {
+                Image(systemName: bad ? "exclamationmark.shield" : "checkmark.shield")
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundStyle(bad || !fine ? Color.orange : green)
+                    .frame(width: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(Color(.label))
+                    Text(subtitle).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+                }
+                Spacer(minLength: 8)
+                if bad {
+                    Text("Needs a look").font(.subheadline).foregroundStyle(.orange)
+                }
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
             }
+            .padding(.vertical, 4)
         }
-        .padding(.vertical, 4)
     }
 
     /// One colour: used in green, free in grey; the numbers in words.
