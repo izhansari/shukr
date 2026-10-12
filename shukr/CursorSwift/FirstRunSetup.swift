@@ -3856,11 +3856,15 @@ private struct BismillahCapsule: View {
                 }
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(Color(.secondarySystemFill).opacity(0.7), lineWidth: 1))
-                // Its pop, in light and dark alike (owner: a black shadow is lost on the dark page): a fine light rim along
-                // the top, as if lit from above, and a soft sage glow under it.
+                // Its pop (owner: a black shadow is lost on the dark page; a glow on white is only a pale haze). Dark: a
+                // fine light rim along the top, as if lit from above, and a sage glow — light against the dark. Light: lift
+                // instead — a deep green shadow below and a tight one under its edge.
                 .overlay(Capsule().strokeBorder(LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0)],
                                                               startPoint: .top, endPoint: .center), lineWidth: 1))
-                .shadow(color: Color.sage.opacity(scheme == .dark ? 0.6 : 0.45), radius: scheme == .dark ? 18 : 14, y: 6)
+                .shadow(color: scheme == .dark ? Color.sage.opacity(0.6) : .black.opacity(0.14),
+                        radius: scheme == .dark ? 18 : 2, y: scheme == .dark ? 6 : 1)
+                .shadow(color: scheme == .dark ? .clear : Color(red: 0.10, green: 0.28, blue: 0.18).opacity(0.38),
+                        radius: 14, y: 9)
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
