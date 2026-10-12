@@ -112,6 +112,30 @@ enum MosqueSearch {
         return true
     }
 
+    /// A masjid by name or place, typed (the setup's masjid page — owner: "allow them to search for a mosque"): near
+    /// `here` when known (a hint, not a limit — a big masjid across town still comes), else anywhere. Mosque-looking places
+    /// first; when none match, what Maps found, so a masjid with an unusual name can still be picked.
+    @MainActor
+    static func search(_ text: String, near here: CLLocation?) async -> [MKMapItem] {
+        let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard words.count >= 2 else { return [] }
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = words
+        request.resultTypes = .pointOfInterest
+        if let here {
+            request.region = MKCoordinateRegion(center: here.coordinate, latitudinalMeters: 80_000, longitudinalMeters: 80_000)
+        }
+        guard let items = try? await MKLocalSearch(request: request).start().mapItems else { return [] }
+        let mosques = items.filter(isMosque)
+        let list = mosques.isEmpty ? items : mosques
+        guard let here else { return list }
+        return list.sorted {
+            let a = CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude)
+            let b = CLLocation(latitude: $1.placemark.coordinate.latitude, longitude: $1.placemark.coordinate.longitude)
+            return a.distance(from: here) < b.distance(from: here)
+        }
+    }
+
     /// True when every query of the last `find` failed (offline) — "no mosques" can't be trusted.
     @MainActor static var lastSearchFailed = false
 

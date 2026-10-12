@@ -3319,20 +3319,64 @@ private struct MasjidStep: View {
     @State private var found: [MKMapItem] = []
     @State private var searching = true
     @State private var favourites = Set(MosqueFavorites.all.map(\.id))
+    /// Typed search (owner, 2026-10-12: the list showed three, "another really big mosque in my area" couldn't be
+    /// picked): by name or place, near you when the phone knows where you are, else anywhere.
+    @State private var query = ""
+    @State private var results: [MKMapItem] = []
+    @State private var lookingUp = false
+    @FocusState private var typing: Bool
 
     var body: some View {
         StepScaffold(title: "Your masjid",
                      subtitle: MasjidArrival.parked ? "Star the one you pray at."
                         : "Star the one you pray at. shukr can show a dua when you arrive and when you leave.") {
-            VStack(spacing: 18) {
-                list
+            VStack(spacing: 14) {
+                searchField
+                if query.trimmingCharacters(in: .whitespaces).isEmpty { list } else { searchList }
                 if !MasjidArrival.parked { duasToggle }
             }
             .padding(.horizontal, 24)
         } bottom: {
             PrimaryButton(title: "Continue", action: next)
         }
-        .task { await search() }
+        .task {
+            #if DEBUG
+            if let q = UserDefaults.standard.string(forKey: "setupMasjidQuery") { query = q }   // -setupMasjidQuery "…"
+            #endif
+            await search()
+        }
+        .task(id: query) {
+            let text = query
+            guard text.trimmingCharacters(in: .whitespaces).count >= 2 else { results = []; lookingUp = false; return }
+            lookingUp = true
+            try? await Task.sleep(for: .milliseconds(350))   // typing pauses
+            guard !Task.isCancelled else { return }
+            let got = await MosqueSearch.search(text, near: location.effectiveLocation).filter { !MosqueHiding.isHidden($0) }
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.2)) { results = got; lookingUp = false }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField(location.effectiveLocation == nil ? "Search by name or city" : "Search for a masjid", text: $query)
+                .font(.system(.body, design: .rounded))
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .focused($typing)
+            if !query.isEmpty {
+                Button { query = ""; typing = false } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 44)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color(.secondarySystemBackground)))
     }
 
     /// Parked with the feature (`MasjidArrival.parked`).
@@ -3351,68 +3395,109 @@ private struct MasjidStep: View {
         .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
     }
 
+    /// Nearby: your starred ones first (a masjid starred from a search stays here, wherever it is), then the nearest.
+    private var nearby: [MKMapItem] {
+        let starredElsewhere = MosqueFavorites.all
+            .filter { fav in favourites.contains(fav.id) && !found.contains { MosqueHiding.id($0) == fav.id } }
+            .map(\.mapItem)
+        return starredElsewhere + found
+    }
+
     @ViewBuilder private var list: some View {
+        let items = nearby
         if searching {
-            HStack(spacing: 10) {
-                ProgressView()
-                Text("Finding masajid near you…").font(.system(.subheadline, design: .rounded, weight: .light))
-            }
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, minHeight: 80)
-        } else if found.isEmpty {
-            Text(MosqueSearch.lastSearchFailed ? "Couldn't search right now. You can star your masjid on the map later."
-                                               : "No masajid found nearby. You can star one on the map later.")
-                .font(.system(.subheadline, design: .rounded, weight: .light))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, minHeight: 80)
+            note(spinner: true, "Finding masajid near you…")
+        } else if items.isEmpty {
+            note(location.effectiveLocation == nil ? "Search for your masjid by name or city."
+                 : MosqueSearch.lastSearchFailed ? "Couldn't search right now. Try a name above, or star it on the map later."
+                 : "No masajid found nearby. Search for yours by name above.")
         } else {
-            VStack(spacing: 0) {
-                ForEach(Array(found.prefix(6).enumerated()), id: \.offset) { i, item in
-                    let id = MosqueHiding.id(item)
-                    Button {
-                        let on = !favourites.contains(id)
-                        MosqueFavorites.setFavorite(item, on)
-                        withAnimation(.snappy(duration: 0.2)) {
-                            if on { favourites.insert(id) } else { favourites.remove(id) }
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(item.name ?? "Mosque").font(.system(.body, design: .rounded)).lineLimit(2)
-                                if let d = distance(item) {
-                                    Text(d).font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: favourites.contains(id) ? "star.fill" : "star")
-                                .font(.system(size: 19, weight: .light))
-                                .foregroundStyle(favourites.contains(id) ? Color.sage : Color.secondary.opacity(0.5))
-                        }
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(favourites.contains(id) ? .isSelected : [])
-                    if i < min(found.count, 6) - 1 { Divider() }
-                }
-            }
-            .padding(.horizontal, 16)
-            .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
+            // The nearest 15 in a card that scrolls inside itself (owner: "a scrollable list … so they only have to
+            // search in a worst case scenario"); a peek of the next row says there's more.
+            scrollingCard(Array(items.prefix(15)))
         }
     }
 
-    private func distance(_ item: MKMapItem) -> String? {
-        guard let here = location.effectiveLocation else { return nil }
+    @ViewBuilder private var searchList: some View {
+        if lookingUp && results.isEmpty {
+            note(spinner: true, "Searching…")
+        } else if results.isEmpty {
+            note("Nothing found by that name. Try the city or a shorter name.")
+        } else {
+            scrollingCard(Array(results.prefix(15)))
+        }
+    }
+
+    /// Up to ~5½ rows tall, then it scrolls inside (the page itself stays put).
+    private func scrollingCard(_ items: [MKMapItem]) -> some View {
+        ScrollView {
+            VStack(spacing: 0) { rows(items) }
+                .padding(.horizontal, 16)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(maxHeight: items.count > 5 ? 352 : nil)
+        .fixedSize(horizontal: false, vertical: items.count <= 5)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func note(spinner: Bool = false, _ text: String) -> some View {
+        HStack(spacing: 10) {
+            if spinner { ProgressView() }
+            Text(text).font(.system(.subheadline, design: .rounded, weight: .light)).multilineTextAlignment(.center)
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, minHeight: 80)
+    }
+
+    @ViewBuilder private func rows(_ items: [MKMapItem]) -> some View {
+        ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+            let id = MosqueHiding.id(item)
+            Button {
+                let on = !favourites.contains(id)
+                MosqueFavorites.setFavorite(item, on)
+                withAnimation(.snappy(duration: 0.2)) {
+                    if on { favourites.insert(id) } else { favourites.remove(id) }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.name ?? "Mosque").font(.system(.body, design: .rounded)).lineLimit(2)
+                        if let line = detail(item) {
+                            Text(line).font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: favourites.contains(id) ? "star.fill" : "star")
+                        .font(.system(size: 19, weight: .light))
+                        .foregroundStyle(favourites.contains(id) ? Color.sage : Color.secondary.opacity(0.5))
+                }
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(favourites.contains(id) ? .isSelected : [])
+            if i < items.count - 1 { Divider() }
+        }
+    }
+
+    /// "2.3 km" with a location; a search result also gets its town ("4.1 km · Cary") — without one, just the town.
+    private func detail(_ item: MKMapItem) -> String? {
+        let town = item.placemark.locality
+        guard let here = location.effectiveLocation else { return town }
         let c = item.placemark.coordinate
+        guard c.latitude != 0 || c.longitude != 0 else { return town }
         let metres = here.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
-        return Measurement(value: metres, unit: UnitLength.meters)
+        let d = Measurement(value: metres, unit: UnitLength.meters)
             .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.fractionLength(0...1))))
+        if query.isEmpty { return d }
+        return [d, town].compactMap { $0 }.joined(separator: " · ")
     }
 
     private func search() async {
         guard let here = location.effectiveLocation else { searching = false; return }
-        let region = MKCoordinateRegion(center: here.coordinate, latitudinalMeters: 12_000, longitudinalMeters: 12_000)
+        // ~30 km across: room for the nearest 10–15 (owner) — 12 km found three or four in his town.
+        let region = MKCoordinateRegion(center: here.coordinate, latitudinalMeters: 30_000, longitudinalMeters: 30_000)
         let results = MosqueFavorites.merged(await MosqueSearch.find(in: region), in: region)
             .filter { !MosqueHiding.isHidden($0) }
         let sorted = results.sorted {
