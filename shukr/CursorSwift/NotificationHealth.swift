@@ -313,6 +313,7 @@ struct YourRemindersView: View {
     @State private var selectedDay = Self.debugInt("remindersDay")
     /// The explanation open as a sheet (ReminderWhy). DEBUG `-remindersSheet N` opens one (screenshots).
     @State private var whySheet: ReminderWhy?
+    @State private var whyGlass: ReminderWhy?
     /// Opened from Settings with something wrong: that explanation's sheet comes up over the page, once.
     var openWith: ReminderWhy? = nil
     @State private var openedWith = false
@@ -471,18 +472,27 @@ struct YourRemindersView: View {
             await load()
             if let openWith, !openedWith {
                 openedWith = true
-                whySheet = openWith
+                open(openWith)
             }
             #if DEBUG
             if let n = UserDefaults.standard.string(forKey: "remindersSheet").flatMap(Int.init),
-               let kind = ReminderWhy(rawValue: n) { whySheet = kind }
+               let kind = ReminderWhy(rawValue: n) { open(kind) }
             #endif
         }
         .sheet(item: $previewCard) { issue in
             ReminderHealthCard(issue: issue) { previewCard = nil }
         }
-        // Pushed, not a sheet (owner).
+        // Pushed, not a sheet (owner) — Notification settings.
         .navigationDestination(item: $whySheet) { ReminderWhySheet(kind: $0, pendingCount: pending.count) }
+        // Why only 64? / Tops itself up: a sheet over the page in glass (owner).
+        .sheet(item: $whyGlass) { kind in
+            NavigationStack {
+                ReminderWhySheet(kind: kind, pendingCount: pending.count, glass: true)
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .modifier(GlassSheetBackground())
+        }
     }
 
     private static let prayerKinds: [Kind] = [.start, .halfway, .endingSoon, .snooze]
@@ -524,8 +534,13 @@ struct YourRemindersView: View {
 
     /// One colour: used in green, free in grey; the numbers in words.
     /// One of the "why" rows: its symbol, title, and a look-at-it note when it needs one; opens its explanation.
+    /// Why only 64? and Tops itself up rise as glass sheets (owner); Notification settings is still pushed.
+    private func open(_ kind: ReminderWhy) {
+        if kind == .budget || kind == .topsUp { whyGlass = kind } else { whySheet = kind }
+    }
+
     private func whyRow(_ kind: ReminderWhy) -> some View {
-        Button { whySheet = kind } label: {
+        Button { open(kind) } label: {
             // Explicit colours: inside a Button's label the hierarchical styles took the tint (blue rows).
             HStack(spacing: 12) {
                 let bad = kind.needsHand(health)

@@ -129,6 +129,8 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
 struct ReminderWhySheet: View {
     let kind: ReminderWhy
     var pendingCount = 0
+    /// In a glass sheet: the list's own background steps aside so the glass shows round the cards.
+    var glass = false
     @ObservedObject private var health = NotificationHealth.shared
 
     var body: some View {
@@ -167,6 +169,8 @@ struct ReminderWhySheet: View {
         }
         .listStyle(.insetGrouped)
         .listSectionSpacing(14)
+        .scrollContentBackground(glass ? .hidden : .automatic)
+        .containerBackground(glass ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Color(.systemGroupedBackground)), for: .navigation)
         .fontDesign(.rounded)
         .navigationTitle(kind.title)
         .navigationBarTitleDisplayMode(.inline)
@@ -194,5 +198,16 @@ struct ReminderWhySheet: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// A sheet in glass: iOS 26's own Liquid Glass (left alone — a background of ours would replace it); before, a material.
+struct GlassSheetBackground: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content.presentationBackground(.regularMaterial)
+        }
     }
 }
