@@ -192,30 +192,30 @@ struct SettingsView: View {
                 if refreshState != .working { withAnimation(.easeInOut(duration: 0.3)) { refreshState = .idle } }
             }
         } label: {
+            // One line like Method and Madhab beside it (owner): "Location" + its refresh symbol, the city on the right
+            // in the pickers' value type; when it was updated sits under the card (`locationFooter`).
             HStack(spacing: 12) {
                 Image(systemName: "location.fill")
                     .foregroundStyle(Color(.label))   // the page's other leading symbols' color (owner)
                     .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(viewModel.cityName ?? "Finding your city…")
-                        .foregroundStyle(.primary)
-                    locationCaption
-                        .font(.caption)
-                        .contentTransition(.opacity)
-                }
-                Spacer(minLength: 8)
+                Text("Location")
+                    .foregroundStyle(.primary)
                 ZStack {
                     if refreshState == .working {
-                        ProgressView()
+                        ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: refreshState == .done ? "checkmark" : "arrow.clockwise")
+                            .font(.subheadline.weight(.medium))
                             .foregroundStyle(refreshState == .done ? Color.green : Color.secondary)
                             .contentTransition(.symbolEffect(.replace))
                     }
                 }
-                .frame(width: 24)
+                .frame(width: 20)
+                Spacer(minLength: 8)
+                Text(viewModel.cityName ?? "Finding…")
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
-            .padding(.vertical, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
@@ -223,21 +223,24 @@ struct SettingsView: View {
         .accessibilityHint("Updates your location and prayer times")
     }
 
-    /// "Updated 2 min ago", or what went wrong; nothing before the first update is known.
-    @ViewBuilder private var locationCaption: some View {
-        switch refreshState {
-        case .failed(let why):
-            Text(why).foregroundStyle(.orange)
-        case .working:
-            Text("Updating…").foregroundStyle(.secondary)
-        default:
-            if locationUpdatedAt > 0 {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    Text("Updated \(Self.updatedPhrase(Date(timeIntervalSince1970: locationUpdatedAt), now: context.date))")
-                        .foregroundStyle(.secondary)
+    /// Under the Prayer Times card (owner: the row is one line now): "Location updated 2 min ago", or what's happening /
+    /// went wrong; nothing before the first update is known.
+    @ViewBuilder private var locationFooter: some View {
+        Group {
+            switch refreshState {
+            case .failed(let why):
+                Text(why).foregroundStyle(.orange)
+            case .working:
+                Text("Updating your location…")
+            default:
+                if locationUpdatedAt > 0 {
+                    TimelineView(.periodic(from: .now, by: 30)) { context in
+                        Text("Location updated \(Self.updatedPhrase(Date(timeIntervalSince1970: locationUpdatedAt), now: context.date))")
+                    }
                 }
             }
         }
+        .contentTransition(.opacity)
     }
 
     /// "just now" under a minute, else "2 min ago" / "3 hr ago" / "yesterday".
@@ -246,7 +249,8 @@ struct SettingsView: View {
         let f = RelativeDateTimeFormatter()
         f.unitsStyle = .short
         f.dateTimeStyle = .named
-        return f.localizedString(for: date, relativeTo: now)
+        // "2 min ago", not "2 min. ago" (owner).
+        return f.localizedString(for: date, relativeTo: now).replacingOccurrences(of: ".", with: "")
     }
 
     var body: some View {
@@ -287,7 +291,7 @@ struct SettingsView: View {
                     
                     //MARK: - Prayer Times: where you are and how the times are worked out (owner: Location and Calculation
                     // Method made one section)
-                    Section(header: headerWithInfoButton(title: "Prayer Times", isPopupVisible: $isTimesInfoVisible).id("settingsTop")) {
+                    Section {
                         // (Latitude / longitude are gone: the city says it — owner, settings-cleanup-1.)
                         if envLocationManager.isAuthorized {
                             // One row: the city, when it was last updated, and the row itself refreshes it
@@ -295,12 +299,12 @@ struct SettingsView: View {
                             refreshLocationRow
                         } else {
                             if let cityName = viewModel.cityName {
-                                HStack {
+                                HStack(spacing: 12) {
                                     Image(systemName: "mappin.and.ellipse")
                                         .frame(width: 24)
-                                    Text("City")
+                                    Text("Location")
                                     Spacer()
-                                    Text(cityName)
+                                    Text(cityName).foregroundStyle(.secondary).lineLimit(1)
                                 }
                             } else {
                                 Text("Fetching city...")
@@ -321,7 +325,7 @@ struct SettingsView: View {
                         } label: {
                             // A symbol each, in the qibla row's column (owner: the section reads uniform).
                             HStack(spacing: 12) {
-                                Image(systemName: "sun.horizon").frame(width: 24)
+                                Image(systemName: "angle").frame(width: 24)   // sun.horizon is a prayer's (owner)
                                 Text("Method")
                             }
                         }
@@ -347,6 +351,10 @@ struct SettingsView: View {
                                               in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
                                               step: 0.5)
                         }
+                    } header: {
+                        headerWithInfoButton(title: "Prayer Times", isPopupVisible: $isTimesInfoVisible).id("settingsTop")
+                    } footer: {
+                        if envLocationManager.isAuthorized { locationFooter }
                     }
                     .onChange(of: calculationMethod) { _, new in
                         viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
@@ -1606,7 +1614,7 @@ struct PrayerTimesInfo: View {
     let qibla: Double
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            InfoModalRow(symbol: "sun.horizon", title: "Method",
+            InfoModalRow(symbol: "angle", title: "Method",
                          text: "Fajr and Isha are timed by how far the sun is below the horizon. Each method uses its own angles, so pick the one your masjid uses. Automatic follows the country you're in.")
             VStack(alignment: .leading, spacing: 10) {
                 InfoModalRow(symbol: "book.closed", title: "Madhab",
