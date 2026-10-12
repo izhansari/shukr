@@ -527,6 +527,20 @@ struct SettingsView: View {
                         Text("Auto follows the sun: light from Fajr, dark after Maghrib. Widgets follow your iPhone’s light or dark mode.")
                     }
 
+                    // Explore shukr (owner, settings-explore): the features people don't find, a card each.
+                    Section {
+                        NavigationLink {
+                            ExploreShukrPage()
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "sparkles").frame(width: 24)
+                                Text("Explore shukr")
+                            }
+                        }
+                    } header: {
+                        Text("More")
+                    }
+
                     // The tours again, for everyone (Tour.swift, CountTips.swift), under their own label (owner).
                     Section(header: Text("Tours")) {
                         Button {
@@ -550,9 +564,11 @@ struct SettingsView: View {
                     // The day page's "Set a Fajr alarm ›": the alarm row, once the page is at rest (DaySummary.swift).
                     .onChange(of: SettingsJump.shared.count) { _, _ in
                         let target = SettingsJump.shared.target
-                        if target == SettingsJump.fajrAlarm { remindersTab = ReminderSwitch.fajrAlarm }
+                        let side = target == SettingsJump.fajrAlarm ? ReminderSwitch.fajrAlarm
+                            : target == SettingsJump.liveActivities ? ReminderSwitch.liveActivities : nil
+                        if let side { remindersTab = side }
                         withAnimation(.smooth(duration: CircleMotion.standard)) {
-                            proxy.scrollTo(target == SettingsJump.fajrAlarm ? "liveActivities" : target, anchor: .center)
+                            proxy.scrollTo(side != nil ? "liveActivities" : target, anchor: .center)
                         }
                     }
                     .onChange(of: TourRuntime.shared.settingsScroll.1) { _, _ in

@@ -56,6 +56,8 @@ extension DayPrayer {
     private(set) var count = 0
     func request(_ id: String) { target = id; count += 1 }
     static let fajrAlarm = "fajrAlarm"
+    /// Reminders' Live Activities side (Explore shukr's Set it up).
+    static let liveActivities = "liveActivitiesSide"
 }
 
 /// The day's five prayers round the circle (Fajr at the top, clockwise), on the ring's own band.
