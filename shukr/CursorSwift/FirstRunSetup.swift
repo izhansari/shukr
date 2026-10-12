@@ -203,13 +203,15 @@ enum SetupStep: String, CaseIterable, Identifiable {
     var progress: Double {
         switch self {
         case .welcome: 0
-        case .location: 1 / 7
-        case .method, .madhab: 2 / 7
-        case .appearance: 3 / 7
-        case .reminders: 4 / 7
-        case .liveActivities: 5 / 7
-        case .fajr: 6 / 7
-        case .masjid, .review: 1
+        // An eighth per group; only the review (the ✓) is full — the masjid page showed a full ring (owner).
+        case .location: 1 / 8
+        case .method, .madhab: 2 / 8
+        case .appearance: 3 / 8
+        case .reminders: 4 / 8
+        case .liveActivities: 5 / 8
+        case .fajr: 6 / 8
+        case .masjid: 7 / 8
+        case .review: 1
         }
     }
     var symbol: String {
