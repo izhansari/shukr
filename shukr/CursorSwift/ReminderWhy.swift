@@ -123,73 +123,76 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
     }
 }
 
-/// One explanation as a sheet: the headline, his settings (orange where one is in the way, with "Fix in Settings"), and
-/// for Notification settings how iOS delivers, in grey.
+/// One explanation as a pushed page (owner: not a sheet): the headline as the page's own words, then his settings in one
+/// card, then (Notification settings) how iOS delivers in another — the rows in the info cards' style (symbol, a bold
+/// line, a grey one).
 struct ReminderWhySheet: View {
     let kind: ReminderWhy
     var pendingCount = 0
     @ObservedObject private var health = NotificationHealth.shared
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         let c = kind.content(health, pendingCount: pendingCount)
-        NavigationStack {
-            List {
-                Section {
-                    HStack(alignment: .top, spacing: 14) {
-                        if kind == .onTime {
-                            // A shield: green with a check when his settings let reminders through, orange when not.
-                            let bad = kind.needsHand(health)
-                            Image(systemName: bad ? "exclamationmark.shield.fill" : "checkmark.shield.fill")
-                                .font(.system(size: 30))
-                                .foregroundStyle(bad ? Color.orange : Color(.systemGreen))
-                        }
-                        Text(c.head).font(.title3)
-                            .fixedSize(horizontal: false, vertical: true)
+        List {
+            Section {
+                HStack(alignment: .top, spacing: 12) {
+                    if kind == .onTime {
+                        // A shield: green with a check when his settings let reminders through, orange when not.
+                        let bad = kind.needsHand(health)
+                        Image(systemName: bad ? "exclamationmark.shield.fill" : "checkmark.shield.fill")
+                            .font(.system(size: 26))
+                            .foregroundStyle(bad ? Color.orange : Color(.systemGreen))
                     }
-                    .padding(.vertical, 4)
+                    Text(c.head).font(.system(.title3, design: .rounded, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Section(c.explainHead == nil ? "" : "Your settings") {
-                    ForEach(c.points.indices, id: \.self) { row(c.points[$0]) }
-                    if c.fix {
-                        Button("Fix in Settings") {
-                            kind == .topsUp ? SettingsLinks.app() : SettingsLinks.notifications()
-                        }
-                        .foregroundStyle(Color(.systemGreen))
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
+            }
+            Section(c.explainHead == nil ? "" : "Your settings") {
+                ForEach(c.points.indices, id: \.self) { row(c.points[$0]) }
+                if c.fix {
+                    Button("Fix in Settings") {
+                        kind == .topsUp ? SettingsLinks.app() : SettingsLinks.notifications()
                     }
-                }
-                if let head = c.explainHead {
-                    Section(head) {
-                        ForEach(c.explain.indices, id: \.self) { row(c.explain[$0]) }
-                    }
+                    .font(.system(.body, design: .rounded, weight: .medium))
+                    .foregroundStyle(Color.sage)
                 }
             }
-            .listStyle(.insetGrouped)
-            .navigationTitle(kind.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(kind.title).font(.system(.headline, design: .rounded, weight: .regular))
+            if let head = c.explainHead {
+                Section(head) {
+                    ForEach(c.explain.indices, id: \.self) { row(c.explain[$0]) }
                 }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        .listStyle(.insetGrouped)
+        .listSectionSpacing(14)
         .fontDesign(.rounded)
+        .navigationTitle(kind.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(kind.title).font(.system(.headline, design: .rounded, weight: .regular))
+            }
+        }
         .task { await health.refresh() }
     }
 
+    /// The info cards' row: the symbol (green, orange where it's in the way, grey when only explaining), a bold line, a
+    /// grey one.
     private func row(_ p: ReminderWhy.Point) -> some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: p.symbol)
+                .font(.system(size: 17))
                 .foregroundStyle(p.neutral ? Color.secondary : p.warn ? Color.orange : Color(.systemGreen))
-                .frame(width: 26)
-                .padding(.top, 1)
+                .frame(width: 28, height: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text(p.big).foregroundStyle(p.warn && !p.neutral ? Color.orange : .primary)
-                Text(p.small).font(.subheadline).foregroundStyle(.secondary)
+                Text(p.big).font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(p.warn && !p.neutral ? Color.orange : .primary)
+                Text(p.small).font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 }

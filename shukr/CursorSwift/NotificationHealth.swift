@@ -358,12 +358,16 @@ struct YourRemindersView: View {
         let others = dayItems.filter { !Self.prayerKinds.contains($0.kind) }
         let rows = dayRows(prayers: prayers, others: others, dayItems: dayItems, day: day)
         return List {
+            // Notification settings first (owner: "at the very top of the page").
+            Section { whyRow(.onTime) }
+
             Section {
                 statusRow
                 // The bar opens every scheduled reminder (owner: its own chevron; the "All N scheduled" row is gone).
                 NavigationLink { allScheduled } label: { usageBar }
-                // Why the bar stops at 64, right under it (owner).
+                // Why the bar stops at 64 and how it tops itself up, right under it (owner).
                 whyRow(.budget)
+                whyRow(.topsUp)
             }
 
             Section {
@@ -417,9 +421,6 @@ struct YourRemindersView: View {
                 }
             } header: { Text("Days ahead") }
 
-            Section("About your reminders") {
-                ForEach(ReminderWhy.allCases.filter { $0 != .budget }) { kind in whyRow(kind) }
-            }
         }
         .listStyle(.insetGrouped)
         .fontDesign(.rounded)
@@ -453,7 +454,8 @@ struct YourRemindersView: View {
         .sheet(item: $previewCard) { issue in
             ReminderHealthCard(issue: issue) { previewCard = nil }
         }
-        .sheet(item: $whySheet) { ReminderWhySheet(kind: $0, pendingCount: pending.count) }
+        // Pushed, not a sheet (owner).
+        .navigationDestination(item: $whySheet) { ReminderWhySheet(kind: $0, pendingCount: pending.count) }
     }
 
     private static let prayerKinds: [Kind] = [.start, .halfway, .endingSoon, .snooze]
@@ -747,8 +749,10 @@ struct YourRemindersView: View {
         if PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(today) { return "later today" }
         if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today),
            PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(tomorrow) { return "tomorrow" }
-        return before.formatted(.dateTime.weekday(.abbreviated))
+        // The date, not the weekday (owner: "Nudges added 22nd").
+        return Self.ordinal.string(from: NSNumber(value: Calendar.current.component(.day, from: before)))
     }
+    private static let ordinal: NumberFormatter = { let f = NumberFormatter(); f.numberStyle = .ordinal; return f }()
 
     private func time(_ item: Item) -> String {
         item.date.map { $0.formatted(date: .omitted, time: .shortened) } ?? "–"
