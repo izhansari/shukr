@@ -2205,24 +2205,28 @@ private struct PrayerTimesStep: View {
                 // Answered: one quiet line (owner: "fold this more or make it less loud … while still a different
                 // section") — the tick, the pick in plain type, Change; no card, no sage fill.
                 foldedMethod
-                    .transition(.opacity)
+                    .transition(Self.swapIn)
             } else {
-                section(1, "Your calculation method", current: true)
-                note("Each method sets Fajr and Isha by a different angle of the sun. Pick the one your masjid uses.")
-                    .transition(.opacity)
-                methodCard
-                    .padding(.top, 10)
-                    .transition(.opacity)
+                VStack(spacing: 0) {
+                    section(1, "Your calculation method", current: true)
+                    note("Each method sets Fajr and Isha by a different angle of the sun. Pick the one your masjid uses.")
+                    methodCard
+                        .padding(.top, 10)
+                }
+                .transition(Self.swapIn)
             }
             section(2, "When does Asr begin?", current: asr)
                 .padding(.top, asr ? 14 : 18)
+                // Fades out where it was and in where it lands — sliding up, it crossed the cards fading in (owner).
+                .id(asr)
+                .transition(Self.swapIn)
             if asr {
                 asrPart
                     .padding(.top, 4)
                     // In just behind the fold; out at once going back.
-                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 16))
-                                                .animation(.easeOut(duration: 0.3).delay(0.15)),
-                                            removal: .opacity.animation(.easeOut(duration: 0.15))))
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 10))
+                                                .animation(.easeOut(duration: 0.28).delay(0.18)),
+                                            removal: .opacity.animation(.easeIn(duration: 0.12))))
                 Spacer(minLength: 0)
             }
             TodayStrip(method: method, school: school, highlightAsr: asr)
@@ -2271,6 +2275,12 @@ private struct PrayerTimesStep: View {
         .padding(.horizontal, 24)
         .accessibilityElement(children: .combine)
     }
+
+    /// Part 1 swapping between the list and its folded line: the old one goes first (quick), the new one fades in after
+    /// it — both at once ghosted one over the other (owner).
+    private static let swapIn = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeOut(duration: 0.22).delay(0.14)),
+        removal: .opacity.animation(.easeIn(duration: 0.12)))
 
     /// Part 1 once answered: "✓  Calculation method · Automatic (ISNA)   Change" on one quiet line, a hairline under it.
     private var foldedMethod: some View {
