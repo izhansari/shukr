@@ -3567,8 +3567,13 @@ private struct ReviewStep: View {
             StepTitle(title: anyMissing ? "Almost set" : "You're all set!",
                       subtitle: "Tap anything to change it.")
                 .contentTransition(.opacity)
-                .padding(.bottom, 16)
+                .padding(.bottom, 8)
+            // The list in its own card (owner: "so its clear its a list"), centred in the room between the title and the
+            // buttons, the free space shared evenly above and below; it scrolls only if a small screen needs it.
+            GeometryReader { geo in
             ScrollView {
+                VStack(spacing: 0) {
+                Spacer(minLength: 0)
                 VStack(spacing: 0) {
                     // Two lines a row, always (owner: never more than a page): a permission not given says so on the
                     // value line, with its way to change their mind at the end of it.
@@ -3581,11 +3586,23 @@ private struct ReviewStep: View {
                     row("alarm", "Fajr Alarm", alarmFix?.value ?? alarmValue, step: .fajr, fix: alarmFix)
                     row("building.columns", "Your Masjid", masjidValue, step: .masjid, last: true)
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
+                .background {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Color(.secondarySystemBackground))
+                        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1))
+                }
                 .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+                Spacer(minLength: 0)
+                }
+                .padding(.vertical, 8)
+                .frame(minHeight: geo.size.height)
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
+            }
             // Both sit on the bottom edge, out then in: the nudge goes, then bismillah rises into its own place (crossfaded,
             // bismillah came in over the buttons, mid-height, then dropped).
             ZStack(alignment: .bottom) {
