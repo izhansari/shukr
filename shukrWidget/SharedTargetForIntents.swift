@@ -1230,37 +1230,39 @@ struct GetNextFajrIntent: AppIntent {
 /// Intent: Get Offset Time Relative to Any Prayer
 struct GetOffsetTimeIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Offset Time Relative to Prayer"
-    static var description: LocalizedStringResource = "A time some minutes before or after a prayer — e.g. 15 minutes before Maghrib."
-    
-    @Parameter(title: "Minutes", description: "Number of minutes to offset.")
+    static var description = IntentDescription(
+        "A time a set number of minutes before or after a prayer starts — e.g. 15 minutes before Maghrib to start cooking, or 10 minutes after Fajr for the lights. Uses the prayer's next start (today's, or tomorrow's once it has passed).",
+        categoryName: "Prayer Times")
+
+    // Same parameter names as before, so shortcuts already built keep their values.
+    @Parameter(title: "Minutes", description: "How many minutes away from the prayer's start, 0 to 600.",
+               default: 15, controlStyle: .field, inclusiveRange: (0, 600))
     var offsetMinutes: Int
-    
-    @Parameter(title: "Reference Point", description: "Offset after or before the prayer.")
+
+    @Parameter(title: "Before or after", description: "Before or after the prayer starts.", default: .before)
     var referencePoint: ReferencePoint
-    
-    @Parameter(title: "Prayer", description: "Select the prayer reference.")
+
+    @Parameter(title: "Prayer", description: "The prayer to count from. Sunrise works too.", default: .maghrib)
     var prayer: enumPrayer
-    
-    
+
     static var parameterSummary: some ParameterSummary {
-        Summary("Get time \(\.$offsetMinutes) minutes \(\.$referencePoint) \(\.$prayer)")
+        Summary("Get the time \(\.$offsetMinutes) minutes \(\.$referencePoint) \(\.$prayer) starts")
     }
-    
+
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
         let coordinates = try PrayerUtils.getUserCoordinates()
         let params = PrayerUtils.getCalculationParameters()
-        
         let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
         let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
-        
         let prayerTime = PrayerUtils.getTime(for: prayer, in: todayTimes)
         let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getTime(for: prayer, in: tomorrowTimes) : prayerTime
-        
         let offset = TimeInterval(offsetMinutes * 60)
         let resultTime = referencePoint == .after ? nextPrayerTime.addingTimeInterval(offset) : nextPrayerTime.addingTimeInterval(-offset)
-        
-        return .result(value: resultTime, dialog: IntentDialog(stringLiteral: "\(offsetMinutes) minutes \(referencePoint) \(prayer) will be at \(shortTimePM(resultTime))"))
+        let name = prayer.rawValue
+        let line = offsetMinutes == 0 ? "\(name) starts at \(shortTimePM(resultTime))."
+            : "\(offsetMinutes) minutes \(referencePoint.rawValue) \(name) is \(shortTimePM(resultTime)) (\(name) at \(shortTimePM(nextPrayerTime)))."
+        return .result(value: resultTime, dialog: IntentDialog(stringLiteral: line))
     }
 }
 
@@ -1433,16 +1435,17 @@ struct SetFajrAlarmIntent: AppIntent {
 
 /// Which prayer "Get Prayer Time" means, from now.
 enum PrayerPick: String, AppEnum {
-    case current, previous, next
+    case relevant, current, previous, next
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Which prayer"
     static var caseDisplayRepresentations: [PrayerPick: DisplayRepresentation] = [
-        .current: DisplayRepresentation(title: "Current", subtitle: "The prayer whose time it is now"),
+        .relevant: DisplayRepresentation(title: "Relevant", subtitle: "What shukr's circle shows: the one to pray now, next, or one you missed"),
+        .current: DisplayRepresentation(title: "Current", subtitle: "The prayer whose time it is now, prayed or not"),
         .previous: DisplayRepresentation(title: "Previous", subtitle: "The one before it"),
         .next: DisplayRepresentation(title: "Next", subtitle: "The next to start"),
     ]
 }
 
-/// The five prayers' windows from yesterday to tomorrow, in order (Isha to 11:59 PM, as everywhere).
+/// The five prayers' windows from yesterday to tomorrow, in order (Isha to 11:59 PM; Sunrise is never a prayer).
 enum PrayerWindows {
     struct Window { let name: String; let start: Date; let end: Date }
 
@@ -1465,6 +1468,12 @@ enum PrayerWindows {
         return all.sorted { $0.start < $1.start }
     }
 
+    /// The prayer day's five.
+    static func today(_ now: Date = Date()) -> [Window] {
+        let day = PrayerDay.date(for: now)
+        return Array(around(now).filter { Calendar.current.isDate($0.start, inSameDayAs: day) }.prefix(5))
+    }
+
     static func pick(_ which: PrayerPick, now: Date = Date()) -> Window? {
         let all = around(now)
         let current = all.last { $0.start <= now && now < $0.end }
@@ -1474,47 +1483,84 @@ enum PrayerWindows {
         case .previous:
             if let current, let i = all.firstIndex(where: { $0.start == current.start }), i > 0 { return all[i - 1] }
             return all.last { $0.end <= now }
+        case .relevant:
+            // As the Salah circle (PrayerViewModel.relevantPrayer): on and unmarked, else the next unmarked today, else
+            // a missed one today; all five done → tomorrow's Fajr.
+            let done = SharedStore.completedPrayerNamesToday()
+            let day = today(now)
+            return day.first { !done.contains($0.name) && $0.start <= now && now < $0.end }
+                ?? day.first { !done.contains($0.name) && now < $0.start }
+                ?? day.first { !done.contains($0.name) && $0.end <= now }
+                ?? all.first { $0.start > now && $0.name == "Fajr" }
         }
+    }
+
+    /// "1 hour 5 minutes".
+    static func span(_ seconds: TimeInterval) -> String {
+        let m = max(1, Int((seconds / 60).rounded(.up)))
+        let h = m / 60, r = m % 60
+        let hours = h == 0 ? "" : h == 1 ? "1 hour" : "\(h) hours"
+        let mins = r == 0 ? "" : r == 1 ? "1 minute" : "\(r) minutes"
+        return [hours, mins].filter { !$0.isEmpty }.joined(separator: " ")
     }
 }
 
-/// "Get Prayer Time": the current, previous or next prayer — its name, start and end.
+/// "Get Prayer Time": the relevant, current, previous or next prayer — its start, and what it is.
 struct GetPrayerTimeIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Prayer Time"
-    static var description = IntentDescription("The current, previous or next prayer and its start time. Current is the prayer whose time it is now (between Sunrise and Dhuhr there is none).")
+    static var description = IntentDescription(
+        "The relevant, current, previous or next prayer and its start time. Relevant is what shukr's circle shows: the prayer to pray now, the next one, or one you missed.",
+        categoryName: "Prayer Times")
 
-    @Parameter(title: "Which prayer", default: .next) var which: PrayerPick
+    @Parameter(title: "Which prayer", description: "Relevant, current, previous or next.", default: .relevant) var which: PrayerPick
 
     static var parameterSummary: some ParameterSummary { Summary("Get the \(\.$which) prayer's time") }
 
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
+        let now = Date()
         guard let w = PrayerWindows.pick(which) else {
             if which == .current, let n = PrayerWindows.pick(.next) {
                 return .result(value: n.start, dialog: "No prayer is on right now. \(n.name) starts at \(shortTimePM(n.start)).")
             }
             throw PrayerTimeUnavailable()
         }
+        let on = w.start <= now && now < w.end
         let line: IntentDialog = switch which {
         case .current: "It's \(w.name), from \(shortTimePM(w.start)) to \(shortTimePM(w.end))."
         case .previous: "The previous prayer was \(w.name), at \(shortTimePM(w.start))."
         case .next: "The next prayer is \(w.name), at \(shortTimePM(w.start))."
+        case .relevant:
+            on ? "\(w.name) is on now, until \(shortTimePM(w.end))."
+            : w.end <= now ? "\(w.name) isn't marked yet. Its time ended at \(shortTimePM(w.end))."
+            : "\(w.name) is next, at \(shortTimePM(w.start))."
         }
         return .result(value: w.start, dialog: line)
     }
 }
 
-/// "Get Today's Prayer Times": all five for today, as lines ("Fajr 5:37 AM").
+/// "Get Today's Prayer Times": the five as a list — earlier / now / still to come.
 struct GetTodaysPrayerTimesIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Today's Prayer Times"
-    static var description = IntentDescription("Today's five prayer times, with your method and madhab — as a list you can show, speak or send.")
+    static var description = IntentDescription(
+        "Today's five prayer times with your method and madhab, as a list: what's passed (✓ when you marked it), what's on now, what's to come.",
+        categoryName: "Prayer Times")
 
     func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog {
-        // The prayer day's five (after midnight, before Fajr, still yesterday's — as everywhere in shukr).
-        let day = PrayerDay.date()
-        let five = Array(PrayerWindows.around().filter { Calendar.current.isDate($0.start, inSameDayAs: day) }.prefix(5))
+        let now = Date()
+        let five = PrayerWindows.today(now)
         guard !five.isEmpty else { throw PrayerTimeUnavailable() }
+        let done = SharedStore.completedPrayerNamesToday()
+        func row(_ w: PrayerWindows.Window) -> String {
+            "• \(w.name)  \(shortTimePM(w.start))\(done.contains(w.name) ? "  ✓" : "")"
+        }
+        let past = five.filter { $0.end <= now }, on = five.filter { $0.start <= now && now < $0.end },
+            coming = five.filter { $0.start > now }
+        var parts: [String] = []
+        if !past.isEmpty { parts.append((["Earlier"] + past.map(row)).joined(separator: "\n")) }
+        if !on.isEmpty { parts.append((["Now"] + on.map { row($0) + " · until \(shortTimePM($0.end))" }).joined(separator: "\n")) }
+        if !coming.isEmpty { parts.append((["Still to come"] + coming.map(row)).joined(separator: "\n")) }
         let lines = five.map { "\($0.name) \(shortTimePM($0.start))" }
-        return .result(value: lines, dialog: IntentDialog(stringLiteral: lines.joined(separator: "\n")))
+        return .result(value: lines, dialog: IntentDialog(stringLiteral: parts.joined(separator: "\n\n")))
     }
 }
 
@@ -1558,95 +1604,83 @@ struct FajrAlarmShortcutCheckIntent: AppIntent {
 
 // MARK: - Siri and Shortcuts: asked in plain words (owner: "natural questions")
 
-/// The prayer that matters now: the one on and not yet marked, else the next to start (today's, then tomorrow's Fajr).
+/// What Siri's "the prayer that's on" means: the window you're in, prayed or not (owner: "I prayed just says no prayer
+/// is on. not true. its maghrib"). Between Sunrise and Dhuhr none is.
 enum RelevantPrayer {
     struct Info { let name: String; let start: Date; let end: Date; let isOn: Bool }
 
     static func now(_ now: Date = Date()) -> Info? {
-        guard let coords = try? PrayerUtils.getUserCoordinates() else { return nil }
-        let params = PrayerUtils.getCalculationParameters()
-        let cal = Calendar.current
-        let today = PrayerDay.date(for: now)
-        let done = SharedStore.completedPrayerNamesToday()
-        for offset in 0...1 {
-            guard let day = cal.date(byAdding: .day, value: offset, to: today),
-                  let times = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { continue }
-            let nextFajr = cal.date(byAdding: .day, value: 1, to: day)
-                .flatMap { try? PrayerUtils.getPrayerTimes(for: $0, coordinates: coords, params: params).fajr }
-            let windows = PrayerUtils.createWindowsFromTimes(times, on: day, nextFajr: nextFajr)
-            for name in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"] {
-                guard let (start, end, _) = windows[name] else { continue }
-                if offset == 0, start <= now, now < end, !done.contains(name) { return Info(name: name, start: start, end: end, isOn: true) }
-                if start > now { return Info(name: name, start: start, end: end, isOn: false) }
-            }
-        }
+        if let c = PrayerWindows.pick(.current, now: now) { return Info(name: c.name, start: c.start, end: c.end, isOn: true) }
+        if let n = PrayerWindows.pick(.next, now: now) { return Info(name: n.name, start: n.start, end: n.end, isOn: false) }
         return nil
     }
-
-    /// "27 minutes", "1 hour 5 minutes".
-    static func span(_ seconds: TimeInterval) -> String {
-        let m = max(1, Int((seconds / 60).rounded(.up)))
-        let h = m / 60, r = m % 60
-        let hours = h == 0 ? "" : h == 1 ? "1 hour" : "\(h) hours"
-        let mins = r == 0 ? "" : r == 1 ? "1 minute" : "\(r) minutes"
-        return [hours, mins].filter { !$0.isEmpty }.joined(separator: " ")
-    }
-
+    static func span(_ seconds: TimeInterval) -> String { PrayerWindows.span(seconds) }
     static var noPlace: IntentDialog { "Open shukr once so it knows where you are." }
 }
 
-/// "What's the next prayer?" — answers at once (the old phrase asked which prayer).
+/// "What's the next prayer?" — the next to start, answered at once. Gives its start time to the next action.
 struct NextPrayerIntent: AppIntent {
     static var title: LocalizedStringResource = "Next Prayer"
-    static var description = IntentDescription("The prayer that's on now, or the next one, and its time.")
+    static var description = IntentDescription("The next prayer to start and how long until it does. Passes its start time on.",
+                                               categoryName: "Prayer Times")
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let p = RelevantPrayer.now() else { return .result(dialog: RelevantPrayer.noPlace) }
+    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
+        guard let n = PrayerWindows.pick(.next) else { throw PrayerTimeUnavailable() }
         let now = Date()
-        if p.isOn {
-            return .result(dialog: "\(p.name) is on now. It ends in \(RelevantPrayer.span(p.end.timeIntervalSince(now))), at \(shortTimePM(p.end)).")
-        }
-        return .result(dialog: "\(p.name) starts in \(RelevantPrayer.span(p.start.timeIntervalSince(now))), at \(shortTimePM(p.start)).")
+        var line = "\(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))), at \(shortTimePM(n.start))."
+        if let c = PrayerWindows.pick(.current) { line = "\(c.name) is on until \(shortTimePM(c.end)). " + line }
+        return .result(value: n.start, dialog: IntentDialog(stringLiteral: line))
     }
 }
 
-/// "How long is left?" — the prayer that's on, to its end.
+/// "How long is left?" — time left in the prayer you're in, marked or not; between Sunrise and Dhuhr, time until Dhuhr.
+/// Gives the minutes to the next action.
 struct PrayerTimeLeftIntent: AppIntent {
     static var title: LocalizedStringResource = "Time Left for Prayer"
-    static var description = IntentDescription("How long is left for the prayer that's on now.")
+    static var description = IntentDescription(
+        "Minutes left in the prayer whose time it is now — whether or not you've prayed it. Between Sunrise and Dhuhr, minutes until Dhuhr. Passes the minutes on.",
+        categoryName: "Prayer Times")
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let p = RelevantPrayer.now() else { return .result(dialog: RelevantPrayer.noPlace) }
+    func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let now = Date()
-        if p.isOn {
-            return .result(dialog: "\(RelevantPrayer.span(p.end.timeIntervalSince(now))) left for \(p.name). It ends at \(shortTimePM(p.end)).")
+        if let c = PrayerWindows.pick(.current) {
+            let mins = max(1, Int((c.end.timeIntervalSince(now) / 60).rounded(.up)))
+            return .result(value: mins, dialog: "\(PrayerWindows.span(c.end.timeIntervalSince(now))) left for \(c.name). It ends at \(shortTimePM(c.end)).")
         }
-        return .result(dialog: "No prayer is on right now. \(p.name) starts in \(RelevantPrayer.span(p.start.timeIntervalSince(now))).")
+        guard let n = PrayerWindows.pick(.next) else { throw PrayerTimeUnavailable() }
+        let mins = max(1, Int((n.start.timeIntervalSince(now) / 60).rounded(.up)))
+        return .result(value: mins, dialog: "No prayer's time is on right now. \(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))).")
     }
 }
 
-/// "I prayed" — marks the prayer that's on, scored now, without opening shukr. A LiveActivityIntent so it runs in shukr
-/// (its card goes, the app's list and streaks follow), as the widget's check does.
+/// "I prayed" — marks the prayer whose time it is, scored now, without opening shukr; tells you if it was already marked.
+/// Gives the grade to the next action.
 struct MarkCurrentPrayerIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Mark Prayer as Prayed"
-    static var description = IntentDescription("Marks the prayer that's on now as prayed.")
+    static var description = IntentDescription("Marks the prayer whose time it is now as prayed, scored like in shukr. Passes the grade on (Perfect, On time, Late).",
+                                               categoryName: "Prayers")
     static var openAppWhenRun: Bool = false
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let p = RelevantPrayer.now() else { return .result(dialog: RelevantPrayer.noPlace) }
-        guard p.isOn else {
-            return .result(dialog: "No prayer is on right now. \(p.name) starts at \(shortTimePM(p.start)).")
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+        guard let c = PrayerWindows.pick(.current) else {
+            if let n = PrayerWindows.pick(.next) {
+                return .result(value: "", dialog: "No prayer's time is on right now. \(n.name) starts at \(shortTimePM(n.start)).")
+            }
+            throw PrayerTimeUnavailable()
+        }
+        if SharedStore.completedPrayerNamesToday().contains(c.name) {
+            return .result(value: "", dialog: "\(c.name) is already marked as prayed.")
         }
         let now = Date()
         let marked: Bool
         if let hook = PrayerWindowHooks.widgetMark {
-            marked = await hook(p.name, p.start, p.end)
+            marked = await hook(c.name, c.start, c.end)
         } else {
-            marked = SharedStore.markPrayerComplete(named: p.name, start: p.start, end: p.end)
+            marked = SharedStore.markPrayerComplete(named: c.name, start: c.start, end: c.end)
         }
-        guard marked else { return .result(dialog: "\(p.name) is already marked.") }
-        let grade = PrayerScoring.grade(for: PrayerScoring.score(start: p.start, end: p.end, markedAt: now)).rawValue
-        return .result(dialog: "\(p.name) marked as prayed. \(grade).")
+        guard marked else { return .result(value: "", dialog: "\(c.name) is already marked as prayed.") }
+        let grade = PrayerScoring.grade(for: PrayerScoring.score(start: c.start, end: c.end, markedAt: now)).rawValue
+        return .result(value: grade, dialog: "\(c.name) marked as prayed. \(grade).")
     }
 }
 
