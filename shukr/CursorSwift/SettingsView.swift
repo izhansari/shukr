@@ -1194,8 +1194,6 @@ struct AlarmSettingsView: View {
     
     // A flag to remember if user has already seen the “setup required” alert
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
-    /// iOS 26.1+: shukr sets the alarm itself (AlarmKit); the Shortcut steps aside.
-    @AppStorage(FajrAlarms.activeKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var alarmKitActive = false
     @ObservedObject private var betaAccess = WhatsNewAccess.shared
     @State private var showAlarmCheck = false
     @State private var alarmKitRefused = false
@@ -1394,21 +1392,8 @@ struct AlarmSettingsView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                    // iOS 26.1+ but still the Shortcut (from before): one tap to let shukr take over.
-                    if FajrAlarms.supported && !alarmKitActive {
-                        Button {
-                            Task { @MainActor in
-                                if !(await FajrAlarms.enable()) { alarmKitRefused = true }
-                                status.refresh()
-                            }
-                        } label: {
-                            // A fix, worded and coloured as the other sides' fixes.
-                            Text("Let shukr set it (no Shortcut needed)")
-                                .font(.system(.subheadline, design: .rounded, weight: .medium))
-                                .foregroundStyle(Color.sage)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    // (No "Let shukr set it" row — owner: only someone who set it up on the Shortcut before iOS 26.1 ever saw
+                    // it, and switching the alarm off and on does the same.)
                     // Beta: every alarm AlarmKit holds, checked against the rule, and the alarm's log (FajrAlarmKit.swift).
                     if FajrAlarms.supported && betaAccess.beta {
                         Button { showAlarmCheck = true } label: {
@@ -1817,8 +1802,9 @@ struct LiveActivityInfo: View {
             ScaledToFit { LiveActivityDemo(prayer: "Asr", veil: .none, copy: copy) }
             InfoModalRow(symbol: "checkmark.circle", title: "Mark it there",
                          text: "It counts like marking it in shukr; then the card offers a photo and Tasbih Fatimah.")
+            // iOS holds 5 (PrayerLiveActivities) — why "Scheduled through" here only reaches a day or two (owner: say so).
             InfoModalRow(symbol: "clock.arrow.circlepath", title: "Kept coming",
-                         text: "iOS holds a few at a time. Marking them, or opening shukr, sets up the next ones.")
+                         text: "iOS holds five at a time. Each time you mark one or open shukr, the next ones are set up.")
             Text("Tap a prayer to turn its card on or off.")
                 .font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
         }
