@@ -2560,6 +2560,19 @@ private struct AppearanceStep: View {
     }
 }
 
+/// The right half of a rectangle, cut by a diagonal through its centre (top edge 62 % across, bottom edge 38 %).
+private struct DiagonalHalf: Shape {
+    func path(in r: CGRect) -> Path {
+        Path { p in
+            p.move(to: CGPoint(x: r.minX + r.width * 0.62, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+            p.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+            p.addLine(to: CGPoint(x: r.minX + r.width * 0.38, y: r.maxY))
+            p.closeSubpath()
+        }
+    }
+}
+
 /// A tiny Salah page: the circle on the page's colour. Auto is split light / dark with the sun and
 /// the moon.
 struct AppearanceSwatch: View {
@@ -2572,8 +2585,11 @@ struct AppearanceSwatch: View {
             default:
                 ZStack {
                     page(.white, ink: .black)
+                    // Dark on the right half, split by a diagonal through the middle — drawn from the swatch's own size
+                    // (a rotated, offset rectangle only split it right at setup's size; in Settings' smaller ⓘ the dark
+                    // side swallowed most of it — owner).
                     page(.black, ink: .white)
-                        .mask(Rectangle().rotationEffect(.degrees(28)).offset(x: 46).scaleEffect(2))
+                        .mask(DiagonalHalf())
                 }
                 VStack {
                     HStack {
