@@ -223,6 +223,38 @@ final class LiveActivityUITests: XCTestCase {
         collapse()
     }
 
+    /// The island and the card for one window live now: a long one, then one in its last half hour, then marked.
+    func testIslandLook() throws {
+        for (i, ago) in ["30", "125"].enumerated() {
+            let app = XCUIApplication()
+            app.launchArguments = ["-laEndAll", "-laNowAgo", ago, "-laLength", "150"]
+            app.launch()
+            sleep(4)
+            XCUIDevice.shared.press(.home)
+            sleep(3)
+            if springboard.buttons["Allow"].waitForExistence(timeout: 2) { springboard.buttons["Allow"].tap(); sleep(2) }   // the simulator's own prompt
+            shot("\(i) a compact")
+            expandIsland()
+            shot("\(i) b expanded")
+            collapse()
+            springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.002))
+                .press(forDuration: 0.1, thenDragTo: springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.7)))
+            sleep(2)
+            if springboard.buttons["Allow"].exists { springboard.buttons["Allow"].tap(); sleep(2) }
+            shot("\(i) c card")
+            XCUIDevice.shared.press(.home)
+            sleep(1)
+        }
+        expandIsland()
+        let mark = springboard.buttons["Mark prayed"]
+        if mark.waitForExistence(timeout: 3) {
+            mark.tap()
+            sleep(3)
+            expandIsland()
+            shot("2 b marked expanded")
+        }
+    }
+
     /// Mark prayed on whatever window is live (no app launch): does the button's run get to schedule more?
     func testMarkLiveWindow() throws {
         XCUIDevice.shared.press(.home)

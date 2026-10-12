@@ -95,16 +95,16 @@ struct LATestLiveActivity: Widget {
             let t = LATuning.current
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    LAEnds(state: s, stale: stale) { e in LASideRing(state: s, ended: e, size: t.islandRingSize, symbolSize: t.islandRingSize * 0.26, onIsland: true, t: t) }
-                        .padding(.leading, 4).padding(.top, 4)
+                    LAEnds(state: s, stale: stale) { e in LAIslandLeading(state: s, ended: e, t: t) }
+                        .padding(.leading, 6).padding(.top, 4)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     LAEnds(state: s, stale: stale) { e in LANameLines(state: s, ended: e, big: false, t: t) }
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 14).padding(.leading, 6)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    LAEnds(state: s, stale: stale) { e in LAGlyphs(state: s, n: n, ended: e, size: t.islandButtonSize, onIsland: true, t: t) }
-                        .padding(.trailing, 4).padding(.top, 10)
+                    LAEnds(state: s, stale: stale) { e in LAIslandTrailing(state: s, n: n, ended: e, t: t) }
+                        .padding(.trailing, 6).padding(.top, 4)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     LADismissBar(state: s).padding(.horizontal, 24)

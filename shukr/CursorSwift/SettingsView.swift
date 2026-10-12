@@ -1655,7 +1655,7 @@ struct LATunerView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 .onChange(of: kind) { _, _ in base = Date() }
-                Form { controls }
+                if UserDefaults.standard.bool(forKey: "laFormatTest") { LAFormatTest() } else { Form { controls } }
             }
             .navigationTitle("Live Activity look")
             .navigationBarTitleDisplayMode(.inline)
@@ -1705,7 +1705,7 @@ struct LATunerView: View {
         switch kind {
         case 2: return .init(label: "Asr", start: base.addingTimeInterval(-25 * m), end: base.addingTimeInterval(115 * m), symbol: prayerIcon(for: "Asr"), markedAt: base)
         case 3: return .init(label: "Asr", start: base.addingTimeInterval(-145 * m), end: base.addingTimeInterval(-5 * m), symbol: prayerIcon(for: "Asr"))
-        case 1 where UserDefaults.standard.object(forKey: "laPreviewLeft") != nil:   // DEBUG -laPreviewLeft seconds
+        case 1 where UserDefaults.standard.object(forKey: "laPreviewLeft") != nil, 4 where UserDefaults.standard.object(forKey: "laPreviewLeft") != nil:   // DEBUG -laPreviewLeft seconds
             return .init(label: "Asr", start: base.addingTimeInterval(-110 * m), end: base.addingTimeInterval(UserDefaults.standard.double(forKey: "laPreviewLeft")), symbol: prayerIcon(for: "Asr"))
         case 1: return .init(label: "Asr", start: base.addingTimeInterval(-110 * m), end: base.addingTimeInterval(20 * m), symbol: prayerIcon(for: "Asr"))
         default: return .init(label: "Asr", start: base.addingTimeInterval(-40 * m), end: base.addingTimeInterval(100 * m), symbol: prayerIcon(for: "Asr"))
@@ -1716,15 +1716,16 @@ struct LATunerView: View {
         let s = sample
         if kind == 4 {
             // The Dynamic Island opened up, on black.
-            HStack(spacing: 12) {
-                LASideRing(state: s, ended: false, size: t.islandRingSize, symbolSize: t.islandRingSize * 0.26, onIsland: true, t: t)
-                LANameLines(state: s, ended: false, big: false, t: t)
+            HStack(alignment: .top, spacing: 12) {
+                LAIslandLeading(state: s, ended: false, t: t)
+                LANameLines(state: s, ended: false, big: false, t: t).padding(.top, 10)
                 Spacer(minLength: 0)
-                LAGlyphs(state: s, n: 0, ended: false, size: t.islandButtonSize, onIsland: true, t: t)
+                LAIslandTrailing(state: s, n: 0, ended: false, t: t)
             }
             .padding(.horizontal, 18).padding(.vertical, 16)
             .frame(maxWidth: .infinity)
-            .background(Color.black, in: RoundedRectangle(cornerRadius: 44, style: .continuous))
+            .background(Color.black)
+            .clipShape(RoundedRectangle(cornerRadius: 44, style: .continuous))
             .environment(\.colorScheme, .dark)
             .padding(.horizontal, 10)
         } else {
@@ -1755,7 +1756,7 @@ struct LATunerView: View {
         }
         Section("Text") {
             Picker("Time left as", selection: Binding(get: { t.timeLeftFormat ?? LATimeLeft.standard }, set: { t.timeLeftFormat = $0 })) {
-                ForEach(LATimeLeft.styles.indices, id: \.self) { Text(LATimeLeft.styles[$0]).tag($0) }
+                ForEach(LATimeLeft.offered, id: \.self) { Text(LATimeLeft.styles[$0]).tag($0) }
             }
             row("Name size", "\"Asr\"", \.titleSize, 10...36, 1)
             row("Time left size", "\"1 hour, 40 minutes left\" · \"Prayed 4:31 PM\"", \.timeLeftSize, 8...24, 1)
@@ -1786,6 +1787,8 @@ struct LATunerView: View {
             row("Name size", "", \.islandTitleSize, 10...30, 1)
             row("Line size", "", \.islandLineSize, 8...20, 1)
             row("Button size", "", \.islandButtonSize, 24...56, 1)
+            row("Time size", "\"2 hr, 35 min\" · \"27 minutes\" over the button", \.islandTimeSize, 12...36, 1)
+            row("Glow reach", "how far the colour spreads round the ring", \.islandGlow, 0...3, 0.05)
         }
     }
 
@@ -1831,6 +1834,32 @@ struct LATunerView: View {
         }
         LATestLog.add("tuning applied to \(n) card(s): " + t.json.replacingOccurrences(of: "\n", with: " "))
         note = n == 0 ? "Saved — no card on the Lock Screen right now" : "Saved and redrawn on the Lock Screen"
+    }
+}
+#endif
+
+#if DEBUG
+/// DEBUG -laFormatTest: which self-updating formats give "2:36" / "27".
+struct LAFormatTest: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach([9360.0, 1630.0, 50.0], id: \.self) { left in
+                    let end = Date.now.addingTimeInterval(left)
+                    let r = Date.now..<end
+                    Text("— \(Int(left)) s left").bold()
+                    Text("A \(Text(.currentDate, format: .timer(countingDownIn: r, maxPrecision: .seconds(60))))")
+                    Text("B \(Text(.currentDate, format: .timer(countingDownIn: r, maxFieldCount: 2)))")
+                    Text("C \(Text(.currentDate, format: .timer(countingDownIn: r, maxFieldCount: 2, maxPrecision: .seconds(60))))")
+                    Text("D \(Text(.currentDate, format: .timer(countingDownIn: r, showsHours: false, maxFieldCount: 1)))")
+                    Text("E \(Text(.currentDate, format: .timer(countingDownIn: r, showsHours: false, maxFieldCount: 1, maxPrecision: .seconds(60))))")
+                    Text("F \(Text(.currentDate, format: .timer(countingDownIn: r)))")
+                    Text("G \(Text(.currentDate, format: .timer(countingDownIn: r, maxPrecision: .seconds(1))))")
+                    Text("H \(Text(timerInterval: Date.now...end, countsDown: true, showsHours: false))")
+                    Text("I \(Text(.currentDate, format: .timer(countingDownIn: r, showsHours: true, maxFieldCount: 2, maxPrecision: .seconds(1))))")
+                }
+            }.font(.system(size: 13)).monospacedDigit().padding()
+        }
     }
 }
 #endif

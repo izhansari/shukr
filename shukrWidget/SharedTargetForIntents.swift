@@ -1868,6 +1868,10 @@ struct LATuning: Codable, Equatable {
     var islandTitleSize: Double = 18
     var islandLineSize: Double = 11
     var islandButtonSize: Double = 38
+    var islandTimeSizeOpt: Double? = nil        // nil = 17: the time left above the island's button
+    var islandGlowOpt: Double? = nil            // nil = 1.5: the island's glow radius, × the ring size
+    var islandTimeSize: Double { get { islandTimeSizeOpt ?? 17 } set { islandTimeSizeOpt = newValue } }
+    var islandGlow: Double { get { islandGlowOpt ?? 1.5 } set { islandGlowOpt = newValue } }
     // How the time left is written — iOS's self-updating formats only (a Live Activity has no timeline): 0 "1 hour,
     // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative; under an hour it ticks seconds) · 2 "1:39" · 3 "1:39:12" ·
     // 4 (nil, the default — owner: no seconds) relative over an hour, then "59 minutes", then "under a minute", switched
@@ -1894,6 +1898,8 @@ enum LASoft {
     static func surface(_ t: LATuning) -> Color { Color(white: t.cardSurfaceGrey) }
     static let shade = Color.black.opacity(0.75)
     static let light = Color.white.opacity(0.06)
+    /// The island is black: its soft pieces are a dark grey raised off it.
+    static let island = Color(white: 0.11)
 }
 
 /// The running look until the window ends, the ended look from then on — by itself (timer gates), because iOS's stale
@@ -2010,6 +2016,9 @@ struct LANameLines: View {
             } else if ended {
                 Text("\(state.end.formatted(date: .omitted, time: .shortened)) · not marked")
                     .font(.system(size: line)).foregroundStyle(.secondary)
+            } else if !big {
+                Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
+                    .font(.system(size: line)).foregroundStyle(.secondary)
             } else {
                 let lastHalf = state.end.addingTimeInterval(-30 * 60)
                 ZStack(alignment: .leading) {
@@ -2034,7 +2043,11 @@ struct LANameLines: View {
 struct LATimeLeft: View {
     let end: Date
     var style = 0
-    static let styles = ["1 hour, 39 minutes", "1 hr, 39 min · 19 min, 56 sec", "1:39", "1:39:12", "1 hr, 39 min · 59 minutes"]
+    var suffix = true
+    private var left: String { suffix ? " left" : "" }
+    static let styles = ["1 hour, 39 minutes", "1 hr, 39 min · 19 min, 56 sec", "timer to the minute (iOS writes it in words)", "1:39:12", "1 hr, 39 min · 59 minutes"]
+    /// What the tuner offers: 2 reads the same as 0 (iOS writes a minute-precision timer in words).
+    static let offered = [4, 1, 0, 3]
     static let standard = 4
     var body: some View {
         switch style {
@@ -2043,15 +2056,15 @@ struct LATimeLeft: View {
             // last one — so three layers, each shown only in its own stretch (the sim: 1 hr, 0 min → 59 minutes on time).
             let hour = end.addingTimeInterval(-3600), minute = end.addingTimeInterval(-60)
             ZStack(alignment: .leading) {
-                Text("\(Text(end, style: .relative)) left").mask { LAGate(from: nil, until: hour) }
-                Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.minute], maxFieldCount: 1, sign: .never))) left")
+                Text("\(Text(end, style: .relative))\(left)").mask { LAGate(from: nil, until: hour) }
+                Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.minute], maxFieldCount: 1, sign: .never)))\(left)")
                     .mask { LAGate(from: hour, until: minute) }
-                Text("under a minute left").mask { LAGate(from: minute, until: nil) }
+                Text("under a minute\(left)").mask { LAGate(from: minute, until: nil) }
             }
-        case 1: Text("\(Text(end, style: .relative)) left")
-        case 2: Text("\(Text(.currentDate, format: .timer(countingDownIn: Date.now..<max(end, .now), maxPrecision: .seconds(60)))) left")
-        case 3: Text("\(Text(timerInterval: Date.now...max(end, .now), countsDown: true)) left")
-        default: Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.hour, .minute], maxFieldCount: 2, sign: .never))) left")
+        case 1: Text("\(Text(end, style: .relative))\(left)")
+        case 2: Text("\(Text(.currentDate, format: .timer(countingDownIn: Date.now..<max(end, .now), maxPrecision: .seconds(60))))\(left)")
+        case 3: Text("\(Text(timerInterval: Date.now...max(end, .now), countsDown: true))\(left)")
+        default: Text("\(Text(.currentDate, format: .offset(to: end, allowedFields: [.hour, .minute], maxFieldCount: 2, sign: .never)))\(left)")
         }
     }
 }
@@ -2082,11 +2095,63 @@ struct LACompactTrailing: View {
             } else if ended {
                 Text("ended").foregroundStyle(.secondary)
             } else {
-                Text(timerInterval: state.start...state.end, countsDown: true).monospacedDigit()
+                let half = state.end.addingTimeInterval(-30 * 60)
+                ZStack(alignment: .trailing) {
+                    Text(timerInterval: state.start...state.end, countsDown: true).foregroundStyle(.primary)
+                        .mask { LAGate(from: nil, until: half) }
+                    Text(timerInterval: state.start...state.end, countsDown: true).foregroundStyle(.red)
+                        .mask { LAGate(from: half, until: nil) }
+                }
+                .monospacedDigit()
             }
         }
         .font(.system(size: 14, weight: .medium, design: .rounded))
         .frame(maxWidth: 64)
+    }
+}
+
+/// The island's time left over its button: the card's words without "left" — "2 hr, 35 min", "45 minutes", then in the
+/// last half hour red and semibold. (Frank's mock had "2:36" / "27m": iOS's countdowns drop to words once the seconds go
+/// — the sim, 2026-10-11: `.timer(…, maxPrecision: 60 s)` = "2 hours, 35 minutes", only "2:35:58" stays in digits.)
+struct LAIslandTime: View {
+    let end: Date
+    var body: some View {
+        let half = end.addingTimeInterval(-30 * 60)
+        ZStack(alignment: .trailing) {
+            LATimeLeft(end: end, style: LATimeLeft.standard, suffix: false).foregroundStyle(.primary)
+                .mask { LAGate(from: nil, until: half) }
+            LATimeLeft(end: end, style: LATimeLeft.standard, suffix: false).foregroundStyle(.red).fontWeight(.semibold)
+                .mask { LAGate(from: half, until: nil) }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+    }
+}
+
+/// The island's left side: the soft ring with the score colour glowing round it.
+struct LAIslandLeading: View {
+    let state: LATestAttributes.ContentState
+    let ended: Bool
+    let t: LATuning
+    var body: some View {
+        LASideRing(state: state, ended: ended, size: t.islandRingSize, symbolSize: t.islandRingSize * 0.26, onIsland: true, t: t)
+            .background { LAWash(state: state, ended: ended, t: t, islandRadius: t.islandRingSize * t.islandGlow / 2 + t.islandRingSize / 2) }
+    }
+}
+
+/// The island's right side: the time left over the mark button (Frank's mock); prayed → camera over tasbih.
+struct LAIslandTrailing: View {
+    let state: LATestAttributes.ContentState
+    let n: Int
+    let ended: Bool
+    let t: LATuning
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            if state.markedAt == nil && !ended {
+                LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular))
+            }
+            LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t)
+        }
     }
 }
 
@@ -2142,9 +2207,10 @@ struct LARoundButton<I: AppIntent>: View {
                 .frame(width: size, height: size)
                 .background {
                     if onIsland {
-                        Circle().fill(Color(white: 0.11))
+                        Circle().fill(LASoft.island)
                             .shadow(color: .black, radius: 3, x: 1.5, y: 1.5)
                             .shadow(color: .white.opacity(0.09), radius: 3, x: -1.5, y: -1.5)
+                            .shadow(color: .white.opacity(t.ringBandLift * 0.6), radius: 1.5, x: -1, y: -1)
                     } else {
                         Circle().fill(LASoft.surface(t))
                             .shadow(color: LASoft.shade, radius: 3, x: 1.5, y: 1.5)
@@ -2162,6 +2228,8 @@ struct LAWash: View {
     let state: LATestAttributes.ContentState
     let ended: Bool
     let t: LATuning
+    /// The island: a round glow this wide, centred on the ring (the island has no background of ours to fill).
+    var islandRadius: Double? = nil
     var body: some View {
         if let at = state.markedAt {
             wash(PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at)))
@@ -2174,7 +2242,16 @@ struct LAWash: View {
         }
     }
     /// An ellipse centred on the ring (Look D: 120 % × 140 % of the card), the colour at `glowStrength`, gone by `glowReach`.
-    private func wash(_ c: Color) -> some View {
+    @ViewBuilder private func wash(_ c: Color) -> some View {
+        if let r = islandRadius {
+            RadialGradient(colors: [c.opacity(t.glowStrength * 1.4), c.opacity(0)], center: .center, startRadius: 0, endRadius: r)
+                .frame(width: r * 2, height: r * 2)
+                .allowsHitTesting(false)
+        } else {
+            card(c)
+        }
+    }
+    private func card(_ c: Color) -> some View {
         GeometryReader { g in
             let rx = g.size.width * 1.2 * t.glowReach, ry = g.size.height * 1.4 * t.glowReach
             EllipticalGradient(colors: [c.opacity(t.glowStrength), c.opacity(0)], center: .center, startRadiusFraction: 0, endRadiusFraction: 0.5)
@@ -2206,9 +2283,10 @@ enum LAGrades {
 struct LASoftBand: View {
     let width: Double
     let t: LATuning
+    var surface: Color? = nil
     var body: some View {
         Circle()
-            .stroke(LASoft.surface(t), lineWidth: width)
+            .stroke(surface ?? LASoft.surface(t), lineWidth: width)
             .shadow(color: LASoft.shade, radius: width * 0.6, x: width * 0.3, y: width * 0.3)
             .shadow(color: LASoft.light, radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
             .shadow(color: .white.opacity(t.ringBandLift), radius: width * 0.5, x: -width * 0.25, y: -width * 0.25)
@@ -2271,13 +2349,7 @@ struct LARing: View {
     var body: some View {
         let band = t.ringBandWidth, arc = t.ringArcWidth
         ZStack {
-            if onIsland {
-                Circle().stroke(Color(white: 0.11), lineWidth: band)
-                    .shadow(color: .black, radius: band * 0.6, x: band * 0.3, y: band * 0.3)
-                    .shadow(color: .white.opacity(0.09), radius: band * 0.9, x: -band * 0.3, y: -band * 0.3)
-            } else {
-                LASoftBand(width: band, t: t)
-            }
+            LASoftBand(width: band, t: t, surface: onIsland ? LASoft.island : nil)
             if let at = state.markedAt {
                 let c = PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at))
                 Circle().stroke(c, style: StrokeStyle(lineWidth: arc, lineCap: .round))
@@ -2305,11 +2377,14 @@ struct LAGate: View {
     let from: Date?
     let until: Date?
     var body: some View {
+        // An edge already passed when this is drawn is drawn solid: its stock bar re-filled on every update, sweeping a
+        // look across the card (owner). Only edges still to come are bars (empty until then, so nothing moves).
+        let now = Date()
         Group {
-            if let from { edge(from, fill: .white, ground: .black, lift: -0.35) } else { Color.white }
+            if let from, from > now { edge(from, fill: .white, ground: .black, lift: -0.35) } else { Color.white }
         }
         .mask {
-            if let until { edge(until, fill: .black, ground: .white, lift: 0.2) } else { Color.white }
+            if let until { if until > now { edge(until, fill: .black, ground: .white, lift: 0.2) } else { Color.clear } } else { Color.white }
         }
     }
 
