@@ -460,7 +460,7 @@ struct LiveActivityDemo: View {
         .yes: "Show my prayers",
         .no: "No thanks, I’ll check the app",
         .tilesHeader: "Which prayers?",
-        .tilesBody: "We start you with the prayers in the middle of your day, where it helps most. Pick any you like.",
+        .tilesBody: "We start you with the prayers in the middle of your day, where it helps most. All five or just one: it’s up to you.",
         .skipTitle: "Go without Live Activities?",
         .skipBody: "You’d lose the countdown on your Lock Screen and in the Dynamic Island, and marking a prayer from there. Your notifications still come either way.",
         .skipKeep: "Show my prayers",
