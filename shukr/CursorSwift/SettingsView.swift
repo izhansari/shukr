@@ -1764,7 +1764,7 @@ struct LATunerView: View {
             row("Line spacing", "space between the three lines", \.lineSpacing, 0...12, 0.5)
             row("Move text up / down", "negative = up", \.textOffsetY, -20...20, 1)
         }
-        Section("Glow") {
+        Section("Glow (only once marked Perfect — pick Marked)") {
             row("Strength", "how strong the colour is at the ring", \.glowStrength, 0...0.6, 0.01)
             row("Reach", "how far it spreads before it's gone", \.glowReach, 0.1...1.2, 0.01)
             row("Centre left / right", "0 = left edge, 1 = right edge", \.glowCentreX, 0...1, 0.01)

@@ -1848,14 +1848,14 @@ struct LATuning: Codable, Equatable {
     var lineSpacing: Double = 2
     var textOffsetY: Double = 0
     // Glow
-    var glowStrength: Double = 0.19
-    var glowReach: Double = 0.52
-    var glowCentreX: Double = 0.11
-    var glowCentreY: Double = 0.73
+    var glowStrength: Double = 0.45
+    var glowReach: Double = 0.64
+    var glowCentreX: Double = 0.05
+    var glowCentreY: Double = 0.5
     // Buttons
     var buttonSize: Double = 44
     var buttonSymbolSize: Double = 18
-    var buttonStackGap: Double = 8
+    var buttonStackGap: Double = 7
     var buttonOffsetX: Double = 0
     var buttonSymbolOpacity: Double? = nil   // nil = 0.65: the symbols a little dull, not stark white (owner)
     var symbolOpacity: Double { get { buttonSymbolOpacity ?? 0.65 } set { buttonSymbolOpacity = newValue } }
@@ -2171,8 +2171,8 @@ struct LAIslandTrailing: View {
                 LAIslandTime(end: state.end).font(.system(size: t.islandTimeSize, weight: .regular))
             }
             LAGlyphs(state: state, n: n, ended: ended, size: t.islandButtonSize, onIsland: true, t: t)
-                .padding(4)   // the soft disc's shadow, inside the region (it clips)
         }
+        .padding(4)   // the soft disc's shadow, inside the region (it clips); "27m" lines up with the button's edge
     }
 }
 
@@ -2252,14 +2252,10 @@ struct LAWash: View {
     /// The island: a round glow this wide, centred on the ring (the island has no background of ours to fill).
     var islandRadius: Double? = nil
     var body: some View {
+        // Only a prayer marked Perfect glows (owner, 2026-10-11): none while the window runs, nor for a lower grade.
         if let at = state.markedAt {
-            wash(PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at)))
-        } else if !ended {
-            ZStack {
-                ForEach(Array(LAGrades.spans(state).enumerated()), id: \.offset) { _, span in
-                    wash(span.color).mask { LAGate(from: span.from, until: span.until) }
-                }
-            }
+            let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: at)
+            if PrayerScoring.grade(for: score) == .perfect { wash(PrayerScoring.color(for: score)) }
         }
     }
     /// An ellipse centred on the ring (Look D: 120 % × 140 % of the card), the colour at `glowStrength`, gone by `glowReach`.
