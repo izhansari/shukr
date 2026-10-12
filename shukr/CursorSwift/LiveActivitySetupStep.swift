@@ -30,7 +30,7 @@ struct LiveActivitySetupStep: View {
     @State private var prefs: [String: Bool] = LiveActivitySetupStep.savedPrefs
     /// The page's states; `real` (only as "Preview as") follows the phone.
     enum Mode: String, CaseIterable, Identifiable {
-        case real = "Real", ask = "Ask", on = "On", declined = "Said no", off = "Off in Settings", old = "Before iOS 26"
+        case real = "Real", ask = "Ask", on = "On", off = "Off", old = "Before iOS 26"
         var id: String { rawValue }
     }
 
@@ -42,12 +42,9 @@ struct LiveActivitySetupStep: View {
     private var mode: Mode {
         if copy.preview != .real { return copy.preview }
         if !PrayerLiveActivities.supported { return .old }
-        if !enabled { return .off }
-        switch answer {
-        case true?: return .on
-        case false?: return .declined
-        case nil: return .ask
-        }
+        // A no here and iOS's switch off read the same: the card frosted with what they'd lose (owner).
+        if !enabled || answer == false { return .off }
+        return answer == true ? .on : .ask
     }
 
     var body: some View {
@@ -61,7 +58,7 @@ struct LiveActivitySetupStep: View {
                         StepTitle(title: copy[.title], subtitle: copy[.subtitle])
                             .padding(.bottom, 22)
                         if m != .on { Spacer(minLength: 0) }
-                        LiveActivityDemo(prayer: m == .on ? focus : "Asr", veil: m == .off ? .off : m == .old ? .old : m == .declined ? .declined : .none,
+                        LiveActivityDemo(prayer: m == .on ? focus : "Asr", veil: m == .off ? .off : m == .old ? .old : .none,
                                          copy: copy)
                             .padding(.horizontal, 24)
                         if m == .on {
@@ -106,14 +103,11 @@ struct LiveActivitySetupStep: View {
                 SecondaryButton(title: copy[.no]) { confirmSkip = true }
             case .on:
                 PrimaryButton(title: "Continue", action: next)
-            case .declined:
-                // Said no: the card says what that means, frosted over; the way on is outlined, a change of mind quiet.
-                PrimaryButton(title: copy[.declinedContinue], outlined: true, action: next)
-                SecondaryButton(title: copy[.declinedUndo], action: turnOn)
             case .off:
-                // iOS has them off: the card says it, frosted over; the way on is outlined, Settings the quiet way back.
+                // Off (their no, or iOS's switch): the card says it, frosted over; the way on is outlined, a change of mind
+                // quiet — straight back on after a no here, iOS's Settings when its switch is off.
                 PrimaryButton(title: copy[.offContinue], outlined: true, action: next)
-                SecondaryButton(title: copy[.offSettings], action: SettingsLinks.app)
+                SecondaryButton(title: copy[.offSettings]) { if enabled { turnOn() } else { SettingsLinks.app() } }
             case .old:
                 PrimaryButton(title: "Continue", action: next)
             }
@@ -230,7 +224,7 @@ private struct LiveActivityTile: View {
 /// the step under it lit as it goes. iOS off or too old: frosted over with what that means.
 struct LiveActivityDemo: View {
     let prayer: String
-    enum Veil { case none, declined, off, old }
+    enum Veil { case none, off, old }
     let veil: Veil
     let copy: LASetupCopy
     /// The card's look; nil = the Card look setting (`LiveActivityLook`) for this prayer, else the phone's. Settings'
@@ -242,7 +236,14 @@ struct LiveActivityDemo: View {
     @State private var runStart = Date()
     private let t = LATuning.current
 
-    private var steps: [String] { [copy[.stepStart], copy[.stepLive], copy[.stepLast], copy[.stepDone]] }
+    private var steps: [String] { [copy[.stepLive], copy[.stepLast], copy[.stepDone]] }
+
+    /// The window's real end today (its "ends" line keeps it while the window plays in seconds — owner: "the end time
+    /// would stay fixed"); a round time if there's no place yet.
+    private var shownEnd: Date {
+        if let w = prayerWindowToday(prayer) { return w.end }
+        return Calendar.current.date(bySettingHour: 18, minute: 48, second: 0, of: Date()) ?? Date()
+    }
 
     /// ONE card living through its window (owner, 2026-10-12: "one dynamic card … progressively change", not snapshots
     /// cross-fading): a 140-minute window played in ~9 s — it starts, the ring fills and the time left counts down, turns
@@ -275,8 +276,8 @@ struct LiveActivityDemo: View {
     }
 
     private func step(_ minute: Double?) -> Int {
-        guard let minute else { return 3 }
-        return minute < 3 ? 0 : minute < Self.window - 30 ? 1 : 2
+        guard let minute else { return 2 }
+        return minute < Self.window - 30 ? 0 : 1
     }
 
     var body: some View {
@@ -288,9 +289,8 @@ struct LiveActivityDemo: View {
         .overlay { veilView }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(veil == .off ? "\(copy[.offTitle]). \(copy[.offBody])"
-                            : veil == .declined ? "\(copy[.declinedTitle]). \(copy[.declinedBody])"
                             : veil == .old ? "\(copy[.oldTitle]). \(copy[.oldBody])"
-                            : "\(prayer) on the Lock Screen: time left in a ring, and a button to mark it prayed.")
+                            : "\(prayer) on the Lock Screen and in the Dynamic Island: time left in a ring, and a button to mark it prayed.")
         .task(id: prayer) { runStart = Date() }
         .animation(.snappy(duration: 0.25), value: prayer)
     }
@@ -308,8 +308,14 @@ struct LiveActivityDemo: View {
                 .foregroundStyle(Color.primary.opacity(0.7))
                 .padding(.leading, 4)
                 .contentTransition(.opacity)
+                // The Dynamic Island as it sits while the phone's in use (owner: the page should show it too).
+                LAFoldedIsland(state: state, stale: false, t: t)
+                    .frame(maxWidth: .infinity)
+                    .allowsHitTesting(false)
+                    .padding(.bottom, 2)
                 ZStack {
                     LALockCardBody(state: state, n: 0, ended: false, t: t)
+                        .environment(\.laShownEnd, shownEnd)
                         .environment(\.colorScheme, look ?? LiveActivityLook.current.dark(for: prayer).map { $0 ? .dark : .light } ?? systemScheme)
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
@@ -354,9 +360,9 @@ struct LiveActivityDemo: View {
                             .font(.system(size: 26))
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
-                        Text(copy[veil == .off ? .offTitle : veil == .declined ? .declinedTitle : .oldTitle])
+                        Text(copy[veil == .off ? .offTitle : .oldTitle])
                             .font(.system(.headline, design: .rounded))
-                        Text(copy[veil == .off ? .offBody : veil == .declined ? .declinedBody : .oldBody])
+                        Text(copy[veil == .off ? .offBody : .oldBody])
                             .font(.system(.subheadline, design: .rounded))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -378,10 +384,9 @@ struct LiveActivityDemo: View {
     static let shared = LASetupCopy()
 
     enum Key: String, CaseIterable, Identifiable {
-        case title, subtitle, cardLabel, stepStart, stepLive, stepLast, stepDone
+        case title, subtitle, cardLabel, stepLive, stepLast, stepDone
         case yes, no, tilesHeader, tilesBody
         case skipTitle, skipBody, skipKeep, skipAnyway
-        case declinedTitle, declinedBody, declinedContinue, declinedUndo
         case offTitle, offBody, offContinue, offSettings
         case oldTitle, oldBody
         var id: String { rawValue }
@@ -390,11 +395,10 @@ struct LiveActivityDemo: View {
         var group: String {
             switch self {
             case .title, .subtitle: return "Top"
-            case .cardLabel, .stepStart, .stepLive, .stepLast, .stepDone: return "The card"
+            case .cardLabel, .stepLive, .stepLast, .stepDone: return "The card"
             case .yes, .no, .tilesHeader, .tilesBody: return "Asking, then on"
             case .skipTitle, .skipBody, .skipKeep, .skipAnyway: return "No thanks (the alert)"
-            case .declinedTitle, .declinedBody, .declinedContinue, .declinedUndo: return "After a no (frosted)"
-            case .offTitle, .offBody, .offContinue, .offSettings: return "Off in iOS Settings"
+            case .offTitle, .offBody, .offContinue, .offSettings: return "Off (a no here, or iOS's switch)"
             case .oldTitle, .oldBody: return "Before iOS 26"
             }
         }
@@ -404,10 +408,9 @@ struct LiveActivityDemo: View {
             case .title: return "Title"
             case .subtitle: return "Subtitle"
             case .cardLabel: return "Card label (after the prayer's name)"
-            case .stepStart: return "Step 1"
-            case .stepLive: return "Step 2"
-            case .stepLast: return "Step 3"
-            case .stepDone: return "Step 4"
+            case .stepLive: return "Step 1"
+            case .stepLast: return "Step 2"
+            case .stepDone: return "Step 3"
             case .yes: return "Yes button"
             case .no: return "No button"
             case .tilesHeader: return "Tiles header"
@@ -416,10 +419,6 @@ struct LiveActivityDemo: View {
             case .skipBody: return "Alert message"
             case .skipKeep: return "Alert: keep"
             case .skipAnyway: return "Alert: skip"
-            case .declinedTitle: return "Frost title"
-            case .declinedBody: return "Frost line"
-            case .declinedContinue: return "Continue button"
-            case .declinedUndo: return "Change of mind"
             case .offTitle: return "Frost title"
             case .offBody: return "Frost line"
             case .offContinue: return "Continue button"
@@ -429,35 +428,30 @@ struct LiveActivityDemo: View {
             }
         }
 
-        static let groups = ["Top", "The card", "Asking, then on", "No thanks (the alert)", "After a no (frosted)", "Off in iOS Settings", "Before iOS 26"]
+        static let groups = ["Top", "The card", "Asking, then on", "No thanks (the alert)", "Off (a no here, or iOS's switch)", "Before iOS 26"]
     }
 
     /// The words as shipped. Kept honest about what it does (the audit, 2026-10-11): a card shows from a prayer's
     /// start until it's marked, and marking or opening shukr keeps the next ones coming.
     static let defaults: [Key: String] = [
-        .title: "On your Lock Screen",
-        .subtitle: "From the moment a prayer starts, see how long is left at a glance, and mark it prayed without opening shukr.",
-        .cardLabel: "Lock Screen",
-        .stepStart: "Starts",
+        .title: "Live Activities",
+        .subtitle: "From the moment a prayer starts, see how long is left on your Lock Screen and in the Dynamic Island, and mark it prayed without opening shukr.",
+        .cardLabel: "Dynamic Island and Lock Screen",
         .stepLive: "Counts down",
         .stepLast: "Last 30 min",
         .stepDone: "Marked",
         .yes: "Show my prayers",
         .no: "No thanks, I’ll check the app",
         .tilesHeader: "Which prayers?",
-        .tilesBody: "We show the daytime prayers, the ones a busy day pushes back. Each shows from its start until you mark it, and marking them keeps the next ones coming.",
+        .tilesBody: "We start you with Dhuhr, Asr and Maghrib, the prayers in the middle of your day, where it helps most. Turn on all five, or just one: it’s up to you.",
         .skipTitle: "Go without Live Activities?",
-        .skipBody: "You’d lose the countdown on your Lock Screen and marking a prayer from there. Your reminders still come either way.",
+        .skipBody: "You’d lose the countdown on your Lock Screen and in the Dynamic Island, and marking a prayer from there. Your notifications still come either way.",
         .skipKeep: "Show my prayers",
         .skipAnyway: "Skip it",
-        .declinedTitle: "No Live Activities",
-        .declinedBody: "You’ll open shukr to see how long is left in a prayer. Turn them on any time in Settings.",
-        .declinedContinue: "Continue without them",
-        .declinedUndo: "I changed my mind",
         .offTitle: "Live Activities are off",
-        .offBody: "iOS has them turned off for shukr. Turn them on in Settings any time.",
+        .offBody: "No countdown on your Lock Screen or in the Dynamic Island: you’ll open shukr to see how long is left. Turn them on in Settings any time.",
         .offContinue: "Continue without them",
-        .offSettings: "I changed my mind. Open Settings",
+        .offSettings: "I changed my mind",
         .oldTitle: "Coming with iOS 26",
         .oldBody: "Your iPhone needs iOS 26 for this. Once you update, it’s waiting for you in Settings.",
     ]
@@ -585,7 +579,9 @@ struct LiveActivitySetupPreview: View {
             SetupRing(progress: Self.progress, symbol: Self.symbol)
                 .padding(.top, 4)
             LiveActivitySetupStep(next: { dismiss() })
+                .padding(.top, 26)          // as FirstRunSetupView: every title at the same height under the ring
         }
+        .fontDesign(.rounded)
         .sheet(isPresented: $showCopyTuner) {
             LASetupCopyPanel()
                 .presentationDetents([.medium, .large])

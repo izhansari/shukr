@@ -2018,6 +2018,12 @@ struct LAEnds<Content: View>: View {
 }
 
 /// The Lock Screen card (always dark).
+extension EnvironmentValues {
+    /// A picture of the card (the setup page and Settings' Card look play a window in seconds): its "ends" line keeps
+    /// this time instead of the moving window's (owner: "the end time would stay fixed"). Never set on the real card.
+    @Entry var laShownEnd: Date? = nil
+}
+
 struct LALockCard: View {
     let state: PrayerWindowAttributes.ContentState
     let n: Int
@@ -2109,6 +2115,7 @@ struct LANameLines: View {
     let ended: Bool
     let big: Bool
     let t: LATuning
+    @Environment(\.laShownEnd) private var shownEnd
     var body: some View {
         let title = big ? t.titleSize : t.islandTitleSize
         let line = big ? t.timeLeftSize : t.islandLineSize
@@ -2130,7 +2137,7 @@ struct LANameLines: View {
                 Text("\(state.end.formatted(date: .omitted, time: .shortened)) · not marked")
                     .font(.system(size: line)).foregroundStyle(.secondary)
             } else if !big {
-                Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
+                Text("ends \((shownEnd ?? state.end).formatted(date: .omitted, time: .shortened))")
                     .font(.system(size: line)).foregroundStyle(.secondary)
             } else {
                 let lastHalf = state.end.addingTimeInterval(-30 * 60)
@@ -2143,7 +2150,7 @@ struct LANameLines: View {
                 }
                 .font(.system(size: line))
                 if big {
-                    Text("ends \(state.end.formatted(date: .omitted, time: .shortened))")
+                    Text("ends \((shownEnd ?? state.end).formatted(date: .omitted, time: .shortened))")
                         .font(.system(size: small)).foregroundStyle(.secondary)
                 }
                 }
