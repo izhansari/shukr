@@ -2005,13 +2005,16 @@ struct LAEnds<Content: View>: View {
         // ONE structure in every state (owner: "the shared elements stay … just the new stuff animates in"): when the
         // card is marked or goes stale only the masks change, so iOS keeps the name, the ring, the card itself, and fades
         // just what's new or gone (an if / else here swapped the whole card in a cross-fade).
+        // Marked: the SAME gates as while running, their switch set far off — a different mask (Color.white) still made
+        // iOS fade the whole piece, so "Asr" ghosted as it was marked (the sim's island).
         let marked = state.markedAt != nil
+        let edge = marked ? Date.distantFuture : state.end
         ZStack {
             content(false).mask {
-                if marked { Color.white } else if stale { Color.clear } else { LAGate(from: nil, until: state.end) }
+                if stale && !marked { Color.clear } else { LAGate(from: nil, until: edge) }
             }
             content(true).mask {
-                if marked { Color.clear } else if stale { Color.white } else { LAGate(from: state.end, until: nil) }
+                if stale && !marked { Color.white } else { LAGate(from: edge, until: nil) }
             }
         }
     }
@@ -2402,8 +2405,14 @@ struct LAGlyphs: View {
 /// fades out (owner: "feels like one living card"). iOS plays transitions with its own timing (animation modifiers are
 /// ignored), up to 2 s.
 enum LATransitions {
-    static let swap = AnyTransition.asymmetric(insertion: .scale(scale: 0.6).combined(with: .opacity), removal: .scale(scale: 0.8).combined(with: .opacity))
-    static let line = AnyTransition.asymmetric(insertion: .offset(y: 6).combined(with: .opacity), removal: .opacity)
+    // Each with its own timing (Live Activities honour a transition's .animation): the old out fast, the new in just
+    // after — at iOS's default the two overlapped for ~0.6 s and the old lingered (owner: "only brings in new items").
+    private static let into = Animation.easeOut(duration: 0.25)
+    // The old goes at once (a fading-out old under the fading-in new still overlapped for ~0.3 s), the new comes in.
+    static let swap = AnyTransition.asymmetric(insertion: AnyTransition.scale(scale: 0.6).combined(with: .opacity).animation(into),
+                                               removal: .identity)
+    static let line = AnyTransition.asymmetric(insertion: AnyTransition.offset(y: 5).combined(with: .opacity).animation(into),
+                                               removal: .identity)
 }
 
 /// Pressed: a touch darker and smaller.
