@@ -67,7 +67,9 @@ struct LiveActivitySetupStep: View {
             GeometryReader { geo in
                 ScrollView {
                     VStack(spacing: 0) {
-                        StepTitle(title: copy[.title], subtitle: copy[.subtitle])
+                        // Once on, the subtitle goes: the card has said it, and the tiles need the room (owner: the page must
+                        // never run past the screen).
+                        StepTitle(title: copy[.title], subtitle: m == .on ? nil : copy[.subtitle])
                             .padding(.bottom, 22)
                         if m != .on { Spacer(minLength: 0) }
                         LiveActivityDemo(prayer: m == .on ? focus : "Asr", veil: m == .off ? .off : m == .old ? .old : .none,
@@ -458,7 +460,7 @@ struct LiveActivityDemo: View {
         .yes: "Show my prayers",
         .no: "No thanks, I’ll check the app",
         .tilesHeader: "Which prayers?",
-        .tilesBody: "We start you with Dhuhr, Asr and Maghrib, the prayers in the middle of your day, where it helps most. Turn on all five, or just one: it’s up to you.",
+        .tilesBody: "We start you with the prayers in the middle of your day, where it helps most. Pick any you like.",
         .skipTitle: "Go without Live Activities?",
         .skipBody: "You’d lose the countdown on your Lock Screen and in the Dynamic Island, and marking a prayer from there. Your notifications still come either way.",
         .skipKeep: "Show my prayers",
