@@ -1545,7 +1545,9 @@ private struct SetupOpening: View {
         typealias T = CircleMotion.Setup
         Task { @MainActor in
             await CircleMotion.animate(T.openingAway) { leaving = true }
-            if landsOnCircle, !reduceMotion, let target = WelcomeTarget.circleFrame, target.width > 100, circleFrame.width > 0 {
+            // Only a circle that's really on screen (a stale frame from a zero-size layout sent the ring to the top left).
+            if landsOnCircle, !reduceMotion, let target = WelcomeTarget.circleFrame, target.width > 100, circleFrame.width > 0,
+               UIScreen.main.bounds.contains(CGPoint(x: target.midX, y: target.midY)), target.minX >= 0 {
                 typealias O = CircleMotion.Opening
                 markOffset = CGSize(width: target.midX - circleFrame.midX, height: target.midY - circleFrame.midY)
                 mark.startDrawn = true
@@ -3707,9 +3709,11 @@ private struct ReviewStep: View {
             // "just give it some padding or spacing from the top only"). The card is as tall as its rows, or the room left
             // if that's less: then the rows scroll inside it and the title and buttons stay put (owner: the worst case on a
             // 6.1" phone — location and notifications both off — runs a few points over with the roomier rows).
-            GeometryReader { geo in
-                let rows = 7 * rowHeight.rounded() + 8
-                VStack(spacing: 0) {
+            // The room is measured, not read from a GeometryReader: with one here, the Salah page under the setup at launch
+            // was only ever laid out at zero size, so the end's ring flew to the top left and the page stayed blank (bisected
+            // to the card's first version, dc3cda8).
+            let rows = 7 * rowHeight.rounded() + 8
+            VStack(spacing: 0) {
                     ScrollView {
                         VStack(spacing: 0) {
                             // Two lines a row, always (owner: never more than a page): a permission not given says so on
@@ -3728,11 +3732,11 @@ private struct ReviewStep: View {
                     }
                     .scrollBounceBehavior(.basedOnSize)
                     .scrollIndicators(.hidden)
-                    .frame(height: max(0, min(rows, geo.size.height - 24)))
+                    .frame(height: max(0, min(rows, room - 24)))
                     // Clipped: its last 70 pt fade out, so a cut row reads as "there's more" (Sami's idea), not a mistake —
                     // a share of the card's height (18 %) was too little to see (owner).
                     .mask {
-                        let shown = max(1, min(rows, geo.size.height - 24))
+                        let shown = max(1, min(rows, room - 24))
                         if rows > shown {
                             LinearGradient(stops: [.init(color: .black, location: 0),
                                                    .init(color: .black, location: max(0, 1 - 70 / shown)),
@@ -3751,10 +3755,11 @@ private struct ReviewStep: View {
                         .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1))
                     .padding(.horizontal, 20)
                     Spacer(minLength: 0)
-                }
-                .padding(.top, 16)
-                .padding(.bottom, 8)
             }
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { room = $0 }
             // Both sit on the bottom edge, out then in: the nudge goes, then bismillah rises into its own place (crossfaded,
             // bismillah came in over the buttons, mid-height, then dropped).
             ZStack(alignment: .bottom) {
@@ -3821,6 +3826,8 @@ private struct ReviewStep: View {
     /// 56 pt (owner: more breathing room): on a 6.1" iPhone everything fits except the worst case (location and
     /// notifications both off), where the card scrolls its last few points.
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 56
+    /// The room between the title and the buttons (measured; the card takes its rows' height or this, less 24).
+    @State private var room: CGFloat = 10_000
 
     // MARK: values
 
