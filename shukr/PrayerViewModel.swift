@@ -19,7 +19,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     /// Today's row for `name` whose window starts at `start` (a Live Activity's window), if it's loaded.
     func todaysRow(named name: String, startingAt start: Date) -> PrayerModel? {
-        todaysPrayers.first { $0.name == name && abs($0.startTime.timeIntervalSince(start)) < 120 }
+        // Within 3 h, not 2 min: a card's start can be off by a time change it wasn't corrected for yet (a new place, a
+        // madhab change); today's rows hold one row per prayer (Frank).
+        todaysPrayers.first { $0.name == name && abs($0.startTime.timeIntervalSince(start)) < 3 * 3600 }
     }
 
     /// A fresh fix for a prayer marked from outside (a widget's mark, run in the app — PrayerLiveActivities).

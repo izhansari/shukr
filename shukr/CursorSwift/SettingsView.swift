@@ -1568,7 +1568,7 @@ struct LiveActivitySettingsSection: View {
                 .padding(.vertical, 4)
             }
             if showInfo && enabled {
-                Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it or the next prayer begins. iOS keeps up to five waiting; opening shukr tops them up.")
+                Text("A prayer that's on shows on your Lock Screen and in the Dynamic Island from the moment it starts — its ring, the time left and a button to mark it — until you mark it. Once its time is up it shows as ended until the next prayer's card starts or you open shukr. iOS keeps up to five waiting; opening shukr tops them up.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

@@ -213,8 +213,9 @@ enum PrayerLiveActivities {
 
     /// Today's and tomorrow's windows still to come or under way, for the prayers that are on: Fajr → sunrise,
     /// Dhuhr → Asr, Asr → Maghrib, Maghrib → Isha, Isha → 11:59 PM.
-    static func windows(now: Date = Date()) -> [Window] {
-        guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
+    /// nil = unknown (no location yet, or the app group unreadable before the first unlock): then `plan` ends nothing.
+    static func windows(now: Date = Date()) -> [Window]? {
+        guard let coords = try? PrayerUtils.getUserCoordinates() else { return nil }
         let params = PrayerUtils.getCalculationParameters()
         let cal = Calendar.current
         var out: [Window] = []
@@ -241,7 +242,12 @@ enum PrayerLiveActivities {
     /// a little (a new place, method or madhab) keep their card rather than lose it from the background, where it can't be
     /// put back (Frank: a significant-change relaunch re-plans in the background within 10–25 s).
     private static func matches(_ st: PrayerWindowAttributes.ContentState, _ w: Window) -> Bool {
-        st.label == w.name && abs(st.start.timeIntervalSince(w.start)) < 45 * 60
+        // The same prayer of the same day: a prayer's next day is ~24 h on, so 6 h holds any move (a Hanafi Asr is ~1 h).
+        st.label == w.name && abs(st.start.timeIntervalSince(w.start)) < 6 * 3600
+    }
+    /// Moved more than location jitter (a start crossing a minute boundary isn't a move — Frank).
+    private static func moved(_ st: PrayerWindowAttributes.ContentState, _ w: Window) -> Bool {
+        abs(st.start.timeIntervalSince(w.start)) > 120 || abs(st.end.timeIntervalSince(w.end)) > 120
     }
 
     #if DEBUG
@@ -260,11 +266,14 @@ enum PrayerLiveActivities {
         #endif
         let now = Date()
         let bg = UIApplication.shared.applicationState == .background
-        let want = windows(now: now)
-        let wantIDs = Set(want.map(\.id))
+        guard let want = windows(now: now) else {
+            PrayerWindowLog.add("plan (\(reason)\(bg ? ", bg" : "")): no prayer times (no location / locked) — left as is")
+            return 0
+        }
         let all = Activity<PrayerWindowAttributes>.activities
         let liveStarts = all.filter { $0.activityState == .active && $0.content.state.markedAt == nil }.map(\.content.state.start)
         var ended: [String] = []
+        var corrected: [String] = []
         var endedIDs = Set<String>()
         var ending: [Task<Void, Never>] = []
         func end(_ a: Activity<PrayerWindowAttributes>, _ why: String) {
@@ -295,7 +304,18 @@ enum PrayerLiveActivities {
             else if let latest = liveStarts.max(), st.start < latest, a.activityState != .pending { end(a, "next prayer began") }
             else if !LiveActivityPrefs.isOn(st.label) { end(a, "turned off") }
             else if !want.contains(where: { matches(st, $0) }) { end(a, "no such window now") }
-            else if !bg, a.activityState == .pending, !wantIDs.contains(a.attributes.n) { end(a, "times moved") }   // re-added below at the new time
+            else if let w = want.first(where: { matches(st, $0) }), moved(st, w) {
+                if !bg && a.activityState == .pending {
+                    end(a, "times moved")   // re-added below at the new time, its start alert with it
+                } else {
+                    // Live (or from the background, where a new one can't be asked for): corrected in place — the ring
+                    // and the end time; a pending card's start alert keeps its old time until the next open (Frank).
+                    var fixed = st
+                    fixed.start = w.start; fixed.end = w.end
+                    Task { await a.update(ActivityContent(state: fixed, staleDate: w.end)) }
+                    corrected.append("\(st.label) to \(w.start.formatted(date: .omitted, time: .shortened))–\(w.end.formatted(date: .omitted, time: .shortened)) (kept)")
+                }
+            }
             else if a.activityState != .pending, done(Window(name: st.label, start: st.start, end: st.end)) { end(a, "prayed") }
         }
         var live = Activity<PrayerWindowAttributes>.activities.filter {
@@ -343,6 +363,7 @@ enum PrayerLiveActivities {
         }
         var line = "plan (\(reason)\(bg ? ", bg" : "")): holding \(held.count)"
         if !ended.isEmpty { line += " · ended " + ended.joined(separator: ", ") }
+        if !corrected.isEmpty { line += " · corrected " + corrected.joined(separator: ", ") }
         if !added.isEmpty { line += " · added " + added.joined(separator: ", ") }
         if let failed { line += " · couldn't add \(failed)" }
         if want.isEmpty { line += " · no windows (no location, or all off)" }

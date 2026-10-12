@@ -1776,7 +1776,15 @@ struct PrayerWindowMarkIntent: LiveActivityIntent {
     init(n: Int) { self.n = n }
     func perform() async throws -> some IntentResult {
         PrayerWindowLog.add("Mark prayed tapped on #\(n)")
-        await PrayerWindowHooks.mark?(n)
+        if let mark = PrayerWindowHooks.mark {
+            await mark(n)
+        } else if let a = Activity<PrayerWindowAttributes>.activities.first(where: { $0.attributes.n == n }) {
+            // The app's hooks weren't set yet (Frank): the store's own mark, and the card goes — never a silent no-op.
+            let st = a.content.state
+            let done = SharedStore.markPrayerComplete(named: st.label, start: st.start, end: st.end)
+            await a.end(nil, dismissalPolicy: .immediate)
+            PrayerWindowLog.add("Mark prayed #\(n) without the app's hooks: store mark \(done ? "done" : "not needed / failed"), card ended")
+        }
         return .result()
     }
 }

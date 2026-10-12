@@ -220,8 +220,9 @@ struct shukrApp: App {
         }
         #endif
         // Each prayer window as a Live Activity (iOS 26+) — every build (it sat inside the DEBUG block above: in Release
-        // the card's ✓ marked nothing and nothing planned — Frank's audit).
-        Task { @MainActor in PrayerLiveActivities.onLaunch() }
+        // the card's ✓ marked nothing and nothing planned — Frank's audit). Called directly, not in a Task: a cold launch
+        // from the card's ✓ runs the intent right after, and its hooks must be set by then (Frank).
+        PrayerLiveActivities.onLaunch()
         WhatsNew.noteLaunch()      // a new build moves the last one to "previous" (NEW badges)
         // 1a) Create EnvLocationManager in a local var
         let manager = EnvLocationManager()
