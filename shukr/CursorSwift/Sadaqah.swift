@@ -22,11 +22,26 @@ struct SadaqahCharity: Identifiable, Hashable {
     let does: String
     let symbol: String
     let url: URL
-    /// Its ⓘ sheet: a few sentences on the work, then the facts behind listing it (registration, rating, where).
     /// The kinds of work it does (a charity can be in several; the page's filter).
     var categories: Set<SadaqahCategory> = []
+    /// Its ⓘ sheet: a few sentences on the work, then the facts behind listing it (registration, rating, where).
     var about: String = ""
     var facts: [SadaqahFact] = []
+    /// Which side of the page it's on.
+    var kind: GiveKind = .sadaqah
+}
+
+/// The page's two sides (owner, 2026-10-13: one place to give — sadaqah and community; no candidates).
+enum GiveKind: String, CaseIterable, Identifiable {
+    case sadaqah, community
+    var id: String { rawValue }
+    var title: String { self == .sadaqah ? "Sadaqah" : "Community" }
+    var footer: String {
+        switch self {
+        case .sadaqah: "Tap ⓘ to see who they are and why they're here. Each opens on the charity's own website; shukr takes nothing and never sees your payment."
+        case .community: "Muslim groups working for our community's rights and voice. Tap ⓘ to learn more. Each opens on the group's own website; shukr takes nothing and never sees your payment."
+        }
+    }
 }
 
 /// One line of a charity's ⓘ sheet.
@@ -35,24 +50,41 @@ struct SadaqahFact: Hashable {
     let text: String
 }
 
-/// The page's filter: All, or one kind of work (owner: grouped once the list grows).
+/// The page's filter: All, or one kind of work (owner: grouped once the list grows); each side has its own.
+/// ("In the US" went when IMAN and Muslim Legal Fund moved to Community: only ICNA Relief was left in it.)
 enum SadaqahCategory: String, CaseIterable, Identifiable {
-    case atHome, relief, orphans, water
+    case relief, orphans, water
+    case civilRights, civic, legal, local, research
     var id: String { rawValue }
+    var kind: GiveKind {
+        switch self {
+        case .relief, .orphans, .water: .sadaqah
+        default: .community
+        }
+    }
+    static func of(_ kind: GiveKind) -> [SadaqahCategory] { allCases.filter { $0.kind == kind } }
     var title: String {
         switch self {
-        case .atHome: "In the US"
         case .relief: "Emergency relief"
         case .orphans: "Orphans"
         case .water: "Water"
+        case .civilRights: "Civil rights"
+        case .civic: "Civic & voting"
+        case .legal: "Legal defense"
+        case .local: "Local community"
+        case .research: "Research & education"
         }
     }
     var symbol: String {
         switch self {
-        case .atHome: "house.fill"
         case .relief: "cross.case.fill"
         case .orphans: "figure.and.child.holdinghands"
         case .water: "drop.fill"
+        case .civilRights: "hand.raised.fill"
+        case .civic: "checkmark.seal.fill"
+        case .legal: "building.columns.fill"
+        case .local: "house.fill"
+        case .research: "book.fill"
         }
     }
 }
@@ -65,8 +97,8 @@ enum SadaqahCharities {
     private static func nonprofit(_ ein: String) -> SadaqahFact {
         SadaqahFact(symbol: "building.columns", text: "US nonprofit, 501(c)(3) · EIN \(ein)")
     }
-    private static func rated(_ score: Int) -> SadaqahFact {
-        SadaqahFact(symbol: "star", text: "Charity Navigator: \(score) / 100, four stars (Oct 2026)")
+    private static func rated(_ score: Int, stars: Int = 4) -> SadaqahFact {
+        SadaqahFact(symbol: "star", text: "Charity Navigator: \(score) / 100, \(stars == 4 ? "four" : "three") stars (Oct 2026)")
     }
     private static let notRated = SadaqahFact(symbol: "star", text: "Not yet rated by Charity Navigator")
     private static func works(_ text: String) -> SadaqahFact { SadaqahFact(symbol: "globe", text: text) }
@@ -126,19 +158,50 @@ enum SadaqahCharities {
                                works("Works worldwide")]),
         SadaqahCharity(id: "icna", name: "ICNA Relief USA", does: "Food pantries, shelters and disaster relief in the US",
                        symbol: "house.fill", url: URL(string: "https://icnarelief.org/donate/")!,
-                       categories: [.atHome, .relief],
+                       categories: [.relief],
                        about: "Helps people in the US: food pantries, women's shelters, family services and disaster relief across the US.",
                        facts: [nonprofit("04-3810161"), rated(93), works("Works across the US")]),
         SadaqahCharity(id: "iman", name: "IMAN", does: "Health, wellness and community in Chicago",
                        symbol: "building.2.fill", url: URL(string: "https://imancentral.org/donate/")!,
-                       categories: [.atHome],
+                       categories: [.local],
                        about: "The Inner-City Muslim Action Network: a free health center, housing, job training and the arts on Chicago's South Side.",
-                       facts: [nonprofit("36-4167433"), rated(94), works("Works in Chicago")]),
+                       facts: [nonprofit("36-4167433"), rated(94), works("Works in Chicago")], kind: .community),
         SadaqahCharity(id: "mlfa", name: "Muslim Legal Fund of America", does: "Legal defense for Muslims in the US",
                        symbol: "building.columns.fill", url: URL(string: "https://mlfa.org/donate")!,
-                       categories: [.atHome],
+                       categories: [.legal],
                        about: "Pays for lawyers in cases where Muslims in America face injustice: civil rights, discrimination and religious freedom.",
-                       facts: [nonprofit("01-0548371"), rated(92), works("Works across the US")]),
+                       facts: [nonprofit("01-0548371"), rated(92), works("Works across the US")], kind: .community),
+        // Community, checked 2026-10-13 (owner: sadaqah and community, no candidates; never a tax-deductible claim).
+        SadaqahCharity(id: "ispu", name: "ISPU", does: "Research and polling on American Muslims",
+                       symbol: "chart.bar.fill", url: URL(string: "https://ispu.donorsupport.co/-/XZJZAYEL")!,
+                       categories: [.research],
+                       about: "The Institute for Social Policy and Understanding: research and polling on American Muslims, used by journalists, policymakers and communities.",
+                       facts: [nonprofit("38-3633581"), rated(97), works("Works across the US")], kind: .community),
+        SadaqahCharity(id: "emgage", name: "Emgage Foundation", does: "Muslim voter education and civic engagement",
+                       symbol: "checkmark.seal.fill", url: URL(string: "https://emgageusa.org/donate/")!,
+                       categories: [.civic],
+                       about: "Helps American Muslims register, learn about the issues and vote, with chapters in several states.",
+                       facts: [nonprofit("26-1441032"), rated(97), works("Works across the US")], kind: .community),
+        SadaqahCharity(id: "mpac", name: "MPAC Foundation", does: "Policy and media advocacy for American Muslims",
+                       symbol: "megaphone.fill", url: URL(string: "https://www.mpac.org/donate")!,
+                       categories: [.civilRights],
+                       about: "The Muslim Public Affairs Council's foundation: policy work, media and training so American Muslims are heard.",
+                       facts: [nonprofit("95-4675391"), rated(88, stars: 3), works("Works across the US")], kind: .community),
+        SadaqahCharity(id: "muslimadvocates", name: "Muslim Advocates", does: "Fighting anti-Muslim discrimination in court and policy",
+                       symbol: "hand.raised.fill", url: URL(string: "https://muslimadvocates.org/donate/")!,
+                       categories: [.civilRights, .legal],
+                       about: "Takes on anti-Muslim discrimination through lawsuits and policy work.",
+                       facts: [nonprofit("30-0298794"), rated(82, stars: 3), works("Works across the US")], kind: .community),
+        SadaqahCharity(id: "ing", name: "Islamic Networks Group", does: "Teaching about Islam in schools and communities",
+                       symbol: "book.fill", url: URL(string: "https://ing.org/donate/")!,
+                       categories: [.research],
+                       about: "ING trains speakers who teach about Islam and Muslims in schools, workplaces and interfaith settings.",
+                       facts: [nonprofit("77-0412815"), rated(86, stars: 3), works("Works across the US")], kind: .community),
+        SadaqahCharity(id: "aman", name: "AMAN", does: "Community services and masjid support in Brooklyn",
+                       symbol: "person.3.fill", url: URL(string: "https://amanusa.org/donation/")!,
+                       categories: [.local],
+                       about: "The American Muslim Advocacy Network: community services, masjid support and Ask the Mufti, based in Brooklyn.",
+                       facts: [nonprofit("33-1743599"), notRated, works("Works in Brooklyn, New York")], kind: .community),
     ]
 }
 
@@ -161,8 +224,10 @@ struct SadaqahDonation: Codable, Identifiable, Hashable {
 
 /// What a donation was for.
 enum SadaqahPurpose: String, Codable, CaseIterable, Identifiable {
-    case sadaqah, zakat, ramadan, relief, orphans, masjid, other
+    case sadaqah, zakat, ramadan, relief, orphans, masjid, community, other
     var id: String { rawValue }
+    /// Which side of the page it counts towards (Zakat / Sadaqah totals never include community gifts).
+    var kind: GiveKind { self == .community ? .community : .sadaqah }
     var title: String {
         switch self {
         case .sadaqah: "Sadaqah"
@@ -171,6 +236,7 @@ enum SadaqahPurpose: String, Codable, CaseIterable, Identifiable {
         case .relief: "Emergency relief"
         case .orphans: "Orphans"
         case .masjid: "Masjid"
+        case .community: "Community"
         case .other: "Other"
         }
     }
@@ -182,6 +248,7 @@ enum SadaqahPurpose: String, Codable, CaseIterable, Identifiable {
         case .relief: "cross.case.fill"
         case .orphans: "figure.and.child.holdinghands"
         case .masjid: "building.columns.fill"
+        case .community: "person.3.fill"
         case .other: "ellipsis.circle.fill"
         }
     }
@@ -228,11 +295,12 @@ final class SadaqahLog {
     }
 
     /// The total given in `currency` since `start` (other currencies are left out of a total, not converted).
-    func total(since start: Date? = nil, purpose: SadaqahPurpose? = nil) -> Double {
+    func total(since start: Date? = nil, purpose: SadaqahPurpose? = nil, kind: GiveKind? = nil) -> Double {
         donations.filter { d in
             d.currency == Self.currency
                 && (start.map { d.date >= $0 } ?? true)
                 && (purpose.map { d.purpose == $0 } ?? true)
+                && (kind.map { d.purpose.kind == $0 } ?? true)
         }
         .reduce(0) { $0 + $1.amount }
     }
@@ -272,6 +340,8 @@ struct SadaqahPage: View {
     @State private var asking: SadaqahCharity?
     /// Set by its Yes: the log sheet opens once the question has gone.
     @State private var confirmed: SadaqahCharity?
+    /// Sadaqah | Community (owner).
+    @State private var kind: GiveKind = .sadaqah
     /// The charities shown: all, or one kind of work.
     @State private var category: SadaqahCategory?
     /// The charity whose ⓘ sheet is up.
@@ -297,9 +367,17 @@ struct SadaqahPage: View {
                     .frame(maxWidth: .infinity)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 6, trailing: 20))
+                    .listRowSeparator(.hidden)
+                kindSwitch
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 0, trailing: 20))
+                    .listRowSeparator(.hidden)
             }
             Section {
-                ForEach(SadaqahCharities.all.filter { c in category.map { c.categories.contains($0) } ?? true }) { charity in
+                ForEach(SadaqahCharities.all.filter { c in
+                    c.kind == kind && (category.map { c.categories.contains($0) } ?? true)
+                }) { charity in
                     HStack(spacing: 4) {
                         Button { give(to: charity) } label: { CharityRow(charity: charity) }
                             .buttonStyle(.plain)
@@ -319,10 +397,10 @@ struct SadaqahPage: View {
                 HStack {
                     Text("Organizations")
                     Spacer()
-                    CategoryFilter(selection: $category).textCase(nil)
+                    CategoryFilter(kind: kind, selection: $category).textCase(nil)
                 }
             } footer: {
-                Text("Tap ⓘ to see who they are and why they're here. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
+                Text(kind.footer)
             }
             Section {
                 if log.donations.isEmpty {
@@ -400,6 +478,30 @@ struct SadaqahPage: View {
         SadaqahSafari.open(charity.url) { asking = charity }
     }
 
+    /// Sadaqah | Community, in the goal page's capsule switch (NewTaskFlow's Count | Minutes); a switch clears the filter.
+    private var kindSwitch: some View {
+        HStack(spacing: 0) {
+            ForEach(GiveKind.allCases) { k in
+                let on = kind == k
+                Button {
+                    guard k != kind else { return }
+                    withAnimation(.snappy(duration: 0.25)) { kind = k; category = nil }
+                } label: {
+                    Text(k.title)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(on ? Color.primary : Color.secondary)
+                        .frame(width: 128, height: 34)
+                        .background(Capsule().fill(on ? Color(.systemBackground) : .clear)
+                            .shadow(color: .black.opacity(on ? 0.08 : 0), radius: 4, y: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        .sensoryFeedback(.selection, trigger: kind)
+    }
+
     /// The soft grey of the log sheet's cards.
     static let card = Color.primary.opacity(0.045)
 
@@ -409,6 +511,7 @@ struct SadaqahPage: View {
         let count = log.donations.filter { $0.date >= startOfYear }.count
         let zakat = log.total(since: startOfYear, purpose: .zakat)
         let ramadan = log.total(since: startOfYear, purpose: .ramadan)
+        let community = log.total(since: startOfYear, kind: .community)
         return VStack(spacing: 6) {
             Text("Give to Causes").font(.system(size: 30, weight: .light, design: .rounded))
             Text("Trusted places to give, and a private record of what you've given")
@@ -420,7 +523,7 @@ struct SadaqahPage: View {
                 .contentTransition(.numericText())
                 .padding(.top, 14)
             HStack(spacing: 4) {
-                Text(count == 0 ? "Given this year" : "Given this year · " + detailLine(count: count, zakat: zakat, ramadan: ramadan))
+                Text(count == 0 ? "Given this year" : "Given this year · " + detailLine(count: count, zakat: zakat, ramadan: ramadan, community: community, year: year))
                     .multilineTextAlignment(.center)
                 Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             }
@@ -429,9 +532,14 @@ struct SadaqahPage: View {
         .padding(.top, 4)
     }
 
-    private func detailLine(count: Int, zakat: Double, ramadan: Double) -> String {
+    private func detailLine(count: Int, zakat: Double, ramadan: Double, community: Double, year: Double) -> String {
         guard count > 0 else { return "Nothing logged yet this year" }
         var parts = [count == 1 ? "1 donation" : "\(count) donations"]
+        // Both sides given to: the split, so sadaqah (and zakat) stays its own number.
+        if community > 0, community < year {
+            parts.append("Sadaqah \((year - community).money())")
+            parts.append("Community \(community.money())")
+        }
         if zakat > 0 { parts.append("Zakat \(zakat.money())") }
         if ramadan > 0 { parts.append("Ramadan \(ramadan.money())") }
         return parts.joined(separator: " · ")
@@ -441,6 +549,7 @@ struct SadaqahPage: View {
 /// The filter, beside "Organizations" (owner), in Azkar's sort-button look: the plain glyph on All; a green tinted pill
 /// with the category's symbol and name while one is picked.
 private struct CategoryFilter: View {
+    let kind: GiveKind
     @Binding var selection: SadaqahCategory?
     var body: some View {
         Menu {
@@ -448,7 +557,7 @@ private struct CategoryFilter: View {
                 withAnimation(.snappy(duration: 0.25)) { selection = new }
             })) {
                 Label("All", systemImage: "square.grid.2x2").tag(SadaqahCategory?.none)
-                ForEach(SadaqahCategory.allCases) { c in
+                ForEach(SadaqahCategory.of(kind)) { c in
                     Label(c.title, systemImage: c.symbol).tag(Optional(c))
                 }
             }
@@ -613,7 +722,7 @@ struct DonationDraft: Identifiable {
 
     init(after charity: SadaqahCharity) {
         donation = SadaqahDonation(to: charity.name, charityID: charity.id, amount: 0, currency: SadaqahLog.currency,
-                                   purpose: .sadaqah, note: "", date: .now)
+                                   purpose: charity.kind == .community ? .community : .sadaqah, note: "", date: .now)
         askedAfterVisit = true
     }
     init(manual: Void) {
