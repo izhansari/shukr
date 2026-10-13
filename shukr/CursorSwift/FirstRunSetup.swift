@@ -3381,7 +3381,7 @@ struct AlarmDemo: View {
 
     private func offLine(_ off: Off) -> String {
         off == .refused ? "shukr can’t ring at Fajr. Turn alarms on in Settings any time."
-            : "shukr won’t ring at Fajr. Turn it on in Settings any time."
+            : "shukr won’t ring at Fajr. Turn it on in shukr’s Settings any time."
     }
 
     var body: some View {

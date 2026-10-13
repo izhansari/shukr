@@ -255,7 +255,7 @@ struct shukrApp: App {
                                      isFajr: fajr, rule: AlarmDemo.ruleWords(offset: offset, isBefore: before, isFajr: fajr),
                                      off: off ? .declined : nil, startsOpen: true, firstCaption: today ? "Today" : "Tomorrow",
                                      showsDays: false)   // just the alarm in a Shortcuts card (owner)
-                .padding(14))
+                .padding(10))   // the other cards' margin
         }
         #if DEBUG
         IntentSelfTest.runIfAsked()   // `-intentSelfTest`

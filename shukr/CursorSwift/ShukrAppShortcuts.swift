@@ -40,7 +40,7 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
                 optionsCollections: {
                     // Section names read as actions (owner: "now and next is vague").
                     OptionsCollection(PrayerPickRelativeOptions(), title: "Get Prayer Time", systemImageName: "clock")
-                    OptionsCollection(PrayerPickByNameOptions(), title: "Get Time for a Prayer", systemImageName: "sun.horizon")
+                    OptionsCollection(PrayerPickByNameOptions(), title: "Get Time by Prayer Name", systemImageName: "sun.horizon")
                 }
             )
         )
@@ -124,7 +124,7 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
                     "All prayer times today in \(.applicationName)",
                     "Show today's prayers in \(.applicationName)"
                 ],
-                shortTitle: "Today's Times",
+                shortTitle: "Today’s Times",
                 systemImageName: "list.bullet"
             )
 
@@ -159,8 +159,13 @@ enum IntentSelfTest {
             }
             var off = GetPrayerTimeIntent(); off.which = .maghrib; off.minutes = 15; off.side = .before
             log("Prayer Time maghrib -15: \((try? await off.perform()).map(line) ?? "threw")")
-            log("Time Left: \((try? await PrayerTimeLeftIntent().perform()).map(line) ?? "threw")")
-            log("Today: \((try? await GetTodaysPrayerTimesIntent().perform()).map(line) ?? "threw")")
+            if #available(iOS 26.0, *) {   // the ones people run on 26
+                log("Time Left: \((try? await TimeLeftNowIntent().perform()).map(line) ?? "threw")")
+                log("Today: \((try? await TodaysTimesNowIntent().perform()).map(line) ?? "threw")")
+            } else {
+                log("Time Left: \((try? await PrayerTimeLeftIntent().perform()).map(line) ?? "threw")")
+                log("Today: \((try? await GetTodaysPrayerTimesIntent().perform()).map(line) ?? "threw")")
+            }
             log("Fajr alarm: \((try? await FajrAlarmTimeIntent().perform()).map(line) ?? "threw")")
         }
     }
@@ -190,12 +195,7 @@ struct SnippetPreviewHost: View {
     }
 
     private var rows: [TodaysTimesSnippet.Row] {
-        let now = Date().addingTimeInterval(-UserDefaults.standard.double(forKey: "snippetHoursAgo") * 3600)   // `-snippetHoursAgo 6`
-        let done = SharedStore.completedPrayerNamesToday()
-        return PrayerWindows.today(now).map { w in
-            TodaysTimesSnippet.Row(name: w.name, start: w.start, end: w.end, marked: done.contains(w.name) || w.name == "Dhuhr",
-                                   when: w.end <= now ? .earlier : w.start <= now ? .now : .coming)
-        }
+        TodaysTimesSnippet.rows(now: Date().addingTimeInterval(-UserDefaults.standard.double(forKey: "snippetHoursAgo") * 3600))   // `-snippetHoursAgo 6`
     }
     private func spoken(_ what: String) -> String {
         switch what {
