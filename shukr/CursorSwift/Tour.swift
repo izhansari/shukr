@@ -458,11 +458,10 @@ struct TourCallout: View {
             // first, once, as the card with "Got it".
             let key = page.guideKey(step.rawValue)
             let mode = TourGuideMode.of(page, key: key)
-            let stripAtTop = TourStripPlace.top(target: hole, height: size.height, keepBottom: aboveY != nil)
             // The strip's place at the top holds one panel (owner: "the same item as the strip"): a card asked to sit
             // there, then the strip it becomes — one view, so it grows and shrinks between them instead of a bubble
             // going and a strip coming.
-            if page.atTop || (mode == .strip && stripAtTop && step.isCard) {
+            if TourTopPanel.chapters.contains(step) {
                 TourTopPanel(page: page, mode: mode, guideKey: key, ticked: ticked, showsBack: showsBack, qiblaSkip: qiblaSkip,
                              openSection: openSection, lit: lit, step: step, place: place,
                              onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack, onToggle: onToggle,
@@ -590,7 +589,7 @@ struct TourTopPanel: View {
     }
 
     /// The chapters moved into the panel so far: one overlay for all of them, so the panel stays from one to the next.
-    static let chapters: Set<TourStep> = [.circle, .list]
+    static let chapters: Set<TourStep> = [.intro, .circle, .list, .zikr, .settings]
 
     /// Up: the top bar's own Skip tour stays away (TourLayer's skipLayer).
     @MainActor @Observable final class Presence {
@@ -659,6 +658,9 @@ struct TourTopPanel: View {
         .onDisappear { Presence.shared.up = false }
     }
 
+    /// ‹ — not on a chapter's end moment.
+    private var back: Bool { showsBack && !page.chapterDone }
+
     /// The line that stays: ‹ · "1 · PRAYER CIRCLE" · → or the dots · ✕.
     private var header: some View {
         let shown = mode == .cardThenStrip ? page.withGotIt : page
@@ -673,9 +675,9 @@ struct TourTopPanel: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Back")
-            .opacity(showsBack ? 1 : 0)
-            .allowsHitTesting(showsBack)
-            .accessibilityHidden(!showsBack)
+            .opacity(back ? 1 : 0)
+            .allowsHitTesting(back)
+            .accessibilityHidden(!back)
             .padding(.leading, -6)
             // A new chapter's name rolls in from below as the old one goes up — the chapter turning, in place, inside
             // one line's height.
@@ -698,7 +700,7 @@ struct TourTopPanel: View {
                 if !isStrip, let label = shown.primary {
                     // On, as a symbol (owner: save the room) — its words for VoiceOver.
                     Button(action: primaryAction) {
-                        Image(systemName: "arrow.right")
+                        Image(systemName: label == TourCopy.Settings.doneButton ? "checkmark" : "arrow.right")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 30, height: 30)
@@ -745,6 +747,7 @@ struct TourTopPanel: View {
 
     private var chapterLine: String {
         if let index = page.index, index > 0 { return "\(index) · \(page.headline)" }
+        if step == .intro { return TourCopy.Welcome.panelLabel }   // the words under it say Bismillah
         return page.headline
     }
 
@@ -840,12 +843,13 @@ struct TourTopPanel: View {
         .padding(.trailing, 8)
     }
 
-    /// The step's own small title ("What it shows") goes: the panel's line already names the chapter.
+    /// Only the step being read, without its small title ("What it shows"): the panel's line names the chapter, and the
+    /// steps already done (their ✓ lines) stay out of the panel.
     private static func untitled(_ page: TourPage) -> TourPage {
         var p = page
-        p.sections = p.sections.map { s in
+        p.sections = p.sections.filter { !$0.done }.map { s in
             var s = s
-            if !s.done { s.title = nil }
+            s.title = nil
             return s
         }
         return p
@@ -874,8 +878,8 @@ struct TourPageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if compact {
-                EmptyView()
+            if compact && page.index != nil {
+                EmptyView()   // the panel's line names the chapter
             } else if let index = page.index { chapterHeader(index) } else { plainHeader }
             if page.sections.isEmpty {
                 plainBody
@@ -1836,6 +1840,14 @@ struct BubbleShape: Shape {
     // Each card is a chapter (owner): "1  Prayer Circle", a ring for how far through it, and its steps — each open while
     // it's the one, then folded to a ✓ line. Learning is short lists (owner's layout), never a paragraph.
     private func page(for step: TourStep?, phase: TourPhase) -> TourPage {
+        // A chapter's end moment (owner): "<chapter> done" in the panel before the next one's line. The circle's is
+        // its own (below), after its last to-do.
+        if let step, let c = celebrating, c == step, step != .circle {
+            var p = chapter(step, 1, of: 1, [])
+            p.atTop = true
+            p.chapterDone = true
+            return p
+        }
         switch step {
         case .intro:
             // Before the chapters: how the tour goes (owner). No greeting — the setup has said welcome, salam and
@@ -1974,6 +1986,23 @@ struct BubbleShape: Shape {
 
     /// A chapter just finished, its moment in the top panel.
     private(set) var celebrating: TourStep?
+
+    /// A chapter's end: its moment in the panel (1.5 s), then on.
+    private func endChapter(_ card: TourStep, then next: @escaping () -> Void) {
+        guard celebrating == nil else { return }
+        withAnimation(.smooth(duration: 0.35)) { celebrating = card }
+        let thisRun = run
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard run == thisRun, step == card else { celebrating = nil; return }
+            next()
+            try? await Task.sleep(for: .seconds(0.05))
+            celebrating = nil
+        }
+    }
+
+    /// The time editor's fix: the draft is in the yellow (PrayerTimeEditSheet) — its first to-do in the panel ticks.
+    var editorInYellow = false
 
     /// The to-do just ticked, still shown with its ✓ for a beat (the page after it waits).
     private(set) var beat: Int?
@@ -2229,7 +2258,7 @@ struct BubbleShape: Shape {
         case (.list, .tryIt, .foldTapped): tick(1)   // no glow on unfolding (owner)
         case (.list, .tryIt, .markedRowTapped): tick(2, flash: "markedRow")
         case (.list, .tryIt, .editorSaved): tick(3)
-        case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): go(to: .zikr)
+        case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): endChapter(.list) { self.go(to: .zikr) }
 
         // 3 · Zikr: go there, then learn it.
         // The Zikr page: the Zikr Tour takes chapter 3 from here (its offer first: Show me / Skip to Settings).
@@ -2281,7 +2310,7 @@ struct BubbleShape: Shape {
         }
         // The step that's done rolls up into its ✓ line first, then the next comes in under it — except in the top panel,
         // which turns into the strip itself (a fold in between took it out of the panel for a moment).
-        guard step?.isCard == true, next != phase, !page.atTop else { return land() }
+        guard step?.isCard == true, next != phase, !TourTopPanel.chapters.contains(step ?? .intro) else { return land() }
         openSection = nil
         withAnimation(.smooth(duration: CircleMotion.standard)) { folding = next }
         let thisRun = run, card = step
@@ -3129,31 +3158,6 @@ struct BackToTourPill: View {
             .tourBubble(Capsule(), look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// The fix step's tip inside the time editor (audit J: "the tooltip continues into a sheet"): what to do there, its
-/// two to-dos ticking as the time lands in the yellow and as it's saved.
-struct TourSheetTip: View {
-    private var runtime: TourRuntime { .shared }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(TourCopy.List.editorTitle)
-                .font(.system(.body, design: .rounded, weight: .regular))
-            Text(TourCopy.List.editorLine)
-                .font(.system(.subheadline, design: .rounded, weight: .light))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            TourChecklist(tasks: [TourCopy.List.editorTodo], ticked: runtime.ticked.contains(3) ? [0] : [])
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.tertiarySystemFill)))
-        // The sheet adds a fixed room for it (PrayerTimeEditSheet, +132): larger, it pushed Save off the sheet and the
-        // step couldn't be finished (Sami, AX XXXL).
-        .dynamicTypeSize(...DynamicTypeSize.large)
-        .accessibilityElement(children: .contain)
     }
 }
 

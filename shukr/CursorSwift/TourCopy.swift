@@ -39,6 +39,8 @@ enum TourCopy {
         ]
         static let footnote = "A quick look at each, then you try it. It’s a practice day — nothing here is kept."
         static let button = "Let’s begin"
+        /// The panel's line over the welcome.
+        static let panelLabel = "App tour"
     }
 
     // MARK: 1 · Prayer Circle
@@ -110,6 +112,8 @@ enum TourCopy {
         static let editorTitle = "When did you really pray?"
         static let editorLine = "Say you prayed Fajr on time but marked it late: drag the color bar or turn the wheel into the yellow, then save. It’s practice — nothing is kept."
         static let editorTodo = "Move it into the yellow, then save"
+        /// The editor's to-dos in the top panel (owner: the first ticks as soon as it's in the yellow).
+        static let editorTodos = ["Move it into the yellow", "Tap Save"]
     }
 
     // MARK: 3 · Zikr
@@ -147,10 +151,10 @@ enum TourCopy {
 
         static let hereStep = "What you set here"
         static let here = [
-            "your location and how prayer times are worked out",
-            "a reminder for each prayer",
-            "the Fajr alarm",
-            "how shukr looks",
+            "your location, prayer times and qibla",
+            "notifications, Live Activities and the Fajr alarm",
+            "how shukr looks, and its widgets",
+            "Explore shukr: widgets, Siri and more",
         ]
 
         static let lastStep = "This tour"

@@ -158,7 +158,7 @@ struct PrayerTimeEditSheet: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            if tourTip { TourSheetTip().padding(.top, 26) }
+            // The tour's words for this step are in its panel, over the sheet (TourEditorPanelWindow).
             // Header, like the main circle's
             VStack(spacing: 4) {
                 HStack(alignment: .center) {
@@ -175,7 +175,7 @@ struct PrayerTimeEditSheet: View {
                     spotChip.padding(.top, 8)
                 }
             }
-            .padding(.top, tourTip ? 0 : 30)   // room under the drag handle
+            .padding(.top, 30)   // room under the drag handle
 
             PrayerTimeEditor(prayer: prayer, draft: $draft, range: range)
 
@@ -188,7 +188,12 @@ struct PrayerTimeEditSheet: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 12)
         .fontDesign(.rounded)
-        .onAppear { if openedWith == nil { openedWith = draft } }
+        .onAppear {
+            if openedWith == nil { openedWith = draft }
+            if tourTip { TourEditorPanelWindow.show() }
+        }
+        .onDisappear { TourEditorPanelWindow.hide() }
+        .onChange(of: draftInYellow, initial: true) { _, now in if tourTip { TourRuntime.shared.editorInYellow = now } }
         .sheet(isPresented: $pickingSpot) {
             PrayerLocationPicker(prayerName: prayer.displayName, original: shownSpot,
                                  recorded: prayer.recordedSpot ?? savedSpot,
@@ -206,8 +211,7 @@ struct PrayerTimeEditSheet: View {
             PrayerPhotoCapture(target: target) { photoTarget = nil }
         }
         .presentationDetents([tourTip && typeSize.isAccessibilitySize
-                              ? .large : .height((showsLocation && !tourTip ? 572 : 540) + (tourTip ? 132 : 0)
-                                                 + (showsPhotoRow ? 104 : 0))])
+                              ? .large : .height((showsLocation && !tourTip ? 572 : 540) + (showsPhotoRow ? 104 : 0))])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
     }

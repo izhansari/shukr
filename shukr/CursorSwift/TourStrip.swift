@@ -286,3 +286,124 @@ extension View {
             .animation(.smooth(duration: 0.4), value: top)
     }
 }
+
+// MARK: - The panel over the time editor
+
+/// The tour's panel while the time editor's sheet is up (owner: "the strip to stay at the top of the page instead of on
+/// the sheet's top … so it's consistent"): a sheet covers the tour's layer, so this one is in its own window above it,
+/// in the panel's place — the chapter's line, then the editor's two to-dos, the first ticking as soon as the time is in
+/// the yellow. It takes no touches.
+@MainActor enum TourEditorPanelWindow {
+    private static var window: UIWindow?
+
+    static func show() {
+        guard window == nil,
+              let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .normal + 1
+        w.isUserInteractionEnabled = false
+        w.overrideUserInterfaceStyle = scene.keyWindow?.traitCollection.userInterfaceStyle ?? .unspecified
+        let host = UIHostingController(rootView: TourEditorPanelRoot())
+        host.view.backgroundColor = .clear
+        w.rootViewController = host
+        w.isHidden = false
+        window = w
+    }
+
+    static func hide() {
+        window?.isHidden = true
+        window = nil
+    }
+}
+
+private struct TourEditorPanelRoot: View {
+    var body: some View {
+        GeometryReader { geo in
+            TourEditorPanel()
+                .frame(width: min(geo.size.width - 28, 460))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.top, TourTopPanel.topInset)
+        }
+        .ignoresSafeArea()
+        .circleThemeRoot()
+    }
+}
+
+/// The panel's look and line, the editor's to-dos under them.
+struct TourEditorPanel: View {
+    private var runtime: TourRuntime { .shared }
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.circleTheme) private var theme
+    @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
+    @State private var pulse = false
+    @State private var shown = false
+
+    private var inYellow: Bool { runtime.editorInYellow }
+    private var todos: [String] { TourCopy.List.editorTodos }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Color.clear.frame(width: 22, height: 30).padding(.leading, -6)   // the ‹'s place, as in the panel
+                Text("2 · \(TourCopy.List.title)")
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.5))
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                HStack(spacing: 4) {
+                    ForEach(todos.indices, id: \.self) { i in
+                        Circle()
+                            .fill(i == 0 && inYellow ? TourInk.green : Color.primary.opacity(i == (inYellow ? 1 : 0) ? 0.45 : 0.15))
+                            .frame(width: 6, height: 6)
+                    }
+                }
+                .padding(.trailing, 10)
+            }
+            .frame(height: 34)
+            Text(TourCopy.List.editorLine)
+                .font(.system(.caption, design: .rounded))
+                .foregroundStyle(Color.primary.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 12) {
+                let current = inYellow ? 1 : 0
+                ZStack {
+                    Circle().strokeBorder(TourInk.green.opacity(0.6), lineWidth: 1.5)
+                }
+                .frame(width: 22, height: 22)
+                Text(todos[current])
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .foregroundStyle(Color.primary.opacity(0.9))
+                    .id(current)
+                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                            removal: .move(edge: .top).combined(with: .opacity)))
+                Spacer(minLength: 0)
+            }
+            .clipped()
+            .animation(.smooth(duration: 0.35), value: inYellow)
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .tourBubble(RoundedRectangle(cornerRadius: 20, style: .continuous),
+                    look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(TourInk.green.opacity(pulse ? 1 : 0), lineWidth: pulse ? 3 : 1.5)
+                .shadow(color: TourInk.green.opacity(pulse ? 0.55 : 0), radius: pulse ? 10 : 0)
+        }
+        .opacity(shown ? 1 : 0)
+        .onAppear { withAnimation(.easeOut(duration: 0.25)) { shown = true } }
+        .onChange(of: inYellow) { _, now in
+            guard now else { return }
+            withAnimation(.easeOut(duration: 0.15)) { pulse = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.45))
+                withAnimation(.easeOut(duration: 0.6)) { pulse = false }
+            }
+        }
+    }
+}
