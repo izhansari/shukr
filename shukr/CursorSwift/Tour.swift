@@ -2104,6 +2104,9 @@ struct BubbleShape: Shape {
         // A chapter's first line goes back to the chapter before's last (the markers are handled in goBack).
         case (.zikr, .go): .tryIt
         case (.settings, .go): .go
+        // The first chapter's first card back to the welcome; Settings' first card back to "Tap Settings".
+        case (.circle, .learn): .learn
+        case (.settings, .learn): .go
         case (.settings, .last): .learn
         default: nil
         }
@@ -2362,6 +2365,23 @@ struct BubbleShape: Shape {
             }
             return
         }
+        if step == .circle, phase == .learn {
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                self.step = .intro
+                phase = .learn
+                ticked = []
+                openSection = nil
+            }
+            return
+        }
+        if step == .settings, phase == .learn {
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                phase = .go
+                ticked = []
+                openSection = nil
+            }
+            return
+        }
         // "3 Zikr · Swipe right" back to the list's end ("That's your day"); "4 Settings · Tap Settings" back to Zikr's.
         if step == .zikr, phase == .go {
             withAnimation(.smooth(duration: CircleMotion.standard)) {
@@ -2603,8 +2623,10 @@ struct TourLayer: View {
                 if step.isTourPage, !onItsPage(step) { returnTo(step) }
                 announce()
             }
-            .onChange(of: runtime.phase) { _, _ in
+            .onChange(of: runtime.phase) { old, new in
                 guard let step = runtime.step, step.isTourPage else { return }
+                // ‹ from Settings' first card: back on the Zikr page, where "Tap Settings" is done.
+                if step == .settings, old == .learn, new == .go { sharedState.go(to: .zikr) }
                 if !onItsPage(step) { returnTo(step) }
                 announce()
             }
