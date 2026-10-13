@@ -432,9 +432,9 @@ struct ExploreGroupPage: View {
 
 // MARK: - A group's members, one after another
 
-/// A group's stories as pages (owner, decision explore-story-next D): swipe to the next, or tap its card at the foot. The
-/// neighbours peek in at both edges and dots sit at the bottom (owner: "it doesn't look clear that we can scroll … like how
-/// you had in option A").
+/// A group's stories (owner, decision explore-story-next D, then his mock): only the pictures page — the neighbours peek in
+/// at the edges, the dots right under them — and the words below are the current one's, changing with it. Swipe the
+/// picture, or tap the Next card at the foot.
 struct ExploreStoryPager: View {
     let group: ExploreGroup
     @State private var current: ShowcaseCardID?
@@ -451,35 +451,49 @@ struct ExploreStoryPager: View {
 
     var body: some View {
         let members = group.members
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: Self.gap) {
-                ForEach(Array(members.enumerated()), id: \.element.id) { i, member in
-                    ShowcaseStoryPage(card: member, next: i + 1 < members.count ? members[i + 1] : nil, backTitle: group.id.title,
-                                      onNext: {
-                                          if i + 1 < members.count { withAnimation(.snappy(duration: 0.4)) { current = members[i + 1].id } }
-                                          else { dismiss() }
-                                      },
-                                      marksOpened: false, sideInset: 0)
-                        .safeAreaPadding(.bottom, 34)   // the page's own scroll ends clear of the dots
-                        .containerRelativeFrame(.horizontal)
-                        .id(member.id)
+        let i = index
+        ScrollView {
+            VStack(spacing: 12) {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: Self.gap) {
+                        ForEach(members) { member in
+                            ShowcasePicture(id: member.id, big: true)
+                                .frame(height: 300)
+                                .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                                .containerRelativeFrame(.horizontal)
+                                .id(member.id)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .scrollTargetLayout()
                 }
+                .scrollTargetBehavior(.viewAligned)
+                .scrollPosition(id: $current)
+                .scrollIndicators(.hidden)
+                .contentMargins(.horizontal, Self.peek + Self.gap, for: .scrollContent)
+                .frame(height: 300)
+                if members.count > 1 { dots(members.count, i) }
+                ShowcaseStoryPage(card: members[i], next: i + 1 < members.count ? members[i + 1] : nil, backTitle: group.id.title,
+                                  onNext: {
+                                      if i + 1 < members.count { withAnimation(.snappy(duration: 0.4)) { current = members[i + 1].id } }
+                                      else { dismiss() }
+                                  },
+                                  marksOpened: false, embedded: true)
+                    .id(members[i].id)   // a new page's state (its steps folded) for each item
+                    // The old words go at once, the new fade in: a crossfade laid two pages of text over each other.
+                    .transition(.asymmetric(insertion: .opacity, removal: .identity))
+                    .padding(.top, 4)
             }
-            .scrollTargetLayout()
+            .padding(.vertical, 12)
+            .animation(.easeInOut(duration: 0.2), value: current)
         }
-        .scrollTargetBehavior(.viewAligned)
-        .scrollPosition(id: $current)
-        .scrollIndicators(.hidden)
-        .contentMargins(.horizontal, Self.peek + Self.gap, for: .scrollContent)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .safeAreaInset(edge: .bottom) {
-            if members.count > 1 { dots(members.count) }
-        }
         .navigationBarTitleDisplayMode(.inline)
+        .fontDesign(.rounded)
         .toolbar {
             if members.count > 1 {
                 ToolbarItem(placement: .principal) {
-                    Text("\(index + 1) of \(members.count)")
+                    Text("\(i + 1) of \(members.count)")
                         .font(.system(.subheadline, design: .rounded, weight: .medium))
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
@@ -490,8 +504,8 @@ struct ExploreStoryPager: View {
         .onChange(of: current) { _, _ in markOpened() }
     }
 
-    /// The page dots, on a small solid capsule so they read over the page's text (glass let it show through).
-    private func dots(_ count: Int) -> some View {
+    /// The page dots, right under the pictures (owner's mock).
+    private func dots(_ count: Int, _ index: Int) -> some View {
         HStack(spacing: 7) {
             ForEach(0..<count, id: \.self) { i in
                 Circle()
@@ -500,9 +514,6 @@ struct ExploreStoryPager: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: index)
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .background(Capsule().fill(Color(.secondarySystemGroupedBackground)).shadow(color: .black.opacity(0.12), radius: 6, y: 2))
-        .padding(.bottom, 4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Page \(index + 1) of \(count)")
     }

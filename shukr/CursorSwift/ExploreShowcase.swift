@@ -340,20 +340,36 @@ struct ShowcaseStoryPage: View {
     var onNext: (() -> Void)? = nil
     /// The pager marks a page opened when it's the one shown (its neighbours are built early).
     var marksOpened = true
-    /// The page's side margin: the pager sets its own (the neighbours peek in at the edges).
+    /// The page's side margin.
     var sideInset: CGFloat = 16
+    /// In the pager: just the words and buttons, no picture, no scroll view of its own (owner: only the picture pages).
+    var embedded = false
     @State private var showSteps = false
     @AppStorage(MasjidArrival.enabledKey) private var arrivalDuas = false
 
     var body: some View {
+        if embedded {
+            details
+        } else {
+            ScrollView { details }
+                .background(Color(.systemGroupedBackground).ignoresSafeArea())
+                .navigationBarTitleDisplayMode(.inline)
+                .fontDesign(.rounded)
+                .onAppear { if marksOpened { UserDefaults.standard.set(true, forKey: ExploreShowcase.openedKey(card.id)) } }
+        }
+    }
+
+    /// The page: its picture (not when embedded — the pager pages the pictures itself), then the words and buttons.
+    private var details: some View {
         let s = ShowcaseStory.of(card.id)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                ShowcasePicture(id: card.id, big: true)
-                    .frame(height: 300)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .accessibilityHidden(true)
+        return VStack(alignment: .leading, spacing: 16) {
+                if !embedded {
+                    ShowcasePicture(id: card.id, big: true)
+                        .frame(height: 300)
+                        .frame(maxWidth: .infinity)
+                        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 6) {
                     Text(s.title).font(.system(.title2, design: .rounded, weight: .heavy))
                         .fixedSize(horizontal: false, vertical: true)
@@ -418,12 +434,7 @@ struct ShowcaseStoryPage: View {
                 }
                 if let onNext { nextCard(onNext) }
             }
-            .padding(.vertical, 16).padding(.horizontal, sideInset)
-        }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .navigationBarTitleDisplayMode(.inline)
-        .fontDesign(.rounded)
-        .onAppear { if marksOpened { UserDefaults.standard.set(true, forKey: ExploreShowcase.openedKey(card.id)) } }
+            .padding(.vertical, embedded ? 0 : 16).padding(.horizontal, sideInset)
     }
 
     /// "Next · I Prayed ›" at the foot (owner, decision explore-story-next D — swiping works too); the last page's goes back.
