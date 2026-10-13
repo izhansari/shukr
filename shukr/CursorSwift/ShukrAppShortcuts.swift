@@ -39,8 +39,8 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
                 summary: Summary("\(\.$which) prayer time"),
                 optionsCollections: {
                     // Section names read as actions (owner: "now and next is vague").
-                    OptionsCollection(PrayerPickRelativeOptions(), title: "Get Prayer Time", systemImageName: "clock")
-                    OptionsCollection(PrayerPickByNameOptions(), title: "Get Time by Prayer Name", systemImageName: "sun.horizon")
+                    OptionsCollection(PrayerPickRelativeOptions(), title: "Find the Current or Next Prayer", systemImageName: "clock")
+                    OptionsCollection(PrayerPickByNameOptions(), title: "Look Up a Prayer’s Time", systemImageName: "sun.horizon")
                 }
             )
         )
@@ -82,7 +82,7 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
                 for: \.$page,
                 summary: Summary("Open \(\.$page)"),
                 optionsCollections: {
-                    OptionsCollection(ShukrPageOptions(), title: "Open a Page", systemImageName: "arrow.up.forward.app")
+                    OptionsCollection(ShukrPageOptions(), title: "Open a Page in shukr", systemImageName: "arrow.up.forward.app")
                 }
             )
         )
