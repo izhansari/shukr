@@ -208,6 +208,8 @@ struct TourOverlay: View {
     var flashes = 0
     /// Touches the tour didn't let through: the target pulses.
     var nudges = 0
+    /// Ringed for as long as the step is up (the last step's "Take the app tour again" row).
+    var steady: CGRect? = nil
     /// The qibla line's quiet "skip" (a compass that won't settle).
     var qiblaSkip = false
     /// The page turned forward (the next card in from the right) or back.
@@ -231,7 +233,8 @@ struct TourOverlay: View {
                         openSection: openSection,
                         hint: hint.map { TouchHintSpec(kind: $0.kind, at: CGPoint(x: $0.at.x - origin.x, y: $0.at.y - origin.y)) },
                         aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack,
-                        flash: flash.map { Self.local($0, origin) }, flashes: flashes, nudges: nudges, qiblaSkip: qiblaSkip,
+                        flash: flash.map { Self.local($0, origin) }, flashes: flashes, nudges: nudges,
+                        steady: steady.map { Self.local($0, origin) }, qiblaSkip: qiblaSkip,
                         forward: forward, onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack,
                         onToggle: onToggle, onSkipQibla: onSkipQibla, onSkip: onSkip)
         }
@@ -419,6 +422,7 @@ struct TourCallout: View {
     var flash: CGRect? = nil
     var flashes = 0
     var nudges = 0
+    var steady: CGRect? = nil
     var qiblaSkip = false
     var forward = true
     var onPrimary: () -> Void = {}
@@ -456,6 +460,7 @@ struct TourCallout: View {
                 .animation(Self.drift, value: hole.map { "\(Int($0.midX)),\(Int($0.midY))" } ?? "-")
             // What just changed: a soft glow round it, once (owner: "give attention to the areas being changed").
             if let flash { ChangeGlow(frame: flash, token: flashes).id(flashes) }
+            if let steady { SteadyGlow(frame: steady) }
             // A touch that wasn't let through: the thing to touch pulses (no buzz — owner).
             // A touch the tour didn't let through: nothing shows (user testing, 2026-10-06 — the pulse round the target
             // read as "tap here"; no buzz either).
@@ -1383,6 +1388,22 @@ struct ChangeGlow: View {
                 try? await Task.sleep(for: .seconds(0.7))
                 withAnimation(.easeIn(duration: 0.5)) { on = false }
             }
+    }
+}
+
+/// A ring that stays round what the step points at (the tour's last step: the row it lives in).
+struct SteadyGlow: View {
+    let frame: CGRect
+    @State private var on = false
+    var body: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .stroke(TourInk.green.opacity(on ? 0.6 : 0), lineWidth: 2)
+            .shadow(color: TourInk.green.opacity(on ? 0.4 : 0), radius: 10)
+            .frame(width: frame.width, height: frame.height)
+            .position(x: frame.midX, y: frame.midY)
+            .animation(.smooth(duration: 0.3), value: frame)
+            .allowsHitTesting(false)
+            .onAppear { withAnimation(.easeOut(duration: 0.4).delay(0.4)) { on = true } }
     }
 }
 
@@ -2350,13 +2371,7 @@ struct BubbleShape: Shape {
         case (.settings, .learn, .next):
             settingsScroll = (.tourRow, settingsScroll.1 + 1)
             setPhase(.last)
-            // Once it has scrolled there, the row glows (owner: "highlight it").
-            let thisRun = run
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(0.5))
-                guard run == thisRun, step == .settings, phase == .last else { return }
-                glow("tourAgainRow")
-            }
+            // The row is ringed for as long as this step is up (TourLayer.steadyFrame — owner: keep it, don't flash it).
         case (.settings, .last, .next): finish(completed: true)
         default: break
         }
@@ -2587,6 +2602,7 @@ struct TourLayer: View {
                     hint: hint(step), aboveY: aboveY(step),
                     showsBack: runtime.canGoBack,
                     flash: flashFrame(), flashes: runtime.flashes, nudges: runtime.nudges,
+                    steady: steadyFrame(),
                     qiblaSkip: skipQibla, forward: runtime.forward,
                     onPrimary: { runtime.event(.next) },
                     onSecondary: { runtime.event(.demo) },
@@ -2857,6 +2873,15 @@ extension TourLayer {
     }
 
     /// The thing that just changed (owner: "give attention to the areas that are being changed").
+    /// The last step's row, ringed while the step is up: the whole row across the card, not just its words.
+    private func steadyFrame() -> CGRect? {
+        guard runtime.step == .settings, runtime.phase == .last,
+              let r = TourTargets.shared.frame("tourAgainRow") else { return nil }
+        let width = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.width ?? 402
+        // The Form's card is inset 16 pt each side; the ring sits just inside it, the row's height around the label.
+        return CGRect(x: 20, y: r.midY - 20, width: width - 40, height: 40)
+    }
+
     private func flashFrame() -> CGRect? {
         let t = TourTargets.shared
         switch runtime.flashKey {
