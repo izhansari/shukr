@@ -589,7 +589,8 @@ struct TourTopPanel: View {
     }
 
     /// The chapters moved into the panel so far: one overlay for all of them, so the panel stays from one to the next.
-    static let chapters: Set<TourStep> = [.intro, .circle, .list, .zikr, .settings]
+    /// (Not the welcome: it stays the centred card it was — owner.)
+    static let chapters: Set<TourStep> = [.circle, .list, .zikr, .settings]
 
     /// Up: the top bar's own Skip tour stays away (TourLayer's skipLayer).
     @MainActor @Observable final class Presence {
@@ -681,17 +682,16 @@ struct TourTopPanel: View {
             .padding(.leading, -6)
             // A new chapter's name rolls in from below as the old one goes up — the chapter turning, in place, inside
             // one line's height.
+            // The chapter stands out from the words under it (owner: "more prominent"): its number quiet, its name
+            // bold, a size up from the content.
             ZStack(alignment: .leading) {
-                Text(chapterLine)
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(Color.primary.opacity(0.5))
-                    .textCase(.uppercase)
+                chapterTitle
                     .lineLimit(1)
                     .id(chapterLine)
-                    .transition(.asymmetric(insertion: .offset(y: 18).combined(with: .opacity),
-                                            removal: .offset(y: -18).combined(with: .opacity)))
+                    .transition(.asymmetric(insertion: .offset(y: 24).combined(with: .opacity),
+                                            removal: .offset(y: -24).combined(with: .opacity)))
             }
-            .frame(height: 18, alignment: .leading)
+            .frame(height: 24, alignment: .leading)
             .clipped()
             .animation(.smooth(duration: 0.45), value: chapterLine)
             .accessibilityAddTraits(.isHeader)
@@ -743,6 +743,17 @@ struct TourTopPanel: View {
                 .padding(.leading, -4)
         }
         .frame(height: 34)
+    }
+
+    private var chapterTitle: Text {
+        let name = Text(page.index == nil && step == .intro ? TourCopy.Welcome.panelLabel : page.headline)
+            .font(.system(.headline, design: .rounded, weight: .semibold))
+            .foregroundStyle(Color.primary)
+        guard let index = page.index, index > 0 else { return name }
+        return Text("\(index)  ")
+            .font(.system(.headline, design: .rounded, weight: .semibold))
+            .foregroundStyle(Color.primary.opacity(0.4))
+            + name
     }
 
     private var chapterLine: String {
