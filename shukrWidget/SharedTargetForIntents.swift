@@ -559,7 +559,7 @@ extension SharedStore {
         // a late mark of yesterday's Isha from a notification left yesterday's score stale).
         group?.set(start.timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)
         WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
-        ControlCenter.shared.reloadControls(ofKind: "betternorms.shukr.control.prayer")   // its "ends …" moves on
+        ControlCenter.shared.reloadAllControls()   // its "ends …" moves on
         return true
     }
 
@@ -1965,6 +1965,63 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
         let grade = PrayerMarkNow.grade(c, at: at)   // graded at the stored time, as the iOS 26 one
         return .result(value: grade, dialog: "\(c.name) marked as prayed. \(grade).", view: card(at))
     }
+}
+
+// MARK: - Control Center (owner, 2026-10-13)
+
+/// Today's list in shukr: the Salah page with the list up (the Prayer control — a control can't show a card, Apple
+/// forum 760793 — so it opens the list, which has every prayer, the time left and marking).
+struct OpenPrayerListIntent: AppIntent {
+    static let flag = "widgetPrayerList"
+    static var title: LocalizedStringResource = "Open Today’s Prayers"
+    static var isDiscoverable: Bool = false   // the control's; Shortcuts has Open shukr → Salah
+    static var openAppWhenRun: Bool = true
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: Self.flag)
+        DeepLinkSignal.post()
+        return .result()
+    }
+}
+
+/// The I Prayed control: marks the prayer whose time it is (or today's late one) without opening shukr, says so in a line.
+/// Already marked: never unmarked here (owner: no easy undo) — shukr's list does that, and asks.
+struct MarkPrayerFromControlIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Mark Prayer as Prayed"
+    static var isDiscoverable: Bool = false
+    static var openAppWhenRun: Bool = false
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        defer { ControlCenter.shared.reloadAllControls() }
+        guard let c = PrayerMarkNow.target() else {
+            if let n = PrayerWindows.pick(.next) { return .result(dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).") }
+            throw PrayerTimeUnavailable()
+        }
+        if SharedStore.markedTime(of: c.name, start: c.start) != nil {
+            return .result(dialog: "\(c.name) is already marked. Change it in shukr.")
+        }
+        guard await PrayerMarkNow.mark(c) else { throw PrayerTimeUnavailable() }
+        let grade = PrayerMarkNow.grade(c, at: SharedStore.markedTime(of: c.name, start: c.start) ?? Date())
+        return .result(dialog: "\(c.name) marked as prayed. \(grade).")
+    }
+}
+
+/// The Fajr alarm switch (Control Center): the same `alarmEnabled` as Settings → Reminders → Fajr Alarm; re-planned in
+/// the app (a LiveActivityIntent runs there).
+struct SetFajrAlarmEnabledIntent: SetValueIntent, LiveActivityIntent {
+    static var title: LocalizedStringResource = "Turn Fajr Alarm On or Off"
+    static var isDiscoverable: Bool = false
+    static var openAppWhenRun: Bool = false
+    @Parameter(title: "On") var value: Bool
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(value, forKey: "alarmEnabled")
+        await FajrAlarmHooks.replan?()
+        ControlCenter.shared.reloadAllControls()
+        return .result()
+    }
+}
+
+/// The app's Fajr alarm planner, for the control (set at launch; the widget never runs it).
+enum FajrAlarmHooks {
+    nonisolated(unsafe) static var replan: (() async -> Void)?
 }
 
 // MARK: - iOS 26: cards with buttons (decision shortcut-buttons-ios26 A)

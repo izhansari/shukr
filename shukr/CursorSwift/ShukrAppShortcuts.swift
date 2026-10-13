@@ -167,6 +167,21 @@ enum IntentSelfTest {
                 log("Today: \((try? await GetTodaysPrayerTimesIntent().perform()).map(line) ?? "threw")")
             }
             log("Fajr alarm: \((try? await FajrAlarmTimeIntent().perform()).map(line) ?? "threw")")
+            // `-intentSelfTest -selfTestControls YES`: the Control Center ones too — I Prayed marks (twice: the second only
+            // says so) and the Fajr alarm switch flips and comes back.
+            guard UserDefaults.standard.bool(forKey: "selfTestControls") else { return }
+            for n in 1...2 {
+                do { log("I Prayed #\(n): \(line(try await MarkPrayerFromControlIntent().perform()))") }
+                catch { log("I Prayed #\(n): threw \(error)") }
+            }
+            let group = UserDefaults(suiteName: SharedStore.appGroup)
+            let was = group?.bool(forKey: "alarmEnabled") == true
+            var t = SetFajrAlarmEnabledIntent(); t.value = !was
+            _ = try? await t.perform()
+            log("Fajr switch \(was) → \(group?.bool(forKey: "alarmEnabled") == true)")
+            t.value = was
+            _ = try? await t.perform()
+            log("Fajr switch back → \(group?.bool(forKey: "alarmEnabled") == true)")
         }
     }
 }

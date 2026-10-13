@@ -367,7 +367,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         
     // the current one im working on.
     func fetchPrayerTimes(cameFrom: String) {
-        ControlCenter.shared.reloadControls(ofKind: "betternorms.shukr.control.prayer")   // times may have moved
+        ControlCenter.shared.reloadAllControls()   // times may have moved
         print("@@ came from: @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ \(cameFrom)")
         // "Today" is the prayer day: before the rollover hour it's still yesterday's calendar date.
         let prayerDate = PrayerDay.date()
@@ -704,7 +704,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     func pushCompletionsToWidget() {
         try? context.save()
         WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
-        ControlCenter.shared.reloadControls(ofKind: "betternorms.shukr.control.prayer")   // the Prayer control's line
+        ControlCenter.shared.reloadAllControls()   // the Prayer control's line
         WatchSync.shared.send()                    // the watch's ✓s
         // Live Activities: a mark ends its card at once, an unmark brings it back while its window is open
         // (owner: "we should show the live activity so long as unmarked") — re-planned now, while shukr is in front.

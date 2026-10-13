@@ -197,6 +197,16 @@ struct PrayerTimesView: View {
                 }
             }
 
+            // The Today's Prayers control: the Salah page with today's list up.
+            if store.bool(forKey: OpenPrayerListIntent.flag) {
+                store.set(false, forKey: OpenPrayerListIntent.flag)
+                lastDeepLinkAt = Uptime.now
+                clearCovers {
+                    sharedState.horizontalPage = .main
+                    sharedState.navPosition = .bottom
+                }
+            }
+
             // The Fajr alarm's "I'm up — open Fajr" (AlarmKit): the Salah page, nothing over it.
             if store.bool(forKey: "alarmOpenSalah") {
                 store.set(false, forKey: "alarmOpenSalah")

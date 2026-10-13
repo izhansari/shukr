@@ -718,10 +718,10 @@ struct TasbeehControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "betternorms.shukr.control.tasbeeh") {
             ControlWidgetButton(action: OpenTasbeehIntent()) {
-                Label("Tasbeeh", systemImage: "circle.hexagonpath")
+                Label("Zikr", systemImage: "hands.and.sparkles")   // as the app calls the page (owner)
             }
         }
-        .displayName("Tasbeeh")
+        .displayName("Zikr")
         .description("Open shukr's zikr page.")
     }
 }
@@ -783,7 +783,8 @@ struct PrayerControl: ControlWidget {
 
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "betternorms.shukr.control.prayer", provider: Provider()) { value in
-            ControlWidgetButton(action: OpenSalahIntent()) {
+            // Today's list in shukr (owner: "the whole prayer list … with more context"; a control can't show a card).
+            ControlWidgetButton(action: OpenPrayerListIntent()) {
                 Label {
                     Text(value.name)
                     Text(value.line)
@@ -792,17 +793,100 @@ struct PrayerControl: ControlWidget {
                 }
             }
         }
-        .displayName("Prayer")
-        .description("The prayer that's on, or the next one, and its time.")
+        .displayName("Today’s Prayers")
+        .description("The prayer that’s on, or the next one, and its time. Opens today’s prayers in shukr.")
     }
 }
 
-/// Every control in one group (a WidgetBundle holds at most ten).
+/// I Prayed: marks the prayer that's on without opening shukr (owner: for the Action button / the Lock Screen too).
+struct PrayedControl: ControlWidget {
+    struct Value: Sendable { let name: String; let marked: Bool; let none: Bool }
+    struct Provider: ControlValueProvider {
+        var previewValue: Value { Value(name: "Asr", marked: false, none: false) }
+        func currentValue() async throws -> Value {
+            guard let c = PrayerMarkNow.target() else { return Value(name: "I Prayed", marked: false, none: true) }
+            return Value(name: c.name, marked: SharedStore.markedTime(of: c.name, start: c.start) != nil, none: false)
+        }
+    }
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.prayed", provider: Provider()) { value in
+            ControlWidgetButton(action: MarkPrayerFromControlIntent()) {
+                Label {
+                    Text(value.none ? "I Prayed" : value.name)
+                    Text(value.none ? "No prayer on" : value.marked ? "Prayed" : "Mark prayed")
+                } icon: {
+                    Image(systemName: value.marked ? "checkmark.circle.fill" : "checkmark.circle")
+                }
+            }
+        }
+        .displayName("I Prayed")
+        .description("Marks the prayer that’s on as prayed, without opening shukr.")
+    }
+}
+
+/// The Fajr alarm, on or off, with its next time.
+struct FajrAlarmControl: ControlWidget {
+    struct Value: Sendable { let on: Bool; let time: String }
+    struct Provider: ControlValueProvider {
+        var previewValue: Value { Value(on: true, time: "5:40 AM") }
+        func currentValue() async throws -> Value {
+            let on = UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: "alarmEnabled") == true
+            let time = (try? PrayerUtils.calculateAlarmDescription(ignoringSwitch: true)).map { shortTimePM($0.time) } ?? ""
+            return Value(on: on, time: time)
+        }
+    }
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.fajrAlarm", provider: Provider()) { value in
+            ControlWidgetToggle(isOn: value.on, action: SetFajrAlarmEnabledIntent()) {
+                Label {
+                    Text("Fajr Alarm")
+                    Text(value.on ? value.time : "Off")
+                } icon: {
+                    Image(systemName: value.on ? "alarm.fill" : "alarm")
+                }
+            }
+        }
+        .displayName("Fajr Alarm")
+        .description("Your Fajr alarm, on or off, and when it rings.")
+    }
+}
+
+/// Tasbih Fatimah, 33 · 33 · 34, straight away.
+struct TasbihFatimahControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.tasbihFatimah") {
+            ControlWidgetButton(action: StartTasbihFatimahIntent()) {
+                Label("Tasbih Fatimah", systemImage: "circle.hexagonpath")
+            }
+        }
+        .displayName("Tasbih Fatimah")
+        .description("Start Tasbih Fatimah in shukr: 33 · 33 · 34.")
+    }
+}
+
+/// The map on the mosques near you.
+struct NearbyMosquesControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.mosques") {
+            ControlWidgetButton(action: FindNearbyMosquesIntent()) {
+                Label("Nearby Mosques", systemImage: "building.columns")
+            }
+        }
+        .displayName("Nearby Mosques")
+        .description("Open shukr’s map on the mosques near you.")
+    }
+}
+
+/// Every control in one group (a WidgetBundle holds at most ten — this is all ten).
 struct ShukrControls: WidgetBundle {
     var body: some Widget {
         PrayerControl()
+        PrayedControl()
+        FajrAlarmControl()
         QiblaControl()
         TasbeehControl()
+        TasbihFatimahControl()
+        NearbyMosquesControl()
         DailyAyahControl()
         NamesControl()
         MemoriesControl()
