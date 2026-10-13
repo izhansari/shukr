@@ -502,6 +502,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 **Insights** (InsightsView.swift, InsightsProgress.swift)
 - Three pages: scoring (hero + five rings at the usual moment), consistency (streaks, 14-day grid), getting better.
 
+**Explore shukr** (ExploreLean.swift; Frank's original ExploreShukr.swift in My Dev Stuff → "Explore: the original page", `explore.original`)
+- Lean (decision: mockup v3, owner 2026-10-13): the pick for you (scored: +5 new · +4 habits · +3 today · +2 quick win · −3 picked lately; "Not for me" = out 30 days; held for the day), three next to try, "What you use" folded, "Everything" = 12 stories with their parts found (widgets read from WidgetCenter, controls from ControlCenter, the rest from the store / keys / a story opened). The eight iPhone stories reuse `ExploreFeatureCard`; links go through `WhatsNew.go`. Settings' row shows "N new" only when something new is unopened (`ExploreLean.shipped`). DEBUG `-demoExplore [-demoExploreStory widgets]`.
+
 **Daily Ayah, 99 Names, welcome**
 - Ayah: tap to reveal once a day, share card in three looks, widget payload; the system top bar, see-through (back, the
   countdown, Share after the reveal) — a hidden bar switched off swipe-back (decision swipe-back-pages A). 99 Names: list (All / Learning / Known), page, flashcards, `namesKnown`.

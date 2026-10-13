@@ -88,6 +88,7 @@ struct SettingsView: View {
     // For minimizing and expanding the devSection
     /// DEBUG: tap the "Sneak Peek" header, or launch with `-devStuff`.
     @State private var showDevStuff = ProcessInfo.processInfo.arguments.contains("-devStuff")
+    @AppStorage(ExploreLean.originalKey) private var exploreOriginal = false
     /// DEBUG: the compass's sources, rate and accuracy under the Salah circle (compass audit 2026-09-30).
     @AppStorage("compassDebug") private var compassDebug = false
     @State private var showCityPicker = false
@@ -561,14 +562,24 @@ struct SettingsView: View {
                         headerWithInfoButton(title: "Appearance", isPopupVisible: $isAppearanceInfoVisible)
                     }
 
-                    // Explore shukr (owner, settings-explore): the features people don't find, a card each.
+                    // Explore shukr (owner, settings-explore): the features people don't find. The lean page by default
+                    // (ExploreLean.swift); Frank's original from My Dev Stuff (owner: "keep it as something in the dev
+                    // settings that I can change back to"). A count only when something's new.
                     Section {
                         NavigationLink {
-                            ExploreShukrPage()
+                            if exploreOriginal { ExploreShukrPage() } else { ExploreLeanPage() }
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "sparkles").frame(width: 24)
                                 Text("Explore shukr")
+                                Spacer()
+                                if !exploreOriginal, ExploreLean.newCount > 0 {
+                                    Text("\(ExploreLean.newCount) new")
+                                        .font(.system(.caption, design: .rounded, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 8).padding(.vertical, 3)
+                                        .background(Capsule().fill(Color.sage))
+                                }
                             }
                         }
                     } header: {
@@ -711,6 +722,10 @@ struct SettingsView: View {
                             }
                             // The Live Activity card's tuner (was under Live Activities on the page).
                             Button("Live Activity card tuner…") { showLATuner = true }
+                            // Explore shukr: Frank's original page instead of the lean one (owner).
+                            Toggle(isOn: $exploreOriginal) {
+                                Label("Explore: the original page", systemImage: "sparkles")
+                            }
                         } header: { Text("Dev · Setup, zikr & Live Activity") }
 
                         Section {

@@ -55,10 +55,7 @@ import WatchConnectivity
 struct ExploreShukrPage: View {
     @State private var state = ExploreState()
 
-    private enum Feature: String, CaseIterable, Identifiable {
-        case home, lock, moreWidgets, controls, siri, notifications, watch, memories
-        var id: String { rawValue }
-    }
+    private typealias Feature = ExploreFeature
 
     private func isOn(_ f: Feature) -> Bool {
         switch f {
@@ -147,8 +144,61 @@ struct ExploreShukrPage: View {
         .padding(.bottom, 4)
     }
 
-    @ViewBuilder private func card(_ f: Feature, open: Bool = false) -> some View {
+    private func card(_ f: Feature, open: Bool = false) -> some View { ExploreFeatureCard(feature: f, open: open) }
+
+    private func usingRow(_ f: Feature) -> some View {
+        let (symbol, title): (String, String) = switch f {
+        case .home: ("square.grid.2x2", "Prayers widget")
+        case .lock: ("lock.rectangle", "Lock Screen widgets")
+        case .moreWidgets: ("rectangle.3.group", "More widgets")
+        case .notifications: ("bell.badge", "Notifications you can answer")
+        case .controls: ("switch.2", "Control Center")
+        case .siri: ("waveform", "Siri")
+        case .watch: ("applewatch", "Apple Watch")
+        case .memories: ("photo.stack", "Memories")
+        }
+        return HStack(spacing: 14) {
+            Image(systemName: symbol).font(.system(size: 17)).frame(width: 26)
+            Text(title)
+            Spacer()
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.sage)
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 50)
+        .contentShape(Rectangle())
+    }
+
+    private func title(_ f: Feature) -> String {
         switch f {
+        case .home: "Prayers widget"
+        case .lock: "Lock Screen widgets"
+        case .moreWidgets: "More widgets"
+        case .notifications: "Notifications"
+        case .controls: "Control Center"
+        case .siri: "Siri"
+        case .watch: "Apple Watch"
+        case .memories: "Memories"
+        }
+    }
+}
+
+
+/// The features this page (and the lean Explore, ExploreLean.swift) sells, each with its card.
+enum ExploreFeature: String, CaseIterable, Identifiable {
+    case home, lock, moreWidgets, controls, siri, notifications, watch, memories
+    var id: String { rawValue }
+}
+
+/// One feature's card (picture, why, what's good, steps or its action) — this page's cards, and the lean Explore's
+/// stories (ExploreLean.swift).
+struct ExploreFeatureCard: View {
+    let feature: ExploreFeature
+    var open = false
+
+    var body: some View {
+        let open = open
+        switch feature {
         case .home:
             ExploreCard(startOpen: open, title: "Prayers widget",
                         why: "Your prayer at a glance on your Home Screen, and you can mark it without opening shukr.",
@@ -236,46 +286,11 @@ struct ExploreShukrPage: View {
         }
     }
 
-    private func usingRow(_ f: Feature) -> some View {
-        let (symbol, title): (String, String) = switch f {
-        case .home: ("square.grid.2x2", "Prayers widget")
-        case .lock: ("lock.rectangle", "Lock Screen widgets")
-        case .moreWidgets: ("rectangle.3.group", "More widgets")
-        case .notifications: ("bell.badge", "Notifications you can answer")
-        case .controls: ("switch.2", "Control Center")
-        case .siri: ("waveform", "Siri")
-        case .watch: ("applewatch", "Apple Watch")
-        case .memories: ("photo.stack", "Memories")
-        }
-        return HStack(spacing: 14) {
-            Image(systemName: symbol).font(.system(size: 17)).frame(width: 26)
-            Text(title)
-            Spacer()
-            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.sage)
-            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 16)
-        .frame(minHeight: 50)
-        .contentShape(Rectangle())
-    }
-
-    private func title(_ f: Feature) -> String {
-        switch f {
-        case .home: "Prayers widget"
-        case .lock: "Lock Screen widgets"
-        case .moreWidgets: "More widgets"
-        case .notifications: "Notifications"
-        case .controls: "Control Center"
-        case .siri: "Siri"
-        case .watch: "Apple Watch"
-        case .memories: "Memories"
-        }
-    }
 }
 
 // MARK: - The card
 
-private struct ExploreCard<Picture: View>: View {
+struct ExploreCard<Picture: View>: View {
     /// Opened from "Already using": the steps shown from the start.
     var startOpen = false
     let title: String
@@ -388,7 +403,7 @@ private struct ExploreCard<Picture: View>: View {
 // MARK: - The pictures (drawn, today's real times where they help)
 
 /// The prayer the pictures show: whichever is on now (or next), with its real window.
-private struct ShownPrayer {
+struct ShownPrayer {
     let name: String
     let start: Date
     let end: Date
@@ -412,7 +427,7 @@ private struct ShownPrayer {
 }
 
 /// A ring like the widget's: a soft track and the arc, sage.
-private struct MiniRing: View {
+struct MiniRing: View {
     let progress: Double
     var width: CGFloat = 5
     var body: some View {
@@ -425,7 +440,7 @@ private struct MiniRing: View {
     }
 }
 
-private struct HomeScreenPicture: View {
+struct HomeScreenPicture: View {
     var body: some View {
         let p = ShownPrayer.now
         HStack(spacing: 14) {
@@ -472,7 +487,7 @@ private struct HomeScreenPicture: View {
     }
 }
 
-private struct LockScreenPicture: View {
+struct LockScreenPicture: View {
     var body: some View {
         let p = ShownPrayer.now
         VStack(spacing: 10) {
@@ -514,7 +529,7 @@ private struct LockScreenPicture: View {
     }
 }
 
-private struct ControlCenterPicture: View {
+struct ControlCenterPicture: View {
     var body: some View {
         let ours: [Int: (String, String)] = [1: ("location.north.line", "Qibla"), 2: ("circle.hexagonpath", "Tasbeeh")]
         HStack(spacing: 14) {
@@ -535,7 +550,7 @@ private struct ControlCenterPicture: View {
     }
 }
 
-private struct SiriPicture: View {
+struct SiriPicture: View {
     var body: some View {
         let next = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
             .compactMap { p in prayerWindowToday(p).map { (p, $0.start) } }
@@ -561,7 +576,7 @@ private struct SiriPicture: View {
     }
 }
 
-private struct WatchPicture: View {
+struct WatchPicture: View {
     var body: some View {
         let p = ShownPrayer.now
         ZStack {
@@ -583,7 +598,7 @@ private struct WatchPicture: View {
     }
 }
 
-private struct MemoriesPicture: View {
+struct MemoriesPicture: View {
     var body: some View {
         ZStack {
             ForEach(0..<3, id: \.self) { i in
@@ -614,7 +629,7 @@ private struct MemoriesPicture: View {
 
 
 /// Three small widgets: Zikr, Name of the Day, Daily Ayah (veiled until revealed).
-private struct MoreWidgetsPicture: View {
+struct MoreWidgetsPicture: View {
     var body: some View {
         HStack(spacing: 12) {
             tile {
@@ -651,7 +666,7 @@ private struct MoreWidgetsPicture: View {
 }
 
 /// A prayer notification held open: its buttons.
-private struct NotificationsPicture: View {
+struct NotificationsPicture: View {
     var body: some View {
         let p = ShownPrayer.now
         VStack(spacing: 6) {

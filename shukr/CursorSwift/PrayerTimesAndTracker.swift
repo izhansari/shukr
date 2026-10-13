@@ -85,6 +85,7 @@ struct PrayerTimesView: View {
     @State private var demoNewZikr = false
     @State private var demoWhatsNew = false
     @State private var demoScheduled = false
+    @State private var demoExplore = false   // DEBUG `-demoExplore`: Explore shukr over the page
     #endif
 
     /// A morning card is waiting: be on the Salah page (circle showing) while the app is away, so the
@@ -1168,6 +1169,7 @@ struct PrayerTimesView: View {
                 let name = UserDefaults.standard.string(forKey: "demoZikrName") ?? "Astaghfirullah"
                 if let m = MantraModel.find(named: name, in: context) { demoMantra = m; return }
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoExplore") { demoExplore = true }
             if ProcessInfo.processInfo.arguments.contains("-demoScheduledNotifications") {
                 try? await Task.sleep(for: .seconds(1.5))
                 demoScheduled = true
@@ -1445,6 +1447,7 @@ struct PrayerTimesView: View {
         }
         #endif
         .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
+        .sheet(isPresented: $demoExplore) { NavigationStack { ExploreLeanPage() } }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(
