@@ -230,6 +230,20 @@ struct shukrApp: App {
         // the card's ✓ marked nothing and nothing planned — Frank's audit). Called directly, not in a Task: a cold launch
         // from the card's ✓ runs the intent right after, and its hooks must be set by then (Frank).
         PrayerLiveActivities.onLaunch()
+        // Shortcuts that only answer top the reminders up after answering (ShortcutTopUp: at most every 3 h), under a
+        // background-task assertion so it finishes once the shortcut has its answer.
+        let container = sharedModelContainer
+        ShortcutTopUp.run = {
+            var bg = UIBackgroundTaskIdentifier.invalid
+            bg = UIApplication.shared.beginBackgroundTask(withName: "shortcut top-up") {
+                UIApplication.shared.endBackgroundTask(bg); bg = .invalid
+            }
+            Task { @MainActor in
+                await NotificationScheduler.rescheduleNow(context: container.mainContext, reason: "shortcut")   // + Fajr alarms
+                PrayerLiveActivities.plan(reason: "shortcut")
+                if bg != .invalid { UIApplication.shared.endBackgroundTask(bg); bg = .invalid }
+            }
+        }
         // Get Fajr Alarm Time's card: setup's alarm picture, open, for the rule as set (frosted when the alarm is off).
         ShortcutCards.fajrAlarm = { off, next in
             let g = UserDefaults(suiteName: SharedStore.appGroup)

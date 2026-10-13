@@ -1582,6 +1582,7 @@ struct GetPrayerTimeIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
+        ShortcutTopUp.request()
         let now = Date()
         let shift = TimeInterval(minutes * 60) * (side == .before ? -1 : 1)
         if minutes > 0 {
@@ -1645,6 +1646,7 @@ struct GetTodaysPrayerTimesIntent: AppIntent {
         categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "schedule", "timetable", "today"], resultValueName: "Prayer Times")
 
     func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog & ShowsSnippetView {
+        ShortcutTopUp.request()
         let now = Date()
         let five = PrayerWindows.today(now)
         guard !five.isEmpty else { throw PrayerTimeUnavailable() }
@@ -1759,6 +1761,22 @@ enum ShortcutLook {
     }
 }
 
+/// Shortcuts that only answer top the reminders up too (owner: "make them top up too … many people will use these as
+/// recipes in bigger chained shortcuts"): the answer returns at once, the top-up runs after it in the app (notifications,
+/// then Fajr alarms, then the Live Activity plan), and at most every 3 h — a chain asking ten times pays for it once.
+enum ShortcutTopUp {
+    nonisolated(unsafe) static var run: (() -> Void)?
+    static let key = "shortcutTopUpAt"
+    static let every: TimeInterval = 3 * 3600
+    static func request() {
+        guard let g = UserDefaults(suiteName: SharedStore.appGroup) else { return }
+        let now = Date().timeIntervalSince1970
+        guard now - g.double(forKey: key) > every else { return }
+        g.set(now, forKey: key)
+        Task { @MainActor in run?() }   // not awaited: the shortcut never waits on it
+    }
+}
+
 /// Cards drawn with app-only views (the app sets them at launch; the widget never runs these actions).
 enum ShortcutCards {
     /// Setup's alarm picture for Get Fajr Alarm Time; true = the alarm is off (frosted).
@@ -1844,6 +1862,7 @@ struct FajrAlarmTimeIntent: AppIntent {
                                                resultValueName: "Fajr Alarm Time")
 
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog & ShowsSnippetView {
+        ShortcutTopUp.request()
         guard let calc = try? PrayerUtils.calculateAlarmDescription(ignoringSwitch: true) else { throw PrayerTimeUnavailable() }
         var time = calc.time
         // Between the alarm and Fajr the rule's time today has passed: the next day's, worked out from that day's Fajr.
@@ -1930,6 +1949,7 @@ struct PrayerTimeLeftIntent: AppIntent {
         categoryName: "Prayer Times", searchKeywords: ["salah", "how long", "remaining", "ends"], resultValueName: "Minutes Left")
 
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog & ShowsSnippetView {
+        ShortcutTopUp.request()
         let now = Date()
         let scheme = await ShortcutLook.scheme()
         if let c = PrayerWindows.pick(.current) {
@@ -1957,6 +1977,7 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetView {
+        ShortcutTopUp.request()
         let scheme = await ShortcutLook.scheme()
         // None on: the one just before it, if it's today's and still unmarked (Isha after 11:59 PM, Fajr after sunrise) —
         // marked as the app would, late (review: the prayer day runs to Fajr so a late Isha can still be marked).
