@@ -340,6 +340,8 @@ struct ShowcaseStoryPage: View {
     var onNext: (() -> Void)? = nil
     /// The pager marks a page opened when it's the one shown (its neighbours are built early).
     var marksOpened = true
+    /// The page's side margin: the pager sets its own (the neighbours peek in at the edges).
+    var sideInset: CGFloat = 16
     @State private var showSteps = false
     @AppStorage(MasjidArrival.enabledKey) private var arrivalDuas = false
 
@@ -416,7 +418,7 @@ struct ShowcaseStoryPage: View {
                 }
                 if let onNext { nextCard(onNext) }
             }
-            .padding(16)
+            .padding(.vertical, 16).padding(.horizontal, sideInset)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)

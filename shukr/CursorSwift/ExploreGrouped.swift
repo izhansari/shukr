@@ -432,32 +432,49 @@ struct ExploreGroupPage: View {
 
 // MARK: - A group's members, one after another
 
-/// A group's stories as pages (owner, decision explore-story-next D): swipe to the next, or tap its card at the foot.
+/// A group's stories as pages (owner, decision explore-story-next D): swipe to the next, or tap its card at the foot. The
+/// neighbours peek in at both edges and dots sit at the bottom (owner: "it doesn't look clear that we can scroll … like how
+/// you had in option A").
 struct ExploreStoryPager: View {
     let group: ExploreGroup
-    @State private var index: Int
+    @State private var current: ShowcaseCardID?
     @Environment(\.dismiss) private var dismiss
+    /// How much of each neighbour shows, and the gap to it.
+    private static let peek: CGFloat = 14, gap: CGFloat = 10
 
     init(group: ExploreGroup, start: Int) {
         self.group = group
-        _index = State(initialValue: start)
+        _current = State(initialValue: group.members.indices.contains(start) ? group.members[start].id : group.members.first?.id)
     }
+
+    private var index: Int { group.members.firstIndex { $0.id == current } ?? 0 }
 
     var body: some View {
         let members = group.members
-        TabView(selection: $index) {
-            ForEach(Array(members.enumerated()), id: \.element.id) { i, member in
-                ShowcaseStoryPage(card: member, next: i + 1 < members.count ? members[i + 1] : nil, backTitle: group.id.title,
-                                  onNext: {
-                                      if i + 1 < members.count { withAnimation(.snappy(duration: 0.35)) { index = i + 1 } }
-                                      else { dismiss() }
-                                  },
-                                  marksOpened: false)
-                    .tag(i)
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: Self.gap) {
+                ForEach(Array(members.enumerated()), id: \.element.id) { i, member in
+                    ShowcaseStoryPage(card: member, next: i + 1 < members.count ? members[i + 1] : nil, backTitle: group.id.title,
+                                      onNext: {
+                                          if i + 1 < members.count { withAnimation(.snappy(duration: 0.4)) { current = members[i + 1].id } }
+                                          else { dismiss() }
+                                      },
+                                      marksOpened: false, sideInset: 0)
+                        .safeAreaPadding(.bottom, 34)   // the page's own scroll ends clear of the dots
+                        .containerRelativeFrame(.horizontal)
+                        .id(member.id)
+                }
             }
+            .scrollTargetLayout()
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
+        .scrollTargetBehavior(.viewAligned)
+        .scrollPosition(id: $current)
+        .scrollIndicators(.hidden)
+        .contentMargins(.horizontal, Self.peek + Self.gap, for: .scrollContent)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .safeAreaInset(edge: .bottom) {
+            if members.count > 1 { dots(members.count) }
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if members.count > 1 {
@@ -469,12 +486,29 @@ struct ExploreStoryPager: View {
                 }
             }
         }
-        .onAppear { markOpened(index) }
-        .onChange(of: index) { _, i in markOpened(i) }
+        .onAppear { markOpened() }
+        .onChange(of: current) { _, _ in markOpened() }
     }
 
-    private func markOpened(_ i: Int) {
-        guard group.members.indices.contains(i) else { return }
-        UserDefaults.standard.set(true, forKey: ExploreShowcase.openedKey(group.members[i].id))
+    /// The page dots, on a small solid capsule so they read over the page's text (glass let it show through).
+    private func dots(_ count: Int) -> some View {
+        HStack(spacing: 7) {
+            ForEach(0..<count, id: \.self) { i in
+                Circle()
+                    .fill(i == index ? Color.sage : Color.secondary.opacity(0.35))
+                    .frame(width: i == index ? 8 : 6, height: i == index ? 8 : 6)
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: index)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(Capsule().fill(Color(.secondarySystemGroupedBackground)).shadow(color: .black.opacity(0.12), radius: 6, y: 2))
+        .padding(.bottom, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Page \(index + 1) of \(count)")
+    }
+
+    private func markOpened() {
+        guard let current else { return }
+        UserDefaults.standard.set(true, forKey: ExploreShowcase.openedKey(current))
     }
 }
