@@ -150,6 +150,10 @@ struct TourPage {
     /// item as the strip"), its button beside the chapter name; the to-dos then come in the same panel. Turned on step by
     /// step as the tour is reworked (the welcome and the rest still float).
     var atTop = false
+    /// The chapter just finished: the panel's moment for it (a ✓ and "… done") before the next chapter's line.
+    var chapterDone = false
+    /// The to-dos' dots stay away (the next chapter's first line, before its to-dos).
+    var hideProgress = false
     /// The to-dos, wherever they are (a chapter's step or the post-tour page).
     var todo: [String] { sections.first(where: { !$0.tasks.isEmpty })?.tasks ?? tasks }
 }
@@ -575,11 +579,18 @@ struct TourTopPanel: View {
 
     private var isStrip: Bool { mode == .strip }
 
+    static let outThenIn = AnyTransition.asymmetric(
+        insertion: .opacity.animation(.easeOut(duration: 0.25).delay(0.14)),
+        removal: .opacity.animation(.easeOut(duration: 0.12)))
+
     /// Just under the status bar, over the page's top bar.
     static var topInset: CGFloat {
         let window = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow
         return (window?.safeAreaInsets.top ?? 47) + 4
     }
+
+    /// The chapters moved into the panel so far: one overlay for all of them, so the panel stays from one to the next.
+    static let chapters: Set<TourStep> = [.circle, .list]
 
     /// Up: the top bar's own Skip tour stays away (TourLayer's skipLayer).
     @MainActor @Observable final class Presence {
@@ -598,12 +609,17 @@ struct TourTopPanel: View {
         VStack(alignment: .leading, spacing: isStrip ? 6 : 8) {
             header
             ZStack(alignment: .topLeading) {
-                if isStrip {
+                // Out, then in: what's leaving goes quickly, what's coming waits for it (they never show together).
+                if page.chapterDone {
+                    doneMoment
+                        .transition(Self.outThenIn)
+                } else if isStrip {
                     todo
                         .transition(.opacity.combined(with: .offset(y: 8)))
                 } else {
                     words
-                        .transition(.opacity.animation(.easeOut(duration: 0.15)))
+                        .id(page.headline)   // a new chapter's words come in fresh
+                        .transition(Self.outThenIn)
                 }
             }
         }
@@ -661,12 +677,22 @@ struct TourTopPanel: View {
             .allowsHitTesting(showsBack)
             .accessibilityHidden(!showsBack)
             .padding(.leading, -6)
-            Text(chapterLine)
-                .font(.system(.caption, design: .rounded, weight: .semibold))
-                .foregroundStyle(Color.primary.opacity(0.5))
-                .textCase(.uppercase)
-                .lineLimit(1)
-                .accessibilityAddTraits(.isHeader)
+            // A new chapter's name rolls in from below as the old one goes up — the chapter turning, in place, inside
+            // one line's height.
+            ZStack(alignment: .leading) {
+                Text(chapterLine)
+                    .font(.system(.caption, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.5))
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                    .id(chapterLine)
+                    .transition(.asymmetric(insertion: .offset(y: 18).combined(with: .opacity),
+                                            removal: .offset(y: -18).combined(with: .opacity)))
+            }
+            .frame(height: 18, alignment: .leading)
+            .clipped()
+            .animation(.smooth(duration: 0.45), value: chapterLine)
+            .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
             ZStack(alignment: .trailing) {
                 if !isStrip, let label = shown.primary {
@@ -686,6 +712,8 @@ struct TourTopPanel: View {
                 } else if isStrip {
                     trailingProgress
                         .transition(.opacity)
+                } else if page.hideProgress {
+                    EmptyView()
                 } else if !ticked.isEmpty {
                     // The chapter's to-dos all done: their dots stay, green (the strip's, finished).
                     HStack(spacing: 4) {
@@ -741,6 +769,21 @@ struct TourTopPanel: View {
             }
             .animation(.easeOut(duration: 0.2), value: ticked)
         }
+    }
+
+    /// The chapter's end: a ✓ that pops, and "Prayer Circle done".
+    private var doneMoment: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 26))
+                .foregroundStyle(TourInk.green)
+                .symbolEffect(.bounce, value: page.chapterDone)
+            Text(TourCopy.chapterDone(page.headline))
+                .font(.system(.headline, design: .rounded, weight: .semibold))
+        }
+        .padding(.vertical, 2)
+        .onAppear { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+        .accessibilityElement(children: .combine)
     }
 
     /// What there is to read: the step's words.
@@ -1819,17 +1862,30 @@ struct BubbleShape: Shape {
                 guard marked else { return chapter(.circle, 1 + done, of: 4, [shows, tryIt], locked: lockedCircle) }
                 // Marked: only the payoff (owner: no "3 done" fold, no back) — small enough to sit above the circle, the
                 // whole page under it free for the swipe.
+                // The chapter's end is its own moment (owner): "Prayer Circle done" with a ✓, then the panel turns to
+                // chapter 2 — the swipe up is its first step (it has nothing to go back to).
+                if celebrating == .circle {
+                    var p = chapter(.circle, 4, of: 4, [], locked: lockedCircle)
+                    p.atTop = true
+                    p.chapterDone = true
+                    return p
+                }
                 let payoff = TourSection(id: "circle.marked", note: TourCopy.Circle.marked)
-                // In the top panel too (owner: "same transitions … consistent"): the to-do grows into this line.
-                var p = chapter(.circle, 4, of: 4, [payoff], locked: lockedCircle)
+                var p = chapter(.list, 0, of: 5, [payoff], locked: lockedCircle)
                 p.atTop = true
+                p.hideProgress = true
                 return p
             }
         case .list:
             // One bubble, then the to-dos in the strip, then one line to close (owner: the two steps' tooltips covered
             // too much of the page; done, no "2 done" fold or Try it).
             let can = TourSection(id: "list.can", blocks: [TourBlock(lead: TourCopy.List.canLead, items: TourCopy.List.canNow)])
-            guard phase != .learn else { return chapter(.list, 0, of: 5, [can], primary: TourCopy.continueButton) }
+            guard phase != .learn else {
+                // In the top panel, carrying on from the swipe up (owner: everything at the top).
+                var p = chapter(.list, 0, of: 5, [can], primary: TourCopy.Circle.tryButton)
+                p.atTop = true
+                return p
+            }
             let all = ticked.isSuperset(of: [0, 1, 2, 3])
             guard !all else {
                 return chapter(.list, 5, of: 5, [TourSection(id: "list.done", note: TourCopy.List.allDone)],
@@ -1905,7 +1961,19 @@ struct BubbleShape: Shape {
         }
         withAnimation(.snappy(duration: 0.3)) { _ = ticked.insert(i) }
         if let key { glow(key) }
+        // The Prayer Circle's last to-do ends the chapter: its moment, then chapter 2's first line.
+        if step == .circle, i == 2 {
+            celebrating = .circle
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.6 + 1.5))
+                guard celebrating == .circle else { return }
+                withAnimation(.smooth(duration: 0.45)) { celebrating = nil }
+            }
+        }
     }
+
+    /// A chapter just finished, its moment in the top panel.
+    private(set) var celebrating: TourStep?
 
     /// The to-do just ticked, still shown with its ✓ for a beat (the page after it waits).
     private(set) var beat: Int?
@@ -2367,8 +2435,9 @@ struct TourLayer: View {
                     onSkipQibla: { runtime.event(.skipQibla) },
                     onSkip: { runtime.skip() })
             // A new chapter is a new bubble (owner, 2026-10-06: "make the bubble disappear and the next one appear"):
-            // the old one fades where it is, then the new one comes in at its place (TourCallout's entrance).
-            .id(step)
+            // the old one fades where it is, then the new one comes in at its place (TourCallout's entrance) — except
+            // the top panel, which stays and turns to the next chapter in place (owner, 2026-10-13).
+            .id(TourTopPanel.chapters.contains(step) ? "topPanel" : step.rawValue)
             .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(.easeIn(duration: 0.18))))
             .opacity(visible ? 1 : 0)
             .allowsHitTesting(visible)

@@ -21,6 +21,8 @@ enum TourCopy {
     static let getThere = "Get there"        // the first step of Zikr and Settings
     static let tryIt = "Try it"              // the to-dos step's label
     static func doneCount(_ n: Int) -> String { "\(n) done" }
+    /// A chapter's end, in the top panel ("Prayer Circle done").
+    static func chapterDone(_ chapter: String) -> String { "\(chapter) done" }
     /// A step's explanation, read once before its strip (TourStrip.swift).
     static let gotIt = "Got it"   // finished steps folded into one line
 
