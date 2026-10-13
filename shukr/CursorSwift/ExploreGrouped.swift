@@ -140,11 +140,11 @@ extension ShowcaseCardID {
         case .siriZikrTasks: "Your tasks in a card. Tap one to start it"
         case .siriMosques: "The nearest mosques, on a map"
         case .siriPrayedHere: "How often you've prayed where you are"
-        case .ccPrayer: "Shows the prayer that's on. Opens today's list"
-        case .ccPrayed: "Marks the prayer that's on, in one tap"
-        case .ccFajrAlarm: "Turns your Fajr alarm on or off"
+        case .ccPrayer: "Shows the prayer that's on and when it ends"
+        case .ccPrayed: "Marks the prayer that's on, without opening shukr"
+        case .ccFajrAlarm: "Shows when your Fajr alarm rings; tap to turn it off"
         case .ccQibla: "Opens the qibla map"
-        case .ccZikr: "Opens your zikr, and shows what's left"
+        case .ccZikr: "Shows the zikr you have left today"
         }
     }
 

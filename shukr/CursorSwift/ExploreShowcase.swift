@@ -608,19 +608,19 @@ struct ShowcaseStory {
              p("chart.bar", "Each of the five", "A count for each")], siri: "“Have I prayed here in shukr”")
         // Controls (MoreWidgets.swift): Control Center, a Lock Screen button, or the Action button. Wide or square, a control
         // shows its line of text; small, just its symbol.
-        case .ccPrayer: control("Today's Prayers", "The prayer that's on and when it ends, or the next one and when it starts.",
-            [p("list.bullet", "Tap it", "shukr opens on today's list"),
-             p("clock", "Never out of date", "It shows a clock time, not a countdown")])
-        case .ccPrayed: control("I Prayed", "Marks the prayer that's on, without opening shukr.",
-            [p("star", "Scored at the tap", "Like a tap in the app"),
-             p("checkmark.shield", "Never unmarks", "Already marked? It just says so")])
-        case .ccFajrAlarm: control("Fajr Alarm", "Your Fajr alarm, on or off, and when it rings.",
-            [p("power", "One tap", "Turns it on or off"),
-             p("alarm", "When it rings", "Shown right on it")])
-        case .ccQibla: control("Qibla", "Straight to the qibla map, turned so the qibla points up.",
+        case .ccPrayer: control("Today's Prayers", "Shows the prayer that's on and when it ends, or the next one and when it starts. Tap it for all of today's prayers.",
+            [p("clock", "At a glance", "“Asr · ends 6:42 PM”"),
+             p("list.bullet", "Tap for today", "shukr opens on today's list")])
+        case .ccPrayed: control("I Prayed", "Tap it after you pray: the prayer that's on is marked and scored, without opening shukr.",
+            [p("checkmark.circle", "Shows what's next", "“Asr · Mark prayed”, then “Prayed”"),
+             p("checkmark.shield", "Never unmarks", "Tapped again, it only says it's marked")])
+        case .ccFajrAlarm: control("Fajr Alarm", "Shows when your Fajr alarm rings next. Tap it to turn the alarm off, and again to turn it back on.",
+            [p("alarm", "When it rings", "“Fajr Alarm · 5:40 AM”, right on it"),
+             p("power", "Off and on", "One tap, the same alarm as in Settings")])
+        case .ccQibla: control("Qibla", "Opens the qibla map, turned so the qibla points up.",
             [p("apps.iphone", "From anywhere", "Even inside another app")])
-        case .ccZikr: control("Zikr", "Straight to your zikr, and how much of it is left today.",
-            [p("text.alignleft", "What's left", "Wide or square: “2 tasks left · about 9 min”"),
+        case .ccZikr: control("Zikr", "Shows how much zikr you have left today. Tap it to start counting.",
+            [p("text.alignleft", "What's left", "“2 tasks left · about 9 min”"),
              p("checkmark.circle", "All done", "Says so once you've finished")])
         }
     }
@@ -1072,11 +1072,18 @@ private struct SizedWidget<Content: View, Background: View>: View {
         }
     }
 
+    /// Your controls' own values, each in the state that shows what it does (owner: Fajr Alarm "shouldn't show the off" —
+    /// on, with when it rings): the alarm on at its next time, I Prayed waiting to mark, Zikr with tasks left.
     func load() async {
         if let v = try? await PrayerControl.Provider().currentValue() { prayer = ControlFace(symbol: v.symbol, title: v.name, line: v.line) }
-        if let v = try? await PrayedControl.Provider().currentValue() { prayed = v.face }
-        if let v = try? await FajrAlarmControl.Provider().currentValue() { fajr = v.face }
-        if let line = try? await TasbeehControl.Provider().currentValue() { zikr = ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: line) }
+        if let v = try? await PrayedControl.Provider().currentValue() {
+            prayed = PrayedControl.Value(name: v.none ? ShownPrayer.now.name : v.name, marked: false, none: false).face
+        }
+        if let v = try? await FajrAlarmControl.Provider().currentValue() {
+            fajr = FajrAlarmControl.Value(on: true, time: v.time.isEmpty ? "5:40 AM" : v.time).face
+        }
+        let line = (try? await TasbeehControl.Provider().currentValue()) ?? nil
+        zikr = ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: (line == nil || line == "All done today") ? "2 tasks left · about 9 min" : line)
     }
 }
 
