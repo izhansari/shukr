@@ -268,7 +268,17 @@ final class ShortcutsOnDeviceTests: XCTestCase {
         for _ in 0..<3 { shortcuts.swipeDown() }   // the tiles sit above the grouped choices
         let tile = shortcuts.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
         for _ in 0..<5 where !(tile.exists && tile.isHittable) { shortcuts.swipeUp() }
-        if tile.exists { tile.tap(); sleep(5) } else { tree("tree-" + title) }
+        if tile.exists { tile.tap(); sleep(5) } else {
+            tree("tree-" + title)
+            // Not on the page: the Shortcuts app's own search finds the action.
+            let search = shortcuts.searchFields.firstMatch
+            if search.waitForExistence(timeout: 2) {
+                search.tap(); search.typeText(title); sleep(3)
+                shot("search-" + title)
+                let hit = shortcuts.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", title)).element(boundBy: 1)
+                if hit.exists { hit.tap(); sleep(6) }
+            }
+        }
         shot("tile-" + title)
         if let phrase = env["SHORTCUT_PHRASE"] {
             XCUIDevice.shared.press(.home); sleep(1)
