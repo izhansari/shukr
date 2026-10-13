@@ -67,10 +67,11 @@ enum TourCopy {
         ]
         static let noCompass = "No compass here? Skip it"
         /// A line over each to-do in the panel: what it is (owner: "text above it that helps educate them").
+        /// The line teaches what the thing is; the to-do under it says what to do — never the same words (owner).
         static let todoLeads = [
-            "Under the prayer: when it ends, or how long is left.",
-            "The arrow on the ring always points to the Kaaba.",
-            "Prayed it? Holding the circle marks it, scored by when.",
+            "The ring fills as the prayer's time runs out.",
+            "The small arrow on the ring points to the Kaaba.",
+            "A marked prayer is scored by how early you prayed.",
         ]
         /// The button beside the chapter's name on "What it shows": on to trying it (owner: not "Continue").
         static let tryButton = "Try it"
@@ -107,10 +108,10 @@ enum TourCopy {
 
         /// A line over each to-do in the panel: what it is.
         static let todoLeads = [
-            "Coming prayers show when they start.",
-            "Prayers you've marked fold away under “done”.",
-            "Marked prayers show when you prayed them.",
-            "Marked one at the wrong time? You can change it.",
+            "Your whole day is here, in order.",
+            "Prayers you've marked tuck away to keep it tidy.",
+            "Every prayer you mark is scored out of 100.",
+            "Marked one late by mistake? Its time can be fixed.",
         ]
         static let todos = [
             "Tap a coming prayer for the time until",
@@ -173,14 +174,14 @@ enum TourCopy {
         /// Its try-its (owner: harmless moves — Explore stays something to discover).
         static let todos = [
             "Switch Reminders to Live Activities",
-            "Now to Fajr Alarm",
+            "Now switch to Fajr Alarm",
             "Tap ⓘ by Reminders",
         ]
-        /// A line over each to-do in the panel: what it is.
+        /// A line over each to-do in the panel: what the thing it names is.
         static let todoLeads = [
-            "Reminders come three ways. This is your notifications.",
-            "Live Activities count a prayer down on your Lock Screen.",
-            "Every ⓘ in Settings explains its section in plain words.",
+            "Live Activities put a prayer's countdown on your Lock Screen.",
+            "The Fajr alarm is a real alarm that moves with Fajr.",
+            "Every ⓘ explains its section in plain words.",
         ]
         /// The last chapter's moment swipes to this, the tour's end.
         static let finale = "Tour complete"

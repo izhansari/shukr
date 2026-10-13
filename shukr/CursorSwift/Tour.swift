@@ -565,6 +565,14 @@ struct TourCallout: View {
     }
 }
 
+extension VerticalAlignment {
+    /// The to-do's own line in the panel: its ring sits level with it.
+    private enum TodoLine: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] }
+    }
+    static let todoLine = VerticalAlignment(TodoLine.self)
+}
+
 /// The panel in the strip's place at the top (owner, 2026-10-13: "the same item as the strip"). One line stays put
 /// through the whole chapter — its number and name, then the way on (→ while there's something to read, the to-dos'
 /// dots once there's something to do) and ✕ to skip — and only what's under it changes: the words, then the one thing to
@@ -648,7 +656,8 @@ struct TourTopPanel: View {
                     // The ‹'s place, as in the line it replaces: the name lands where it will sit (no sideways jump).
                     Color.clear.frame(width: 22, height: 30).padding(.leading, -6)
                     doneMoment
-                    TourSkipX { confirmSkip = true }
+                    // The last chapter's end: nothing left to skip.
+                    if step != .settings { TourSkipX { confirmSkip = true } }
                 }
                 .padding(.bottom, -4)   // the panel's bottom padding is a hair deeper than its top: centred
             } else {
@@ -809,8 +818,11 @@ struct TourTopPanel: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("What this step is about")
             }
-            TourSkipX { confirmSkip = true }
-                .padding(.leading, -4)
+            // The tour's end has only its ✓ (owner: a ✕ there read as "skip" after they'd finished).
+            if !isFinale {
+                TourSkipX { confirmSkip = true }
+                    .padding(.leading, -4)
+            }
         }
         .frame(height: 34)
     }
@@ -923,7 +935,7 @@ struct TourTopPanel: View {
 
     /// The one thing to do now: its ring (✓ once done), its words sliding up to the next.
     private var todo: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .todoLine, spacing: 12) {
             ZStack {
                 Circle()
                     .strokeBorder(TourInk.green.opacity(currentDone ? 0 : 0.6), lineWidth: 1.5)
@@ -934,6 +946,7 @@ struct TourTopPanel: View {
                     .scaleEffect(currentDone ? 1 : 0.5)
             }
             .frame(width: 22, height: 22)
+            .alignmentGuide(.todoLine) { $0[VerticalAlignment.center] }   // level with the to-do, not the line above
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentDone)
             VStack(alignment: .leading, spacing: 2) {
                 // What it is, then what to do — the two move on together, to-do by to-do.
@@ -949,6 +962,7 @@ struct TourTopPanel: View {
                         .foregroundStyle(Color.primary.opacity(currentDone ? 0.5 : 0.9))
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
+                        .alignmentGuide(.todoLine) { $0[VerticalAlignment.center] }
                 }
                 .id(current)
                 .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
@@ -2478,7 +2492,10 @@ struct BubbleShape: Shape {
             UserDefaults.standard.set("notifications", forKey: "settings.remindersTab")
             settingsScroll = (.top, settingsScroll.1 + 1)
             setPhase(.learn)
-        case (.settings, .learn, .next): setPhase(.tryIt)
+        case (.settings, .learn, .next):
+            // The try-its start on Notifications, whatever the page was left on (owner: it was on Fajr Alarm).
+            UserDefaults.standard.set("notifications", forKey: "settings.remindersTab")
+            setPhase(.tryIt)
         case (.settings, .tryIt, .reminderTab(let side)):
             if side == "liveActivities" { tick(0) }
             if side == "fajrAlarm", ticked.contains(0) { tick(1) }
