@@ -1963,7 +1963,7 @@ struct LiveActivityInfo: View {
                          text: "It counts like marking it in shukr; then the card offers a photo and Tasbih Fatimah.")
             // iOS holds 5 (PrayerLiveActivities) — why "Scheduled through" here only reaches a day or two (owner: say so).
             InfoModalRow(symbol: "clock.arrow.circlepath", title: "Kept coming",
-                         text: "iOS holds five at a time. Each time you mark one or open shukr, the next ones are set up.")
+                         text: LASetupCopy.fiveAtATime)
             Text("Tap a prayer to turn its card on or off.")
                 .font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
         }
@@ -2003,6 +2003,11 @@ struct ScheduledLiveActivitiesPage: View {
 
     var body: some View {
         List {
+            // At the top, where it's read (owner: the same words as setup's tiles).
+            Section {
+            } footer: {
+                Text(LASetupCopy.fiveAtATime)
+            }
             if loaded && cards.isEmpty {
                 Section {
                     Text("None waiting right now. Opening shukr sets up the next ones.")
@@ -2013,10 +2018,6 @@ struct ScheduledLiveActivitiesPage: View {
                 Section(Self.dayTitle(day)) {
                     ForEach(cards.filter { Calendar.current.isDate($0.start, inSameDayAs: day) }) { row($0) }
                 }
-            }
-            Section {
-            } footer: {
-                Text("iOS holds five at a time. Each time you mark one or open shukr, the next ones are set up.")
             }
         }
         .listStyle(.insetGrouped)

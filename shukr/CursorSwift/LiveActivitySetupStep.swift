@@ -153,7 +153,7 @@ struct LiveActivitySetupStep: View {
         .padding(.top, 8)
     }
 
-    /// "Show my prayers": on, the prayers as set (Dhuhr, Asr and Maghrib unless changed), the next windows planned now —
+    /// "Show my prayers": on, the prayers as set (all five unless changed), the next windows planned now —
     /// iOS asks its own "Allow Live Activities?" the first time one shows. After a "no", the tiles come back as they were.
     private func turnOn() {
         if answer == false, shown == nil {
@@ -458,6 +458,9 @@ struct LiveActivityDemo: View {
 
     /// The words as shipped. Kept honest about what it does (the audit, 2026-10-11): a card shows from a prayer's
     /// start until it's marked, and marking or opening shukr keeps the next ones coming.
+    /// iOS's five at a time, said the same way on the tiles, the scheduled page and the ⓘ (owner's words, 2026-10-12).
+    static let fiveAtATime = "iOS gives apps five Live Activities at a time. So long as you open shukr or mark a prayer, shukr can top up the cards to keep them coming."
+
     static let defaults: [Key: String] = [
         .title: "Live Activities",
         .subtitle: "From the moment a prayer starts, see how long is left on your Lock Screen and in the Dynamic Island, and mark it prayed without opening shukr.",
@@ -468,7 +471,7 @@ struct LiveActivityDemo: View {
         .yes: "Show my prayers",
         .no: "No thanks, I’ll check the app",
         .tilesHeader: "Which prayers?",
-        .tilesBody: "We start you with the prayers in the middle of your day, where it helps most. All five or just one: it’s up to you.",
+        .tilesBody: LASetupCopy.fiveAtATime,
         .skipTitle: "Go without Live Activities?",
         .skipBody: "You’d lose the countdown on your Lock Screen and in the Dynamic Island, and marking a prayer from there. Your notifications still come either way.",
         .skipKeep: "Show my prayers",
