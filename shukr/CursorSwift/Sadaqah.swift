@@ -224,7 +224,7 @@ struct SadaqahDonation: Codable, Identifiable, Hashable {
 
 /// What a donation was for.
 enum SadaqahPurpose: String, Codable, CaseIterable, Identifiable {
-    case sadaqah, zakat, ramadan, relief, orphans, masjid, community, other
+    case sadaqah, zakat, zakatFitr, jariyah, fidya, kaffarah, qurbani, ramadan, relief, orphans, masjid, community, other
     var id: String { rawValue }
     /// Which side of the page it counts towards (Zakat / Sadaqah totals never include community gifts).
     var kind: GiveKind { self == .community ? .community : .sadaqah }
@@ -232,6 +232,11 @@ enum SadaqahPurpose: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .sadaqah: "Sadaqah"
         case .zakat: "Zakat"
+        case .zakatFitr: "Zakat al-Fitr"
+        case .jariyah: "Sadaqah Jariyah"
+        case .fidya: "Fidya"
+        case .kaffarah: "Kaffarah"
+        case .qurbani: "Qurbani"
         case .ramadan: "Ramadan"
         case .relief: "Emergency relief"
         case .orphans: "Orphans"
@@ -244,6 +249,11 @@ enum SadaqahPurpose: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .sadaqah: "heart.fill"
         case .zakat: "scalemass.fill"
+        case .zakatFitr: "sparkles"
+        case .jariyah: "drop.fill"
+        case .fidya: "fork.knife"
+        case .kaffarah: "arrow.uturn.backward.circle.fill"
+        case .qurbani: "leaf.fill"
         case .ramadan: "moon.stars.fill"
         case .relief: "cross.case.fill"
         case .orphans: "figure.and.child.holdinghands"
@@ -367,6 +377,8 @@ struct SadaqahPage: View {
     @State private var titleInBar = false
     /// Every donation, from a tap on the total.
     @State private var showHistory = false
+    /// Kinds of giving, explained.
+    @State private var showGuide = false
 
     private var startOfYear: Date { Calendar.current.dateInterval(of: .year, for: .now)?.start ?? .now }
 
@@ -438,6 +450,22 @@ struct SadaqahPage: View {
             } footer: {
                 Text("Private: kept on this phone only. Gave somewhere else? Log it with +.")
             }
+            Section {
+                Button { showGuide = true } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "book.fill").foregroundStyle(Color.sage).frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Sadaqah, zakat and more")
+                            Text("What each one is, in a few lines").font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Self.card)
+            }
         }
         // The new-task flow's page: white, soft grey cards, no gap under the bar.
         .scrollContentBackground(.hidden)
@@ -448,6 +476,11 @@ struct SadaqahPage: View {
         .navigationBarTitleDisplayMode(.inline)
         // The title is on the page; once it has scrolled under the bar, the bar shows it (owner: it stays up top).
         .toolbar {
+            // Kinds of giving (owner: "sadaqah versus zakat … I myself get confused").
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showGuide = true } label: { Image(systemName: "book") }
+                    .accessibilityLabel("Kinds of giving")
+            }
             // Log a donation (owner): the bar's own button, so iOS 26 draws it in Liquid Glass.
             ToolbarItem(placement: .topBarTrailing) {
                 Button { editing = DonationDraft(manual: ()) } label: { Image(systemName: "plus") }
@@ -466,6 +499,7 @@ struct SadaqahPage: View {
         }
         .fontDesign(.rounded)
         .navigationDestination(isPresented: $showHistory) { SadaqahHistoryPage() }
+        .sheet(isPresented: $showGuide) { GivingGuideSheet() }
         .sheet(item: $asking, onDismiss: {
             if let charity = confirmed { confirmed = nil; editing = DonationDraft(after: charity) }
         }) { charity in
@@ -1278,6 +1312,94 @@ private struct CharityInfoSheet: View {
         .frame(maxWidth: .infinity)
         .fontDesign(.rounded)
         .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+/// "Sadaqah, zakat and more" (owner): what each kind of giving is, in a few lines, in the log sheet's look.
+/// ⚠️ Written as plain, widely agreed summaries (no hadith quoted); like the other religious copy in the app, it needs a
+/// knowledgeable check before release (CLAUDE.md, Open items).
+struct GivingGuideSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    private struct Kind: Identifiable {
+        let id: String
+        let symbol: String
+        let title: String
+        let tagline: String
+        let text: String
+    }
+
+    private static let kinds: [Kind] = [
+        Kind(id: "zakat", symbol: "scalemass.fill", title: "Zakat", tagline: "The obligatory charity",
+             text: "One of the five pillars of Islam. Once a year you give 2.5% of the savings you've held for a full lunar year, if they're above the nisab, a minimum set by the value of gold or silver. It goes to the eight groups named in the Qur'an (9:60), such as the poor and the needy."),
+        Kind(id: "sadaqah", symbol: "heart.fill", title: "Sadaqah", tagline: "Voluntary charity",
+             text: "Any amount, any time, to anyone in need. It isn't only money: kindness, a good word or helping someone counts too."),
+        Kind(id: "jariyah", symbol: "drop.fill", title: "Sadaqah Jariyah", tagline: "Charity that keeps on giving",
+             text: "Something that goes on benefiting people, like a well, a masjid or beneficial knowledge. Its reward continues, even after you've passed away."),
+        Kind(id: "fitr", symbol: "sparkles", title: "Zakat al-Fitr", tagline: "Before Eid al-Fitr",
+             text: "A small set amount for each person in the household, given before the Eid prayer, so that people in need can celebrate too. Masajid usually announce the amount each year."),
+        Kind(id: "fidya", symbol: "fork.knife", title: "Fidya", tagline: "For fasts you can't make up",
+             text: "When illness or old age means you can't fast in Ramadan and can't make the days up later, you feed a person in need for each day missed."),
+        Kind(id: "kaffarah", symbol: "arrow.uturn.backward.circle.fill", title: "Kaffarah", tagline: "For a fast broken on purpose",
+             text: "Breaking a Ramadan fast on purpose, without a valid reason, is made up by fasting 60 days in a row, or, if you can't, by feeding 60 people in need. A broken oath has its own, smaller kaffarah."),
+        Kind(id: "qurbani", symbol: "leaf.fill", title: "Qurbani", tagline: "At Eid al-Adha",
+             text: "An animal sacrificed in the days of Eid al-Adha, with the meat shared and a part given to people in need. Many charities can do it for you abroad."),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
+            ScrollView {
+                VStack(spacing: 14) {
+                    VStack(spacing: 6) {
+                        Text("Kinds of giving").font(.system(size: 30, weight: .light, design: .rounded))
+                        Text("What each one is, in a few lines").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    .padding(.top, 8).padding(.bottom, 8)
+                    ForEach(Self.kinds) { k in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 12) {
+                                Image(systemName: k.symbol)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 32, height: 32)
+                                    .background(Circle().fill(Color.sage))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(k.title).font(.body.weight(.semibold))
+                                    Text(k.tagline).font(.footnote).foregroundStyle(Color.sage)
+                                }
+                            }
+                            Text(k.text)
+                                .font(.subheadline).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(SadaqahPage.card))
+                        .padding(.horizontal, 20)
+                    }
+                    Text("Simple summaries to help tell them apart. Scholars differ on some details, like which nisab to use. For your own zakat, ask a scholar you trust.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28).padding(.top, 6).padding(.bottom, 24)
+                }
+            }
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .fontDesign(.rounded)
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
 }
