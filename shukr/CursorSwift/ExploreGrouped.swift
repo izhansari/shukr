@@ -456,8 +456,8 @@ struct ExploreStoryPager: View {
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: Self.gap) {
                         ForEach(members) { member in
-                            ShowcasePicture(id: member.id, big: true)
-                                .frame(height: 300)
+                            ShowcasePicture(id: member.id, scale: 1.15, live: true)   // (owner: half the page was too much)
+                                .frame(height: 200)
                                 .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                                 .containerRelativeFrame(.horizontal)
                                 .id(member.id)
@@ -470,7 +470,7 @@ struct ExploreStoryPager: View {
                 .scrollPosition(id: $current)
                 .scrollIndicators(.hidden)
                 .contentMargins(.horizontal, Self.peek + Self.gap, for: .scrollContent)
-                .frame(height: 300)
+                .frame(height: 200)
                 if members.count > 1 { dots(members.count, i) }
                 ShowcaseStoryPage(card: members[i], marksOpened: false, embedded: true)
                     .id(members[i].id)   // a new page's state (its steps folded) for each item

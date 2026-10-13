@@ -336,7 +336,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
     #endif
 
     /// Helper function that calculates the data you want in the widget entry.
-    private func makeEntry(_ configuration: ConfigurationAppIntent? = nil) async -> PrayersWidgetEntry {
+    /// Also the app's: Explore shukr draws the real widget from it (ExploreShowcase.swift).
+    func makeEntry(_ configuration: ConfigurationAppIntent? = nil) async -> PrayersWidgetEntry {
         // Grab the values from your location manager
         let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")!
         let showLocation = WidgetListState.isOpen(at: Date())

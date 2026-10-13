@@ -84,6 +84,8 @@ enum WidgetStyle: String, AppEnum, CaseIterable {
 
 struct ConfigurationAppIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Prayers"
+    /// The widget's Edit Widget only: never an action in Shortcuts (the app compiles this file too, for Explore's real widget).
+    static var isDiscoverable: Bool = false
     static var description = IntentDescription("Today's prayers and how much time is left. Set its look in shukr → Settings → Appearance.")
 
     /// Defaults are the corners the widget always had, so existing widgets don't change.

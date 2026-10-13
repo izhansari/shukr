@@ -360,7 +360,7 @@ struct ShowcaseStoryPage: View {
         return VStack(alignment: .leading, spacing: 16) {
                 if !embedded {
                     ShowcasePicture(id: card.id, big: true)
-                        .frame(height: 300)
+                        .frame(height: 200)
                         .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                         .accessibilityHidden(true)
@@ -637,6 +637,8 @@ struct ShowcasePicture: View {
     var scale: CGFloat? = nil
     /// A list row's small square: a control shows just its circle.
     var thumb = false
+    /// An item's page: the Prayers widget plays its taps.
+    var live = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -653,7 +655,9 @@ struct ShowcasePicture: View {
     }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
-    private var fit: CGFloat { id == .controlCenter ? 0.7 : id.isControl ? 0.8 : id.isSiri ? 0.5 : 1 }
+    private var fit: CGFloat {
+        id == .controlCenter ? 0.7 : id.isControl ? 0.8 : id.isSiri ? 0.5 : id == .homePrayers ? 0.8 : id == .homeZikr ? 0.62 : 1
+    }
 
     private var controlSymbol: String? {
         switch id {
@@ -696,14 +700,10 @@ struct ShowcasePicture: View {
     @ViewBuilder private var picture: some View {
         let p = ShownPrayer.now
         switch id {
-        case .homePrayers:
-            WidgetTile { RingFace(name: p.name, line: p.left, progress: p.progress, size: 62) }
-        case .homeZikr:
-            WidgetTile {
-                VStack(alignment: .leading, spacing: 6) {
-                    ZikrRow(name: "Astaghfirullah", fill: 1); ZikrRow(name: "Salawat", fill: 0.6); ZikrRow(name: "SubhanAllah", fill: 0.2)
-                }
-            }
+        // The real widgets (PrayersWidget.swift / MoreWidgets.swift, in the app's build too — owner: "graphics of our actual
+        // widgets"); on an item's page the Prayers widget plays its taps.
+        case .homePrayers: RealPrayersWidget(playing: big || live)
+        case .homeZikr: RealZikrWidget()
         case .homeName:
             let n = NamesOfAllah.nameOfTheDay()
             WidgetTile(fill: Color(red: 0.98, green: 0.97, blue: 0.94)) {
@@ -934,6 +934,90 @@ private struct CCCircle: View {
 }
 
 /// You ask, Siri answers with a card (the phrase's own words; the answer shaped like the shortcut's).
+/// The Prayers widget itself, at a small widget's size, from the widget's own data (`makeEntry`). `playing` (an item's page)
+/// runs what a person does with it, a finger mark on each tap: the ring's tap flips to time left, the arrow opens today's
+/// list, and back. It never takes a touch: its buttons would really run.
+struct RealPrayersWidget: View {
+    var playing = false
+    @State private var entry: PrayersWidgetEntry?
+    @State private var touch: UnitPoint?
+    @State private var touches = 0
+    @Environment(\.colorScheme) private var scheme
+    static let side: CGFloat = 170
+
+    var body: some View {
+        ZStack {
+            if let entry { PrayersWidgetView(entry: entry).padding(14) }
+        }
+        .frame(width: Self.side, height: Self.side)
+        .background(entry?.background ?? WidgetSoft.surface(scheme))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            GeometryReader { g in
+                if let touch {
+                    Circle().fill(Color.white.opacity(0.55)).frame(width: 34, height: 34)
+                        .overlay(Circle().stroke(Color.black.opacity(0.08)))
+                        .position(x: touch.x * g.size.width, y: touch.y * g.size.height)
+                        .id(touches)
+                        .transition(.scale(scale: 1.6).combined(with: .opacity))
+                }
+            }
+        }
+        .shadow(color: .black.opacity(0.15), radius: 10, y: 5)
+        .allowsHitTesting(false)
+        .task { await run() }
+    }
+
+    private func run() async {
+        let first = await PrayersWidgetTimelineProvider().makeEntry()
+        entry = first
+        guard playing else { return }
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(2.2))
+            await tap(at: .center) { $0.with(text: !$0.textToggle) }       // the ring: ends at ⇄ time left
+            try? await Task.sleep(for: .seconds(2.2))
+            await tap(at: UnitPoint(x: 0.5, y: 0.9)) { $0.at($0.date, list: true) }   // the arrow: today's list
+            try? await Task.sleep(for: .seconds(3))
+            await tap(at: UnitPoint(x: 0.5, y: 0.9)) { $0.at($0.date, list: false).with(text: first.textToggle) }
+        }
+    }
+
+    @MainActor private func tap(at point: UnitPoint, _ change: (PrayersWidgetEntry) -> PrayersWidgetEntry) async {
+        guard let current = entry, !Task.isCancelled else { return }
+        touches += 1
+        withAnimation(.easeOut(duration: 0.15)) { touch = point }
+        try? await Task.sleep(for: .seconds(0.18))
+        withAnimation(.easeInOut(duration: 0.35)) { entry = change(current) }
+        withAnimation(.easeOut(duration: 0.3)) { touch = nil }
+    }
+}
+
+extension PrayersWidgetEntry {
+    /// The same entry with the ring's text side flipped (the widget's own tap).
+    func with(text: Bool) -> PrayersWidgetEntry {
+        PrayersWidgetEntry(date: date, heading: heading, latitude: latitude, longitude: longitude,
+                           toggleShowAllTImes: toggleShowAllTImes, prayerDict: prayerDict,
+                           todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: text,
+                           completedScores: completedScores, nextFajr: nextFajr, nextSunrise: nextSunrise,
+                           leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
+                           ringAbove: ringAbove, style: style)
+    }
+}
+
+/// The Zikr widget itself, at its wide (medium) size — outside a real widget the view draws its medium layout: your tasks,
+/// or stand-ins without any.
+struct RealZikrWidget: View {
+    var body: some View {
+        ZikrTasksWidgetView(entry: ZikrTasksEntry(date: Date(), tasks: ShowcaseSamples.zikrTasks, storeReady: true))
+            .padding(14)
+            .frame(width: RealPrayersWidget.side * 2 + 18, height: RealPrayersWidget.side)
+            .background(Color("widgetBgColor"))
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .shadow(color: .black.opacity(0.15), radius: 10, y: 5)
+            .allowsHitTesting(false)
+    }
+}
+
 /// A Shortcuts card as the Shortcuts app shows it: the spoken line, a rule, the card; drawn at its real width, top kept.
 private struct ShortcutSheetShot<Card: View>: View {
     let dialog: String

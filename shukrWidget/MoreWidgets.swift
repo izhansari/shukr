@@ -208,7 +208,7 @@ private struct OverallRing: View {
     }
 }
 
-private struct TaskRow: View {
+private struct ZikrWidgetTaskRow: View {
     let task: ZikrTaskSnapshot
     /// Small widget: names only, like Reminders — the circle shows the progress.
     var showsProgress = true
@@ -331,7 +331,7 @@ struct ZikrTasksWidgetView: View {
             ForEach(Array(shown.enumerated()), id: \.element.id) { i, task in
                 // Each row opens the Zikr page on its own task (owner).
                 Button(intent: OpenZikrTaskIntent(taskID: task.id)) {
-                    TaskRow(task: task, showsProgress: progress)
+                    ZikrWidgetTaskRow(task: task, showsProgress: progress)
                         .padding(.vertical, rowPadding)
                         .contentShape(Rectangle())
                 }

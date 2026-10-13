@@ -46,6 +46,9 @@
 		36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
 		36E0E0AB2D41A26C005C62BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
 		36E0E0AD2D41ECEB005C62BB /* PrayersWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */; };
+		5A7C0E000000000000000C01 /* PrayersWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */; };
+		5A7C0E000000000000000C02 /* AppIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A06042C5E8635002CD697 /* AppIntent.swift */; };
+		5A7C0E000000000000000C03 /* MoreWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* MoreWidgets.swift */; };
 		36E0E0AF2D41F930005C62BB /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36E0E0AE2D41F930005C62BB /* Adhan */; };
 		36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */; };
 		36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */; };
@@ -650,6 +653,9 @@
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
 				36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */,
+				5A7C0E000000000000000C01 /* PrayersWidget.swift in Sources */,
+				5A7C0E000000000000000C02 /* AppIntent.swift in Sources */,
+				5A7C0E000000000000000C03 /* MoreWidgets.swift in Sources */,
 				369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */,
 				369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */,
 			);
