@@ -555,7 +555,7 @@ struct SettingsView: View {
                             }
                         }
                         .onChange(of: widgetStyleRaw) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
-                        AppIconPicker()
+                        AppIconRow()
                     } header: {
                         // What each look means is in the ⓘ (owner: not as text under the section).
                         headerWithInfoButton(title: "Appearance", isPopupVisible: $isAppearanceInfoVisible)
@@ -1819,103 +1819,192 @@ struct ZikrTourAgainRow: View {
     }
 }
 
-/// Settings → Appearance → Icon (owner: "lets them choose the light or the dark icon … just call it icon"): System
-/// (the main AppIcon — iOS picks light or dark with the phone; "System", as the other pickers say), Light or Dark always
-/// (the alternate sets AppIcon-Light / AppIcon-Dark: one image each, no dark appearance, plus the T3 tinted;
-/// ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES). iOS shows its own "You have changed the icon" alert.
-struct AppIconPicker: View {
-    enum Choice: String, CaseIterable, Identifiable {
-        case system, light, dark
-        var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .system: "System"
-            case .light: "Light"
-            case .dark: "Dark"
-            }
-        }
-        /// The alternate icon's name; nil = the main icon.
-        var iconName: String? {
-            switch self {
-            case .system: nil
-            case .light: "AppIcon-Light"
-            case .dark: "AppIcon-Dark"
-            }
-        }
-        static var current: Choice {
-            allCases.first { $0.iconName == UIApplication.shared.alternateIconName } ?? .system
+/// Settings → Appearance → Icon (owner: "lets them choose the light or the dark icon … just call it icon"; then "make it
+/// be its own page like how live activities is … show a graphic"): System (the main AppIcon — iOS picks light or dark
+/// with the phone; "System", as the other pickers say), Light or Dark always (the alternate sets AppIcon-Light /
+/// AppIcon-Dark: one image each, no dark appearance, plus the T3 tinted; ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES).
+/// iOS shows its own "You have changed the icon" alert.
+enum AppIconChoice: String, CaseIterable, Identifiable {
+    case system, light, dark
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
         }
     }
-    @State private var choice = Choice.current
+    var detail: String {
+        switch self {
+        case .system: "Light or dark with your iPhone."
+        case .light: "Always the light icon."
+        case .dark: "Always the dark icon."
+        }
+    }
+    /// The alternate icon's name; nil = the main icon.
+    var iconName: String? {
+        switch self {
+        case .system: nil
+        case .light: "AppIcon-Light"
+        case .dark: "AppIcon-Dark"
+        }
+    }
+    static var current: AppIconChoice {
+        allCases.first { $0.iconName == UIApplication.shared.alternateIconName } ?? .system
+    }
+}
 
+/// The Appearance row: "Icon" and the pick, pushing the page (as Live Activity card does).
+struct AppIconRow: View {
+    @State private var choice = AppIconChoice.current
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        NavigationLink {
+            AppIconPage { choice = $0 }
+        } label: {
             HStack(spacing: 12) {
                 Image(systemName: "app").frame(width: 24)
                 Text("Icon")
-            }
-            HStack(spacing: 0) {
-                ForEach(Choice.allCases) { tile($0).frame(maxWidth: .infinity) }
+                Spacer(minLength: 8)
+                Text(choice.title).foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 4)
-        .onAppear { choice = Choice.current }
     }
+}
 
-    private func tile(_ c: Choice) -> some View {
-        let picked = c == choice
-        return Button {
-            pick(c)
-        } label: {
-            VStack(spacing: 6) {
-                preview(c)
-                    .frame(width: 54, height: 54)
-                    .clipShape(RoundedRectangle(cornerRadius: 12.5, style: .continuous))
-                    // A hairline so the dark icon still has an edge on the dark card.
-                    .overlay(RoundedRectangle(cornerRadius: 12.5, style: .continuous).strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 15.5, style: .continuous)
-                            .strokeBorder(picked ? Color.sage : .clear, lineWidth: 2.5)
-                            .padding(-4)
-                    }
-                    .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
-                Text(c.title)
-                    .font(.system(.footnote, design: .rounded, weight: picked ? .semibold : .regular))
-                    .foregroundStyle(picked ? Color.primary : .secondary)
-            }
-            .padding(.top, 4)
-            .contentShape(Rectangle())
-        }
-        // Three buttons in one Form row: each takes only its own taps.
-        .buttonStyle(.borderless)
-        .accessibilityLabel("\(c.title) icon")
-        .accessibilityAddTraits(picked ? .isSelected : [])
-    }
+/// The page: a little Home Screen with shukr's icon as it will look, then the three choices. Picking one swaps the icon
+/// in the picture (System shows the one your iPhone uses now).
+struct AppIconPage: View {
+    var picked: (AppIconChoice) -> Void = { _ in }
+    @State private var choice = AppIconChoice.current
+    @Environment(\.colorScheme) private var scheme
 
-    /// System shows both halves, light over dark on the diagonal.
-    @ViewBuilder private func preview(_ c: Choice) -> some View {
+    /// The icon the Home Screen shows for a choice right now.
+    private func shownDark(_ c: AppIconChoice) -> Bool {
         switch c {
-        case .light: Image("IconPreviewLight").resizable()
-        case .dark: Image("IconPreviewDark").resizable()
-        case .system:
-            ZStack {
-                Image("IconPreviewDark").resizable()
-                Image("IconPreviewLight").resizable().mask(DiagonalHalf())
-            }
+        case .system: scheme == .dark
+        case .light: false
+        case .dark: true
         }
     }
 
-    private func pick(_ c: Choice) {
+    var body: some View {
+        Form {
+            Section {
+                AppIconHomePreview(dark: shownDark(choice))
+                    .listRowInsets(EdgeInsets())
+            }
+            Section {
+                ForEach(AppIconChoice.allCases) { option in
+                    Button {
+                        pick(option)
+                    } label: {
+                        HStack(spacing: 14) {
+                            AppIconThumb(choice: option, scheme: scheme)
+                                .frame(width: 36, height: 36)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(option.title).foregroundStyle(.primary)
+                                Text(option.detail).font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if option == choice {
+                                Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.sage)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            } footer: {
+                Text("A tinted Home Screen keeps the tinted icon whichever you pick.")
+            }
+        }
+        .navigationTitle("Icon")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { choice = AppIconChoice.current }
+    }
+
+    private func pick(_ c: AppIconChoice) {
         guard c != choice, UIApplication.shared.supportsAlternateIcons else { return }
         let before = choice
-        choice = c
-        triggerSomeVibration(type: .light)
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { choice = c }
+        UISelectionFeedbackGenerator().selectionChanged()
+        picked(c)
         UIApplication.shared.setAlternateIconName(c.iconName) { error in
             guard error != nil else { return }
-            Task { @MainActor in choice = before }
+            Task { @MainActor in
+                withAnimation { choice = before }
+                picked(before)
+            }
         }
     }
+}
 
+/// A slice of a Home Screen: shukr's icon among faint neighbours on a soft wallpaper that follows the icon (light behind
+/// the light icon, dark behind the dark), the icon swapping with a small pop.
+private struct AppIconHomePreview: View {
+    let dark: Bool
+    private let size: CGFloat = 76
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: dark ? [Color(red: 0.13, green: 0.16, blue: 0.15), Color(red: 0.05, green: 0.06, blue: 0.06)]
+                                        : [Color(red: 0.80, green: 0.87, blue: 0.83), Color(red: 0.62, green: 0.74, blue: 0.68)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            HStack(alignment: .top, spacing: 22) {
+                neighbour
+                VStack(spacing: 7) {
+                    ZStack {
+                        Image(dark ? "IconPreviewDark" : "IconPreviewLight")
+                            .resizable()
+                            .id(dark)
+                            .transition(.asymmetric(insertion: .scale(scale: 0.6).combined(with: .opacity),
+                                                    removal: .scale(scale: 1.1).combined(with: .opacity)))
+                    }
+                    .frame(width: size, height: size)
+                    .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
+                    .shadow(color: .black.opacity(dark ? 0.5 : 0.18), radius: 8, y: 4)
+                    Text("shukr")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(dark ? .white : .black.opacity(0.75))
+                }
+                neighbour
+            }
+        }
+        .frame(height: 190)
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: dark)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(dark ? "The dark shukr icon" : "The light shukr icon")
+    }
+    private var neighbour: some View {
+        VStack(spacing: 7) {
+            RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
+                .fill((dark ? Color.white : .black).opacity(dark ? 0.08 : 0.07))
+                .frame(width: size * 0.82, height: size * 0.82)
+                .padding(.top, size * 0.09)
+            Capsule().fill((dark ? Color.white : .black).opacity(0.1)).frame(width: 34, height: 6)
+                .padding(.top, size * 0.09 + 3)
+        }
+    }
+}
+
+/// The small icon beside each choice: System half light, half dark on the diagonal.
+private struct AppIconThumb: View {
+    let choice: AppIconChoice
+    let scheme: ColorScheme
+    var body: some View {
+        Group {
+            switch choice {
+            case .light: Image("IconPreviewLight").resizable()
+            case .dark: Image("IconPreviewDark").resizable()
+            case .system:
+                ZStack {
+                    Image("IconPreviewDark").resizable()
+                    Image("IconPreviewLight").resizable().mask(DiagonalHalf())
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 8.5, style: .continuous).strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+    }
     /// The top-left half of a square, cut on the diagonal.
     private struct DiagonalHalf: Shape {
         func path(in r: CGRect) -> Path {
