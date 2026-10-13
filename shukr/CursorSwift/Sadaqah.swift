@@ -260,8 +260,12 @@ struct SadaqahPage: View {
 
     var body: some View {
         List {
+            // The top, in the log sheet's look (owner): the title light and centred, then this year's total big.
             Section {
                 totals
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 6, trailing: 20))
             }
             Section {
                 ForEach(SadaqahCharities.all.filter { c in category.map { c.categories.contains($0) } ?? true }) { charity in
@@ -278,13 +282,10 @@ struct SadaqahPage: View {
                         }
                         .buttonStyle(.borderless)
                     }
+                    .listRowBackground(Self.card)
                 }
             } header: {
-                HStack {
-                    Text(category.map { "Give with confidence · \($0.title)" } ?? "Give with confidence")
-                    Spacer()
-                    CategoryFilter(selection: $category).textCase(nil)
-                }
+                Text("Organizations")
             } footer: {
                 Text("Tap ⓘ to see who they are and why they're here. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
             }
@@ -292,14 +293,17 @@ struct SadaqahPage: View {
                 Button { editing = DonationDraft(manual: ()) } label: {
                     Label("Log a donation", systemImage: "plus.circle.fill").foregroundStyle(Color.sage)
                 }
+                .listRowBackground(Self.card)
                 ForEach(log.donations.prefix(5)) { d in
                     Button { editing = DonationDraft(editing: d) } label: { DonationRow(donation: d) }
                         .buttonStyle(.plain)
                         // Not `.destructive`: the List would expect the row gone and the confirm never showed.
                         .swipeActions { Button { deleting = d } label: { Image(systemName: "trash.fill") }.tint(.red) }
+                        .listRowBackground(Self.card)
                 }
                 if log.donations.count > 5 {
                     NavigationLink("All donations (\(log.donations.count))") { SadaqahHistoryPage() }
+                        .listRowBackground(Self.card)
                 }
             } header: {
                 Text("Your donations")
@@ -307,8 +311,17 @@ struct SadaqahPage: View {
                 Text("Private: kept on this phone only. Gave somewhere else? Log it here too.")
             }
         }
-        .navigationTitle("Give to Causes")
+        // The new-task flow's page: white, soft grey cards, no gap under the bar.
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
+        .listSectionSpacing(18)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .navigationTitle("Give to Causes")   // the back button's word on pages pushed from here
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }   // the title is on the page
+            ToolbarItem(placement: .topBarTrailing) { CategoryFilter(selection: $category) }
+        }
         .fontDesign(.rounded)
         .sheet(item: $asking, onDismiss: {
             if let charity = confirmed { confirmed = nil; editing = DonationDraft(after: charity) }
@@ -335,21 +348,30 @@ struct SadaqahPage: View {
         SadaqahSafari.open(charity.url) { asking = charity }
     }
 
-    /// This year's total, the count, and Ramadan / Zakat when there are any.
+    /// The soft grey of the log sheet's cards.
+    static let card = Color.primary.opacity(0.045)
+
+    /// The page's title, then this year's total big, as the log sheet shows an amount; the count and Ramadan / Zakat under it.
     private var totals: some View {
         let year = log.total(since: startOfYear)
         let count = log.donations.filter { $0.date >= startOfYear }.count
         let zakat = log.total(since: startOfYear, purpose: .zakat)
         let ramadan = log.total(since: startOfYear, purpose: .ramadan)
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("Given this year").font(.subheadline).foregroundStyle(.secondary)
+        return VStack(spacing: 6) {
+            Text("Give to Causes").font(.system(size: 30, weight: .light, design: .rounded))
+            Text("Trusted places to give, and a private record of what you've given")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
             Text(year.money())
-                .font(.system(size: 34, weight: .bold, design: .rounded))
+                .font(.system(size: 60, weight: .light, design: .rounded))
+                .monospacedDigit()
                 .contentTransition(.numericText())
-            Text(detailLine(count: count, zakat: zakat, ramadan: ramadan))
+                .padding(.top, 14)
+            Text(count == 0 ? "Given this year" : "Given this year · " + detailLine(count: count, zakat: zakat, ramadan: ramadan))
                 .font(.footnote).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
-        .padding(.vertical, 6)
+        .padding(.top, 4)
     }
 
     private func detailLine(count: Int, zakat: Double, ramadan: Double) -> String {
@@ -361,25 +383,40 @@ struct SadaqahPage: View {
     }
 }
 
-/// The filter (owner: a dropdown, not chips): All or one kind of work; the icon goes green while one is picked.
+/// The filter, top right (owner: like Azkar's sort button): the plain glyph on All; a green tinted pill with the
+/// category's symbol and name while one is picked.
 private struct CategoryFilter: View {
     @Binding var selection: SadaqahCategory?
     var body: some View {
         Menu {
-            Picker("Show", selection: $selection) {
+            Picker("Show", selection: Binding(get: { selection }, set: { new in
+                withAnimation(.snappy(duration: 0.25)) { selection = new }
+            })) {
                 Label("All", systemImage: "square.grid.2x2").tag(SadaqahCategory?.none)
                 ForEach(SadaqahCategory.allCases) { c in
                     Label(c.title, systemImage: c.symbol).tag(Optional(c))
                 }
             }
+            .pickerStyle(.inline)
         } label: {
-            Image(systemName: selection == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                .font(.system(size: 22))
-                .foregroundStyle(selection == nil ? Color.secondary : Color.sage)
-                .frame(width: 44, height: 32, alignment: .trailing)
-                .contentShape(Rectangle())
+            if let selection {
+                HStack(spacing: 5) {
+                    Image(systemName: selection.symbol).font(.caption)
+                    Text(selection.title).font(.subheadline)
+                }
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.green)
+                .padding(.horizontal, 12)
+                .frame(height: 36)
+                .background(Capsule().fill(Color.green.opacity(0.16)))
+                .fixedSize()
+            } else {
+                Image(systemName: "line.3.horizontal.decrease").foregroundStyle(Color.primary)
+            }
         }
+        .tint(selection == nil ? Color.primary : Color.green)
         .accessibilityLabel(selection.map { "Filter: \($0.title)" } ?? "Filter")
+        .sensoryFeedback(.selection, trigger: selection)
     }
 }
 
