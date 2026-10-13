@@ -694,11 +694,11 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        // Sadaqah (owner, 2026-10-13): the first sneak peek that's real — vetted charities + a private log.
+                        // Give to Causes (owner, 2026-10-13; was Sadaqah): the first sneak peek that's real — vetted charities + a private log.
                         NavigationLink { SadaqahPage() } label: {
                             HStack {
                                 Image(systemName: "gift").frame(width: 24)
-                                Text("Sadaqah")
+                                Text("Give to Causes")   // never reads as shukr asking for money (owner)
                             }
                         }
                     } header: {

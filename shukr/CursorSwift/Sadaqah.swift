@@ -280,12 +280,10 @@ struct SadaqahPage: View {
                     }
                 }
             } header: {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Give with confidence")
-                    CategoryChips(selection: $category)
-                        .textCase(nil)
-                        .padding(.horizontal, -20)   // the chips run to the screen's edges, starting where the words do
-                        .padding(.bottom, 4)
+                HStack {
+                    Text(category.map { "Give with confidence · \($0.title)" } ?? "Give with confidence")
+                    Spacer()
+                    CategoryFilter(selection: $category).textCase(nil)
                 }
             } footer: {
                 Text("Tap ⓘ to see who they are and why they're here. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
@@ -309,7 +307,7 @@ struct SadaqahPage: View {
                 Text("Private: kept on this phone only. Gave somewhere else? Log it here too.")
             }
         }
-        .navigationTitle("Sadaqah")
+        .navigationTitle("Give to Causes")
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
         .sheet(item: $asking, onDismiss: {
@@ -363,36 +361,25 @@ struct SadaqahPage: View {
     }
 }
 
-/// All · Here at home · Emergency relief · Orphans · Water: one picked at a time.
-private struct CategoryChips: View {
+/// The filter (owner: a dropdown, not chips): All or one kind of work; the icon goes green while one is picked.
+private struct CategoryFilter: View {
     @Binding var selection: SadaqahCategory?
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                chip("All", nil, nil)
-                ForEach(SadaqahCategory.allCases) { c in chip(c.title, c.symbol, c) }
+        Menu {
+            Picker("Show", selection: $selection) {
+                Label("All", systemImage: "square.grid.2x2").tag(SadaqahCategory?.none)
+                ForEach(SadaqahCategory.allCases) { c in
+                    Label(c.title, systemImage: c.symbol).tag(Optional(c))
+                }
             }
-            .padding(.vertical, 4)
-        }
-        .contentMargins(.horizontal, 20, for: .scrollContent)
-    }
-
-    private func chip(_ title: String, _ symbol: String?, _ value: SadaqahCategory?) -> some View {
-        let on = selection == value
-        return Button {
-            withAnimation(.snappy(duration: 0.25)) { selection = value }
         } label: {
-            HStack(spacing: 5) {
-                if let symbol { Image(systemName: symbol).font(.caption) }
-                Text(title)
-            }
-            .font(.subheadline.weight(.medium))
-            .padding(.horizontal, 13).padding(.vertical, 7)
-            .background(Capsule().fill(on ? Color.sage : Color.primary.opacity(0.07)))
-            .foregroundStyle(on ? Color.white : Color.primary)
-            .fixedSize()
+            Image(systemName: selection == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(selection == nil ? Color.secondary : Color.sage)
+                .frame(width: 44, height: 32, alignment: .trailing)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .accessibilityLabel(selection.map { "Filter: \($0.title)" } ?? "Filter")
     }
 }
 
@@ -764,6 +751,7 @@ private struct CharityInfoSheet: View {
                 Text(charity.name)
                     .font(.system(size: 22, weight: .regular, design: .rounded))
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)   // long names wrap, never "Develo…" (owner)
                 Text(charity.about)
                     .font(.subheadline).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -820,6 +808,7 @@ private struct DidYouDonateSheet: View {
                 Text(charity.name)
                     .font(.system(size: 22, weight: .regular, design: .rounded))
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)   // long names wrap, never "Develo…" (owner)
             }
             .padding(.horizontal, 24)
             Button(action: onYes) {
