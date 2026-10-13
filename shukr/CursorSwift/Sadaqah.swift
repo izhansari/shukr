@@ -36,6 +36,13 @@ enum GiveKind: String, CaseIterable, Identifiable {
     case sadaqah, community
     var id: String { rawValue }
     var title: String { self == .sadaqah ? "Sadaqah" : "Community" }
+    /// Under the switch, so the difference is clear while choosing (owner).
+    var meaning: String {
+        switch self {
+        case .sadaqah: "Charities that help people in need: relief, orphans, water. What you give here counts as your sadaqah."
+        case .community: "Muslim groups working for our community's rights, voice and future. Kept apart from your sadaqah and zakat."
+        }
+    }
     var footer: String {
         switch self {
         case .sadaqah: "Tap ⓘ to see who they are and why they're here. Each opens on the charity's own website; shukr takes nothing and never sees your payment."
@@ -393,11 +400,20 @@ struct SadaqahPage: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 6, trailing: 20))
                     .listRowSeparator(.hidden)
-                kindSwitch
-                    .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 0, trailing: 20))
-                    .listRowSeparator(.hidden)
+                VStack(spacing: 10) {
+                    kindSwitch
+                    Text(kind.meaning)
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 320)
+                        .id(kind)
+                        .transition(.opacity)
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 0, trailing: 20))
+                .listRowSeparator(.hidden)
             }
             Section {
                 ForEach(SadaqahCharities.all.filter { c in
