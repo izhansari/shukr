@@ -748,9 +748,19 @@ struct PrayerControl: ControlWidget {
     }
 }
 
+/// What a control shows — its symbol, title and line — worked out once, for the control itself and for Explore's picture of
+/// it (owner: "make the control center ones real too"; iOS draws controls from these, so the app can only draw them alike).
+struct ControlFace: Sendable { let symbol: String; let title: String; let line: String?; var on = false }
+
 /// I Prayed: marks the prayer that's on without opening shukr (owner: for the Action button / the Lock Screen too).
 struct PrayedControl: ControlWidget {
-    struct Value: Sendable { let name: String; let marked: Bool; let none: Bool }
+    struct Value: Sendable {
+        let name: String; let marked: Bool; let none: Bool
+        var face: ControlFace {
+            ControlFace(symbol: marked ? "checkmark.circle.fill" : "checkmark.circle", title: none ? "I Prayed" : name,
+                        line: none ? "No prayer on" : marked ? "Prayed" : "Mark prayed")
+        }
+    }
     struct Provider: ControlValueProvider {
         var previewValue: Value { Value(name: "Asr", marked: false, none: false) }
         func currentValue() async throws -> Value {
@@ -761,11 +771,12 @@ struct PrayedControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "betternorms.shukr.control.prayed", provider: Provider()) { value in
             ControlWidgetButton(action: MarkPrayerFromControlIntent()) {
+                let f = value.face
                 Label {
-                    Text(value.none ? "I Prayed" : value.name)
-                    Text(value.none ? "No prayer on" : value.marked ? "Prayed" : "Mark prayed")
+                    Text(f.title)
+                    Text(f.line ?? "")
                 } icon: {
-                    Image(systemName: value.marked ? "checkmark.circle.fill" : "checkmark.circle")
+                    Image(systemName: f.symbol)
                 }
             }
         }
@@ -776,7 +787,10 @@ struct PrayedControl: ControlWidget {
 
 /// The Fajr alarm, on or off, with its next time.
 struct FajrAlarmControl: ControlWidget {
-    struct Value: Sendable { let on: Bool; let time: String }
+    struct Value: Sendable {
+        let on: Bool; let time: String
+        var face: ControlFace { ControlFace(symbol: on ? "alarm.fill" : "alarm", title: "Fajr Alarm", line: on ? time : "Off", on: on) }
+    }
     struct Provider: ControlValueProvider {
         var previewValue: Value { Value(on: true, time: "5:40 AM") }
         func currentValue() async throws -> Value {
@@ -788,11 +802,12 @@ struct FajrAlarmControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "betternorms.shukr.control.fajrAlarm", provider: Provider()) { value in
             ControlWidgetToggle(isOn: value.on, action: SetFajrAlarmEnabledIntent()) {
+                let f = value.face
                 Label {
-                    Text("Fajr Alarm")
-                    Text(value.on ? value.time : "Off")
+                    Text(f.title)
+                    Text(f.line ?? "")
                 } icon: {
-                    Image(systemName: value.on ? "alarm.fill" : "alarm")
+                    Image(systemName: f.symbol)
                 }
             }
         }

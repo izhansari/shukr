@@ -658,6 +658,7 @@ struct ShowcasePicture: View {
         }
         .overlay(alignment: .topLeading) { if !thumb && !families.isEmpty { sizeLabel } }
         .clipped()
+        .task { if id.isControl || id == .controlCenter { await ControlFaces.shared.load() } }
     }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
@@ -711,16 +712,8 @@ struct ShowcasePicture: View {
         .padding(.leading, 16).padding(.top, 6)
     }
 
-    private var controlSymbol: String? {
-        switch id {
-        case .ccPrayer: prayerIcon(for: ShownPrayer.now.name)
-        case .ccPrayed: "checkmark.circle"
-        case .ccFajrAlarm: "alarm.fill"
-        case .ccQibla: "location.north.line.fill"
-        case .ccZikr: "hands.and.sparkles"
-        default: nil
-        }
-    }
+    private var controlSymbol: String? { id.isControl ? controls.face(id).symbol : nil }
+    private var controls: ControlFaces { ControlFaces.shared }
 
     private var sage: some View {
         LinearGradient(colors: scheme == .dark ? [Color(red: 0.17, green: 0.33, blue: 0.25), Color(red: 0.07, green: 0.10, blue: 0.08)]
@@ -813,13 +806,13 @@ struct ShowcasePicture: View {
             // (a glass capsule: the icon's round badge, then the title and value), small ones a glass circle.
             Grid(horizontalSpacing: 12, verticalSpacing: 12) {
                 GridRow {
-                    CCPill(symbol: prayerIcon(for: p.name), title: p.name, value: p.isOn ? "ends \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))").gridCellColumns(2)
-                    CCCircle(symbol: "checkmark.circle")
-                    CCCircle(symbol: "location.north.line.fill")
+                    CCPill(controls.prayer).gridCellColumns(2)
+                    CCCircle(symbol: controls.prayed.symbol)
+                    CCCircle(symbol: controls.qibla.symbol)
                 }
                 GridRow {
-                    CCPill(symbol: "alarm.fill", title: "Fajr Alarm", value: fajrAlarmTime, on: true).gridCellColumns(2)
-                    CCCircle(symbol: "hands.and.sparkles")
+                    CCPill(controls.fajr).gridCellColumns(2)
+                    CCCircle(symbol: controls.zikr.symbol)
                     Color.clear.frame(width: 56, height: 56)
                 }
             }
@@ -899,22 +892,10 @@ struct ShowcasePicture: View {
         case .siriPrayedHere:
             let here = ShowcaseSamples.prayedHere
             ShortcutSheetShot(dialog: here.spoken) { PrayedHereSnippet(summary: here) }
-        case .ccPrayer:
-            CCPill(symbol: prayerIcon(for: p.name), title: p.name, value: p.isOn ? "ends \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))")
-        case .ccPrayed:
-            HStack(spacing: 12) {
-                CCPill(symbol: "checkmark.circle", title: p.name, value: "Mark prayed")
-                CCCircle(symbol: "checkmark.circle")
-            }
-        case .ccFajrAlarm:
-            HStack(spacing: 12) {
-                CCPill(symbol: "alarm.fill", title: "Fajr Alarm", value: fajrAlarmTime, on: true)
-                CCCircle(symbol: "alarm.fill", on: true)
-            }
-        case .ccQibla:
-            HStack(spacing: 12) { CCPill(symbol: "location.north.line.fill", title: "Qibla", value: nil); CCCircle(symbol: "location.north.line.fill") }
-        case .ccZikr:
-            HStack(spacing: 12) { CCPill(symbol: "hands.and.sparkles", title: "Zikr", value: "2 tasks left · about 9 min"); CCCircle(symbol: "hands.and.sparkles") }
+        // Each control as iOS draws it, wide and small, from the control's own values (ControlFaces).
+        case .ccPrayer, .ccPrayed, .ccFajrAlarm, .ccQibla, .ccZikr:
+            let f = controls.face(id)
+            HStack(spacing: 12) { CCPill(f); CCCircle(symbol: f.symbol, on: f.on) }
         case .goals:
             HStack(spacing: 10) {
                 MiniArc(progress: 1).frame(width: 44, height: 44)
@@ -934,6 +915,8 @@ private struct CCPill: View {
     let title: String
     let value: String?
     var on = false
+    init(symbol: String, title: String, value: String?, on: Bool = false) { self.symbol = symbol; self.title = title; self.value = value; self.on = on }
+    init(_ f: ControlFace) { self.init(symbol: f.symbol, title: f.title, value: f.line, on: f.on) }
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: symbol)
@@ -1067,6 +1050,33 @@ private struct SizedWidget<Content: View, Background: View>: View {
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             .shadow(color: .black.opacity(0.15), radius: 10, y: 5)
             .allowsHitTesting(false)
+    }
+}
+
+/// The five controls' faces from the controls' own values (MoreWidgets.swift's providers), as Control Center has them now.
+@MainActor @Observable final class ControlFaces {
+    static let shared = ControlFaces()
+    var prayer = ControlFace(symbol: "clock", title: "Today's Prayers", line: nil)
+    var prayed = ControlFace(symbol: "checkmark.circle", title: "I Prayed", line: nil)
+    var fajr = ControlFace(symbol: "alarm", title: "Fajr Alarm", line: nil)
+    let qibla = ControlFace(symbol: "location.north.line.fill", title: "Qibla", line: nil)
+    var zikr = ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: nil)
+
+    func face(_ id: ShowcaseCardID) -> ControlFace {
+        switch id {
+        case .ccPrayer: prayer
+        case .ccPrayed: prayed
+        case .ccFajrAlarm: fajr
+        case .ccZikr: zikr
+        default: qibla
+        }
+    }
+
+    func load() async {
+        if let v = try? await PrayerControl.Provider().currentValue() { prayer = ControlFace(symbol: v.symbol, title: v.name, line: v.line) }
+        if let v = try? await PrayedControl.Provider().currentValue() { prayed = v.face }
+        if let v = try? await FajrAlarmControl.Provider().currentValue() { fajr = v.face }
+        if let line = try? await TasbeehControl.Provider().currentValue() { zikr = ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: line) }
     }
 }
 
