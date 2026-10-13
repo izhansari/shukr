@@ -2730,8 +2730,8 @@ extension TourLayer {
         case "tourAgainRow": return t.frame("tourAgainRow")
         // Only the time that changed, not the whole row (owner).
         case "markedRow", "comingRow":
-            return t.lastTappedRow.flatMap { t.frame("prayerRow." + $0) }
-                .map { CGRect(x: $0.maxX - 116, y: $0.minY + 4, width: 108, height: $0.height - 8) }
+            // The time words themselves, as on the circle (owner: the box sat off them, half empty).
+            return t.lastTappedRow.flatMap { t.frame("rowTime." + $0) }.map { $0.insetBy(dx: -6, dy: -1) }
         default: return nil
         }
     }

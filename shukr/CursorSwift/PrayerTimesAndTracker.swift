@@ -3100,6 +3100,11 @@ struct PrayerButton: View {
                     Text(line).font(.footnote).fontDesign(.rounded).fontWeight(.light).foregroundStyle(.secondary)
                 } else {
                     timeColumn
+                        // The tour rings exactly this time when a tap flips it (owner: not a fixed box). Only while the
+                        // tour runs.
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            if TourRuntime.shared.active { TourTargets.shared.set("rowTime." + prayerObject.name, frame) }
+                        }
                 }
             }
             // A Jumu'ah's masjid, under the name, inside the row's height (showMasjidLine): drawn over the row, so
