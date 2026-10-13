@@ -1600,11 +1600,22 @@ struct GetPrayerTimeIntent: AppIntent {
         case .fajr, .dhuhr, .asr, .maghrib, .isha:
             on ? "\(w.name) is on now, until \(shortTimePM(w.end))." : "\(w.name)\(Self.day(w.start)) is at \(shortTimePM(w.start))."
         case .relevant:
-            on ? "\(w.name) is on now, until \(shortTimePM(w.end))."
-            : w.end <= now ? "\(w.name) isn't marked yet. Its time ended at \(shortTimePM(w.end))."
-            : "\(w.name) is next, at \(shortTimePM(w.start))."
+            IntentDialog(stringLiteral: Self.prayedFirst(now: now, moving: w)
+                + (on ? "\(w.name) is on now, until \(shortTimePM(w.end))."
+                   : w.end <= now ? "\(w.name) isn't marked yet. Its time ended at \(shortTimePM(w.end))."
+                   : "\(w.name) is next\(Self.day(w.start)), at \(shortTimePM(w.start))."))
         }
         return .result(value: w.start, dialog: line)
+    }
+
+    /// Relevant moved past a prayer that's on but already prayed: say so first (owner: "You've prayed Asr. Maghrib is
+    /// next, at 6:48 PM."); all five prayed: "You've prayed all five today."
+    static func prayedFirst(now: Date, moving w: PrayerWindows.Window) -> String {
+        let done = SharedStore.completedPrayerNamesToday()
+        if PrayerWindows.today(now).allSatisfy({ done.contains($0.name) }) { return "You've prayed all five today. " }
+        guard let current = PrayerWindows.pick(.current, now: now), current.start != w.start, done.contains(current.name)
+        else { return "" }
+        return "You've prayed \(current.name). "
     }
 
     /// " tomorrow" / " yesterday" when the prayer isn't on today's prayer day (Fajr tomorrow, Isha last night).
@@ -1644,7 +1655,9 @@ struct GetTodaysPrayerTimesIntent: AppIntent {
             spoken = "That's all five for today."
         }
         let lines = five.map { "\($0.name) \(shortTimePM($0.start))" }   // the output, as before: automations keep working
-        return .result(value: lines, dialog: IntentDialog(stringLiteral: spoken), view: TodaysTimesSnippet(rows: rows))
+        let dark = await MainActor.run { UIScreen.main.traitCollection.userInterfaceStyle == .dark }
+        return .result(value: lines, dialog: IntentDialog(stringLiteral: spoken),
+                       view: TodaysTimesSnippet(rows: rows).environment(\.colorScheme, dark ? .dark : .light))
     }
 }
 
