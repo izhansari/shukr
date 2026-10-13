@@ -155,6 +155,8 @@ struct TourPage {
     var chapterDone = false
     /// The to-dos' dots stay away (the next chapter's first line, before its to-dos).
     var hideProgress = false
+    /// On a chapter's end: the chapter that comes next ("2", "Prayer List"), for the moment's swipe.
+    var nextChapter: (index: Int, title: String)? = nil
     /// The to-dos, wherever they are (a chapter's step or the post-tour page).
     var todo: [String] { sections.first(where: { !$0.tasks.isEmpty })?.tasks ?? tasks }
 }
@@ -593,6 +595,12 @@ struct TourTopPanel: View {
     @State private var pulse = false
     /// The → calling attention (a stray tap while it's the way on).
     @State private var callOut = false
+    /// The chapter's end, in steps: 0 the name comes down, 1 its ✓, 2 the next chapter swipes in.
+    @State private var doneStage = 0
+    @Namespace private var titleSpace
+
+    /// How long a chapter's end moment holds the panel (TourRuntime waits this long before the next chapter's line).
+    static let momentLength: Double = 1.9
 
     private var isStrip: Bool { mode == .strip }
 
@@ -713,15 +721,19 @@ struct TourTopPanel: View {
             // one line's height.
             // The chapter stands out from the words under it (owner: "more prominent"): its number quiet, its name
             // bold, a size up from the content.
+            // On a chapter's end it leaves this line for the moment below (and the next one comes back up into it):
+            // one title, moved — matchedGeometryEffect (owner: "pulls the chapter name down … puts it back top left").
             ZStack(alignment: .leading) {
-                chapterTitle
-                    .lineLimit(1)
-                    .id(chapterLine)
-                    .transition(.asymmetric(insertion: .offset(y: 24).combined(with: .opacity),
-                                            removal: .offset(y: -24).combined(with: .opacity)))
+                if !page.chapterDone {
+                    chapterTitle
+                        .lineLimit(1)
+                        .fixedSize()
+                        .matchedGeometryEffect(id: "title-" + page.headline, in: titleSpace)
+                        .id(chapterLine)
+                        .transition(.identity)   // it flies in from the moment (matched), never fades over it
+                }
             }
             .frame(height: 24, alignment: .leading)
-            .clipped()
             .animation(.smooth(duration: 0.45), value: chapterLine)
             .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
@@ -823,19 +835,52 @@ struct TourTopPanel: View {
         }
     }
 
-    /// The chapter's end: a ✓ that pops, and "Prayer Circle done".
+    /// The chapter's end (owner): its name comes down from the line above, larger; a ✓ pops beside it; then it swipes
+    /// off to the left as the next chapter's name comes in from the right — which then goes up into the line.
     private var doneMoment: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 26))
-                .foregroundStyle(TourInk.green)
-                .symbolEffect(.bounce, value: page.chapterDone)
-            Text(TourCopy.chapterDone(page.headline))
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+        // The full width, so the swipe carries the name (and its ✓) right off the panel's edge and the next in from
+        // the other.
+        ZStack(alignment: .leading) {
+            if doneStage < 2 {
+                HStack(spacing: 10) {
+                    momentTitle(index: page.index ?? 0, name: page.headline)
+                        .matchedGeometryEffect(id: "title-" + page.headline, in: titleSpace)
+                    if doneStage == 1 {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(TourInk.green)
+                            .transition(.scale(scale: 0.3).combined(with: .opacity))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .transition(.asymmetric(insertion: .identity, removal: .move(edge: .leading)))
+            } else if let next = page.nextChapter {
+                // Its own identity: the line above takes it up when the next chapter's page comes (same name, same id).
+                momentTitle(index: next.index, name: next.title)
+                    .matchedGeometryEffect(id: "title-" + next.title, in: titleSpace)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .identity))
+            }
         }
-        .padding(.vertical, 2)
-        .onAppear { UINotificationFeedbackGenerator().notificationOccurred(.success) }
-        .accessibilityElement(children: .combine)
+        .frame(height: 34)   // not clipped: the name flies in from the line above (the panel clips the swipe)
+        .task(id: page.headline) {
+            doneStage = 0
+            try? await Task.sleep(for: .seconds(0.45))
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { doneStage = 1 }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            try? await Task.sleep(for: .seconds(0.7))
+            guard page.nextChapter != nil else { return }
+            withAnimation(.smooth(duration: 0.4)) { doneStage = 2 }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(TourCopy.chapterDone(page.headline))
+    }
+
+    private func momentTitle(index: Int, name: String) -> some View {
+        (Text("\(index)  ").foregroundStyle(Color.primary.opacity(0.4)) + Text(name).foregroundStyle(Color.primary))
+            .font(.system(.title3, design: .rounded, weight: .semibold))
+            .lineLimit(1)
+            .fixedSize()
     }
 
     /// What there is to read: the step's words.
@@ -1912,6 +1957,9 @@ struct BubbleShape: Shape {
             var p = chapter(step, 1, of: 1, [])
             p.atTop = true
             p.chapterDone = true
+            if let i = TourStep.cards.firstIndex(of: step), i + 1 < TourStep.cards.count {
+                p.nextChapter = (i + 2, TourStep.cards[i + 1].chapterTitle)
+            }
             return p
         }
         switch step {
@@ -1946,6 +1994,7 @@ struct BubbleShape: Shape {
                     var p = chapter(.circle, 4, of: 4, [], locked: lockedCircle)
                     p.atTop = true
                     p.chapterDone = true
+                    p.nextChapter = (2, TourCopy.List.title)
                     return p
                 }
                 let payoff = TourSection(id: "circle.marked", note: TourCopy.Circle.marked)
@@ -2043,7 +2092,7 @@ struct BubbleShape: Shape {
         if step == .circle, i == 2 {
             celebrating = .circle
             Task { @MainActor in
-                try? await Task.sleep(for: .seconds(0.6 + 1.5))
+                try? await Task.sleep(for: .seconds(0.6 + TourTopPanel.momentLength))
                 guard celebrating == .circle else { return }
                 withAnimation(.smooth(duration: 0.45)) { celebrating = nil }
             }
@@ -2059,7 +2108,7 @@ struct BubbleShape: Shape {
         withAnimation(.smooth(duration: 0.35)) { celebrating = card }
         let thisRun = run
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.5))
+            try? await Task.sleep(for: .seconds(TourTopPanel.momentLength))
             guard run == thisRun, step == card else { celebrating = nil; return }
             next()
             try? await Task.sleep(for: .seconds(0.05))
