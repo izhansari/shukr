@@ -1852,14 +1852,40 @@ enum AppIconChoice: String, CaseIterable, Identifiable {
     static var current: AppIconChoice {
         allCases.first { $0.iconName == UIApplication.shared.alternateIconName } ?? .system
     }
+    /// The look pages' choice rows (Icon, Card look): tighter than a Form's default (owner: "way too big").
+    static let rowInsets = EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)
+
+    /// A pick made on the Icon page is set when the page closes; if the app was closed from the page instead, it waits
+    /// here and is set at the next launch (owner: "handle the close-app case").
+    static let pendingKey = "appIcon.pending"
+    private static var launchChecked = false
+    static func applyPendingAtLaunch() {
+        guard !launchChecked else { return }
+        launchChecked = true
+        guard let raw = UserDefaults.standard.string(forKey: pendingKey) else { return }
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+        guard let c = AppIconChoice(rawValue: raw), c != current, UIApplication.shared.supportsAlternateIcons else { return }
+        UIApplication.shared.setAlternateIconName(c.iconName) { _ in
+            Task { @MainActor in AppIconState.shared.refresh() }
+        }
+    }
+}
+
+/// What the Icon row shows, read again whenever the icon may have changed (the row is built at launch, before a pending
+/// pick is set, and Settings stays alive behind the pager).
+@MainActor @Observable final class AppIconState {
+    static let shared = AppIconState()
+    private(set) var choice = AppIconChoice.current
+    func refresh() { choice = AppIconChoice.current }
+    func show(_ c: AppIconChoice) { choice = c }
 }
 
 /// The Appearance row: "Icon" and the pick, pushing the page (as Live Activity card does).
 struct AppIconRow: View {
-    @State private var choice = AppIconChoice.current
+    private var choice: AppIconChoice { AppIconState.shared.choice }
     var body: some View {
         NavigationLink {
-            AppIconPage { choice = $0 }
+            AppIconPage { AppIconState.shared.show($0) }
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "app").frame(width: 24)
@@ -1867,6 +1893,10 @@ struct AppIconRow: View {
                 Spacer(minLength: 8)
                 Text(choice.title).foregroundStyle(.secondary)
             }
+        }
+        .onAppear { AppIconState.shared.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            AppIconState.shared.refresh()
         }
     }
 }
@@ -1906,6 +1936,7 @@ struct AppIconPage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .listRowInsets(AppIconChoice.rowInsets)
                 }
             } footer: {
                 Text("A tinted Home Screen keeps the tinted icon whichever you pick.")
@@ -1921,10 +1952,14 @@ struct AppIconPage: View {
         guard c != choice else { return }
         withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) { choice = c }
         UISelectionFeedbackGenerator().selectionChanged()
+        // Kept until it's set, in case the app is closed from this page.
+        if c == AppIconChoice.current { UserDefaults.standard.removeObject(forKey: AppIconChoice.pendingKey) }
+        else { UserDefaults.standard.set(c.rawValue, forKey: AppIconChoice.pendingKey) }
     }
 
     /// On the way out: the pick becomes the icon (iOS's alert then shows over Settings), and the row says so.
     private func apply() {
+        UserDefaults.standard.removeObject(forKey: AppIconChoice.pendingKey)
         let c = choice, before = AppIconChoice.current
         guard c != before, UIApplication.shared.supportsAlternateIcons else { return }
         picked(c)
@@ -2415,9 +2450,10 @@ struct LiveActivityAppearancePage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .listRowInsets(AppIconChoice.rowInsets)
                 }
             } footer: {
-                Text("Your Lock Screen card's look, apart from shukr's. The Dynamic Island is always black.")
+                Text("Cards already on your Lock Screen change right away.")
             }
         }
         .navigationTitle("Card look")

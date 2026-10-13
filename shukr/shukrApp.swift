@@ -379,6 +379,7 @@ struct shukrApp: App {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 NotificationScheduler.noteOpen()   // how often shukr is opened sets the reminders' runway
+                AppIconChoice.applyPendingAtLaunch()   // an icon picked, then the app closed from its page
                 Task {
                     await notificationStatus.refresh()
                     await NotificationHealth.shared.refresh()   // will the reminders arrive? (off / summary / …)
