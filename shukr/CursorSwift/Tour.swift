@@ -2098,6 +2098,8 @@ struct BubbleShape: Shape {
         // Marked: the payoff only, no way back (owner).
         case (.circle, .tryIt): ticked.contains(2) ? nil : .learn
         case (.list, .tryIt): .learn
+        // The list's first card goes back to chapter 2's first line, the swipe up (owner: ‹ on "From here you can").
+        case (.list, .learn): .tryIt
         case (.zikr, .tryIt): .learn
         case (.settings, .last): .learn
         default: nil
@@ -2345,6 +2347,20 @@ struct BubbleShape: Shape {
     /// what they changed are undone — the circle's Asr unmarked again), the step's page back as it was.
     private func goBack(from step: TourStep) {
         guard let back = previousPhase else { return }
+        // Back from the list's first card: the circle's marked state again, whose line is chapter 2's first ("Asr has
+        // moved… Swipe up"); the practice day stays as it is (Asr marked), only the list closes (`returnTo`).
+        if step == .list, phase == .learn {
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                self.step = .circle
+                phase = .tryIt
+                ticked = [0, 1, 2]
+                openSection = nil
+                folding = nil
+                beat = nil
+                celebrating = nil
+            }
+            return
+        }
         if phase == .tryIt { prepare(step) }
         if step == .settings { settingsScroll = (.top, settingsScroll.1 + 1) }
         withAnimation(.smooth(duration: CircleMotion.standard)) {
@@ -2540,8 +2556,12 @@ struct TourLayer: View {
     /// The real state changes that move the tour on.
     private func watching(_ content: some View) -> some View {
         content
-            .onChange(of: runtime.step) { _, step in
+            .onChange(of: runtime.step) { old, step in
                 guard let step else { return }
+                // ‹ from the list's first card: the list closes, so the swipe up can be done again.
+                if old == .list, step == .circle, sharedState.navPosition != .main {
+                    withAnimation(CircleMotion.page) { sharedState.navPosition = .main }
+                }
                 if step.isTourPage, !onItsPage(step) { returnTo(step) }
                 announce()
             }
