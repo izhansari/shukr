@@ -91,30 +91,6 @@ struct ZikrTasksWidget: Widget {
     }
 }
 
-struct ZikrTaskSnapshot: Identifiable {
-    let id: String
-    /// The task's title: its own name ("After Fajr"), else the mantra.
-    let name: String
-    /// The mantra, when `name` is the task's own name.
-    var mantra: String? = nil
-    let isCountMode: Bool
-    let goal: Int
-    let count: Int
-    let minutes: Int
-    let done: Bool
-    /// Roughly how long what's left takes at your pace (nil: no history yet).
-    var secondsLeft: TimeInterval? = nil
-    /// The row's estimate: time for a count goal, counts for a timed one (`TaskModel.estimateNote`).
-    var note: String? = nil
-
-    var fraction: Double {
-        guard goal > 0 else { return 0 }
-        return min(Double(isCountMode ? count : minutes) / Double(goal), 1)
-    }
-    var valueText: String { isCountMode ? "\(count)" : "\(minutes)m" }
-    var progressText: String { isCountMode ? "\(count)/\(goal)" : "\(minutes)/\(goal) min" }
-}
-
 struct ZikrTasksEntry: TimelineEntry {
     let date: Date
     let tasks: [ZikrTaskSnapshot]
@@ -138,26 +114,8 @@ struct ZikrTasksProvider: TimelineProvider {
     }
 
     private func load() -> ZikrTasksEntry {
-        guard let container = SharedStore.widgetContainer else {
-            return ZikrTasksEntry(date: Date(), tasks: [], storeReady: false)
-        }
-        let context = ModelContext(container)
-        let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
-        let dayStart = PrayerDay.sessionDayStart()
-        let sessions = (try? context.fetch(FetchDescriptor<SessionDataModel>(
-            predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
-        let snaps = tasks.map { task -> ZikrTaskSnapshot in
-            let p = task.progress(in: sessions)
-            return ZikrTaskSnapshot(id: task.id.uuidString, name: task.title, mantra: task.mantraLine,
-                                    isCountMode: task.isCountMode, goal: task.goal,
-                                    count: p.count, minutes: Int(p.seconds / 60),
-                                    done: task.isCompleted(with: p),
-                                    secondsLeft: task.secondsLeft(p),
-                                    note: task.estimateNote(p))
-        }
-        // Like the Zikr page: what's left first, done ones at the end.
-        let ordered = snaps.filter { !$0.done } + snaps.filter(\.done)
-        return ZikrTasksEntry(date: Date(), tasks: ordered, storeReady: true)
+        guard let tasks = ZikrTaskSnapshot.today() else { return ZikrTasksEntry(date: Date(), tasks: [], storeReady: false) }
+        return ZikrTasksEntry(date: Date(), tasks: tasks, storeReady: true)
     }
 
     static let sample = ZikrTasksEntry(date: Date(), tasks: [

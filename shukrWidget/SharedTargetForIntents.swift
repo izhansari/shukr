@@ -1967,6 +1967,214 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
     }
 }
 
+struct ZikrTaskSnapshot: Identifiable {
+    let id: String
+    /// The task's title: its own name ("After Fajr"), else the mantra.
+    let name: String
+    /// The mantra, when `name` is the task's own name.
+    var mantra: String? = nil
+    let isCountMode: Bool
+    let goal: Int
+    let count: Int
+    let minutes: Int
+    let done: Bool
+    /// Roughly how long what's left takes at your pace (nil: no history yet).
+    var secondsLeft: TimeInterval? = nil
+    /// The row's estimate: time for a count goal, counts for a timed one (`TaskModel.estimateNote`).
+    var note: String? = nil
+
+    var fraction: Double {
+        guard goal > 0 else { return 0 }
+        return min(Double(isCountMode ? count : minutes) / Double(goal), 1)
+    }
+    var valueText: String { isCountMode ? "\(count)" : "\(minutes)m" }
+    var progressText: String { isCountMode ? "\(count)/\(goal)" : "\(minutes)/\(goal) min" }
+}
+
+extension ZikrTaskSnapshot {
+    /// Today's tasks (the prayer day's sessions), what's left first, done ones at the end — like the Zikr page; nil
+    /// while the shared store isn't there yet. The Zikr widget and the Zikr Tasks shortcut.
+    static func today() -> [ZikrTaskSnapshot]? {
+        guard let container = SharedStore.widgetContainer else { return nil }
+        let context = ModelContext(container)
+        let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
+        let dayStart = PrayerDay.sessionDayStart()
+        let sessions = (try? context.fetch(FetchDescriptor<SessionDataModel>(
+            predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
+        let snaps = tasks.map { task -> ZikrTaskSnapshot in
+            let p = task.progress(in: sessions)
+            return ZikrTaskSnapshot(id: task.id.uuidString, name: task.title, mantra: task.mantraLine,
+                                    isCountMode: task.isCountMode, goal: task.goal,
+                                    count: p.count, minutes: Int(p.seconds / 60),
+                                    done: task.isCompleted(with: p),
+                                    secondsLeft: task.secondsLeft(p),
+                                    note: task.estimateNote(p))
+        }
+        return snaps.filter { !$0.done } + snaps.filter(\.done)
+    }
+}
+
+// MARK: - Zikr Tasks (Shortcuts / Siri; owner 2026-10-13: "here are your tasks, and then you click on one to start that one")
+
+/// A task row in the Zikr Tasks card: shukr opens and starts that task's session (today's count carried on).
+struct StartZikrTaskIntent: AppIntent {
+    static let flag = "shortcutZikrStart", idKey = "shortcutZikrStartID"
+    static var title: LocalizedStringResource = "Start Zikr Task"
+    static var isDiscoverable: Bool = false   // the card's rows
+    static var openAppWhenRun: Bool = true
+    @Parameter(title: "Task") var taskID: String
+    init() {}
+    init(taskID: String) { self.taskID = taskID }
+    func perform() async throws -> some IntentResult {
+        let store = UserDefaults(suiteName: SharedStore.appGroup)
+        store?.set(taskID, forKey: Self.idKey)
+        store?.set(true, forKey: Self.flag)
+        DeepLinkSignal.post()
+        return .result()
+    }
+}
+
+/// Today's zikr tasks: to do (a tap starts one), then done.
+struct ZikrTasksSnippet: View {
+    let tasks: [ZikrTaskSnapshot]
+    private static let sage = TodaysTimesSnippet.sage
+    private static let shown = 8
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if tasks.isEmpty {
+                Button(intent: OpenTasbeehIntent()) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus.circle").font(.system(size: 20, weight: .light)).foregroundStyle(Self.sage)
+                        Text("Add a task on the Zikr page").font(.system(.body, design: .rounded))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            let todo = tasks.filter { !$0.done }, done = tasks.filter(\.done)
+            let todoShown = Array(todo.prefix(Self.shown))
+            let doneShown = Array(done.prefix(max(0, Self.shown - todoShown.count)))
+            if !todoShown.isEmpty { section("To do", todoShown) }
+            if !doneShown.isEmpty { section("Done today", doneShown) }
+            let more = tasks.count - todoShown.count - doneShown.count
+            if more > 0 {
+                Text("\(more) more in shukr")
+                    .font(.system(.caption, design: .rounded)).foregroundStyle(.secondary).padding(.leading, 10)
+            }
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
+    }
+
+    private func section(_ title: String, _ rows: [ZikrTaskSnapshot]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(.caption, design: .rounded, weight: .semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 10)
+            ForEach(rows) { t in
+                if t.done { row(t) } else {
+                    Button(intent: StartZikrTaskIntent(taskID: t.id)) { row(t) }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Start \(t.name)")
+                }
+            }
+        }
+    }
+
+    private func row(_ t: ZikrTaskSnapshot) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.25), lineWidth: 3)
+                Circle().trim(from: 0, to: t.done ? 1 : t.fraction)
+                    .stroke(Self.sage, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                if t.done {
+                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Self.sage)
+                }
+            }
+            .frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(t.name)
+                    .font(.system(.body, design: .rounded))
+                    .foregroundStyle(t.done ? Color.secondary : Color.primary)
+                    .lineLimit(1)
+                Text(detail(t))
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if !t.done {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Self.sage)
+                    .frame(width: 30, height: 30)
+                    .background(Circle().fill(Self.sage.opacity(0.16)))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+    }
+
+    /// "40 of 100 · ~4 min" / "12 of 20 min" / "Goal 100" / "100 · done".
+    private func detail(_ t: ZikrTaskSnapshot) -> String {
+        if t.done { return t.isCountMode ? "\(t.count) · done" : "\(t.minutes) min · done" }
+        let base = t.isCountMode ? "\(t.count) of \(t.goal)" : "\(t.minutes) of \(t.goal) min"
+        if t.count == 0 && t.minutes == 0 {
+            return t.isCountMode ? "Goal \(t.goal)" + (t.secondsLeft.map { " · " + zikrEstimateString($0) } ?? "")
+                                 : "Goal \(t.goal) min"
+        }
+        guard t.isCountMode, let s = t.secondsLeft, s > 0 else { return base }
+        return base + " · " + zikrEstimateString(s)
+    }
+
+    /// The line said with the card.
+    static func spoken(_ tasks: [ZikrTaskSnapshot]) -> String {
+        if tasks.isEmpty { return "You have no zikr tasks yet." }
+        let left = tasks.filter { !$0.done }
+        if left.isEmpty { return tasks.count == 1 ? "Your zikr task is done for today." : "All \(tasks.count) zikr tasks are done for today." }
+        let lead = tasks.count == 1 ? "Your zikr task is still to do today"
+            : left.count == tasks.count ? "\(tasks.count) zikr tasks to do today"
+            : "\(left.count) of \(tasks.count) zikr tasks left today"
+        let known = left.compactMap(\.secondsLeft)
+        guard !known.isEmpty else { return lead + "." }
+        return lead + ", about " + zikrEstimateString(known.reduce(0, +)).replacingOccurrences(of: "~", with: "") + "."
+    }
+}
+
+/// The card, drawn again when shown.
+@available(iOS 26.0, *)
+struct ZikrTasksCardIntent: SnippetIntent {
+    static var title: LocalizedStringResource = "Zikr Tasks Card"
+    static var isDiscoverable: Bool = false
+    func perform() async throws -> some IntentResult & ShowsSnippetView {
+        let scheme = await ShortcutLook.scheme()
+        return .result(view: AnyView(ZikrTasksSnippet(tasks: ZikrTaskSnapshot.today() ?? []).environment(\.colorScheme, scheme)))
+    }
+}
+
+/// "Get Zikr Tasks": today's tasks in a card; a tap on one starts it in shukr.
+@available(iOS 26.0, *)
+struct ZikrTasksNowIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Zikr Tasks"
+    static var description = IntentDescription(
+        "Today's zikr tasks and how far along each one is. Tap a task to start it in shukr.",
+        categoryName: "Zikr", searchKeywords: ["zikr", "dhikr", "tasbeeh", "tasks", "to do"], resultValueName: "Zikr Tasks")
+    func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog & ShowsSnippetIntent {
+        guard let tasks = ZikrTaskSnapshot.today() else { throw PrayerTimeUnavailable() }
+        return .result(value: tasks.filter { !$0.done }.map(\.name),
+                       dialog: IntentDialog(stringLiteral: ZikrTasksSnippet.spoken(tasks)),
+                       snippetIntent: ZikrTasksCardIntent())
+    }
+}
+
+
 // MARK: - Control Center (owner, 2026-10-13)
 
 /// Today's list in shukr: the Salah page with the list up (the Prayer control — a control can't show a card, Apple

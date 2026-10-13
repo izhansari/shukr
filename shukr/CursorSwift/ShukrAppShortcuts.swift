@@ -129,6 +129,18 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             )
 
             AppShortcut(
+                intent: ZikrTasksNowIntent(),
+                phrases: [
+                    "My zikr tasks in \(.applicationName)",
+                    "Show my zikr tasks in \(.applicationName)",
+                    "What zikr is left in \(.applicationName)",
+                    "My \(.applicationName) tasks"
+                ],
+                shortTitle: "Zikr Tasks",
+                systemImageName: "checklist"
+            )
+
+            AppShortcut(
                 intent: MarkPrayedNowIntent(),
                 phrases: [
                     "I prayed in \(.applicationName)",
@@ -162,6 +174,7 @@ enum IntentSelfTest {
             if #available(iOS 26.0, *) {   // the ones people run on 26
                 log("Time Left: \((try? await TimeLeftNowIntent().perform()).map(line) ?? "threw")")
                 log("Today: \((try? await TodaysTimesNowIntent().perform()).map(line) ?? "threw")")
+                log("Zikr tasks: \(ZikrTaskSnapshot.today().map { ZikrTasksSnippet.spoken($0) } ?? "no store")")
             } else {
                 log("Time Left: \((try? await PrayerTimeLeftIntent().perform()).map(line) ?? "threw")")
                 log("Today: \((try? await GetTodaysPrayerTimesIntent().perform()).map(line) ?? "threw")")
@@ -217,6 +230,7 @@ struct SnippetPreviewHost: View {
         case "timeleft": return "2 hours 3 minutes left for Asr. It ends at 6:43 PM."
         case "prayed": return "Asr marked as prayed. Perfect."
         case "alarm": return "Your Fajr alarm is at 6:00 AM."
+        case "tasks": return ZikrTasksSnippet.spoken(ZikrTaskSnapshot.today() ?? [])
         case "alarmoff": return "Your Fajr alarm rule gives 6:00 AM, but the alarm is off."
         default: break
         }
@@ -237,6 +251,7 @@ struct SnippetPreviewHost: View {
             if let n = PrayerWindows.pick(.next, now: now) { NextPrayerSnippet(name: n.name, start: n.start, now: now) }
         case "alarm": ShortcutCards.fajrAlarm?(false, Date().addingTimeInterval(86400)) ?? AnyView(EmptyView())
         case "alarmoff": ShortcutCards.fajrAlarm?(true, Date().addingTimeInterval(86400)) ?? AnyView(EmptyView())
+        case "tasks": ZikrTasksSnippet(tasks: ZikrTaskSnapshot.today() ?? [])
         default: TodaysTimesSnippet(rows: rows, now: now)
         }
     }

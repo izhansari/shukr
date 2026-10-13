@@ -207,6 +207,26 @@ struct PrayerTimesView: View {
                 }
             }
 
+            // A task tapped in the Zikr Tasks card: the Zikr page's wheel starts it, today's count carried on.
+            if store.bool(forKey: StartZikrTaskIntent.flag) {
+                store.set(false, forKey: StartZikrTaskIntent.flag)
+                if let id = store.string(forKey: StartZikrTaskIntent.idKey) {
+                    store.removeObject(forKey: StartZikrTaskIntent.idKey)
+                    lastDeepLinkAt = Uptime.now
+                    openFromWidget {
+                        // A turn later, as the Zikr widget's open: on a cold launch the pager isn't laid out yet and
+                        // its first report put it back on Salah. Started once the page is there.
+                        DispatchQueue.main.async {
+                            sharedState.go(to: .zikr, animated: false)
+                            Task { @MainActor in
+                                _ = await CircleStage.shared.until(deadline: 1.5) { CircleStage.shared.restingPage == .zikr }
+                                ZikrFocus.start(id, resume: true)
+                            }
+                        }
+                    }
+                }
+            }
+
             // The Fajr alarm's "I'm up — open Fajr" (AlarmKit): the Salah page, nothing over it.
             if store.bool(forKey: "alarmOpenSalah") {
                 store.set(false, forKey: "alarmOpenSalah")

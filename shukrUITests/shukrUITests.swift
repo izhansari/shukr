@@ -248,7 +248,7 @@ final class ShortcutsOnDeviceTests: XCTestCase {
         shortcuts.terminate()
         shortcuts.launch()
         sleep(3)
-        let library = shortcuts.buttons["Library"]
+        let library = shortcuts.buttons["Library"].firstMatch
         if library.exists { library.tap(); sleep(1) }
         // Back to the top of the Library.
         for _ in 0..<3 where shortcuts.navigationBars.buttons.firstMatch.exists && !shortcuts.staticTexts["All Shortcuts"].exists {
@@ -264,9 +264,16 @@ final class ShortcutsOnDeviceTests: XCTestCase {
     func testOneTile() throws {
         let env = ProcessInfo.processInfo.environment
         let title = env["SHORTCUT_TILE"] ?? "Today's Times"
+        // SHORTCUT_WARM: shukr already running (unlocked Zikr page) before the tile runs.
+        if env["SHORTCUT_WARM"] != nil {
+            let app = XCUIApplication(bundleIdentifier: "com.betternorms.shukr")
+            app.launchArguments = ["-zikrUnlocked"]
+            app.launch(); sleep(4)
+            XCUIDevice.shared.press(.home); sleep(1)
+        }
         openShukrPage()
         for _ in 0..<3 { shortcuts.swipeDown() }   // the tiles sit above the grouped choices
-        let tile = shortcuts.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
+        let tile = shortcuts.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
         for _ in 0..<5 where !(tile.exists && tile.isHittable) { shortcuts.swipeUp() }
         if tile.exists { tile.tap(); sleep(5) } else {
             tree("tree-" + title)
@@ -280,6 +287,23 @@ final class ShortcutsOnDeviceTests: XCTestCase {
             }
         }
         shot("tile-" + title)
+        // SHORTCUT_TAP: a button in the card by its label (a row's "Start …"), then what comes up.
+        if let label = env["SHORTCUT_TAP"] {
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let pred = NSPredicate(format: "label == %@", label)
+            let inApp = shortcuts.descendants(matching: .any).matching(pred).firstMatch
+            let target = inApp.exists ? inApp : springboard.descendants(matching: .any).matching(pred).firstMatch
+            // SHORTCUT_TAP_AT "x,y" (points): a snippet's buttons report card-local frames, so they aren't hittable by query.
+            if let at = env["SHORTCUT_TAP_AT"]?.split(separator: ",").compactMap({ Double($0) }), at.count == 2 {
+                springboard.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: at[0], dy: at[1])).tap()
+            } else if target.exists { target.tap() } else { tree("no-" + label) }
+            sleep(5)
+            shot("tapped-" + label)
+            let done = springboard.buttons["Done"].firstMatch
+            if done.exists { done.tap() } else if shortcuts.buttons["Done"].firstMatch.exists { shortcuts.buttons["Done"].firstMatch.tap() }
+            sleep(2)
+            shot("after-done-" + label)
+        }
         if let phrase = env["SHORTCUT_PHRASE"] {
             XCUIDevice.shared.press(.home); sleep(1)
             XCUIDevice.shared.siriService.activate(voiceRecognitionText: phrase)

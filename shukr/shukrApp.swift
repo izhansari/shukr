@@ -151,7 +151,7 @@ struct shukrApp: App {
             UserDefaults.standard.set(0, forKey: TourRuntime.startedKey)
             UserDefaults.standard.set(false, forKey: TourRuntime.doneKey)
         }
-        // `-widgetOpenTest ayah|names|compass|tasbeeh|mosques|memories|list|task:<uuid>`: a launch as if from that widget (the flags its intent
+        // `-widgetOpenTest ayah|names|compass|tasbeeh|mosques|memories|list|task:<uuid>|start:<uuid>`: a launch as if from that widget (the flags its intent
         // sets before the app opens), to check the opening is skipped and the page comes up at once.
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-widgetOpenTest"),
            i + 1 < ProcessInfo.processInfo.arguments.count,
@@ -165,6 +165,9 @@ struct shukrApp: App {
             case "mosques": group.set(true, forKey: FindNearbyMosquesIntent.flag)   // Find Nearby Mosques
             case "memories": group.set(true, forKey: "widgetMemories")
             case "list": group.set(true, forKey: OpenPrayerListIntent.flag)   // the Today's Prayers control
+            case let s where s.hasPrefix("start:"):   // a row of the Zikr Tasks card
+                group.set(String(s.dropFirst(6)), forKey: StartZikrTaskIntent.idKey)
+                group.set(true, forKey: StartZikrTaskIntent.flag)
             default:
                 if what.hasPrefix("task:") {
                     group.set(String(what.dropFirst(5)), forKey: "widgetZikrTask")

@@ -102,7 +102,8 @@ enum FirstRunSetup {
     /// Widget / control / Action-button launches set one of these before the app opens.
     /// Every open from outside (widgets, controls, Shortcuts — Open shukr's pages, Nearby Mosques, Tasbih Fatimah).
     static let deepLinkFlags = ["widgetCompass", "widgetDailyAyah", "widgetNames", "widgetTasbeeh", "widgetZikrTask", "widgetMemories",
-                                 "widgetMosques", "alarmOpenSalah", "liveActivity.openTasbih", "widgetPrayerList"]
+                                 "widgetMosques", "alarmOpenSalah", "liveActivity.openTasbih", "widgetPrayerList",
+                                 "shortcutZikrStart"]
     static var openedFromDeepLink: Bool {
         let group = UserDefaults(suiteName: SharedStore.appGroup)
         return deepLinkFlags.contains { group?.bool(forKey: $0) == true }
