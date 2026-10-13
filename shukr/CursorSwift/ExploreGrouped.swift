@@ -36,8 +36,8 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         switch self {
         case .homeWidgets: "Prayer ring, zikr, the Name, the verse, StandBy"
         case .lockWidgets: "Time left, a countdown, the Name above the clock"
-        case .controls: "Control Center, Lock Screen buttons, the Action button"
-        case .siri: "“I prayed in shukr”, and more"
+        case .controls: "Today's Prayers, I Prayed, Fajr Alarm, Qibla, Zikr"
+        case .siri: "Time left, “I prayed”, today's times and 7 more"
         case .watch: "The app and your watch face"
         case .answer: "I already prayed · nudge me later"
         case .mapMasjid: "Your prayers on the map, mosques, Jumu'ah"
@@ -51,8 +51,8 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         switch self {
         case .homeWidgets: "Your prayer, your zikr, the Name of the Day and today's verse on your Home Screen, and on your nightstand while it charges."
         case .lockWidgets: "Time left and what's next, every time you pick up your phone, without unlocking it."
-        case .controls: "The qibla or your counter one press away: in Control Center, on the Lock Screen, or on the Action button."
-        case .siri: "Mark a prayer or ask the time left, without picking up your phone."
+        case .controls: "Five controls you can put in Control Center, on your Lock Screen buttons, or on the Action button."
+        case .siri: "Ten things to ask Siri, or tap as tiles in Shortcuts. Say “in shukr” at the end; Siri answers with a card."
         case .watch: "Your prayers and your zikr on your wrist, and the ring on your watch face."
         case .answer: "Mark a prayer, or ask for a nudge, right from its notification."
         case .mapMasjid: "Every prayer pinned where you prayed it, mosques near you, and Jumu'ah counted at the masjid."
@@ -65,8 +65,9 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         switch self {
         case .homeWidgets: [.homePrayers, .homeZikr, .homeName, .homeAyah, .standby]
         case .lockWidgets: [.lockTime, .lockCountdown, .lockName]
-        case .controls: [.controlCenter, .lockControls, .actionButton]
-        case .siri: [.siri]
+        case .controls: [.ccPrayer, .ccPrayed, .ccFajrAlarm, .ccQibla, .ccZikr]
+        case .siri: [.siriTimeLeft, .siriPrayerTime, .siriTodaysTimes, .siriIPrayed, .siriFajrAlarm, .siriOpenPage, .siriTasbihFatimah,
+                     .siriZikrTasks, .siriMosques, .siriPrayedHere]
         case .watch: [.watchApp, .watchFace]
         case .answer: [.answer]
         case .mapMasjid: [.prayersMap, .mosques, .jumuah]
@@ -81,7 +82,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .homeWidgets: .homePrayers
         case .lockWidgets: .lockTime
         case .controls: .controlCenter
-        case .siri: .siri
+        case .siri: .siriTimeLeft
         case .watch: .watchApp
         case .answer: .answer
         case .mapMasjid: .prayersMap
@@ -95,6 +96,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
     var doneWord: String {
         switch self {
         case .homeWidgets, .lockWidgets, .controls: "added"
+        case .siri: "tried"
         default: "tried"
         }
     }
@@ -127,6 +129,21 @@ extension ShowcaseCardID {
         case .sleep: "Sleep mode"
         case .tasbihFatimah: "Tasbih Fatimah after prayer"
         case .goals: "Daily goals with streaks"
+        case .siriTimeLeft: "Time left"
+        case .siriPrayerTime: "A prayer's time"
+        case .siriTodaysTimes: "Today's times"
+        case .siriIPrayed: "I prayed"
+        case .siriFajrAlarm: "Your Fajr alarm"
+        case .siriOpenPage: "Open any page"
+        case .siriTasbihFatimah: "Tasbih Fatimah"
+        case .siriZikrTasks: "Your zikr tasks"
+        case .siriMosques: "Nearby mosques"
+        case .siriPrayedHere: "Have I prayed here"
+        case .ccPrayer: "Today's Prayers"
+        case .ccPrayed: "I Prayed"
+        case .ccFajrAlarm: "Fajr Alarm"
+        case .ccQibla: "Qibla"
+        case .ccZikr: "Zikr"
         }
     }
 }
@@ -159,6 +176,8 @@ enum ExploreGrouped {
 struct ExploreGroupedPage: View {
     @State private var model = ShowcaseModel()
     @Environment(\.modelContext) private var context
+    /// DEBUG `-demoExploreGroup siri`: that group's page, pushed once loaded (screenshots).
+    @State private var demoGroup: ExploreGroup?
 
     private var groups: [ExploreGroup] {
         let cards = model.byID
@@ -193,7 +212,15 @@ struct ExploreGroupedPage: View {
         .navigationTitle("Explore shukr")
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
-        .task { await model.load(context: context) }
+        .task {
+            await model.load(context: context)
+            #if DEBUG
+            if let raw = UserDefaults.standard.string(forKey: "demoExploreGroup"), let id = ExploreGroupID(rawValue: raw) {
+                demoGroup = groups.first { $0.id == id }
+            }
+            #endif
+        }
+        .navigationDestination(item: $demoGroup) { ExploreGroupPage(group: $0) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await model.load(context: context) }
         }

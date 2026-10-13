@@ -42,7 +42,13 @@ enum ShowcaseCardID: String, CaseIterable, Identifiable {
     case prayersMap, jumuah, mosques
     case memories, insights
     case sleep, tasbihFatimah, goals
+    // The grouped page's members (ExploreGrouped.swift): each Siri phrase, each control.
+    case siriTimeLeft, siriPrayerTime, siriTodaysTimes, siriIPrayed, siriFajrAlarm, siriOpenPage, siriTasbihFatimah,
+         siriZikrTasks, siriMosques, siriPrayedHere
+    case ccPrayer, ccPrayed, ccFajrAlarm, ccQibla, ccZikr
     var id: String { rawValue }
+    var isSiri: Bool { rawValue.hasPrefix("siri") }
+    var isControl: Bool { rawValue.hasPrefix("cc") }
 }
 
 struct ShowcaseSection: Identifiable {
@@ -91,8 +97,10 @@ enum ExploreShowcase {
     private(set) var sections: [ShowcaseSection] = []
     private(set) var loaded = false
     var found: Int { sections.flatMap(\.cards).filter(\.using).count }
+    /// The grouped page's extra members (each Siri phrase, each control), not shown on this page.
+    private(set) var extras: [ShowcaseCard] = []
     /// Every card that applies, by id (the grouped page reads its members from here).
-    var byID: [ShowcaseCardID: ShowcaseCard] { Dictionary(sections.flatMap(\.cards).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
+    var byID: [ShowcaseCardID: ShowcaseCard] { Dictionary((sections.flatMap(\.cards) + extras).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
     var total: Int { sections.flatMap(\.cards).count }
 
     func load(context: ModelContext) async {
@@ -103,7 +111,9 @@ enum ExploreShowcase {
         func on(_ kind: String, _ families: Set<WidgetFamily>) -> Bool { configs.contains { $0.kind == kind && families.contains($0.family) } }
         let homeFamilies: Set<WidgetFamily> = [.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge]
         var controls = false
+        var controlKinds = Set<String>()
         if let added = try? await ControlCenter.shared.currentControls() {
+            controlKinds = Set(added.map(\.kind))
             controls = added.contains { $0.kind.hasPrefix("betternorms.shukr.control") }
         }
         var watchPaired = false, watchInstalled = false
@@ -173,6 +183,16 @@ enum ExploreShowcase {
             }
         }
         sections = list.filter { !$0.cards.isEmpty }
+        // Each Siri phrase counts once its story has been opened (iOS doesn't say which phrases ran); each control once
+        // it's placed (Control Center, a Lock Screen button or the Action button — iOS tells us which).
+        let siri: [ShowcaseCardID] = [.siriTimeLeft, .siriPrayerTime, .siriTodaysTimes, .siriIPrayed, .siriFajrAlarm, .siriOpenPage,
+                                      .siriTasbihFatimah, .siriZikrTasks, .siriMosques, .siriPrayedHere]
+        let controlKind: [ShowcaseCardID: String] = [.ccPrayer: "prayer", .ccPrayed: "prayed", .ccFajrAlarm: "fajrAlarm",
+                                                    .ccQibla: "qibla", .ccZikr: "tasbeeh"]
+        extras = siri.map { card($0, ShowcaseStory.of($0).title, opened($0)) }
+            + [.ccPrayer, .ccPrayed, .ccFajrAlarm, .ccQibla, .ccZikr].map { id in
+                card(id, ShowcaseStory.of(id).title, controlKinds.contains("betternorms.shukr.control." + (controlKind[id] ?? "")))
+            }
         loaded = true
     }
 
@@ -383,7 +403,7 @@ struct ShowcaseStoryPage: View {
                     Text("\(s.steps?.count ?? 0) quick steps").font(.system(.subheadline, design: .rounded)).foregroundStyle(Color.sage)
                         .frame(maxWidth: .infinity)
                 }
-                if card.id == .siri {
+                if card.id == .siri || card.id.isSiri {
                     ShortcutsLink().shortcutsLinkStyle(.automaticOutline).frame(maxWidth: .infinity)
                 }
             }
@@ -409,6 +429,16 @@ struct ShowcaseStory {
     static let homeSteps = ["Touch and hold an empty spot on your Home Screen", "Tap Edit, then Add Widget", "Search shukr and pick the one you want"]
     static let lockSteps = ["Touch and hold your Lock Screen, then tap Customize", "Pick your Lock Screen, then tap under the clock",
                             "Find shukr and tap the ones you want"]
+
+    private static func siriStory(_ phrase: String, _ lead: String, _ points: [String]) -> ShowcaseStory {
+        ShowcaseStory(title: phrase, lead: lead, points: points, button: "Try it with Siri",
+                      steps: ["Say “Hey Siri”, or hold the side button", "Say \(phrase)", "Siri answers with a card. Or tap its tile in Shortcuts"])
+    }
+    private static func controlStory(_ name: String, _ lead: String, _ points: [String]) -> ShowcaseStory {
+        ShowcaseStory(title: name, lead: lead, points: points + [], button: "Add it",
+                      steps: ["Swipe down from the top-right corner, then tap + and Add a Control", "Search shukr and pick \(name)",
+                              "On your Lock Screen or Action button instead: Customize the Lock Screen, or Settings → Action Button"])
+    }
 
     static func of(_ id: ShowcaseCardID) -> ShowcaseStory {
         switch id {
@@ -499,6 +529,38 @@ struct ShowcaseStory {
         case .tasbihFatimah: ShowcaseStory(title: "Tasbih Fatimah, after every prayer",
             lead: "33 · 33 · 34, offered each time you mark a prayer.",
             points: ["One tap from the Salah page", "Counts each phrase for you", "✕ when you'd rather not"], button: "Go to Salah", link: "salah")
+        // Siri and Shortcuts: each phrase (ShukrAppShortcuts.swift). Say it to Siri, or tap its tile in Shortcuts.
+        case .siriTimeLeft: siriStory("“How long is left in shukr”", "Siri tells you the time left for the prayer that's on, and when it ends.",
+            ["“How much time is left in shukr” works too", "A card with the ring, right in Siri", "No unlocking, no opening shukr"])
+        case .siriPrayerTime: siriStory("“When is Maghrib in shukr”", "Any prayer's time, or the current and the next one.",
+            ["“What's the next prayer in shukr”", "“Fajr time in shukr”", "Your own times, wherever you are"])
+        case .siriTodaysTimes: siriStory("“Today's prayer times in shukr”", "All five of today's times in one card.",
+            ["The prayer that's on, highlighted", "What you've marked, ticked", "“Show today's prayers in shukr” works too"])
+        case .siriIPrayed: siriStory("“I prayed in shukr”", "Marks the prayer that's on, and tells you how you did.",
+            ["Scored at that moment, like a tap in the app", "Works from your AirPods or CarPlay", "“Mark my prayer in shukr” works too"])
+        case .siriFajrAlarm: siriStory("“When is my Fajr alarm in shukr”", "The time your Fajr alarm will ring tomorrow.",
+            ["Before you sleep, without opening anything", "Says if it's off", "“Fajr alarm time in shukr” works too"])
+        case .siriOpenPage: siriStory("“Open Qibla in shukr”", "Straight to any page: Qibla, Zikr, History, Memories, the 99 Names and more.",
+            ["“Show Daily Ayah in shukr”", "“Go to Insights in shukr”", "As a tile in Shortcuts, or on your Home Screen"])
+        case .siriTasbihFatimah: siriStory("“Start Tasbih Fatimah in shukr”", "Opens straight into 33 · 33 · 34.",
+            ["Right after you pray, hands-free", "Counts each phrase for you", "“Tasbih Fatimah in shukr” works too"])
+        case .siriZikrTasks: siriStory("“My zikr tasks in shukr”", "What's left of today's zikr, in a card.",
+            ["Each task with how many are left", "“What zikr is left in shukr” works too", "Tap one to start it"])
+        case .siriMosques: siriStory("“Nearby mosques in shukr”", "The nearest mosques, with how far each one is.",
+            ["Travelling? Ask on arrival", "“Find a masjid in shukr” works too", "Tap one for directions"])
+        case .siriPrayedHere: siriStory("“Have I prayed here in shukr”", "How many times you've prayed where you are, and when you last did.",
+            ["From the prayers you've marked", "“My prayers here in shukr” works too", "Nice at a masjid you're visiting"])
+        // Controls (MoreWidgets.swift): Control Center, a Lock Screen button, or the Action button.
+        case .ccPrayer: controlStory("Today's Prayers", "The prayer that's on, or the next one, and its time. Tap it for today's prayers.",
+            ["Live: it changes with the day", "Its name and its time", "One tap to the full day"])
+        case .ccPrayed: controlStory("I Prayed", "Marks the prayer that's on, without opening shukr.",
+            ["Scored at the tap", "Ticks itself once it's marked", "Perfect on the Action button"])
+        case .ccFajrAlarm: controlStory("Fajr Alarm", "Your Fajr alarm, on or off, and when it rings.",
+            ["Turn it on or off in one tap", "Shows tomorrow's time", "No digging through Settings"])
+        case .ccQibla: controlStory("Qibla", "Straight to the qibla map.",
+            ["From anywhere, even inside another app", "The map turns so the qibla points up", "Great on the Lock Screen"])
+        case .ccZikr: controlStory("Zikr", "Straight to your zikr page.",
+            ["Start counting in a moment", "Your tasks are there", "Pairs with Tasbih Fatimah after prayer"])
         case .goals: ShowcaseStory(title: "A daily goal, with a streak",
             lead: "Pick a zikr and a daily goal; shukr keeps your streak.",
             points: ["A count or minutes", "Every day you meet it, the streak grows", "A reminder, if you'd like"], button: "Go to Zikr", link: "zikr")
@@ -537,6 +599,7 @@ struct ShowcasePicture: View {
     @ViewBuilder private var background: some View {
         switch id {
         case .lockTime, .lockCountdown, .lockName, .lockControls, .siri, .answer, .controlCenter, .actionButton, .sleep: night
+        case _ where id.isSiri || id.isControl: night
         case .standby: Color.black
         case .homeName: LinearGradient(colors: [Color(red: 0.18, green: 0.42, blue: 0.33), Color(red: 0.56, green: 0.77, blue: 0.65)],
                                        startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -624,7 +687,33 @@ struct ShowcasePicture: View {
             .padding(10).frame(width: 176)
             .background(RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.94)))
         case .controlCenter:
-            HStack(spacing: 8) { CCTile(symbol: "location.north.line.fill"); CCTile(symbol: "circle.hexagonpath") }
+            // Control Center with all five of shukr's controls.
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sun.max.fill").font(.system(size: 13))
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(p.name).font(.system(size: 11, weight: .semibold, design: .rounded))
+                            Text(p.end.formatted(date: .omitted, time: .shortened)).font(.system(size: 9, design: .rounded)).opacity(0.75)
+                        }
+                    }
+                    .foregroundStyle(.white).frame(width: 96, height: 44)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
+                    Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).background(Circle().fill(Color.green))
+                }
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "alarm.fill").font(.system(size: 13)).foregroundStyle(.orange)
+                        Text(prayerWindowToday("Fajr")?.start.formatted(date: .omitted, time: .shortened) ?? "5:37 AM")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+                    }
+                    .frame(width: 96, height: 44)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
+                    Image(systemName: "location.north.line.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 44, height: 44).background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
+                }
+            }
         case .actionButton:
             ZStack(alignment: .leading) {
                 Capsule().fill(Color.orange).frame(width: 6, height: 28).shadow(color: .orange, radius: 6).offset(x: -70, y: -20)
@@ -666,6 +755,47 @@ struct ShowcasePicture: View {
             Image(systemName: "moon.fill").font(.system(size: 40)).foregroundStyle(Color(red: 0.91, green: 0.89, blue: 0.78))
         case .tasbihFatimah:
             Text("33 · 33 · 34").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.primary.opacity(0.85))
+        case .siriTimeLeft: SiriExchange(ask: "How long is left in shukr", answer: "\(p.left) left for \(p.name).")
+        case .siriPrayerTime: SiriExchange(ask: "When is Maghrib in shukr", answer: "Maghrib is at " + (prayerWindowToday("Maghrib")?.start.formatted(date: .omitted, time: .shortened) ?? "6:52 PM") + ".")
+        case .siriTodaysTimes: SiriExchange(ask: "Today's prayer times in shukr", answer: "Fajr · Dhuhr · Asr · Maghrib · Isha")
+        case .siriIPrayed: SiriExchange(ask: "I prayed in shukr", answer: "\(p.name) marked as prayed. Perfect.")
+        case .siriFajrAlarm: SiriExchange(ask: "When is my Fajr alarm in shukr", answer: "Your Fajr alarm is at " + (prayerWindowToday("Fajr")?.start.formatted(date: .omitted, time: .shortened) ?? "5:37 AM") + ".")
+        case .siriOpenPage: SiriExchange(ask: "Open Qibla in shukr", answer: "Opening Qibla…")
+        case .siriTasbihFatimah: SiriExchange(ask: "Start Tasbih Fatimah in shukr", answer: "33 · 33 · 34")
+        case .siriZikrTasks: SiriExchange(ask: "My zikr tasks in shukr", answer: "2 tasks left today.")
+        case .siriMosques: SiriExchange(ask: "Nearby mosques in shukr", answer: (MosqueFavorites.all.first?.name ?? "The nearest masjid") + " · 1.2 mi")
+        case .siriPrayedHere: SiriExchange(ask: "Have I prayed here in shukr", answer: "You've prayed here 12 times.")
+        case .ccPrayer:
+            HStack(spacing: 10) {
+                Image(systemName: "sun.max.fill").font(.system(size: 20))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(p.name).font(.system(size: 14, weight: .semibold, design: .rounded))
+                    Text(p.end.formatted(date: .omitted, time: .shortened)).font(.system(size: 12, design: .rounded)).opacity(0.75)
+                }
+            }
+            .foregroundStyle(.white).padding(.horizontal, 16).frame(width: 150, height: 64)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.white.opacity(0.18)))
+        case .ccPrayed:
+            VStack(spacing: 6) {
+                Image(systemName: "checkmark").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 60, height: 60).background(Circle().fill(Color.green))
+                Text("I Prayed").font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+            }
+        case .ccFajrAlarm:
+            HStack(spacing: 10) {
+                Image(systemName: "alarm.fill").font(.system(size: 20)).foregroundStyle(.orange)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Fajr Alarm").font(.system(size: 14, weight: .semibold, design: .rounded))
+                    Text(prayerWindowToday("Fajr")?.start.formatted(date: .omitted, time: .shortened) ?? "5:37 AM")
+                        .font(.system(size: 12, design: .rounded)).opacity(0.75)
+                }
+            }
+            .foregroundStyle(.white).padding(.horizontal, 16).frame(width: 160, height: 64)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.white.opacity(0.18)))
+        case .ccQibla:
+            VStack(spacing: 6) { CCTile(symbol: "location.north.line.fill"); Text("Qibla").font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(.white) }
+        case .ccZikr:
+            VStack(spacing: 6) { CCTile(symbol: "hands.and.sparkles"); Text("Zikr").font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(.white) }
         case .goals:
             HStack(spacing: 10) {
                 MiniArc(progress: 1).frame(width: 44, height: 44)
@@ -677,6 +807,27 @@ struct ShowcasePicture: View {
 }
 
 // Picture pieces.
+
+/// You ask, Siri answers with a card (the phrase's own words; the answer shaped like the shortcut's).
+private struct SiriExchange: View {
+    let ask: String
+    let answer: String
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Circle().fill(AngularGradient(colors: [.pink, .indigo, .cyan, .pink], center: .center)).frame(width: 26, height: 26)
+                Text("“\(ask)”").font(.system(size: 12, design: .rounded)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            Text(answer)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color(red: 0.11, green: 0.13, blue: 0.15))
+                .lineLimit(2).multilineTextAlignment(.center)
+                .padding(.horizontal, 12).padding(.vertical, 9)
+                .frame(width: 190)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.94)))
+        }
+    }
+}
 
 private struct WidgetTile<Content: View>: View {
     var fill: Color = .white
