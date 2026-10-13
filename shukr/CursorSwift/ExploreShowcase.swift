@@ -651,7 +651,8 @@ struct ShowcasePicture: View {
                 CCCircle(symbol: symbol, on: id == .ccFajrAlarm).scaleEffect(1.5)
             } else {
                 picture.scaleEffect((scale ?? (big ? 1.7 : compact ? 0.8 : 1)) * fit)
-                    .id(sizeIndex).transition(.opacity)
+                    .id(sizeIndex)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96)), removal: .identity))
                     .offset(y: families.isEmpty ? 0 : 14)   // under the label row, as the setup's demo card sits under its label
             }
         }
@@ -678,30 +679,36 @@ struct ShowcasePicture: View {
         switch f { case .systemMedium: "Medium"; case .systemLarge: "Large"; default: "Small" }
     }
 
-    /// "Zikr tasks · Small", as the setup's demo cards label themselves ("Asr · Nudge"). On an item's page the size is the
-    /// switch (owner: one word, underlined, not a second "Medium" in a toggle): a tap moves to the next size.
+    /// "Zikr tasks · Small  Medium", as the setup's demo cards label themselves ("Asr · Nudge"): every size it comes in,
+    /// the one shown underlined in sage (owner: both shown, the chosen one marked); on an item's page a tap on one shows it.
     private var sizeLabel: some View {
         let switchable = (big || live) && families.count > 1
         return HStack(spacing: 6) {
             Text(id.memberName).fontWeight(.semibold)
             Text("·")
-            if switchable {
-                Button {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(.easeInOut(duration: 0.3)) { sizeIndex = (sizeIndex + 1) % families.count }
-                } label: {
-                    Text(Self.sizeName(family)).underline().contentTransition(.opacity)
-                        .padding(.vertical, 6).contentShape(Rectangle())   // a bigger target than the word
+            HStack(spacing: 10) {
+                ForEach(Array(families.enumerated()), id: \.offset) { i, f in
+                    let on = i == sizeIndex && families.count > 1
+                    Button {
+                        guard switchable, i != sizeIndex else { return }
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.easeOut(duration: 0.25)) { sizeIndex = i }
+                    } label: {
+                        Text(Self.sizeName(f))
+                            .fontWeight(on ? .semibold : .regular)
+                            .foregroundStyle(on ? Color.sage : Color.primary.opacity(families.count > 1 ? 0.45 : 0.7))
+                            .underline(on, color: Color.sage)
+                            .padding(.vertical, 6).contentShape(Rectangle())   // a bigger target than the word
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!switchable)
+                    .accessibilityLabel(Self.sizeName(f) + (on ? ", shown" : ""))
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Size: \(Self.sizeName(family)). Tap for \(Self.sizeName(families[(sizeIndex + 1) % families.count]))")
-            } else {
-                Text(Self.sizeName(family))
             }
         }
         .font(.system(.caption, design: .rounded))
         .foregroundStyle(Color.primary.opacity(0.7))
-        .padding(.leading, 16).padding(.top, switchable ? 6 : 12)
+        .padding(.leading, 16).padding(.top, 6)
     }
 
     private var controlSymbol: String? {
@@ -1083,6 +1090,7 @@ struct RealNameWidget: View {
         SizedWidget(family: family) {
             NameOfTheDayView(entry: NameOfTheDayEntry(date: Date(), name: NamesOfAllah.nameOfTheDay()), familyOverride: family)
         } background: { BrandBackground() }
+        .environment(\.colorScheme, .dark)   // the widget is dark only (owner)
     }
 }
 
@@ -1096,6 +1104,7 @@ struct RealAyahWidget: View {
                                                       ayah: DailyAyahWidgetPayload.load().flatMap { $0.isToday ? $0 : nil } ?? DailyAyahProvider.sample),
                                 familyOverride: family)
         } background: { BrandBackground() }
+        .environment(\.colorScheme, .dark)   // the widget is dark only (owner)
     }
 }
 

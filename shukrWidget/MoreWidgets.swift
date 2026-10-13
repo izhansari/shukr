@@ -402,7 +402,9 @@ struct ZikrTasksWidgetView: View {
 struct NameOfTheDayWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: WidgetKinds.name, provider: NameOfTheDayProvider()) { entry in
-            NameOfTheDayView(entry: entry).shukrBrandBackground()
+            // Dark only (owner, 2026-10-13: "get rid of their light versions … their dark version variant becomes the only
+            // option"): the view and its background both, whatever the phone's appearance.
+            NameOfTheDayView(entry: entry).shukrBrandBackground().environment(\.colorScheme, .dark)
         }
         .configurationDisplayName("Name of the Day")
         .description("One of the 99 Names of Allah each day, with its meaning.")
@@ -535,7 +537,7 @@ struct NameOfTheDayView: View {
 struct DailyAyahWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: WidgetKinds.ayah, provider: DailyAyahProvider()) { entry in
-            DailyAyahWidgetView(entry: entry).shukrBrandBackground()
+            DailyAyahWidgetView(entry: entry).shukrBrandBackground().environment(\.colorScheme, .dark)   // dark only (owner)
         }
         .configurationDisplayName("Daily Ayah")
         .description("Today's ayah, once you've revealed it in shukr.")
