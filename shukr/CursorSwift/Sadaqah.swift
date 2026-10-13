@@ -518,12 +518,10 @@ struct SadaqahPage: View {
     /// The soft grey of the log sheet's cards.
     static let card = Color.primary.opacity(0.045)
 
-    /// The page's title, then this year's total big, as the log sheet shows an amount; the count and Ramadan / Zakat under it.
+    /// The page's title, then this year's total big, as the log sheet shows an amount; the count (and the sadaqah / community split) under it.
     private var totals: some View {
         let year = log.total(since: startOfYear)
         let count = log.donations.filter { $0.date >= startOfYear }.count
-        let zakat = log.total(since: startOfYear, purpose: .zakat)
-        let ramadan = log.total(since: startOfYear, purpose: .ramadan)
         let community = log.total(since: startOfYear, kind: .community)
         return VStack(spacing: 6) {
             Text("Give to Causes").font(.system(size: 30, weight: .light, design: .rounded))
@@ -536,7 +534,7 @@ struct SadaqahPage: View {
                 .contentTransition(.numericText())
                 .padding(.top, 14)
             HStack(spacing: 4) {
-                Text(count == 0 ? "Given this year" : "Given this year · " + detailLine(count: count, zakat: zakat, ramadan: ramadan, community: community, year: year))
+                Text(count == 0 ? "Given this year" : "Given this year · " + detailLine(count: count, community: community, year: year))
                     .multilineTextAlignment(.center)
                 Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             }
@@ -545,16 +543,15 @@ struct SadaqahPage: View {
         .padding(.top, 4)
     }
 
-    private func detailLine(count: Int, zakat: Double, ramadan: Double, community: Double, year: Double) -> String {
+    private func detailLine(count: Int, community: Double, year: Double) -> String {
         guard count > 0 else { return "Nothing logged yet this year" }
         var parts = [count == 1 ? "1 donation" : "\(count) donations"]
-        // Both sides given to: the split, so sadaqah (and zakat) stays its own number.
+        // Only numbers that add up to the big one (owner: Zakat beside them read as a sum that didn't add up). Zakat,
+        // Ramadan and the rest are in Your donations' filter.
         if community > 0, community < year {
             parts.append("Sadaqah \((year - community).money())")
             parts.append("Community \(community.money())")
         }
-        if zakat > 0 { parts.append("Zakat \(zakat.money())") }
-        if ramadan > 0 { parts.append("Ramadan \(ramadan.money())") }
         return parts.joined(separator: " · ")
     }
 }
@@ -679,8 +676,15 @@ struct SadaqahHistoryPage: View {
     @State private var editing: DonationDraft?
     @State private var asking: SadaqahDonation?
     @State private var filter: DonationFilter?
+    /// When (owner: a date range too); nil = all time.
+    @State private var range: DonationRange?
+    @State private var pickingDates = false
 
-    private var shown: [SadaqahDonation] { log.donations.filter { d in filter.map { $0.matches(d) } ?? true } }
+    private var shown: [SadaqahDonation] {
+        log.donations.filter { d in
+            (filter.map { $0.matches(d) } ?? true) && (range.map { $0.interval.contains(d.date) } ?? true)
+        }
+    }
 
     /// The donations by month, newest first.
     private var months: [(title: String, items: [SadaqahDonation])] {
@@ -705,7 +709,9 @@ struct SadaqahHistoryPage: View {
                             .font(.system(size: 48, weight: .light, design: .rounded))
                             .monospacedDigit()
                             .contentTransition(.numericText())
-                        Text("\(shown.count == 1 ? "1 donation" : "\(shown.count) donations")" + (filter.map { " · \($0.title)" } ?? " in all"))
+                        Text(([shown.count == 1 ? "1 donation" : "\(shown.count) donations"]
+                              + [filter?.title, range?.title].compactMap { $0 }).joined(separator: " · ")
+                             + (filter == nil && range == nil ? " in all" : ""))
                             .font(.footnote).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
@@ -715,6 +721,7 @@ struct SadaqahHistoryPage: View {
                 } header: {
                     HStack {
                         Spacer()
+                        DonationRangeMenu(range: $range) { pickingDates = true }.textCase(nil)
                         DonationFilterMenu(filter: $filter, donations: log.donations).textCase(nil)
                     }
                 }
@@ -763,6 +770,12 @@ struct SadaqahHistoryPage: View {
             }
         }
         .sheet(item: $editing) { DonationSheet(draft: $0) }
+        .sheet(isPresented: $pickingDates) {
+            DateRangeSheet(start: range?.interval.start ?? Calendar.current.date(byAdding: .month, value: -1, to: .now)!,
+                           end: range?.interval.end ?? .now) { from, to in
+                withAnimation(.snappy(duration: 0.25)) { range = .custom(from, to) }
+            }
+        }
         .alert("Delete this donation?", isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
                presenting: asking) { d in
             Button("Delete", role: .destructive) { log.delete(d) }
@@ -770,6 +783,123 @@ struct SadaqahHistoryPage: View {
         } message: { d in
             Text("\(d.amount.money(d.currency)) to \(d.to)")
         }
+    }
+}
+
+/// Your donations' "when" (owner: a date range filter too).
+enum DonationRange: Hashable {
+    case thisMonth, last30, thisYear, lastYear, ramadan
+    case custom(Date, Date)
+
+    static let presets: [DonationRange] = [.thisMonth, .last30, .thisYear, .lastYear, .ramadan]
+
+    var interval: DateInterval {
+        let cal = Calendar.current
+        let now = Date.now
+        switch self {
+        case .thisMonth: return cal.dateInterval(of: .month, for: now) ?? DateInterval(start: now, duration: 0)
+        case .last30: return DateInterval(start: cal.date(byAdding: .day, value: -30, to: now)!, end: now)
+        case .thisYear: return cal.dateInterval(of: .year, for: now) ?? DateInterval(start: now, duration: 0)
+        case .lastYear:
+            let last = cal.date(byAdding: .year, value: -1, to: now)!
+            return cal.dateInterval(of: .year, for: last) ?? DateInterval(start: last, duration: 0)
+        case .ramadan: return Self.latestRamadan
+        case .custom(let from, let to):
+            let start = cal.startOfDay(for: min(from, to))
+            let end = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: max(from, to)))!
+            return DateInterval(start: start, end: end)
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .thisMonth: "This month"
+        case .last30: "Last 30 days"
+        case .thisYear: "This year"
+        case .lastYear: "Last year"
+        case .ramadan: "Ramadan \(Calendar.current.component(.year, from: Self.latestRamadan.start))"
+        case .custom(let from, let to):
+            "\(min(from, to).formatted(.dateTime.month(.abbreviated).day())) – \(max(from, to).formatted(.dateTime.month(.abbreviated).day().year()))"
+        }
+    }
+
+    /// This Ramadan if it has begun, else last year's (Umm al-Qura).
+    static var latestRamadan: DateInterval {
+        var hijri = Calendar(identifier: .islamicUmmAlQura)
+        hijri.timeZone = .current
+        let year = hijri.component(.year, from: .now)
+        func ramadan(_ y: Int) -> DateInterval? {
+            hijri.date(from: DateComponents(year: y, month: 9, day: 1)).flatMap { hijri.dateInterval(of: .month, for: $0) }
+        }
+        if let this = ramadan(year), this.start <= .now { return this }
+        return ramadan(year - 1) ?? DateInterval(start: .now, duration: 0)
+    }
+}
+
+/// The date range's menu: a calendar glyph, or the green pill with the range while one is picked.
+private struct DonationRangeMenu: View {
+    @Binding var range: DonationRange?
+    let pickDates: () -> Void
+    var body: some View {
+        Menu {
+            Button { withAnimation(.snappy(duration: 0.25)) { range = nil } } label: {
+                Label("All time", systemImage: range == nil ? "checkmark" : "infinity")
+            }
+            Section {
+                ForEach(DonationRange.presets, id: \.self) { r in
+                    Button { withAnimation(.snappy(duration: 0.25)) { range = r } } label: {
+                        Label(r.title, systemImage: range == r ? "checkmark" : r == .ramadan ? "moon.stars" : "calendar")
+                    }
+                }
+            }
+            Button(action: pickDates) { Label("Choose dates…", systemImage: "calendar.badge.clock") }
+        } label: {
+            if let range {
+                HStack(spacing: 5) {
+                    Image(systemName: "calendar").font(.caption)
+                    Text(range.title).font(.subheadline).lineLimit(1)
+                }
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.green)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Capsule().fill(Color.green.opacity(0.16)))
+            } else {
+                Image(systemName: "calendar")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.primary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+        }
+        .tint(range == nil ? Color.primary : Color.green)
+        .sensoryFeedback(.selection, trigger: range)
+    }
+}
+
+/// "Choose dates…": from and to, then Done.
+private struct DateRangeSheet: View {
+    @State var start: Date
+    @State var end: Date
+    let onDone: (Date, Date) -> Void
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker("From", selection: $start, in: ...Date.now, displayedComponents: .date)
+                DatePicker("To", selection: $end, in: ...Date.now, displayedComponents: .date)
+            }
+            .navigationTitle("Choose dates")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { onDone(start, end); dismiss() }.fontWeight(.semibold)
+                }
+            }
+        }
+        .fontDesign(.rounded)
+        .presentationDetents([.height(260)])
     }
 }
 
