@@ -1703,12 +1703,13 @@ struct TodaysTimesSnippet: View {
                 .frame(width: 24)
             Text(r.name)
                 .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
-            if r.marked {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Self.sage)
-            }
             Spacer(minLength: 8)
+            // The tick in its own column just before the time, so they line up (owner); its room kept when unmarked.
+            Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Self.sage)
+                .opacity(r.marked ? 1 : 0)
+                .frame(width: 14)
             VStack(alignment: .trailing, spacing: 1) {
                 Text(shortTimePM(r.start))
                     .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
