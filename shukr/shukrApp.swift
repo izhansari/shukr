@@ -518,17 +518,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // checkmark does (SharedStore.markPrayerComplete). On every prayer category.
         let markPrayed = UNNotificationAction(
             identifier: "MARK_PRAYED_ACTION",
-            title: "I already prayed",
+            title: NotificationScheduler.ActionTitle.prayed,
             options: []
         )
         let snooze5 = UNNotificationAction(
             identifier: "SNOOZE_5_ACTION",
-            title: "Nudge in 5 minutes",
+            title: NotificationScheduler.ActionTitle.nudge5,
             options: []
         )
         let snooze10 = UNNotificationAction(
             identifier: "SNOOZE_10_ACTION",
-            title: "Nudge in 10 minutes",
+            title: NotificationScheduler.ActionTitle.nudge10,
             options: []
         )
         let round1Actions = UNNotificationCategory(

@@ -52,6 +52,7 @@ struct ExploreSimplePage: View {
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
         .task {
+            ExploreWidgetData.warm()   // the pictures' data, once, off the main thread
             await model.load(context: context)
             #if DEBUG
             if let raw = UserDefaults.standard.string(forKey: "demoExploreGroup"), let id = ExploreGroupID(rawValue: raw) {

@@ -3065,6 +3065,20 @@ struct NotificationDemo: View {
     }
 
     private func banner(_ b: Banner, end: Date) -> some View {
+        NotificationBanner(title: b.title, subtitle: "Pray by \(clockTime(end))", line: b.line, at: b.at)
+    }
+}
+
+/// A prayer notification as iOS shows it — shukr's icon, the title and its time, "Pray by …" and the line that changes
+/// (NotificationScheduler.prayerNotification's words). The setup's demo and Explore's picture.
+struct NotificationBanner: View {
+    let title: String
+    let subtitle: String
+    /// The notification's body (the line that changes).
+    let line: String
+    let at: Date
+
+    var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image("NotificationIcon")
                 .resizable()
@@ -3073,12 +3087,12 @@ struct NotificationDemo: View {
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
             VStack(alignment: .leading, spacing: 1) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(b.title).font(.subheadline.weight(.semibold))
+                    Text(title).font(.subheadline.weight(.semibold))
                     Spacer(minLength: 6)
-                    Text(clockTime(b.at)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    Text(clockTime(at)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
-                Text("Pray by \(clockTime(end))").font(.subheadline)
-                Text(b.line).font(.subheadline).foregroundStyle(.secondary)
+                Text(subtitle).font(.subheadline)
+                Text(line).font(.subheadline).foregroundStyle(.secondary)
             }
         }
         .padding(12)

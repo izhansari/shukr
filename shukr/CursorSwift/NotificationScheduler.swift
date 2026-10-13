@@ -446,6 +446,13 @@ enum NotificationScheduler {
     /// 🟢 at the start · 🟡 halfway through the window (owner, 2026-10-03: "i liked it better with the halfway
     /// notifications instead of 30 min in" — it was 30 min in for a day) · 🔴 with 30 min left (owner: kept there,
     /// though the ring turns red earlier). A window under 90 min gets no 🟡 (halfway would land within 15 min of the 🔴).
+    /// The buttons a held prayer notification shows (Round1_Snooze) — the app's registration and Explore's picture.
+    enum ActionTitle {
+        static let prayed = "I already prayed"
+        static let nudge5 = "Nudge in 5 minutes"
+        static let nudge10 = "Nudge in 10 minutes"
+    }
+
     static func prayerNotification(_ kind: String, prayer: String,
                                    window: (start: Date, end: Date, window: TimeInterval)) -> (Date, UNNotificationContent)? {
         let endTime = window.end

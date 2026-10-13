@@ -667,7 +667,7 @@ struct ShowcasePicture: View {
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
     private var fit: CGFloat {
-        id == .controlCenter ? 0.7 : id == .standby ? 0.62 : (id == .watchApp || id == .watchFace) ? 0.58 : id.isControl ? 0.8 : id.isSiri ? 0.5 : !families.isEmpty ? (family == .systemSmall ? 0.68 : family == .systemMedium ? 0.55 : 0.36) : 1
+        id == .controlCenter ? 0.7 : id == .answer ? 0.42 : id == .standby ? 0.62 : (id == .watchApp || id == .watchFace) ? 0.58 : id.isControl ? 0.8 : id.isSiri ? 0.5 : !families.isEmpty ? (family == .systemSmall ? 0.68 : family == .systemMedium ? 0.55 : 0.36) : 1
     }
 
     /// The sizes a Home Screen widget comes in (its `supportedFamilies`); empty for everything else.
@@ -788,18 +788,7 @@ struct ShowcasePicture: View {
                     .padding(.horizontal, 10).padding(.vertical, 6)
                     .background(Capsule().fill(Color(.secondarySystemGroupedBackground)))
             }
-        case .answer:
-            VStack(alignment: .leading, spacing: 6) {
-                (Text("\(p.name) 🟡 ").bold() + Text("· Halfway through \(p.name)")).font(.system(size: 11.5, design: .rounded))
-                HStack(spacing: 6) {
-                    Text("I prayed").frame(maxWidth: .infinity).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.07)))
-                    Text("10 min").frame(maxWidth: .infinity).padding(.vertical, 4).background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.07)))
-                }
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-            }
-            .foregroundStyle(Color(red: 0.11, green: 0.13, blue: 0.15))
-            .padding(10).frame(width: 176)
-            .background(RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.94)))
+        case .answer: RealNotification()
         case .controlCenter:
             // Control Center as iOS lays shukr's five controls out: a grid of 56 pt cells, medium controls two cells wide
             // (a glass capsule: the icon's round badge, then the title and value), small ones a glass circle.
@@ -991,7 +980,7 @@ struct RealPrayersWidget: View {
     }
 
     private func run() async {
-        var first = await PrayersWidgetTimelineProvider().makeEntry()
+        var first = await ExploreWidgetData.prayersEntry()
         if standby { first.style = .dark }
         entry = first
         guard playing else { return }
@@ -1052,6 +1041,27 @@ private struct SizedWidget<Content: View, Background: View>: View {
     }
 }
 
+/// The Prayers widget's data for Explore, worked out once and shared by every picture (the widget's own `makeEntry`
+/// took 150–260 ms, and one page drew six: owner asked about lag). Kept a minute; warmed when Explore opens.
+@MainActor enum ExploreWidgetData {
+    private static var cached: (at: Date, entry: PrayersWidgetEntry)?
+    private static var loading: Task<PrayersWidgetEntry, Never>?
+    static func prayersEntry() async -> PrayersWidgetEntry {
+        if let cached, Date().timeIntervalSince(cached.at) < 60 { return cached.entry }
+        if let loading { return await loading.value }
+        let task = Task.detached(priority: .userInitiated) { await PrayersWidgetTimelineProvider().makeEntry() }
+        loading = task
+        let entry = await task.value
+        cached = (Date(), entry)
+        loading = nil
+        return entry
+    }
+    /// Explore opening: start it before the pictures ask.
+    static func warm() {
+        Task { _ = await prayersEntry(); await ControlFaces.shared.load() }
+    }
+}
+
 /// The five controls' faces from the controls' own values (MoreWidgets.swift's providers), as Control Center has them now.
 @MainActor @Observable final class ControlFaces {
     static let shared = ControlFaces()
@@ -1073,7 +1083,11 @@ private struct SizedWidget<Content: View, Background: View>: View {
 
     /// Your controls' own values, each in the state that shows what it does (owner: Fajr Alarm "shouldn't show the off" —
     /// on, with when it rings): the alarm on at its next time, I Prayed waiting to mark, Zikr with tasks left.
+    private var loadedAt: Date?
     func load() async {
+        // Once for every picture on screen (each asked), then again after half a minute.
+        if let loadedAt, Date().timeIntervalSince(loadedAt) < 30 { return }
+        loadedAt = Date()
         if let v = try? await PrayerControl.Provider().currentValue() { prayer = ControlFace(symbol: v.symbol, title: v.name, line: v.line) }
         if let v = try? await PrayedControl.Provider().currentValue() {
             prayed = PrayedControl.Value(name: v.none ? ShownPrayer.now.name : v.name, marked: false, none: false).face
@@ -1083,6 +1097,34 @@ private struct SizedWidget<Content: View, Background: View>: View {
         }
         let line = (try? await TasbeehControl.Provider().currentValue()) ?? nil
         zikr = ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: (line == nil || line == "All done today") ? "2 tasks left · about 9 min" : line)
+    }
+}
+
+/// A prayer notification held open, as iOS shows it: the scheduler's own halfway notification for the prayer that's on
+/// (NotificationScheduler.prayerNotification — the words your phone gets), and its buttons (ActionTitle).
+private struct RealNotification: View {
+    var body: some View {
+        let p = ShownPrayer.now
+        let window = (start: p.start, end: p.end, window: p.end.timeIntervalSince(p.start))
+        let sent = NotificationScheduler.prayerNotification("Mid", prayer: p.name, window: window)
+            ?? NotificationScheduler.prayerNotification("Start", prayer: p.name, window: window)
+        VStack(spacing: 8) {
+            if let (at, content) = sent {
+                NotificationBanner(title: content.title, subtitle: content.subtitle, line: content.body, at: at)
+            }
+            VStack(spacing: 0) {
+                ForEach([NotificationScheduler.ActionTitle.prayed, NotificationScheduler.ActionTitle.nudge5,
+                         NotificationScheduler.ActionTitle.nudge10], id: \.self) { title in
+                    if title != NotificationScheduler.ActionTitle.prayed { Divider() }
+                    Text(title).font(.body).frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.vertical, 12)
+                }
+            }
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 30)
+        }
+        .frame(width: 340)
+        .allowsHitTesting(false)
     }
 }
 
@@ -1170,7 +1212,7 @@ struct RealLockWidget: View {
             .foregroundStyle(.white)
             .tint(.white)   // iOS draws Lock Screen widgets in one tint; outside it the bar came out blue
             .allowsHitTesting(false)
-            .task { entry = await PrayersWidgetTimelineProvider().makeEntry() }
+            .task { entry = await ExploreWidgetData.prayersEntry() }
     }
 }
 
