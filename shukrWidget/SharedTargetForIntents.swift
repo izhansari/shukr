@@ -1598,20 +1598,10 @@ struct TodaysTimesSnippet: View {
     static let sage = Color(red: 0.40, green: 0.64, blue: 0.50)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ForEach([When.earlier, .now, .coming], id: \.self) { when in
-                let part = rows.filter { $0.when == when }
-                if !part.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(when == .earlier ? "Earlier" : when == .now ? "Now" : "Still to come")
-                            .font(.system(.caption, design: .rounded, weight: .semibold))
-                            .textCase(.uppercase)
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 10)
-                        ForEach(part) { row($0) }
-                    }
-                }
-            }
+        // One plain list (owner: the Earlier / Now / Still to come headers were clutter); the marks and the current
+        // row's sage fill say where the day is.
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(rows) { row($0) }
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 12)
@@ -1636,7 +1626,17 @@ struct TodaysTimesSnippet: View {
     }
 
     @ViewBuilder private func mark(_ r: Row) -> some View {
-        if r.marked {
+        if r.marked && markable {
+            // Undo, never in one tap (owner): the ✓ opens shukr, which asks "Unmark Asr?" — as I Prayed's Undo.
+            Button(intent: AskUnmarkPrayerIntent(prayerName: r.name, prayerStart: r.start)) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Self.sage)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(r.name), prayed. Unmark in shukr")
+        } else if r.marked {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 22))
                 .foregroundStyle(Self.sage)

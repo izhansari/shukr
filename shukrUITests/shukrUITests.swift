@@ -299,8 +299,8 @@ final class ShortcutsOnDeviceTests: XCTestCase {
             } else if target.exists { target.tap() } else { tree("no-" + label) }
             sleep(5)
             shot("tapped-" + label)
-            let done = springboard.buttons["Done"].firstMatch
-            if done.exists { done.tap() } else if shortcuts.buttons["Done"].firstMatch.exists { shortcuts.buttons["Done"].firstMatch.tap() }
+            let done = shortcuts.buttons["Done"].firstMatch
+            if done.exists { done.tap() }
             sleep(2)
             shot("after-done-" + label)
         }
