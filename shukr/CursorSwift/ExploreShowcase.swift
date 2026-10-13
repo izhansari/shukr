@@ -662,7 +662,7 @@ struct ShowcasePicture: View {
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
     private var fit: CGFloat {
-        id == .controlCenter ? 0.7 : id.isControl ? 0.8 : id.isSiri ? 0.5 : !families.isEmpty ? (family == .systemSmall ? 0.68 : family == .systemMedium ? 0.55 : 0.36) : 1
+        id == .controlCenter ? 0.7 : id == .standby ? 0.62 : id.isControl ? 0.8 : id.isSiri ? 0.5 : !families.isEmpty ? (family == .systemSmall ? 0.68 : family == .systemMedium ? 0.55 : 0.36) : 1
     }
 
     /// The sizes a Home Screen widget comes in (its `supportedFamilies`); empty for everything else.
@@ -727,13 +727,6 @@ struct ShowcasePicture: View {
                                                : [Color(red: 0.85, green: 0.92, blue: 0.87), Color(red: 0.93, green: 0.96, blue: 0.94)],
                        startPoint: .topLeading, endPoint: .bottomTrailing)
     }
-    /// A plain cool wallpaper, so the mint Name and Ayah widgets stand out (owner: "green widget with the same kind of green
-    /// background").
-    private var wallpaper: some View {
-        LinearGradient(colors: scheme == .dark ? [Color(red: 0.17, green: 0.19, blue: 0.23), Color(red: 0.08, green: 0.09, blue: 0.11)]
-                                               : [Color(red: 0.84, green: 0.87, blue: 0.92), Color(red: 0.93, green: 0.94, blue: 0.96)],
-                       startPoint: .topLeading, endPoint: .bottomTrailing)
-    }
     private var night: some View {
         RadialGradient(colors: [Color(red: 0.23, green: 0.31, blue: 0.39), Color(red: 0.08, green: 0.10, blue: 0.11)],
                        center: UnitPoint(x: 0.3, y: 0.1), startRadius: 0, endRadius: 260)
@@ -746,7 +739,6 @@ struct ShowcasePicture: View {
         case _ where id.isSiri: sage   // the cards as they look in the Shortcuts app
         case .standby: Color.black
         case .prayersMap: MapGrid()
-        case .homeName, .homeAyah: wallpaper
         default: sage
         }
     }
@@ -764,20 +756,19 @@ struct ShowcasePicture: View {
         case .homeZikr: RealZikrWidget(family: family)
         case .homeName: RealNameWidget(family: family)
         case .homeAyah: RealAyahWidget(family: family)
+        // The real Lock Screen widgets (owner): the Prayers widget's circle and line, and the Name's line above the clock.
         case .lockTime:
-            LockClock { LockCircle(text: "\(min(p.minutesLeft, 59))m") }
+            LockClock { RealLockWidget(family: .accessoryCircular) }
         case .lockCountdown:
-            LockClock {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("\(p.name) ends in \(min(p.minutesLeft, 59)):13").font(.system(size: 11, weight: .bold, design: .rounded))
-                    Text("then the next prayer").font(.system(size: 10, design: .rounded)).opacity(0.75)
-                }
-                .padding(.horizontal, 8).padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.12)))
-            }
+            LockClock { RealLockWidget(family: .accessoryRectangular) }
         case .lockName:
-            let n = NamesOfAllah.nameOfTheDay()
-            LockClock(top: true) { Text("\(n.arabic) · \(n.transliteration)").font(.system(size: 11, weight: .medium, design: .rounded)).opacity(0.85) }
+            LockClock(top: true) {
+                NameOfTheDayView(entry: NameOfTheDayEntry(date: Date(), name: NamesOfAllah.nameOfTheDay()), familyOverride: .accessoryInline)
+                    .frame(width: 300, height: 20)
+                    .environment(\.colorScheme, .dark)
+                    .foregroundStyle(.white)
+                    .allowsHitTesting(false)
+            }
         case .lockControls:
             HStack { LockButton(symbol: "location.north.line.fill"); Spacer(); LockButton(symbol: "circle.hexagonpath") }
                 .frame(width: 150).frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 14)
@@ -791,9 +782,11 @@ struct ShowcasePicture: View {
                 }
             }
         case .standby:
+            // The real Prayers widget as StandBy shows it: dark, no background, big beside the clock (owner).
             HStack(spacing: 14) {
-                RingFace(name: p.name, line: p.left, progress: p.progress, size: 62, dark: true)
-                Text(Date(), format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute()).font(.system(size: 34, weight: .light, design: .rounded))
+                RealPrayersWidget(standby: true)
+                Text(Date(), format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute()).font(.system(size: 76, weight: .light, design: .rounded))
+                    .lineLimit(1).fixedSize()
                     .foregroundStyle(Color(red: 1, green: 0.37, blue: 0.27))
             }
         case .siri:
@@ -983,6 +976,8 @@ private struct CCCircle: View {
 /// list, and back. It never takes a touch: its buttons would really run.
 struct RealPrayersWidget: View {
     var playing = false
+    /// StandBy: the widget's dark style on black, no container (as iOS shows widgets there).
+    var standby = false
     @State private var entry: PrayersWidgetEntry?
     @State private var touch: UnitPoint?
     @State private var touches = 0
@@ -994,7 +989,7 @@ struct RealPrayersWidget: View {
             if let entry { PrayersWidgetView(entry: entry).padding(14) }
         }
         .frame(width: Self.side, height: Self.side)
-        .background(entry?.background ?? WidgetSoft.surface(scheme))
+        .background(standby ? Color.black : (entry?.background ?? WidgetSoft.surface(scheme)))
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay {
             GeometryReader { g in
@@ -1007,13 +1002,15 @@ struct RealPrayersWidget: View {
                 }
             }
         }
-        .shadow(color: .black.opacity(0.15), radius: 10, y: 5)
+        .shadow(color: .black.opacity(standby ? 0 : 0.15), radius: 10, y: 5)
+        .environment(\.colorScheme, standby ? .dark : scheme)
         .allowsHitTesting(false)
         .task { await run() }
     }
 
     private func run() async {
-        let first = await PrayersWidgetTimelineProvider().makeEntry()
+        var first = await PrayersWidgetTimelineProvider().makeEntry()
+        if standby { first.style = .dark }
         entry = first
         guard playing else { return }
         while !Task.isCancelled {
@@ -1070,6 +1067,29 @@ private struct SizedWidget<Content: View, Background: View>: View {
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             .shadow(color: .black.opacity(0.15), radius: 10, y: 5)
             .allowsHitTesting(false)
+    }
+}
+
+/// The Prayers widget's own Lock Screen view (circle or line), from its own data, white on the Lock Screen's dark as iOS
+/// draws it there; never taking a touch.
+struct RealLockWidget: View {
+    let family: WidgetFamily
+    @State private var entry: PrayersWidgetEntry?
+    private var size: CGSize {
+        switch family {
+        case .accessoryCircular: CGSize(width: 76, height: 76)
+        case .accessoryRectangular: CGSize(width: 172, height: 76)
+        default: CGSize(width: 240, height: 20)
+        }
+    }
+    var body: some View {
+        ZStack { if let entry { PrayerLockScreenView(entry: entry, family: family) } }
+            .frame(width: size.width, height: size.height)
+            .environment(\.colorScheme, .dark)
+            .foregroundStyle(.white)
+            .tint(.white)   // iOS draws Lock Screen widgets in one tint; outside it the bar came out blue
+            .allowsHitTesting(false)
+            .task { entry = await PrayersWidgetTimelineProvider().makeEntry() }
     }
 }
 

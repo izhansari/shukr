@@ -886,6 +886,15 @@ struct PrayersWidgetView: View {
         /// The DEBUG renders draw a static arc at this time (ImageRenderer can't run the timer).
         static var snapshotAt: Date?
         #endif
+        /// In the app (Explore draws the real widget): the timer-masked arc only renders inside a widget, so the arc is
+        /// drawn from now instead. Never set in the widget extension.
+        nonisolated(unsafe) static var drawsStatically = false
+        static var staticAt: Date? {
+            #if DEBUG
+            if let snapshotAt { return snapshotAt }
+            #endif
+            return drawsStatically ? Date() : nil
+        }
 
         /// One stable view with no per-render inputs (no AnyView, no entry time), and no
         /// animation or content transition: a reload (the ring's tap flips its time text) used to
@@ -901,8 +910,7 @@ struct PrayersWidgetView: View {
         }
 
         @ViewBuilder private var arc: some View {
-            #if DEBUG
-            if let at = Self.snapshotAt {
+            if let at = Self.staticAt {
                 let f = end > start ? min(max(at.timeIntervalSince(start) / end.timeIntervalSince(start), 0), 1) : 1
                 Circle().trim(from: 0, to: f)
                     .stroke(color, style: stroke)
@@ -910,9 +918,6 @@ struct PrayersWidgetView: View {
             } else {
                 live
             }
-            #else
-            live
-            #endif
         }
 
         @ViewBuilder private var live: some View {
@@ -1405,7 +1410,17 @@ struct PrayerLockScreenView: View {
     static let ringInset: CGFloat = 3
 
     /// The stock ring as a mask: its track (≈ 0.3 grey) to nothing, its fill to everything.
-    private var liveMask: some View {
+    @ViewBuilder private var liveMask: some View {
+        if PrayersWidgetView.LiveArc.drawsStatically {
+            // In the app (Explore): the timer ring doesn't render outside a widget; a wedge to now stands in.
+            let f = prayer.end > prayer.start ? min(max(Date().timeIntervalSince(prayer.start) / prayer.end.timeIntervalSince(prayer.start), 0), 1) : 1
+            Circle().trim(from: 0, to: f).stroke(Color.white, lineWidth: 90).rotationEffect(.degrees(-90))
+        } else {
+            timerMask
+        }
+    }
+
+    private var timerMask: some View {
         ZStack {
             Color.black
             ProgressView(timerInterval: prayer.start...prayer.end, countsDown: false) {

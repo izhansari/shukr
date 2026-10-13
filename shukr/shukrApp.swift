@@ -249,6 +249,8 @@ struct shukrApp: App {
                 if bg != .invalid { UIApplication.shared.endBackgroundTask(bg); bg = .invalid }
             }
         }
+        // Explore draws the real Prayers widget: its arcs drawn from now (the timer-driven ones render only in a widget).
+        PrayersWidgetView.LiveArc.drawsStatically = true
         // The Fajr Alarm control's switch re-plans the alarms in the app.
         FajrAlarmHooks.replan = { await FajrAlarms.plan(reason: "control") }
         // Get Fajr Alarm Time's card: setup's alarm picture, open, for the rule as set (frosted when the alarm is off).
