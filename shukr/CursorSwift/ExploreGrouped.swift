@@ -37,7 +37,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .homeWidgets: "Prayer ring, zikr, the Name, the verse, StandBy"
         case .lockWidgets: "Time left, a countdown, the Name above the clock"
         case .controls: "Today's Prayers, I Prayed, Fajr Alarm, Qibla, Zikr"
-        case .siri: "Time left, “I prayed”, today's times and 7 more"
+        case .siri: "Ask for time left, mark a prayer, find a masjid"
         case .watch: "The app and your watch face"
         case .answer: "I already prayed · nudge me later"
         case .mapMasjid: "Your prayers on the map, mosques, Jumu'ah"
@@ -51,8 +51,8 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         switch self {
         case .homeWidgets: "Your prayer, your zikr, the Name of the Day and today's verse on your Home Screen, and on your nightstand while it charges."
         case .lockWidgets: "Time left and what's next, every time you pick up your phone, without unlocking it."
-        case .controls: "Five controls you can put in Control Center, on your Lock Screen buttons, or on the Action button."
-        case .siri: "Ten things to ask Siri, or tap as tiles in Shortcuts. Say “in shukr” at the end; Siri answers with a card."
+        case .controls: "Five controls for Control Center, your Lock Screen buttons or the Action button. Make one wide or square and it shows a line of text too."
+        case .siri: "Ask Siri, or tap a tile in Shortcuts. Say “in shukr” at the end, and Siri answers with a card you can tap."
         case .watch: "Your prayers and your zikr on your wrist, and the ring on your watch face."
         case .answer: "Mark a prayer, or ask for a nudge, right from its notification."
         case .mapMasjid: "Every prayer pinned where you prayed it, mosques near you, and Jumu'ah counted at the masjid."
@@ -104,6 +104,12 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
 
 /// A member's short name in its group's list.
 extension ShowcaseCardID {
+    /// The Siri cards with buttons are iOS 26 only (decision shortcut-buttons-ios26 A): before 26 they aren't offered.
+    var available: Bool {
+        if #available(iOS 26.0, *) { return true }
+        return ![.siriTimeLeft, .siriTodaysTimes, .siriIPrayed, .siriZikrTasks, .siriMosques, .siriPrayedHere].contains(self)
+    }
+
     var memberName: String {
         switch self {
         case .homePrayers: "Prayer ring"
@@ -167,7 +173,7 @@ struct ExploreGroup: Identifiable, Hashable {
 enum ExploreGrouped {
     /// The Settings row's count: groups with something new not yet opened.
     static var newCount: Int {
-        ExploreGroupID.allCases.filter { g in g.members.contains { ExploreShowcase.isNew($0) } }.count
+        ExploreGroupID.allCases.filter { g in g.members.filter(\.available).contains { ExploreShowcase.isNew($0) } }.count
     }
 }
 
@@ -182,7 +188,7 @@ struct ExploreGroupedPage: View {
     private var groups: [ExploreGroup] {
         let cards = model.byID
         return ExploreGroupID.allCases.compactMap { g in
-            let members = g.members.compactMap { cards[$0] }
+            let members = g.members.filter(\.available).compactMap { cards[$0] }
             return members.isEmpty ? nil : ExploreGroup(id: g, members: members)
         }
     }

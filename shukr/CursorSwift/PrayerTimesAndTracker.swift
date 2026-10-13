@@ -1450,7 +1450,8 @@ struct PrayerTimesView: View {
         .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
         .sheet(isPresented: $demoExplore) {
             NavigationStack {
-                switch ExplorePageVariant(rawValue: UserDefaults.standard.string(forKey: ExplorePageVariant.key) ?? "") ?? .grouped {
+                switch ExplorePageVariant(rawValue: UserDefaults.standard.string(forKey: ExplorePageVariant.key) ?? "") ?? .simple {
+                case .simple: ExploreSimplePage()
                 case .grouped: ExploreGroupedPage()
                 case .showcase: ExploreShowcasePage()
                 case .lean: ExploreLeanPage()

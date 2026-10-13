@@ -19,11 +19,13 @@ import WatchConnectivity
 // MARK: - Which page
 
 enum ExplorePageVariant: String, CaseIterable, Identifiable {
-    case grouped, showcase, lean, original
+    case simple, grouped, showcase, lean, original
     var id: String { rawValue }
-    static let key = "explore.variant"
+    /// A new key with the simple page (owner 2026-10-13): a phone that had picked another one in My Dev Stuff starts on it.
+    static let key = "explore.variant2"
     var label: String {
         switch self {
+        case .simple: "Simple"
         case .grouped: "Grouped"
         case .showcase: "Showcase"
         case .lean: "Lean"
@@ -529,38 +531,40 @@ struct ShowcaseStory {
         case .tasbihFatimah: ShowcaseStory(title: "Tasbih Fatimah, after every prayer",
             lead: "33 · 33 · 34, offered each time you mark a prayer.",
             points: ["One tap from the Salah page", "Counts each phrase for you", "✕ when you'd rather not"], button: "Go to Salah", link: "salah")
-        // Siri and Shortcuts: each phrase (ShukrAppShortcuts.swift). Say it to Siri, or tap its tile in Shortcuts.
-        case .siriTimeLeft: siriStory("“How long is left in shukr”", "Siri tells you the time left for the prayer that's on, and when it ends.",
-            ["“How much time is left in shukr” works too", "A card with the ring, right in Siri", "No unlocking, no opening shukr"])
-        case .siriPrayerTime: siriStory("“When is Maghrib in shukr”", "Any prayer's time, or the current and the next one.",
-            ["“What's the next prayer in shukr”", "“Fajr time in shukr”", "Your own times, wherever you are"])
-        case .siriTodaysTimes: siriStory("“Today's prayer times in shukr”", "All five of today's times in one card.",
-            ["The prayer that's on, highlighted", "What you've marked, ticked", "“Show today's prayers in shukr” works too"])
+        // Siri and Shortcuts: each tile and its phrases as built (ShukrAppShortcuts.swift; Sami, 2026-10-13). Say it to Siri,
+        // or tap its tile in Shortcuts. The cards with buttons are iOS 26 (`available` hides them before).
+        case .siriTimeLeft: siriStory("“How long is left in shukr”", "The time left for the prayer that's on, on its Live Activity card.",
+            ["Tap the card's ✓ to mark the prayer", "Between Sunrise and Dhuhr, the time until Dhuhr", "“How much time is left in shukr” works too"])
+        case .siriPrayerTime: siriStory("“When is Maghrib in shukr”", "Any prayer's time: one of the five, or the current, next or previous one.",
+            ["“Fajr time in shukr”", "Prayed it already? Siri says so first", "In your own shortcuts: minutes before or after a prayer"])
+        case .siriTodaysTimes: siriStory("“Today's prayer times in shukr”", "All five of today's times in one card, the one that's on highlighted with its time left.",
+            ["Tap the circle to mark the prayer that's on", "Shows which ones you've prayed", "Tap a ✓ and shukr asks to unmark it"])
         case .siriIPrayed: siriStory("“I prayed in shukr”", "Marks the prayer that's on, and tells you how you did.",
-            ["Scored at that moment, like a tap in the app", "Works from your AirPods or CarPlay", "“Mark my prayer in shukr” works too"])
-        case .siriFajrAlarm: siriStory("“When is my Fajr alarm in shukr”", "The time your Fajr alarm will ring tomorrow.",
-            ["Before you sleep, without opening anything", "Says if it's off", "“Fajr alarm time in shukr” works too"])
-        case .siriOpenPage: siriStory("“Open Qibla in shukr”", "Straight to any page: Qibla, Zikr, History, Memories, the 99 Names and more.",
-            ["“Show Daily Ayah in shukr”", "“Go to Insights in shukr”", "As a tile in Shortcuts, or on your Home Screen"])
+            ["Scored at that moment, like a tap in the app", "Prayed late? It marks today's last unmarked prayer", "Undo asks in shukr, so nothing goes by mistake"])
+        case .siriFajrAlarm: siriStory("“When is my Fajr alarm in shukr”", "When your Fajr alarm rings next, shown as the alarm itself.",
+            ["Says so if it's off, and when it would ring", "In your own shortcuts: lights on at that time", "“Fajr alarm time in shukr” works too"])
+        case .siriOpenPage: siriStory("“Open Qibla in shukr”", "Straight to a page: Salah, Qibla, Zikr, Daily Ayah, the 99 Names or Memories.",
+            ["“Show Daily Ayah in shukr”", "“Go to Memories in shukr”", "A tile for it in Shortcuts too"])
         case .siriTasbihFatimah: siriStory("“Start Tasbih Fatimah in shukr”", "Opens straight into 33 · 33 · 34.",
             ["Right after you pray, hands-free", "Counts each phrase for you", "“Tasbih Fatimah in shukr” works too"])
-        case .siriZikrTasks: siriStory("“My zikr tasks in shukr”", "What's left of today's zikr, in a card.",
-            ["Each task with how many are left", "“What zikr is left in shukr” works too", "Tap one to start it"])
-        case .siriMosques: siriStory("“Nearby mosques in shukr”", "The nearest mosques, with how far each one is.",
-            ["Travelling? Ask on arrival", "“Find a masjid in shukr” works too", "Tap one for directions"])
-        case .siriPrayedHere: siriStory("“Have I prayed here in shukr”", "How many times you've prayed where you are, and when you last did.",
-            ["From the prayers you've marked", "“My prayers here in shukr” works too", "Nice at a masjid you're visiting"])
-        // Controls (MoreWidgets.swift): Control Center, a Lock Screen button, or the Action button.
-        case .ccPrayer: controlStory("Today's Prayers", "The prayer that's on, or the next one, and its time. Tap it for today's prayers.",
-            ["Live: it changes with the day", "Its name and its time", "One tap to the full day"])
+        case .siriZikrTasks: siriStory("“My zikr tasks in shukr”", "Today's zikr tasks in a card, with how long what's left will take.",
+            ["Tap a task: shukr opens and starts counting", "Picks up from today's count", "“What zikr is left in shukr” works too"])
+        case .siriMosques: siriStory("“Nearby mosques in shukr”", "The nearest mosques on a map, with how far each one is.",
+            ["Tap one for directions in Maps", "Tap the map for shukr's own", "“Find a masjid in shukr” works too"])
+        case .siriPrayedHere: siriStory("“Have I prayed here in shukr”", "How many prayers you've marked where you are, and when you last prayed there.",
+            ["At a masjid, every prayer you marked there counts", "A count for each of the five", "“When did I last pray here in shukr” works too"])
+        // Controls (MoreWidgets.swift) as built: Control Center, a Lock Screen button, or the Action button. Wide or square,
+        // a control shows its line of text; small, just its symbol.
+        case .ccPrayer: controlStory("Today's Prayers", "The prayer that's on and when it ends, or the next one and when it starts.",
+            ["Tap it: shukr opens on today's list", "A clock time, so it's never out of date", "Wide or square to see the time"])
         case .ccPrayed: controlStory("I Prayed", "Marks the prayer that's on, without opening shukr.",
-            ["Scored at the tap", "Ticks itself once it's marked", "Perfect on the Action button"])
+            ["Scored at the tap", "Already marked? It says so, and never unmarks", "Made for the Action button"])
         case .ccFajrAlarm: controlStory("Fajr Alarm", "Your Fajr alarm, on or off, and when it rings.",
-            ["Turn it on or off in one tap", "Shows tomorrow's time", "No digging through Settings"])
-        case .ccQibla: controlStory("Qibla", "Straight to the qibla map.",
-            ["From anywhere, even inside another app", "The map turns so the qibla points up", "Great on the Lock Screen"])
-        case .ccZikr: controlStory("Zikr", "Straight to your zikr page.",
-            ["Start counting in a moment", "Your tasks are there", "Pairs with Tasbih Fatimah after prayer"])
+            ["One tap turns it on or off", "Shows when it rings next", "The same alarm as in Settings"])
+        case .ccQibla: controlStory("Qibla", "Straight to the qibla map, turned so the qibla points up.",
+            ["From anywhere, even inside another app", "One press on the Lock Screen", "Or on the Action button"])
+        case .ccZikr: controlStory("Zikr", "Straight to your zikr, and how much of it is left today.",
+            ["Wide or square: “2 tasks left · about 9 min”", "“All done today” once you've finished", "One tap into counting"])
         case .goals: ShowcaseStory(title: "A daily goal, with a streak",
             lead: "Pick a zikr and a daily goal; shukr keeps your streak.",
             points: ["A count or minutes", "Every day you meet it, the streak grows", "A reminder, if you'd like"], button: "Go to Zikr", link: "zikr")
@@ -768,14 +772,14 @@ struct ShowcasePicture: View {
             Text("33 · 33 · 34").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.primary.opacity(0.85))
         case .siriTimeLeft: SiriExchange(ask: "How long is left in shukr", answer: "\(p.left) left for \(p.name).")
         case .siriPrayerTime: SiriExchange(ask: "When is Maghrib in shukr", answer: "Maghrib is at " + (prayerWindowToday("Maghrib")?.start.formatted(date: .omitted, time: .shortened) ?? "6:52 PM") + ".")
-        case .siriTodaysTimes: SiriExchange(ask: "Today's prayer times in shukr", answer: "Fajr · Dhuhr · Asr · Maghrib · Isha")
+        case .siriTodaysTimes: SiriExchange(ask: "Today's prayer times in shukr", answer: p.isOn ? "\(p.name) is on until \(shortTimePM(p.end))." : "\(p.name) starts at \(shortTimePM(p.start)).")
         case .siriIPrayed: SiriExchange(ask: "I prayed in shukr", answer: "\(p.name) marked as prayed. Perfect.")
-        case .siriFajrAlarm: SiriExchange(ask: "When is my Fajr alarm in shukr", answer: "Your Fajr alarm is at " + (prayerWindowToday("Fajr")?.start.formatted(date: .omitted, time: .shortened) ?? "5:37 AM") + ".")
+        case .siriFajrAlarm: SiriExchange(ask: "When is my Fajr alarm in shukr", answer: "Your Fajr alarm is at \(fajrAlarmTime).")
         case .siriOpenPage: SiriExchange(ask: "Open Qibla in shukr", answer: "Opening Qibla…")
         case .siriTasbihFatimah: SiriExchange(ask: "Start Tasbih Fatimah in shukr", answer: "33 · 33 · 34")
-        case .siriZikrTasks: SiriExchange(ask: "My zikr tasks in shukr", answer: "2 tasks left today.")
-        case .siriMosques: SiriExchange(ask: "Nearby mosques in shukr", answer: (MosqueFavorites.all.first?.name ?? "The nearest masjid") + " · 1.2 mi")
-        case .siriPrayedHere: SiriExchange(ask: "Have I prayed here in shukr", answer: "You've prayed here 12 times.")
+        case .siriZikrTasks: SiriExchange(ask: "My zikr tasks in shukr", answer: "2 of 3 zikr tasks left today, about 9 min.")
+        case .siriMosques: SiriExchange(ask: "Nearby mosques in shukr", answer: "The nearest mosque is " + (MosqueFavorites.all.first?.name ?? "your masjid") + ", 1.2 miles away.")
+        case .siriPrayedHere: SiriExchange(ask: "Have I prayed here in shukr", answer: "You've prayed here 12 times. The last was Asr, yesterday.")
         case .ccPrayer:
             CCPill(symbol: prayerIcon(for: p.name), title: p.name, value: p.isOn ? "ends \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))")
         case .ccPrayed:
@@ -791,7 +795,7 @@ struct ShowcasePicture: View {
         case .ccQibla:
             HStack(spacing: 12) { CCPill(symbol: "location.north.line.fill", title: "Qibla", value: nil); CCCircle(symbol: "location.north.line.fill") }
         case .ccZikr:
-            HStack(spacing: 12) { CCPill(symbol: "hands.and.sparkles", title: "Zikr", value: nil); CCCircle(symbol: "hands.and.sparkles") }
+            HStack(spacing: 12) { CCPill(symbol: "hands.and.sparkles", title: "Zikr", value: "2 tasks left · about 9 min"); CCCircle(symbol: "hands.and.sparkles") }
         case .goals:
             HStack(spacing: 10) {
                 MiniArc(progress: 1).frame(width: 44, height: 44)

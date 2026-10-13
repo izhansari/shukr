@@ -88,7 +88,7 @@ struct SettingsView: View {
     // For minimizing and expanding the devSection
     /// DEBUG: tap the "Sneak Peek" header, or launch with `-devStuff`.
     @State private var showDevStuff = ProcessInfo.processInfo.arguments.contains("-devStuff")
-    @AppStorage(ExplorePageVariant.key) private var exploreVariant = ExplorePageVariant.grouped.rawValue
+    @AppStorage(ExplorePageVariant.key) private var exploreVariant = ExplorePageVariant.simple.rawValue
     /// DEBUG: the compass's sources, rate and accuracy under the Salah circle (compass audit 2026-09-30).
     @AppStorage("compassDebug") private var compassDebug = false
     @State private var showCityPicker = false
@@ -562,21 +562,22 @@ struct SettingsView: View {
                         headerWithInfoButton(title: "Appearance", isPopupVisible: $isAppearanceInfoVisible)
                     }
 
-                    // Explore shukr (owner, settings-explore): the features people don't find. The lean page by default
-                    // (ExploreLean.swift); Frank's original from My Dev Stuff (owner: "keep it as something in the dev
+                    // Explore shukr (owner, settings-explore): the features people don't find. The simple page by default
+                    // (ExploreSimple.swift, ask settings-explore-lean); the others, Frank's original too, from My Dev Stuff (owner: "keep it as something in the dev
                     // settings that I can change back to"). A count only when something's new.
                     Section {
                         NavigationLink {
-                            switch ExplorePageVariant(rawValue: exploreVariant) ?? .grouped {
+                            switch ExplorePageVariant(rawValue: exploreVariant) ?? .simple {
+                            case .simple: ExploreSimplePage()
                             case .grouped: ExploreGroupedPage()
                             case .showcase: ExploreShowcasePage()
                             case .lean: ExploreLeanPage()
                             case .original: ExploreShukrPage()
                             }
                         } label: {
-                            let variant = ExplorePageVariant(rawValue: exploreVariant) ?? .grouped
+                            let variant = ExplorePageVariant(rawValue: exploreVariant) ?? .simple
                             let newCount = switch variant {
-                            case .grouped: ExploreGrouped.newCount
+                            case .simple, .grouped: ExploreGrouped.newCount
                             case .showcase: ExploreShowcase.newCount
                             case .lean: ExploreLean.newCount
                             case .original: 0
