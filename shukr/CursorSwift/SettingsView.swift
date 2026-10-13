@@ -88,7 +88,7 @@ struct SettingsView: View {
     // For minimizing and expanding the devSection
     /// DEBUG: tap the "Sneak Peek" header, or launch with `-devStuff`.
     @State private var showDevStuff = ProcessInfo.processInfo.arguments.contains("-devStuff")
-    @AppStorage(ExploreLean.originalKey) private var exploreOriginal = false
+    @AppStorage(ExplorePageVariant.key) private var exploreVariant = ExplorePageVariant.showcase.rawValue
     /// DEBUG: the compass's sources, rate and accuracy under the Salah circle (compass audit 2026-09-30).
     @AppStorage("compassDebug") private var compassDebug = false
     @State private var showCityPicker = false
@@ -567,14 +567,20 @@ struct SettingsView: View {
                     // settings that I can change back to"). A count only when something's new.
                     Section {
                         NavigationLink {
-                            if exploreOriginal { ExploreShukrPage() } else { ExploreLeanPage() }
+                            switch ExplorePageVariant(rawValue: exploreVariant) ?? .showcase {
+                            case .showcase: ExploreShowcasePage()
+                            case .lean: ExploreLeanPage()
+                            case .original: ExploreShukrPage()
+                            }
                         } label: {
+                            let variant = ExplorePageVariant(rawValue: exploreVariant) ?? .showcase
+                            let newCount = variant == .showcase ? ExploreShowcase.newCount : variant == .lean ? ExploreLean.newCount : 0
                             HStack(spacing: 12) {
                                 Image(systemName: "sparkles").frame(width: 24)
                                 Text("Explore shukr")
                                 Spacer()
-                                if !exploreOriginal, ExploreLean.newCount > 0 {
-                                    Text("\(ExploreLean.newCount) new")
+                                if newCount > 0 {
+                                    Text("\(newCount) new")
                                         .font(.system(.caption, design: .rounded, weight: .bold))
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 8).padding(.vertical, 3)
@@ -722,9 +728,12 @@ struct SettingsView: View {
                             }
                             // The Live Activity card's tuner (was under Live Activities on the page).
                             Button("Live Activity card tuner…") { showLATuner = true }
-                            // Explore shukr: Frank's original page instead of the lean one (owner).
-                            Toggle(isOn: $exploreOriginal) {
-                                Label("Explore: the original page", systemImage: "sparkles")
+                            // Explore shukr's page: the showcase (default), the lean one, or Frank's original (owner: "keep it as
+                            // something in the dev settings that I can change back to").
+                            Picker(selection: $exploreVariant) {
+                                ForEach(ExplorePageVariant.allCases) { Text($0.label).tag($0.rawValue) }
+                            } label: {
+                                Label("Explore page", systemImage: "sparkles")
                             }
                         } header: { Text("Dev · Setup, zikr & Live Activity") }
 

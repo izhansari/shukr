@@ -1447,7 +1447,11 @@ struct PrayerTimesView: View {
         }
         #endif
         .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
-        .sheet(isPresented: $demoExplore) { NavigationStack { ExploreLeanPage() } }
+        .sheet(isPresented: $demoExplore) {
+            NavigationStack {
+                if UserDefaults.standard.string(forKey: ExplorePageVariant.key) == "lean" { ExploreLeanPage() } else { ExploreShowcasePage() }
+            }
+        }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(
