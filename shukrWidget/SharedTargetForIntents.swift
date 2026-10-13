@@ -1635,6 +1635,34 @@ struct TodaysTimesSnippet: View {
         }
     }
 
+    @ViewBuilder private func mark(_ r: Row) -> some View {
+        if r.marked {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 22))
+                .foregroundStyle(Self.sage)
+                .accessibilityLabel("\(r.name), prayed")
+        } else if r.when == .coming {
+            Circle()
+                .strokeBorder(Color.secondary.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                .padding(2)
+                .accessibilityLabel("\(r.name), still to come")
+        } else if r.when == .now && markable {
+            Button(intent: MarkPrayerFromCardIntent(.init(name: r.name, start: r.start, end: r.end))) {
+                Image(systemName: "circle")
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundStyle(Self.sage)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Mark \(r.name) as prayed")
+        } else {
+            Image(systemName: "circle")
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(r.when == .now ? Self.sage : Color.secondary)
+                .accessibilityLabel(r.when == .now ? "\(r.name), now" : "\(r.name), not marked")
+        }
+    }
+
     /// The line said with the list: what's on, else what's next, else Fajr.
     static func spoken(now: Date = Date()) -> String {
         let five = PrayerWindows.today(now)
@@ -1647,40 +1675,23 @@ struct TodaysTimesSnippet: View {
     private func row(_ r: Row) -> some View {
         let now = r.when == .now
         return HStack(spacing: 12) {
-            Image(systemName: prayerIcon(for: r.name).replacingOccurrences(of: ".fill", with: ""))
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(now ? Self.sage : Color.secondary)
-                .frame(width: 24)
+            // The app's own marks in place of the prayer symbols (owner): ✓ = prayed, a circle = on now (on iOS 26 the
+            // tap that marks it) or missed, dashed = still to come. One column, so the time keeps its room.
+            mark(r)
+                .frame(width: 26, height: 26)
             Text(r.name)
                 .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
             Spacer(minLength: 8)
-            // The tick in its own column just before the time, so they line up (owner); its room kept when unmarked.
-            if markable && now && !r.marked {
-                Button(intent: MarkPrayerFromCardIntent(.init(name: r.name, start: r.start, end: r.end))) {
-                    Image(systemName: "circle")
-                        .font(.system(size: 22, weight: .light))
-                        .foregroundStyle(Self.sage)
-                        .frame(width: 30, height: 30)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Mark \(r.name) as prayed")
-            } else {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(Self.sage)
-                    .opacity(r.marked ? 1 : 0)
-                    .frame(width: markable ? 30 : 14)   // the circle's column on iOS 26
-            }
             VStack(alignment: .trailing, spacing: 1) {
                 Text(shortTimePM(r.start))
-                    .frame(minWidth: 84, alignment: .trailing)   // "5:12 AM" and "12:45 PM" leave the ticks in one column
                     .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
                     .monospacedDigit()
                 if now {
                     Text(Self.left(until: r.end, now: self.now))   // time left, as the Live Activity says it (owner: not "until")
                         .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             }
         }
