@@ -27,8 +27,8 @@ struct SadaqahCharity: Identifiable, Hashable {
 }
 
 enum SadaqahCharities {
-    /// The draft list (Izhan approves it), checked 2026-10-13: each a US 501(c)(3) rated 4 stars by Charity Navigator,
-    /// its own donation page. Left out: Islamic Relief USA (renamed IDEA after its split from Islamic Relief Worldwide in
+    /// The draft list (Izhan approves it), checked 2026-10-13: US 501(c)(3)s rated 4 stars by Charity Navigator, and Help
+    /// Yateem (owner's pick; a registered UK charity, no. 1158571, no Charity Navigator profile); each its own donation page. Left out: Islamic Relief USA (renamed IDEA after its split from Islamic Relief Worldwide in
     /// Sep 2026; irusa.org is gone), Mercy-USA (3 stars), and platforms (LaunchGood, MyTenNights).
     static let all: [SadaqahCharity] = [
         SadaqahCharity(id: "zakat", name: "Zakat Foundation of America", does: "Zakat, emergency relief and education worldwide",
@@ -40,6 +40,9 @@ enum SadaqahCharities {
         SadaqahCharity(id: "penny", name: "Penny Appeal USA", does: "Water, education and relief",
                        why: "4 stars on Charity Navigator", symbol: "drop.fill",
                        url: URL(string: "https://www.pennyappealusa.org/donate/")!),
+        SadaqahCharity(id: "yateem", name: "Help Yateem", does: "Orphans and orphanages around the world",
+                       why: "Registered UK charity", symbol: "figure.and.child.holdinghands",
+                       url: URL(string: "https://donate.helpyateem.org/")!),
         SadaqahCharity(id: "icna", name: "ICNA Relief USA", does: "Food pantries, shelters and disaster relief in the US",
                        why: "4 stars on Charity Navigator", symbol: "house.fill",
                        url: URL(string: "https://icnarelief.org/donate/")!),
@@ -171,6 +174,10 @@ private extension Double {
 struct SadaqahPage: View {
     @State private var log = SadaqahLog.shared
     @State private var editing: DonationDraft?
+    /// The charity whose page just closed: the small "Did you donate to …?" sheet.
+    @State private var asking: SadaqahCharity?
+    /// Set by its Yes: the log sheet opens once the question has gone.
+    @State private var confirmed: SadaqahCharity?
 
     private var startOfYear: Date { Calendar.current.dateInterval(of: .year, for: .now)?.start ?? .now }
 
@@ -183,14 +190,14 @@ struct SadaqahPage: View {
                 ForEach(SadaqahCharities.all) { charity in
                     Button {
                         // Always ask once the charity's page closes (owner).
-                        SadaqahSafari.open(charity.url) { editing = DonationDraft(after: charity) }
+                        SadaqahSafari.open(charity.url) { asking = charity }
                     } label: { CharityRow(charity: charity) }
                         .buttonStyle(.plain)
                 }
             } header: {
                 Text("Give with confidence")
             } footer: {
-                Text("US nonprofits, each rated 4 stars by Charity Navigator. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
+                Text("Registered charities. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
             }
             Section {
                 Button { editing = DonationDraft(manual: ()) } label: {
@@ -212,6 +219,11 @@ struct SadaqahPage: View {
         .navigationTitle("Sadaqah")
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
+        .sheet(item: $asking, onDismiss: {
+            if let charity = confirmed { confirmed = nil; editing = DonationDraft(after: charity) }
+        }) { charity in
+            DidYouDonateSheet(charity: charity) { confirmed = charity; asking = nil }
+        }
         .sheet(item: $editing) { DonationSheet(draft: $0) }
     }
 
@@ -363,7 +375,7 @@ struct SadaqahExport: Transferable {
 struct DonationDraft: Identifiable {
     let id = UUID()
     var donation: SadaqahDonation
-    /// After a charity's page: the question form, "Not this time" instead of Cancel.
+    /// After a charity's page (its Yes): To is that charity, fixed.
     var askedAfterVisit = false
     var isNew = true
 
@@ -382,11 +394,14 @@ struct DonationDraft: Identifiable {
     }
 }
 
+/// The log's one sheet, in the new-task flow's look (NewTaskFlow): a heading, the amount big in the middle with quick
+/// amounts under it, one card of rows (To · For as a dropdown · When · Note), and the outlined sage button.
 struct DonationSheet: View {
     let draft: DonationDraft
     @Environment(\.dismiss) private var dismiss
     @State private var to: String
-    @State private var amount: Double?
+    /// The amount as typed: digits and one decimal point, at most two places (`AmountInput`).
+    @State private var amountText: String
     @State private var purpose: SadaqahPurpose
     @State private var note: String
     @State private var date: Date
@@ -398,92 +413,197 @@ struct DonationSheet: View {
     init(draft: DonationDraft) {
         self.draft = draft
         _to = State(initialValue: draft.donation.to)
-        _amount = State(initialValue: draft.donation.amount > 0 ? draft.donation.amount : nil)
+        _amountText = State(initialValue: draft.donation.amount > 0 ? AmountInput.text(for: draft.donation.amount) : "")
         _purpose = State(initialValue: draft.donation.purpose)
         _note = State(initialValue: draft.donation.note)
         _date = State(initialValue: draft.donation.date)
     }
 
-    private var canSave: Bool {
-        (amount ?? 0) > 0 && !to.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private var title: String {
-        if draft.askedAfterVisit { return "Did you donate?" }
-        return draft.isNew ? "Log a donation" : "Donation"
+    private var amount: Double { AmountInput.value(amountText) }
+    private var canSave: Bool { amount > 0 && !to.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var symbol: String {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = draft.donation.currency
+        return f.currencySymbol ?? "$"
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                if draft.askedAfterVisit {
-                    Section {
-                        Text("Did you donate to \(draft.donation.to)? Log it to keep track of what you've given.")
-                            .font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-                }
-                Section("Amount") {
-                    TextField("0", value: $amount, format: .currency(code: draft.donation.currency))
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                        .keyboardType(.decimalPad)
-                        .focused($amountFocused)
-                    HStack(spacing: 8) {
-                        ForEach(Self.quickAmounts, id: \.self) { value in
-                            Button { amount = value } label: {
-                                Text(value.money(draft.donation.currency))
-                                    .font(.subheadline.weight(.semibold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .background(Capsule().fill(amount == value ? Color.sage : Color.primary.opacity(0.07)))
-                                    .foregroundStyle(amount == value ? Color.white : Color.primary)
+        VStack(spacing: 0) {
+            topBar
+            ScrollView {
+                VStack(spacing: 22) {
+                    heading
+                    amountField
+                    quickAmounts
+                    card {
+                        if draft.askedAfterVisit {
+                            row("building.2", "To") { Text(to).foregroundStyle(.secondary).lineLimit(1) }
+                        } else {
+                            row("building.2", "To") {
+                                TextField("Charity, masjid…", text: $to)
+                                    .multilineTextAlignment(.trailing)
+                                    .submitLabel(.done)
                             }
-                            .buttonStyle(.plain)
+                        }
+                        Divider().padding(.leading, 52)
+                        purposeMenu
+                        Divider().padding(.leading, 52)
+                        row("calendar", "When") {
+                            DatePicker("", selection: $date, in: ...Date.now).labelsHidden()
+                        }
+                        Divider().padding(.leading, 52)
+                        row("note.text", "Note") {
+                            TextField("Optional", text: $note)
+                                .multilineTextAlignment(.trailing)
+                                .submitLabel(.done)
                         }
                     }
-                }
-                Section("For") {
-                    PurposeChips(selection: $purpose)
-                        .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
-                }
-                Section {
-                    TextField("To (a charity, masjid, fundraiser…)", text: $to)
-                        .disabled(draft.askedAfterVisit)
-                    DatePicker("When", selection: $date, in: ...Date.now)
-                    TextField("Note (optional)", text: $note, axis: .vertical)
-                        .lineLimit(1...4)
-                }
-                if !draft.isNew {
-                    Section {
+                    if !draft.isNew {
                         Button("Delete Donation", role: .destructive) { confirmDelete = true }
-                            .frame(maxWidth: .infinity)
+                            .padding(.top, 2)
                     }
                 }
+                .padding(.bottom, 20)
             }
-            .fontDesign(.rounded)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(draft.askedAfterVisit ? "Not this time" : "Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.disabled(!canSave).fontWeight(.semibold)
-                }
+            .scrollDismissesKeyboard(.immediately)
+            Button(action: save) {
+                Text(draft.isNew ? "Save" : "Save changes")
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 240, height: 52)
+                    .background(Capsule().fill(Color.sage.opacity(0.08)))
+                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
             }
-            .alert("Delete this donation?", isPresented: $confirmDelete) {
-                Button("Delete", role: .destructive) { SadaqahLog.shared.delete(draft.donation); dismiss() }
-                Button("Cancel", role: .cancel) {}
+            .buttonStyle(.plain)
+            .disabled(!canSave)
+            .opacity(canSave ? 1 : 0.4)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .fontDesign(.rounded)
+        .presentationDetents([.large])
+        .interactiveDismissDisabled(canSave && draft.isNew)
+        .confirmationDialog("Delete this donation?", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("Delete Donation", role: .destructive) { SadaqahLog.shared.delete(draft.donation); dismiss() }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private var topBar: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.primary.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 6)
+    }
+
+    private var heading: some View {
+        let title = draft.isNew ? "Log a donation" : "Your donation"
+        let subtitle = draft.askedAfterVisit ? "To \(draft.donation.to)" : draft.isNew ? "Anything you gave, anywhere" : "Tap anything to change it"
+        return VStack(spacing: 6) {
+            Text(title).font(.system(size: 30, weight: .light, design: .rounded))
+            Text(subtitle).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 28)
+        .padding(.top, 14)
+    }
+
+    /// The amount, big: the currency sign, then what's typed (empty shows a faint 0).
+    private var amountField: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 2) {
+            Text(symbol).foregroundStyle(amountText.isEmpty ? .tertiary : .primary)
+            TextField("0", text: $amountText)
+                .keyboardType(.decimalPad)
+                .focused($amountFocused)
+                .fixedSize()
+                .onChange(of: amountText) { _, t in
+                    let clean = AmountInput.clean(t)
+                    if clean != t { amountText = clean }
+                }
+        }
+        .font(.system(size: 60, weight: .light, design: .rounded))
+        .monospacedDigit()
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { amountFocused = true }
+    }
+
+    /// $10 · $25 · $50 · $100 in the goal page's capsule switch.
+    private var quickAmounts: some View {
+        HStack(spacing: 0) {
+            ForEach(Self.quickAmounts, id: \.self) { value in
+                let on = amount == value
+                Button {
+                    amountText = AmountInput.text(for: value)
+                    amountFocused = false
+                } label: {
+                    Text(value.money(draft.donation.currency))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(on ? Color.primary : Color.secondary)
+                        .frame(width: 72, height: 34)
+                        .background(Capsule().fill(on ? Color(.systemBackground) : .clear)
+                            .shadow(color: .black.opacity(on ? 0.08 : 0), radius: 4, y: 1))
+                }
+                .buttonStyle(.plain)
             }
         }
-        .interactiveDismissDisabled(canSave && draft.isNew)
+        .padding(4)
+        .background(Capsule().fill(Color.primary.opacity(0.06)))
+    }
+
+    /// For: a dropdown (owner: not every choice on screen at once).
+    private var purposeMenu: some View {
+        Menu {
+            Picker("For", selection: $purpose) {
+                ForEach(SadaqahPurpose.allCases) { p in Label(p.title, systemImage: p.symbol).tag(p) }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: purpose.symbol).foregroundStyle(Color.sage).frame(width: 24)
+                Text("For").foregroundStyle(.primary)
+                Spacer()
+                Text(purpose.title).foregroundStyle(.secondary)
+                Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 15)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0, content: content)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
+            .padding(.horizontal, 20)
+    }
+
+    private func row<Value: View>(_ icon: String, _ label: String, @ViewBuilder value: () -> Value) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(Color.sage).frame(width: 24)
+            Text(label).foregroundStyle(.primary)
+            Spacer(minLength: 12)
+            value()
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 52)
     }
 
     private func save() {
         var d = draft.donation
         d.to = to.trimmingCharacters(in: .whitespaces)
-        d.amount = amount ?? 0
+        d.amount = amount
         d.purpose = purpose
         d.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
         d.date = date
@@ -493,53 +613,72 @@ struct DonationSheet: View {
     }
 }
 
-/// The purposes as chips that wrap.
-private struct PurposeChips: View {
-    @Binding var selection: SadaqahPurpose
+/// After a charity's page closes (owner: a small sheet with the charity's name; yes → the log).
+private struct DidYouDonateSheet: View {
+    let charity: SadaqahCharity
+    let onYes: () -> Void
+    @Environment(\.dismiss) private var dismiss
     var body: some View {
-        ChipFlow(spacing: 8) {
-            ForEach(SadaqahPurpose.allCases) { p in
-                Button { selection = p } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: p.symbol).font(.caption)
-                        Text(p.title)
-                    }
-                        .font(.subheadline.weight(.medium))
-                        .fixedSize()
-                        .padding(.horizontal, 12).padding(.vertical, 7)
-                        .background(Capsule().fill(selection == p ? Color.sage : Color.primary.opacity(0.07)))
-                        .foregroundStyle(selection == p ? Color.white : Color.primary)
-                }
-                .buttonStyle(.plain)
+        VStack(spacing: 14) {
+            Image(systemName: charity.symbol)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(Color.sage))
+            VStack(spacing: 4) {
+                Text("Did you donate to").font(.subheadline).foregroundStyle(.secondary)
+                Text(charity.name)
+                    .font(.system(size: 22, weight: .regular, design: .rounded))
+                    .multilineTextAlignment(.center)
             }
+            .padding(.horizontal, 24)
+            Button(action: onYes) {
+                Text("Yes, log it")
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 240, height: 50)
+                    .background(Capsule().fill(Color.sage.opacity(0.08)))
+                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+            Button("Not this time") { dismiss() }
+                .font(.subheadline).foregroundStyle(.secondary)
         }
+        .padding(.top, 26)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity)
+        .fontDesign(.rounded)
+        .presentationDetents([.height(330)])
+        .presentationDragIndicator(.visible)
     }
 }
 
-/// Lays its children out left to right, wrapping onto new lines.
-private struct ChipFlow: Layout {
-    var spacing: CGFloat = 8
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
-        for s in subviews {
-            let size = s.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > width { x = 0; y += rowHeight + spacing; rowHeight = 0 }
-            x += size.width + spacing
-            widest = max(widest, x - spacing)
-            rowHeight = max(rowHeight, size.height)
+/// A typed amount: digits and one decimal point, at most two places and seven whole digits (owner: "$10.888888").
+enum AmountInput {
+    private static var separator: String { Locale.current.decimalSeparator ?? "." }
+
+    static func clean(_ text: String) -> String {
+        var whole = "", fraction = "", seenPoint = false
+        for ch in text {
+            if ch.isNumber {
+                if seenPoint { if fraction.count < 2 { fraction.append(ch) } }
+                else if whole.count < 7 { whole.append(ch) }
+            } else if (ch == "." || ch == ",") && !seenPoint {
+                seenPoint = true
+            }
         }
-        return CGSize(width: proposal.width ?? widest, height: y + rowHeight)
+        if whole.count > 1, whole.hasPrefix("0") { whole = String(whole.drop(while: { $0 == "0" })); if whole.isEmpty { whole = "0" } }
+        if seenPoint { return (whole.isEmpty ? "0" : whole) + separator + fraction }
+        return whole
     }
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, rowHeight: CGFloat = 0
-        for s in subviews {
-            let size = s.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX { x = bounds.minX; y += rowHeight + spacing; rowHeight = 0 }
-            s.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-        }
+
+    static func value(_ text: String) -> Double {
+        Double(text.replacingOccurrences(of: separator, with: ".")) ?? 0
+    }
+
+    static func text(for value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(format: "%.2f", value).replacingOccurrences(of: ".", with: separator)
     }
 }
 
