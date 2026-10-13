@@ -3276,8 +3276,10 @@ extension AlarmDemo {
         guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
         let params = PrayerUtils.getCalculationParameters()
         let cal = Calendar.current
-        return [1, 8, 31, 91].compactMap { ahead in
-            guard let day = cal.date(byAdding: .day, value: ahead, to: cal.startOfDay(for: Date())),
+        // Tomorrow, next week, next month, in 3 months (the captions say so — owner, 2026-10-12).
+        let ahead: [DateComponents] = [DateComponents(day: 1), DateComponents(day: 7), DateComponents(month: 1), DateComponents(month: 3)]
+        return ahead.compactMap { step in
+            guard let day = cal.date(byAdding: step, to: cal.startOfDay(for: Date())),
                   let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { return nil }
             let ref = isFajr ? t.fajr : t.sunrise
             return (day, ref.addingTimeInterval(Double(offset * 60) * (isBefore ? -1 : 1)), ref)
@@ -3302,6 +3304,8 @@ private struct AlarmOffSymbol: View {
 }
 
 struct AlarmDemo: View {
+    /// The days' captions, relative (owner): `upcoming`'s steps in order.
+    static let when = ["Tomorrow", "Next week", "Next month", "In 3 months"]
     let days: [(day: Date, alarm: Date, reference: Date)]
     let isFajr: Bool
     /// The rule in words, for the card's label ("20 min before it starts").
@@ -3405,7 +3409,7 @@ struct AlarmDemo: View {
                 HStack(spacing: 0) {
                     ForEach(Array(days.enumerated()), id: \.offset) { i, d in
                         VStack(spacing: 2) {
-                            Text(i == 0 ? "Tomorrow" : d.day.formatted(.dateTime.month(.abbreviated).day()))
+                            Text(AlarmDemo.when[min(i, AlarmDemo.when.count - 1)])
                                 .font(.system(.caption, design: .rounded, weight: i == 0 ? .semibold : .regular))
                             Text(clockTime(d.alarm))
                                 .font(.system(.caption2, design: .rounded))
