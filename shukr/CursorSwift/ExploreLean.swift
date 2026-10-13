@@ -554,7 +554,7 @@ struct ExploreStoryPicture: View {
         case .memories: MemoriesPicture()
         case .masjid:
             VStack(alignment: .leading, spacing: 4) {
-                Text(MosqueFavorites.all.first?.name ?? "Your masjid").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                Text(ExplorePreset.masjid).font(.system(.subheadline, design: .rounded, weight: .semibold))
                 Label("Jumu'ah counts here", systemImage: "checkmark.seal.fill")
                     .font(.system(.caption, design: .rounded, weight: .semibold)).foregroundStyle(Color.sage)
             }

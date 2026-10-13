@@ -662,7 +662,6 @@ struct ShowcasePicture: View {
         }
         .overlay(alignment: .topLeading) { if !thumb && !families.isEmpty { sizeLabel } }
         .clipped()
-        .task { if id.isControl || id == .controlCenter { await ControlFaces.shared.load() } }
     }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
@@ -717,7 +716,7 @@ struct ShowcasePicture: View {
     }
 
     private var controlSymbol: String? { id.isControl ? controls.face(id).symbol : nil }
-    private var controls: ControlFaces { ControlFaces.shared }
+    private var controls: ControlFaces.Type { ControlFaces.self }
 
     private var sage: some View {
         LinearGradient(colors: scheme == .dark ? [Color(red: 0.17, green: 0.33, blue: 0.25), Color(red: 0.07, green: 0.10, blue: 0.08)]
@@ -741,7 +740,7 @@ struct ShowcasePicture: View {
     }
 
     private var fajrAlarmTime: String {
-        prayerWindowToday("Fajr")?.start.formatted(date: .omitted, time: .shortened) ?? "5:37 AM"
+        ExplorePreset.fajrAlarm
     }
 
     @ViewBuilder private var picture: some View {
@@ -822,7 +821,7 @@ struct ShowcasePicture: View {
             .frame(width: 200, height: 120)
         case .jumuah, .mosques:
             VStack(alignment: .leading, spacing: 3) {
-                Text(MosqueFavorites.all.first?.name ?? "Your masjid").font(.system(size: 13, weight: .semibold, design: .rounded))
+                Text(ExplorePreset.masjid).font(.system(size: 13, weight: .semibold, design: .rounded))
                 Text(id == .mosques ? "1.2 mi · 4 min drive" : "Friday, 1:15 PM").font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
                 Label("Jumu'ah counts here", systemImage: "checkmark.seal.fill").font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.sage)
@@ -856,7 +855,7 @@ struct ShowcasePicture: View {
                 NextPrayerSnippet(name: p.name, start: p.start)
             }
         case .siriTodaysTimes:
-            ShortcutSheetShot(dialog: TodaysTimesSnippet.spoken()) { TodaysTimesSnippet(rows: TodaysTimesSnippet.rows(), markable: true) }
+            ShortcutSheetShot(dialog: "\(p.name) is on until \(shortTimePM(p.end)).") { TodaysTimesSnippet(rows: ExplorePreset.todaysTimes, markable: true) }
         case .siriIPrayed:
             ShortcutSheetShot(dialog: "\(p.name) marked as prayed. Perfect.") {
                 PrayerCardSnippet(state: .init(label: p.name, start: p.start, end: p.end, symbol: prayerIcon(for: p.name),
@@ -942,7 +941,7 @@ private struct CCCircle: View {
 }
 
 /// You ask, Siri answers with a card (the phrase's own words; the answer shaped like the shortcut's).
-/// The Prayers widget itself, at a small widget's size, from the widget's own data (`makeEntry`). `playing` (an item's page)
+/// The Prayers widget itself, at a small widget's size, on Explore's preset day (`ExplorePreset`). `playing` (an item's page)
 /// runs what a person does with it, a finger mark on each tap: the ring's tap flips to time left, the arrow opens today's
 /// list, and back. It never takes a touch: its buttons would really run.
 struct RealPrayersWidget: View {
@@ -980,7 +979,7 @@ struct RealPrayersWidget: View {
     }
 
     private func run() async {
-        var first = await ExploreWidgetData.prayersEntry()
+        var first = ExplorePreset.prayersEntry()
         if standby { first.style = .dark }
         entry = first
         guard playing else { return }
@@ -1041,37 +1040,72 @@ private struct SizedWidget<Content: View, Background: View>: View {
     }
 }
 
-/// The Prayers widget's data for Explore, worked out once and shared by every picture (the widget's own `makeEntry`
-/// took 150–260 ms, and one page drew six: owner asked about lag). Kept a minute; warmed when Explore opens.
-@MainActor enum ExploreWidgetData {
-    private static var cached: (at: Date, entry: PrayersWidgetEntry)?
-    private static var loading: Task<PrayersWidgetEntry, Never>?
-    static func prayersEntry() async -> PrayersWidgetEntry {
-        if let cached, Date().timeIntervalSince(cached.at) < 60 { return cached.entry }
-        if let loading { return await loading.value }
-        let task = Task.detached(priority: .userInitiated) { await PrayersWidgetTimelineProvider().makeEntry() }
-        loading = task
-        let entry = await task.value
-        cached = (Date(), entry)
-        loading = nil
-        return entry
+/// The day every Explore picture shows, the same for everyone (owner: "show us what the actual thing will look like
+/// visually, not necessarily personalized" — and nobody's pictures half empty without a location, tasks or a masjid):
+/// Asr on with about an hour left, Fajr and Dhuhr prayed, two zikr tasks to do, the alarm on. Nothing is read from the
+/// phone, so nothing loads. Set round the clock's now (Asr began 55–60 minutes ago), so the rings, timers and "… left"
+/// that the real views work out from now all agree.
+enum ExplorePreset {
+    static let prayer = "Asr"
+    static let city = "Chicago"
+    static let masjid = "Masjid Al-Noor"
+    /// Fajr on time, Dhuhr perfect.
+    static let scores: [String: Double] = ["Fajr": 0.88, "Dhuhr": 1]
+
+    /// Today's windows (Sunrise too, as the widget keeps it), from Asr's start: a spring day's spacing.
+    static var windows: [String: (start: Date, end: Date)] {
+        let step: TimeInterval = 300
+        let asr = Date(timeIntervalSinceReferenceDate: ((Date().timeIntervalSinceReferenceDate - 55 * 60) / step).rounded(.down) * step)
+        func at(_ minutes: Double) -> Date { asr.addingTimeInterval(minutes * 60) }
+        return ["Fajr": (at(-680), at(-600)), "Sunrise": (at(-600), at(-200)), "Dhuhr": (at(-200), at(0)),
+                "Asr": (at(0), at(120)), "Maghrib": (at(120), at(205)), "Isha": (at(205), at(470))]
     }
-    /// Explore opening: start it before the pictures ask.
-    static func warm() {
-        Task { _ = await prayersEntry(); await ControlFaces.shared.load() }
+    static var asr: (start: Date, end: Date) { windows[prayer]! }
+    static var fajrAlarm: String { shortTimePM(windows["Fajr"]!.start.addingTimeInterval(86_400 - 20 * 60)) }
+
+    /// The Prayers widget's entry for that day (the widget's own view draws it).
+    static func prayersEntry() -> PrayersWidgetEntry {
+        let w = windows
+        let fajr = w["Fajr"]!
+        return PrayersWidgetEntry(date: Date(), heading: 0, latitude: 0, longitude: 0, toggleShowAllTImes: false,
+                                  prayerDict: w.mapValues { (start: $0.start, end: $0.end, window: $0.end.timeIntervalSince($0.start)) },
+                                  todayPrayerTimes: PrayerUtils.dummyPrayerTimes(), locationName: city, textToggle: false,
+                                  completedScores: scores,
+                                  nextFajr: fajr.start.addingTimeInterval(86_400), nextSunrise: fajr.end.addingTimeInterval(86_400))
     }
+
+    /// Today's Times' rows for that day.
+    static var todaysTimes: [TodaysTimesSnippet.Row] {
+        let w = windows, now = Date()
+        return ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].map { name in
+            let (start, end) = w[name]!
+            return .init(name: name, start: start, end: end, marked: scores[name] != nil,
+                         when: end <= now ? .earlier : start <= now ? .now : .coming)
+        }
+    }
+
+    static let zikrTasks: [ZikrTaskSnapshot] = [
+        ZikrTaskSnapshot(id: "1", name: "Subhanallah", isCountMode: true, goal: 100, count: 40, minutes: 0, done: false, secondsLeft: 120),
+        ZikrTaskSnapshot(id: "2", name: "Astaghfirullah", isCountMode: true, goal: 100, count: 0, minutes: 0, done: false, secondsLeft: 200),
+        ZikrTaskSnapshot(id: "3", name: "Alhamdulillah", isCountMode: true, goal: 33, count: 33, minutes: 0, done: true)]
 }
 
-/// The five controls' faces from the controls' own values (MoreWidgets.swift's providers), as Control Center has them now.
-@MainActor @Observable final class ControlFaces {
-    static let shared = ControlFaces()
-    var prayer = ControlFace(symbol: "clock", title: "Today's Prayers", line: nil)
-    var prayed = ControlFace(symbol: "checkmark.circle", title: "I Prayed", line: nil)
-    var fajr = ControlFace(symbol: "alarm", title: "Fajr Alarm", line: nil)
-    let qibla = ControlFace(symbol: "location.north.line.fill", title: "Qibla", line: nil)
-    var zikr = ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: nil)
+/// The five controls' faces on that day, each through its control's own `face` where it has one (the words stay the
+/// control's), in the state that shows what it does (owner: Fajr Alarm on, with when it rings).
+enum ControlFaces {
+    static var prayer: ControlFace {
+        ControlFace(symbol: prayerIcon(for: ExplorePreset.prayer), title: ExplorePreset.prayer, line: "ends \(shortTimePM(ExplorePreset.asr.end))")
+    }
+    static var prayed: ControlFace { PrayedControl.Value(name: ExplorePreset.prayer, marked: false, none: false).face }
+    static var fajr: ControlFace { FajrAlarmControl.Value(on: true, time: ExplorePreset.fajrAlarm).face }
+    static let qibla = ControlFace(symbol: "location.north.line.fill", title: "Qibla", line: nil)
+    static var zikr: ControlFace {
+        let left = ExplorePreset.zikrTasks.filter { !$0.done }
+        let minutes = zikrEstimateString(left.compactMap(\.secondsLeft).reduce(0, +)).replacingOccurrences(of: "~", with: "")
+        return ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: "\(left.count) tasks left · about \(minutes)")
+    }
 
-    func face(_ id: ShowcaseCardID) -> ControlFace {
+    static func face(_ id: ShowcaseCardID) -> ControlFace {
         switch id {
         case .ccPrayer: prayer
         case .ccPrayed: prayed
@@ -1079,24 +1113,6 @@ private struct SizedWidget<Content: View, Background: View>: View {
         case .ccZikr: zikr
         default: qibla
         }
-    }
-
-    /// Your controls' own values, each in the state that shows what it does (owner: Fajr Alarm "shouldn't show the off" —
-    /// on, with when it rings): the alarm on at its next time, I Prayed waiting to mark, Zikr with tasks left.
-    private var loadedAt: Date?
-    func load() async {
-        // Once for every picture on screen (each asked), then again after half a minute.
-        if let loadedAt, Date().timeIntervalSince(loadedAt) < 30 { return }
-        loadedAt = Date()
-        if let v = try? await PrayerControl.Provider().currentValue() { prayer = ControlFace(symbol: v.symbol, title: v.name, line: v.line) }
-        if let v = try? await PrayedControl.Provider().currentValue() {
-            prayed = PrayedControl.Value(name: v.none ? ShownPrayer.now.name : v.name, marked: false, none: false).face
-        }
-        if let v = try? await FajrAlarmControl.Provider().currentValue() {
-            fajr = FajrAlarmControl.Value(on: true, time: v.time.isEmpty ? "5:40 AM" : v.time).face
-        }
-        let line = (try? await TasbeehControl.Provider().currentValue()) ?? nil
-        zikr = ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: (line == nil || line == "All done today") ? "2 tasks left · about 9 min" : line)
     }
 }
 
@@ -1193,7 +1209,7 @@ private struct RealComplications: View {
     }
 }
 
-/// The Prayers widget's own Lock Screen view (circle or line), from its own data, white on the Lock Screen's dark as iOS
+/// The Prayers widget's own Lock Screen view (circle or line), on the preset day, white on the Lock Screen's dark as iOS
 /// draws it there; never taking a touch.
 struct RealLockWidget: View {
     let family: WidgetFamily
@@ -1212,11 +1228,11 @@ struct RealLockWidget: View {
             .foregroundStyle(.white)
             .tint(.white)   // iOS draws Lock Screen widgets in one tint; outside it the bar came out blue
             .allowsHitTesting(false)
-            .task { entry = await ExploreWidgetData.prayersEntry() }
+            .task { entry = ExplorePreset.prayersEntry() }
     }
 }
 
-/// The Zikr widget itself at one size: your tasks, or stand-ins without any.
+/// The Zikr widget itself at one size, with the preset day's tasks.
 struct RealZikrWidget: View {
     var family: WidgetFamily = .systemSmall
     var body: some View {
@@ -1237,14 +1253,13 @@ struct RealNameWidget: View {
     }
 }
 
-/// The Daily Ayah widget itself at one size: today's verse once it's revealed, else the widget's own sample (never spoils
-/// the reveal).
+/// The Daily Ayah widget itself at one size, with the widget's own sample verse (never today's: no spoiled reveal).
 struct RealAyahWidget: View {
     var family: WidgetFamily = .systemMedium
     var body: some View {
         SizedWidget(family: family) {
             DailyAyahWidgetView(entry: DailyAyahEntry(date: Date(),
-                                                      ayah: DailyAyahWidgetPayload.load().flatMap { $0.isToday ? $0 : nil } ?? DailyAyahProvider.sample),
+                                                      ayah: DailyAyahProvider.sample),
                                 familyOverride: family)
         } background: { BrandBackground() }
         .environment(\.colorScheme, .dark)   // the widget is dark only (owner)
@@ -1293,17 +1308,12 @@ private struct ShortcutTiles: View {
     }
 }
 
-/// Stand-ins for cards that need data the phone may not have yet.
+/// The preset day's cards (ExplorePreset): the same for everyone.
 @MainActor enum ShowcaseSamples {
-    static var zikrTasks: [ZikrTaskSnapshot] {
-        if let today = ZikrTaskSnapshot.today(), !today.isEmpty { return today }
-        return [ZikrTaskSnapshot(id: "1", name: "Subhanallah", isCountMode: true, goal: 100, count: 40, minutes: 0, done: false, secondsLeft: 120),
-                ZikrTaskSnapshot(id: "2", name: "Astaghfirullah", isCountMode: true, goal: 100, count: 0, minutes: 0, done: false, secondsLeft: 200),
-                ZikrTaskSnapshot(id: "3", name: "Alhamdulillah", isCountMode: true, goal: 33, count: 33, minutes: 0, done: true)]
-    }
+    static var zikrTasks: [ZikrTaskSnapshot] { ExplorePreset.zikrTasks }
     static var mosques: NearbyMosquesSearch.Outcome {
         let here = CLLocation(latitude: 0, longitude: 0)
-        let names = MosqueFavorites.all.prefix(1).map(\.name) + ["Masjid Al-Noor", "Islamic Center", "Masjid Ar-Rahman"]
+        let names = [ExplorePreset.masjid, "Islamic Center", "Masjid Ar-Rahman"]
         let list = names.prefix(3).enumerated().map { i, n in
             NearbyMosque(name: n, coordinate: here.coordinate, meters: [1_900, 3_200, 4_300][i], address: nil)
         }
@@ -1351,7 +1361,7 @@ private struct ShortcutTiles: View {
 
     static var prayedHere: PrayedHere {
         var s = PrayedHere(here: CLLocation(latitude: 0, longitude: 0))
-        s.place = MosqueFavorites.all.first?.name ?? "Your masjid"
+        s.place = ExplorePreset.masjid
         s.atMasjid = true
         s.count = 12
         s.last = ("Asr", Calendar.current.date(byAdding: .day, value: -1, to: Date())!)

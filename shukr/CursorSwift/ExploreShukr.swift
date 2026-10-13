@@ -402,7 +402,7 @@ struct ExploreCard<Picture: View>: View {
 
 // MARK: - The pictures (drawn, today's real times where they help)
 
-/// The prayer the pictures show: whichever is on now (or next), with its real window.
+/// The prayer the pictures show: the preset day's (Asr, about an hour left).
 struct ShownPrayer {
     let name: String
     let start: Date
@@ -417,12 +417,10 @@ struct ShownPrayer {
         let total = end.timeIntervalSince(start)
         return total > 0 ? min(max(Date().timeIntervalSince(start) / total, 0.05), 0.95) : 0.4
     }
+    /// Explore's preset day's prayer (ExplorePreset: the same for everyone, nothing read from the phone).
     static var now: ShownPrayer {
-        let now = Date()
-        for p in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"] {
-            if let w = prayerWindowToday(p), now < w.end { return ShownPrayer(name: p, start: w.start, end: w.end) }
-        }
-        return ShownPrayer(name: "Asr", start: now.addingTimeInterval(-40 * 60), end: now.addingTimeInterval(100 * 60))
+        let w = ExplorePreset.asr
+        return ShownPrayer(name: ExplorePreset.prayer, start: w.start, end: w.end)
     }
 }
 
@@ -553,7 +551,7 @@ struct ControlCenterPicture: View {
 struct SiriPicture: View {
     var body: some View {
         let next = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-            .compactMap { p in prayerWindowToday(p).map { (p, $0.start) } }
+            .compactMap { p in ExplorePreset.windows[p].map { (p, $0.start) } }
             .first { $0.1 > Date() }
         VStack(alignment: .leading, spacing: 10) {
             Text("“Next prayer time from shukr”")
