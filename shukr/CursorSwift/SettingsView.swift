@@ -1890,7 +1890,7 @@ struct AppIconPage: View {
     var body: some View {
         Form {
             Section {
-                AppIconHomePreview(dark: shownDark(choice))
+                AppIconHomePreview(dark: shownDark(choice), label: choice.title)
                     .listRowInsets(EdgeInsets())
             }
             Section {
@@ -1943,6 +1943,8 @@ struct AppIconPage: View {
 /// the light icon, dark behind the dark), the icon swapping with a small pop.
 private struct AppIconHomePreview: View {
     let dark: Bool
+    /// The pick, named top left as the other pages label their pictures ("Asr · Dynamic Island and Lock Screen").
+    let label: String
     private let size: CGFloat = 76
     var body: some View {
         ZStack {
@@ -1970,7 +1972,19 @@ private struct AppIconHomePreview: View {
             }
         }
         .frame(height: 190)
+        .overlay(alignment: .topLeading) {
+            HStack(spacing: 6) {
+                Text(label).fontWeight(.semibold)
+                Text("·")
+                Text("Home Screen")
+            }
+            .font(.system(.caption, design: .rounded))
+            .foregroundStyle((dark ? Color.white : .black).opacity(0.7))
+            .contentTransition(.opacity)
+            .padding(.leading, 18).padding(.top, 14)
+        }
         .animation(.spring(response: 0.45, dampingFraction: 0.8), value: dark)
+        .animation(.snappy(duration: 0.25), value: label)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(dark ? "The dark shukr icon" : "The light shukr icon")
     }
