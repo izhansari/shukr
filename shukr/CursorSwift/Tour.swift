@@ -462,7 +462,8 @@ struct TourCallout: View {
             // there, then the strip it becomes — one view, so it grows and shrinks between them instead of a bubble
             // going and a strip coming.
             if TourTopPanel.chapters.contains(step) {
-                TourTopPanel(page: page, mode: mode, guideKey: key, ticked: ticked, showsBack: showsBack, qiblaSkip: qiblaSkip,
+                TourTopPanel(page: page, mode: mode, guideKey: key, ticked: ticked, nudges: nudges, showsBack: showsBack,
+                             qiblaSkip: qiblaSkip,
                              openSection: openSection, lit: lit, step: step, place: place,
                              onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack, onToggle: onToggle,
                              onSkipQibla: onSkipQibla, onSkip: onSkip)
@@ -557,6 +558,9 @@ struct TourTopPanel: View {
     let mode: TourGuideMode
     let guideKey: String
     let ticked: Set<Int>
+    /// Touches the tour didn't let through: while the panel waits on its →, the → glows (owner: "never confused as to
+    /// why something isn't working or how to progress").
+    let nudges: Int
     let showsBack: Bool
     let qiblaSkip: Bool
     let openSection: String?
@@ -575,6 +579,8 @@ struct TourTopPanel: View {
     @State private var confirmSkip = false
     /// A to-do just done: the edge pulses green, then settles (as the strip's).
     @State private var pulse = false
+    /// The → calling attention (a stray tap while it's the way on).
+    @State private var callOut = false
 
     private var isStrip: Bool { mode == .strip }
 
@@ -641,6 +647,17 @@ struct TourTopPanel: View {
         }
         .animation(.smooth(duration: 0.4), value: isStrip)
         .tint(TourInk.green)
+        .onChange(of: nudges) { _, _ in
+            guard !isStrip, page.primary != nil || mode == .cardThenStrip, !callOut else { return }
+            Task { @MainActor in
+                for _ in 0..<2 {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) { callOut = true }
+                    try? await Task.sleep(for: .seconds(0.28))
+                    withAnimation(.easeOut(duration: 0.3)) { callOut = false }
+                    try? await Task.sleep(for: .seconds(0.3))
+                }
+            }
+        }
         .onChange(of: ticked) { old, new in
             guard new.count > old.count else { return }
             withAnimation(.easeOut(duration: 0.15)) { pulse = true }
@@ -709,6 +726,15 @@ struct TourTopPanel: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    // A stray tap elsewhere: the → swells and glows, twice (no buzz — owner).
+                    .scaleEffect(callOut ? 1.18 : 1)
+                    .background {
+                        Circle()
+                            .fill(TourInk.green)
+                            .frame(width: 44, height: 44)
+                            .blur(radius: 8)
+                            .opacity(callOut ? 0.55 : 0)
+                    }
                     .accessibilityLabel(label)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
                 } else if isStrip {
