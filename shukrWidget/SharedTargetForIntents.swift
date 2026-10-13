@@ -706,6 +706,7 @@ struct AskUnmarkPrayerIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?
             .set("\(prayerName)|\(prayerStart.timeIntervalSince1970)", forKey: WidgetListMarks.unmarkKey)
+        DeepLinkSignal.post()   // a running app asks at once (a Shortcuts card's Undo)
         return .result()
     }
 }
@@ -1641,6 +1642,8 @@ struct GetPrayerTimeIntent: AppIntent {
 /// "Get Today's Prayer Times": the five as a list — earlier / now / still to come.
 struct GetTodaysPrayerTimesIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Today's Prayer Times"
+    /// Replaced by TodaysTimesNowIntent (iOS 26); kept for saved shortcuts.
+    static var isDiscoverable: Bool = false
     static var description = IntentDescription(
         "Today's five prayer times with your method and madhab, as a list: what's passed (✓ when you marked it), what's on now, what's to come.",
         categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "schedule", "timetable", "today"], resultValueName: "Prayer Times")
@@ -1683,6 +1686,8 @@ struct TodaysTimesSnippet: View {
         var id: String { name }
     }
     let rows: [Row]
+    /// iOS 26: the current prayer's tick slot is a circle that marks it.
+    var markable = false
     /// The moment it was asked (its "… left").
     var now = Date()
     /// shukr's sage (Color.sage lives in the app target only; this file is the widget's too).
@@ -1727,11 +1732,23 @@ struct TodaysTimesSnippet: View {
                 .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
             Spacer(minLength: 8)
             // The tick in its own column just before the time, so they line up (owner); its room kept when unmarked.
-            Image(systemName: "checkmark")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Self.sage)
-                .opacity(r.marked ? 1 : 0)
-                .frame(width: 14)
+            if markable && now && !r.marked {
+                Button(intent: MarkPrayerFromCardIntent()) {
+                    Image(systemName: "circle")
+                        .font(.system(size: 20, weight: .light))
+                        .foregroundStyle(Self.sage)
+                        .frame(width: 26, height: 26)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Mark \(r.name) prayed")
+            } else {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Self.sage)
+                    .opacity(r.marked ? 1 : 0)
+                    .frame(width: 14)
+            }
             VStack(alignment: .trailing, spacing: 1) {
                 Text(shortTimePM(r.start))
                     .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
@@ -1787,10 +1804,32 @@ enum ShortcutCards {
 /// once marked its ✓ in the grade's colour; no buttons yet (they come with iOS 26's interactive cards) and no 15 s bar.
 struct PrayerCardSnippet: View {
     let state: PrayerWindowAttributes.ContentState
+    /// iOS 26's interactive cards: a ✓ that marks it, or an Undo that asks in shukr (never undone here — owner).
+    enum Action { case none, mark, undo }
+    var action: Action = .none
     var body: some View {
         var t = LATuning.current
         t.barThickness = 0
         return LALockCardBody(state: state, n: 0, ended: false, t: t, liveButtons: true)
+            .overlay(alignment: .trailing) {
+                switch action {
+                case .none: EmptyView()
+                case .mark:
+                    LARoundButton(intent: MarkPrayerFromCardIntent(), symbol: "checkmark", size: t.buttonSize,
+                                  symbolSize: t.buttonSymbolSize, t: t)
+                        .padding(.trailing, t.cardPaddingSides)
+                case .undo:
+                    Button(intent: AskUnmarkPrayerIntent(prayerName: state.label, prayerStart: state.start)) {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
+                            .font(.system(.footnote, design: .rounded, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Capsule().fill(Color.secondary.opacity(0.18)))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, t.cardPaddingSides)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .padding(10)
             .accessibilityElement(children: .ignore)
@@ -1944,6 +1983,8 @@ struct NextPrayerIntent: AppIntent {
 /// Gives the minutes to the next action.
 struct PrayerTimeLeftIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Time Left"
+    /// Replaced by TimeLeftNowIntent (iOS 26, a card with a ✓ — decision shortcut-buttons-ios26 A); kept for saved shortcuts.
+    static var isDiscoverable: Bool = false
     static var description = IntentDescription(
         "Minutes left in the prayer whose time it is now — whether or not you've prayed it. Between Sunrise and Dhuhr, minutes until Dhuhr. Passes the minutes on.",
         categoryName: "Prayer Times", searchKeywords: ["salah", "how long", "remaining", "ends"], resultValueName: "Minutes Left")
@@ -1971,6 +2012,8 @@ struct PrayerTimeLeftIntent: AppIntent {
 /// Gives the grade to the next action.
 struct MarkCurrentPrayerIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Mark Prayer as Prayed"
+    /// Replaced by MarkPrayedNowIntent (iOS 26, with Undo); kept for saved shortcuts.
+    static var isDiscoverable: Bool = false
     static var description = IntentDescription("Marks the prayer whose time it is now as prayed, scored like in shukr. Passes the grade on (Perfect, On time, Late).",
                                                categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "prayed", "mark", "done"],
                                                resultValueName: "Grade")
@@ -2017,6 +2060,169 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
         }
         let grade = PrayerScoring.grade(for: PrayerScoring.score(start: c.start, end: c.end, markedAt: now)).rawValue
         return .result(value: grade, dialog: "\(c.name) marked as prayed. \(grade).", view: card(markedAt: now))
+    }
+}
+
+// MARK: - iOS 26: cards with buttons (decision shortcut-buttons-ios26 A)
+
+/// What a mark from Shortcuts marks: the prayer whose time it is, else today's last one still unmarked (a late Isha).
+enum PrayerMarkNow {
+    static func target(now: Date = Date()) -> PrayerWindows.Window? {
+        if let c = PrayerWindows.pick(.current, now: now) { return c }
+        let done = SharedStore.completedPrayerNamesToday()
+        return PrayerWindows.pick(.previous, now: now).flatMap { p in
+            PrayerWindows.today(now).contains { $0.start == p.start } && !done.contains(p.name) ? p : nil }
+    }
+    static func mark(_ c: PrayerWindows.Window) async -> Bool {
+        if let hook = PrayerWindowHooks.widgetMark { return await hook(c.name, c.start, c.end) }
+        return SharedStore.markPrayerComplete(named: c.name, start: c.start, end: c.end)
+    }
+    static func grade(_ c: PrayerWindows.Window, at: Date) -> String {
+        PrayerScoring.grade(for: PrayerScoring.score(start: c.start, end: c.end, markedAt: at)).rawValue
+    }
+    /// The prayer's card now: running (with a ✓), or marked (with an Undo when asked for).
+    static func card(_ c: PrayerWindows.Window, undo: Bool, scheme: ColorScheme) -> AnyView {
+        let marked = SharedStore.completedPrayerNamesToday().contains(c.name)
+            ? (SharedStore.markedTime(of: c.name, start: c.start) ?? Date()) : nil
+        let state = PrayerWindowAttributes.ContentState(label: c.name, start: c.start, end: c.end, symbol: prayerIcon(for: c.name),
+                                                        markedAt: marked, dark: scheme == .dark)
+        return AnyView(PrayerCardSnippet(state: state, action: marked == nil ? .mark : undo ? .undo : .none)
+            .environment(\.colorScheme, scheme))
+    }
+}
+
+/// A card's ✓ (Time Left, Today's Times): marks it in shukr; the card redraws itself after.
+struct MarkPrayerFromCardIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Mark Prayer from a Card"
+    static var isDiscoverable: Bool = false
+    static var openAppWhenRun: Bool = false
+    func perform() async throws -> some IntentResult {
+        if let c = PrayerMarkNow.target(), !SharedStore.completedPrayerNamesToday().contains(c.name) { _ = await PrayerMarkNow.mark(c) }
+        return .result()
+    }
+}
+
+/// The Time Left card, drawn again after its ✓.
+@available(iOS 26.0, *)
+struct TimeLeftCardIntent: SnippetIntent {
+    static var title: LocalizedStringResource = "Time Left Card"
+    static var isDiscoverable: Bool = false
+    func perform() async throws -> some IntentResult & ShowsSnippetView {
+        let scheme = await ShortcutLook.scheme()
+        if let c = PrayerWindows.pick(.current) { return .result(view: PrayerMarkNow.card(c, undo: false, scheme: scheme)) }
+        if let n = PrayerWindows.pick(.next) {
+            return .result(view: AnyView(NextPrayerSnippet(name: n.name, start: n.start).environment(\.colorScheme, scheme)))
+        }
+        return .result(view: AnyView(EmptyView()))
+    }
+}
+
+/// "Get Time Left" on iOS 26: the same answer, its card with a ✓.
+@available(iOS 26.0, *)
+struct TimeLeftNowIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Time Left"
+    static var description = IntentDescription(
+        "Minutes left in the prayer whose time it is now — whether or not you've prayed it. Between Sunrise and Dhuhr, minutes until Dhuhr. Passes the minutes on; its card can mark the prayer.",
+        categoryName: "Prayer Times", searchKeywords: ["salah", "how long", "remaining", "ends"], resultValueName: "Minutes Left")
+    func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog & ShowsSnippetIntent {
+        ShortcutTopUp.request()
+        let now = Date()
+        if let c = PrayerWindows.pick(.current) {
+            let mins = max(1, Int((c.end.timeIntervalSince(now) / 60).rounded(.down)))
+            return .result(value: mins, dialog: "\(PrayerWindows.span(c.end.timeIntervalSince(now))) left for \(c.name). It ends at \(shortTimePM(c.end)).",
+                           snippetIntent: TimeLeftCardIntent())
+        }
+        guard let n = PrayerWindows.pick(.next) else { throw PrayerTimeUnavailable() }
+        let mins = max(1, Int((n.start.timeIntervalSince(now) / 60).rounded(.down)))
+        return .result(value: mins, dialog: "\(noPrayerOnLine) \(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))).",
+                       snippetIntent: TimeLeftCardIntent())
+    }
+}
+
+/// Today's Times card, drawn again after its ✓.
+@available(iOS 26.0, *)
+struct TodaysTimesCardIntent: SnippetIntent {
+    static var title: LocalizedStringResource = "Today's Times Card"
+    static var isDiscoverable: Bool = false
+    func perform() async throws -> some IntentResult & ShowsSnippetView {
+        let scheme = await ShortcutLook.scheme()
+        let now = Date()
+        let done = SharedStore.completedPrayerNamesToday()
+        let rows = PrayerWindows.today(now).map { w in
+            TodaysTimesSnippet.Row(name: w.name, start: w.start, end: w.end, marked: done.contains(w.name),
+                                   when: w.end <= now ? .earlier : w.start <= now ? .now : .coming)
+        }
+        return .result(view: AnyView(TodaysTimesSnippet(rows: rows, markable: true, now: now).environment(\.colorScheme, scheme)))
+    }
+}
+
+/// "Get Today's Prayer Times" on iOS 26: the list, its current prayer markable.
+@available(iOS 26.0, *)
+struct TodaysTimesNowIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Today's Prayer Times"
+    static var description = IntentDescription(
+        "Today's five prayer times with your method and madhab, as a list: what's passed (✓ when you marked it), what's on now (tap to mark it), what's to come.",
+        categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "schedule", "timetable", "today"], resultValueName: "Prayer Times")
+    func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog & ShowsSnippetIntent {
+        ShortcutTopUp.request()
+        let now = Date()
+        let five = PrayerWindows.today(now)
+        guard !five.isEmpty else { throw PrayerTimeUnavailable() }
+        let spoken: String
+        if let on = five.first(where: { $0.start <= now && now < $0.end }) {
+            spoken = "\(on.name) is on until \(shortTimePM(on.end))."
+        } else if let next = five.first(where: { $0.start > now }) {
+            spoken = "\(noPrayerOnLine) \(next.name) starts at \(shortTimePM(next.start))."
+        } else if let fajr = PrayerWindows.pick(.fajr, now: now) {
+            spoken = "That's all five for today. Fajr is at \(shortTimePM(fajr.start))."
+        } else {
+            spoken = "That's all five for today."
+        }
+        return .result(value: five.map { "\($0.name) \(shortTimePM($0.start))" }, dialog: IntentDialog(stringLiteral: spoken),
+                       snippetIntent: TodaysTimesCardIntent())
+    }
+}
+
+/// I Prayed's card: the marked prayer with an Undo that asks in shukr (owner: never an easy undo).
+@available(iOS 26.0, *)
+struct PrayedCardIntent: SnippetIntent {
+    static var title: LocalizedStringResource = "Prayed Card"
+    static var isDiscoverable: Bool = false
+    @Parameter(title: "Prayer") var name: String
+    @Parameter(title: "Start") var start: Date
+    @Parameter(title: "End") var end: Date
+    init() {}
+    init(_ w: PrayerWindows.Window) { name = w.name; start = w.start; end = w.end }
+    func perform() async throws -> some IntentResult & ShowsSnippetView {
+        let scheme = await ShortcutLook.scheme()
+        return .result(view: PrayerMarkNow.card(.init(name: name, start: start, end: end), undo: true, scheme: scheme))
+    }
+}
+
+/// "Mark Prayer as Prayed" on iOS 26: marks it, shows its card with Undo.
+@available(iOS 26.0, *)
+struct MarkPrayedNowIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Mark Prayer as Prayed"
+    static var description = IntentDescription("Marks the prayer whose time it is now as prayed, scored like in shukr. Passes the grade on (Perfect, On time, Late). Undo asks in shukr.",
+                                               categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "prayed", "mark", "done"],
+                                               resultValueName: "Grade")
+    static var openAppWhenRun: Bool = false
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetIntent {
+        ShortcutTopUp.request()
+        guard let c = PrayerMarkNow.target() else {
+            if let n = PrayerWindows.pick(.next) {
+                return .result(value: "", dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).", snippetIntent: TimeLeftCardIntent())
+            }
+            throw PrayerTimeUnavailable()
+        }
+        if SharedStore.completedPrayerNamesToday().contains(c.name) {
+            let at = SharedStore.markedTime(of: c.name, start: c.start) ?? Date()
+            return .result(value: PrayerMarkNow.grade(c, at: at), dialog: "\(c.name) is already marked as prayed.", snippetIntent: PrayedCardIntent(c))
+        }
+        let now = Date()
+        _ = await PrayerMarkNow.mark(c)
+        let grade = PrayerMarkNow.grade(c, at: SharedStore.markedTime(of: c.name, start: c.start) ?? now)
+        return .result(value: grade, dialog: "\(c.name) marked as prayed. \(grade).", snippetIntent: PrayedCardIntent(c))
     }
 }
 

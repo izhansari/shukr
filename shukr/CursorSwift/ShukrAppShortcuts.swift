@@ -46,43 +46,6 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         )
 
         AppShortcut(
-            intent: PrayerTimeLeftIntent(),
-            phrases: [
-                // Not "Time left in …": Siri asked "shukr or Home?" on his phone.
-                "How long is left in \(.applicationName)",
-                "How much time is left in \(.applicationName)",
-                "How long is left to pray in \(.applicationName)",
-                "Prayer time left in \(.applicationName)"
-            ],
-            shortTitle: "Time Left",
-            systemImageName: "hourglass"
-        )
-
-        AppShortcut(
-            intent: GetTodaysPrayerTimesIntent(),
-            phrases: [
-                "Prayer times today in \(.applicationName)",
-                "Today's prayer times in \(.applicationName)",
-                "Today's times in \(.applicationName)",
-                "All prayer times today in \(.applicationName)",
-                "Show today's prayers in \(.applicationName)"
-            ],
-            shortTitle: "Today's Times",
-            systemImageName: "list.bullet"
-        )
-
-        AppShortcut(
-            intent: MarkCurrentPrayerIntent(),
-            phrases: [
-                "I prayed in \(.applicationName)",
-                "Mark my prayer in \(.applicationName)",
-                "Mark prayer as prayed in \(.applicationName)"
-            ],
-            shortTitle: "I Prayed",
-            systemImageName: "checkmark.circle"
-        )
-
-        AppShortcut(
             intent: FajrAlarmTimeIntent(),
             phrases: [
                 "When is my Fajr alarm in \(.applicationName)",
@@ -134,6 +97,48 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             shortTitle: "Open Tasbih Fatimah",
             systemImageName: "circle.hexagonpath"
         )
+
+        // Time Left, Today's Times and I Prayed with buttons in their cards: iOS 26 only (decision shortcut-buttons-ios26 A).
+        // LAST in the list: Xcode marks every tile after an `if #available` block as 26-only too (it did).
+        // An AppShortcutsBuilder can't drop a tile on 26 ("#unavailable" isn't allowed), so before 26 these three have no tile.
+        if #available(iOS 26.0, *) {
+            AppShortcut(
+                intent: TimeLeftNowIntent(),
+                phrases: [
+                    // Not "Time left in …": Siri asked "shukr or Home?" on his phone.
+                    "How long is left in \(.applicationName)",
+                    "How much time is left in \(.applicationName)",
+                    "How long is left to pray in \(.applicationName)",
+                    "Prayer time left in \(.applicationName)"
+                ],
+                shortTitle: "Time Left",
+                systemImageName: "hourglass"
+            )
+
+            AppShortcut(
+                intent: TodaysTimesNowIntent(),
+                phrases: [
+                    "Prayer times today in \(.applicationName)",
+                    "Today's prayer times in \(.applicationName)",
+                    "Today's times in \(.applicationName)",
+                    "All prayer times today in \(.applicationName)",
+                    "Show today's prayers in \(.applicationName)"
+                ],
+                shortTitle: "Today's Times",
+                systemImageName: "list.bullet"
+            )
+
+            AppShortcut(
+                intent: MarkPrayedNowIntent(),
+                phrases: [
+                    "I prayed in \(.applicationName)",
+                    "Mark my prayer in \(.applicationName)",
+                    "Mark prayer as prayed in \(.applicationName)"
+                ],
+                shortTitle: "I Prayed",
+                systemImageName: "checkmark.circle"
+            )
+        }
     }
 }
 
