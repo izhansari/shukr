@@ -433,6 +433,7 @@ struct MainCircleView: View {
         .transition(.opacity)
         // The tour's map step: → closes the map for them; the map gone, by → or by itself, the tour knows.
         .onChange(of: TourRuntime.shared.closeMapRequests) { _, _ in showQiblaMap = false }
+        .onChange(of: TourRuntime.shared.openMapRequests) { _, _ in showQiblaMap = true }   // the qibla's →
         .onChange(of: showQiblaMap) { _, open in if !open { TourRuntime.shared.mapClosed() } }
         .fullScreenCover(isPresented: $showQiblaMap) {
             // A cover on the stage: a widget open closes it and waits until it's gone (it pushed its page under the

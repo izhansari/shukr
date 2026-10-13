@@ -480,9 +480,10 @@ private struct TourCoverPanelRoot: View {
                 let page = runtime.page
                 TourTopPanel(page: page, mode: TourGuideMode.of(page, key: page.guideKey(step.rawValue)),
                              guideKey: page.guideKey(step.rawValue), ticked: runtime.ticked, nudges: runtime.nudges,
-                             showsBack: false, qiblaSkip: false, openSection: nil, lit: [], step: step, place: nil,
-                             onPrimary: { runtime.event(.next) }, onSecondary: {}, onBack: {}, onToggle: { _ in },
-                             onSkipQibla: {}, onSkip: { runtime.skip() })
+                             showsBack: false,
+                             qiblaSkip: runtime.qiblaSkippable && !runtime.ticked.contains(TourRuntime.cMap ?? -1), openSection: nil, lit: [], step: step,
+                             place: nil, onPrimary: { runtime.event(.next) }, onSecondary: {}, onBack: {}, onToggle: { _ in },
+                             onSkipQibla: { runtime.event(.skipQibla) }, onSkip: { runtime.skip() })
                     .frame(width: min(geo.size.width - 28, 460))
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourCoverPanelWindow.panelFrame = $0 }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

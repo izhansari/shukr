@@ -933,6 +933,14 @@ struct LocationMapContentView: View {
     @State private var anchor = MapAnchor()
     /// The explore dock is open (Qibla · Prayers · Mosques).
     @State private var exploreOpen = false
+    /// The tour's map step: its panel is over the map's top, so the close button, the compass pill and the globe go just
+    /// under it (owner: the pill is what the step is about) — the panel's measured bottom on this screen, no fixed number.
+    @State private var controlsTop: CGFloat = 0
+    private var tourRoom: CGFloat {
+        guard TourRuntime.shared.mapOpen, controlsTop > 0,
+              let panel = TourTargets.shared.frame("topPanel"), panel.height < 320 else { return 0 }
+        return max(0, (panel.maxY + 4 - controlsTop).rounded())
+    }
 
     /// First visit: how the qibla map works (owner, 2026-09-25: people don't get why the arrows
     /// don't follow the phone like the Salah page's compass). The ? in the controls reopens it.
@@ -1255,10 +1263,12 @@ struct LocationMapContentView: View {
                     }
                 }
                 .padding(.horizontal, 10)
-                .padding(.top, 6)
+                .padding(.top, 6 + tourRoom)
 
                 Spacer()
             }
+            // Where the controls would start (unchanged by the tour's room): the room is measured from here.
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { controlsTop = $0 }
             .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
             .animation(.easeInOut(duration: 0.2), value: viewModel.showMosques)
             .animation(.easeInOut(duration: 0.2), value: viewModel.mosqueAreaStale)

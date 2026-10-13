@@ -1004,7 +1004,7 @@ struct TourTopPanel: View {
                 .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
                                         removal: .move(edge: .top).combined(with: .opacity)))
                 // Only under the qibla to-do (the circle's second); it showed under the first once the wait was up.
-                if qiblaSkip && current == 1 {
+                if qiblaSkip && (current == 1 || current == TourRuntime.cMap) {
                     Button(TourCopy.Circle.noCompass, action: onSkipQibla)
                         .buttonStyle(.plain)
                         .font(.system(.caption, design: .rounded, weight: .medium))
@@ -2070,6 +2070,7 @@ struct BubbleShape: Shape {
             var tryIt = TourSection(id: "circle.try", title: TourCopy.tryIt, tasks: TourCopy.Circle.todos)
             tryIt.todoLeads = TourCopy.Circle.todoLeads
             tryIt.todoAfters = TourCopy.Circle.todoAfters
+            if TourFlow.v2, qiblaSkipped, tryIt.todoAfters.indices.contains(1) { tryIt.todoAfters[1] = TourCopy.Circle.qiblaSkippedAfter }
             switch phase {
             case .learn:
                 var p = chapter(.circle, 0, of: 4, [shows], primary: TourCopy.Circle.tryButton)
@@ -2219,6 +2220,16 @@ struct BubbleShape: Shape {
     /// map's own way back).
     private(set) var mapOpen = false
     private(set) var closeMapRequests = 0
+    private(set) var openMapRequests = 0
+    /// The qibla was skipped (no compass): its held line says so.
+    private(set) var qiblaSkipped = false
+    /// The map's panel window goes up (before the map, so the panel never changes place).
+    private func coverMap() {
+        guard !mapOpen else { return }
+        mapOpen = true
+        qiblaSkippable = false
+        TourCoverPanelWindow.show()
+    }
     /// The arrow may open the map now: the map step is the one to do.
     var allowsMap: Bool {
         guard active, step == .circle, phase == .tryIt, let map = Self.cMap, pendingAck == nil else { return false }
@@ -2238,6 +2249,12 @@ struct BubbleShape: Shape {
     private func acknowledge() {
         guard let i = pendingAck else { return }
         if i == Self.cMap, mapOpen { closeMapRequests += 1 }   // back from the map for them
+        // The qibla's line: → opens the map (owner: no "tap the arrow" — three arrows on screen), its panel put over the
+        // map's place first, so the panel stays put as the map comes up under it.
+        if step == .circle, i == 1, Self.cMap != nil {
+            coverMap()
+            openMapRequests += 1
+        }
         withAnimation(.smooth(duration: 0.35)) { pendingAck = nil }
         settled(i)
     }
@@ -2527,6 +2544,7 @@ struct BubbleShape: Shape {
     }
 
     private func resetCardState() {
+        qiblaSkipped = false
         ticked = []
         pendingAck = nil
         lit = []
@@ -2591,8 +2609,16 @@ struct BubbleShape: Shape {
         case (.circle, .tryIt, .circleTapped):
             countQiblaTap()
             tick(0, flash: "circleTime")
-        case (.circle, .tryIt, .qiblaAligned): tick(1)
-        case (.circle, .tryIt, .skipQibla): tick(1)
+        case (.circle, .tryIt, .qiblaAligned):
+            // On the map (the new flow): lined up with the green line.
+            if let m = Self.cMap, mapOpen, ticked.contains(1), pendingAck == nil { tick(m) } else { tick(1) }
+        case (.circle, .tryIt, .skipQibla):
+            if let m = Self.cMap, mapOpen, ticked.contains(1) {
+                tick(m)
+            } else {
+                qiblaSkipped = true
+                tick(1)
+            }
         case (.circle, .tryIt, .marked(let prayer, _)):
             practicePrayer = prayer
             tick(Self.cMark)
@@ -2600,9 +2626,7 @@ struct BubbleShape: Shape {
         // audit): no tick, on to the list.
         // The new flow's map step: the arrow opened the map (its panel rides over the map, TourCoverPanelWindow).
         case (.circle, .tryIt, .mapOpened) where Self.cMap != nil:
-            mapOpen = true
-            TourCoverPanelWindow.show()
-            tick(Self.cMap!)
+            coverMap()
         case (.circle, .tryIt, .listOpened) where ticked.contains(Self.cMark):
             go(to: .list, after: 0.6)
 
@@ -2816,6 +2840,7 @@ struct BubbleShape: Shape {
 
     /// A to-do to do again: its tick gone, and what it changed put back (Fajr's time; the Reminders switch).
     private func undo(_ i: Int, in step: TourStep) {
+        if step == .circle, i == 1 { qiblaSkipped = false }
         if step == .list, i == 3 { prepare(.list) }   // Fajr late again
         if step == .settings {
             if i == Self.sBell { restoreBells() }
@@ -3038,6 +3063,7 @@ struct TourLayer: View {
             .onChange(of: CircleStage.shared.restingPage) { _, page in pageRested(page) }
             .onAppear { runtime.viewModel = viewModel }
         .modifier(TourLayerWatchers2(runtime: runtime, compass: compass, qiblaWatch: qiblaWatch))
+        .task(id: runtime.mapOpen) { await mapWatch() }
     }
 }
 
@@ -3110,6 +3136,18 @@ extension TourLayer {
         if compass.qibla.aligned { runtime.event(.qiblaAligned) }
         try? await Task.sleep(for: .seconds(compass.status == .ok ? 15 : 0))
         guard !Task.isCancelled, runtime.step == .circle, runtime.phase == .tryIt else { return }
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { runtime.qiblaSkippable = true }
+    }
+
+    /// The map step (new flow): already lined up ticks it once the map is up; without a compass (or one that won't
+    /// settle) the panel offers its skip.
+    private func mapWatch() async {
+        guard runtime.mapOpen, runtime.step == .circle else { return }
+        try? await Task.sleep(for: .seconds(1.5))
+        guard runtime.mapOpen else { return }
+        if compass.qibla.aligned { runtime.event(.qiblaAligned) }
+        try? await Task.sleep(for: .seconds(compass.status == .ok ? 12 : 0))
+        guard !Task.isCancelled, runtime.mapOpen, let m = TourRuntime.cMap, !runtime.ticked.contains(m) else { return }
         withAnimation(.easeOut(duration: CircleMotion.quick)) { runtime.qiblaSkippable = true }
     }
 

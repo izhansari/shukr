@@ -76,7 +76,7 @@ enum TourCopy {
         static var todos: [String] { TourFlow.v2 ? [
             "Tap the circle to see how long is left",
             "Turn until the arrow points straight up",
-            "Tap the arrow",
+            "Turn until the ring around you turns green",   // on the map (→ on the qibla's line opens it)
             "Hold the circle to mark Asr",
         ] : [
             "Tap the circle to flip the time text",
@@ -84,12 +84,14 @@ enum TourCopy {
             "Hold the circle to mark Asr",
         ] }
         static let noCompass = "No compass here? Skip it"
+        /// The qibla's held line when it was skipped (it can't say "you're facing it"); → still opens the map.
+        static let qiblaSkippedAfter = "Compasses can be off, so let’s find the qibla on a map."
         /// A line over each to-do in the panel: what it is (owner: "text above it that helps educate them").
         /// The line teaches what the thing is; the to-do under it says what to do — never the same words (owner).
         static var todoLeads: [String] { TourFlow.v2 ? [
             "This circle is the prayer that’s on now: Asr.",
             "The small arrow on the ring points to the Kaaba.",
-            "",   // the qibla's held line leads into it (owner)
+            "The green line is the true way to the Kaaba, worked out from where you are.",
             "Prayed? Mark it right here.",
         ] : [
             "The ring fills as the prayer's time runs out.",
@@ -99,8 +101,8 @@ enum TourCopy {
         /// Once each is done, the panel holds and teaches a little more, then → (owner).
         static var todoAfters: [String] { TourFlow.v2 ? [
             "Tap again to see when it ends. In its last hour it shows the time left by itself.",
-            "You’re facing the qibla. Compasses can be off, so a tap on the arrow shows you on a map.",
-            "Line yourself up with the green line — it’s the true direction, whatever your compass says. Your prayers are pinned here too, and it finds mosques near you.",
+            "You’re facing the qibla. Compasses can be off, so let’s check it on a map.",
+            "That’s the qibla, whatever your compass says. Your prayers are pinned on this map too, and it finds mosques near you.",
             "Perfect, prayed in the first 30 minutes. See how it moved on to Maghrib? It always shows the prayer that matters now.",
         ] : [
             "Tap it any time. In a prayer's last hour it shows the time left on its own.",
