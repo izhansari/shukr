@@ -3277,7 +3277,7 @@ extension AlarmDemo {
         guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
         let params = PrayerUtils.getCalculationParameters()
         let cal = Calendar.current
-        // Tomorrow, next week, next month, in 3 months (the captions say so — owner, 2026-10-12).
+        // Tomorrow, in 1 week, in 1 month, in 3 months (the captions say so — owner, 2026-10-12).
         let ahead: [DateComponents] = [DateComponents(day: 1), DateComponents(day: 7), DateComponents(month: 1), DateComponents(month: 3)]
         return ahead.compactMap { step in
             guard let day = cal.date(byAdding: step, to: cal.startOfDay(for: Date())),
@@ -3306,7 +3306,7 @@ private struct AlarmOffSymbol: View {
 
 struct AlarmDemo: View {
     /// The days' captions, relative (owner): `upcoming`'s steps in order.
-    static let when = ["Tomorrow", "Next week", "Next month", "In 3 months"]
+    static let when = ["Tomorrow", "In 1 week", "In 1 month", "In 3 months"]
     let days: [(day: Date, alarm: Date, reference: Date)]
     let isFajr: Bool
     /// The rule in words, for the card's label ("20 min before it starts").
