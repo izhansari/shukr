@@ -106,6 +106,23 @@ struct NearbyMosque: Hashable {
     }
 }
 
+/// A mosque row in the card: directions in Maps. Our own intent handing on `OpenURLIntent` — the system intent used
+/// as the button itself did nothing ("Failed to fetch metadata for OpenURLIntent", the sim 2026-10-13).
+struct MosqueDirectionsIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Directions to a Mosque"
+    static var isDiscoverable: Bool = false
+    static var openAppWhenRun: Bool = false
+    @Parameter(title: "Name") var name: String
+    @Parameter(title: "Latitude") var latitude: Double
+    @Parameter(title: "Longitude") var longitude: Double
+    init() {}
+    init(_ m: NearbyMosque) { name = m.name; latitude = m.coordinate.latitude; longitude = m.coordinate.longitude }
+    func perform() async throws -> some IntentResult & OpensIntent {
+        let m = NearbyMosque(name: name, coordinate: .init(latitude: latitude, longitude: longitude), meters: 0, address: nil)
+        return .result(opensIntent: OpenURLIntent(m.directions))
+    }
+}
+
 /// One search per run: the answer and its card share it (the card intent is drawn again after the answer).
 @MainActor enum NearbyMosquesSearch {
     enum Outcome { case found(here: CLLocation, [NearbyMosque]), noLocation, failed }
@@ -179,7 +196,7 @@ struct NearbyMosquesSnippet: View {
             if case .found(_, let list) = outcome, !list.isEmpty {
                 VStack(spacing: 2) {
                     ForEach(Array(list.prefix(Self.shown).enumerated()), id: \.element) { i, m in
-                        Button(intent: OpenURLIntent(m.directions)) { row(m, nearest: i == 0) }
+                        Button(intent: MosqueDirectionsIntent(m)) { row(m, nearest: i == 0) }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Directions to \(m.name), \(distanceText(m.meters, spoken: true))")
                     }
