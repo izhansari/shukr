@@ -73,6 +73,12 @@ enum TourCopy {
             "The small arrow on the ring points to the Kaaba.",
             "A marked prayer is scored by how early you prayed.",
         ]
+        /// Once each is done, the panel holds and teaches a little more, then → (owner).
+        static let todoAfters = [
+            "Tap it any time. In a prayer's last hour it shows the time left on its own.",
+            "Straight up means you're facing the qibla. How strict that is lives in Settings.",
+            "First 30 minutes is Perfect, 100. After that the score eases down until the time ends.",
+        ]
         /// The button beside the chapter's name on "What it shows": on to trying it (owner: not "Continue").
         static let tryButton = "Try it"
         static let marked = "Asr has moved to your prayer list. Let’s look at that next. Swipe up to reveal it."
@@ -112,6 +118,12 @@ enum TourCopy {
             "Prayers you've marked tuck away to keep it tidy.",
             "Every prayer you mark is scored out of 100.",
             "Marked one late by mistake? Its time can be fixed.",
+        ]
+        static let todoAfters = [
+            "The times follow your location and calculation method, both in Settings.",
+            "Tap “done” again to tuck them back away.",
+            "Perfect is 100, on time 80 or more, late 60 or more, Qaza 40.",
+            "",   // the chapter's own end follows
         ]
         static let todos = [
             "Tap a coming prayer for the time until",
@@ -182,6 +194,11 @@ enum TourCopy {
             "Live Activities put a prayer's countdown on your Lock Screen.",
             "The Fajr alarm is a real alarm that moves with Fajr.",
             "Every ⓘ explains its section in plain words.",
+        ]
+        static let todoAfters = [
+            "Each prayer gets its card when it starts, and you can mark it right from there.",
+            "Set it once and it rings before Fajr every day, moving with Fajr through the year.",
+            "Look for ⓘ by any section whenever you want to know more.",
         ]
         /// The last chapter's moment swipes to this, the tour's end.
         static let finale = "Tour complete"

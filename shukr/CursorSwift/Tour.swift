@@ -120,6 +120,8 @@ struct TourSection: Identifiable {
     var tasks: [String] = []
     /// A line over each to-do in the top panel: what the thing is, before they try it (owner).
     var todoLeads: [String] = []
+    /// Once a to-do is done, the panel holds on it and this line teaches a little more, until → (owner). Empty: no hold.
+    var todoAfters: [String] = []
     var note: String? = nil
     /// The note as a quiet footnote (the welcome's last line, under its list).
     var quietNote = false
@@ -157,6 +159,8 @@ struct TourPage {
     var chapterDone = false
     /// The to-dos' dots stay away (the next chapter's first line, before its to-dos).
     var hideProgress = false
+    /// A to-do done and held: its ✓ and its teaching line, the → to go on (TourRuntime.pendingAck).
+    var pendingTodo: Int? = nil
     /// On a chapter's end: the chapter that comes next ("2", "Prayer List"), for the moment's swipe.
     var nextChapter: (index: Int, title: String)? = nil
     /// The to-dos, wherever they are (a chapter's step or the post-tour page).
@@ -639,13 +643,17 @@ struct TourTopPanel: View {
     // The to-dos, as the strip counts them.
     private var todos: [String] { page.currentTodos }
     private var current: Int {
-        todos.indices.first { !ticked.contains($0) && !page.locked.contains($0) } ?? max(todos.count - 1, 0)
+        if let held = page.pendingTodo { return held }
+        return todos.indices.first { !ticked.contains($0) && !page.locked.contains($0) } ?? max(todos.count - 1, 0)
     }
     private var currentDone: Bool { ticked.contains(current) }
-    /// The current to-do's own line, if it has one.
+    /// Done and held: the teaching line in place of the lead, and → (owner).
+    private var held: Bool { page.pendingTodo != nil }
+    /// The current to-do's own line: what it is, or once done (held) a little more about it.
     private var todoLead: String? {
-        guard let leads = page.activeSection?.todoLeads, leads.indices.contains(current) else { return nil }
-        return leads[current]
+        guard let section = page.activeSection else { return nil }
+        if held, section.todoAfters.indices.contains(current) { return section.todoAfters[current] }
+        return section.todoLeads.indices.contains(current) ? section.todoLeads[current] : nil
     }
 
     var body: some View {
@@ -697,7 +705,7 @@ struct TourTopPanel: View {
         .animation(.smooth(duration: 0.4), value: isStrip)
         .tint(TourInk.green)
         .onChange(of: nudges) { _, _ in
-            guard !isStrip, page.primary != nil || mode == .cardThenStrip, !callOut else { return }
+            guard (!isStrip && (page.primary != nil || mode == .cardThenStrip)) || held, !callOut else { return }
             Task { @MainActor in
                 for _ in 0..<1 {   // once (owner)
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) { callOut = true }
@@ -789,6 +797,24 @@ struct TourTopPanel: View {
                             .opacity(callOut ? 0.55 : 0)
                     }
                     .accessibilityLabel(label)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                } else if isStrip && held {
+                    // Done and read: on to the next try-it.
+                    Button(action: onPrimary) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(TourInk.green))
+                            .frame(width: 34, height: 34)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .scaleEffect(callOut ? 1.18 : 1)
+                    .background {
+                        Circle().fill(TourInk.green).frame(width: 44, height: 44).blur(radius: 8).opacity(callOut ? 0.55 : 0)
+                    }
+                    .accessibilityLabel(TourCopy.continueButton)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
                 } else if isStrip {
                     trailingProgress
@@ -940,26 +966,30 @@ struct TourTopPanel: View {
                 Circle()
                     .strokeBorder(TourInk.green.opacity(currentDone ? 0 : 0.6), lineWidth: 1.5)
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 22))
+                    .font(.system(size: 16))
                     .foregroundStyle(TourInk.green)
                     .opacity(currentDone ? 1 : 0)
                     .scaleEffect(currentDone ? 1 : 0.5)
             }
-            .frame(width: 22, height: 22)
+            .frame(width: 16, height: 16)
+            .padding(.leading, 3)
             .alignmentGuide(.todoLine) { $0[VerticalAlignment.center] }   // level with the to-do, not the line above
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentDone)
             VStack(alignment: .leading, spacing: 2) {
                 // What it is, then what to do — the two move on together, to-do by to-do.
                 VStack(alignment: .leading, spacing: 2) {
+                    // The teaching line is the larger (owner: sizes switched); the to-do under it, small.
                     if let lead = todoLead ?? page.shortLead {
                         Text(lead)
-                            .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(Color.primary.opacity(0.6))
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(Color.primary.opacity(0.9))
                             .fixedSize(horizontal: false, vertical: true)
+                            .id(lead)
+                            .transition(.opacity)
                     }
                     Text(todos.indices.contains(current) ? todos[current] : "")
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
-                        .foregroundStyle(Color.primary.opacity(currentDone ? 0.5 : 0.9))
+                        .font(.system(.footnote, design: .rounded, weight: .semibold))
+                        .foregroundStyle(currentDone ? AnyShapeStyle(TourInk.green) : AnyShapeStyle(Color.primary.opacity(0.55)))
                         .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                         .alignmentGuide(.todoLine) { $0[VerticalAlignment.center] }
@@ -1772,6 +1802,7 @@ struct BubbleShape: Shape {
     func allows(marking: Bool, _ prayer: PrayerModel) -> Bool {
         guard active else { return true }
         return marking && step == .circle && phase == .tryIt && ticked.isSuperset(of: [0, 1]) && !ticked.contains(2)
+            && pendingAck == nil
             && prayer.name == "Asr" && Self.isPracticeAnywhere(prayer)
     }
     /// Which run of the tour this is: anything scheduled by an earlier run never lands.
@@ -1973,7 +2004,13 @@ struct BubbleShape: Shape {
             p.secondary = nil
             return p
         }
-        return page(for: step, phase: phase)
+        var p = page(for: step, phase: phase)
+        if let pending = pendingAck {
+            p.pendingTodo = pending
+            // Nothing else to do until →: no thumbprint, no next to-do.
+            p.locked.formUnion(Set(p.currentTodos.indices).subtracting(ticked))
+        }
+        return p
     }
     /// A step finishing is two beats (owner: the content collapses into its line item, one card the whole way): first
     /// the fold (this, the phase it's folding into), then the next step under it.
@@ -2025,6 +2062,7 @@ struct BubbleShape: Shape {
             var shows = TourSection(id: "circle.shows", title: TourCopy.Circle.showsStep, blocks: [Self.circleBlocks[0]])
             var tryIt = TourSection(id: "circle.try", title: TourCopy.tryIt, tasks: TourCopy.Circle.todos)
             tryIt.todoLeads = TourCopy.Circle.todoLeads
+            tryIt.todoAfters = TourCopy.Circle.todoAfters
             switch phase {
             case .learn:
                 var p = chapter(.circle, 0, of: 4, [shows], primary: TourCopy.Circle.tryButton)
@@ -2032,7 +2070,7 @@ struct BubbleShape: Shape {
                 return p
             default:
                 shows.done = true
-                let marked = ticked.contains(2) && beat != 2   // its ✓ a beat first
+                let marked = ticked.contains(2) && beat != 2 && pendingAck != 2   // its ✓ held first
                 let done = Double(ticked.intersection([0, 1, 2]).count)
                 guard marked else { return chapter(.circle, 1 + done, of: 4, [shows, tryIt], locked: lockedCircle) }
                 // Marked: only the payoff (owner: no "3 done" fold, no back) — small enough to sit above the circle, the
@@ -2070,6 +2108,7 @@ struct BubbleShape: Shape {
             // The ones they can do now first, the waiting (greyed) ones after (owner).
             var tryIt = TourSection(id: "list.try", title: TourCopy.tryIt, tasks: TourCopy.List.todos)
             tryIt.todoLeads = TourCopy.List.todoLeads
+            tryIt.todoAfters = TourCopy.List.todoAfters
             return chapter(.list, 1 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 5, [tryIt],
                            locked: lockedList)
         case .zikr:
@@ -2101,6 +2140,7 @@ struct BubbleShape: Shape {
             guard phase == .last else {
                 var tryIt = TourSection(id: "settings.try", title: TourCopy.tryIt, tasks: TourCopy.Settings.todos)
                 tryIt.todoLeads = TourCopy.Settings.todoLeads
+                tryIt.todoAfters = TourCopy.Settings.todoAfters
                 return chapter(.settings, 2 + Double(ticked.intersection([0, 1, 2]).count), of: 5, [there, here, tryIt],
                                locked: lockedSettings)
             }
@@ -2155,8 +2195,28 @@ struct BubbleShape: Shape {
                 if beat == i { withAnimation(.smooth(duration: 0.35)) { beat = nil } }
             }
         }
-        withAnimation(.snappy(duration: 0.3)) { _ = ticked.insert(i) }
+        let after = page.activeSection?.todoAfters
+        let holds = after.map { $0.indices.contains(i) && !$0[i].isEmpty } ?? false
+        withAnimation(.snappy(duration: 0.3)) {
+            _ = ticked.insert(i)
+            if holds { pendingAck = i }
+        }
         if let key { glow(key) }
+        if !holds { settled(i) }
+    }
+
+    /// A to-do done and held for its teaching line (owner: "hold each completion … then bring in the continue
+    /// button"): → lets it go.
+    private(set) var pendingAck: Int?
+
+    private func acknowledge() {
+        guard let i = pendingAck else { return }
+        withAnimation(.smooth(duration: 0.35)) { pendingAck = nil }
+        settled(i)
+    }
+
+    /// A to-do left behind: what it leads to.
+    private func settled(_ i: Int) {
         // The Prayer Circle's last to-do ends the chapter: its moment, then chapter 2's first line.
         if step == .circle, i == 2 {
             celebrating = .circle
@@ -2165,6 +2225,15 @@ struct BubbleShape: Shape {
                 guard celebrating == .circle else { return }
                 withAnimation(.smooth(duration: 0.45)) { celebrating = nil }
             }
+        }
+        if step == .settings, i == 2 { endSettings() }
+    }
+
+    /// Settings' last to-do let go: the chapter's moment, then the tour's end (the row ringed — TourLayer.steadyFrame).
+    private func endSettings() {
+        endChapter(.settings) {
+            self.settingsScroll = (.tourRow, self.settingsScroll.1 + 1)
+            self.setPhase(.last)
         }
     }
 
@@ -2395,6 +2464,7 @@ struct BubbleShape: Shape {
 
     private func resetCardState() {
         ticked = []
+        pendingAck = nil
         lit = []
         completing = false
         insight = false
@@ -2422,6 +2492,11 @@ struct BubbleShape: Shape {
                     withAnimation(.easeOut(duration: CircleMotion.quick)) { self.step = .celebrate }
                 }
             }
+            return
+        }
+        // A held to-do: → lets it go (before every other `.next`).
+        if case .next = e, pendingAck != nil {
+            acknowledge()
             return
         }
         switch (step, phase, e) {
@@ -2501,14 +2576,6 @@ struct BubbleShape: Shape {
             if side == "fajrAlarm", ticked.contains(0) { tick(1) }
         case (.settings, .tryIt, .remindersInfo(let open)):
             if open { tick(2) }
-            // Closed with all three done: the chapter's moment, then the tour's end (the row ringed —
-            // TourLayer.steadyFrame — for as long as that step is up).
-            if !open, ticked.isSuperset(of: [0, 1, 2]) {
-                endChapter(.settings) {
-                    self.settingsScroll = (.tourRow, self.settingsScroll.1 + 1)
-                    self.setPhase(.last)
-                }
-            }
         case (.settings, .last, .next): finish(completed: true)
         default: break
         }
@@ -2519,7 +2586,7 @@ struct BubbleShape: Shape {
         guard folding == nil else { return }
         func land() {
             withAnimation(.smooth(duration: CircleMotion.standard)) {
-                if next == .tryIt { ticked = [] }
+                if next == .tryIt { ticked = []; pendingAck = nil }
                 openSection = nil
                 folding = nil
                 phase = next
@@ -2545,6 +2612,7 @@ struct BubbleShape: Shape {
         completing = false
         insight = false
         ticked = []
+        pendingAck = nil
         withAnimation(.smooth(duration: CircleMotion.standard)) { step = next }
     }
 
@@ -2559,6 +2627,7 @@ struct BubbleShape: Shape {
             prepare(.circle)
             withAnimation(.smooth(duration: CircleMotion.standard)) {
                 ticked = [0, 1]
+                pendingAck = nil
                 openSection = nil
                 beat = nil
                 celebrating = nil
@@ -2570,6 +2639,7 @@ struct BubbleShape: Shape {
                 self.step = .intro
                 phase = .learn
                 ticked = []
+                pendingAck = nil
                 openSection = nil
             }
             return
@@ -2578,6 +2648,7 @@ struct BubbleShape: Shape {
             withAnimation(.smooth(duration: CircleMotion.standard)) {
                 phase = .go
                 ticked = []
+                pendingAck = nil
                 openSection = nil
             }
             return
@@ -2588,6 +2659,7 @@ struct BubbleShape: Shape {
                 self.step = .list
                 phase = .tryIt
                 ticked = [0, 1, 2, 3]
+                pendingAck = nil
                 openSection = nil
                 celebrating = nil
             }
@@ -2598,6 +2670,7 @@ struct BubbleShape: Shape {
                 self.step = .list
                 phase = .tryIt
                 ticked = [0, 1, 2, 3]
+                pendingAck = nil
                 openSection = nil
                 celebrating = nil
             }
@@ -2610,6 +2683,7 @@ struct BubbleShape: Shape {
                 self.step = .circle
                 phase = .tryIt
                 ticked = [0, 1, 2]
+                pendingAck = nil
                 openSection = nil
                 folding = nil
                 beat = nil
@@ -2621,6 +2695,7 @@ struct BubbleShape: Shape {
         if step == .settings { settingsScroll = (.top, settingsScroll.1 + 1) }
         withAnimation(.smooth(duration: CircleMotion.standard)) {
             ticked = []
+            pendingAck = nil
             lit = back == .learnMore && step == .circle ? [0, 1, 2] : lit   // the colours' lines, lit as after the demo
             openSection = nil
             folding = nil
