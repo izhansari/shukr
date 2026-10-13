@@ -255,6 +255,8 @@ struct SadaqahPage: View {
     @State private var donateAfterInfo: SadaqahCharity?
     /// Swiped away: asked once before it goes.
     @State private var deleting: SadaqahDonation?
+    /// The page's title has scrolled under the bar: the bar shows it.
+    @State private var titleInBar = false
 
     private var startOfYear: Date { Calendar.current.dateInterval(of: .year, for: .now)?.start ?? .now }
 
@@ -285,7 +287,11 @@ struct SadaqahPage: View {
                     .listRowBackground(Self.card)
                 }
             } header: {
-                Text("Organizations")
+                HStack {
+                    Text("Organizations")
+                    Spacer()
+                    CategoryFilter(selection: $category).textCase(nil)
+                }
             } footer: {
                 Text("Tap ⓘ to see who they are and why they're here. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
             }
@@ -318,9 +324,18 @@ struct SadaqahPage: View {
         .contentMargins(.top, 0, for: .scrollContent)
         .navigationTitle("Give to Causes")   // the back button's word on pages pushed from here
         .navigationBarTitleDisplayMode(.inline)
+        // The title is on the page; once it has scrolled under the bar, the bar shows it (owner: it stays up top).
         .toolbar {
-            ToolbarItem(placement: .principal) { Color.clear.frame(width: 1, height: 1) }   // the title is on the page
-            ToolbarItem(placement: .topBarTrailing) { CategoryFilter(selection: $category) }
+            ToolbarItem(placement: .principal) {
+                Text("Give to Causes").font(.headline).fontDesign(.rounded)
+                    .opacity(titleInBar ? 1 : 0)
+                    .animation(.easeOut(duration: 0.2), value: titleInBar)
+            }
+        }
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            geo.contentOffset.y + geo.contentInsets.top > 44
+        } action: { _, under in
+            titleInBar = under
         }
         .fontDesign(.rounded)
         .sheet(item: $asking, onDismiss: {
@@ -383,8 +398,8 @@ struct SadaqahPage: View {
     }
 }
 
-/// The filter, top right (owner: like Azkar's sort button): the plain glyph on All; a green tinted pill with the
-/// category's symbol and name while one is picked.
+/// The filter, beside "Organizations" (owner), in Azkar's sort-button look: the plain glyph on All; a green tinted pill
+/// with the category's symbol and name while one is picked.
 private struct CategoryFilter: View {
     @Binding var selection: SadaqahCategory?
     var body: some View {
@@ -407,11 +422,15 @@ private struct CategoryFilter: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(Color.green)
                 .padding(.horizontal, 12)
-                .frame(height: 36)
+                .frame(height: 30)
                 .background(Capsule().fill(Color.green.opacity(0.16)))
                 .fixedSize()
             } else {
-                Image(systemName: "line.3.horizontal.decrease").foregroundStyle(Color.primary)
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Color.primary)
+                    .frame(width: 36, height: 30, alignment: .trailing)
+                    .contentShape(Rectangle())
             }
         }
         .tint(selection == nil ? Color.primary : Color.green)
