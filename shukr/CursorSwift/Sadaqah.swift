@@ -1342,7 +1342,7 @@ struct GivingGuideSheet: View {
         Kind(id: "fitr", symbol: "sparkles", title: "Zakat al-Fitr", tagline: "Before the Eid prayer",
              text: "A small, required gift for every person in your household, about the cost of one meal, given at the end of Ramadan. Give it before the Eid prayer so everyone can celebrate. Your masjid usually announces the amount each year."),
         Kind(id: "fidya", symbol: "fork.knife", title: "Fidya", tagline: "For fasts you can't make up",
-             text: "If you're too ill or too old to fast, and can never make the days up, you feed one person in need for each fast you miss, about the cost of a meal each. If you can make the days up later, you do that instead."),
+             text: "If you're too ill or too old to fast, and can never make the days up, you feed one person in need for each fast you miss, about the cost of a meal each. If you can make the days up later, you do that instead. Fasts missed for your period or after childbirth are simply made up later, with no fidya or kaffarah. If you're pregnant or nursing, you make the days up too; schools differ on whether fidya is also owed."),
         Kind(id: "kaffarah", symbol: "arrow.uturn.backward.circle.fill", title: "Kaffarah", tagline: "For a fast broken on purpose",
              text: "If you break a Ramadan fast on purpose, you make up the day. Some cases also need kaffarah: fasting 60 days in a row, or, if you can't, feeding 60 people in need. Which cases need it depends on your school of thought. A broken oath has its own, smaller kaffarah."),
         Kind(id: "qurbani", symbol: "leaf.fill", title: "Qurbani", tagline: "At Eid al-Adha",
