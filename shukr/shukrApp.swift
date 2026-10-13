@@ -231,14 +231,15 @@ struct shukrApp: App {
         // from the card's ✓ runs the intent right after, and its hooks must be set by then (Frank).
         PrayerLiveActivities.onLaunch()
         // Get Fajr Alarm Time's card: setup's alarm picture, open, for the rule as set (frosted when the alarm is off).
-        ShortcutCards.fajrAlarm = { off in
+        ShortcutCards.fajrAlarm = { off, next in
             let g = UserDefaults(suiteName: SharedStore.appGroup)
             let offset = g?.integer(forKey: "alarmOffsetMinutes") ?? 0
             let before = g?.object(forKey: "alarmIsBefore") as? Bool ?? true
             let fajr = g?.object(forKey: "alarmIsFajr") as? Bool ?? true
-            return AnyView(AlarmDemo(days: AlarmDemo.upcoming(offset: offset, isBefore: before, isFajr: fajr), isFajr: fajr,
-                                     rule: AlarmDemo.ruleWords(offset: offset, isBefore: before, isFajr: fajr),
-                                     off: off ? .declined : nil, startsOpen: true)
+            let today = Calendar.current.isDateInToday(next)   // after midnight: this morning's alarm comes first
+            return AnyView(AlarmDemo(days: AlarmDemo.upcoming(offset: offset, isBefore: before, isFajr: fajr, startingToday: today),
+                                     isFajr: fajr, rule: AlarmDemo.ruleWords(offset: offset, isBefore: before, isFajr: fajr),
+                                     off: off ? .declined : nil, startsOpen: true, firstCaption: today ? "Today" : "Tomorrow")
                 .padding(14))
         }
         #if DEBUG

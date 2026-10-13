@@ -215,8 +215,8 @@ struct SnippetPreviewHost: View {
                                                        markedAt: on.start.addingTimeInterval(12 * 60), dark: dark)) }
         case "next":
             if let n = PrayerWindows.pick(.next, now: now) { NextPrayerSnippet(name: n.name, start: n.start, now: now) }
-        case "alarm": ShortcutCards.fajrAlarm?(false) ?? AnyView(EmptyView())
-        case "alarmoff": ShortcutCards.fajrAlarm?(true) ?? AnyView(EmptyView())
+        case "alarm": ShortcutCards.fajrAlarm?(false, Date().addingTimeInterval(86400)) ?? AnyView(EmptyView())
+        case "alarmoff": ShortcutCards.fajrAlarm?(true, Date().addingTimeInterval(86400)) ?? AnyView(EmptyView())
         default: TodaysTimesSnippet(rows: rows, now: now)
         }
     }

@@ -3273,12 +3273,13 @@ extension AlarmDemo {
 
     /// The rule's alarm on days through the year — tomorrow, then a week, a month and three months on — so the preview
     /// shows the time moving with Fajr while the rule stays the same.
-    static func upcoming(offset: Int, isBefore: Bool, isFajr: Bool) -> [(day: Date, alarm: Date, reference: Date)] {
+    static func upcoming(offset: Int, isBefore: Bool, isFajr: Bool, startingToday: Bool = false) -> [(day: Date, alarm: Date, reference: Date)] {
         guard let coords = try? PrayerUtils.getUserCoordinates() else { return [] }
         let params = PrayerUtils.getCalculationParameters()
         let cal = Calendar.current
         // Tomorrow, in 1 week, in 1 month, in 3 months (the captions say so — owner, 2026-10-12).
-        let ahead: [DateComponents] = [DateComponents(day: 1), DateComponents(day: 7), DateComponents(month: 1), DateComponents(month: 3)]
+        // From today when the next alarm is this morning (a Shortcuts card asked after midnight).
+        let ahead: [DateComponents] = [DateComponents(day: startingToday ? 0 : 1), DateComponents(day: 7), DateComponents(month: 1), DateComponents(month: 3)]
         return ahead.compactMap { step in
             guard let day = cal.date(byAdding: step, to: cal.startOfDay(for: Date())),
                   let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { return nil }
@@ -3322,6 +3323,8 @@ struct AlarmDemo: View {
     var turnOn: () -> Void = {}
     /// Drawn already open (a Shortcuts card is drawn once: the island never got to open).
     var startsOpen = false
+    /// "Tomorrow", or "Today" when the next alarm is this morning.
+    var firstCaption = "Tomorrow"
     private var isOpen: Bool { open || startsOpen }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The island has opened into the alarm (once, on arrival; the wheels only change its words).
@@ -3417,7 +3420,7 @@ struct AlarmDemo: View {
                 HStack(spacing: 0) {
                     ForEach(Array(days.enumerated()), id: \.offset) { i, d in
                         VStack(spacing: 2) {
-                            Text(AlarmDemo.when[min(i, AlarmDemo.when.count - 1)])
+                            Text(i == 0 ? firstCaption : AlarmDemo.when[min(i, AlarmDemo.when.count - 1)])
                                 .font(.system(.caption, design: .rounded, weight: i == 0 ? .semibold : .regular))
                             Text(clockTime(d.alarm))
                                 .font(.system(.caption2, design: .rounded))
@@ -3461,7 +3464,7 @@ struct AlarmDemo: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(off != nil ? "\(off == .refused ? "Alarms are off" : "The Fajr alarm is off"). \(offLine(off ?? .declined))"
-                                : "Fajr alarm, \(clockTime(first.alarm)) tomorrow, set once and moving with Fajr through the year.")
+                                : "Fajr alarm, \(clockTime(first.alarm)) \(firstCaption.lowercased()), set once and moving with Fajr through the year.")
         }
     }
 }
