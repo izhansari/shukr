@@ -118,6 +118,8 @@ struct TourSection: Identifiable {
     var lead: String? = nil
     var blocks: [TourBlock] = []
     var tasks: [String] = []
+    /// A line over each to-do in the top panel: what the thing is, before they try it (owner).
+    var todoLeads: [String] = []
     var note: String? = nil
     /// The note as a quiet footnote (the welcome's last line, under its list).
     var quietNote = false
@@ -630,12 +632,19 @@ struct TourTopPanel: View {
         todos.indices.first { !ticked.contains($0) && !page.locked.contains($0) } ?? max(todos.count - 1, 0)
     }
     private var currentDone: Bool { ticked.contains(current) }
+    /// The current to-do's own line, if it has one.
+    private var todoLead: String? {
+        guard let leads = page.activeSection?.todoLeads, leads.indices.contains(current) else { return nil }
+        return leads[current]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: isStrip ? 6 : 8) {
             // A chapter's end is the panel's one row (owner: no empty line over it): the big name, its ✓, ✕.
             if page.chapterDone {
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    // The ‹'s place, as in the line it replaces: the name lands where it will sit (no sideways jump).
+                    Color.clear.frame(width: 22, height: 30).padding(.leading, -6)
                     doneMoment
                     TourSkipX { confirmSkip = true }
                 }
@@ -804,9 +813,12 @@ struct TourTopPanel: View {
         .frame(height: 34)
     }
 
+    /// The tour's end: "Tour complete" stays the size it came in at (owner: the hand-off looked off).
+    private var isFinale: Bool { step == .settings && page.index == nil }
+
     private var chapterTitle: Text {
         let name = Text(page.index == nil && step == .intro ? TourCopy.Welcome.panelLabel : page.headline)
-            .font(.system(.headline, design: .rounded, weight: .semibold))
+            .font(.system(isFinale ? .title3 : .headline, design: .rounded, weight: .semibold))
             .foregroundStyle(Color.primary)
         guard let index = page.index, index > 0 else { return name }
         return Text("\(index)  ")
@@ -916,20 +928,23 @@ struct TourTopPanel: View {
             .frame(width: 22, height: 22)
             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentDone)
             VStack(alignment: .leading, spacing: 2) {
-                if let lead = page.shortLead {
-                    Text(lead)
-                        .font(.system(.caption, design: .rounded))
-                        .foregroundStyle(Color.primary.opacity(0.55))
+                // What it is, then what to do — the two move on together, to-do by to-do.
+                VStack(alignment: .leading, spacing: 2) {
+                    if let lead = todoLead ?? page.shortLead {
+                        Text(lead)
+                            .font(.system(.caption, design: .rounded))
+                            .foregroundStyle(Color.primary.opacity(0.6))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(todos.indices.contains(current) ? todos[current] : "")
+                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .foregroundStyle(Color.primary.opacity(currentDone ? 0.5 : 0.9))
+                        .lineLimit(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(todos.indices.contains(current) ? todos[current] : "")
-                    .font(.system(.subheadline, design: .rounded, weight: .medium))
-                    .foregroundStyle(Color.primary.opacity(currentDone ? 0.5 : 0.9))
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .id(current)
-                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
-                                            removal: .move(edge: .top).combined(with: .opacity)))
+                .id(current)
+                .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                        removal: .move(edge: .top).combined(with: .opacity)))
                 // Only under the qibla to-do (the circle's second); it showed under the first once the wait was up.
                 if qiblaSkip && current == 1 {
                     Button(TourCopy.Circle.noCompass, action: onSkipQibla)
@@ -1986,7 +2001,8 @@ struct BubbleShape: Shape {
         case .circle:
             // No colours demo (owner: "pretty self explanatory and the onboarding covers it"): what it shows, then try it.
             var shows = TourSection(id: "circle.shows", title: TourCopy.Circle.showsStep, blocks: [Self.circleBlocks[0]])
-            let tryIt = TourSection(id: "circle.try", title: TourCopy.tryIt, tasks: TourCopy.Circle.todos)
+            var tryIt = TourSection(id: "circle.try", title: TourCopy.tryIt, tasks: TourCopy.Circle.todos)
+            tryIt.todoLeads = TourCopy.Circle.todoLeads
             switch phase {
             case .learn:
                 var p = chapter(.circle, 0, of: 4, [shows], primary: TourCopy.Circle.tryButton)
@@ -2030,7 +2046,8 @@ struct BubbleShape: Shape {
                                locked: lockedList, primary: TourCopy.continueButton)
             }
             // The ones they can do now first, the waiting (greyed) ones after (owner).
-            let tryIt = TourSection(id: "list.try", title: TourCopy.tryIt, tasks: TourCopy.List.todos)
+            var tryIt = TourSection(id: "list.try", title: TourCopy.tryIt, tasks: TourCopy.List.todos)
+            tryIt.todoLeads = TourCopy.List.todoLeads
             return chapter(.list, 1 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 5, [tryIt],
                            locked: lockedList)
         case .zikr:
@@ -2060,7 +2077,8 @@ struct BubbleShape: Shape {
             here.done = true
             // Try it (owner): harmless moves only — the Reminders switch's sides, then its ⓘ.
             guard phase == .last else {
-                let tryIt = TourSection(id: "settings.try", title: TourCopy.tryIt, tasks: TourCopy.Settings.todos)
+                var tryIt = TourSection(id: "settings.try", title: TourCopy.tryIt, tasks: TourCopy.Settings.todos)
+                tryIt.todoLeads = TourCopy.Settings.todoLeads
                 return chapter(.settings, 2 + Double(ticked.intersection([0, 1, 2]).count), of: 5, [there, here, tryIt],
                                locked: lockedSettings)
             }
@@ -2450,6 +2468,8 @@ struct BubbleShape: Shape {
         // 4 · Settings: go there, then learn it at the top, then the tour's own row.
         case (.settings, .go, .settingsPage):
             TourExamples.shared.hide()   // off the Zikr page: the user's own tasks are back
+            // The Reminders switch starts on Notifications, so its try-its go in order (owner: it was on Fajr Alarm).
+            UserDefaults.standard.set("notifications", forKey: "settings.remindersTab")
             settingsScroll = (.top, settingsScroll.1 + 1)
             setPhase(.learn)
         case (.settings, .learn, .next): setPhase(.tryIt)
