@@ -24,28 +24,62 @@ struct SadaqahCharity: Identifiable, Hashable {
     let why: String
     let symbol: String
     let url: URL
+    /// The kinds of work it does (a charity can be in several; the page's filter).
+    var categories: Set<SadaqahCategory> = []
+}
+
+/// The page's filter: All, or one kind of work (owner: grouped once the list grows).
+enum SadaqahCategory: String, CaseIterable, Identifiable {
+    case atHome, relief, orphans, water
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .atHome: "Here at home"
+        case .relief: "Emergency relief"
+        case .orphans: "Orphans"
+        case .water: "Water"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .atHome: "house.fill"
+        case .relief: "cross.case.fill"
+        case .orphans: "figure.and.child.holdinghands"
+        case .water: "drop.fill"
+        }
+    }
 }
 
 enum SadaqahCharities {
-    /// The draft list (Izhan approves it), checked 2026-10-13: US 501(c)(3)s rated 4 stars by Charity Navigator, and Help
-    /// Yateem (owner's pick; a registered UK charity, no. 1158571, no Charity Navigator profile); each its own donation page. Left out: Islamic Relief USA (renamed IDEA after its split from Islamic Relief Worldwide in
+    /// The list, checked 2026-10-13 (Izhan approves it): US 501(c)(3)s rated 4 stars by Charity Navigator, plus the owner's
+    /// picks — Help Yateem (UK charity 1158571), Human Development Fund, MATW Project, Paani Project (US nonprofits, no
+    /// Charity Navigator star rating yet) — each on its own donation page. Left out: Islamic Relief USA (renamed IDEA after its split from Islamic Relief Worldwide in
     /// Sep 2026; irusa.org is gone), Mercy-USA (3 stars), and platforms (LaunchGood, MyTenNights).
     static let all: [SadaqahCharity] = [
         SadaqahCharity(id: "zakat", name: "Zakat Foundation of America", does: "Zakat, emergency relief and education worldwide",
                        why: "4 stars on Charity Navigator", symbol: "hands.and.sparkles.fill",
-                       url: URL(string: "https://www.zakat.org/donate")!),
+                       url: URL(string: "https://www.zakat.org/donate")!, categories: [.relief]),
         SadaqahCharity(id: "hhrd", name: "Helping Hand for Relief and Development", does: "Disaster relief, orphans, water and health",
                        why: "4 stars on Charity Navigator", symbol: "hand.raised.fill",
-                       url: URL(string: "https://www1.hhrd.org/DetailDonate")!),
+                       url: URL(string: "https://www1.hhrd.org/DetailDonate")!, categories: [.relief, .orphans, .water]),
+        SadaqahCharity(id: "hdf", name: "Human Development Fund", does: "Emergency food, clean water, orphans and medical relief",
+                       why: "US nonprofit", symbol: "heart.circle.fill",
+                       url: URL(string: "https://give.hdfund.org/campaign/649760/donate")!, categories: [.relief, .orphans, .water]),
+        SadaqahCharity(id: "matw", name: "MATW Project", does: "Water, orphans and food for those in need",
+                       why: "US nonprofit", symbol: "globe.asia.australia.fill",
+                       url: URL(string: "https://matwprojectusa.org/donate")!, categories: [.water, .orphans, .relief]),
+        SadaqahCharity(id: "paani", name: "Paani Project", does: "Wells, water aid and disaster relief in Pakistan",
+                       why: "US nonprofit, run by volunteers", symbol: "drop.fill",
+                       url: URL(string: "https://paaniproject.org/donate/")!, categories: [.water, .relief]),
         SadaqahCharity(id: "penny", name: "Penny Appeal USA", does: "Water, education and relief",
-                       why: "4 stars on Charity Navigator", symbol: "drop.fill",
-                       url: URL(string: "https://www.pennyappealusa.org/donate/")!),
+                       why: "4 stars on Charity Navigator", symbol: "drop.circle.fill",
+                       url: URL(string: "https://www.pennyappealusa.org/donate/")!, categories: [.water, .relief]),
         SadaqahCharity(id: "yateem", name: "Help Yateem", does: "Orphans and orphanages around the world",
                        why: "Registered UK charity", symbol: "figure.and.child.holdinghands",
-                       url: URL(string: "https://donate.helpyateem.org/")!),
+                       url: URL(string: "https://donate.helpyateem.org/")!, categories: [.orphans]),
         SadaqahCharity(id: "icna", name: "ICNA Relief USA", does: "Food pantries, shelters and disaster relief in the US",
                        why: "4 stars on Charity Navigator", symbol: "house.fill",
-                       url: URL(string: "https://icnarelief.org/donate/")!),
+                       url: URL(string: "https://icnarelief.org/donate/")!, categories: [.atHome, .relief]),
     ]
 }
 
@@ -178,6 +212,8 @@ struct SadaqahPage: View {
     @State private var asking: SadaqahCharity?
     /// Set by its Yes: the log sheet opens once the question has gone.
     @State private var confirmed: SadaqahCharity?
+    /// The charities shown: all, or one kind of work.
+    @State private var category: SadaqahCategory?
     /// Swiped away: asked once before it goes.
     @State private var deleting: SadaqahDonation?
 
@@ -189,7 +225,7 @@ struct SadaqahPage: View {
                 totals
             }
             Section {
-                ForEach(SadaqahCharities.all) { charity in
+                ForEach(SadaqahCharities.all.filter { c in category.map { c.categories.contains($0) } ?? true }) { charity in
                     Button {
                         // Always ask once the charity's page closes (owner).
                         SadaqahSafari.open(charity.url) { asking = charity }
@@ -197,7 +233,13 @@ struct SadaqahPage: View {
                         .buttonStyle(.plain)
                 }
             } header: {
-                Text("Give with confidence")
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Give with confidence")
+                    CategoryChips(selection: $category)
+                        .textCase(nil)
+                        .padding(.horizontal, -20)   // the chips run to the screen's edges, starting where the words do
+                        .padding(.bottom, 4)
+                }
             } footer: {
                 Text("Registered charities. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
             }
@@ -209,7 +251,7 @@ struct SadaqahPage: View {
                     Button { editing = DonationDraft(editing: d) } label: { DonationRow(donation: d) }
                         .buttonStyle(.plain)
                         // Not `.destructive`: the List would expect the row gone and the confirm never showed.
-                        .swipeActions { Button("Delete") { deleting = d }.tint(.red) }
+                        .swipeActions { Button { deleting = d } label: { Image(systemName: "trash.fill") }.tint(.red) }
                 }
                 if log.donations.count > 5 {
                     NavigationLink("All donations (\(log.donations.count))") { SadaqahHistoryPage() }
@@ -261,6 +303,39 @@ struct SadaqahPage: View {
         if zakat > 0 { parts.append("Zakat \(zakat.money())") }
         if ramadan > 0 { parts.append("Ramadan \(ramadan.money())") }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// All · Here at home · Emergency relief · Orphans · Water: one picked at a time.
+private struct CategoryChips: View {
+    @Binding var selection: SadaqahCategory?
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                chip("All", nil, nil)
+                ForEach(SadaqahCategory.allCases) { c in chip(c.title, c.symbol, c) }
+            }
+            .padding(.vertical, 4)
+        }
+        .contentMargins(.horizontal, 20, for: .scrollContent)
+    }
+
+    private func chip(_ title: String, _ symbol: String?, _ value: SadaqahCategory?) -> some View {
+        let on = selection == value
+        return Button {
+            withAnimation(.snappy(duration: 0.25)) { selection = value }
+        } label: {
+            HStack(spacing: 5) {
+                if let symbol { Image(systemName: symbol).font(.caption) }
+                Text(title)
+            }
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 13).padding(.vertical, 7)
+            .background(Capsule().fill(on ? Color.sage : Color.primary.opacity(0.07)))
+            .foregroundStyle(on ? Color.white : Color.primary)
+            .fixedSize()
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -336,7 +411,7 @@ struct SadaqahHistoryPage: View {
                         Button { editing = DonationDraft(editing: d) } label: { DonationRow(donation: d) }
                             .buttonStyle(.plain)
                             // Not `.destructive`: the List would expect the row gone and the confirm never showed.
-                            .swipeActions { Button("Delete") { asking = d }.tint(.red) }
+                            .swipeActions { Button { asking = d } label: { Image(systemName: "trash.fill") }.tint(.red) }
                     }
                 } header: {
                     HStack {
