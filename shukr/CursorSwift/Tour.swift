@@ -599,6 +599,8 @@ struct TourTopPanel: View {
     @State private var callOut = false
     /// The chapter's end, in steps: 0 the name comes down, 1 its ✓, 2 the next chapter swipes in.
     @State private var doneStage = 0
+    /// The tour's end: the panel's edge glows.
+    @State private var finaleGlow = false
     @Namespace private var titleSpace
 
     /// How long a chapter's end moment holds the panel (TourRuntime waits this long before the next chapter's line).
@@ -679,8 +681,8 @@ struct TourTopPanel: View {
                     look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(TourInk.green.opacity(pulse ? 1 : 0), lineWidth: pulse ? 3 : 1.5)
-                .shadow(color: TourInk.green.opacity(pulse ? 0.55 : 0), radius: pulse ? 10 : 0)
+                .strokeBorder(TourInk.green.opacity(pulse || finaleGlow ? 1 : 0), lineWidth: pulse || finaleGlow ? 3 : 1.5)
+                .shadow(color: TourInk.green.opacity(finaleGlow ? 0.75 : pulse ? 0.55 : 0), radius: finaleGlow ? 18 : pulse ? 10 : 0)
                 .allowsHitTesting(false)
         }
         .animation(.smooth(duration: 0.4), value: isStrip)
@@ -890,8 +892,14 @@ struct TourTopPanel: View {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) { doneStage = 1 }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             try? await Task.sleep(for: .seconds(0.7))
-            guard page.nextChapter != nil else { return }
+            guard let next = page.nextChapter else { return }
             withAnimation(.smooth(duration: 0.4)) { doneStage = 2 }
+            // "Tour complete": the panel itself glows green a moment (owner: on the panel, not the whole page).
+            if next.index == 0 {
+                withAnimation(.easeOut(duration: 0.3)) { finaleGlow = true }
+                try? await Task.sleep(for: .seconds(0.9))
+                withAnimation(.easeOut(duration: 0.9)) { finaleGlow = false }
+            }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(TourCopy.chapterDone(page.headline))
@@ -2148,9 +2156,7 @@ struct BubbleShape: Shape {
 
     /// A chapter just finished, its moment in the top panel.
     private(set) var celebrating: TourStep?
-    /// Bumped as "Tour complete" comes in: the screen's edge glows once (the first mark's glow — decision
-    /// first-mark-celebration A; confetti was turned down).
-    private(set) var finaleGlows = 0
+
 
     /// A chapter's end: its moment in the panel (1.5 s), then on.
     private func endChapter(_ card: TourStep, then next: @escaping () -> Void) {
@@ -2485,12 +2491,6 @@ struct BubbleShape: Shape {
                     self.settingsScroll = (.tourRow, self.settingsScroll.1 + 1)
                     self.setPhase(.last)
                 }
-                let thisRun = run
-                Task { @MainActor in   // the edge glow as "Tour complete" comes in
-                    try? await Task.sleep(for: .seconds(1.15))
-                    guard run == thisRun else { return }
-                    finaleGlows += 1
-                }
             }
         case (.settings, .last, .next): finish(completed: true)
         default: break
@@ -2689,10 +2689,6 @@ struct TourLayer: View {
             }
             backPill
             if !zikrTour { skipLayer }
-            // "Tour complete": the screen's edge glows once.
-            if runtime.finaleGlows > 0, !reduceMotion {
-                FirstMarkGlow().id(runtime.finaleGlows).allowsHitTesting(false)
-            }
         }
     }
 
