@@ -198,7 +198,7 @@ struct SnippetPreviewHost: View {
     }
     @ViewBuilder private func card(_ what: String) -> some View {
         switch what {
-        default: TodaysTimesSnippet(rows: rows)
+        default: TodaysTimesSnippet(rows: rows, now: Date().addingTimeInterval(-UserDefaults.standard.double(forKey: "snippetHoursAgo") * 3600))
         }
     }
 }

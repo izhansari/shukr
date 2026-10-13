@@ -1657,7 +1657,7 @@ struct GetTodaysPrayerTimesIntent: AppIntent {
         let lines = five.map { "\($0.name) \(shortTimePM($0.start))" }   // the output, as before: automations keep working
         let dark = await MainActor.run { UIScreen.main.traitCollection.userInterfaceStyle == .dark }
         return .result(value: lines, dialog: IntentDialog(stringLiteral: spoken),
-                       view: TodaysTimesSnippet(rows: rows).environment(\.colorScheme, dark ? .dark : .light))
+                       view: TodaysTimesSnippet(rows: rows, now: now).environment(\.colorScheme, dark ? .dark : .light))
     }
 }
 
@@ -1671,6 +1671,8 @@ struct TodaysTimesSnippet: View {
         var id: String { name }
     }
     let rows: [Row]
+    /// The moment it was asked (its "… left").
+    var now = Date()
     /// shukr's sage (Color.sage lives in the app target only; this file is the widget's too).
     static let sage = Color(red: 0.40, green: 0.64, blue: 0.50)
 
@@ -1694,6 +1696,14 @@ struct TodaysTimesSnippet: View {
         .padding(.horizontal, 12)
     }
 
+    /// "2 hr 29 min left", "29 min left", "under a minute left".
+    static func left(until end: Date, now: Date = Date()) -> String {
+        let m = Int((end.timeIntervalSince(now) / 60).rounded(.down))
+        if m < 1 { return "under a minute left" }
+        let h = m / 60, r = m % 60
+        return h == 0 ? "\(r) min left" : r == 0 ? "\(h) hr left" : "\(h) hr \(r) min left"
+    }
+
     private func row(_ r: Row) -> some View {
         let now = r.when == .now
         return HStack(spacing: 12) {
@@ -1715,7 +1725,7 @@ struct TodaysTimesSnippet: View {
                     .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
                     .monospacedDigit()
                 if now {
-                    Text("until \(shortTimePM(r.end))")
+                    Text(Self.left(until: r.end, now: self.now))   // time left, as the Live Activity says it (owner: not "until")
                         .font(.system(.caption, design: .rounded))
                         .foregroundStyle(.secondary)
                 }
