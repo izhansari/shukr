@@ -339,7 +339,7 @@ struct TourEditorPanel: View {
     @State private var shown = false
 
     private var inYellow: Bool { runtime.editorInYellow }
-    private var todos: [String] { TourCopy.List.editorTodos }
+    private var todos: [String] { TourCopy.List.editorTodos.map(TourCopyStore.shared.t) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -360,7 +360,7 @@ struct TourEditorPanel: View {
                 .padding(.trailing, 10)
             }
             .frame(height: 34)
-            Text(TourCopy.List.editorLine)
+            Text(TourCopyStore.shared.t(TourCopy.List.editorLine))
                 .font(.system(.caption, design: .rounded))
                 .foregroundStyle(Color.primary.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)

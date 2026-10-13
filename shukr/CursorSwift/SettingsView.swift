@@ -623,6 +623,18 @@ struct SettingsView: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("tourAgainRow", $0) }
                         // The Zikr tour again (owner): the Zikr page locked as a new person sees it, and there.
                         ZikrTourAgainRow()
+                        // The tour's words, editable with the panel drawn (owner; beta builds).
+                        if betaAccess.beta {
+                            NavigationLink {
+                                TourCopyTuner()
+                            } label: {
+                                Label {
+                                    Text("Tour copy")
+                                } icon: {
+                                    Image(systemName: "character.cursor.ibeam").foregroundStyle(Color(.label))
+                                }
+                            }
+                        }
                     }
                     .id("tourAgainRow")
                     // The tour's Settings card (v2): the top on arrival — the page has come to rest by then (scrolling

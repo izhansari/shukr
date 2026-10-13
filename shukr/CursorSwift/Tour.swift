@@ -723,11 +723,11 @@ struct TourTopPanel: View {
                 withAnimation(.easeOut(duration: 0.6)) { pulse = false }
             }
         }
-        .alert(TourCopy.Skip.alertTitle, isPresented: $confirmSkip) {
-            Button(TourCopy.Skip.alertKeep, role: .cancel) {}
-            Button(TourCopy.Skip.alertSkip, role: .destructive, action: onSkip)
+        .alert(TourCopyStore.shared.t(TourCopy.Skip.alertTitle), isPresented: $confirmSkip) {
+            Button(TourCopyStore.shared.t(TourCopy.Skip.alertKeep), role: .cancel) {}
+            Button(TourCopyStore.shared.t(TourCopy.Skip.alertSkip), role: .destructive, action: onSkip)
         } message: {
-            Text(TourCopy.Skip.alertLine)
+            Text(TourCopyStore.shared.t(TourCopy.Skip.alertLine))
         }
         .onAppear { Presence.shared.up = true }
         .onDisappear { Presence.shared.up = false }
@@ -2004,7 +2004,7 @@ struct BubbleShape: Shape {
             p.secondary = nil
             return p
         }
-        var p = page(for: step, phase: phase)
+        var p = page(for: step, phase: phase).applyingCopy()   // the owner's edits (TourCopyTuner)
         if let pending = pendingAck {
             p.pendingTodo = pending
             // Nothing else to do until →: no thumbprint, no next to-do.
@@ -2620,6 +2620,22 @@ struct BubbleShape: Shape {
     /// One step back within the chapter: its practice state as the step needs it (a to-do step left: its ticks and
     /// what they changed are undone — the circle's Asr unmarked again), the step's page back as it was.
     private func goBack(from step: TourStep) {
+        // Inside a chapter's to-dos, ‹ is one step back (owner: it went to the chapter's start): a held to-do goes back to
+        // being done again; otherwise the last one done is shown held (its teaching line), or undone if it has none.
+        // (The circle's mark is the branch below: it unmarks Asr.)
+        if step.isCard, phase == .tryIt, !(step == .circle && ticked.contains(2)), !ticked.isEmpty || pendingAck != nil {
+            if let i = pendingAck {
+                undo(i, in: step)
+            } else if let m = ticked.max() {
+                let after = page(for: step, phase: phase).activeSection?.todoAfters ?? []
+                if after.indices.contains(m), !after[m].isEmpty {
+                    withAnimation(.smooth(duration: 0.35)) { pendingAck = m }
+                } else {
+                    undo(m, in: step)
+                }
+            }
+            return
+        }
         guard let back = previousPhase else { return }
         // Back from chapter 2's first line (the circle marked): the hold again, Asr unmarked (prepare), its first two
         // to-dos still done.
@@ -2701,6 +2717,33 @@ struct BubbleShape: Shape {
             folding = nil
             qiblaSkippable = false
             phase = back
+        }
+    }
+
+    /// The tuner's picture of a screen: a runtime of its own with that state, the page it would show (no edits laid on).
+    static func previewPage(_ step: TourStep, _ phase: TourPhase, ticked: Set<Int>, pending: Int?) -> TourPage {
+        let r = TourRuntime()
+        r.step = step
+        r.phase = phase
+        r.ticked = ticked
+        r.pendingAck = pending
+        var p = r.page(for: step, phase: phase)
+        if let pending, let after = p.activeSection?.todoAfters, after.indices.contains(pending), !after[pending].isEmpty {
+            p.pendingTodo = pending
+        }
+        return p
+    }
+
+    /// A to-do to do again: its tick gone, and what it changed put back (Fajr's time; the Reminders switch).
+    private func undo(_ i: Int, in step: TourStep) {
+        if step == .list, i == 3 { prepare(.list) }   // Fajr late again
+        if step == .settings {
+            let sides = ["notifications", "liveActivities", "fajrAlarm"]
+            if sides.indices.contains(i) { UserDefaults.standard.set(sides[i], forKey: "settings.remindersTab") }
+        }
+        withAnimation(.smooth(duration: 0.35)) {
+            ticked.remove(i)
+            pendingAck = nil
         }
     }
 
@@ -3052,7 +3095,8 @@ extension TourLayer {
             if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.2, y: c.midY + c.height * 0.22)) }
             // The swipe up waits for chapter 2's line (owner: it came as the chapter's end moment began).
             if next(3) {
-                guard runtime.beat == nil, runtime.celebrating == nil else { return nil }
+                // Only once chapter 2's line is in (owner): not during the hold, the ✓ beat or the chapter's moment.
+                guard runtime.beat == nil, runtime.celebrating == nil, runtime.pendingAck == nil else { return nil }
                 return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) }
             }
             return nil
