@@ -651,12 +651,28 @@ struct ShowcasePicture: View {
                 picture.scaleEffect((scale ?? (big ? 1.7 : compact ? 0.8 : 1)) * fit)
             }
         }
+        .overlay(alignment: .topLeading) {
+            // Which sizes it comes in (owner: the top left of the picture, for the text), over the widgets.
+            if !thumb, let sizes = sizesCaption {
+                Text(sizes).font(.system(.caption2, design: .rounded, weight: .semibold)).textCase(.uppercase)
+                    .foregroundStyle(.secondary).padding(12)
+            }
+        }
         .clipped()
     }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
     private var fit: CGFloat {
-        id == .controlCenter ? 0.7 : id.isControl ? 0.8 : id.isSiri ? 0.5 : id == .homePrayers ? 0.8 : id == .homeZikr ? 0.62 : 1
+        id == .controlCenter ? 0.7 : id.isControl ? 0.8 : id.isSiri ? 0.5 : id == .homePrayers ? 0.8 : (id == .homeZikr || id == .homeName) ? 0.55 : id == .homeAyah ? 0.4 : 1
+    }
+
+    private var sizesCaption: String? {
+        switch id {
+        case .homePrayers: "Small"
+        case .homeZikr, .homeName: "Small · Medium"
+        case .homeAyah: "Medium · Large"
+        default: nil
+        }
     }
 
     private var controlSymbol: String? {
@@ -686,8 +702,6 @@ struct ShowcasePicture: View {
         case _ where id.isControl: night
         case _ where id.isSiri: sage   // the cards as they look in the Shortcuts app
         case .standby: Color.black
-        case .homeName: LinearGradient(colors: [Color(red: 0.18, green: 0.42, blue: 0.33), Color(red: 0.56, green: 0.77, blue: 0.65)],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing)
         case .prayersMap: MapGrid()
         default: sage
         }
@@ -704,22 +718,8 @@ struct ShowcasePicture: View {
         // widgets"); on an item's page the Prayers widget plays its taps.
         case .homePrayers: RealPrayersWidget(playing: big || live)
         case .homeZikr: RealZikrWidget()
-        case .homeName:
-            let n = NamesOfAllah.nameOfTheDay()
-            WidgetTile(fill: Color(red: 0.98, green: 0.97, blue: 0.94)) {
-                VStack(spacing: 3) {
-                    Text(n.arabic).font(.system(size: 20)).foregroundStyle(Color(red: 0.18, green: 0.35, blue: 0.27))
-                    Text(n.meaning).font(.system(size: 9, design: .rounded)).foregroundStyle(.secondary).multilineTextAlignment(.center).lineLimit(2)
-                }
-                .padding(.horizontal, 4)
-            }
-        case .homeAyah:
-            WidgetTile(width: 170, height: 82) {
-                VStack(spacing: 4) {
-                    Text("رَبِّ زِدْنِي عِلْمًا").font(.system(size: 16)).foregroundStyle(Color(red: 0.18, green: 0.35, blue: 0.27))
-                    Text("Ta-Ha · 20:114").font(.system(size: 9.5, design: .rounded)).foregroundStyle(.secondary)
-                }
-            }
+        case .homeName: RealNameWidget()
+        case .homeAyah: RealAyahWidget()
         case .lockTime:
             LockClock { LockCircle(text: "\(min(p.minutesLeft, 59))m") }
         case .lockCountdown:
@@ -1004,17 +1004,71 @@ extension PrayersWidgetEntry {
     }
 }
 
-/// The Zikr widget itself, at its wide (medium) size — outside a real widget the view draws its medium layout: your tasks,
-/// or stand-ins without any.
-struct RealZikrWidget: View {
+/// A real widget's view at one size, on its own background, never taking a touch (its buttons would really run).
+private struct SizedWidget<Content: View, Background: View>: View {
+    let family: WidgetFamily
+    @ViewBuilder let content: () -> Content
+    @ViewBuilder let background: () -> Background
+    static func size(_ f: WidgetFamily) -> CGSize {
+        let s = RealPrayersWidget.side
+        switch f {
+        case .systemMedium: return CGSize(width: s * 2 + 18, height: s)
+        case .systemLarge: return CGSize(width: s * 2 + 18, height: s * 2 + 18)
+        default: return CGSize(width: s, height: s)
+        }
+    }
     var body: some View {
-        ZikrTasksWidgetView(entry: ZikrTasksEntry(date: Date(), tasks: ShowcaseSamples.zikrTasks, storeReady: true))
+        let size = Self.size(family)
+        content()
             .padding(14)
-            .frame(width: RealPrayersWidget.side * 2 + 18, height: RealPrayersWidget.side)
-            .background(Color("widgetBgColor"))
+            .frame(width: size.width, height: size.height)
+            .background(background())
             .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
             .shadow(color: .black.opacity(0.15), radius: 10, y: 5)
             .allowsHitTesting(false)
+    }
+}
+
+/// Every size a widget comes in, side by side (owner: "the Zikr task can be the small one or the big one, I would like
+/// it to show in the graphic").
+private struct WidgetSizes<Content: View, Background: View>: View {
+    let families: [WidgetFamily]
+    @ViewBuilder let content: (WidgetFamily) -> Content
+    @ViewBuilder let background: () -> Background
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            ForEach(families, id: \.self) { f in SizedWidget(family: f, content: { content(f) }, background: background) }
+        }
+    }
+}
+
+/// The Zikr widget itself, small and medium: your tasks, or stand-ins without any.
+struct RealZikrWidget: View {
+    var body: some View {
+        WidgetSizes(families: [.systemSmall, .systemMedium]) { f in
+            ZikrTasksWidgetView(entry: ZikrTasksEntry(date: Date(), tasks: ShowcaseSamples.zikrTasks, storeReady: true), familyOverride: f)
+        } background: { Color("widgetBgColor") }
+    }
+}
+
+/// The Name of the Day widget itself, small and medium, today's Name.
+struct RealNameWidget: View {
+    var body: some View {
+        WidgetSizes(families: [.systemSmall, .systemMedium]) { f in
+            NameOfTheDayView(entry: NameOfTheDayEntry(date: Date(), name: NamesOfAllah.nameOfTheDay()), familyOverride: f)
+        } background: { BrandBackground() }
+    }
+}
+
+/// The Daily Ayah widget itself, medium and large: today's verse once it's revealed, else the widget's own sample (never
+/// spoils the reveal).
+struct RealAyahWidget: View {
+    var body: some View {
+        WidgetSizes(families: [.systemMedium, .systemLarge]) { f in
+            DailyAyahWidgetView(entry: DailyAyahEntry(date: Date(),
+                                                      ayah: DailyAyahWidgetPayload.load().flatMap { $0.isToday ? $0 : nil } ?? DailyAyahProvider.sample),
+                                familyOverride: f)
+        } background: { BrandBackground() }
     }
 }
 

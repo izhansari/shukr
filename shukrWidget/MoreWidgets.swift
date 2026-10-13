@@ -41,7 +41,8 @@ enum Brand {   // (internal: the Prayers widget uses sage too)
     static func ink(_ scheme: ColorScheme) -> Color { scheme == .dark ? .white : inkLight }
 }
 
-private struct BrandBackground: View {
+/// (internal: Explore draws the real widgets on it in the app.)
+struct BrandBackground: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         if scheme == .dark {
@@ -255,7 +256,10 @@ private struct ZikrWidgetTaskRow: View {
 /// Like the Reminders widget: the ring and a big count on top, the list's name, then the tasks.
 struct ZikrTasksWidgetView: View {
     let entry: ZikrTasksEntry
-    @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetFamily) private var widgetFamily
+    /// Explore (in the app) draws each size side by side; a real widget leaves it nil and reads its own.
+    var familyOverride: WidgetFamily? = nil
+    private var family: WidgetFamily { familyOverride ?? widgetFamily }
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -424,7 +428,10 @@ struct NameOfTheDayProvider: TimelineProvider {
 
 struct NameOfTheDayView: View {
     let entry: NameOfTheDayEntry
-    @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetFamily) private var widgetFamily
+    /// Explore (in the app) draws each size side by side; a real widget leaves it nil and reads its own.
+    var familyOverride: WidgetFamily? = nil
+    private var family: WidgetFamily { familyOverride ?? widgetFamily }
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -562,7 +569,10 @@ struct DailyAyahProvider: TimelineProvider {
 
 struct DailyAyahWidgetView: View {
     let entry: DailyAyahEntry
-    @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetFamily) private var widgetFamily
+    /// Explore (in the app) draws each size side by side; a real widget leaves it nil and reads its own.
+    var familyOverride: WidgetFamily? = nil
+    private var family: WidgetFamily { familyOverride ?? widgetFamily }
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
