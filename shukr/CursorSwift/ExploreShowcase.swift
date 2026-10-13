@@ -845,7 +845,7 @@ struct ShowcasePicture: View {
             ShortcutSheetShot(dialog: ZikrTasksSnippet.spoken(tasks)) { ZikrTasksSnippet(tasks: tasks) }
         case .siriMosques:
             ShortcutSheetShot(dialog: NearbyMosquesSearch.spoken(ShowcaseSamples.mosques)) {
-                NearbyMosquesSnippet(outcome: ShowcaseSamples.mosques, map: nil)
+                NearbyMosquesSnippet(outcome: ShowcaseSamples.mosques, map: ShowcaseSamples.fakeMap(dark: scheme == .dark))
             }
         case .siriPrayedHere:
             let here = ShowcaseSamples.prayedHere
@@ -980,6 +980,46 @@ private struct ShortcutTiles: View {
         }
         return .found(here: here, Array(list))
     }
+    /// A drawn stand-in for the Nearby Mosques card's map strip (owner: "add a fake map"): land, a park, water, roads,
+    /// a highway, three sage pins (the nearest larger) and the blue dot — the real card's snapshot needs a location.
+    static func fakeMap(dark: Bool) -> UIImage {
+        let size = CGSize(width: 360, height: 110)
+        func c(_ light: UInt32, _ night: UInt32) -> UIColor {
+            let v = dark ? night : light
+            return UIColor(red: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+        }
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            let g = ctx.cgContext
+            c(0xF2EFE9, 0x2B2D31).setFill(); g.fill(CGRect(origin: .zero, size: size))
+            c(0xCDE8C4, 0x2F3E33).setFill()
+            UIBezierPath(roundedRect: CGRect(x: 30, y: 10, width: 70, height: 40), cornerRadius: 14).fill()
+            UIBezierPath(roundedRect: CGRect(x: 250, y: 66, width: 60, height: 34), cornerRadius: 12).fill()
+            let water = UIBezierPath()
+            water.move(to: CGPoint(x: 360, y: 0)); water.addCurve(to: CGPoint(x: 300, y: 40), controlPoint1: CGPoint(x: 330, y: 8), controlPoint2: CGPoint(x: 312, y: 22))
+            water.addCurve(to: CGPoint(x: 360, y: 60), controlPoint1: CGPoint(x: 296, y: 52), controlPoint2: CGPoint(x: 330, y: 58))
+            water.close(); c(0xAAD3F2, 0x1F3348).setFill(); water.fill()
+            func road(_ pts: [CGPoint], _ w: CGFloat, _ color: UIColor) {
+                let p = UIBezierPath(); p.move(to: pts[0]); pts.dropFirst().forEach { p.addLine(to: $0) }
+                p.lineWidth = w; p.lineCapStyle = .round; p.lineJoinStyle = .round; color.setStroke(); p.stroke()
+            }
+            let street = c(0xFFFFFF, 0x45474D)
+            road([CGPoint(x: 0, y: 70), CGPoint(x: 140, y: 64), CGPoint(x: 360, y: 82)], 4, street)
+            road([CGPoint(x: 120, y: 0), CGPoint(x: 128, y: 110)], 4, street)
+            road([CGPoint(x: 210, y: 0), CGPoint(x: 196, y: 110)], 3, street)
+            road([CGPoint(x: 0, y: 28), CGPoint(x: 360, y: 20)], 3, street)
+            road([CGPoint(x: 0, y: 100), CGPoint(x: 90, y: 40), CGPoint(x: 260, y: 0)], 6, c(0xF6D98B, 0x5A5240))
+            let sage = UIColor(red: 0.40, green: 0.64, blue: 0.50, alpha: 1)
+            func dot(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat, _ fill: UIColor, ring: CGFloat) {
+                UIColor.white.setFill(); UIBezierPath(ovalIn: CGRect(x: x - r - ring, y: y - r - ring, width: 2 * (r + ring), height: 2 * (r + ring))).fill()
+                fill.setFill(); UIBezierPath(ovalIn: CGRect(x: x - r, y: y - r, width: 2 * r, height: 2 * r)).fill()
+            }
+            dot(240, 44, 5, sage, ring: 2)
+            dot(82, 86, 5, sage, ring: 2)
+            dot(160, 40, 7, sage, ring: 2)
+            dot(146, 60, 5, .systemBlue, ring: 2.5)
+        }
+    }
+
     static var prayedHere: PrayedHere {
         var s = PrayedHere(here: CLLocation(latitude: 0, longitude: 0))
         s.place = MosqueFavorites.all.first?.name ?? "Your masjid"
