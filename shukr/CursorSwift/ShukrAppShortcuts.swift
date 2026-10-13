@@ -56,20 +56,6 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         )
 
         AppShortcut(
-            intent: FindNearbyMosquesIntent(),
-            phrases: [
-                "Nearby mosques in \(.applicationName)",
-                "Open nearby mosques in \(.applicationName)",
-                "Find nearby mosques in \(.applicationName)",
-                "Find a mosque in \(.applicationName)",
-                "Mosques near me in \(.applicationName)",
-                "Find a masjid in \(.applicationName)"
-            ],
-            shortTitle: "Open Nearby Mosques",
-            systemImageName: "building.columns"
-        )
-
-        AppShortcut(
             intent: OpenShukrIntent(),
             phrases: [
                 "Open \(\.$page) in \(.applicationName)",
@@ -141,6 +127,32 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             )
 
             AppShortcut(
+                intent: NearbyMosquesNowIntent(),
+                phrases: [
+                    "Nearby mosques in \(.applicationName)",
+                    "Find nearby mosques in \(.applicationName)",
+                    "Find a mosque in \(.applicationName)",
+                    "Mosques near me in \(.applicationName)",
+                    "Find a masjid in \(.applicationName)",
+                    "Nearest mosque in \(.applicationName)"
+                ],
+                shortTitle: "Nearby Mosques",
+                systemImageName: "building.columns"
+            )
+
+            AppShortcut(
+                intent: PrayedHereIntent(),
+                phrases: [
+                    "How many times have I prayed here in \(.applicationName)",
+                    "Have I prayed here in \(.applicationName)",
+                    "When did I last pray here in \(.applicationName)",
+                    "My prayers here in \(.applicationName)"
+                ],
+                shortTitle: "Prayed Here",
+                systemImageName: "mappin.and.ellipse"
+            )
+
+            AppShortcut(
                 intent: MarkPrayedNowIntent(),
                 phrases: [
                     "I prayed in \(.applicationName)",
@@ -204,6 +216,12 @@ enum IntentSelfTest {
 /// `-snippetPreview today`: the Shortcuts cards over a Siri-like frost, at the times now (the simulator can't run the
 /// real shortcut). With `-snippetDark YES` in dark.
 struct SnippetPreviewHost: View {
+    // `-snippetPreview mosques|here`: the place cards, loaded as the shortcuts load them.
+    @State private var mosquesCard: AnyView?
+    @State private var hereCard: AnyView?
+    @State private var mosquesLine = "…"
+    @State private var hereLine = "…"
+
     var body: some View {
         if let what = UserDefaults.standard.string(forKey: "snippetPreview") {
             ZStack {
@@ -219,6 +237,30 @@ struct SnippetPreviewHost: View {
                 .padding(.top, 60)
             }
             .environment(\.colorScheme, UserDefaults.standard.bool(forKey: "snippetDark") ? .dark : .light)
+            .task { await loadPlaces(what) }
+        }
+    }
+
+    @MainActor private func loadPlaces(_ what: String) async {
+        let dark = UserDefaults.standard.bool(forKey: "snippetDark")
+        if what == "mosques" {
+            let outcome = await NearbyMosquesSearch.run()
+            mosquesLine = NearbyMosquesSearch.spoken(outcome)
+            var map: UIImage?
+            if case .found(let here, let list) = outcome, !list.isEmpty {
+                map = await PlaceShortcutPreview.snapshot(here: here.coordinate, pins: list.map(\.coordinate), hereIsPin: false,
+                                                          size: CGSize(width: 360, height: 150), dark: dark)
+            }
+            mosquesCard = AnyView(NearbyMosquesSnippet(outcome: outcome, map: map))
+        } else if what == "here" {
+            let s = await PrayedHereLookup.run()
+            hereLine = s?.spoken ?? "I couldn’t tell where you are right now."
+            var map: UIImage?
+            if let s {
+                map = await PlaceShortcutPreview.snapshot(here: s.here.coordinate, pins: [], hereIsPin: true,
+                                                          size: CGSize(width: 64, height: 64), dark: dark)
+            }
+            hereCard = AnyView(PrayedHereSnippet(summary: s, map: map))
         }
     }
 
@@ -231,6 +273,8 @@ struct SnippetPreviewHost: View {
         case "prayed": return "Asr marked as prayed. Perfect."
         case "alarm": return "Your Fajr alarm is at 6:00 AM."
         case "tasks": return ZikrTasksSnippet.spoken(ZikrTaskSnapshot.today() ?? [])
+        case "mosques": return mosquesLine
+        case "here": return hereLine
         case "alarmoff": return "Your Fajr alarm rule gives 6:00 AM, but the alarm is off."
         default: break
         }
@@ -252,6 +296,8 @@ struct SnippetPreviewHost: View {
         case "alarm": ShortcutCards.fajrAlarm?(false, Date().addingTimeInterval(86400)) ?? AnyView(EmptyView())
         case "alarmoff": ShortcutCards.fajrAlarm?(true, Date().addingTimeInterval(86400)) ?? AnyView(EmptyView())
         case "tasks": ZikrTasksSnippet(tasks: ZikrTaskSnapshot.today() ?? [])
+        case "mosques": if let mosquesCard { mosquesCard }
+        case "here": if let hereCard { hereCard }
         default: TodaysTimesSnippet(rows: rows, now: now)
         }
     }

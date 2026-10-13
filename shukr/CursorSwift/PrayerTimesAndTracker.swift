@@ -172,6 +172,9 @@ struct PrayerTimesView: View {
             // "Find Nearby Mosques" (Shortcuts / Siri): the map, on its mosques.
             let openMosques = store.bool(forKey: FindNearbyMosquesIntent.flag)
             if openMosques { store.set(false, forKey: FindNearbyMosquesIntent.flag) }
+            // Prayed Here's "See your prayers on the map": the map on its prayer spots.
+            let openSpots = store.bool(forKey: OpenPrayerSpotsIntent.flag)
+            if openSpots { store.set(false, forKey: OpenPrayerSpotsIntent.flag) }
             // Whatever is covering the page (the map, a pushed page) goes first, or the
             // widget's page opened behind it (owner, 2026-09-26).
             let zikrTaskID = store.string(forKey: "widgetZikrTask")
@@ -262,16 +265,16 @@ struct PrayerTimesView: View {
                 }
             }
 
-            if openMosques || openCompassFromWidget {
+            if openMosques || openSpots || openCompassFromWidget {
                 if showQiblaMap {
                     // Already open (on another layer, say): switch it — "Open qibla" left it on the mosques (review).
-                    MapOpenRequest.layer = openMosques ? .mosques : .qibla
+                    MapOpenRequest.layer = openMosques ? .mosques : openSpots ? .prayers : .qibla
                     NotificationCenter.default.post(name: MapOpenRequest.changed, object: nil)
                 } else {
                     openFromWidget {
                         // Set only once it really opens (an open skipped under a tasbeeh session left it waiting for the
                         // next time the map was opened by hand — review). The qibla is the map's own first layer.
-                        MapOpenRequest.layer = openMosques ? .mosques : nil
+                        MapOpenRequest.layer = openMosques ? .mosques : openSpots ? .prayers : nil
                         instantly {
                             sharedState.navPosition = .main
                             showQiblaMap = true

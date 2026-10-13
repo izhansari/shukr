@@ -275,7 +275,7 @@ final class ShortcutsOnDeviceTests: XCTestCase {
         for _ in 0..<3 { shortcuts.swipeDown() }   // the tiles sit above the grouped choices
         let tile = shortcuts.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
         for _ in 0..<5 where !(tile.exists && tile.isHittable) { shortcuts.swipeUp() }
-        if tile.exists { tile.tap(); sleep(5) } else {
+        if tile.exists { tile.tap(); sleep(UInt32(env["SHORTCUT_WAIT"].flatMap { UInt32($0) } ?? 5)) } else {
             tree("tree-" + title)
             // Not on the page: the Shortcuts app's own search finds the action.
             let search = shortcuts.searchFields.firstMatch

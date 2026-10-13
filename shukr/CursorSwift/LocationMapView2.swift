@@ -968,7 +968,7 @@ struct LocationMapContentView: View {
         guard let layer = MapOpenRequest.layer else { return }
         MapOpenRequest.layer = nil
         if seconds > 0 { try? await Task.sleep(for: .seconds(seconds)) }
-        setMode(prayers: false, mosques: layer == .mosques)
+        setMode(prayers: layer == .prayers, mosques: layer == .mosques)
     }
 
     private func setMode(prayers: Bool, mosques: Bool) {
@@ -2627,7 +2627,7 @@ struct PrayerSpotsVerse: View {
 /// The map opened from outside on a layer (Find Nearby Mosques): PrayerTimesView sets it before showing the map; the map
 /// takes it once. `changed` when the map is already up.
 @MainActor enum MapOpenRequest {
-    enum Layer { case qibla, mosques }
+    enum Layer { case qibla, mosques, prayers }
     static var layer: Layer?
     static let changed = Notification.Name("MapOpenRequest.changed")
 }

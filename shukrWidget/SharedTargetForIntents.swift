@@ -2511,6 +2511,9 @@ struct OpenShukrIntent: AppIntent {
 struct FindNearbyMosquesIntent: AppIntent {
     static let flag = "widgetMosques"
     static var title: LocalizedStringResource = "Open Nearby Mosques"   // it opens shukr, so it says Open (owner)
+    /// Replaced on iOS 26 by Find Nearby Mosques' card (decision nearby-mosques-card A); still the card's "Open in shukr"
+    /// and saved shortcuts.
+    static var isDiscoverable: Bool = false
     static var description = IntentDescription("Opens shukr's map on the mosques near you: their pins, and the nearest in a list.",
                                                categoryName: "Open shukr", searchKeywords: ["masjid", "mosque", "near me", "find", "jumuah", "map"])
     static var openAppWhenRun: Bool = true

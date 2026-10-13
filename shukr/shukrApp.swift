@@ -165,6 +165,7 @@ struct shukrApp: App {
             case "mosques": group.set(true, forKey: FindNearbyMosquesIntent.flag)   // Find Nearby Mosques
             case "memories": group.set(true, forKey: "widgetMemories")
             case "list": group.set(true, forKey: OpenPrayerListIntent.flag)   // the Today's Prayers control
+            case "spots": group.set(true, forKey: OpenPrayerSpotsIntent.flag)   // Prayed Here's map button
             case let s where s.hasPrefix("start:"):   // a row of the Zikr Tasks card
                 group.set(String(s.dropFirst(6)), forKey: StartZikrTaskIntent.idKey)
                 group.set(true, forKey: StartZikrTaskIntent.flag)
