@@ -260,6 +260,23 @@ final class ShortcutsOnDeviceTests: XCTestCase {
         if row.exists { row.tap(); sleep(2) }
     }
 
+    /// One tile, named by `SHORTCUT_TILE` (default Today's Times), then Siri with `SHORTCUT_PHRASE` if set.
+    func testOneTile() throws {
+        let env = ProcessInfo.processInfo.environment
+        let title = env["SHORTCUT_TILE"] ?? "Today's Times"
+        openShukrPage()
+        let tile = shortcuts.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
+        if tile.waitForExistence(timeout: 3) { tile.tap(); sleep(5) }
+        shot("tile-" + title)
+        if let phrase = env["SHORTCUT_PHRASE"] {
+            XCUIDevice.shared.press(.home); sleep(1)
+            XCUIDevice.shared.siriService.activate(voiceRecognitionText: phrase)
+            sleep(7)
+            shot("siri-" + phrase)
+        }
+        XCUIDevice.shared.press(.home)
+    }
+
     func testTilesAndSiri() throws {
         continueAfterFailure = true
         openShukrPage()

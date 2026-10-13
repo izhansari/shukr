@@ -1623,22 +1623,97 @@ struct GetTodaysPrayerTimesIntent: AppIntent {
         "Today's five prayer times with your method and madhab, as a list: what's passed (✓ when you marked it), what's on now, what's to come.",
         categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "schedule", "timetable", "today"], resultValueName: "Prayer Times")
 
-    func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog & ShowsSnippetView {
         let now = Date()
         let five = PrayerWindows.today(now)
         guard !five.isEmpty else { throw PrayerTimeUnavailable() }
         let done = SharedStore.completedPrayerNamesToday()
-        func row(_ w: PrayerWindows.Window) -> String {
-            "• \(w.name)  \(shortTimePM(w.start))\(done.contains(w.name) ? "  ✓" : "")"
+        let rows = five.map { w in
+            TodaysTimesSnippet.Row(name: w.name, start: w.start, end: w.end, marked: done.contains(w.name),
+                                   when: w.end <= now ? .earlier : w.start <= now ? .now : .coming)
         }
-        let past = five.filter { $0.end <= now }, on = five.filter { $0.start <= now && now < $0.end },
-            coming = five.filter { $0.start > now }
-        var parts: [String] = []
-        if !past.isEmpty { parts.append((["Earlier"] + past.map(row)).joined(separator: "\n")) }
-        if !on.isEmpty { parts.append((["Now"] + on.map { row($0) + " · until \(shortTimePM($0.end))" }).joined(separator: "\n")) }
-        if !coming.isEmpty { parts.append((["Still to come"] + coming.map(row)).joined(separator: "\n")) }
-        let lines = five.map { "\($0.name) \(shortTimePM($0.start))" }
-        return .result(value: lines, dialog: IntentDialog(stringLiteral: parts.joined(separator: "\n\n")))
+        // Said short (owner): what's on, else what's next; the list is for the eyes.
+        let spoken: String
+        if let on = five.first(where: { $0.start <= now && now < $0.end }) {
+            spoken = "\(on.name) is on until \(shortTimePM(on.end))."
+        } else if let next = five.first(where: { $0.start > now }) {
+            spoken = "\(noPrayerOnLine) \(next.name) starts at \(shortTimePM(next.start))."
+        } else if let fajr = PrayerWindows.pick(.fajr, now: now) {
+            spoken = "That's all five for today. Fajr is at \(shortTimePM(fajr.start))."
+        } else {
+            spoken = "That's all five for today."
+        }
+        let lines = five.map { "\($0.name) \(shortTimePM($0.start))" }   // the output, as before: automations keep working
+        return .result(value: lines, dialog: IntentDialog(stringLiteral: spoken), view: TodaysTimesSnippet(rows: rows))
+    }
+}
+
+/// Today's Times as a list (owner: "a real list … three headings, one row per prayer with its symbol, name and time, the
+/// current one highlighted, in shukr's look"): Earlier (dimmed, ✓ when marked) · Now (a soft sage card, "until …") ·
+/// Still to come. Siri and Shortcuts show it under the spoken line; it follows the phone's light or dark.
+struct TodaysTimesSnippet: View {
+    enum When: Int { case earlier, now, coming }
+    struct Row: Identifiable {
+        let name: String, start: Date, end: Date, marked: Bool, when: When
+        var id: String { name }
+    }
+    let rows: [Row]
+    /// shukr's sage (Color.sage lives in the app target only; this file is the widget's too).
+    static let sage = Color(red: 0.40, green: 0.64, blue: 0.50)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach([When.earlier, .now, .coming], id: \.self) { when in
+                let part = rows.filter { $0.when == when }
+                if !part.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(when == .earlier ? "Earlier" : when == .now ? "Now" : "Still to come")
+                            .font(.system(.caption, design: .rounded, weight: .semibold))
+                            .textCase(.uppercase)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 10)
+                        ForEach(part) { row($0) }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
+    }
+
+    private func row(_ r: Row) -> some View {
+        let now = r.when == .now
+        return HStack(spacing: 12) {
+            Image(systemName: prayerIcon(for: r.name).replacingOccurrences(of: ".fill", with: ""))
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(now ? Self.sage : Color.secondary)
+                .frame(width: 24)
+            Text(r.name)
+                .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
+            if r.marked {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Self.sage)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(shortTimePM(r.start))
+                    .font(.system(.body, design: .rounded, weight: now ? .semibold : .regular))
+                    .monospacedDigit()
+                if now {
+                    Text("until \(shortTimePM(r.end))")
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, now ? 9 : 6)
+        .background {
+            if now { RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Self.sage.opacity(0.16)) }
+        }
+        .opacity(r.when == .earlier ? 0.55 : 1)
+        .accessibilityElement(children: .combine)
     }
 }
 

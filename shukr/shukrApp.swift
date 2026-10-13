@@ -311,6 +311,9 @@ struct shukrApp: App {
             // The look for the root's overlays too (the setup, the welcome): they read the stored picks per access, not
             // reactively, without it (audit F, U5).
             .circleThemeRoot()
+            #if DEBUG
+            .overlay { SnippetPreviewHost() }   // `-snippetPreview today`
+            #endif
             .task { await StoreFallback.alertOnce() }   // the store couldn't be opened: say so, once per launch
             // A shared task opened in shukr (TaskSharing): PrayerTimesView takes it to the Zikr page's review.
             .onOpenURL { TaskSharing.shared.receive($0) }

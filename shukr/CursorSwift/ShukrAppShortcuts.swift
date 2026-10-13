@@ -9,6 +9,7 @@
 //
 
 import AppIntents
+import SwiftUI
 
 struct PrayerTimeShortcuts: AppShortcutsProvider {
     /// The tiles in the Shortcuts app, in shukr's sage (owner: "add color to match our branding").
@@ -153,6 +154,48 @@ enum IntentSelfTest {
             log("Time Left: \((try? await PrayerTimeLeftIntent().perform()).map(line) ?? "threw")")
             log("Today: \((try? await GetTodaysPrayerTimesIntent().perform()).map(line) ?? "threw")")
             log("Fajr alarm: \((try? await FajrAlarmTimeIntent().perform()).map(line) ?? "threw")")
+        }
+    }
+}
+#endif
+
+#if DEBUG
+/// `-snippetPreview today`: the Shortcuts cards over a Siri-like frost, at the times now (the simulator can't run the
+/// real shortcut). With `-snippetDark YES` in dark.
+struct SnippetPreviewHost: View {
+    var body: some View {
+        if let what = UserDefaults.standard.string(forKey: "snippetPreview") {
+            ZStack {
+                LinearGradient(colors: [.orange.opacity(0.5), .blue.opacity(0.6)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .ignoresSafeArea()
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(spoken(what)).font(.headline).padding([.horizontal, .top], 16)
+                    card(what)
+                }
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+                .padding(.horizontal, 10)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, 60)
+            }
+            .environment(\.colorScheme, UserDefaults.standard.bool(forKey: "snippetDark") ? .dark : .light)
+        }
+    }
+
+    private var rows: [TodaysTimesSnippet.Row] {
+        let now = Date().addingTimeInterval(-UserDefaults.standard.double(forKey: "snippetHoursAgo") * 3600)   // `-snippetHoursAgo 6`
+        let done = SharedStore.completedPrayerNamesToday()
+        return PrayerWindows.today(now).map { w in
+            TodaysTimesSnippet.Row(name: w.name, start: w.start, end: w.end, marked: done.contains(w.name) || w.name == "Dhuhr",
+                                   when: w.end <= now ? .earlier : w.start <= now ? .now : .coming)
+        }
+    }
+    private func spoken(_ what: String) -> String {
+        if let on = rows.first(where: { $0.when == .now }) { return "\(on.name) is on until \(shortTimePM(on.end))." }
+        return noPrayerOnLine
+    }
+    @ViewBuilder private func card(_ what: String) -> some View {
+        switch what {
+        default: TodaysTimesSnippet(rows: rows)
         }
     }
 }
