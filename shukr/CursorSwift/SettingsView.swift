@@ -124,8 +124,7 @@ struct SettingsView: View {
     let upcomingFeatures: [sneakPeekItem] = [
         sneakPeekItem(image: "lightbulb.max.fill", title: "Hadith Motivator", description: "Sometimes we lose sight of the intention behind our actions and just go through the motions. A daily Hadith page would be a cool way to stay reminded of our purpose in this dunya"),
         sneakPeekItem(image: "fork.knife", title: "Food Finder", description: "Finding food is hard. Finding halal food - even harder. I wanna partner with another organization for this iA (cough cough HalalEatsNC?!)"),
-        sneakPeekItem(image: "character.book.closed", title: "Quranic Vocab", description: "Explore and learn common words from the Quran to make it easier to focus during prayer."),
-        sneakPeekItem(image: "gift", title: "Sadaqah Links", description: "A list of trustworthy links to help the ummah. Ideally, Apple Pay integration and donation history in app would be nice!")
+        sneakPeekItem(image: "character.book.closed", title: "Quranic Vocab", description: "Explore and learn common words from the Quran to make it easier to focus during prayer.")
     ]
     
     // Define a model for each suggestion.
@@ -686,7 +685,13 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        
+                        // Sadaqah (owner, 2026-10-13): the first sneak peek that's real — vetted charities + a private log.
+                        NavigationLink { SadaqahPage() } label: {
+                            HStack {
+                                Image(systemName: "gift").frame(width: 24)
+                                Text("Sadaqah")
+                            }
+                        }
                     } header: {
                         Text("Sneak Peek...")
                             #if DEBUG
@@ -890,7 +895,7 @@ struct SettingsView: View {
                 try? await Task.sleep(for: .seconds(1.5))
                 showNextPlayground = true
             }
-            // `-demoSneakPeek <0…3>` (with -demoSettings): that sneak-peek item's sheet (screenshots).
+            // `-demoSneakPeek <0…2>` (with -demoSettings): that sneak-peek item's sheet (screenshots).
             if UserDefaults.standard.object(forKey: "demoSneakPeek") != nil {
                 let i = UserDefaults.standard.integer(forKey: "demoSneakPeek")
                 try? await Task.sleep(for: .seconds(1.5))
