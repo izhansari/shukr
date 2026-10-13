@@ -3325,6 +3325,8 @@ struct AlarmDemo: View {
     var startsOpen = false
     /// "Tomorrow", or "Today" when the next alarm is this morning.
     var firstCaption = "Tomorrow"
+    /// The days through the year under the alarm (not in a Shortcuts card — owner).
+    var showsDays = true
     private var isOpen: Bool { open || startsOpen }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The island has opened into the alarm (once, on arrival; the wheels only change its words).
@@ -3417,6 +3419,7 @@ struct AlarmDemo: View {
                     withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { open = true }
                 }
                 // The same rule on days through the year: the time moves with Fajr, nothing to reset.
+                if showsDays {
                 HStack(spacing: 0) {
                     ForEach(Array(days.enumerated()), id: \.offset) { i, d in
                         VStack(spacing: 2) {
@@ -3433,6 +3436,7 @@ struct AlarmDemo: View {
                 }
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                }
             }
             .animation(.snappy, value: first.alarm)
             .overlay {

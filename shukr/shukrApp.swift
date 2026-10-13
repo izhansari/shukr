@@ -239,7 +239,8 @@ struct shukrApp: App {
             let today = Calendar.current.isDateInToday(next)   // after midnight: this morning's alarm comes first
             return AnyView(AlarmDemo(days: AlarmDemo.upcoming(offset: offset, isBefore: before, isFajr: fajr, startingToday: today),
                                      isFajr: fajr, rule: AlarmDemo.ruleWords(offset: offset, isBefore: before, isFajr: fajr),
-                                     off: off ? .declined : nil, startsOpen: true, firstCaption: today ? "Today" : "Tomorrow")
+                                     off: off ? .declined : nil, startsOpen: true, firstCaption: today ? "Today" : "Tomorrow",
+                                     showsDays: false)   // just the alarm in a Shortcuts card (owner)
                 .padding(14))
         }
         #if DEBUG

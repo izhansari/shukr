@@ -8,6 +8,21 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>CFBundleIcons</key>
+	<dict>
+		<key>CFBundlePrimaryIcon</key>
+		<dict>
+			<key>CFBundleIconName</key>
+			<string>AppIcon</string>
+			<key>NSAppIconActionTintColorName</key>
+			<string>ShortcutsTint</string>
+			<key>NSAppIconComplementingColorNames</key>
+			<array>
+				<string>BackgroundStart</string>
+				<string>BackgroundEnd</string>
+			</array>
+		</dict>
+	</dict>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
