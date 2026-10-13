@@ -637,8 +637,10 @@ struct ShowcasePicture: View {
     var scale: CGFloat? = nil
     /// A list row's small square: a control shows just its circle.
     var thumb = false
-    /// An item's page: the Prayers widget plays its taps.
+    /// An item's page: the Prayers widget plays its taps, and a widget's sizes can be switched.
     var live = false
+    /// The size shown, of `families` (owner: one at a time, a toggle for the other).
+    @State private var sizeIndex = 0
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -649,30 +651,67 @@ struct ShowcasePicture: View {
                 CCCircle(symbol: symbol, on: id == .ccFajrAlarm).scaleEffect(1.5)
             } else {
                 picture.scaleEffect((scale ?? (big ? 1.7 : compact ? 0.8 : 1)) * fit)
+                    .id(sizeIndex).transition(.opacity)
+                    .offset(y: families.isEmpty ? 0 : 14)   // under the label row, as the setup's demo card sits under its label
             }
         }
-        .overlay(alignment: .topLeading) {
-            // Which sizes it comes in (owner: the top left of the picture, for the text), over the widgets.
-            if !thumb, let sizes = sizesCaption {
-                Text(sizes).font(.system(.caption2, design: .rounded, weight: .semibold)).textCase(.uppercase)
-                    .foregroundStyle(.secondary).padding(12)
-            }
-        }
+        .overlay(alignment: .topLeading) { if !thumb && !families.isEmpty { sizeLabel } }
+        .overlay(alignment: .topTrailing) { if (big || live) && families.count > 1 { sizeToggle } }
         .clipped()
     }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
     private var fit: CGFloat {
-        id == .controlCenter ? 0.7 : id.isControl ? 0.8 : id.isSiri ? 0.5 : id == .homePrayers ? 0.8 : (id == .homeZikr || id == .homeName) ? 0.55 : id == .homeAyah ? 0.4 : 1
+        id == .controlCenter ? 0.7 : id.isControl ? 0.8 : id.isSiri ? 0.5 : !families.isEmpty ? (family == .systemSmall ? 0.68 : family == .systemMedium ? 0.55 : 0.36) : 1
     }
 
-    private var sizesCaption: String? {
+    /// The sizes a Home Screen widget comes in (its `supportedFamilies`); empty for everything else.
+    private var families: [WidgetFamily] {
         switch id {
-        case .homePrayers: "Small"
-        case .homeZikr, .homeName: "Small · Medium"
-        case .homeAyah: "Medium · Large"
-        default: nil
+        case .homePrayers: [.systemSmall]
+        case .homeZikr, .homeName: [.systemSmall, .systemMedium]
+        case .homeAyah: [.systemMedium, .systemLarge]
+        default: []
         }
+    }
+    private var family: WidgetFamily { families.isEmpty ? .systemSmall : families[min(sizeIndex, families.count - 1)] }
+    private static func sizeName(_ f: WidgetFamily) -> String {
+        switch f { case .systemMedium: "Medium"; case .systemLarge: "Large"; default: "Small" }
+    }
+
+    /// "Zikr tasks · Small", as the setup's demo cards label themselves ("Asr · Nudge").
+    private var sizeLabel: some View {
+        HStack(spacing: 6) {
+            Text(id.memberName).fontWeight(.semibold)
+            Text("·")
+            Text(Self.sizeName(family)).contentTransition(.opacity)
+        }
+        .font(.system(.caption, design: .rounded))
+        .foregroundStyle(Color.primary.opacity(0.7))
+        .padding(.leading, 16).padding(.top, 12)
+    }
+
+    /// Small | Medium: switches the size shown (an item's page only — elsewhere the picture is a button's label).
+    private var sizeToggle: some View {
+        HStack(spacing: 2) {
+            ForEach(Array(families.enumerated()), id: \.offset) { i, f in
+                Button {
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.easeInOut(duration: 0.3)) { sizeIndex = i }
+                } label: {
+                    Text(Self.sizeName(f))
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .foregroundStyle(i == sizeIndex ? Color.white : Color.primary.opacity(0.7))
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Capsule().fill(i == sizeIndex ? Color.sage : Color.clear))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Capsule().fill(Color(.secondarySystemGroupedBackground).opacity(0.9)))
+        .padding(.trailing, 12).padding(.top, 8)
     }
 
     private var controlSymbol: String? {
@@ -717,9 +756,9 @@ struct ShowcasePicture: View {
         // The real widgets (PrayersWidget.swift / MoreWidgets.swift, in the app's build too — owner: "graphics of our actual
         // widgets"); on an item's page the Prayers widget plays its taps.
         case .homePrayers: RealPrayersWidget(playing: big || live)
-        case .homeZikr: RealZikrWidget()
-        case .homeName: RealNameWidget()
-        case .homeAyah: RealAyahWidget()
+        case .homeZikr: RealZikrWidget(family: family)
+        case .homeName: RealNameWidget(family: family)
+        case .homeAyah: RealAyahWidget(family: family)
         case .lockTime:
             LockClock { LockCircle(text: "\(min(p.minutesLeft, 59))m") }
         case .lockCountdown:
@@ -1029,45 +1068,35 @@ private struct SizedWidget<Content: View, Background: View>: View {
     }
 }
 
-/// Every size a widget comes in, side by side (owner: "the Zikr task can be the small one or the big one, I would like
-/// it to show in the graphic").
-private struct WidgetSizes<Content: View, Background: View>: View {
-    let families: [WidgetFamily]
-    @ViewBuilder let content: (WidgetFamily) -> Content
-    @ViewBuilder let background: () -> Background
-    var body: some View {
-        HStack(alignment: .center, spacing: 18) {
-            ForEach(families, id: \.self) { f in SizedWidget(family: f, content: { content(f) }, background: background) }
-        }
-    }
-}
-
-/// The Zikr widget itself, small and medium: your tasks, or stand-ins without any.
+/// The Zikr widget itself at one size: your tasks, or stand-ins without any.
 struct RealZikrWidget: View {
+    var family: WidgetFamily = .systemSmall
     var body: some View {
-        WidgetSizes(families: [.systemSmall, .systemMedium]) { f in
-            ZikrTasksWidgetView(entry: ZikrTasksEntry(date: Date(), tasks: ShowcaseSamples.zikrTasks, storeReady: true), familyOverride: f)
+        SizedWidget(family: family) {
+            ZikrTasksWidgetView(entry: ZikrTasksEntry(date: Date(), tasks: ShowcaseSamples.zikrTasks, storeReady: true), familyOverride: family)
         } background: { Color("widgetBgColor") }
     }
 }
 
-/// The Name of the Day widget itself, small and medium, today's Name.
+/// The Name of the Day widget itself at one size, today's Name.
 struct RealNameWidget: View {
+    var family: WidgetFamily = .systemSmall
     var body: some View {
-        WidgetSizes(families: [.systemSmall, .systemMedium]) { f in
-            NameOfTheDayView(entry: NameOfTheDayEntry(date: Date(), name: NamesOfAllah.nameOfTheDay()), familyOverride: f)
+        SizedWidget(family: family) {
+            NameOfTheDayView(entry: NameOfTheDayEntry(date: Date(), name: NamesOfAllah.nameOfTheDay()), familyOverride: family)
         } background: { BrandBackground() }
     }
 }
 
-/// The Daily Ayah widget itself, medium and large: today's verse once it's revealed, else the widget's own sample (never
-/// spoils the reveal).
+/// The Daily Ayah widget itself at one size: today's verse once it's revealed, else the widget's own sample (never spoils
+/// the reveal).
 struct RealAyahWidget: View {
+    var family: WidgetFamily = .systemMedium
     var body: some View {
-        WidgetSizes(families: [.systemMedium, .systemLarge]) { f in
+        SizedWidget(family: family) {
             DailyAyahWidgetView(entry: DailyAyahEntry(date: Date(),
                                                       ayah: DailyAyahWidgetPayload.load().flatMap { $0.isToday ? $0 : nil } ?? DailyAyahProvider.sample),
-                                familyOverride: f)
+                                familyOverride: family)
         } background: { BrandBackground() }
     }
 }
