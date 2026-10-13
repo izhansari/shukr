@@ -656,7 +656,6 @@ struct ShowcasePicture: View {
             }
         }
         .overlay(alignment: .topLeading) { if !thumb && !families.isEmpty { sizeLabel } }
-        .overlay(alignment: .topTrailing) { if (big || live) && families.count > 1 { sizeToggle } }
         .clipped()
     }
 
@@ -679,39 +678,30 @@ struct ShowcasePicture: View {
         switch f { case .systemMedium: "Medium"; case .systemLarge: "Large"; default: "Small" }
     }
 
-    /// "Zikr tasks · Small", as the setup's demo cards label themselves ("Asr · Nudge").
+    /// "Zikr tasks · Small", as the setup's demo cards label themselves ("Asr · Nudge"). On an item's page the size is the
+    /// switch (owner: one word, underlined, not a second "Medium" in a toggle): a tap moves to the next size.
     private var sizeLabel: some View {
-        HStack(spacing: 6) {
+        let switchable = (big || live) && families.count > 1
+        return HStack(spacing: 6) {
             Text(id.memberName).fontWeight(.semibold)
             Text("·")
-            Text(Self.sizeName(family)).contentTransition(.opacity)
+            if switchable {
+                Button {
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.easeInOut(duration: 0.3)) { sizeIndex = (sizeIndex + 1) % families.count }
+                } label: {
+                    Text(Self.sizeName(family)).underline().contentTransition(.opacity)
+                        .padding(.vertical, 6).contentShape(Rectangle())   // a bigger target than the word
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Size: \(Self.sizeName(family)). Tap for \(Self.sizeName(families[(sizeIndex + 1) % families.count]))")
+            } else {
+                Text(Self.sizeName(family))
+            }
         }
         .font(.system(.caption, design: .rounded))
         .foregroundStyle(Color.primary.opacity(0.7))
-        .padding(.leading, 16).padding(.top, 12)
-    }
-
-    /// Small | Medium: switches the size shown (an item's page only — elsewhere the picture is a button's label).
-    private var sizeToggle: some View {
-        HStack(spacing: 2) {
-            ForEach(Array(families.enumerated()), id: \.offset) { i, f in
-                Button {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(.easeInOut(duration: 0.3)) { sizeIndex = i }
-                } label: {
-                    Text(Self.sizeName(f))
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
-                        .foregroundStyle(i == sizeIndex ? Color.white : Color.primary.opacity(0.7))
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Capsule().fill(i == sizeIndex ? Color.sage : Color.clear))
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .background(Capsule().fill(Color(.secondarySystemGroupedBackground).opacity(0.9)))
-        .padding(.trailing, 12).padding(.top, 8)
+        .padding(.leading, 16).padding(.top, switchable ? 6 : 12)
     }
 
     private var controlSymbol: String? {
@@ -730,6 +720,13 @@ struct ShowcasePicture: View {
                                                : [Color(red: 0.85, green: 0.92, blue: 0.87), Color(red: 0.93, green: 0.96, blue: 0.94)],
                        startPoint: .topLeading, endPoint: .bottomTrailing)
     }
+    /// A plain cool wallpaper, so the mint Name and Ayah widgets stand out (owner: "green widget with the same kind of green
+    /// background").
+    private var wallpaper: some View {
+        LinearGradient(colors: scheme == .dark ? [Color(red: 0.17, green: 0.19, blue: 0.23), Color(red: 0.08, green: 0.09, blue: 0.11)]
+                                               : [Color(red: 0.84, green: 0.87, blue: 0.92), Color(red: 0.93, green: 0.94, blue: 0.96)],
+                       startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
     private var night: some View {
         RadialGradient(colors: [Color(red: 0.23, green: 0.31, blue: 0.39), Color(red: 0.08, green: 0.10, blue: 0.11)],
                        center: UnitPoint(x: 0.3, y: 0.1), startRadius: 0, endRadius: 260)
@@ -742,6 +739,7 @@ struct ShowcasePicture: View {
         case _ where id.isSiri: sage   // the cards as they look in the Shortcuts app
         case .standby: Color.black
         case .prayersMap: MapGrid()
+        case .homeName, .homeAyah: wallpaper
         default: sage
         }
     }
