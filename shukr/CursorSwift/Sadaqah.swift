@@ -178,6 +178,8 @@ struct SadaqahPage: View {
     @State private var asking: SadaqahCharity?
     /// Set by its Yes: the log sheet opens once the question has gone.
     @State private var confirmed: SadaqahCharity?
+    /// Swiped away: asked once before it goes.
+    @State private var deleting: SadaqahDonation?
 
     private var startOfYear: Date { Calendar.current.dateInterval(of: .year, for: .now)?.start ?? .now }
 
@@ -206,6 +208,8 @@ struct SadaqahPage: View {
                 ForEach(log.donations.prefix(5)) { d in
                     Button { editing = DonationDraft(editing: d) } label: { DonationRow(donation: d) }
                         .buttonStyle(.plain)
+                        // Not `.destructive`: the List would expect the row gone and the confirm never showed.
+                        .swipeActions { Button("Delete") { deleting = d }.tint(.red) }
                 }
                 if log.donations.count > 5 {
                     NavigationLink("All donations (\(log.donations.count))") { SadaqahHistoryPage() }
@@ -225,6 +229,13 @@ struct SadaqahPage: View {
             DidYouDonateSheet(charity: charity) { confirmed = charity; asking = nil }
         }
         .sheet(item: $editing) { DonationSheet(draft: $0) }
+        .alert("Delete this donation?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+               presenting: deleting) { d in
+            Button("Delete", role: .destructive) { withAnimation { log.delete(d) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { d in
+            Text("\(d.amount.money(d.currency)) to \(d.to)")
+        }
     }
 
     /// This year's total, the count, and Ramadan / Zakat when there are any.
