@@ -14,7 +14,8 @@ import SwiftUI
 enum IconMocks {
     /// One icon at 1024 pt: the surface, the real raised band scaled up, and what sits on it.
     struct Icon: View {
-        enum Mark { case none, arc, dot, boldDot }
+        enum Mark { case none, arc, dot, boldDot, boldArc(CGFloat) }
+        var bold: Bool { switch mark { case .boldDot, .boldArc: true; default: false } }
         let mark: Mark
         @Environment(\.circleTheme) private var theme
 
@@ -22,7 +23,7 @@ enum IconMocks {
             ZStack {
                 theme.surface
                 ZStack {
-                    if mark == .boldDot {
+                    if bold {
                         // The same recipe as NeuRingTrack (the surface's band, a shade below-right, a light above-left),
                         // thickened and deepened for a 60 pt icon — at its real 6 pt the relief vanished.
                         Circle()
@@ -44,6 +45,14 @@ enum IconMocks {
                             .rotationEffect(.degrees(-90))
                             .frame(width: 200, height: 200)
                             .shadow(color: Color.green.opacity(AliveRingTuning.fine.glow), radius: 4)
+                    case .boldArc(let width):
+                        // E on the thick band (owner: "E with a thicker soft band keeping the progress green as is").
+                        Circle()
+                            .trim(from: 0, to: 0.72)
+                            .stroke(Color.green, style: StrokeStyle(lineWidth: width, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: 190, height: 190)
+                            .shadow(color: Color.green.opacity(AliveRingTuning.fine.glow), radius: 5)
                     case .boldDot:
                         Circle().fill(Color.sage)
                             .frame(width: 26, height: 26)
@@ -66,7 +75,8 @@ enum IconMocks {
     static func render() {
         let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appending(path: "icon-mocks")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let marks: [(String, Icon.Mark)] = [("ring", .none), ("arc", .arc), ("dot", .dot), ("bold", .boldDot)]
+        let marks: [(String, Icon.Mark)] = [("ring", .none), ("arc", .arc), ("dot", .dot), ("bold", .boldDot),
+                                            ("boldarc", .boldArc(16)), ("boldarcthin", .boldArc(8))]
         for (name, mark) in marks {
             for scheme in [ColorScheme.light, .dark] {
                 let view = Icon(mark: mark)
