@@ -91,35 +91,7 @@ final class WatchLook: ObservableObject {
     }
 }
 
-extension WatchNeu {
-    /// The phone's public look (CircleTheme.publicLook, palette greyBlue — owner: "the soft ring … I want the soft
-    /// look"): the tasbeeh grey-blue in light mode (NeuRing / NeuDarkShad / NeuLightShad), charcoal in dark.
-    static func bg(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color(white: 0.10) : Color(red: 0.890, green: 0.898, blue: 0.933)
-    }
-    static func darkShadow(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.black.opacity(0.75) : Color.black.opacity(0.25)
-    }
-    static func lightShadow(_ scheme: ColorScheme) -> Color {
-        scheme == .dark ? Color.white.opacity(0.06) : Color.white
-    }
-    /// Every page wears the soft surface, as the phone's Salah, Zikr and tasbeeh pages do.
-    static func page(_ scheme: ColorScheme) -> Color { bg(scheme) }
-}
-
-/// The soft ring's raised band (CircleTheme.track with `softRing`): the page's surface, lifted — shade down-right,
-/// light up-left.
-struct WatchSoftBand: View {
-    var width: CGFloat
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        Circle()
-            .stroke(WatchNeu.bg(scheme), lineWidth: width)
-            .shadow(color: WatchNeu.darkShadow(scheme), radius: width * 0.6, x: width * 0.3, y: width * 0.3)
-            .shadow(color: WatchNeu.lightShadow(scheme), radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
-    }
-}
+// WatchNeu's soft colours and WatchSoftBand: shukrWatchShared/WatchRingFace.swift (the iPhone draws them too).
 
 /// The whole app's look: the colour scheme and the page colour behind everything.
 struct WatchLookRoot: ViewModifier {

@@ -124,6 +124,10 @@ enum ExploreShowcase {
             watchPaired = s.activationState == .activated && s.isPaired
             watchInstalled = watchPaired && s.isWatchAppInstalled
         }
+        #if DEBUG
+        // `-demoExploreWatch YES`: the watch items without a paired watch (the simulator has none).
+        if UserDefaults.standard.bool(forKey: "demoExploreWatch") { watchPaired = true }
+        #endif
         await NotificationHealth.shared.refresh()
         let a = NotificationHealth.shared.authorization
         let month = Date().addingTimeInterval(-30 * 86_400)
@@ -663,7 +667,7 @@ struct ShowcasePicture: View {
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
     private var fit: CGFloat {
-        id == .controlCenter ? 0.7 : id == .standby ? 0.62 : id.isControl ? 0.8 : id.isSiri ? 0.5 : !families.isEmpty ? (family == .systemSmall ? 0.68 : family == .systemMedium ? 0.55 : 0.36) : 1
+        id == .controlCenter ? 0.7 : id == .standby ? 0.62 : (id == .watchApp || id == .watchFace) ? 0.58 : id.isControl ? 0.8 : id.isSiri ? 0.5 : !families.isEmpty ? (family == .systemSmall ? 0.68 : family == .systemMedium ? 0.55 : 0.36) : 1
     }
 
     /// The sizes a Home Screen widget comes in (its `supportedFamilies`); empty for everything else.
@@ -765,15 +769,10 @@ struct ShowcasePicture: View {
         case .lockControls:
             HStack { LockButton(symbol: "location.north.line.fill"); Spacer(); LockButton(symbol: "circle.hexagonpath") }
                 .frame(width: 150).frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 14)
-        case .watchApp:
-            WatchCase { RingFace(name: p.name, line: nil, progress: p.progress, size: 52, dark: true) }
-        case .watchFace:
-            WatchCase {
-                VStack(spacing: 8) {
-                    Text(Date(), format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute()).font(.system(size: 15, weight: .semibold, design: .rounded)).foregroundStyle(.white)
-                    MiniArc(progress: p.progress).frame(width: 24, height: 24)
-                }
-            }
+        // The watch's own ring screen and complication (shukrWatchShared: WatchRingFace, PrayerComplicationView), in a
+        // watch at its real size (owner: "make the watch ones real too").
+        case .watchApp: RealWatch { RealWatchRing() }
+        case .watchFace: RealComplications()
         case .standby:
             // The real Prayers widget as StandBy shows it: dark, no background, big beside the clock (owner).
             HStack(spacing: 14) {
@@ -1084,6 +1083,62 @@ private struct SizedWidget<Content: View, Background: View>: View {
         }
         let line = (try? await TasbeehControl.Provider().currentValue()) ?? nil
         zikr = ControlFace(symbol: "hands.and.sparkles", title: "Zikr", line: (line == nil || line == "All done today") ? "2 tasks left · about 9 min" : line)
+    }
+}
+
+/// A watch at its real size (46 mm: a 208 × 248 pt screen in its case), the screen whatever's given.
+private struct RealWatch<Screen: View>: View {
+    @ViewBuilder let screen: () -> Screen
+    var body: some View {
+        screen()
+            .frame(width: 208, height: 248)
+            .clipShape(RoundedRectangle(cornerRadius: 54, style: .continuous))
+            .padding(9)
+            .background(RoundedRectangle(cornerRadius: 62, style: .continuous).fill(Color(white: 0.13)))
+            .overlay(alignment: .trailing) {
+                Capsule().fill(Color(white: 0.2)).frame(width: 9, height: 46).offset(x: 6, y: -40)   // the Crown
+            }
+            .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
+            .allowsHitTesting(false)
+    }
+}
+
+/// The watch's Salah page: its page colour and its ring (WatchRingFace) on the prayer that's on, or the next.
+private struct RealWatchRing: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        let p = ShownPrayer.now
+        ZStack {
+            WatchNeu.page(scheme)
+            WatchRingFace(prayer: WatchPrayer(name: p.name, start: p.start, end: p.end), current: p.isOn, now: Date(), k: 1.1)
+                .frame(width: 140, height: 140)
+        }
+    }
+}
+
+/// shukr's watch complications on their own, as a face shows them (owner: "without the watch being there … all the
+/// different complications"): the circle, the line and the inline, each PrayerComplicationView at its size. (The corner
+/// is watchOS-only code.)
+private struct RealComplications: View {
+    var body: some View {
+        let p = ShownPrayer.now
+        let entry = PrayerComplicationEntry(date: Date(), prayer: WatchPrayer(name: p.name, start: p.start, end: p.end), current: p.isOn)
+        HStack(alignment: .center, spacing: 16) {
+            face(entry, .accessoryCircular).frame(width: 64, height: 64)
+            VStack(alignment: .leading, spacing: 14) {
+                face(entry, .accessoryRectangular).frame(width: 170, height: 64, alignment: .leading)
+                face(entry, .accessoryInline).frame(width: 190, height: 18, alignment: .leading)
+            }
+        }
+        .padding(20)
+        .background(RoundedRectangle(cornerRadius: 30, style: .continuous).fill(Color.black))
+        .environment(\.colorScheme, .dark)
+        .foregroundStyle(.white)
+        .allowsHitTesting(false)
+    }
+
+    private func face(_ entry: PrayerComplicationEntry, _ family: WidgetFamily) -> some View {
+        PrayerComplicationView(entry: entry, familyOverride: family)
     }
 }
 

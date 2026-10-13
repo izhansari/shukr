@@ -20,8 +20,9 @@
 
 import SwiftUI
 
-/// The phone's dark-mode asset colours (bgColor / NeuRing / NeuDarkShad / NeuLightShad).
-enum WatchNeu {
+/// The phone's dark-mode asset colours (bgColor / NeuRing / NeuDarkShad / NeuLightShad). (The soft look's scheme
+/// colours are in shukrWatchShared/WatchRingFace.swift.)
+extension WatchNeu {
     static let bg = Color(red: 0.149, green: 0.149, blue: 0.149)
     static let ring = Color(red: 0.149, green: 0.149, blue: 0.149)
     static let darkShadow = Color.black.opacity(0.5)
