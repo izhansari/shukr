@@ -2270,7 +2270,8 @@ extension TourLayer {
             // On the thing to touch, not beside it (user testing, 2026-10-06: beside it misled).
             if next(0) { return .init(kind: .tap, at: CGPoint(x: c.midX, y: c.midY + c.height * 0.3)) }   // low on the circle (owner)
             if next(1) { return nil }   // turning the phone: no touch
-            if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX, y: c.midY)) }
+            // Low and right inside the ring, clear of the name and the time left (owner: it sat on "3h 1m left").
+            if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.2, y: c.midY + c.height * 0.22)) }
             if next(3) { return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) } }
             return nil
         case (.list, .tryIt):
