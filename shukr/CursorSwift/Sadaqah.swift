@@ -97,6 +97,21 @@ enum SadaqahCharities {
                        categories: [.water, .relief],
                        about: "Run by volunteers from Michigan. It builds wells and gives water aid and disaster relief, and sends donors photos and video of the finished well.",
                        facts: [nonprofit("83-2222109"), notRated, works("Works in Pakistan and Jordan")]),
+        SadaqahCharity(id: "life", name: "Life for Relief and Development", does: "Relief and development for families in need",
+                       symbol: "leaf.fill", url: URL(string: "https://donate.lifeusa.org/donorportal/?donate=true")!,
+                       categories: [.relief],
+                       about: "A Michigan-based relief and development charity working since 1992: emergency aid, food, health and education.",
+                       facts: [nonprofit("95-4402149"), rated(98), works("Works worldwide")]),
+        SadaqahCharity(id: "baitulmaal", name: "Baitulmaal", does: "Orphans, water and relief",
+                       symbol: "sun.max.fill", url: URL(string: "https://baitulmaal.org/donate/")!,
+                       categories: [.orphans, .water, .relief],
+                       about: "Based in Texas: orphan sponsorship, clean water and emergency relief in Africa, Asia and the Middle East.",
+                       facts: [nonprofit("20-0942434"), rated(95), works("Works in Africa, Asia and the Middle East")]),
+        SadaqahCharity(id: "muslimaid", name: "Muslim Aid America", does: "Disaster relief and fighting poverty",
+                       symbol: "shippingbox.fill", url: URL(string: "https://www.mausa.org/donate-now/")!,
+                       categories: [.relief],
+                       about: "The US arm of Muslim Aid: disaster relief and long-term work against poverty.",
+                       facts: [nonprofit("46-2504422"), rated(95), works("Works worldwide")]),
         SadaqahCharity(id: "penny", name: "Penny Appeal USA", does: "Water, education and relief",
                        symbol: "drop.circle.fill", url: URL(string: "https://www.pennyappealusa.org/donate/")!,
                        categories: [.water, .relief],
@@ -114,6 +129,16 @@ enum SadaqahCharities {
                        categories: [.atHome, .relief],
                        about: "Helps people here at home: food pantries, women's shelters, family services and disaster relief across the US.",
                        facts: [nonprofit("04-3810161"), rated(93), works("Works across the US")]),
+        SadaqahCharity(id: "iman", name: "IMAN", does: "Health, wellness and community in Chicago",
+                       symbol: "building.2.fill", url: URL(string: "https://imancentral.org/donate/")!,
+                       categories: [.atHome],
+                       about: "The Inner-City Muslim Action Network: a free health center, housing, job training and the arts on Chicago's South Side.",
+                       facts: [nonprofit("36-4167433"), rated(94), works("Works in Chicago")]),
+        SadaqahCharity(id: "mlfa", name: "Muslim Legal Fund of America", does: "Legal defense for Muslims in the US",
+                       symbol: "building.columns.fill", url: URL(string: "https://mlfa.org/donate")!,
+                       categories: [.atHome],
+                       about: "Pays for lawyers in cases where Muslims in America face injustice: civil rights, discrimination and religious freedom.",
+                       facts: [nonprofit("01-0548371"), rated(92), works("Works across the US")]),
     ]
 }
 
@@ -257,6 +282,8 @@ struct SadaqahPage: View {
     @State private var deleting: SadaqahDonation?
     /// The page's title has scrolled under the bar: the bar shows it.
     @State private var titleInBar = false
+    /// Every donation, from a tap on the total.
+    @State private var showHistory = false
 
     private var startOfYear: Date { Calendar.current.dateInterval(of: .year, for: .now)?.start ?? .now }
 
@@ -264,7 +291,9 @@ struct SadaqahPage: View {
         List {
             // The top, in the log sheet's look (owner): the title light and centred, then this year's total big.
             Section {
-                totals
+                // A tap on the total opens every donation (owner).
+                Button { showHistory = true } label: { totals.contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
                     .frame(maxWidth: .infinity)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 6, trailing: 20))
@@ -296,10 +325,12 @@ struct SadaqahPage: View {
                 Text("Tap ⓘ to see who they are and why they're here. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
             }
             Section {
-                Button { editing = DonationDraft(manual: ()) } label: {
-                    Label("Log a donation", systemImage: "plus.circle.fill").foregroundStyle(Color.sage)
+                if log.donations.isEmpty {
+                    Button { editing = DonationDraft(manual: ()) } label: {
+                        Label("Log a donation", systemImage: "plus.circle.fill").foregroundStyle(Color.sage)
+                    }
+                    .listRowBackground(Self.card)
                 }
-                .listRowBackground(Self.card)
                 ForEach(log.donations.prefix(5)) { d in
                     Button { editing = DonationDraft(editing: d) } label: { DonationRow(donation: d) }
                         .buttonStyle(.plain)
@@ -314,7 +345,7 @@ struct SadaqahPage: View {
             } header: {
                 Text("Your donations")
             } footer: {
-                Text("Private: kept on this phone only. Gave somewhere else? Log it here too.")
+                Text("Private: kept on this phone only. Gave somewhere else? Log it with +.")
             }
         }
         // The new-task flow's page: white, soft grey cards, no gap under the bar.
@@ -326,6 +357,11 @@ struct SadaqahPage: View {
         .navigationBarTitleDisplayMode(.inline)
         // The title is on the page; once it has scrolled under the bar, the bar shows it (owner: it stays up top).
         .toolbar {
+            // Log a donation (owner): the bar's own button, so iOS 26 draws it in Liquid Glass.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { editing = DonationDraft(manual: ()) } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Log a donation")
+            }
             ToolbarItem(placement: .principal) {
                 Text("Give to Causes").font(.headline).fontDesign(.rounded)
                     .opacity(titleInBar ? 1 : 0)
@@ -338,6 +374,7 @@ struct SadaqahPage: View {
             titleInBar = under
         }
         .fontDesign(.rounded)
+        .navigationDestination(isPresented: $showHistory) { SadaqahHistoryPage() }
         .sheet(item: $asking, onDismiss: {
             if let charity = confirmed { confirmed = nil; editing = DonationDraft(after: charity) }
         }) { charity in
@@ -382,9 +419,12 @@ struct SadaqahPage: View {
                 .monospacedDigit()
                 .contentTransition(.numericText())
                 .padding(.top, 14)
-            Text(count == 0 ? "Given this year" : "Given this year · " + detailLine(count: count, zakat: zakat, ramadan: ramadan))
-                .font(.footnote).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+            HStack(spacing: 4) {
+                Text(count == 0 ? "Given this year" : "Given this year · " + detailLine(count: count, zakat: zakat, ramadan: ramadan))
+                    .multilineTextAlignment(.center)
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .font(.footnote).foregroundStyle(.secondary)
         }
         .padding(.top, 4)
     }
@@ -505,6 +545,7 @@ struct SadaqahHistoryPage: View {
                             .buttonStyle(.plain)
                             // Not `.destructive`: the List would expect the row gone and the confirm never showed.
                             .swipeActions { Button { asking = d } label: { Image(systemName: "trash.fill") }.tint(.red) }
+                            .listRowBackground(SadaqahPage.card)
                     }
                 } header: {
                     HStack {
@@ -515,14 +556,26 @@ struct SadaqahHistoryPage: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemBackground))
         .navigationTitle("Your donations")
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
+        .overlay {
+            if log.donations.isEmpty {
+                ContentUnavailableView("No donations yet", systemImage: "gift", description: Text("Tap + to log one."))
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(item: SadaqahExport(text: log.csv()), preview: SharePreview("shukr donations.csv")) {
                     Image(systemName: "square.and.arrow.up")
                 }
+                .disabled(log.donations.isEmpty)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { editing = DonationDraft(manual: ()) } label: { Image(systemName: "plus") }
+                    .accessibilityLabel("Log a donation")
             }
         }
         .sheet(item: $editing) { DonationSheet(draft: $0) }
