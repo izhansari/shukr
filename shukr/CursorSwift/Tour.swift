@@ -633,13 +633,20 @@ struct TourTopPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: isStrip ? 6 : 8) {
-            header
+            // A chapter's end is the panel's one row (owner: no empty line over it): the big name, its ✓, ✕.
+            if page.chapterDone {
+                HStack(spacing: 8) {
+                    doneMoment
+                    TourSkipX { confirmSkip = true }
+                }
+                .padding(.bottom, -4)   // the panel's bottom padding is a hair deeper than its top: centred
+            } else {
+                header
+            }
+            if !page.chapterDone {
             ZStack(alignment: .topLeading) {
                 // Out, then in: what's leaving goes quickly, what's coming waits for it (they never show together).
-                if page.chapterDone {
-                    doneMoment
-                        .transition(Self.outThenIn)
-                } else if isStrip {
+                if isStrip {
                     todo
                         .transition(.opacity.combined(with: .offset(y: 8)))
                 } else {
@@ -647,6 +654,8 @@ struct TourTopPanel: View {
                         .id(page.headline)   // a new chapter's words come in fresh
                         .transition(Self.outThenIn)
                 }
+            }
+            .transition(Self.outThenIn)
             }
         }
         .padding(.leading, 16)
@@ -862,7 +871,7 @@ struct TourTopPanel: View {
                     .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .identity))
             }
         }
-        .frame(height: 34)   // not clipped: the name flies in from the line above (the panel clips the swipe)
+        .frame(height: 40)   // not clipped: the name flies in from the line above (the panel clips the swipe)
         .task(id: page.headline) {
             doneStage = 0
             try? await Task.sleep(for: .seconds(0.45))
@@ -877,7 +886,7 @@ struct TourTopPanel: View {
     }
 
     private func momentTitle(index: Int, name: String) -> some View {
-        (Text("\(index)  ").foregroundStyle(Color.primary.opacity(0.4)) + Text(name).foregroundStyle(Color.primary))
+        (Text(index > 0 ? "\(index)  " : "").foregroundStyle(Color.primary.opacity(0.4)) + Text(name).foregroundStyle(Color.primary))
             .font(.system(.title3, design: .rounded, weight: .semibold))
             .lineLimit(1)
             .fixedSize()
@@ -972,8 +981,8 @@ struct TourPageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if compact && page.index != nil {
-                EmptyView()   // the panel's line names the chapter
+            if compact && (page.index != nil || step != .intro) {
+                EmptyView()   // the panel's line names the chapter (or the tour's end)
             } else if let index = page.index { chapterHeader(index) } else { plainHeader }
             if page.sections.isEmpty {
                 plainBody
@@ -1959,6 +1968,8 @@ struct BubbleShape: Shape {
             p.chapterDone = true
             if let i = TourStep.cards.firstIndex(of: step), i + 1 < TourStep.cards.count {
                 p.nextChapter = (i + 2, TourStep.cards[i + 1].chapterTitle)
+            } else {
+                p.nextChapter = (0, TourCopy.Settings.finale)   // the last chapter swipes to the tour's end
             }
             return p
         }
@@ -2045,10 +2056,20 @@ struct BubbleShape: Shape {
             there.done = true
             var here = TourSection(id: "settings.shows", title: TourCopy.Settings.hereStep,
                                    blocks: [TourBlock(items: TourCopy.Settings.here)])
-            guard phase == .last else { return chapter(.settings, 1, of: 2, [there, here], primary: TourCopy.continueButton) }
+            guard phase != .learn else { return chapter(.settings, 1, of: 5, [there, here], primary: TourCopy.continueButton) }
             here.done = true
-            let again = TourSection(id: "settings.again", title: TourCopy.Settings.lastStep, note: TourCopy.Settings.last)
-            return chapter(.settings, 2, of: 2, [there, here, again], primary: TourCopy.Settings.doneButton)
+            // Try it (owner): harmless moves only — the Reminders switch's sides, then its ⓘ.
+            guard phase == .last else {
+                let tryIt = TourSection(id: "settings.try", title: TourCopy.tryIt, tasks: TourCopy.Settings.todos)
+                return chapter(.settings, 2 + Double(ticked.intersection([0, 1, 2]).count), of: 5, [there, here, tryIt],
+                               locked: lockedSettings)
+            }
+            // The tour's end: its own line, under "Tour complete" (the chapter moment's last name).
+            let again = TourSection(id: "settings.again", note: TourCopy.Settings.last)
+            var p = chapter(.settings, 5, of: 5, [there, here, again], primary: TourCopy.Settings.doneButton)
+            p.headline = TourCopy.Settings.finale
+            p.index = nil
+            return p
         default:
             return TourPage(headline: step?.headline ?? "")
         }
@@ -2062,6 +2083,14 @@ struct BubbleShape: Shape {
         if !ticked.contains(2) { l.insert(3) }
         return l
     }
+    /// Settings': one side, then the next, then the ⓘ.
+    private var lockedSettings: Set<Int> {
+        var l: Set<Int> = []
+        if !ticked.contains(0) { l.insert(1) }
+        if !ticked.isSuperset(of: [0, 1]) { l.insert(2) }
+        return l
+    }
+
     /// The list's: a marked prayer's score once they're unfolded; the fix once the three taps are done.
     /// One at a time, in order (owner, 2026-10-06: a coming prayer first, the others greyed; then unfold; then the
     /// marked one's score; then the hold) — so the thumbprint always follows the one open to-do.
@@ -2101,6 +2130,9 @@ struct BubbleShape: Shape {
 
     /// A chapter just finished, its moment in the top panel.
     private(set) var celebrating: TourStep?
+    /// Bumped as "Tour complete" comes in: the screen's edge glows once (the first mark's glow — decision
+    /// first-mark-celebration A; confetti was turned down).
+    private(set) var finaleGlows = 0
 
     /// A chapter's end: its moment in the panel (1.5 s), then on.
     private func endChapter(_ card: TourStep, then next: @escaping () -> Void) {
@@ -2199,6 +2231,8 @@ struct BubbleShape: Shape {
         case editorOpened(String), editorSaved(String)
         /// A real mark (the circle held, or a dot tapped), or the mark's preview when no prayer is due.
         case marked(PrayerModel, PrayerViewModel), markedPreview(PrayerViewModel)
+        /// Settings' chapter: the Reminders switch moved to a side; its ⓘ opened or closed.
+        case reminderTab(String), remindersInfo(open: Bool)
     }
 
     /// The card's place in the tour ("1 of 4"); nil for the post-tour steps.
@@ -2223,7 +2257,8 @@ struct BubbleShape: Shape {
         // The first chapter's first card back to the welcome; Settings' first card back to "Tap Settings".
         case (.circle, .learn): .learn
         case (.settings, .learn): .go
-        case (.settings, .last): .learn
+        case (.settings, .last): .tryIt
+        case (.settings, .tryIt): .learn
         default: nil
         }
     }
@@ -2417,10 +2452,26 @@ struct BubbleShape: Shape {
             TourExamples.shared.hide()   // off the Zikr page: the user's own tasks are back
             settingsScroll = (.top, settingsScroll.1 + 1)
             setPhase(.learn)
-        case (.settings, .learn, .next):
-            settingsScroll = (.tourRow, settingsScroll.1 + 1)
-            setPhase(.last)
-            // The row is ringed for as long as this step is up (TourLayer.steadyFrame — owner: keep it, don't flash it).
+        case (.settings, .learn, .next): setPhase(.tryIt)
+        case (.settings, .tryIt, .reminderTab(let side)):
+            if side == "liveActivities" { tick(0) }
+            if side == "fajrAlarm", ticked.contains(0) { tick(1) }
+        case (.settings, .tryIt, .remindersInfo(let open)):
+            if open { tick(2) }
+            // Closed with all three done: the chapter's moment, then the tour's end (the row ringed —
+            // TourLayer.steadyFrame — for as long as that step is up).
+            if !open, ticked.isSuperset(of: [0, 1, 2]) {
+                endChapter(.settings) {
+                    self.settingsScroll = (.tourRow, self.settingsScroll.1 + 1)
+                    self.setPhase(.last)
+                }
+                let thisRun = run
+                Task { @MainActor in   // the edge glow as "Tour complete" comes in
+                    try? await Task.sleep(for: .seconds(1.15))
+                    guard run == thisRun else { return }
+                    finaleGlows += 1
+                }
+            }
         case (.settings, .last, .next): finish(completed: true)
         default: break
         }
@@ -2618,6 +2669,10 @@ struct TourLayer: View {
             }
             backPill
             if !zikrTour { skipLayer }
+            // "Tour complete": the screen's edge glows once.
+            if runtime.finaleGlows > 0, !reduceMotion {
+                FirstMarkGlow().id(runtime.finaleGlows).allowsHitTesting(false)
+            }
         }
     }
 
@@ -2909,6 +2964,12 @@ extension TourLayer {
             guard sharedState.horizontalPage == .main, let c = circle else { return nil }
             // Across the circle: the bubble sits under it (no room above once the list's rows show).
             return .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: c.minX - 20, y: c.midY))
+        case (.settings, .tryIt):
+            // On the side to tap, then on the ⓘ.
+            if next(0) { return t.frame("remindersSwitch").map { .init(kind: .tap, at: CGPoint(x: $0.midX, y: $0.midY)) } }
+            if next(1) { return t.frame("remindersSwitch").map { .init(kind: .tap, at: CGPoint(x: $0.maxX - $0.width / 6, y: $0.midY)) } }
+            if next(2) { return t.frame("remindersHeader").map { .init(kind: .tap, at: CGPoint(x: $0.maxX - 10, y: $0.midY)) } }
+            return nil
         case (.settings, .go):
             // A swipe left, under the circle (clear of the prayer's name).
             guard sharedState.horizontalPage == .main, let c = circle else { return nil }
@@ -3002,6 +3063,8 @@ extension TourLayer {
         // half was taken (owner: "my drags a bit to the side don't seem to work").
         case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("historyDoor").map { $0.maxY + 12 } ?? 120) : []
         case (.settings, .go): return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
+        // Settings' try-its: the Reminders switch and its ⓘ (the header's row) only.
+        case (.settings, .tryIt): return f("remindersSwitch") + f("remindersHeader")
         default: return []
         }
     }

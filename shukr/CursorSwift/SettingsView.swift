@@ -427,6 +427,11 @@ struct SettingsView: View {
                         // under it whenever the card landed on a fractional pixel (the bug the owner first met with the
                         // Fajr alarm).
                         ReminderSwitch(tab: $remindersTab, sides: reminderSides)
+                            // The tour's Settings chapter: where its try-its are, and when they happen.
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                                if TourRuntime.shared.active { TourTargets.shared.set("remindersSwitch", frame) }
+                            }
+                            .onChange(of: remindersTab) { _, side in TourRuntime.shared.event(.reminderTab(side)) }
                             .listRowInsets(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
                             .listRowSeparatorTint(Color(.secondarySystemGroupedBackground))
                             .alignmentGuide(.listRowSeparatorLeading) { _ in -12 }   // the card's edges (the row is 12 in)
@@ -478,6 +483,10 @@ struct SettingsView: View {
                         }
                     } header: {
                         headerWithInfoButton(title: "Reminders", isPopupVisible: $isNotifPopupVisible)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                                if TourRuntime.shared.active { TourTargets.shared.set("remindersHeader", frame) }
+                            }
+                            .onChange(of: isNotifPopupVisible) { _, open in TourRuntime.shared.event(.remindersInfo(open: open)) }
                     }
                     .id("liveActivities")
 

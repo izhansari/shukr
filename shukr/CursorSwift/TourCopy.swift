@@ -157,6 +157,14 @@ enum TourCopy {
         ]
 
         static let lastStep = "This tour"
+        /// Its try-its (owner: harmless moves — Explore stays something to discover).
+        static let todos = [
+            "Switch Reminders to Live Activities",
+            "Now to Fajr Alarm",
+            "Tap ⓘ by Reminders",
+        ]
+        /// The last chapter's moment swipes to this, the tour's end.
+        static let finale = "Tour complete"
         static let last = "That’s shukr. May it make your prayers easier. If you ever want this walk again, it lives here."
         static let doneButton = "Done"
     }
