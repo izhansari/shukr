@@ -20,12 +20,19 @@ struct SadaqahCharity: Identifiable, Hashable {
     let name: String
     /// What they mainly do, one short line.
     let does: String
-    /// Why it's on the list (facts only: registration, ratings).
-    let why: String
     let symbol: String
     let url: URL
+    /// Its ⓘ sheet: a few sentences on the work, then the facts behind listing it (registration, rating, where).
     /// The kinds of work it does (a charity can be in several; the page's filter).
     var categories: Set<SadaqahCategory> = []
+    var about: String = ""
+    var facts: [SadaqahFact] = []
+}
+
+/// One line of a charity's ⓘ sheet.
+struct SadaqahFact: Hashable {
+    let symbol: String
+    let text: String
 }
 
 /// The page's filter: All, or one kind of work (owner: grouped once the list grows).
@@ -55,33 +62,61 @@ enum SadaqahCharities {
     /// picks — Help Yateem (UK charity 1158571), Human Development Fund, MATW Project, Paani Project (US nonprofits, no
     /// Charity Navigator star rating yet) — each on its own donation page. Left out: Islamic Relief USA (renamed IDEA after its split from Islamic Relief Worldwide in
     /// Sep 2026; irusa.org is gone), Mercy-USA (3 stars), and platforms (LaunchGood, MyTenNights).
+    private static func nonprofit(_ ein: String) -> SadaqahFact {
+        SadaqahFact(symbol: "building.columns", text: "US nonprofit, 501(c)(3) · EIN \(ein)")
+    }
+    private static func rated(_ score: Int) -> SadaqahFact {
+        SadaqahFact(symbol: "star", text: "Charity Navigator: \(score) / 100, four stars (Oct 2026)")
+    }
+    private static let notRated = SadaqahFact(symbol: "star", text: "Not yet rated by Charity Navigator")
+    private static func works(_ text: String) -> SadaqahFact { SadaqahFact(symbol: "globe", text: text) }
+
     static let all: [SadaqahCharity] = [
         SadaqahCharity(id: "zakat", name: "Zakat Foundation of America", does: "Zakat, emergency relief and education worldwide",
-                       why: "4 stars on Charity Navigator", symbol: "hands.and.sparkles.fill",
-                       url: URL(string: "https://www.zakat.org/donate")!, categories: [.relief]),
+                       symbol: "hands.and.sparkles.fill", url: URL(string: "https://www.zakat.org/donate")!,
+                       categories: [.relief],
+                       about: "Founded in 2001, it puts zakat and sadaqah into direct aid, emergency relief and education for people in need.",
+                       facts: [nonprofit("36-4476244"), rated(95), works("Works worldwide")]),
         SadaqahCharity(id: "hhrd", name: "Helping Hand for Relief and Development", does: "Disaster relief, orphans, water and health",
-                       why: "4 stars on Charity Navigator", symbol: "hand.raised.fill",
-                       url: URL(string: "https://www1.hhrd.org/DetailDonate")!, categories: [.relief, .orphans, .water]),
+                       symbol: "hand.raised.fill", url: URL(string: "https://www1.hhrd.org/DetailDonate")!,
+                       categories: [.relief, .orphans, .water],
+                       about: "A Michigan-based relief and development charity: disaster response, orphan sponsorship, clean water and health care.",
+                       facts: [nonprofit("31-1628040"), rated(100), works("Works worldwide and in the US")]),
         SadaqahCharity(id: "hdf", name: "Human Development Fund", does: "Emergency food, clean water, orphans and medical relief",
-                       why: "US nonprofit", symbol: "heart.circle.fill",
-                       url: URL(string: "https://give.hdfund.org/campaign/649760/donate")!, categories: [.relief, .orphans, .water]),
+                       symbol: "heart.circle.fill", url: URL(string: "https://give.hdfund.org/campaign/649760/donate")!,
+                       categories: [.relief, .orphans, .water],
+                       about: "Started by Muslim Americans from the relief world: emergency food, clean water, orphan sponsorship and medical relief.",
+                       facts: [nonprofit("92-2204466"), notRated, works("Works in about 27 countries")]),
         SadaqahCharity(id: "matw", name: "MATW Project", does: "Water, orphans and food for those in need",
-                       why: "US nonprofit", symbol: "globe.asia.australia.fill",
-                       url: URL(string: "https://matwprojectusa.org/donate")!, categories: [.water, .orphans, .relief]),
+                       symbol: "globe.asia.australia.fill", url: URL(string: "https://matwprojectusa.org/donate")!,
+                       categories: [.water, .orphans, .relief],
+                       about: "Muslims Around The World: wells and water, orphan care and food for families in need. This is its US branch.",
+                       facts: [nonprofit("92-1915834"), notRated, works("Works worldwide")]),
         SadaqahCharity(id: "paani", name: "Paani Project", does: "Wells, water aid and disaster relief in Pakistan",
-                       why: "US nonprofit, run by volunteers", symbol: "drop.fill",
-                       url: URL(string: "https://paaniproject.org/donate/")!, categories: [.water, .relief]),
+                       symbol: "drop.fill", url: URL(string: "https://paaniproject.org/donate/")!,
+                       categories: [.water, .relief],
+                       about: "Run by volunteers from Michigan. It builds wells and gives water aid and disaster relief, and sends donors photos and video of the finished well.",
+                       facts: [nonprofit("83-2222109"), notRated, works("Works in Pakistan and Jordan")]),
         SadaqahCharity(id: "penny", name: "Penny Appeal USA", does: "Water, education and relief",
-                       why: "4 stars on Charity Navigator", symbol: "drop.circle.fill",
-                       url: URL(string: "https://www.pennyappealusa.org/donate/")!, categories: [.water, .relief]),
+                       symbol: "drop.circle.fill", url: URL(string: "https://www.pennyappealusa.org/donate/")!,
+                       categories: [.water, .relief],
+                       about: "The US branch of Penny Appeal, a Muslim charity founded in the UK in 2009: water, education, livelihoods and emergency relief.",
+                       facts: [nonprofit("47-5165837"), rated(96), works("Works worldwide")]),
         SadaqahCharity(id: "yateem", name: "Help Yateem", does: "Orphans and orphanages around the world",
-                       why: "Registered UK charity", symbol: "figure.and.child.holdinghands",
-                       url: URL(string: "https://donate.helpyateem.org/")!, categories: [.orphans]),
+                       symbol: "figure.and.child.holdinghands", url: URL(string: "https://donate.helpyateem.org/")!,
+                       categories: [.orphans],
+                       about: "Supports orphans and orphanages: sponsorships, food, schooling and care.",
+                       facts: [SadaqahFact(symbol: "building.columns", text: "Registered UK charity · no. 1158571"),
+                               SadaqahFact(symbol: "star", text: "UK charity, so not rated by Charity Navigator"),
+                               works("Works worldwide")]),
         SadaqahCharity(id: "icna", name: "ICNA Relief USA", does: "Food pantries, shelters and disaster relief in the US",
-                       why: "4 stars on Charity Navigator", symbol: "house.fill",
-                       url: URL(string: "https://icnarelief.org/donate/")!, categories: [.atHome, .relief]),
+                       symbol: "house.fill", url: URL(string: "https://icnarelief.org/donate/")!,
+                       categories: [.atHome, .relief],
+                       about: "Helps people here at home: food pantries, women's shelters, family services and disaster relief across the US.",
+                       facts: [nonprofit("04-3810161"), rated(93), works("Works across the US")]),
     ]
 }
+
 
 // MARK: - The log
 
@@ -214,6 +249,10 @@ struct SadaqahPage: View {
     @State private var confirmed: SadaqahCharity?
     /// The charities shown: all, or one kind of work.
     @State private var category: SadaqahCategory?
+    /// The charity whose ⓘ sheet is up.
+    @State private var info: SadaqahCharity?
+    /// Its Donate: the site opens once the ⓘ sheet has gone.
+    @State private var donateAfterInfo: SadaqahCharity?
     /// Swiped away: asked once before it goes.
     @State private var deleting: SadaqahDonation?
 
@@ -226,11 +265,19 @@ struct SadaqahPage: View {
             }
             Section {
                 ForEach(SadaqahCharities.all.filter { c in category.map { c.categories.contains($0) } ?? true }) { charity in
-                    Button {
-                        // Always ask once the charity's page closes (owner).
-                        SadaqahSafari.open(charity.url) { asking = charity }
-                    } label: { CharityRow(charity: charity) }
-                        .buttonStyle(.plain)
+                    HStack(spacing: 4) {
+                        Button { give(to: charity) } label: { CharityRow(charity: charity) }
+                            .buttonStyle(.plain)
+                        // More about it (owner: an ⓘ, not a check mark on every row).
+                        Button { info = charity } label: {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 19))
+                                .foregroundStyle(Color.sage)
+                                .frame(width: 36, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                    }
                 }
             } header: {
                 VStack(alignment: .leading, spacing: 10) {
@@ -241,7 +288,7 @@ struct SadaqahPage: View {
                         .padding(.bottom, 4)
                 }
             } footer: {
-                Text("Registered charities. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
+                Text("Tap ⓘ to see who they are and why they're here. Each opens on the charity's own website; shukr takes nothing and never sees your payment.")
             }
             Section {
                 Button { editing = DonationDraft(manual: ()) } label: {
@@ -271,6 +318,11 @@ struct SadaqahPage: View {
             DidYouDonateSheet(charity: charity) { confirmed = charity; asking = nil }
         }
         .sheet(item: $editing) { DonationSheet(draft: $0) }
+        .sheet(item: $info, onDismiss: {
+            if let charity = donateAfterInfo { donateAfterInfo = nil; give(to: charity) }
+        }) { charity in
+            CharityInfoSheet(charity: charity) { donateAfterInfo = charity; info = nil }
+        }
         .alert("Delete this donation?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                presenting: deleting) { d in
             Button("Delete", role: .destructive) { withAnimation { log.delete(d) } }
@@ -278,6 +330,11 @@ struct SadaqahPage: View {
         } message: { d in
             Text("\(d.amount.money(d.currency)) to \(d.to)")
         }
+    }
+
+    /// The charity's own page; closing it always asks (owner).
+    private func give(to charity: SadaqahCharity) {
+        SadaqahSafari.open(charity.url) { asking = charity }
     }
 
     /// This year's total, the count, and Ramadan / Zakat when there are any.
@@ -351,15 +408,8 @@ private struct CharityRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(charity.name).font(.body.weight(.semibold))
                 Text(charity.does).font(.footnote).foregroundStyle(.secondary)
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.seal.fill")
-                    Text(charity.why)
-                }
-                .font(.caption).foregroundStyle(Color.sage)
-                .padding(.top, 1)
             }
             Spacer(minLength: 8)
-            Image(systemName: "arrow.up.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
         }
         .contentShape(Rectangle())
         .padding(.vertical, 2)
@@ -696,6 +746,60 @@ struct DonationSheet: View {
         SadaqahLog.shared.save(d)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         dismiss()
+    }
+}
+
+/// A charity's ⓘ: what it does and the facts behind listing it, then Donate.
+private struct CharityInfoSheet: View {
+    let charity: SadaqahCharity
+    let onDonate: () -> Void
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: charity.symbol)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(Color.sage))
+            VStack(spacing: 8) {
+                Text(charity.name)
+                    .font(.system(size: 22, weight: .regular, design: .rounded))
+                    .multilineTextAlignment(.center)
+                Text(charity.about)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 24)
+            VStack(spacing: 0) {
+                ForEach(Array(charity.facts.enumerated()), id: \.offset) { i, fact in
+                    if i > 0 { Divider().padding(.leading, 52) }
+                    HStack(spacing: 12) {
+                        Image(systemName: fact.symbol).foregroundStyle(Color.sage).frame(width: 24)
+                        Text(fact.text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                }
+            }
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
+            .padding(.horizontal, 20)
+            Spacer(minLength: 0)
+            Button(action: onDonate) {
+                Text("Donate")
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 240, height: 50)
+                    .background(Capsule().fill(Color.sage.opacity(0.08)))
+                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 10)
+        }
+        .padding(.top, 26)
+        .frame(maxWidth: .infinity)
+        .fontDesign(.rounded)
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
     }
 }
 
