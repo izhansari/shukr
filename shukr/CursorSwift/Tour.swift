@@ -177,6 +177,7 @@ struct TourPage {
         guard frame.width > 0, frames[key] != frame else { return }
         frames[key] = frame
     }
+    func clear(_ key: String) { if frames[key] != nil { frames[key] = nil } }
     func frame(_ key: String) -> CGRect? {
         key == "circle" ? (settledCircle ?? WelcomeTarget.circleFrame) : frames[key]
     }
@@ -729,6 +730,11 @@ struct TourTopPanel: View {
         } message: {
             Text(TourCopyStore.shared.t(TourCopy.Skip.alertLine))
         }
+        // Where the panel ends on this screen: Settings starts its page under it (SettingsView.tourRoom). Not the
+        // tuner's pictures of it.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            if !guideKey.hasPrefix("tuner.") { TourTargets.shared.set("topPanel", frame) }
+        }
         .onAppear { Presence.shared.up = true }
         .onDisappear { Presence.shared.up = false }
     }
@@ -979,7 +985,7 @@ struct TourTopPanel: View {
                 // What it is, then what to do — the two move on together, to-do by to-do.
                 VStack(alignment: .leading, spacing: 2) {
                     // The teaching line is the larger (owner: sizes switched); the to-do under it, small.
-                    if let lead = todoLead ?? page.shortLead {
+                    if let lead = todoLead ?? page.shortLead, !lead.isEmpty {
                         Text(lead)
                             .font(.system(.subheadline, design: .rounded))
                             .foregroundStyle(Color.primary.opacity(0.9))
@@ -2101,7 +2107,7 @@ struct BubbleShape: Shape {
                 p.atTop = true
                 return p
             }
-            let all = ticked.isSuperset(of: [0, 1, 2, 3])
+            let all = ticked.isSuperset(of: [0, 1, 2, 3]) && pendingAck == nil   // Save's ✓ is held first (new flow)
             guard !all else {
                 return chapter(.list, 5, of: 5, [TourSection(id: "list.done", note: TourCopy.List.allDone)],
                                locked: lockedList, primary: TourCopy.continueButton)
@@ -2133,8 +2139,10 @@ struct BubbleShape: Shape {
                                     tasks: [TourCopy.Settings.getThereTodo])
             guard phase != .go else { return chapter(.settings, 0, of: 2, [there]) }
             there.done = true
-            var here = TourSection(id: "settings.shows", title: TourCopy.Settings.hereStep,
-                                   blocks: [TourBlock(items: TourCopy.Settings.here)])
+            var here = TourFlow.v2
+                ? TourSection(id: "settings.shows", title: TourCopy.Settings.hereStep, lead: TourCopy.Settings.remindersIntro)
+                : TourSection(id: "settings.shows", title: TourCopy.Settings.hereStep,
+                              blocks: [TourBlock(items: TourCopy.Settings.here)])
             guard phase != .learn else { return chapter(.settings, 1, of: 5, [there, here], primary: TourCopy.continueButton) }
             here.done = true
             // Try it (owner): harmless moves only — the Reminders switch's sides, then its ⓘ.
@@ -2142,8 +2150,9 @@ struct BubbleShape: Shape {
                 var tryIt = TourSection(id: "settings.try", title: TourCopy.tryIt, tasks: TourCopy.Settings.todos)
                 tryIt.todoLeads = TourCopy.Settings.todoLeads
                 tryIt.todoAfters = TourCopy.Settings.todoAfters
-                return chapter(.settings, 2 + Double(ticked.intersection([0, 1, 2]).count), of: 5, [there, here, tryIt],
-                               locked: lockedSettings)
+                let n = TourCopy.Settings.todos.count
+                return chapter(.settings, 2 + Double(ticked.intersection(Set(0..<n)).count), of: Double(n + 2),
+                               [there, here, tryIt], locked: lockedSettings)
             }
             // The tour's end: its own line, under "Tour complete" (the chapter moment's last name).
             let again = TourSection(id: "settings.again", note: TourCopy.Settings.last)
@@ -2165,11 +2174,10 @@ struct BubbleShape: Shape {
         if !ticked.contains(Self.cMark) { l.insert(Self.cSwipe) }
         return l
     }
-    /// Settings': one side, then the next, then the ⓘ.
+    /// Settings': in order — a bell (new flow), one side, then the next, then the ⓘ.
     private var lockedSettings: Set<Int> {
         var l: Set<Int> = []
-        if !ticked.contains(0) { l.insert(1) }
-        if !ticked.isSuperset(of: [0, 1]) { l.insert(2) }
+        for i in 1..<TourCopy.Settings.todos.count where !ticked.isSuperset(of: Set(0..<i)) { l.insert(i) }
         return l
     }
 
@@ -2245,7 +2253,26 @@ struct BubbleShape: Shape {
                 withAnimation(.smooth(duration: 0.45)) { celebrating = nil }
             }
         }
-        if step == .settings, i == 2 { endSettings() }
+        if step == .list, i == 3, TourFlow.v2 { endChapter(.list) { self.go(to: .settings) } }
+        if step == .settings, i == Self.sBell { restoreBells() }
+        if step == .settings, i == Self.sInfo { endSettings() }
+    }
+
+    /// The bells tapped in the tour, as they were (owner: "put it back after"): put back once its to-do is let go, or
+    /// the tour ends.
+    @ObservationIgnored private var bellsBefore: [String: (on: Bool, nudge: Bool)] = [:]
+    func bellTapped(_ prayer: String, wasOn: Bool, wasNudge: Bool) {
+        guard active, step == .settings else { return }
+        if bellsBefore[prayer] == nil { bellsBefore[prayer] = (wasOn, wasNudge) }
+        if phase == .tryIt, let b = Self.sBell { tick(b, flash: nil) }
+    }
+    private func restoreBells() {
+        for (name, was) in bellsBefore {
+            let key = name.prefix(1).lowercased() + name.dropFirst()
+            UserDefaults.standard.set(was.on, forKey: key + "Notif")
+            UserDefaults.standard.set(was.nudge, forKey: key + "Nudges")
+        }
+        bellsBefore = [:]
     }
 
     /// Settings' last to-do let go: the chapter's moment, then the tour's end (the row ringed — TourLayer.steadyFrame).
@@ -2276,6 +2303,8 @@ struct BubbleShape: Shape {
 
     /// The time editor's fix: the draft is in the yellow (PrayerTimeEditSheet) — its first to-do in the panel ticks.
     var editorInYellow = false
+    /// Its score (0…100), for the line held under it.
+    var editorScore = 0
 
     /// The to-do just ticked, still shown with its ✓ for a beat (the page after it waits).
     private(set) var beat: Int?
@@ -2303,10 +2332,15 @@ struct BubbleShape: Shape {
     static var cMap: Int? { TourFlow.v2 ? 2 : nil }
     static var cMark: Int { TourFlow.v2 ? 3 : 2 }
     static var cSwipe: Int { cMark + 1 }
-    /// The list's: the new flow unfolds first, then a marked prayer's score, then a coming one's time.
+    /// The list's: the new flow unfolds first, then a coming one's time, then Fajr's score — on into fixing Fajr (owner).
     static var lFold: Int { TourFlow.v2 ? 0 : 1 }
-    static var lMarked: Int { TourFlow.v2 ? 1 : 2 }
-    static var lComing: Int { TourFlow.v2 ? 2 : 0 }
+    static var lComing: Int { TourFlow.v2 ? 1 : 0 }
+    static var lMarked: Int { 2 }
+    /// Settings': the new flow starts on a prayer's bell (owner: "here's notifications and you can tap any to change it").
+    static var sBell: Int? { TourFlow.v2 ? 0 : nil }
+    static var sLive: Int { TourFlow.v2 ? 1 : 0 }
+    static var sAlarm: Int { sLive + 1 }
+    static var sInfo: Int { sLive + 2 }
 
     func nudge() {
         nudges += 1
@@ -2476,6 +2510,7 @@ struct BubbleShape: Shape {
     }
 
     private func finish(completed: Bool) {
+        restoreBells()
         run += 1
         active = false
         if mapOpen { closeMapRequests += 1 }
@@ -2605,11 +2640,13 @@ struct BubbleShape: Shape {
             // The try-its start on Notifications, whatever the page was left on (owner: it was on Fajr Alarm).
             UserDefaults.standard.set("notifications", forKey: "settings.remindersTab")
             setPhase(.tryIt)
+            // Notifications off: no bells to tap (only the status row and its fix), so that to-do is done already.
+            if let b = Self.sBell, TourTargets.shared.frame("reminderBells") == nil { ticked.insert(b) }
         case (.settings, .tryIt, .reminderTab(let side)):
-            if side == "liveActivities" { tick(0) }
-            if side == "fajrAlarm", ticked.contains(0) { tick(1) }
+            if side == "liveActivities" { tick(Self.sLive) }
+            if side == "fajrAlarm", ticked.contains(Self.sLive) { tick(Self.sAlarm) }
         case (.settings, .tryIt, .remindersInfo(let open)):
-            if open { tick(2) }
+            if open { tick(Self.sInfo) }
         case (.settings, .last, .next): finish(completed: true)
         default: break
         }
@@ -2718,7 +2755,7 @@ struct BubbleShape: Shape {
                 self.step = .list
                 phase = .tryIt
                 ticked = [0, 1, 2, 3]
-                pendingAck = nil
+                pendingAck = TourFlow.v2 ? 3 : nil
                 openSection = nil
                 celebrating = nil
             }
@@ -2729,7 +2766,7 @@ struct BubbleShape: Shape {
                 self.step = .list
                 phase = .tryIt
                 ticked = [0, 1, 2, 3]
-                pendingAck = nil
+                pendingAck = TourFlow.v2 ? 3 : nil
                 openSection = nil
                 celebrating = nil
             }
@@ -2781,8 +2818,10 @@ struct BubbleShape: Shape {
     private func undo(_ i: Int, in step: TourStep) {
         if step == .list, i == 3 { prepare(.list) }   // Fajr late again
         if step == .settings {
+            if i == Self.sBell { restoreBells() }
             let sides = ["notifications", "liveActivities", "fajrAlarm"]
-            if sides.indices.contains(i) { UserDefaults.standard.set(sides[i], forKey: "settings.remindersTab") }
+            let j = i - Self.sLive
+            if sides.indices.contains(j) { UserDefaults.standard.set(sides[j], forKey: "settings.remindersTab") }
         }
         withAnimation(.smooth(duration: 0.35)) {
             ticked.remove(i)
@@ -3168,9 +3207,12 @@ extension TourLayer {
             return .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: c.minX - 20, y: c.midY))
         case (.settings, .tryIt):
             // On the side to tap, then on the ⓘ.
-            if next(0) { return t.frame("remindersSwitch").map { .init(kind: .tap, at: CGPoint(x: $0.midX, y: $0.midY)) } }
-            if next(1) { return t.frame("remindersSwitch").map { .init(kind: .tap, at: CGPoint(x: $0.maxX - $0.width / 6, y: $0.midY)) } }
-            if next(2) { return t.frame("remindersHeader").map { .init(kind: .tap, at: CGPoint(x: $0.maxX - 10, y: $0.midY)) } }
+            if let b = TourRuntime.sBell, next(b) {   // Asr's bell, the middle one
+                return t.frame("reminderBells").map { .init(kind: .tap, at: CGPoint(x: $0.midX, y: $0.midY + 4)) }
+            }
+            if next(TourRuntime.sLive) { return t.frame("remindersSwitch").map { .init(kind: .tap, at: CGPoint(x: $0.midX, y: $0.midY)) } }
+            if next(TourRuntime.sAlarm) { return t.frame("remindersSwitch").map { .init(kind: .tap, at: CGPoint(x: $0.maxX - $0.width / 6, y: $0.midY)) } }
+            if next(TourRuntime.sInfo) { return t.frame("remindersHeader").map { .init(kind: .tap, at: CGPoint(x: $0.maxX - 10, y: $0.midY)) } }
             return nil
         case (.settings, .go):
             // A swipe left, under the circle (clear of the prayer's name).
@@ -3266,7 +3308,7 @@ extension TourLayer {
         case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("historyDoor").map { $0.maxY + 12 } ?? 120) : []
         case (.settings, .go): return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
         // Settings' try-its: the Reminders switch and its ⓘ (the header's row) only.
-        case (.settings, .tryIt): return f("remindersSwitch") + f("remindersHeader")
+        case (.settings, .tryIt): return f("remindersSwitch") + f("remindersHeader") + f("reminderBells")
         default: return []
         }
     }

@@ -194,6 +194,10 @@ struct PrayerTimeEditSheet: View {
         }
         .onDisappear { TourEditorPanelWindow.hide() }
         .onChange(of: draftInYellow, initial: true) { _, now in if tourTip { TourRuntime.shared.editorInYellow = now } }
+        .onChange(of: draft, initial: true) { _, now in
+            guard tourTip else { return }
+            TourRuntime.shared.editorScore = Int((PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: now) * 100).rounded())
+        }
         .sheet(isPresented: $pickingSpot) {
             PrayerLocationPicker(prayerName: prayer.displayName, original: shownSpot,
                                  recorded: prayer.recordedSpot ?? savedSpot,

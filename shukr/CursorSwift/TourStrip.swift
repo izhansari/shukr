@@ -360,27 +360,18 @@ struct TourEditorPanel: View {
                 .padding(.trailing, 10)
             }
             .frame(height: 34)
-            Text(TourCopyStore.shared.t(TourCopy.List.editorLine))
-                .font(.system(.caption, design: .rounded))
-                .foregroundStyle(Color.primary.opacity(0.55))
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .top, spacing: 12) {
-                let current = inYellow ? 1 : 0
-                ZStack {
-                    Circle().strokeBorder(TourInk.green.opacity(0.6), lineWidth: 1.5)
-                }
-                .frame(width: 22, height: 22)
-                Text(todos[current])
-                    .font(.system(.subheadline, design: .rounded, weight: .medium))
-                    .foregroundStyle(Color.primary.opacity(0.9))
-                    .id(current)
-                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
-                                            removal: .move(edge: .top).combined(with: .opacity)))
-                Spacer(minLength: 0)
+            // The first to-do, as the panel draws one (its line over it); once in the yellow it's ✓ and held, its line
+            // the score it'll keep (owner: "its own moment"), and Save comes in under it.
+            row(done: inYellow,
+                lead: inYellow ? TourCopy.List.editorInYellow(runtime.editorScore)
+                               : TourCopyStore.shared.t(TourCopy.List.editorLine),
+                todo: todos[0])
+            if inYellow {
+                row(done: false, lead: nil, todo: todos[1])
+                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity), removal: .opacity))
             }
-            .clipped()
-            .animation(.smooth(duration: 0.35), value: inYellow)
         }
+        .animation(.smooth(duration: 0.35), value: inYellow)
         .padding(.leading, 16)
         .padding(.trailing, 8)
         .padding(.top, 8)
@@ -404,6 +395,42 @@ struct TourEditorPanel: View {
                 withAnimation(.easeOut(duration: 0.6)) { pulse = false }
             }
         }
+    }
+
+    /// One to-do: its ring (a ✓ once done), its line over it in the larger type, the to-do small under it.
+    private func row(done: Bool, lead: String?, todo: String) -> some View {
+        HStack(alignment: .todoLine, spacing: 12) {
+            ZStack {
+                Circle().strokeBorder(TourInk.green.opacity(done ? 0 : 0.6), lineWidth: 1.5)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(TourInk.green)
+                    .opacity(done ? 1 : 0)
+                    .scaleEffect(done ? 1 : 0.5)
+            }
+            .frame(width: 16, height: 16)
+            .padding(.leading, 3)
+            .alignmentGuide(.todoLine) { $0[VerticalAlignment.center] }
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: done)
+            VStack(alignment: .leading, spacing: 2) {
+                if let lead {
+                    Text(lead)
+                        .font(.system(.subheadline, design: .rounded))
+                        .foregroundStyle(Color.primary.opacity(0.9))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .contentTransition(.numericText())
+                        .id(done)
+                        .transition(.opacity)
+                }
+                Text(todo)
+                    .font(.system(.footnote, design: .rounded, weight: .semibold))
+                    .foregroundStyle(done ? AnyShapeStyle(TourInk.green) : AnyShapeStyle(Color.primary.opacity(0.55)))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .alignmentGuide(.todoLine) { $0[VerticalAlignment.center] }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.trailing, 8)
     }
 }
 

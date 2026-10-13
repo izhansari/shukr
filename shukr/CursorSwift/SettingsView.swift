@@ -319,6 +319,20 @@ struct SettingsView: View {
     .padding(.top, 8)
     }
 
+    /// Room for the tour's panel over the page while its Settings chapter is here: from where the page's content starts
+    /// on this screen to the panel's measured bottom (any phone, any text size — no fixed number).
+    private var tourRoomNow: CGFloat {
+        let tour = TourRuntime.shared
+        guard tour.active, tour.step == .settings, tour.phase != .go,
+              let panel = TourTargets.shared.frame("topPanel"), panel.height < 320, listTop > 0 else { return 0 }
+        return max(0, (panel.maxY + 4 - listTop).rounded())
+    }
+    /// The room kept: it only grows within the chapter (the panel's height changes with each to-do; the page shouldn't
+    /// move up and down with it), back to 0 once the chapter's over.
+    @State private var tourRoom: CGFloat = 0
+    /// Where the page's content starts, in screen points: the bottom of its top bar.
+    @State private var listTop: CGFloat = 0
+
     var body: some View {
         ZStack{
             VStack{
@@ -463,6 +477,11 @@ struct SettingsView: View {
                                 prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, dots: true)
                             }
                             .padding(.vertical, 4)
+                            // The tour's first Reminders try-it: a bell (it's put back after).
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                                if TourRuntime.shared.active { TourTargets.shared.set("reminderBells", frame) }
+                            }
+                            .onDisappear { TourTargets.shared.clear("reminderBells") }
                             }
                         }
                         // How far ahead the side showing is set up — inside the card, its last line (owner), on every side.
@@ -673,7 +692,9 @@ struct SettingsView: View {
                     .onChange(of: TourRuntime.shared.settingsScroll.1) { _, _ in
                         let to = TourRuntime.shared.settingsScroll.0
                         withAnimation(.smooth(duration: CircleMotion.standard)) {
-                            proxy.scrollTo(to == .top ? "settingsTop" : "tourAgainRow", anchor: to == .top ? .top : .center)
+                            // The top: the first header asked for well down the page, so the scroll stops at the page's own
+                            // start (its margin under the tour's panel kept) — `.top` pinned it under the panel.
+                            proxy.scrollTo(to == .top ? "settingsTop" : "tourAgainRow", anchor: to == .top ? UnitPoint(x: 0.5, y: 0.3) : .center)
                         }
                     }
 
@@ -861,6 +882,11 @@ struct SettingsView: View {
                     #endif
                     
                 }
+                // The tour's panel sits over the page's top: while its Settings chapter is on, the page starts under it
+                // (owner: the swipe in seemed to land mid-page — the page's top was under the panel).
+                .contentMargins(.top, tourRoom, for: .scrollContent)
+                .animation(.smooth(duration: CircleMotion.standard), value: tourRoom)
+                .onChange(of: tourRoomNow, initial: true) { _, now in tourRoom = now == 0 ? 0 : max(tourRoom, now) }
                 #if DEBUG
                 .task {   // `-settingsScrollTo lockTime`: Settings opened on the Lock Screen time-left picker
                     guard let to = UserDefaults.standard.string(forKey: "settingsScrollTo") else { return }   // + liveActivities
@@ -869,7 +895,12 @@ struct SettingsView: View {
                 }
                 #endif
                 }
-                .modifier(OverListHeader { settingsHeader })
+                .modifier(OverListHeader {
+                    settingsHeader
+                        // The page's content starts under this bar (its 6 pt padding below): the tour's room is measured
+                        // from here.
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY + 6 } action: { listTop = $0 }
+                })
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
@@ -1161,6 +1192,8 @@ struct prayerCol: View {
     var body: some View {
             // Unified Bell Button
             Button(action:{
+                let wasOn = notifIsOn, wasNudge = nudgeIsOn
+                defer { TourRuntime.shared.bellTapped(prayerName, wasOn: wasOn, wasNudge: wasNudge) }   // the tour puts it back
                 if !notifIsOn {
                     notifIsOn = true
                     nudgeIsOn = false

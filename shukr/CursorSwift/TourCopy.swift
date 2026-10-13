@@ -89,7 +89,7 @@ enum TourCopy {
         static var todoLeads: [String] { TourFlow.v2 ? [
             "This circle is the prayer that’s on now: Asr.",
             "The small arrow on the ring points to the Kaaba.",
-            "Want to see it on a map?",
+            "",   // the qibla's held line leads into it (owner)
             "Prayed? Mark it right here.",
         ] : [
             "The ring fills as the prayer's time runs out.",
@@ -99,8 +99,8 @@ enum TourCopy {
         /// Once each is done, the panel holds and teaches a little more, then → (owner).
         static var todoAfters: [String] { TourFlow.v2 ? [
             "Tap again to see when it ends. In its last hour it shows the time left by itself.",
-            "Straight up means you’re facing the qibla.",
-            "The map draws the line to Mecca, so you don’t have to trust your compass. Your prayers are pinned here too, and it finds mosques near you.",
+            "You’re facing the qibla. Compasses can be off, so a tap on the arrow shows you on a map.",
+            "Line yourself up with the green line — it’s the true direction, whatever your compass says. Your prayers are pinned here too, and it finds mosques near you.",
             "Perfect, prayed in the first 30 minutes. See how it moved on to Maghrib? It always shows the prayer that matters now.",
         ] : [
             "Tap it any time. In a prayer's last hour it shows the time left on its own.",
@@ -143,9 +143,9 @@ enum TourCopy {
         /// A line over each to-do in the panel: what it is.
         static var todoLeads: [String] { TourFlow.v2 ? [
             "Prayers you’ve marked fold away to keep the list short.",
-            "Every marked prayer keeps its score.",
             "Coming prayers show when they start.",
-            "Marked one at the wrong time? It can be fixed.",
+            "Every marked prayer keeps its score.",
+            "Prayed Fajr on time but marked it late? Fix it.",
         ] : [
             "Your whole day is here, in order.",
             "Prayers you've marked tuck away to keep it tidy.",
@@ -153,10 +153,10 @@ enum TourCopy {
             "Marked one late by mistake? Its time can be fixed.",
         ] }
         static var todoAfters: [String] { TourFlow.v2 ? [
-            "That’s your whole day: done ones on top, coming ones below.",
-            "Qaza, 40: prayed after its time. Perfect is 100, on time 80 or more, late 60 or more.",
+            "Your full day: what you’ve prayed, and what you haven’t yet.",
             "It counts down to the start. Tap again for the time.",
-            "",
+            "“Qaza · 40” means it was prayed after its time. Its dot’s color shows it too.",
+            "Saved. Fajr counts as on time now, and your day’s score moves with it.",   // Save's own moment; → ends the chapter
         ] : [
             "The times follow your location and calculation method, both in Settings.",
             "Tap “done” again to tuck them back away.",
@@ -165,9 +165,9 @@ enum TourCopy {
         ] }
         static var todos: [String] { TourFlow.v2 ? [
             "Tap “3 done”",
-            "Tap Fajr’s time",
             "Tap Maghrib’s time",
-            "Hold Fajr, slide into the yellow, save",
+            "Tap Fajr’s time",
+            "Hold Fajr",
         ] : [
             "Tap a coming prayer for the time until",
             "Unfold to see all your prayers",
@@ -178,10 +178,13 @@ enum TourCopy {
 
         // The tip inside the time editor (opened by the last to-do).
         static let editorTitle = "When did you really pray?"
-        static let editorLine = "Say you prayed Fajr on time but marked it late: drag the color bar or turn the wheel into the yellow, then save. It’s practice — nothing is kept."
+        static var editorLine: String { TourFlow.v2 ? "Drag the color bar or turn the wheel. It’s practice — nothing is kept."
+            : "Say you prayed Fajr on time but marked it late: drag the color bar or turn the wheel into the yellow, then save. It’s practice — nothing is kept." }
         static let editorTodo = "Move it into the yellow, then save"
         /// The editor's to-dos in the top panel (owner: the first ticks as soon as it's in the yellow).
         static let editorTodos = ["Move it into the yellow", "Tap Save"]
+        /// Held under the first once it's in the yellow (owner: "its own moment"): the score the draft would keep.
+        static func editorInYellow(_ score: Int) -> String { "On time · \(score) — that’s the score it’ll keep." }
     }
 
     // MARK: 3 · Zikr
@@ -217,7 +220,9 @@ enum TourCopy {
         static let getThereLead = "Settings is one page over."
         static let getThereTodo = "Swipe left"
 
-        static let hereStep = "What you set here"
+        static var hereStep: String { TourFlow.v2 ? "Reminders" : "What you set here" }
+        /// The new flow's opening line (owner: the Reminders section had no intro).
+        static let remindersIntro = "Reminders come three ways. Here’s how to change them."
         static var here: [String] { TourFlow.v2 ? [
             "your location, prayer times and qibla, your reminders, and how shukr looks",
         ] : [
@@ -229,22 +234,23 @@ enum TourCopy {
 
         static let lastStep = "This tour"
         /// Its try-its (owner: harmless moves — Explore stays something to discover).
-        static let todos = [
+        /// The new flow starts on a prayer's bell (put back once it's let go — TourRuntime.restoreBell).
+        static var todos: [String] { (TourFlow.v2 ? ["Tap a prayer’s bell"] : []) + [
             "Switch Reminders to Live Activities",
             "Now switch to Fajr Alarm",
             "Tap ⓘ by Reminders",
-        ]
+        ] }
         /// A line over each to-do in the panel: what the thing it names is.
-        static let todoLeads = [
+        static var todoLeads: [String] { (TourFlow.v2 ? ["Notifications first: each prayer’s bell says what it sends."] : []) + [
             "Live Activities put a prayer's countdown on your Lock Screen.",
             "The Fajr alarm is a real alarm that moves with Fajr.",
             "Every ⓘ explains its section in plain words.",
-        ]
-        static let todoAfters = [
+        ] }
+        static var todoAfters: [String] { (TourFlow.v2 ? ["Each tap moves it on: off, start, then nudge, which adds a reminder halfway and one near the end. We’ll put yours back."] : []) + [
             "Each prayer gets its card when it starts, and you can mark it right from there.",
             "Set it once and it rings before Fajr every day, moving with Fajr through the year.",
             "Look for ⓘ by any section whenever you want to know more.",
-        ]
+        ] }
         /// The last chapter's moment swipes to this, the tour's end.
         static let finale = "Tour complete"
         static let last = "That’s shukr. May it make your prayers easier. If you ever want this walk again, it lives here."

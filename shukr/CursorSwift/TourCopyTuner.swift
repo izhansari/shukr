@@ -125,7 +125,7 @@ struct TourCopyTuner: View {
                        extra: [TourCopy.List.editorLine] + TourCopy.List.editorTodos))
         s.append(.init(id: "list.end", title: "2 · That's your day", step: .list, phase: .tryIt, ticked: [0, 1, 2, 3]))
         s.append(.init(id: "settings.go", title: "3 · Get there", step: .settings, phase: .go))
-        s.append(.init(id: "settings.learn", title: "3 · What you set here", step: .settings, phase: .learn))
+        s.append(.init(id: "settings.learn", title: "3 · Reminders intro", step: .settings, phase: .learn))
         for i in TourCopy.Settings.todos.indices {
             s.append(.init(id: "settings.\(i)", title: "3 · To-do \(i + 1)", step: .settings, phase: .tryIt,
                            ticked: Set(0..<i), todo: i))
