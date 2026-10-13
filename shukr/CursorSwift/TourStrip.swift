@@ -88,6 +88,8 @@ struct TourCoachStrip: View {
     var extra: (label: String, action: () -> Void)? = nil
     /// The extra as the strip's button (bordered, trailing) — a step whose only move is it (the Zikr Tour's end).
     var extraProminent = false
+    /// false inside `TourTopPanel`, which draws the one background for the card and the strip it becomes.
+    var chrome = true
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
@@ -206,8 +208,8 @@ struct TourCoachStrip: View {
         .padding(.vertical, 12)
         .frame(minHeight: 60)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
-        .tourBubble(RoundedRectangle(cornerRadius: 20, style: .continuous),
-                    look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        .modifier(StripChrome(on: chrome, look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme,
+                              backdrop: theme.backdrop))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .strokeBorder(TourInk.green.opacity(pulse ? 1 : 0), lineWidth: pulse ? 3 : 1.5)
@@ -225,6 +227,21 @@ struct TourCoachStrip: View {
         .contentShape(Rectangle())
         .allowsHitTesting(onDetails != nil || onBack != nil || extra != nil)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The strip's own background, unless a panel around it draws one.
+private struct StripChrome: ViewModifier {
+    let on: Bool
+    let look: TourBubbleLook
+    let scheme: ColorScheme
+    let backdrop: Color
+    func body(content: Content) -> some View {
+        if on {
+            content.tourBubble(RoundedRectangle(cornerRadius: 20, style: .continuous), look: look, scheme: scheme, backdrop: backdrop)
+        } else {
+            content
+        }
     }
 }
 

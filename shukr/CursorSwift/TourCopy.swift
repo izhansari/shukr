@@ -63,6 +63,8 @@ enum TourCopy {
             "Hold the circle to mark Asr",
         ]
         static let noCompass = "No compass here? Skip it"
+        /// The button beside the chapter's name on "What it shows": on to trying it (owner: not "Continue").
+        static let tryButton = "Try it"
         static let marked = "Asr has moved to your prayer list. Let’s look at that next. Swipe up to reveal it."
     }
 

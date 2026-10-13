@@ -146,6 +146,10 @@ struct TourPage {
     var primary: String? = nil
     /// A quiet second button ("Play again").
     var secondary: String? = nil
+    /// Shown in the strip's place at the top, as the strip itself grown to hold the words (owner, 2026-10-13: "the same
+    /// item as the strip"), its button beside the chapter name; the to-dos then come in the same panel. Turned on step by
+    /// step as the tour is reworked (the welcome and the rest still float).
+    var atTop = false
     /// The to-dos, wherever they are (a chapter's step or the post-tour page).
     var todo: [String] { sections.first(where: { !$0.tasks.isEmpty })?.tasks ?? tasks }
 }
@@ -447,7 +451,20 @@ struct TourCallout: View {
             // first, once, as the card with "Got it".
             let key = page.guideKey(step.rawValue)
             let mode = TourGuideMode.of(page, key: key)
-            if mode == .strip {
+            let stripAtTop = TourStripPlace.top(target: hole, height: size.height, keepBottom: aboveY != nil)
+            // The strip's place at the top holds one panel (owner: "the same item as the strip"): a card asked to sit
+            // there, then the strip it becomes — one view, so it grows and shrinks between them instead of a bubble
+            // going and a strip coming.
+            if page.atTop || (mode == .strip && stripAtTop && step.isCard) {
+                TourTopPanel(page: page, mode: mode, guideKey: key, ticked: ticked, showsBack: showsBack, qiblaSkip: qiblaSkip,
+                             openSection: openSection, lit: lit, step: step, place: place,
+                             onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack, onToggle: onToggle,
+                             onSkipQibla: onSkipQibla)
+                    .tourStripPlaced(top: true, size: size, topInset: typeSize.isAccessibilitySize ? 158 : 112,
+                                     bottomInset: 0)
+                    .opacity(shown ? 1 : 0)
+                    .transition(.opacity)
+            } else if mode == .strip {
                 TourCoachStrip(chapter: page.headline, lead: page.shortLead, todos: page.currentTodos, ticked: ticked, locked: page.locked,
                                progress: page.activeSection?.progress,
                                onDetails: page.explains ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.again(key) } } : nil,
@@ -525,12 +542,123 @@ struct TourCallout: View {
     }
 }
 
+/// The panel in the strip's place at the top: a card's words with the chapter's name and its button on one line, or the
+/// strip — the same rounded panel either way, so going from one to the other it grows or shrinks and its words cross-fade.
+struct TourTopPanel: View {
+    let page: TourPage
+    let mode: TourGuideMode
+    let guideKey: String
+    let ticked: Set<Int>
+    let showsBack: Bool
+    let qiblaSkip: Bool
+    let openSection: String?
+    let lit: Set<Int>
+    let step: TourStep
+    let place: (Int, Int)?
+    var onPrimary: () -> Void
+    var onSecondary: () -> Void
+    var onBack: () -> Void
+    var onToggle: (String) -> Void
+    var onSkipQibla: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.circleTheme) private var theme
+    @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
+
+    private var isStrip: Bool { mode == .strip }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if isStrip {
+                TourCoachStrip(chapter: page.headline, lead: page.shortLead, todos: page.currentTodos, ticked: ticked,
+                               locked: page.locked, progress: page.activeSection?.progress,
+                               onDetails: page.explains ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.again(guideKey) } } : nil,
+                               onBack: showsBack ? onBack : nil,
+                               extra: qiblaSkip ? (TourCopy.Circle.noCompass, onSkipQibla) : nil,
+                               chrome: false)
+                    .transition(.opacity.combined(with: .offset(y: 6)))
+            } else {
+                card
+                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
+            }
+        }
+        // The leaving words stay inside the panel as it shrinks.
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .tourBubble(RoundedRectangle(cornerRadius: 20, style: .continuous),
+                    look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        .animation(.smooth(duration: 0.4), value: isStrip)
+        .tint(TourInk.green)
+    }
+
+    /// The chapter's name (as the strip says it) and the button on one line, then the words.
+    private var card: some View {
+        let shown = mode == .cardThenStrip ? page.withGotIt : page
+        let primary = mode == .cardThenStrip
+            ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.gotIt(guideKey) } } : onPrimary
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                if showsBack {
+                    Button(action: onBack) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(.footnote, weight: .semibold))
+                            .foregroundStyle(Color(.secondaryLabel))
+                            .frame(width: 24, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back")
+                    .padding(.trailing, -6)
+                }
+                Text(page.headline)
+                    .font(.system(.caption2, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.45))
+                    .textCase(.uppercase)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                if let label = shown.primary {
+                    Button(action: primary) {
+                        Text(label)
+                            .font(.system(.footnote, design: .rounded, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .frame(height: 30)
+                            .background(Capsule().fill(TourInk.green))
+                            .fixedSize()
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            TourPageView(step: step, page: Self.untitled(shown), compact: true, place: place, ticked: ticked, lit: lit,
+                         openSection: openSection, showsBack: false, qiblaSkip: false,
+                         onPrimary: primary, onSecondary: onSecondary, onBack: onBack,
+                         onToggle: onToggle, onSkipQibla: onSkipQibla)
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 12)
+        .padding(.vertical, 12)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+
+    /// The step's own small title ("What it shows") goes: the panel's line already names the chapter.
+    private static func untitled(_ page: TourPage) -> TourPage {
+        var p = page
+        p.sections = p.sections.map { s in
+            var s = s
+            if !s.done { s.title = nil }
+            return s
+        }
+        return p
+    }
+}
+
 /// One card's content in the bubble. A chapter (owner): "1  Prayer Circle" with a ring top right for how far through it
 /// you are, then its steps — the current one open, the finished ones folded to a ✓ line each (tap to open again). A
 /// post-tour step: its symbol, headline, line, to-dos. Then the row of Back · the dots · the buttons.
 struct TourPageView: View {
     let step: TourStep
     let page: TourPage
+    /// In the top panel: its sections only — the panel has the chapter's name and the button (`TourTopPanel`).
+    var compact = false
     var place: (Int, Int)?
     var ticked: Set<Int>
     var lit: Set<Int>
@@ -545,7 +673,9 @@ struct TourPageView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let index = page.index { chapterHeader(index) } else { plainHeader }
+            if compact {
+                EmptyView()
+            } else if let index = page.index { chapterHeader(index) } else { plainHeader }
             if page.sections.isEmpty {
                 plainBody
             } else {
@@ -576,7 +706,7 @@ struct TourPageView: View {
                     .transition(.opacity)
             }
             // The buttons' row only when there's something in it: an empty one left a 40 pt strip under every to-do.
-            if showsBack || page.secondary != nil || page.primary != nil {
+            if !compact && (showsBack || page.secondary != nil || page.primary != nil) {
             HStack(spacing: 12) {
                 if showsBack {
                     Button(action: onBack) {
@@ -1519,7 +1649,9 @@ struct BubbleShape: Shape {
             let tryIt = TourSection(id: "circle.try", title: TourCopy.tryIt, tasks: TourCopy.Circle.todos)
             switch phase {
             case .learn:
-                return chapter(.circle, 0, of: 4, [shows], primary: TourCopy.continueButton)
+                var p = chapter(.circle, 0, of: 4, [shows], primary: TourCopy.Circle.tryButton)
+                p.atTop = true
+                return p
             default:
                 shows.done = true
                 let marked = ticked.contains(2)
@@ -1905,8 +2037,9 @@ struct BubbleShape: Shape {
             // The circle's colours: the demo plays as the step opens (owner: "just start it").
             if step == .circle, next == .learnMore, !sweepPlayed { playColors(run: run) }
         }
-        // The step that's done rolls up into its ✓ line first, then the next comes in under it.
-        guard step?.isCard == true, next != phase else { return land() }
+        // The step that's done rolls up into its ✓ line first, then the next comes in under it — except in the top panel,
+        // which turns into the strip itself (a fold in between took it out of the panel for a moment).
+        guard step?.isCard == true, next != phase, !page.atTop else { return land() }
         openSection = nil
         withAnimation(.smooth(duration: CircleMotion.standard)) { folding = next }
         let thisRun = run, card = step
