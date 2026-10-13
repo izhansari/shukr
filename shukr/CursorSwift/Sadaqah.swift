@@ -276,6 +276,19 @@ final class SadaqahLog {
            let list = try? JSONDecoder.sadaqah.decode([SadaqahDonation].self, from: data) {
             donations = list.sorted { $0.date > $1.date }
         }
+        #if DEBUG
+        // `-demoDonations`: stand-ins to look at (in memory; written only if one is edited).
+        if ProcessInfo.processInfo.arguments.contains("-demoDonations") {
+            let day: TimeInterval = 86_400
+            func d(_ to: String, _ amount: Double, _ p: SadaqahPurpose, _ ago: Double) -> SadaqahDonation {
+                SadaqahDonation(to: to, charityID: nil, amount: amount, currency: Self.currency, purpose: p, note: "", date: .now - ago * day)
+            }
+            donations = [d("Zakat Foundation of America", 250, .zakat, 2), d("Paani Project", 60, .relief, 9),
+                         d("Emgage Foundation", 40, .community, 15), d("Help Yateem", 35, .orphans, 34),
+                         d("Masjid Al-Noor", 20, .masjid, 41), d("Muslim Legal Fund of America", 75, .community, 50),
+                         d("Zakat Foundation of America", 100, .sadaqah, 63)]
+        }
+        #endif
     }
 
     func save(_ donation: SadaqahDonation) {
@@ -631,22 +644,81 @@ private struct DonationRow: View {
 
 // MARK: - History
 
+/// What Your donations shows (owner: "how much was sadaqah, how much was community, which groups"): everything, one side,
+/// one "For", or one organization.
+enum DonationFilter: Hashable {
+    case kind(GiveKind)
+    case purpose(SadaqahPurpose)
+    case to(String)
+
+    var title: String {
+        switch self {
+        case .kind(let k): k.title
+        case .purpose(let p): p == .sadaqah ? "General sadaqah" : p.title
+        case .to(let name): name
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .kind(let k): k == .sadaqah ? "heart.fill" : "person.3.fill"
+        case .purpose(let p): p.symbol
+        case .to: "building.2.fill"
+        }
+    }
+    func matches(_ d: SadaqahDonation) -> Bool {
+        switch self {
+        case .kind(let k): d.purpose.kind == k
+        case .purpose(let p): d.purpose == p
+        case .to(let name): d.to == name
+        }
+    }
+}
+
 struct SadaqahHistoryPage: View {
     @State private var log = SadaqahLog.shared
     @State private var editing: DonationDraft?
     @State private var asking: SadaqahDonation?
+    @State private var filter: DonationFilter?
+
+    private var shown: [SadaqahDonation] { log.donations.filter { d in filter.map { $0.matches(d) } ?? true } }
 
     /// The donations by month, newest first.
     private var months: [(title: String, items: [SadaqahDonation])] {
         let cal = Calendar.current
-        let groups = Dictionary(grouping: log.donations) { cal.dateInterval(of: .month, for: $0.date)?.start ?? $0.date }
+        let groups = Dictionary(grouping: shown) { cal.dateInterval(of: .month, for: $0.date)?.start ?? $0.date }
         return groups.keys.sorted(by: >).map { start in
             (start.formatted(.dateTime.month(.wide).year()), groups[start] ?? [])
         }
     }
 
+    private static func sum(_ list: [SadaqahDonation]) -> Double {
+        list.filter { $0.currency == SadaqahLog.currency }.reduce(0) { $0 + $1.amount }
+    }
+
     var body: some View {
         List {
+            if !log.donations.isEmpty {
+                // The total for what's shown, big, as on the page before (owner: the log sheet's look).
+                Section {
+                    VStack(spacing: 4) {
+                        Text(Self.sum(shown).money())
+                            .font(.system(size: 48, weight: .light, design: .rounded))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                        Text("\(shown.count == 1 ? "1 donation" : "\(shown.count) donations")" + (filter.map { " · \($0.title)" } ?? " in all"))
+                            .font(.footnote).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                } header: {
+                    HStack {
+                        Spacer()
+                        DonationFilterMenu(filter: $filter, donations: log.donations).textCase(nil)
+                    }
+                }
+            }
             ForEach(months, id: \.title) { month in
                 Section {
                     ForEach(month.items) { d in
@@ -660,7 +732,7 @@ struct SadaqahHistoryPage: View {
                     HStack {
                         Text(month.title)
                         Spacer()
-                        Text(month.items.filter { $0.currency == SadaqahLog.currency }.reduce(0) { $0 + $1.amount }.money())
+                        Text(Self.sum(month.items).money())
                     }
                 }
             }
@@ -670,11 +742,14 @@ struct SadaqahHistoryPage: View {
         .navigationTitle("Your donations")
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
+        .animation(.snappy(duration: 0.25), value: filter)
         .overlay {
             if log.donations.isEmpty {
                 ContentUnavailableView("No donations yet", systemImage: "gift", description: Text("Tap + to log one."))
             }
         }
+        // A filter that matches nothing any more (its last donation deleted) lets go.
+        .onChange(of: log.donations) { _, _ in if shown.isEmpty { filter = nil } }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(item: SadaqahExport(text: log.csv()), preview: SharePreview("shukr donations.csv")) {
@@ -694,6 +769,74 @@ struct SadaqahHistoryPage: View {
             Button("Cancel", role: .cancel) {}
         } message: { d in
             Text("\(d.amount.money(d.currency)) to \(d.to)")
+        }
+    }
+}
+
+/// Your donations' filter: the plain glyph, or the green pill with the filter's name (as on the main page). Its menu lists
+/// only what's in the log: Sadaqah / Community, each "For" used, each organization given to.
+private struct DonationFilterMenu: View {
+    @Binding var filter: DonationFilter?
+    let donations: [SadaqahDonation]
+
+    /// The "For"s used, without Community (Type covers it).
+    private var purposes: [SadaqahPurpose] {
+        SadaqahPurpose.allCases.filter { p in p != .community && donations.contains { $0.purpose == p } }
+    }
+    private var names: [String] {
+        Array(Set(donations.map(\.to))).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    var body: some View {
+        Menu {
+            option(nil, "All donations", "square.grid.2x2")
+            Section("Type") {
+                ForEach(GiveKind.allCases) { k in option(.kind(k), k.title, DonationFilter.kind(k).symbol) }
+            }
+            if purposes.count > 1 {
+                Section("For") {
+                    // "General sadaqah", so it isn't read as Type's Sadaqah (which includes zakat and the rest).
+                    ForEach(purposes) { p in option(.purpose(p), p == .sadaqah ? "General sadaqah" : p.title, p.symbol) }
+                }
+            }
+            if names.count > 1 {
+                Section("Organization") {
+                    ForEach(names, id: \.self) { n in option(.to(n), n, "building.2") }
+                }
+            }
+        } label: {
+            if let filter {
+                HStack(spacing: 5) {
+                    Image(systemName: filter.symbol).font(.caption)
+                    Text(filter.title).font(.subheadline).lineLimit(1)
+                }
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.green)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Capsule().fill(Color.green.opacity(0.16)))   // hugs the words
+                .frame(maxWidth: 260, alignment: .trailing)              // a long name is cut short, never the row
+            } else {
+                HStack(spacing: 5) {
+                    Image(systemName: "line.3.horizontal.decrease")
+                    Text("Filter")
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(Color.primary)
+                .frame(height: 30)
+                .contentShape(Rectangle())
+            }
+        }
+        .tint(filter == nil ? Color.primary : Color.green)
+        .sensoryFeedback(.selection, trigger: filter)
+    }
+
+    /// One choice, ticked when it's the one shown.
+    private func option(_ value: DonationFilter?, _ title: String, _ symbol: String) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.25)) { filter = value }
+        } label: {
+            Label(title, systemImage: filter == value ? "checkmark" : symbol)
         }
     }
 }

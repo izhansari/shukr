@@ -575,6 +575,14 @@ struct SettingsView: View {
                     // (ExploreSimple.swift, ask settings-explore-lean); the others, Frank's original too, from My Dev Stuff (owner: "keep it as something in the dev
                     // settings that I can change back to"). A count only when something's new.
                     Section {
+                        // Give to Causes (Sadaqah.swift; owner, 2026-10-13): vetted charities and community groups + a private
+                        // log. Out of Sneak Peek now it's real; in Settings, not ☰ (owner).
+                        NavigationLink { SadaqahPage() } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "gift").frame(width: 24)
+                                Text("Give to Causes")   // never reads as shukr asking for money (owner)
+                            }
+                        }
                         NavigationLink {
                             switch ExplorePageVariant(rawValue: exploreVariant) ?? .simple {
                             case .simple: ExploreSimplePage()
@@ -716,13 +724,6 @@ struct SettingsView: View {
                                     Image(systemName: "chevron.right")
                                         .foregroundColor(.secondary)
                                 }
-                            }
-                        }
-                        // Give to Causes (owner, 2026-10-13; was Sadaqah): the first sneak peek that's real — vetted charities + a private log.
-                        NavigationLink { SadaqahPage() } label: {
-                            HStack {
-                                Image(systemName: "gift").frame(width: 24)
-                                Text("Give to Causes")   // never reads as shukr asking for money (owner)
                             }
                         }
                     } header: {
