@@ -34,7 +34,6 @@ enum TourCopy {
         static let chapters = [
             "Prayer Circle|the prayer that matters now",
             "Prayer List|your whole day",
-            "Zikr|your daily remembrance",
             "Settings|make it yours",
         ]
         static let footnote = "A quick look at each, then you try it. It’s a practice day — nothing here is kept."
@@ -146,8 +145,8 @@ enum TourCopy {
     enum Settings {
         static let title = "Settings"
 
-        static let getThereLead = "You can navigate pages with the bottom bar as well."
-        static let getThereTodo = "Tap Settings"
+        static let getThereLead = "Settings is one page over."
+        static let getThereTodo = "Swipe left"
 
         static let hereStep = "What you set here"
         static let here = [

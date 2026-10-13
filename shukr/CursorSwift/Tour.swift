@@ -17,7 +17,8 @@ enum TourStep: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     /// The four cards, in order.
-    static let cards: [TourStep] = [.circle, .list, .zikr, .settings]
+    /// (Zikr left the app tour — owner, 2026-10-13: the lock page broke its flow; Settings is reached by a swipe left.)
+    static let cards: [TourStep] = [.circle, .list, .settings]
     var isCard: Bool { Self.cards.contains(self) }
     /// A page of the tour itself: the welcome or a card (not a post-tour step).
     var isTourPage: Bool { self == .intro || isCard }
@@ -261,6 +262,12 @@ struct TourDemoLayer: View {
                 let wait = UserDefaults.standard.double(forKey: "tourStartAfter")
                 try? await Task.sleep(for: .seconds(wait > 0 ? wait : 3))
                 NotificationCenter.default.post(name: TourRuntime.start, object: nil)
+                // A slow first launch (a fresh install) could post before the page was listening: the tour then never
+                // began. Ask again until it has.
+                for _ in 0..<4 where !TourRuntime.shared.active {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if !TourRuntime.shared.active { NotificationCenter.default.post(name: TourRuntime.start, object: nil) }
+                }
                 // `-tourFrom <card>[:<phase>]`: straight to that card (and phase), its practice state set as on a Back.
                 let parts = (UserDefaults.standard.string(forKey: "tourFrom") ?? "").split(separator: ":").map(String.init)
                 let from = parts.first.flatMap(TourStep.init(rawValue:))
@@ -650,7 +657,7 @@ struct TourTopPanel: View {
         .onChange(of: nudges) { _, _ in
             guard !isStrip, page.primary != nil || mode == .cardThenStrip, !callOut else { return }
             Task { @MainActor in
-                for _ in 0..<2 {
+                for _ in 0..<1 {   // once (owner)
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.55)) { callOut = true }
                     try? await Task.sleep(for: .seconds(0.28))
                     withAnimation(.easeOut(duration: 0.3)) { callOut = false }
@@ -726,7 +733,7 @@ struct TourTopPanel: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    // A stray tap elsewhere: the → swells and glows, twice (no buzz — owner).
+                    // A stray tap elsewhere: the → swells and glows, once (no buzz — owner).
                     .scaleEffect(callOut ? 1.18 : 1)
                     .background {
                         Circle()
@@ -1617,8 +1624,9 @@ struct BubbleShape: Shape {
     /// The qibla line's "skip": a compass that won't settle (set by the layer after a wait).
     var qiblaSkippable = false
 
-    /// The pager stays on the card's page, except while the Zikr card asks for the swipe.
-    var locksPager: Bool { active && !(step == .zikr && phase == .go) }
+    /// The pager stays on the card's page, except while a card asks for the swipe (Settings' swipe left; Zikr's swipe
+    /// right, from before Zikr left the tour).
+    var locksPager: Bool { active && !((step == .zikr || step == .settings) && phase == .go) }
     /// The list stays as the card needs it (TourLayer.sheetPosition); free only where the card is about other pages.
     /// The Zikr card's learn page names Azkar, top right: its door shows then (not tappable — the tour's guard).
     static var showsAzkarDoor: Bool { shared.step == .zikr && shared.phase != .go }
@@ -2063,7 +2071,19 @@ struct BubbleShape: Shape {
     }
 
     /// A touch the tour didn't let through: the thing to touch pulses (no buzz — owner).
-    func nudge() { nudges += 1 }
+    func nudge() {
+        nudges += 1
+        countQiblaTap()
+    }
+
+    /// Taps on the qibla step (owner: "tap the screen three or four times … just show the no compass prompt"): the third
+    /// shows "No compass here? Skip it" at once.
+    @ObservationIgnored private var qiblaTaps = 0
+    private func countQiblaTap() {
+        guard step == .circle, phase == .tryIt, ticked.contains(0), !ticked.contains(1) else { qiblaTaps = 0; return }
+        qiblaTaps += 1
+        if qiblaTaps >= 3, !qiblaSkippable { withAnimation(.smooth(duration: 0.3)) { qiblaSkippable = true } }
+    }
 
     // MARK: The steps
 
@@ -2286,7 +2306,9 @@ struct BubbleShape: Shape {
         case (.circle, .learnMore, .next) where sweepPlayed: setPhase(.tryIt)
         case (.circle, .learnMore, .next) where !sweeping: playColors(run: run)   // "See it in action"
         // The glow only on the time words when they flip; none for the qibla or the mark (owner, 2026-10-06).
-        case (.circle, .tryIt, .circleTapped): tick(0, flash: "circleTime")
+        case (.circle, .tryIt, .circleTapped):
+            countQiblaTap()
+            tick(0, flash: "circleTime")
         case (.circle, .tryIt, .qiblaAligned): tick(1)
         case (.circle, .tryIt, .skipQibla): tick(1)
         case (.circle, .tryIt, .marked(let prayer, _)):
@@ -2303,7 +2325,7 @@ struct BubbleShape: Shape {
         case (.list, .tryIt, .foldTapped): tick(1)   // no glow on unfolding (owner)
         case (.list, .tryIt, .markedRowTapped): tick(2, flash: "markedRow")
         case (.list, .tryIt, .editorSaved): tick(3)
-        case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): endChapter(.list) { self.go(to: .zikr) }
+        case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): endChapter(.list) { self.go(to: .settings) }
 
         // 3 · Zikr: go there, then learn it.
         // The Zikr page: the Zikr Tour takes chapter 3 from here (its offer first: Show me / Skip to Settings).
@@ -2421,9 +2443,9 @@ struct BubbleShape: Shape {
         }
         if step == .settings, phase == .go {
             withAnimation(.smooth(duration: CircleMotion.standard)) {
-                self.step = .zikr
-                phase = .go
-                ticked = []
+                self.step = .list
+                phase = .tryIt
+                ticked = [0, 1, 2, 3]
                 openSection = nil
                 celebrating = nil
             }
@@ -2652,7 +2674,7 @@ struct TourLayer: View {
             .onChange(of: runtime.phase) { old, new in
                 guard let step = runtime.step, step.isTourPage else { return }
                 // ‹ from Settings' first card: back on the Zikr page, where "Tap Settings" is done.
-                if step == .settings, old == .learn, new == .go { sharedState.go(to: .zikr) }
+                if step == .settings, old == .learn, new == .go { sharedState.go(to: .main) }
                 if !onItsPage(step) { returnTo(step) }
                 announce()
             }
@@ -2711,6 +2733,11 @@ extension TourLayer {
     private func pageRested(_ page: SharedStateClass.HorizontalPage?) {
         // The Zikr card frees the pager for its swipe right; a swipe left (to Settings) is put back (Sami).
         if runtime.active, runtime.step == .zikr, runtime.phase == .go, page == .settings {
+            withAnimation(CircleMotion.page) { sharedState.horizontalPage = .main }
+            return
+        }
+        // Settings' swipe left: a swipe right (to Zikr, not in the tour) is put back.
+        if runtime.active, runtime.step == .settings, runtime.phase == .go, page == .zikr {
             withAnimation(CircleMotion.page) { sharedState.horizontalPage = .main }
             return
         }
@@ -2795,7 +2822,11 @@ extension TourLayer {
             if next(1) { return nil }   // turning the phone: no touch
             // Low and right inside the ring, clear of the name and the time left (owner: it sat on "3h 1m left").
             if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.2, y: c.midY + c.height * 0.22)) }
-            if next(3) { return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) } }
+            // The swipe up waits for chapter 2's line (owner: it came as the chapter's end moment began).
+            if next(3) {
+                guard runtime.beat == nil, runtime.celebrating == nil else { return nil }
+                return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) }
+            }
             return nil
         case (.list, .tryIt):
             if next(0) { return time("Maghrib").map { .init(kind: .tap, at: $0) } }
@@ -2814,8 +2845,9 @@ extension TourLayer {
             // Across the circle: the bubble sits under it (no room above once the list's rows show).
             return .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: c.minX - 20, y: c.midY))
         case (.settings, .go):
-            guard sharedState.horizontalPage != .settings else { return nil }
-            return mid(t.frame("settingsTab")).map { .init(kind: .tap, at: $0) }
+            // A swipe left, under the circle (clear of the prayer's name).
+            guard sharedState.horizontalPage == .main, let c = circle else { return nil }
+            return .init(kind: .swipe(dx: -170, dy: 0), at: CGPoint(x: c.maxX + 10, y: c.maxY + 36))
         case (.map, _):
             return circle.map { .init(kind: .tap, at: CGPoint(x: $0.midX + $0.width * 0.315, y: $0.midY - $0.height * 0.235)) }
         case (.firstPill, _):
@@ -2847,7 +2879,7 @@ extension TourLayer {
         let page: SharedStateClass.HorizontalPage = switch (step, runtime.phase) {
         case (.zikr, .go): .main
         case (.zikr, _): .zikr
-        case (.settings, .go): .zikr
+        case (.settings, .go): .main
         case (.settings, _): .settings
         default: .main
         }
@@ -2864,6 +2896,7 @@ extension TourLayer {
         case .intro: .main
         case .list: .bottom
         case .zikr: .main
+        case .settings: runtime.phase == .go ? .main : nil   // the swipe left starts from the Salah page, list closed
         default: nil
         }
     }
@@ -2877,7 +2910,9 @@ extension TourLayer {
         func f(_ key: String) -> [CGRect] { t.frame(key).map { [$0] } ?? [] }
         /// The page between `top` and the tab bar: where a swipe starts.
         func swipeBand(from top: CGFloat?) -> [CGRect] {
-            guard let bottom = t.frame("settingsTab")?.minY else { return [] }
+            // Down to the tab bar — or, before it has ever shown (the list closed since launch), near the screen's foot.
+            let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 800
+            let bottom = t.frame("settingsTab")?.minY ?? screen - 110
             let y = (top ?? 140)
             return [CGRect(x: 0, y: y, width: 10_000, height: max(bottom - 8 - y, 0))]
         }
@@ -2892,7 +2927,7 @@ extension TourLayer {
         // From the wheel's top (under the top bar and its doors), not the centre circle's: a drag on the wheel's upper
         // half was taken (owner: "my drags a bit to the side don't seem to work").
         case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("historyDoor").map { $0.maxY + 12 } ?? 120) : []
-        case (.settings, .go): return sharedState.horizontalPage == .settings ? [] : f("settingsTab")
+        case (.settings, .go): return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
         default: return []
         }
     }
@@ -2904,7 +2939,7 @@ extension TourLayer {
         case (.list, _): return page == .main && list == .bottom
         case (.zikr, .go): return page == .main || page == .zikr
         case (.zikr, _): return page == .zikr
-        case (.settings, .go): return page == .zikr || page == .settings
+        case (.settings, .go): return page == .main || page == .settings
         case (.settings, _): return page == .settings
         case (.hintMark, _): return page == .main && list == .bottom
         default: return page == .main
