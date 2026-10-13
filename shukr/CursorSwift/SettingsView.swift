@@ -1871,26 +1871,19 @@ struct AppIconRow: View {
     }
 }
 
-/// The page: a little Home Screen with shukr's icon as it will look, then the three choices. Picking one swaps the icon
-/// in the picture (System shows the one your iPhone uses now).
+/// The page: the three icons side by side, the pick in the middle and full size, then the three choices as a list.
+/// Picking slides the row along (owner: the old picture swapped only the middle icon between two blanks — "looks like
+/// there's two"). Nothing changes on the phone until the page closes (owner: "see all the options first"): only then
+/// is the icon set, so iOS's "You have changed the icon" alert comes once, on the way out.
 struct AppIconPage: View {
     var picked: (AppIconChoice) -> Void = { _ in }
     @State private var choice = AppIconChoice.current
     @Environment(\.colorScheme) private var scheme
 
-    /// The icon the Home Screen shows for a choice right now.
-    private func shownDark(_ c: AppIconChoice) -> Bool {
-        switch c {
-        case .system: scheme == .dark
-        case .light: false
-        case .dark: true
-        }
-    }
-
     var body: some View {
         Form {
             Section {
-                AppIconHomePreview(dark: shownDark(choice), label: choice.title)
+                AppIconCarousel(choice: choice, scheme: scheme) { pick($0) }
                     .listRowInsets(EdgeInsets())
             }
             Section {
@@ -1921,60 +1914,85 @@ struct AppIconPage: View {
         .navigationTitle("Icon")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { choice = AppIconChoice.current }
+        .onDisappear(perform: apply)
     }
 
     private func pick(_ c: AppIconChoice) {
-        guard c != choice, UIApplication.shared.supportsAlternateIcons else { return }
-        let before = choice
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { choice = c }
+        guard c != choice else { return }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) { choice = c }
         UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    /// On the way out: the pick becomes the icon (iOS's alert then shows over Settings), and the row says so.
+    private func apply() {
+        let c = choice, before = AppIconChoice.current
+        guard c != before, UIApplication.shared.supportsAlternateIcons else { return }
         picked(c)
         UIApplication.shared.setAlternateIconName(c.iconName) { error in
             guard error != nil else { return }
-            Task { @MainActor in
-                withAnimation { choice = before }
-                picked(before)
-            }
+            Task { @MainActor in picked(before) }
         }
     }
 }
 
-/// A slice of a Home Screen: shukr's icon among faint neighbours on a soft wallpaper that follows the icon (light behind
-/// the light icon, dark behind the dark), the icon swapping with a small pop.
-private struct AppIconHomePreview: View {
-    let dark: Bool
-    /// The pick, named top left as the other pages label their pictures ("Asr · Dynamic Island and Lock Screen").
-    let label: String
+/// The three icons in a row on a soft wallpaper that follows the pick (light behind the light icon, dark behind the
+/// dark; System, the phone's own): the picked one centred and full size, the others smaller and faded beside it, the
+/// row sliding to the pick. A tap on a side icon picks it.
+private struct AppIconCarousel: View {
+    let choice: AppIconChoice
+    let scheme: ColorScheme
+    let pick: (AppIconChoice) -> Void
     private let size: CGFloat = 76
-    var body: some View {
-        ZStack {
-            LinearGradient(colors: dark ? [Color(red: 0.13, green: 0.16, blue: 0.15), Color(red: 0.05, green: 0.06, blue: 0.06)]
-                                        : [Color(red: 0.80, green: 0.87, blue: 0.83), Color(red: 0.62, green: 0.74, blue: 0.68)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
-            HStack(alignment: .top, spacing: 22) {
-                neighbour
-                VStack(spacing: 7) {
-                    ZStack {
-                        Image(dark ? "IconPreviewDark" : "IconPreviewLight")
-                            .resizable()
-                            .id(dark)
-                            .transition(.asymmetric(insertion: .scale(scale: 0.6).combined(with: .opacity),
-                                                    removal: .scale(scale: 1.1).combined(with: .opacity)))
-                    }
-                    .frame(width: size, height: size)
-                    .clipShape(RoundedRectangle(cornerRadius: size * 0.225, style: .continuous))
-                    .shadow(color: .black.opacity(dark ? 0.5 : 0.18), radius: 8, y: 4)
-                    Text("shukr")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(dark ? .white : .black.opacity(0.75))
-                }
-                neighbour
-            }
+    private let step: CGFloat = 112
+
+    private var dark: Bool {
+        switch choice {
+        case .system: scheme == .dark
+        case .light: false
+        case .dark: true
         }
-        .frame(height: 190)
+    }
+
+    var body: some View {
+        let index = CGFloat(AppIconChoice.allCases.firstIndex(of: choice) ?? 0)
+        ZStack {
+            // Two wallpapers, faded between (a gradient's colours don't animate).
+            LinearGradient(colors: [Color(red: 0.80, green: 0.87, blue: 0.83), Color(red: 0.62, green: 0.74, blue: 0.68)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            LinearGradient(colors: [Color(red: 0.13, green: 0.16, blue: 0.15), Color(red: 0.05, green: 0.06, blue: 0.06)],
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+                .opacity(dark ? 1 : 0)
+            HStack(spacing: 0) {
+                ForEach(AppIconChoice.allCases) { c in
+                    let on = c == choice
+                    Button { pick(c) } label: {
+                        VStack(spacing: 8) {
+                            AppIconThumb(choice: c, scheme: scheme, corner: size * 0.225)
+                                .frame(width: size, height: size)
+                                .shadow(color: .black.opacity(dark ? 0.45 : 0.16), radius: on ? 8 : 4, y: on ? 4 : 2)
+                                .scaleEffect(on ? 1 : 0.68)
+                            Text(c.title)
+                                .font(.system(size: 13, weight: on ? .semibold : .regular, design: .rounded))
+                                .foregroundStyle(dark ? Color.white : .black.opacity(0.75))
+                                .offset(y: on ? 0 : -10)
+                        }
+                        .opacity(on ? 1 : 0.5)
+                        .frame(width: step)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(c.title) icon")
+                    .accessibilityAddTraits(on ? .isSelected : [])
+                }
+            }
+            .offset(x: (1 - index) * step)
+            .padding(.top, 18)
+        }
+        .frame(height: 200)
+        .clipped()
         .overlay(alignment: .topLeading) {
             HStack(spacing: 6) {
-                Text(label).fontWeight(.semibold)
+                Text(choice.title).fontWeight(.semibold)
                 Text("·")
                 Text("Home Screen")
             }
@@ -1983,20 +2001,6 @@ private struct AppIconHomePreview: View {
             .contentTransition(.opacity)
             .padding(.leading, 18).padding(.top, 14)
         }
-        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: dark)
-        .animation(.snappy(duration: 0.25), value: label)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(dark ? "The dark shukr icon" : "The light shukr icon")
-    }
-    private var neighbour: some View {
-        VStack(spacing: 7) {
-            RoundedRectangle(cornerRadius: size * 0.225, style: .continuous)
-                .fill((dark ? Color.white : .black).opacity(dark ? 0.08 : 0.07))
-                .frame(width: size * 0.82, height: size * 0.82)
-                .padding(.top, size * 0.09)
-            Capsule().fill((dark ? Color.white : .black).opacity(0.1)).frame(width: 34, height: 6)
-                .padding(.top, size * 0.09 + 3)
-        }
     }
 }
 
@@ -2004,6 +2008,7 @@ private struct AppIconHomePreview: View {
 private struct AppIconThumb: View {
     let choice: AppIconChoice
     let scheme: ColorScheme
+    var corner: CGFloat = 8.5
     var body: some View {
         Group {
             switch choice {
@@ -2016,8 +2021,8 @@ private struct AppIconThumb: View {
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8.5, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 8.5, style: .continuous).strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: corner, style: .continuous).strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
     }
     /// The top-left half of a square, cut on the diagonal.
     private struct DiagonalHalf: Shape {
