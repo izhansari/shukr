@@ -402,20 +402,20 @@ struct ExploreCard<Picture: View>: View {
 
 // MARK: - The pictures (drawn, today's real times where they help)
 
-/// The prayer the pictures show: the preset day's (Asr, about an hour left).
+/// The prayer the pictures show: the preset day's (Asr at its 5:50 PM).
 struct ShownPrayer {
     let name: String
     let start: Date
     let end: Date
-    var minutesLeft: Int { max(1, Int(end.timeIntervalSinceNow / 60)) }
-    var isOn: Bool { Date() >= start && Date() < end }
+    var minutesLeft: Int { max(1, Int(end.timeIntervalSince(ExplorePreset.now) / 60)) }
+    var isOn: Bool { ExplorePreset.now >= start && ExplorePreset.now < end }
     var left: String {
         let m = minutesLeft
         return m >= 60 ? "\(m / 60) hr \(m % 60) min" : "\(m) min"
     }
     var progress: Double {
         let total = end.timeIntervalSince(start)
-        return total > 0 ? min(max(Date().timeIntervalSince(start) / total, 0.05), 0.95) : 0.4
+        return total > 0 ? min(max(ExplorePreset.now.timeIntervalSince(start) / total, 0.05), 0.95) : 0.4
     }
     /// Explore's preset day's prayer (ExplorePreset: the same for everyone, nothing read from the phone).
     static var now: ShownPrayer {
@@ -552,7 +552,7 @@ struct SiriPicture: View {
     var body: some View {
         let next = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
             .compactMap { p in ExplorePreset.windows[p].map { (p, $0.start) } }
-            .first { $0.1 > Date() }
+            .first { $0.1 > ExplorePreset.now }
         VStack(alignment: .leading, spacing: 10) {
             Text("“Next prayer time from shukr”")
                 .font(.system(size: 15, weight: .medium, design: .rounded))

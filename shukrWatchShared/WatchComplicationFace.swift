@@ -4,7 +4,7 @@
 //
 //  The watch-face complication's entry and view, moved out of WatchComplications.swift so the iPhone's Explore shukr
 //  draws the real complication (owner, 2026-10-13: "make the watch ones real too"). The corner size is watchOS only;
-//  outside a widget (`WatchRingFace.drawsStatically`) the timer gauges are drawn from now instead.
+//  outside a widget (`WatchRingFace.drawsStatically`) the timer gauges are drawn at the entry's moment instead.
 //
 
 import WidgetKit
@@ -57,7 +57,7 @@ struct PrayerComplicationView: View {
                     // iOS draws a circular ProgressView as a spinner: the gauge's ring drawn as it looks on the watch.
                     ZStack {
                         Circle().stroke(entry.tint.opacity(0.3), lineWidth: 4)
-                        Circle().trim(from: 0, to: Self.fraction(p))
+                        Circle().trim(from: 0, to: fraction(p))
                             .stroke(entry.tint, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                         circleLabel(p)
@@ -124,7 +124,7 @@ struct PrayerComplicationView: View {
             if live {
                 Group {
                     if WatchRingFace.drawsStatically {
-                        ProgressView(value: Self.fraction(p))
+                        ProgressView(value: fraction(p))
                     } else {
                         ProgressView(timerInterval: p.start...p.end, countsDown: false) {
                             EmptyView()
@@ -159,9 +159,9 @@ struct PrayerComplicationView: View {
         }
     }
 
-    /// How far through the window it is now (the drawn-from-now gauges).
-    private static func fraction(_ p: WatchPrayer) -> Double {
-        p.end > p.start ? min(max(Date().timeIntervalSince(p.start) / p.end.timeIntervalSince(p.start), 0), 1) : 1
+    /// How far through the window it is at the entry's moment (the drawn-statically gauges).
+    private func fraction(_ p: WatchPrayer) -> Double {
+        p.end > p.start ? min(max(entry.date.timeIntervalSince(p.start) / p.end.timeIntervalSince(p.start), 0), 1) : 1
     }
 
     private static let clock: DateFormatter = {

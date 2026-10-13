@@ -249,8 +249,10 @@ struct shukrApp: App {
                 if bg != .invalid { UIApplication.shared.endBackgroundTask(bg); bg = .invalid }
             }
         }
-        // Explore draws the real Prayers widget: its arcs drawn from now (the timer-driven ones render only in a widget).
+        // Explore draws the real Prayers widget: its arcs and timers drawn at its preset moment (the timer-driven ones
+        // render only in a widget, and count from the clock).
         PrayersWidgetView.LiveArc.drawsStatically = true
+        PrayersWidgetView.LiveArc.staticNow = { ExplorePreset.now }   // Explore's fixed day (5:50 PM, Asr on)
         WatchRingFace.drawsStatically = true   // the watch's complication, drawn in Explore
         // The Fajr Alarm control's switch re-plans the alarms in the app.
         FajrAlarmHooks.replan = { await FajrAlarms.plan(reason: "control") }

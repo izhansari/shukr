@@ -747,7 +747,7 @@ struct PrayersWidgetView: View {
                                 .minimumScaleFactor(0.7)
                                 Group {
                                     if entry.textToggle != lastHour {
-                                        Text(relevantPrayer.current ? relevantPrayer.end : relevantPrayer.start, style: .relative)
+                                        PrayersWidgetView.relative(relevantPrayer.current ? relevantPrayer.end : relevantPrayer.start)
                                     } else {
                                         Text(relevantPrayer.current ? "ends " : "at ")
                                             + Text(relevantPrayer.current ? relevantPrayer.end : relevantPrayer.start, style: .time)
@@ -889,11 +889,13 @@ struct PrayersWidgetView: View {
         /// In the app (Explore draws the real widget): the timer-masked arc only renders inside a widget, so the arc is
         /// drawn from now instead. Never set in the widget extension.
         nonisolated(unsafe) static var drawsStatically = false
+        /// The moment those static drawings show (Explore: its preset day's fixed now).
+        nonisolated(unsafe) static var staticNow: @Sendable () -> Date = { Date() }
         static var staticAt: Date? {
             #if DEBUG
             if let snapshotAt { return snapshotAt }
             #endif
-            return drawsStatically ? Date() : nil
+            return drawsStatically ? staticNow() : nil
         }
 
         /// One stable view with no per-render inputs (no AnyView, no entry time), and no
@@ -1413,7 +1415,8 @@ struct PrayerLockScreenView: View {
     @ViewBuilder private var liveMask: some View {
         if PrayersWidgetView.LiveArc.drawsStatically {
             // In the app (Explore): the timer ring doesn't render outside a widget; a wedge to now stands in.
-            let f = prayer.end > prayer.start ? min(max(Date().timeIntervalSince(prayer.start) / prayer.end.timeIntervalSince(prayer.start), 0), 1) : 1
+            let at = PrayersWidgetView.LiveArc.staticAt ?? Date()
+            let f = prayer.end > prayer.start ? min(max(at.timeIntervalSince(prayer.start) / prayer.end.timeIntervalSince(prayer.start), 0), 1) : 1
             Circle().trim(from: 0, to: f).stroke(Color.white, lineWidth: 90).rotationEffect(.degrees(-90))
         } else {
             timerMask
@@ -1448,7 +1451,14 @@ struct PrayerLockScreenView: View {
                 if live {
                     // A short live timer ("26:53", "1:26:53"): the relative style ("26 min, 53 sec")
                     // truncated the prayer's name to "Mag…".
-                    Text(timerInterval: entry.date...max(prayer.end, entry.date), countsDown: true, showsHours: true)
+                    Group {
+                        if let at = PrayersWidgetView.LiveArc.staticAt {
+                            // The app (Explore): the timer counts from the clock, not the day drawn.
+                            Text(Duration.seconds(max(0, prayer.end.timeIntervalSince(at))).formatted(.time(pattern: .hourMinuteSecond)))
+                        } else {
+                            Text(timerInterval: entry.date...max(prayer.end, entry.date), countsDown: true, showsHours: true)
+                        }
+                    }
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .monospacedDigit()
                         .multilineTextAlignment(.trailing)
@@ -1461,14 +1471,20 @@ struct PrayerLockScreenView: View {
                 .foregroundStyle(.secondary)
             if live {
                 // Fills left → right as the window passes (it used to empty).
-                ProgressView(timerInterval: prayer.start...prayer.end, countsDown: false) {
-                    EmptyView()
-                } currentValueLabel: {
-                    EmptyView()
+                Group {
+                    if let at = PrayersWidgetView.LiveArc.staticAt, prayer.end > prayer.start {
+                        ProgressView(value: min(max(at.timeIntervalSince(prayer.start) / prayer.end.timeIntervalSince(prayer.start), 0), 1))
+                    } else {
+                        ProgressView(timerInterval: prayer.start...prayer.end, countsDown: false) {
+                            EmptyView()
+                        } currentValueLabel: {
+                            EmptyView()
+                        }
+                    }
                 }
                 .progressViewStyle(.linear)
             } else {
-                (Text("in ") + Text(prayer.start, style: .relative))
+                (Text("in ") + PrayersWidgetView.relative(prayer.start))
                     .font(.system(size: 13, weight: .regular, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -1503,5 +1519,15 @@ struct WidgetSoftBand: View {
             .stroke(WidgetSoft.surface(scheme), lineWidth: width)
             .shadow(color: WidgetSoft.shade(scheme), radius: width * 0.6, x: width * 0.3, y: width * 0.3)
             .shadow(color: WidgetSoft.light(scheme), radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
+    }
+}
+
+extension PrayersWidgetView {
+    /// `Text(date, style: .relative)` ("1 hr, 5 min"), or, drawn statically in the app (Explore's fixed day), the same
+    /// words from that moment (the system's relative text counts from the clock).
+    static func relative(_ date: Date) -> Text {
+        guard let at = LiveArc.staticAt else { return Text(date, style: .relative) }
+        let m = Int(abs(date.timeIntervalSince(at)) / 60), h = m / 60, r = m % 60
+        return Text(h == 0 ? "\(r) min" : r == 0 ? "\(h) hr" : "\(h) hr, \(r) min")
     }
 }

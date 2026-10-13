@@ -776,7 +776,7 @@ struct ShowcasePicture: View {
             // The real Prayers widget as StandBy shows it: dark, no background, big beside the clock (owner).
             HStack(spacing: 14) {
                 RealPrayersWidget(standby: true)
-                Text(Date(), format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute()).font(.system(size: 76, weight: .light, design: .rounded))
+                Text(ExplorePreset.clockFace).font(.system(size: 76, weight: .light, design: .rounded))
                     .lineLimit(1).fixedSize()
                     .foregroundStyle(Color(red: 1, green: 0.37, blue: 0.27))
             }
@@ -848,14 +848,21 @@ struct ShowcasePicture: View {
         // without one (owner: "show the tile or the intent recipe or the card").
         case .siriTimeLeft:
             ShortcutSheetShot(dialog: "\(p.left) left for \(p.name).") {
-                PrayerCardSnippet(state: .init(label: p.name, start: p.start, end: p.end, symbol: prayerIcon(for: p.name), dark: scheme == .dark))
+                // The card's time left and ring tick from the clock: the same window moved round the real now, with the
+                // preset's end written under it.
+                let shift = Date().timeIntervalSince(ExplorePreset.now)
+                PrayerCardSnippet(state: .init(label: p.name, start: p.start.addingTimeInterval(shift), end: p.end.addingTimeInterval(shift),
+                                               symbol: prayerIcon(for: p.name), dark: scheme == .dark))
+                    .environment(\.laShownEnd, p.end)
             }
         case .siriPrayerTime:
-            ShortcutSheetShot(dialog: "\(p.name) is \(p.isOn ? "on until \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))").") {
-                NextPrayerSnippet(name: p.name, start: p.start)
+            // The next prayer, as Prayer Time → Next answers it.
+            let next = ExplorePreset.windows["Maghrib"]!.start
+            ShortcutSheetShot(dialog: "Maghrib is at \(shortTimePM(next)).") {
+                NextPrayerSnippet(name: "Maghrib", start: next, now: ExplorePreset.now)
             }
         case .siriTodaysTimes:
-            ShortcutSheetShot(dialog: "\(p.name) is on until \(shortTimePM(p.end)).") { TodaysTimesSnippet(rows: ExplorePreset.todaysTimes, markable: true) }
+            ShortcutSheetShot(dialog: "\(p.name) is on until \(shortTimePM(p.end)).") { TodaysTimesSnippet(rows: ExplorePreset.todaysTimes, markable: true, now: ExplorePreset.now) }
         case .siriIPrayed:
             ShortcutSheetShot(dialog: "\(p.name) marked as prayed. Perfect.") {
                 PrayerCardSnippet(state: .init(label: p.name, start: p.start, end: p.end, symbol: prayerIcon(for: p.name),
@@ -1042,9 +1049,10 @@ private struct SizedWidget<Content: View, Background: View>: View {
 
 /// The day every Explore picture shows, the same for everyone (owner: "show us what the actual thing will look like
 /// visually, not necessarily personalized" — and nobody's pictures half empty without a location, tasks or a masjid):
-/// Asr on with about an hour left, Fajr and Dhuhr prayed, two zikr tasks to do, the alarm on. Nothing is read from the
-/// phone, so nothing loads. Set round the clock's now (Asr began 55–60 minutes ago), so the rings, timers and "… left"
-/// that the real views work out from now all agree.
+/// today at fixed, typical times (owner: each prayer at a time that makes sense for it), seen at 5:50 PM — Asr an hour
+/// in (still on time, the ring yellow; later it turns red), Fajr and Dhuhr prayed, two zikr tasks to do, the alarm on. Nothing is read from the phone, so
+/// nothing loads. The real views draw from this `now` where they'd read the clock (`LiveArc.staticNow`, set in
+/// App.init; the watch's views take it as their entry's date / `now`).
 enum ExplorePreset {
     static let prayer = "Asr"
     static let city = "Chicago"
@@ -1052,22 +1060,31 @@ enum ExplorePreset {
     /// Fajr on time, Dhuhr perfect.
     static let scores: [String: Double] = ["Fajr": 0.88, "Dhuhr": 1]
 
-    /// Today's windows (Sunrise too, as the widget keeps it), from Asr's start: a spring day's spacing.
+    private static func today(_ hour: Int, _ minute: Int) -> Date {
+        Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: Date()) ?? Date()
+    }
+    /// The moment the pictures show.
+    static var now: Date { today(17, 50) }
+    /// Today's windows (Sunrise too, as the widget keeps it).
     static var windows: [String: (start: Date, end: Date)] {
-        let step: TimeInterval = 300
-        let asr = Date(timeIntervalSinceReferenceDate: ((Date().timeIntervalSinceReferenceDate - 55 * 60) / step).rounded(.down) * step)
-        func at(_ minutes: Double) -> Date { asr.addingTimeInterval(minutes * 60) }
-        return ["Fajr": (at(-680), at(-600)), "Sunrise": (at(-600), at(-200)), "Dhuhr": (at(-200), at(0)),
-                "Asr": (at(0), at(120)), "Maghrib": (at(120), at(205)), "Isha": (at(205), at(470))]
+        ["Fajr": (today(5, 30), today(6, 50)), "Sunrise": (today(6, 50), today(13, 10)), "Dhuhr": (today(13, 10), today(16, 50)),
+         "Asr": (today(16, 50), today(19, 40)), "Maghrib": (today(19, 40), today(21, 5)), "Isha": (today(21, 5), today(23, 59))]
     }
     static var asr: (start: Date, end: Date) { windows[prayer]! }
-    static var fajrAlarm: String { shortTimePM(windows["Fajr"]!.start.addingTimeInterval(86_400 - 20 * 60)) }
+    static var fajrAlarm: String { shortTimePM(today(5, 10)) }   // 20 minutes before Fajr
+    /// The Lock Screen / StandBy clock at that moment: "5:50".
+    static var clockFace: String {
+        let f = DateFormatter()
+        f.setLocalizedDateFormatFromTemplate("jmm")
+        f.amSymbol = ""; f.pmSymbol = ""
+        return f.string(from: now).trimmingCharacters(in: .whitespaces)
+    }
 
     /// The Prayers widget's entry for that day (the widget's own view draws it).
     static func prayersEntry() -> PrayersWidgetEntry {
         let w = windows
         let fajr = w["Fajr"]!
-        return PrayersWidgetEntry(date: Date(), heading: 0, latitude: 0, longitude: 0, toggleShowAllTImes: false,
+        return PrayersWidgetEntry(date: now, heading: 0, latitude: 0, longitude: 0, toggleShowAllTImes: false,
                                   prayerDict: w.mapValues { (start: $0.start, end: $0.end, window: $0.end.timeIntervalSince($0.start)) },
                                   todayPrayerTimes: PrayerUtils.dummyPrayerTimes(), locationName: city, textToggle: false,
                                   completedScores: scores,
@@ -1076,7 +1093,7 @@ enum ExplorePreset {
 
     /// Today's Times' rows for that day.
     static var todaysTimes: [TodaysTimesSnippet.Row] {
-        let w = windows, now = Date()
+        let w = windows
         return ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].map { name in
             let (start, end) = w[name]!
             return .init(name: name, start: start, end: end, marked: scores[name] != nil,
@@ -1168,7 +1185,7 @@ private struct RealWatchRing: View {
         let p = ShownPrayer.now
         ZStack {
             WatchNeu.page(scheme)
-            WatchRingFace(prayer: WatchPrayer(name: p.name, start: p.start, end: p.end), current: p.isOn, now: Date(), k: 1.1)
+            WatchRingFace(prayer: WatchPrayer(name: p.name, start: p.start, end: p.end), current: p.isOn, now: ExplorePreset.now, k: 1.1)
                 .frame(width: 140, height: 140)
         }
     }
@@ -1180,7 +1197,7 @@ private struct RealWatchRing: View {
 private struct RealComplications: View {
     var body: some View {
         let p = ShownPrayer.now
-        let entry = PrayerComplicationEntry(date: Date(), prayer: WatchPrayer(name: p.name, start: p.start, end: p.end), current: p.isOn)
+        let entry = PrayerComplicationEntry(date: ExplorePreset.now, prayer: WatchPrayer(name: p.name, start: p.start, end: p.end), current: p.isOn)
         // Each its own piece (owner: "shouldn't they be separate objects?"), on black as a watch face shows it.
         HStack(alignment: .center, spacing: 18) {
             face(entry, .accessoryCircular)
@@ -1457,7 +1474,7 @@ private struct LockClock<Accessory: View>: View {
     var body: some View {
         VStack(spacing: 6) {
             if top { accessory() }
-            Text(Date(), format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())
+            Text(ExplorePreset.clockFace)
                 .font(.system(size: 40, weight: .semibold, design: .rounded))
             if !top { accessory() }
         }
