@@ -132,7 +132,7 @@ struct NearbyMosque: Hashable {
                                     [item.placemark.subThoroughfare, street].compactMap { $0 }.joined(separator: " ")
                                 } ?? item.placemark.locality)
         }
-        return .found(here: here, Array(list.sorted { $0.meters < $1.meters }.prefix(5)))
+        return .found(here: here, Array(list.sorted { $0.meters < $1.meters }.prefix(NearbyMosquesSnippet.shown)))
     }
 
     /// The line said with the card.
@@ -148,11 +148,12 @@ struct NearbyMosque: Hashable {
 }
 
 /// Today's Times' look (owner: "match that same aesthetic … sleek and straightforward"): a short map strip, then the
-/// nearest three as rows — the nearest in the sage "now" fill — a tap on one = directions in Maps.
+/// nearest eight as rows — the nearest in the sage "now" fill — a tap on one = directions in Maps.
 struct NearbyMosquesSnippet: View {
     let outcome: NearbyMosquesSearch.Outcome
     let map: UIImage?
-    static let shown = 3
+    /// More than fit; the card scrolls in Shortcuts / Siri (owner: "I was expecting it to show more than three").
+    static let shown = 8
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -165,7 +166,7 @@ struct NearbyMosquesSnippet: View {
                     .overlay { if let map { Image(uiImage: map).resizable().scaledToFill() } else { placeSage.opacity(0.12) } }
                     .overlay(alignment: .bottomTrailing) {
                         Label("Open in shukr", systemImage: "arrow.up.forward.app")
-                            .font(.system(.caption, design: .rounded, weight: .medium))
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
                             .foregroundStyle(placeSage)
                             .padding(.horizontal, 9).padding(.vertical, 5)
                             .background(.regularMaterial, in: Capsule())
@@ -190,26 +191,29 @@ struct NearbyMosquesSnippet: View {
     }
 
     private func row(_ m: NearbyMosque, nearest: Bool) -> some View {
-        HStack(spacing: 12) {
+        // Small fixed type, and a long name wraps to a second line (owner: "Islamic Center of…" didn't say which one;
+        // iOS draws a card's text styles larger than in the app, and shrinking to fit left the names in different sizes).
+        HStack(spacing: 10) {
             Image(systemName: "building.columns")
-                .font(.system(size: 17))
+                .font(.system(size: 14))
                 .foregroundStyle(nearest ? placeSage : Color.secondary)
-                .frame(width: 24)
+                .frame(width: 20)
             VStack(alignment: .leading, spacing: 1) {
                 Text(m.name)
-                    .font(.system(.body, design: .rounded, weight: nearest ? .semibold : .regular))
-                    .lineLimit(1)
+                    .font(.system(size: 14, weight: nearest ? .semibold : .regular, design: .rounded))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let a = m.address {
-                    Text(a).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(a).font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(distanceText(m.meters))
-                .font(.system(.body, design: .rounded, weight: nearest ? .semibold : .regular))
+                .font(.system(size: 13, weight: nearest ? .semibold : .regular, design: .rounded))
                 .monospacedDigit()
                 .fixedSize()
             Image(systemName: "arrow.triangle.turn.up.right.circle")
-                .font(.system(size: 20, weight: .light))
+                .font(.system(size: 17, weight: .light))
                 .foregroundStyle(placeSage)
         }
         .padding(.horizontal, 10)
@@ -228,7 +232,7 @@ struct PlaceCardLink<I: AppIntent>: View {
     var body: some View {
         Button(intent: intent) {
             Label(title, systemImage: "arrow.up.forward.app")
-                .font(.system(.subheadline, design: .rounded, weight: .medium))
+                .font(.system(size: 13, weight: .medium, design: .rounded))
                 .foregroundStyle(placeSage)
                 .frame(maxWidth: .infinity).frame(height: 34)
                 .contentShape(Rectangle())
@@ -258,7 +262,7 @@ struct NearbyMosquesCardIntent: SnippetIntent {
 struct NearbyMosquesNowIntent: AppIntent {
     static var title: LocalizedStringResource = "Find Nearby Mosques"
     static var description = IntentDescription(
-        "The five mosques nearest you on a map, with how far each is. Tap one for directions, or open shukr's map for more.",
+        "The mosques nearest you on a map, with how far each is. Tap one for directions, or open shukr's map for more.",
         categoryName: "Places", searchKeywords: ["masjid", "mosque", "near me", "nearest", "jumuah", "directions"],
         resultValueName: "Mosques")
     func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog & ShowsSnippetIntent {
@@ -368,18 +372,18 @@ struct PrayedHereSnippet: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            VStack(spacing: 14) {
-                HStack(spacing: 12) {
+            VStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Image(systemName: summary?.atMasjid == true ? "building.columns" : "mappin.and.ellipse")
-                        .font(.system(size: 22))
+                        .font(.system(size: 18))
                         .foregroundStyle(placeSage)
-                        .frame(width: 30)
+                        .frame(width: 26)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(summary?.place ?? "Where you are")
-                            .font(.system(.title3, design: .rounded, weight: .medium))
-                            .lineLimit(1)
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            .lineLimit(2)
                         Text(subtitle)
-                            .font(.system(.subheadline, design: .rounded))
+                            .font(.system(size: 13, design: .rounded))
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                     }
@@ -387,10 +391,10 @@ struct PrayedHereSnippet: View {
                     if let s = summary {
                         VStack(alignment: .trailing, spacing: 0) {
                             Text("\(s.count)")
-                                .font(.system(.title, design: .rounded, weight: .semibold))
+                                .font(.system(size: 22, weight: .semibold, design: .rounded))
                                 .monospacedDigit()
                             Text(s.count == 1 ? "prayer" : "prayers")
-                                .font(.system(.caption, design: .rounded))
+                                .font(.system(size: 11, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
                         .fixedSize()
@@ -402,9 +406,9 @@ struct PrayedHereSnippet: View {
                             let n = s.perPrayer[name, default: 0]
                             HStack(spacing: 4) {
                                 Image(systemName: prayerIcon(for: name).replacingOccurrences(of: ".fill", with: ""))
-                                    .font(.system(size: 12))
+                                    .font(.system(size: 10))
                                 Text("\(n)")
-                                    .font(.system(.subheadline, design: .rounded))
+                                    .font(.system(size: 13, design: .rounded))
                                     .monospacedDigit()
                             }
                             .foregroundStyle(n > 0 ? Color.primary : Color.secondary.opacity(0.5))
@@ -415,7 +419,7 @@ struct PrayedHereSnippet: View {
                     }
                 }
             }
-            .padding(16)
+            .padding(14)
             .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(LASoft.surface(LATuning.current, scheme)))
             PlaceCardLink(title: "See your prayers on the map", intent: OpenPrayerSpotsIntent())
         }
