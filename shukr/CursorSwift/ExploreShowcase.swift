@@ -577,12 +577,32 @@ struct ShowcasePicture: View {
     var compact = false
     /// Any other size (the grouped page's wide cards).
     var scale: CGFloat? = nil
+    /// A list row's small square: a control shows just its circle.
+    var thumb = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
             background
-            picture.scaleEffect(scale ?? (big ? 1.7 : compact ? 0.8 : 1))
+            if thumb, let symbol = controlSymbol {
+                CCCircle(symbol: symbol, on: id == .ccFajrAlarm).scaleEffect(1.5)
+            } else {
+                picture.scaleEffect((scale ?? (big ? 1.7 : compact ? 0.8 : 1)) * fit)
+            }
+        }
+    }
+
+    /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
+    private var fit: CGFloat { id == .controlCenter ? 0.7 : id.isControl ? 0.8 : 1 }
+
+    private var controlSymbol: String? {
+        switch id {
+        case .ccPrayer: prayerIcon(for: ShownPrayer.now.name)
+        case .ccPrayed: "checkmark.circle"
+        case .ccFajrAlarm: "alarm.fill"
+        case .ccQibla: "location.north.line.fill"
+        case .ccZikr: "hands.and.sparkles"
+        default: nil
         }
     }
 
@@ -606,6 +626,10 @@ struct ShowcasePicture: View {
         case .prayersMap: MapGrid()
         default: sage
         }
+    }
+
+    private var fajrAlarmTime: String {
+        prayerWindowToday("Fajr")?.start.formatted(date: .omitted, time: .shortened) ?? "5:37 AM"
     }
 
     @ViewBuilder private var picture: some View {
@@ -687,31 +711,18 @@ struct ShowcasePicture: View {
             .padding(10).frame(width: 176)
             .background(RoundedRectangle(cornerRadius: 14).fill(.white.opacity(0.94)))
         case .controlCenter:
-            // Control Center with all five of shukr's controls.
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sun.max.fill").font(.system(size: 13))
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(p.name).font(.system(size: 11, weight: .semibold, design: .rounded))
-                            Text(p.end.formatted(date: .omitted, time: .shortened)).font(.system(size: 9, design: .rounded)).opacity(0.75)
-                        }
-                    }
-                    .foregroundStyle(.white).frame(width: 96, height: 44)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
-                    Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 44, height: 44).background(Circle().fill(Color.green))
+            // Control Center as iOS lays shukr's five controls out: a grid of 56 pt cells, medium controls two cells wide
+            // (a glass capsule: the icon's round badge, then the title and value), small ones a glass circle.
+            Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+                GridRow {
+                    CCPill(symbol: prayerIcon(for: p.name), title: p.name, value: p.isOn ? "ends \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))").gridCellColumns(2)
+                    CCCircle(symbol: "checkmark.circle")
+                    CCCircle(symbol: "location.north.line.fill")
                 }
-                HStack(spacing: 8) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "alarm.fill").font(.system(size: 13)).foregroundStyle(.orange)
-                        Text(prayerWindowToday("Fajr")?.start.formatted(date: .omitted, time: .shortened) ?? "5:37 AM")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(.white)
-                    }
-                    .frame(width: 96, height: 44)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
-                    Image(systemName: "location.north.line.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
-                        .frame(width: 44, height: 44).background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.18)))
+                GridRow {
+                    CCPill(symbol: "alarm.fill", title: "Fajr Alarm", value: fajrAlarmTime, on: true).gridCellColumns(2)
+                    CCCircle(symbol: "hands.and.sparkles")
+                    Color.clear.frame(width: 56, height: 56)
                 }
             }
         case .actionButton:
@@ -766,36 +777,21 @@ struct ShowcasePicture: View {
         case .siriMosques: SiriExchange(ask: "Nearby mosques in shukr", answer: (MosqueFavorites.all.first?.name ?? "The nearest masjid") + " · 1.2 mi")
         case .siriPrayedHere: SiriExchange(ask: "Have I prayed here in shukr", answer: "You've prayed here 12 times.")
         case .ccPrayer:
-            HStack(spacing: 10) {
-                Image(systemName: "sun.max.fill").font(.system(size: 20))
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(p.name).font(.system(size: 14, weight: .semibold, design: .rounded))
-                    Text(p.end.formatted(date: .omitted, time: .shortened)).font(.system(size: 12, design: .rounded)).opacity(0.75)
-                }
-            }
-            .foregroundStyle(.white).padding(.horizontal, 16).frame(width: 150, height: 64)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.white.opacity(0.18)))
+            CCPill(symbol: prayerIcon(for: p.name), title: p.name, value: p.isOn ? "ends \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))")
         case .ccPrayed:
-            VStack(spacing: 6) {
-                Image(systemName: "checkmark").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 60, height: 60).background(Circle().fill(Color.green))
-                Text("I Prayed").font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(.white)
+            HStack(spacing: 12) {
+                CCPill(symbol: "checkmark.circle", title: p.name, value: "Mark prayed")
+                CCCircle(symbol: "checkmark.circle")
             }
         case .ccFajrAlarm:
-            HStack(spacing: 10) {
-                Image(systemName: "alarm.fill").font(.system(size: 20)).foregroundStyle(.orange)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Fajr Alarm").font(.system(size: 14, weight: .semibold, design: .rounded))
-                    Text(prayerWindowToday("Fajr")?.start.formatted(date: .omitted, time: .shortened) ?? "5:37 AM")
-                        .font(.system(size: 12, design: .rounded)).opacity(0.75)
-                }
+            HStack(spacing: 12) {
+                CCPill(symbol: "alarm.fill", title: "Fajr Alarm", value: fajrAlarmTime, on: true)
+                CCCircle(symbol: "alarm.fill", on: true)
             }
-            .foregroundStyle(.white).padding(.horizontal, 16).frame(width: 160, height: 64)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.white.opacity(0.18)))
         case .ccQibla:
-            VStack(spacing: 6) { CCTile(symbol: "location.north.line.fill"); Text("Qibla").font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(.white) }
+            HStack(spacing: 12) { CCPill(symbol: "location.north.line.fill", title: "Qibla", value: nil); CCCircle(symbol: "location.north.line.fill") }
         case .ccZikr:
-            VStack(spacing: 6) { CCTile(symbol: "hands.and.sparkles"); Text("Zikr").font(.system(size: 11, weight: .semibold, design: .rounded)).foregroundStyle(.white) }
+            HStack(spacing: 12) { CCPill(symbol: "hands.and.sparkles", title: "Zikr", value: nil); CCCircle(symbol: "hands.and.sparkles") }
         case .goals:
             HStack(spacing: 10) {
                 MiniArc(progress: 1).frame(width: 44, height: 44)
@@ -807,6 +803,49 @@ struct ShowcasePicture: View {
 }
 
 // Picture pieces.
+
+/// A medium control in Control Center: a glass capsule, the icon in its own round badge on the left (lit white when a
+/// toggle is on), then the title and its value.
+private struct CCPill: View {
+    let symbol: String
+    let title: String
+    let value: String?
+    var on = false
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(on ? Color.black : Color.white)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(on ? Color.white : Color.white.opacity(0.14)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 13, weight: .semibold))
+                if let value { Text(value).font(.system(size: 11)).opacity(0.7) }
+            }
+            .foregroundStyle(.white)
+            .lineLimit(1).minimumScaleFactor(0.7)
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 10).padding(.trailing, 8)
+        .frame(width: 124, height: 56)
+        .background(Capsule().fill(.white.opacity(0.16)))
+        .overlay(Capsule().stroke(.white.opacity(0.12), lineWidth: 0.5))
+    }
+}
+
+/// A small control in Control Center: a glass circle with the icon (filled white when a toggle is on).
+private struct CCCircle: View {
+    let symbol: String
+    var on = false
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 19, weight: .semibold))
+            .foregroundStyle(on ? Color.black : Color.white)
+            .frame(width: 56, height: 56)
+            .background(Circle().fill(on ? Color.white : Color.white.opacity(0.16)))
+            .overlay(Circle().stroke(.white.opacity(0.12), lineWidth: 0.5))
+    }
+}
 
 /// You ask, Siri answers with a card (the phrase's own words; the answer shaped like the shortcut's).
 private struct SiriExchange: View {

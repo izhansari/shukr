@@ -335,7 +335,7 @@ struct ExploreGroupPage: View {
 
     private func row(_ member: ShowcaseCard) -> some View {
         HStack(spacing: 12) {
-            ShowcasePicture(id: member.id)
+            ShowcasePicture(id: member.id, thumb: true)
                 .frame(width: 124, height: 124)
                 .scaleEffect(0.42)
                 .frame(width: 52, height: 52)
