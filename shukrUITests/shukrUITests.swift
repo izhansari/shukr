@@ -265,8 +265,10 @@ final class ShortcutsOnDeviceTests: XCTestCase {
         let env = ProcessInfo.processInfo.environment
         let title = env["SHORTCUT_TILE"] ?? "Today's Times"
         openShukrPage()
-        let tile = shortcuts.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
-        if tile.waitForExistence(timeout: 3) { tile.tap(); sleep(5) }
+        for _ in 0..<3 { shortcuts.swipeDown() }   // the tiles sit above the grouped choices
+        let tile = shortcuts.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
+        for _ in 0..<5 where !(tile.exists && tile.isHittable) { shortcuts.swipeUp() }
+        if tile.exists { tile.tap(); sleep(5) } else { tree("tree-" + title) }
         shot("tile-" + title)
         if let phrase = env["SHORTCUT_PHRASE"] {
             XCUIDevice.shared.press(.home); sleep(1)

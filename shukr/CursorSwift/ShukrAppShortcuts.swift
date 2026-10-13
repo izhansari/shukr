@@ -25,11 +25,11 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             phrases: [
                 // "the next prayer" / "the current prayer" are the choices' synonyms: a phrase without the choice ran
                 // Relevant, and answered "Asr isn't marked yet" to "next prayer" (review).
+                // No bare "[choice] in shukr" / "[choice] prayer time": Siri took "Today's prayer times in shukr" for this
+                // one on his phone.
                 "\(\.$which) time in \(.applicationName)",
-                "\(\.$which) prayer time in \(.applicationName)",
                 "When is \(\.$which) in \(.applicationName)",
-                "What's \(\.$which) in \(.applicationName)",
-                "\(\.$which) in \(.applicationName)"
+                "What's \(\.$which) in \(.applicationName)"
             ],
             shortTitle: "Prayer Time",
             systemImageName: "clock",
@@ -62,7 +62,9 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             phrases: [
                 "Prayer times today in \(.applicationName)",
                 "Today's prayer times in \(.applicationName)",
-                "Today's times in \(.applicationName)"
+                "Today's times in \(.applicationName)",
+                "All prayer times today in \(.applicationName)",
+                "Show today's prayers in \(.applicationName)"
             ],
             shortTitle: "Today's Times",
             systemImageName: "list.bullet"
