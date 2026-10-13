@@ -41,7 +41,7 @@ enum SadaqahCategory: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .atHome: "Here at home"
+        case .atHome: "In the US"
         case .relief: "Emergency relief"
         case .orphans: "Orphans"
         case .water: "Water"
@@ -127,7 +127,7 @@ enum SadaqahCharities {
         SadaqahCharity(id: "icna", name: "ICNA Relief USA", does: "Food pantries, shelters and disaster relief in the US",
                        symbol: "house.fill", url: URL(string: "https://icnarelief.org/donate/")!,
                        categories: [.atHome, .relief],
-                       about: "Helps people here at home: food pantries, women's shelters, family services and disaster relief across the US.",
+                       about: "Helps people in the US: food pantries, women's shelters, family services and disaster relief across the US.",
                        facts: [nonprofit("04-3810161"), rated(93), works("Works across the US")]),
         SadaqahCharity(id: "iman", name: "IMAN", does: "Health, wellness and community in Chicago",
                        symbol: "building.2.fill", url: URL(string: "https://imancentral.org/donate/")!,
