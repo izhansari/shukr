@@ -555,6 +555,7 @@ struct SettingsView: View {
                             }
                         }
                         .onChange(of: widgetStyleRaw) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
+                        AppIconPicker()
                     } header: {
                         // What each look means is in the ⓘ (owner: not as text under the section).
                         headerWithInfoButton(title: "Appearance", isPopupVisible: $isAppearanceInfoVisible)
@@ -1815,6 +1816,116 @@ struct ZikrTourAgainRow: View {
             }
         }
         .tint(Color(.label))
+    }
+}
+
+/// Settings → Appearance → Icon (owner: "lets them choose the light or the dark icon … just call it icon"): System
+/// (the main AppIcon — iOS picks light or dark with the phone; "System", as the other pickers say), Light or Dark always
+/// (the alternate sets AppIcon-Light / AppIcon-Dark: one image each, no dark appearance, plus the T3 tinted;
+/// ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES). iOS shows its own "You have changed the icon" alert.
+struct AppIconPicker: View {
+    enum Choice: String, CaseIterable, Identifiable {
+        case system, light, dark
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .system: "System"
+            case .light: "Light"
+            case .dark: "Dark"
+            }
+        }
+        /// The alternate icon's name; nil = the main icon.
+        var iconName: String? {
+            switch self {
+            case .system: nil
+            case .light: "AppIcon-Light"
+            case .dark: "AppIcon-Dark"
+            }
+        }
+        static var current: Choice {
+            allCases.first { $0.iconName == UIApplication.shared.alternateIconName } ?? .system
+        }
+    }
+    @State private var choice = Choice.current
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "app").frame(width: 24)
+                Text("Icon")
+            }
+            HStack(spacing: 0) {
+                ForEach(Choice.allCases) { tile($0).frame(maxWidth: .infinity) }
+            }
+        }
+        .padding(.vertical, 4)
+        .onAppear { choice = Choice.current }
+    }
+
+    private func tile(_ c: Choice) -> some View {
+        let picked = c == choice
+        return Button {
+            pick(c)
+        } label: {
+            VStack(spacing: 6) {
+                preview(c)
+                    .frame(width: 54, height: 54)
+                    .clipShape(RoundedRectangle(cornerRadius: 12.5, style: .continuous))
+                    // A hairline so the dark icon still has an edge on the dark card.
+                    .overlay(RoundedRectangle(cornerRadius: 12.5, style: .continuous).strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 15.5, style: .continuous)
+                            .strokeBorder(picked ? Color.sage : .clear, lineWidth: 2.5)
+                            .padding(-4)
+                    }
+                    .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
+                Text(c.title)
+                    .font(.system(.footnote, design: .rounded, weight: picked ? .semibold : .regular))
+                    .foregroundStyle(picked ? Color.primary : .secondary)
+            }
+            .padding(.top, 4)
+            .contentShape(Rectangle())
+        }
+        // Three buttons in one Form row: each takes only its own taps.
+        .buttonStyle(.borderless)
+        .accessibilityLabel("\(c.title) icon")
+        .accessibilityAddTraits(picked ? .isSelected : [])
+    }
+
+    /// System shows both halves, light over dark on the diagonal.
+    @ViewBuilder private func preview(_ c: Choice) -> some View {
+        switch c {
+        case .light: Image("IconPreviewLight").resizable()
+        case .dark: Image("IconPreviewDark").resizable()
+        case .system:
+            ZStack {
+                Image("IconPreviewDark").resizable()
+                Image("IconPreviewLight").resizable().mask(DiagonalHalf())
+            }
+        }
+    }
+
+    private func pick(_ c: Choice) {
+        guard c != choice, UIApplication.shared.supportsAlternateIcons else { return }
+        let before = choice
+        choice = c
+        triggerSomeVibration(type: .light)
+        UIApplication.shared.setAlternateIconName(c.iconName) { error in
+            guard error != nil else { return }
+            Task { @MainActor in choice = before }
+        }
+    }
+
+    /// The top-left half of a square, cut on the diagonal.
+    private struct DiagonalHalf: Shape {
+        func path(in r: CGRect) -> Path {
+            Path { p in
+                p.move(to: CGPoint(x: r.minX, y: r.minY))
+                p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+                p.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+                p.closeSubpath()
+            }
+        }
     }
 }
 
