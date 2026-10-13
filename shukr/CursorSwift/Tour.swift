@@ -686,6 +686,14 @@ struct TourTopPanel: View {
                 } else if isStrip {
                     trailingProgress
                         .transition(.opacity)
+                } else if !ticked.isEmpty {
+                    // The chapter's to-dos all done: their dots stay, green (the strip's, finished).
+                    HStack(spacing: 4) {
+                        ForEach(ticked.sorted(), id: \.self) { _ in
+                            Circle().fill(TourInk.green).frame(width: 6, height: 6)
+                        }
+                    }
+                    .transition(.opacity)
                 }
             }
             if isStrip && page.explains {
@@ -1812,7 +1820,10 @@ struct BubbleShape: Shape {
                 // Marked: only the payoff (owner: no "3 done" fold, no back) — small enough to sit above the circle, the
                 // whole page under it free for the swipe.
                 let payoff = TourSection(id: "circle.marked", note: TourCopy.Circle.marked)
-                return chapter(.circle, 4, of: 4, [payoff], locked: lockedCircle)
+                // In the top panel too (owner: "same transitions … consistent"): the to-do grows into this line.
+                var p = chapter(.circle, 4, of: 4, [payoff], locked: lockedCircle)
+                p.atTop = true
+                return p
             }
         case .list:
             // One bubble, then the to-dos in the strip, then one line to close (owner: the two steps' tooltips covered
