@@ -432,9 +432,10 @@ struct ShowcaseStory {
     static let lockSteps = ["Touch and hold your Lock Screen, then tap Customize", "Pick your Lock Screen, then tap under the clock",
                             "Find shukr and tap the ones you want"]
 
-    private static func siriStory(_ phrase: String, _ lead: String, _ points: [String]) -> ShowcaseStory {
-        ShowcaseStory(title: phrase, lead: lead, points: points, button: "Try it with Siri",
-                      steps: ["Say “Hey Siri”, or hold the side button", "Say \(phrase)", "Siri answers with a card. Or tap its tile in Shortcuts"])
+    /// A Shortcuts tile (owner 2026-10-13: Shortcuts and their cards first — "our name isn't easy to say", Siri is an aside).
+    private static func tileStory(_ tile: String, _ lead: String, _ points: [String], siri: String) -> ShowcaseStory {
+        ShowcaseStory(title: tile, lead: lead, points: points + ["Or ask Siri: \(siri)"], button: "Show me how",
+                      steps: ["Open the Shortcuts app and tap shukr", "Tap \(tile)", "Or put it on the Action button: Settings → Action Button → Shortcut"])
     }
     private static func controlStory(_ name: String, _ lead: String, _ points: [String]) -> ShowcaseStory {
         ShowcaseStory(title: name, lead: lead, points: points + [], button: "Add it",
@@ -531,28 +532,28 @@ struct ShowcaseStory {
         case .tasbihFatimah: ShowcaseStory(title: "Tasbih Fatimah, after every prayer",
             lead: "33 · 33 · 34, offered each time you mark a prayer.",
             points: ["One tap from the Salah page", "Counts each phrase for you", "✕ when you'd rather not"], button: "Go to Salah", link: "salah")
-        // Siri and Shortcuts: each tile and its phrases as built (ShukrAppShortcuts.swift; Sami, 2026-10-13). Say it to Siri,
-        // or tap its tile in Shortcuts. The cards with buttons are iOS 26 (`available` hides them before).
-        case .siriTimeLeft: siriStory("“How long is left in shukr”", "The time left for the prayer that's on, on its Live Activity card.",
-            ["Tap the card's ✓ to mark the prayer", "Between Sunrise and Dhuhr, the time until Dhuhr", "“How much time is left in shukr” works too"])
-        case .siriPrayerTime: siriStory("“When is Maghrib in shukr”", "Any prayer's time: one of the five, or the current, next or previous one.",
-            ["“Fajr time in shukr”", "Prayed it already? Siri says so first", "In your own shortcuts: minutes before or after a prayer"])
-        case .siriTodaysTimes: siriStory("“Today's prayer times in shukr”", "All five of today's times in one card, the one that's on highlighted with its time left.",
-            ["Tap the circle to mark the prayer that's on", "Shows which ones you've prayed", "Tap a ✓ and shukr asks to unmark it"])
-        case .siriIPrayed: siriStory("“I prayed in shukr”", "Marks the prayer that's on, and tells you how you did.",
-            ["Scored at that moment, like a tap in the app", "Prayed late? It marks today's last unmarked prayer", "Undo asks in shukr, so nothing goes by mistake"])
-        case .siriFajrAlarm: siriStory("“When is my Fajr alarm in shukr”", "When your Fajr alarm rings next, shown as the alarm itself.",
-            ["Says so if it's off, and when it would ring", "In your own shortcuts: lights on at that time", "“Fajr alarm time in shukr” works too"])
-        case .siriOpenPage: siriStory("“Open Qibla in shukr”", "Straight to a page: Salah, Qibla, Zikr, Daily Ayah, the 99 Names or Memories.",
-            ["“Show Daily Ayah in shukr”", "“Go to Memories in shukr”", "A tile for it in Shortcuts too"])
-        case .siriTasbihFatimah: siriStory("“Start Tasbih Fatimah in shukr”", "Opens straight into 33 · 33 · 34.",
-            ["Right after you pray, hands-free", "Counts each phrase for you", "“Tasbih Fatimah in shukr” works too"])
-        case .siriZikrTasks: siriStory("“My zikr tasks in shukr”", "Today's zikr tasks in a card, with how long what's left will take.",
-            ["Tap a task: shukr opens and starts counting", "Picks up from today's count", "“What zikr is left in shukr” works too"])
-        case .siriMosques: siriStory("“Nearby mosques in shukr”", "The nearest mosques on a map, with how far each one is.",
-            ["Tap one for directions in Maps", "Tap the map for shukr's own", "“Find a masjid in shukr” works too"])
-        case .siriPrayedHere: siriStory("“Have I prayed here in shukr”", "How many prayers you've marked where you are, and when you last prayed there.",
-            ["At a masjid, every prayer you marked there counts", "A count for each of the five", "“When did I last pray here in shukr” works too"])
+        // Shortcuts: each tile as built (ShukrAppShortcuts.swift; Sami, 2026-10-13), its card first; Siri one line. The cards
+        // with buttons are iOS 26 (`available` hides them before).
+        case .siriTimeLeft: tileStory("Time Left", "The time left for the prayer that's on, on its Live Activity card.",
+            ["Tap the card's ✓ to mark the prayer", "Between Sunrise and Dhuhr, the time until Dhuhr"], siri: "“How long is left in shukr”")
+        case .siriPrayerTime: tileStory("Prayer Time", "Any prayer's time: one of the five, or the current, next or previous one.",
+            ["Prayed it already? It says so first", "In your own shortcuts: minutes before or after a prayer"], siri: "“When is Maghrib in shukr”")
+        case .siriTodaysTimes: tileStory("Today’s Times", "All five of today's times in one card, the one that's on highlighted with its time left.",
+            ["Tap the circle to mark the prayer that's on", "Tap a ✓ and shukr asks to unmark it"], siri: "“Today's prayer times in shukr”")
+        case .siriIPrayed: tileStory("I Prayed", "Marks the prayer that's on, and shows how you did on its card.",
+            ["Scored at that moment, like a tap in the app", "Undo asks in shukr, so nothing goes by mistake"], siri: "“I prayed in shukr”")
+        case .siriFajrAlarm: tileStory("Fajr Alarm Time", "When your Fajr alarm rings next, shown as the alarm itself.",
+            ["Says so if it's off, and when it would ring", "In your own shortcuts: lights on at that time"], siri: "“When is my Fajr alarm in shukr”")
+        case .siriOpenPage: tileStory("Open shukr", "Straight to a page: Salah, Qibla, Zikr, Daily Ayah, the 99 Names or Memories.",
+            ["A tile for each page", "Handy on the Action button"], siri: "“Open Qibla in shukr”")
+        case .siriTasbihFatimah: tileStory("Open Tasbih Fatimah", "Opens straight into 33 · 33 · 34.",
+            ["Right after you pray", "Counts each phrase for you"], siri: "“Start Tasbih Fatimah in shukr”")
+        case .siriZikrTasks: tileStory("Zikr Tasks", "Today's zikr tasks in a card, with how long what's left will take.",
+            ["Tap a task: shukr opens and starts counting", "Picks up from today's count"], siri: "“My zikr tasks in shukr”")
+        case .siriMosques: tileStory("Nearby Mosques", "The nearest mosques on a map, with how far each one is.",
+            ["Tap one for directions in Maps", "Tap the map for shukr's own"], siri: "“Nearby mosques in shukr”")
+        case .siriPrayedHere: tileStory("Prayed Here", "How many prayers you've marked where you are, and when you last prayed there.",
+            ["At a masjid, every prayer you marked there counts", "A count for each of the five"], siri: "“Have I prayed here in shukr”")
         // Controls (MoreWidgets.swift) as built: Control Center, a Lock Screen button, or the Action button. Wide or square,
         // a control shows its line of text; small, just its symbol.
         case .ccPrayer: controlStory("Today's Prayers", "The prayer that's on and when it ends, or the next one and when it starts.",
@@ -586,18 +587,20 @@ struct ShowcasePicture: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        ZStack {
-            background
+        // The picture sits over the panel and never sizes it (a wide one — a row of tiles — pushed the whole page past
+        // the screen's edges).
+        background.overlay {
             if thumb, let symbol = controlSymbol {
                 CCCircle(symbol: symbol, on: id == .ccFajrAlarm).scaleEffect(1.5)
             } else {
                 picture.scaleEffect((scale ?? (big ? 1.7 : compact ? 0.8 : 1)) * fit)
             }
         }
+        .clipped()
     }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
-    private var fit: CGFloat { id == .controlCenter ? 0.7 : id.isControl ? 0.8 : 1 }
+    private var fit: CGFloat { id == .controlCenter ? 0.7 : id.isControl ? 0.8 : id.isSiri ? 0.5 : 1 }
 
     private var controlSymbol: String? {
         switch id {
@@ -623,7 +626,8 @@ struct ShowcasePicture: View {
     @ViewBuilder private var background: some View {
         switch id {
         case .lockTime, .lockCountdown, .lockName, .lockControls, .siri, .answer, .controlCenter, .actionButton, .sleep: night
-        case _ where id.isSiri || id.isControl: night
+        case _ where id.isControl: night
+        case _ where id.isSiri: sage   // the cards as they look in the Shortcuts app
         case .standby: Color.black
         case .homeName: LinearGradient(colors: [Color(red: 0.18, green: 0.42, blue: 0.33), Color(red: 0.56, green: 0.77, blue: 0.65)],
                                        startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -770,16 +774,41 @@ struct ShowcasePicture: View {
             Image(systemName: "moon.fill").font(.system(size: 40)).foregroundStyle(Color(red: 0.91, green: 0.89, blue: 0.78))
         case .tasbihFatimah:
             Text("33 · 33 · 34").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.primary.opacity(0.85))
-        case .siriTimeLeft: SiriExchange(ask: "How long is left in shukr", answer: "\(p.left) left for \(p.name).")
-        case .siriPrayerTime: SiriExchange(ask: "When is Maghrib in shukr", answer: "Maghrib is at " + (prayerWindowToday("Maghrib")?.start.formatted(date: .omitted, time: .shortened) ?? "6:52 PM") + ".")
-        case .siriTodaysTimes: SiriExchange(ask: "Today's prayer times in shukr", answer: p.isOn ? "\(p.name) is on until \(shortTimePM(p.end))." : "\(p.name) starts at \(shortTimePM(p.start)).")
-        case .siriIPrayed: SiriExchange(ask: "I prayed in shukr", answer: "\(p.name) marked as prayed. Perfect.")
-        case .siriFajrAlarm: SiriExchange(ask: "When is my Fajr alarm in shukr", answer: "Your Fajr alarm is at \(fajrAlarmTime).")
-        case .siriOpenPage: SiriExchange(ask: "Open Qibla in shukr", answer: "Opening Qibla…")
-        case .siriTasbihFatimah: SiriExchange(ask: "Start Tasbih Fatimah in shukr", answer: "33 · 33 · 34")
-        case .siriZikrTasks: SiriExchange(ask: "My zikr tasks in shukr", answer: "2 of 3 zikr tasks left today, about 9 min.")
-        case .siriMosques: SiriExchange(ask: "Nearby mosques in shukr", answer: "The nearest mosque is " + (MosqueFavorites.all.first?.name ?? "your masjid") + ", 1.2 miles away.")
-        case .siriPrayedHere: SiriExchange(ask: "Have I prayed here in shukr", answer: "You've prayed here 12 times. The last was Asr, yesterday.")
+        // The real cards (SharedTargetForIntents.swift, PlaceShortcuts.swift) in a Shortcuts sheet, or the tile for an action
+        // without one (owner: "show the tile or the intent recipe or the card").
+        case .siriTimeLeft:
+            ShortcutSheetShot(dialog: "\(p.left) left for \(p.name).") {
+                PrayerCardSnippet(state: .init(label: p.name, start: p.start, end: p.end, symbol: prayerIcon(for: p.name), dark: scheme == .dark))
+            }
+        case .siriPrayerTime:
+            ShortcutSheetShot(dialog: "\(p.name) is \(p.isOn ? "on until \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))").") {
+                NextPrayerSnippet(name: p.name, start: p.start)
+            }
+        case .siriTodaysTimes:
+            ShortcutSheetShot(dialog: TodaysTimesSnippet.spoken()) { TodaysTimesSnippet(rows: TodaysTimesSnippet.rows(), markable: true) }
+        case .siriIPrayed:
+            ShortcutSheetShot(dialog: "\(p.name) marked as prayed. Perfect.") {
+                PrayerCardSnippet(state: .init(label: p.name, start: p.start, end: p.end, symbol: prayerIcon(for: p.name),
+                                               markedAt: p.start.addingTimeInterval(12 * 60), dark: scheme == .dark), action: .undo)
+            }
+        case .siriFajrAlarm:
+            ShortcutSheetShot(dialog: "Your Fajr alarm is at \(fajrAlarmTime).") {
+                ShortcutCards.fajrAlarm?(false, Date().addingTimeInterval(86400)) ?? AnyView(EmptyView())
+            }
+        case .siriOpenPage:
+            ShortcutTiles(tiles: [("sun.horizon", "Salah"), ("location.north.line", "Qibla"), ("hands.and.sparkles", "Zikr"), ("book", "Daily Ayah")])
+        case .siriTasbihFatimah:
+            ShortcutTiles(tiles: [("circle.hexagonpath", "Open Tasbih Fatimah")])
+        case .siriZikrTasks:
+            let tasks = ShowcaseSamples.zikrTasks
+            ShortcutSheetShot(dialog: ZikrTasksSnippet.spoken(tasks)) { ZikrTasksSnippet(tasks: tasks) }
+        case .siriMosques:
+            ShortcutSheetShot(dialog: NearbyMosquesSearch.spoken(ShowcaseSamples.mosques)) {
+                NearbyMosquesSnippet(outcome: ShowcaseSamples.mosques, map: nil)
+            }
+        case .siriPrayedHere:
+            let here = ShowcaseSamples.prayedHere
+            ShortcutSheetShot(dialog: here.spoken) { PrayedHereSnippet(summary: here) }
         case .ccPrayer:
             CCPill(symbol: prayerIcon(for: p.name), title: p.name, value: p.isOn ? "ends \(shortTimePM(p.end))" : "at \(shortTimePM(p.start))")
         case .ccPrayed:
@@ -852,6 +881,75 @@ private struct CCCircle: View {
 }
 
 /// You ask, Siri answers with a card (the phrase's own words; the answer shaped like the shortcut's).
+/// A Shortcuts card as the Shortcuts app shows it: the spoken line, a rule, the card; drawn at its real width, top kept.
+private struct ShortcutSheetShot<Card: View>: View {
+    let dialog: String
+    @ViewBuilder let card: () -> Card
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(dialog)
+                .font(.system(size: 17, weight: .medium))
+                .lineLimit(2)
+                .padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 12)
+            Divider()
+            card()
+        }
+        .frame(width: 360, height: 320, alignment: .top)
+        .background(RoundedRectangle(cornerRadius: 34, style: .continuous).fill(Color(.systemBackground)))
+        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
+        .offset(y: 40)   // the top of the sheet in view; the rest runs off the panel's foot
+    }
+}
+
+/// Tiles as the Shortcuts app lays shukr's out: a round badge with the symbol in sage, the name under it.
+private struct ShortcutTiles: View {
+    let tiles: [(String, String)]
+    var body: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.fixed(120), spacing: 18), count: min(tiles.count, 2)), spacing: 16) {
+            ForEach(tiles, id: \.1) { t in
+                VStack(spacing: 8) {
+                    Image(systemName: t.0)
+                        .font(.system(size: 30))
+                        .foregroundStyle(Color.sage)
+                        .frame(width: 84, height: 84)
+                        .background(Circle().fill(Color(.secondarySystemGroupedBackground)))
+                    Text(t.1).font(.system(size: 17)).multilineTextAlignment(.center).frame(width: 110)
+                }
+            }
+        }
+        .padding(24)
+        .background(RoundedRectangle(cornerRadius: 34, style: .continuous).fill(Color(.systemGroupedBackground).opacity(0.85)))
+    }
+}
+
+/// Stand-ins for cards that need data the phone may not have yet.
+@MainActor enum ShowcaseSamples {
+    static var zikrTasks: [ZikrTaskSnapshot] {
+        if let today = ZikrTaskSnapshot.today(), !today.isEmpty { return today }
+        return [ZikrTaskSnapshot(id: "1", name: "Subhanallah", isCountMode: true, goal: 100, count: 40, minutes: 0, done: false, secondsLeft: 120),
+                ZikrTaskSnapshot(id: "2", name: "Astaghfirullah", isCountMode: true, goal: 100, count: 0, minutes: 0, done: false, secondsLeft: 200),
+                ZikrTaskSnapshot(id: "3", name: "Alhamdulillah", isCountMode: true, goal: 33, count: 33, minutes: 0, done: true)]
+    }
+    static var mosques: NearbyMosquesSearch.Outcome {
+        let here = CLLocation(latitude: 0, longitude: 0)
+        let names = MosqueFavorites.all.prefix(1).map(\.name) + ["Masjid Al-Noor", "Islamic Center", "Masjid Ar-Rahman"]
+        let list = names.prefix(3).enumerated().map { i, n in
+            NearbyMosque(name: n, coordinate: here.coordinate, meters: [1_900, 3_200, 4_300][i], address: nil)
+        }
+        return .found(here: here, Array(list))
+    }
+    static var prayedHere: PrayedHere {
+        var s = PrayedHere(here: CLLocation(latitude: 0, longitude: 0))
+        s.place = MosqueFavorites.all.first?.name ?? "Your masjid"
+        s.atMasjid = true
+        s.count = 12
+        s.last = ("Asr", Calendar.current.date(byAdding: .day, value: -1, to: Date())!)
+        s.perPrayer = ["Fajr": 1, "Dhuhr": 4, "Asr": 3, "Maghrib": 3, "Isha": 1]
+        return s
+    }
+}
+
 private struct SiriExchange: View {
     let ask: String
     let answer: String

@@ -22,7 +22,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .homeWidgets: "Home Screen widgets"
         case .lockWidgets: "Lock Screen widgets"
         case .controls: "Control Center and buttons"
-        case .siri: "Siri and Shortcuts"
+        case .siri: "Shortcuts"
         case .watch: "Apple Watch"
         case .answer: "Answer from notifications"
         case .mapMasjid: "The map and your masjid"
@@ -37,7 +37,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .homeWidgets: "Prayer ring, zikr, the Name, the verse, StandBy"
         case .lockWidgets: "Time left, a countdown, the Name above the clock"
         case .controls: "Today's Prayers, I Prayed, Fajr Alarm, Qibla, Zikr"
-        case .siri: "Ask for time left, mark a prayer, find a masjid"
+        case .siri: "Cards for time left, today's times and mosques near you"
         case .watch: "The app and your watch face"
         case .answer: "I already prayed · nudge me later"
         case .mapMasjid: "Your prayers on the map, mosques, Jumu'ah"
@@ -52,7 +52,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .homeWidgets: "Your prayer, your zikr, the Name of the Day and today's verse on your Home Screen, and on your nightstand while it charges."
         case .lockWidgets: "Time left and what's next, every time you pick up your phone, without unlocking it."
         case .controls: "Five controls for Control Center, your Lock Screen buttons or the Action button. Make one wide or square and it shows a line of text too."
-        case .siri: "Ask Siri, or tap a tile in Shortcuts. Say “in shukr” at the end, and Siri answers with a card you can tap."
+        case .siri: "Tap a tile in the Shortcuts app and shukr answers with a card you can tap. Run them from the Action button too, or by asking Siri."
         case .watch: "Your prayers and your zikr on your wrist, and the ring on your watch face."
         case .answer: "Mark a prayer, or ask for a nudge, right from its notification."
         case .mapMasjid: "Every prayer pinned where you prayed it, mosques near you, and Jumu'ah counted at the masjid."
@@ -82,7 +82,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .homeWidgets: .homePrayers
         case .lockWidgets: .lockTime
         case .controls: .controlCenter
-        case .siri: .siriTimeLeft
+        case .siri: .siriTodaysTimes
         case .watch: .watchApp
         case .answer: .answer
         case .mapMasjid: .prayersMap
@@ -135,16 +135,17 @@ extension ShowcaseCardID {
         case .sleep: "Sleep mode"
         case .tasbihFatimah: "Tasbih Fatimah after prayer"
         case .goals: "Daily goals with streaks"
-        case .siriTimeLeft: "Time left"
-        case .siriPrayerTime: "A prayer's time"
-        case .siriTodaysTimes: "Today's times"
-        case .siriIPrayed: "I prayed"
-        case .siriFajrAlarm: "Your Fajr alarm"
-        case .siriOpenPage: "Open any page"
-        case .siriTasbihFatimah: "Tasbih Fatimah"
-        case .siriZikrTasks: "Your zikr tasks"
-        case .siriMosques: "Nearby mosques"
-        case .siriPrayedHere: "Have I prayed here"
+        // The Shortcuts tiles' own names (ShukrAppShortcuts.swift).
+        case .siriTimeLeft: "Time Left"
+        case .siriPrayerTime: "Prayer Time"
+        case .siriTodaysTimes: "Today’s Times"
+        case .siriIPrayed: "I Prayed"
+        case .siriFajrAlarm: "Fajr Alarm Time"
+        case .siriOpenPage: "Open shukr"
+        case .siriTasbihFatimah: "Open Tasbih Fatimah"
+        case .siriZikrTasks: "Zikr Tasks"
+        case .siriMosques: "Nearby Mosques"
+        case .siriPrayedHere: "Prayed Here"
         case .ccPrayer: "Today's Prayers"
         case .ccPrayed: "I Prayed"
         case .ccFajrAlarm: "Fajr Alarm"
@@ -308,6 +309,8 @@ private struct GroupCard: View {
 
 struct ExploreGroupPage: View {
     let group: ExploreGroup
+    /// DEBUG `-demoExploreMember siriMosques` (with `-demoExploreGroup`): that member's story, pushed (screenshots).
+    @State private var demoMember = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -337,7 +340,17 @@ struct ExploreGroupPage: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
+        #if DEBUG
+        .task { demoMember = demoMemberCard != nil }
+        .navigationDestination(isPresented: $demoMember) { if let c = demoMemberCard { ShowcaseStoryPage(card: c) } }
+        #endif
     }
+
+    #if DEBUG
+    private var demoMemberCard: ShowcaseCard? {
+        UserDefaults.standard.string(forKey: "demoExploreMember").flatMap { raw in group.members.first { $0.id.rawValue == raw } }
+    }
+    #endif
 
     private func row(_ member: ShowcaseCard) -> some View {
         HStack(spacing: 12) {
