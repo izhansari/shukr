@@ -90,6 +90,8 @@ struct TourCoachStrip: View {
     var extraProminent = false
     /// false inside `TourTopPanel`, which draws the one background for the card and the strip it becomes.
     var chrome = true
+    /// The tour's way out, as a ✕ at the end (the top panel; it asks first).
+    var onSkip: (() -> Void)? = nil
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
@@ -201,10 +203,11 @@ struct TourCoachStrip: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("What this step is about")
             }
+            if let onSkip { TourSkipX(action: onSkip) }
         }
         // Room round the words (owner: two-line strips "cant breathe").
         .padding(.leading, 16)
-        .padding(.trailing, onDetails == nil ? 18 : 8)
+        .padding(.trailing, onDetails == nil && onSkip == nil ? 18 : 8)
         .padding(.vertical, 12)
         .frame(minHeight: 60)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
@@ -225,8 +228,26 @@ struct TourCoachStrip: View {
             }
         }
         .contentShape(Rectangle())
-        .allowsHitTesting(onDetails != nil || onBack != nil || extra != nil)
+        .allowsHitTesting(onDetails != nil || onBack != nil || extra != nil || onSkip != nil)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The tour's ✕ (skip): a small grey circle, in the strip and the top panel.
+struct TourSkipX: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Color.primary.opacity(0.5))
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Color.primary.opacity(0.08)))
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(TourCopy.Skip.button)
     }
 }
 

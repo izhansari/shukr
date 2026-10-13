@@ -296,6 +296,11 @@ enum TourCopy {
         static let confirm = "Tap again to skip"
         static let skippedTitle = "You skipped the tour"
         static let skippedLine = "It’s in the ☰ menu and in Settings whenever you want it."
+        /// The ✕ in the tour's top panel asks first, with iOS's own alert (owner).
+        static let alertTitle = "Skip the tour?"
+        static let alertLine = "It’s in the ☰ menu whenever you want it."
+        static let alertSkip = "Skip tour"
+        static let alertKeep = "Keep going"
     }
 
     /// The invitation after the first-run setup.

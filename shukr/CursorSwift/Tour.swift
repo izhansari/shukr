@@ -212,6 +212,8 @@ struct TourOverlay: View {
     var onBack: () -> Void = {}
     var onToggle: (String) -> Void = { _ in }
     var onSkipQibla: () -> Void = {}
+    /// The tour's way out, from the top panel's ✕ (after iOS's alert).
+    var onSkip: () -> Void = {}
     private var targets: TourTargets { TourTargets.shared }
 
     var body: some View {
@@ -226,7 +228,7 @@ struct TourOverlay: View {
                         aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack,
                         flash: flash.map { Self.local($0, origin) }, flashes: flashes, nudges: nudges, qiblaSkip: qiblaSkip,
                         forward: forward, onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack,
-                        onToggle: onToggle, onSkipQibla: onSkipQibla)
+                        onToggle: onToggle, onSkipQibla: onSkipQibla, onSkip: onSkip)
         }
         .ignoresSafeArea()
     }
@@ -413,6 +415,7 @@ struct TourCallout: View {
     var onBack: () -> Void = {}
     var onToggle: (String) -> Void = { _ in }
     var onSkipQibla: () -> Void = {}
+    var onSkip: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @Environment(SharedStateClass.self) private var sharedState
@@ -459,9 +462,9 @@ struct TourCallout: View {
                 TourTopPanel(page: page, mode: mode, guideKey: key, ticked: ticked, showsBack: showsBack, qiblaSkip: qiblaSkip,
                              openSection: openSection, lit: lit, step: step, place: place,
                              onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack, onToggle: onToggle,
-                             onSkipQibla: onSkipQibla)
-                    .tourStripPlaced(top: true, size: size, topInset: typeSize.isAccessibilitySize ? 158 : 112,
-                                     bottomInset: 0)
+                             onSkipQibla: onSkipQibla, onSkip: onSkip)
+                    // Over the top bar (owner: the tour never uses ☰ or the place, and Skip is in the panel now).
+                    .tourStripPlaced(top: true, size: size, topInset: TourTopPanel.topInset, bottomInset: 0)
                     .opacity(shown ? 1 : 0)
                     .transition(.opacity)
             } else if mode == .strip {
@@ -542,8 +545,10 @@ struct TourCallout: View {
     }
 }
 
-/// The panel in the strip's place at the top: a card's words with the chapter's name and its button on one line, or the
-/// strip — the same rounded panel either way, so going from one to the other it grows or shrinks and its words cross-fade.
+/// The panel in the strip's place at the top (owner, 2026-10-13: "the same item as the strip"). One line stays put
+/// through the whole chapter — its number and name, then the way on (→ while there's something to read, the to-dos'
+/// dots once there's something to do) and ✕ to skip — and only what's under it changes: the words, then the one thing to
+/// do now. The panel grows and shrinks around that; nothing is taken out and put back (owner: "discombobulated").
 struct TourTopPanel: View {
     let page: TourPage
     let mode: TourGuideMode
@@ -560,83 +565,228 @@ struct TourTopPanel: View {
     var onBack: () -> Void
     var onToggle: (String) -> Void
     var onSkipQibla: () -> Void
+    var onSkip: () -> Void
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
+    @State private var confirmSkip = false
+    /// A to-do just done: the edge pulses green, then settles (as the strip's).
+    @State private var pulse = false
 
     private var isStrip: Bool { mode == .strip }
 
+    /// Just under the status bar, over the page's top bar.
+    static var topInset: CGFloat {
+        let window = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow
+        return (window?.safeAreaInsets.top ?? 47) + 4
+    }
+
+    /// Up: the top bar's own Skip tour stays away (TourLayer's skipLayer).
+    @MainActor @Observable final class Presence {
+        static let shared = Presence()
+        var up = false
+    }
+
+    // The to-dos, as the strip counts them.
+    private var todos: [String] { page.currentTodos }
+    private var current: Int {
+        todos.indices.first { !ticked.contains($0) && !page.locked.contains($0) } ?? max(todos.count - 1, 0)
+    }
+    private var currentDone: Bool { ticked.contains(current) }
+
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            if isStrip {
-                TourCoachStrip(chapter: page.headline, lead: page.shortLead, todos: page.currentTodos, ticked: ticked,
-                               locked: page.locked, progress: page.activeSection?.progress,
-                               onDetails: page.explains ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.again(guideKey) } } : nil,
-                               onBack: showsBack ? onBack : nil,
-                               extra: qiblaSkip ? (TourCopy.Circle.noCompass, onSkipQibla) : nil,
-                               chrome: false)
-                    .transition(.opacity.combined(with: .offset(y: 6)))
-            } else {
-                card
-                    .transition(.opacity.animation(.easeOut(duration: 0.18)))
+        VStack(alignment: .leading, spacing: isStrip ? 6 : 8) {
+            header
+            ZStack(alignment: .topLeading) {
+                if isStrip {
+                    todo
+                        .transition(.opacity.combined(with: .offset(y: 8)))
+                } else {
+                    words
+                        .transition(.opacity.animation(.easeOut(duration: 0.15)))
+                }
             }
         }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         // The leaving words stay inside the panel as it shrinks.
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .tourBubble(RoundedRectangle(cornerRadius: 20, style: .continuous),
                     look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(TourInk.green.opacity(pulse ? 1 : 0), lineWidth: pulse ? 3 : 1.5)
+                .shadow(color: TourInk.green.opacity(pulse ? 0.55 : 0), radius: pulse ? 10 : 0)
+                .allowsHitTesting(false)
+        }
         .animation(.smooth(duration: 0.4), value: isStrip)
         .tint(TourInk.green)
+        .onChange(of: ticked) { old, new in
+            guard new.count > old.count else { return }
+            withAnimation(.easeOut(duration: 0.15)) { pulse = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.45))
+                withAnimation(.easeOut(duration: 0.6)) { pulse = false }
+            }
+        }
+        .alert(TourCopy.Skip.alertTitle, isPresented: $confirmSkip) {
+            Button(TourCopy.Skip.alertKeep, role: .cancel) {}
+            Button(TourCopy.Skip.alertSkip, role: .destructive, action: onSkip)
+        } message: {
+            Text(TourCopy.Skip.alertLine)
+        }
+        .onAppear { Presence.shared.up = true }
+        .onDisappear { Presence.shared.up = false }
     }
 
-    /// The chapter's name (as the strip says it) and the button on one line, then the words.
-    private var card: some View {
+    /// The line that stays: ‹ · "1 · PRAYER CIRCLE" · → or the dots · ✕.
+    private var header: some View {
         let shown = mode == .cardThenStrip ? page.withGotIt : page
-        let primary = mode == .cardThenStrip
-            ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.gotIt(guideKey) } } : onPrimary
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                if showsBack {
-                    Button(action: onBack) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(.footnote, weight: .semibold))
-                            .foregroundStyle(Color(.secondaryLabel))
-                            .frame(width: 24, height: 28)
+        return HStack(spacing: 10) {
+            // Its place is always kept, so the chapter's name never moves when ‹ comes or goes.
+            Button(action: onBack) {
+                Image(systemName: "chevron.left")
+                    .font(.system(.footnote, weight: .semibold))
+                    .foregroundStyle(Color(.secondaryLabel))
+                    .frame(width: 22, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+            .opacity(showsBack ? 1 : 0)
+            .allowsHitTesting(showsBack)
+            .accessibilityHidden(!showsBack)
+            .padding(.leading, -6)
+            Text(chapterLine)
+                .font(.system(.caption, design: .rounded, weight: .semibold))
+                .foregroundStyle(Color.primary.opacity(0.5))
+                .textCase(.uppercase)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+            Spacer(minLength: 8)
+            ZStack(alignment: .trailing) {
+                if !isStrip, let label = shown.primary {
+                    // On, as a symbol (owner: save the room) — its words for VoiceOver.
+                    Button(action: primaryAction) {
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(TourInk.green))
+                            .frame(width: 34, height: 34)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Back")
-                    .padding(.trailing, -6)
-                }
-                Text(page.headline)
-                    .font(.system(.caption2, design: .rounded, weight: .semibold))
-                    .foregroundStyle(Color.primary.opacity(0.45))
-                    .textCase(.uppercase)
-                    .lineLimit(1)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer(minLength: 8)
-                if let label = shown.primary {
-                    Button(action: primary) {
-                        Text(label)
-                            .font(.system(.footnote, design: .rounded, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .frame(height: 30)
-                            .background(Capsule().fill(TourInk.green))
-                            .fixedSize()
-                    }
-                    .buttonStyle(.plain)
+                    .accessibilityLabel(label)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                } else if isStrip {
+                    trailingProgress
+                        .transition(.opacity)
                 }
             }
-            TourPageView(step: step, page: Self.untitled(shown), compact: true, place: place, ticked: ticked, lit: lit,
-                         openSection: openSection, showsBack: false, qiblaSkip: false,
-                         onPrimary: primary, onSecondary: onSecondary, onBack: onBack,
-                         onToggle: onToggle, onSkipQibla: onSkipQibla)
+            if isStrip && page.explains {
+                Button {
+                    withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.again(guideKey) }
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.primary.opacity(0.45))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("What this step is about")
+            }
+            TourSkipX { confirmSkip = true }
+                .padding(.leading, -4)
         }
-        .padding(.leading, 16)
-        .padding(.trailing, 12)
-        .padding(.vertical, 12)
-        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .frame(height: 34)
+    }
+
+    private var chapterLine: String {
+        if let index = page.index, index > 0 { return "\(index) · \(page.headline)" }
+        return page.headline
+    }
+
+    private var primaryAction: () -> Void {
+        mode == .cardThenStrip ? { withAnimation(.smooth(duration: 0.35)) { TourGuideState.shared.gotIt(guideKey) } } : onPrimary
+    }
+
+    @ViewBuilder private var trailingProgress: some View {
+        if let progress = page.activeSection?.progress {
+            Text("\(progress.0) of \(progress.1)")
+                .font(.system(.caption, design: .rounded, weight: .medium))
+                .monospacedDigit()
+                .foregroundStyle(Color.primary.opacity(0.5))
+                .contentTransition(.numericText())
+        } else if todos.count > 1 {
+            HStack(spacing: 4) {
+                ForEach(todos.indices, id: \.self) { i in
+                    Circle()
+                        .fill(ticked.contains(i) ? TourInk.green : Color.primary.opacity(i == current ? 0.45 : 0.15))
+                        .frame(width: 6, height: 6)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: ticked)
+        }
+    }
+
+    /// What there is to read: the step's words.
+    private var words: some View {
+        TourPageView(step: step, page: Self.untitled(mode == .cardThenStrip ? page.withGotIt : page), compact: true,
+                     place: place, ticked: ticked, lit: lit, openSection: openSection, showsBack: false, qiblaSkip: false,
+                     onPrimary: primaryAction, onSecondary: onSecondary, onBack: onBack,
+                     onToggle: onToggle, onSkipQibla: onSkipQibla)
+            .padding(.trailing, 8)
+    }
+
+    /// The one thing to do now: its ring (✓ once done), its words sliding up to the next.
+    private var todo: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack {
+                Circle()
+                    .strokeBorder(TourInk.green.opacity(currentDone ? 0 : 0.6), lineWidth: 1.5)
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(TourInk.green)
+                    .opacity(currentDone ? 1 : 0)
+                    .scaleEffect(currentDone ? 1 : 0.5)
+            }
+            .frame(width: 22, height: 22)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentDone)
+            VStack(alignment: .leading, spacing: 2) {
+                if let lead = page.shortLead {
+                    Text(lead)
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(Color.primary.opacity(0.55))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(todos.indices.contains(current) ? todos[current] : "")
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .foregroundStyle(Color.primary.opacity(currentDone ? 0.5 : 0.9))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .id(current)
+                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                            removal: .move(edge: .top).combined(with: .opacity)))
+                // Only under the qibla to-do (the circle's second); it showed under the first once the wait was up.
+                if qiblaSkip && current == 1 {
+                    Button(TourCopy.Circle.noCompass, action: onSkipQibla)
+                        .buttonStyle(.plain)
+                        .font(.system(.caption, design: .rounded, weight: .medium))
+                        .foregroundStyle(TourInk.green)
+                        .padding(.top, 2)
+                }
+            }
+            .clipped()
+            .animation(.smooth(duration: 0.35), value: current)
+            Spacer(minLength: 0)
+        }
+        .padding(.trailing, 8)
     }
 
     /// The step's own small title ("What it shows") goes: the panel's line already names the chapter.
@@ -2190,7 +2340,8 @@ struct TourLayer: View {
                     onSecondary: { runtime.event(.demo) },
                     onBack: { runtime.event(.back) },
                     onToggle: toggleSection,
-                    onSkipQibla: { runtime.event(.skipQibla) })
+                    onSkipQibla: { runtime.event(.skipQibla) },
+                    onSkip: { runtime.skip() })
             // A new chapter is a new bubble (owner, 2026-10-06: "make the bubble disappear and the next one appear"):
             // the old one fades where it is, then the new one comes in at its place (TourCallout's entrance).
             .id(step)
@@ -2230,7 +2381,7 @@ struct TourLayer: View {
         // Azkar (shown while its card names it), Settings' light / dark (a row lower sat on the location's refresh).
         let besideCorner = (TourRuntime.showsAzkarDoor && sharedState.horizontalPage == .zikr)
             || sharedState.horizontalPage == .settings
-        if runtime.active, !covered {
+        if runtime.active, !covered, !TourTopPanel.Presence.shared.up {
             TourSkipButton {
                 runtime.skip()
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
