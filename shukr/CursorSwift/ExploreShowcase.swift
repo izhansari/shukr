@@ -513,12 +513,14 @@ struct ShowcasePicture: View {
     var big = false
     /// In the two-by-two grids: a little smaller, as in the mockup.
     var compact = false
+    /// Any other size (the grouped page's wide cards).
+    var scale: CGFloat? = nil
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         ZStack {
             background
-            picture.scaleEffect(big ? 1.7 : compact ? 0.8 : 1)
+            picture.scaleEffect(scale ?? (big ? 1.7 : compact ? 0.8 : 1))
         }
     }
 

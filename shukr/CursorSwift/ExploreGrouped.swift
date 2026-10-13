@@ -31,6 +31,21 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .zikrExtras: "Zikr extras"
         }
     }
+    /// What's inside, a few words (the card).
+    var line: String {
+        switch self {
+        case .homeWidgets: "Prayer ring, zikr, the Name, the verse, StandBy"
+        case .lockWidgets: "Time left, a countdown, the Name above the clock"
+        case .controls: "Control Center, Lock Screen buttons, the Action button"
+        case .siri: "“I prayed in shukr”, and more"
+        case .watch: "The app and your watch face"
+        case .answer: "I already prayed · nudge me later"
+        case .mapMasjid: "Your prayers on the map, mosques, Jumu'ah"
+        case .memories: "A photo with each prayer"
+        case .insights: "Which prayer needs you most"
+        case .zikrExtras: "Sleep mode, Tasbih Fatimah, daily goals"
+        }
+    }
     /// What you get, one sentence (the group's page).
     var lead: String {
         switch self {
@@ -193,12 +208,21 @@ struct ExploreGroupedPage: View {
                     if !note.isEmpty { Text(note).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary) }
                 }
                 .padding(.horizontal, 4)
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    ForEach(groups) { group in
-                        NavigationLink { destination(group) } label: { GroupCard(group: group) }
-                            .buttonStyle(.plain)
+                // Wide cards like the original page (owner), a row that snaps card by card; the next one peeks in from the
+                // right so there's clearly more.
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 12) {
+                        ForEach(groups) { group in
+                            NavigationLink { destination(group) } label: { GroupCard(group: group) }
+                                .buttonStyle(.plain)
+                                .containerRelativeFrame(.horizontal) { width, _ in groups.count > 1 ? width - 28 : width }   // width: the row less its margins
+                        }
                     }
+                    .scrollTargetLayout()
                 }
+                .scrollTargetBehavior(.viewAligned)
+                .contentMargins(.horizontal, 16, for: .scrollContent)
+                .padding(.horizontal, -16)
             }
         }
     }
@@ -214,16 +238,22 @@ private struct GroupCard: View {
     let group: ExploreGroup
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ShowcasePicture(id: group.id.picture, compact: true)
-                .frame(height: 108).frame(maxWidth: .infinity).clipped()
-            VStack(alignment: .leading, spacing: 6) {
-                Text(group.id.title)
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .lineLimit(2, reservesSpace: true)
-                    .multilineTextAlignment(.leading)
+            ShowcasePicture(id: group.id.picture, scale: 1.25)
+                .frame(height: 180).frame(maxWidth: .infinity).clipped()
+            HStack(alignment: .bottom, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(group.id.title)
+                        .font(.system(.headline, design: .rounded))
+                        .lineLimit(1)
+                    Text(group.id.line)
+                        .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
+                        .lineLimit(2, reservesSpace: true)
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer(minLength: 6)
                 status
             }
-            .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 12)
+            .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
         }
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
