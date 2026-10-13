@@ -1030,6 +1030,7 @@ struct PrayerTimesView: View {
                 // shared store, so save first).
                 try? context.save()
                 WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.zikr)
+                ControlCenter.shared.reloadControls(ofKind: WidgetKinds.zikrControl)
             }
             if newScenePhase == .active {
                 showMorningCardWhenClear()

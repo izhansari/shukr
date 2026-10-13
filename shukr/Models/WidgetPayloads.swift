@@ -12,6 +12,8 @@ import Foundation
 enum WidgetKinds {
     static let prayers = "PrayersWidget"
     static let zikr = "ZikrTasksWidget"
+    /// The Zikr control (Control Center): reloaded with the Zikr widget, for its "N tasks left" line.
+    static let zikrControl = "betternorms.shukr.control.tasbeeh"
     static let name = "NameOfTheDayWidget"
     static let ayah = "DailyAyahWidget"
 }

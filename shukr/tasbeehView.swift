@@ -1237,6 +1237,7 @@ struct tasbeehView: View {
         // The Zikr widget reads the shared store: save, then let it redraw.
         try? context.save()
         WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.zikr)
+        ControlCenter.shared.reloadControls(ofKind: WidgetKinds.zikrControl)   // its "N tasks left" line
     }
 
     /// Sleep mode ended the session (no tap for a while, or the app left while counting): saved now

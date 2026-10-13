@@ -671,12 +671,31 @@ struct QiblaControl: ControlWidget {
     }
 }
 
-/// Tasbeeh: straight to the Zikr page.
+/// Zikr: straight to the Zikr page; its line says where today's tasks stand (owner: "how many tasks are left" and
+/// the time they'd take) — "2 tasks left · about 9 min" / "All done today"; nothing under "Zikr" without tasks.
 struct TasbeehControl: ControlWidget {
+    static let kind = WidgetKinds.zikrControl
+    struct Provider: ControlValueProvider {
+        var previewValue: String? { "2 tasks left · about 9 min" }
+        func currentValue() async throws -> String? {
+            guard let tasks = ZikrTaskSnapshot.today(), !tasks.isEmpty else { return nil }
+            let left = tasks.filter { !$0.done }
+            guard !left.isEmpty else { return "All done today" }
+            let line = left.count == 1 ? "1 task left" : "\(left.count) tasks left"
+            let known = left.compactMap(\.secondsLeft)
+            guard !known.isEmpty else { return line }
+            return line + " · about " + zikrEstimateString(known.reduce(0, +)).replacingOccurrences(of: "~", with: "")
+        }
+    }
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "betternorms.shukr.control.tasbeeh") {
+        StaticControlConfiguration(kind: Self.kind, provider: Provider()) { line in
             ControlWidgetButton(action: OpenTasbeehIntent()) {
-                Label("Zikr", systemImage: "hands.and.sparkles")   // as the app calls the page (owner)
+                Label {
+                    Text("Zikr")   // as the app calls the page (owner)
+                    if let line { Text(line) }
+                } icon: {
+                    Image(systemName: "hands.and.sparkles")
+                }
             }
         }
         .displayName("Zikr")
