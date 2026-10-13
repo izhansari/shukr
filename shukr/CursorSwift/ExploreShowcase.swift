@@ -19,11 +19,12 @@ import WatchConnectivity
 // MARK: - Which page
 
 enum ExplorePageVariant: String, CaseIterable, Identifiable {
-    case showcase, lean, original
+    case grouped, showcase, lean, original
     var id: String { rawValue }
     static let key = "explore.variant"
     var label: String {
         switch self {
+        case .grouped: "Grouped"
         case .showcase: "Showcase"
         case .lean: "Lean"
         case .original: "Original"
@@ -90,6 +91,8 @@ enum ExploreShowcase {
     private(set) var sections: [ShowcaseSection] = []
     private(set) var loaded = false
     var found: Int { sections.flatMap(\.cards).filter(\.using).count }
+    /// Every card that applies, by id (the grouped page reads its members from here).
+    var byID: [ShowcaseCardID: ShowcaseCard] { Dictionary(sections.flatMap(\.cards).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
     var total: Int { sections.flatMap(\.cards).count }
 
     func load(context: ModelContext) async {

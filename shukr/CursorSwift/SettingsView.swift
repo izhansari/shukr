@@ -88,7 +88,7 @@ struct SettingsView: View {
     // For minimizing and expanding the devSection
     /// DEBUG: tap the "Sneak Peek" header, or launch with `-devStuff`.
     @State private var showDevStuff = ProcessInfo.processInfo.arguments.contains("-devStuff")
-    @AppStorage(ExplorePageVariant.key) private var exploreVariant = ExplorePageVariant.showcase.rawValue
+    @AppStorage(ExplorePageVariant.key) private var exploreVariant = ExplorePageVariant.grouped.rawValue
     /// DEBUG: the compass's sources, rate and accuracy under the Salah circle (compass audit 2026-09-30).
     @AppStorage("compassDebug") private var compassDebug = false
     @State private var showCityPicker = false
@@ -567,14 +567,20 @@ struct SettingsView: View {
                     // settings that I can change back to"). A count only when something's new.
                     Section {
                         NavigationLink {
-                            switch ExplorePageVariant(rawValue: exploreVariant) ?? .showcase {
+                            switch ExplorePageVariant(rawValue: exploreVariant) ?? .grouped {
+                            case .grouped: ExploreGroupedPage()
                             case .showcase: ExploreShowcasePage()
                             case .lean: ExploreLeanPage()
                             case .original: ExploreShukrPage()
                             }
                         } label: {
-                            let variant = ExplorePageVariant(rawValue: exploreVariant) ?? .showcase
-                            let newCount = variant == .showcase ? ExploreShowcase.newCount : variant == .lean ? ExploreLean.newCount : 0
+                            let variant = ExplorePageVariant(rawValue: exploreVariant) ?? .grouped
+                            let newCount = switch variant {
+                            case .grouped: ExploreGrouped.newCount
+                            case .showcase: ExploreShowcase.newCount
+                            case .lean: ExploreLean.newCount
+                            case .original: 0
+                            }
                             HStack(spacing: 12) {
                                 Image(systemName: "sparkles").frame(width: 24)
                                 Text("Explore shukr")

@@ -1449,7 +1449,12 @@ struct PrayerTimesView: View {
         .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
         .sheet(isPresented: $demoExplore) {
             NavigationStack {
-                if UserDefaults.standard.string(forKey: ExplorePageVariant.key) == "lean" { ExploreLeanPage() } else { ExploreShowcasePage() }
+                switch ExplorePageVariant(rawValue: UserDefaults.standard.string(forKey: ExplorePageVariant.key) ?? "") ?? .grouped {
+                case .grouped: ExploreGroupedPage()
+                case .showcase: ExploreShowcasePage()
+                case .lean: ExploreLeanPage()
+                case .original: ExploreShukrPage()
+                }
             }
         }
         #endif
