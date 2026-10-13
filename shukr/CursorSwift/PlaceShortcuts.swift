@@ -59,49 +59,31 @@ private func distanceText(_ meters: Double, spoken: Bool = false) -> String {
     return f.string(fromDistance: meters)
 }
 
-/// A map picture for a card: `here` as a blue dot, numbered sage pins (`pins`), or one pin on `here` itself.
-@MainActor func placeSnapshot(here: CLLocationCoordinate2D, pins: [CLLocationCoordinate2D], hereIsPin: Bool,
-                                      size: CGSize, dark: Bool) async -> UIImage? {
+/// The Nearby Mosques card's map strip: `here` as the blue dot, the mosques as plain sage pins, the nearest larger.
+@MainActor func placeSnapshot(here: CLLocationCoordinate2D, pins: [CLLocationCoordinate2D],
+                              size: CGSize, dark: Bool) async -> UIImage? {
     let all = [here] + pins
     let lats = all.map(\.latitude), lons = all.map(\.longitude)
     let center = CLLocationCoordinate2D(latitude: (lats.min()! + lats.max()!) / 2, longitude: (lons.min()! + lons.max()!) / 2)
-    let least = hereIsPin ? 0.0025 : 0.006   // one spot: down to its streets
-    let span = MKCoordinateSpan(latitudeDelta: max((lats.max()! - lats.min()!) * 1.5, least),
-                                longitudeDelta: max((lons.max()! - lons.min()!) * 1.5, least))
+    // Room round the pins; wide enough for the strip's shape (it's far wider than tall).
+    let latSpan = max((lats.max()! - lats.min()!) * 1.6, 0.006)
+    let lonSpan = max((lons.max()! - lons.min()!) * 1.3, latSpan * Double(size.width / size.height) * 0.8)
     let options = MKMapSnapshotter.Options()
-    options.region = MKCoordinateRegion(center: center, span: span)
+    options.region = MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: latSpan, longitudeDelta: lonSpan))
     options.size = size
     options.pointOfInterestFilter = .excludingAll
+    options.preferredConfiguration = MKStandardMapConfiguration(emphasisStyle: .muted)
     options.traitCollection = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
     guard let shot = try? await MKMapSnapshotter(options: options).start() else { return nil }
     return UIGraphicsImageRenderer(size: size).image { _ in
         shot.image.draw(at: .zero)
         let sage = UIColor(red: 0.40, green: 0.64, blue: 0.50, alpha: 1)
-        if hereIsPin {
-            let p = shot.point(for: here)
-            let r = CGRect(x: p.x - 11, y: p.y - 11, width: 22, height: 22)
-            UIColor.white.setFill(); UIBezierPath(ovalIn: r.insetBy(dx: -2.5, dy: -2.5)).fill()
-            sage.setFill(); UIBezierPath(ovalIn: r).fill()
-            if let glyph = UIImage(systemName: "hands.and.sparkles.fill")?
-                .withTintColor(.white, renderingMode: .alwaysOriginal) {
-                glyph.draw(in: r.insetBy(dx: 4.5, dy: 4.5))
-            }
-            return
+        func dot(_ p: CGPoint, _ r: CGFloat, _ fill: UIColor, ring: CGFloat) {
+            UIColor.white.setFill(); UIBezierPath(ovalIn: CGRect(x: p.x - r - ring, y: p.y - r - ring, width: 2 * (r + ring), height: 2 * (r + ring))).fill()
+            fill.setFill(); UIBezierPath(ovalIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)).fill()
         }
-        // The pins, farthest first so the nearest sits on top.
-        for (i, c) in pins.enumerated().reversed() {
-            let p = shot.point(for: c)
-            let r = CGRect(x: p.x - 10, y: p.y - 10, width: 20, height: 20)
-            UIColor.white.setFill(); UIBezierPath(ovalIn: r.insetBy(dx: -2, dy: -2)).fill()
-            sage.setFill(); UIBezierPath(ovalIn: r).fill()
-            let label = "\(i + 1)" as NSString
-            let attrs: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 11, weight: .bold), .foregroundColor: UIColor.white]
-            let s = label.size(withAttributes: attrs)
-            label.draw(at: CGPoint(x: p.x - s.width / 2, y: p.y - s.height / 2), withAttributes: attrs)
-        }
-        let p = shot.point(for: here)
-        UIColor.white.setFill(); UIBezierPath(ovalIn: CGRect(x: p.x - 8, y: p.y - 8, width: 16, height: 16)).fill()
-        UIColor.systemBlue.setFill(); UIBezierPath(ovalIn: CGRect(x: p.x - 5.5, y: p.y - 5.5, width: 11, height: 11)).fill()
+        for (i, c) in pins.enumerated().reversed() { dot(shot.point(for: c), i == 0 ? 7 : 5, sage, ring: 2) }
+        dot(shot.point(for: here), 5, .systemBlue, ring: 2.5)
     }
 }
 
@@ -165,63 +147,93 @@ struct NearbyMosque: Hashable {
     }
 }
 
+/// Today's Times' look (owner: "match that same aesthetic … sleek and straightforward"): a short map strip, then the
+/// nearest three as rows — the nearest in the sage "now" fill — a tap on one = directions in Maps.
 struct NearbyMosquesSnippet: View {
     let outcome: NearbyMosquesSearch.Outcome
     let map: UIImage?
+    static let shown = 3
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let map {
-                Image(uiImage: map)
-                    .resizable().scaledToFill()
-                    .frame(height: 150).frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .padding(.bottom, 4)
-            }
-            if case .found(_, let list) = outcome, !list.isEmpty {
-                ForEach(Array(list.enumerated()), id: \.element) { i, m in
-                    Button(intent: OpenURLIntent(m.directions)) { row(i + 1, m) }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Directions to \(m.name), \(distanceText(m.meters, spoken: true))")
-                }
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            // The map strip is the way into shukr (a separate link fell below the fold of Shortcuts' sheet). The picture
+            // fills a strip the card sizes — never the other way round (it widened the card past what iOS shows,
+            // clipping both edges).
             Button(intent: FindNearbyMosquesIntent()) {
-                Text("Open in shukr")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .foregroundStyle(placeSage)
-                    .frame(maxWidth: .infinity).frame(height: 40)
-                    .background(Capsule().fill(placeSage.opacity(0.16)))
+                Color.clear
+                    .frame(maxWidth: .infinity).frame(height: 100)
+                    .overlay { if let map { Image(uiImage: map).resizable().scaledToFill() } else { placeSage.opacity(0.12) } }
+                    .overlay(alignment: .bottomTrailing) {
+                        Label("Open in shukr", systemImage: "arrow.up.forward.app")
+                            .font(.system(.caption, design: .rounded, weight: .medium))
+                            .foregroundStyle(placeSage)
+                            .padding(.horizontal, 9).padding(.vertical, 5)
+                            .background(.regularMaterial, in: Capsule())
+                            .padding(7)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(.plain)
-            .padding(.top, 4)
+            .accessibilityLabel("Open the mosques map in shukr")
+            if case .found(_, let list) = outcome, !list.isEmpty {
+                VStack(spacing: 2) {
+                    ForEach(Array(list.prefix(Self.shown).enumerated()), id: \.element) { i, m in
+                        Button(intent: OpenURLIntent(m.directions)) { row(m, nearest: i == 0) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Directions to \(m.name), \(distanceText(m.meters, spoken: true))")
+                    }
+                }
+            }
         }
-        .padding(14)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 12)
     }
 
-    private func row(_ n: Int, _ m: NearbyMosque) -> some View {
+    private func row(_ m: NearbyMosque, nearest: Bool) -> some View {
         HStack(spacing: 12) {
-            Text("\(n)")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-                .frame(width: 22, height: 22)
-                .background(Circle().fill(placeSage))
+            Image(systemName: "building.columns")
+                .font(.system(size: 17))
+                .foregroundStyle(nearest ? placeSage : Color.secondary)
+                .frame(width: 24)
             VStack(alignment: .leading, spacing: 1) {
-                Text(m.name).font(.system(.body, design: .rounded)).lineLimit(1)
+                Text(m.name)
+                    .font(.system(.body, design: .rounded, weight: nearest ? .semibold : .regular))
+                    .lineLimit(1)
                 if let a = m.address {
                     Text(a).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
             Text(distanceText(m.meters))
-                .font(.system(.subheadline, design: .rounded))
+                .font(.system(.body, design: .rounded, weight: nearest ? .semibold : .regular))
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
-            Image(systemName: "arrow.triangle.turn.up.right.circle.fill")
-                .font(.system(size: 24))
+                .fixedSize()
+            Image(systemName: "arrow.triangle.turn.up.right.circle")
+                .font(.system(size: 20, weight: .light))
                 .foregroundStyle(placeSage)
         }
-        .padding(.vertical, 5)
+        .padding(.horizontal, 10)
+        .padding(.vertical, nearest ? 9 : 6)
+        .background {
+            if nearest { RoundedRectangle(cornerRadius: 14, style: .continuous).fill(placeSage.opacity(0.16)) }
+        }
         .contentShape(Rectangle())
+    }
+}
+
+/// The one way into shukr under a place card: a quiet sage line, not a big button.
+struct PlaceCardLink<I: AppIntent>: View {
+    let title: String
+    let intent: I
+    var body: some View {
+        Button(intent: intent) {
+            Label(title, systemImage: "arrow.up.forward.app")
+                .font(.system(.subheadline, design: .rounded, weight: .medium))
+                .foregroundStyle(placeSage)
+                .frame(maxWidth: .infinity).frame(height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -234,8 +246,8 @@ struct NearbyMosquesCardIntent: SnippetIntent {
         let outcome = await NearbyMosquesSearch.run()
         var map: UIImage?
         if case .found(let here, let list) = outcome, !list.isEmpty {
-            map = await placeSnapshot(here: here.coordinate, pins: list.map(\.coordinate), hereIsPin: false,
-                                      size: CGSize(width: 360, height: 150), dark: scheme == .dark)
+            map = await placeSnapshot(here: here.coordinate, pins: list.prefix(NearbyMosquesSnippet.shown).map(\.coordinate),
+                                      size: CGSize(width: 360, height: 110), dark: scheme == .dark)
         }
         return .result(view: AnyView(NearbyMosquesSnippet(outcome: outcome, map: map).environment(\.colorScheme, scheme)))
     }
@@ -347,89 +359,73 @@ struct PrayedHere {
     }
 }
 
+/// Next Prayer's look (owner: "match that same aesthetic"): one row on the Live Activity's soft surface — the place
+/// and when you last prayed there on the left, the count where Next Prayer keeps its time — then the five, slim.
 struct PrayedHereSnippet: View {
     let summary: PrayedHere?
-    let map: UIImage?
+    @Environment(\.colorScheme) private var scheme
     private static let five = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let s = summary {
+        VStack(spacing: 4) {
+            VStack(spacing: 14) {
                 HStack(spacing: 12) {
-                    if let map {
-                        Image(uiImage: map).resizable().scaledToFill()
-                            .frame(width: 64, height: 64)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
+                    Image(systemName: summary?.atMasjid == true ? "building.columns" : "mappin.and.ellipse")
+                        .font(.system(size: 22))
+                        .foregroundStyle(placeSage)
+                        .frame(width: 30)
                     VStack(alignment: .leading, spacing: 2) {
-                        Label(s.place ?? "Where you are", systemImage: s.atMasjid ? "building.columns.fill" : "mappin.and.ellipse")
-                            .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                        Text(summary?.place ?? "Where you are")
+                            .font(.system(.title3, design: .rounded, weight: .medium))
                             .lineLimit(1)
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(subtitle)
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if let s = summary {
+                        VStack(alignment: .trailing, spacing: 0) {
                             Text("\(s.count)")
-                                .font(.system(size: 40, weight: .semibold, design: .rounded))
+                                .font(.system(.title, design: .rounded, weight: .semibold))
                                 .monospacedDigit()
-                            Text(s.count == 1 ? "prayer here" : "prayers here")
-                                .font(.system(.body, design: .rounded))
+                            Text(s.count == 1 ? "prayer" : "prayers")
+                                .font(.system(.caption, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
+                        .fixedSize()
                     }
                 }
-                if let last = s.last {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Last prayed here")
-                            .font(.system(.caption, design: .rounded, weight: .semibold))
-                            .textCase(.uppercase)
-                            .foregroundStyle(.secondary)
-                        Text("\(last.name), \(PrayedHere.when(last.at))")
-                            .font(.system(.body, design: .rounded))
-                    }
+                if let s = summary, s.count > 0 {
                     HStack(spacing: 0) {
                         ForEach(Self.five, id: \.self) { name in
                             let n = s.perPrayer[name, default: 0]
-                            VStack(spacing: 4) {
+                            HStack(spacing: 4) {
                                 Image(systemName: prayerIcon(for: name).replacingOccurrences(of: ".fill", with: ""))
-                                    .font(.system(size: 15))
-                                    .foregroundStyle(n > 0 ? placeSage : Color.secondary.opacity(0.5))
+                                    .font(.system(size: 12))
                                 Text("\(n)")
-                                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                    .font(.system(.subheadline, design: .rounded))
                                     .monospacedDigit()
-                                    .foregroundStyle(n > 0 ? Color.primary : Color.secondary.opacity(0.6))
-                                Text(name)
-                                    .font(.system(.caption2, design: .rounded))
-                                    .foregroundStyle(.secondary)
                             }
+                            .foregroundStyle(n > 0 ? Color.primary : Color.secondary.opacity(0.5))
                             .frame(maxWidth: .infinity)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(name) \(n)")
                         }
                     }
-                    .padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.secondary.opacity(0.08)))
-                    if let first = s.first, s.count > 1 {
-                        Text("Since \(first.formatted(.dateTime.month(.abbreviated).day().year()))")
-                            .font(.system(.caption, design: .rounded))
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("Mark a prayer here and it will count here.")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(.secondary)
                 }
-            } else {
-                Text("Couldn’t tell where you are right now.")
-                    .font(.system(.body, design: .rounded))
-                    .foregroundStyle(.secondary)
             }
-            Button(intent: OpenPrayerSpotsIntent()) {
-                Text("See your prayers on the map")
-                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .foregroundStyle(placeSage)
-                    .frame(maxWidth: .infinity).frame(height: 40)
-                    .background(Capsule().fill(placeSage.opacity(0.16)))
-            }
-            .buttonStyle(.plain)
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(LASoft.surface(LATuning.current, scheme)))
+            PlaceCardLink(title: "See your prayers on the map", intent: OpenPrayerSpotsIntent())
         }
-        .padding(14)
+        .padding(10)   // the prayer cards' margin
+    }
+
+    private var subtitle: String {
+        guard let s = summary else { return "Couldn’t tell where you are right now." }
+        guard let last = s.last else { return "No prayers marked here yet." }
+        return "Last: \(last.name), \(PrayedHere.when(last.at))"
     }
 }
 
@@ -451,12 +447,7 @@ struct PrayedHereCardIntent: SnippetIntent {
     func perform() async throws -> some IntentResult & ShowsSnippetView {
         let scheme = await ShortcutLook.scheme()
         let s = await PrayedHereLookup.run()
-        var map: UIImage?
-        if let s {
-            map = await placeSnapshot(here: s.here.coordinate, pins: [], hereIsPin: true,
-                                      size: CGSize(width: 64, height: 64), dark: scheme == .dark)
-        }
-        return .result(view: AnyView(PrayedHereSnippet(summary: s, map: map).environment(\.colorScheme, scheme)))
+        return .result(view: AnyView(PrayedHereSnippet(summary: s).environment(\.colorScheme, scheme)))
     }
 }
 
@@ -491,9 +482,9 @@ struct OpenPrayerSpotsIntent: AppIntent {
 #if DEBUG
 /// The cards' map picture, for `SnippetPreviewHost`.
 enum PlaceShortcutPreview {
-    @MainActor static func snapshot(here: CLLocationCoordinate2D, pins: [CLLocationCoordinate2D], hereIsPin: Bool,
+    @MainActor static func snapshot(here: CLLocationCoordinate2D, pins: [CLLocationCoordinate2D],
                                     size: CGSize, dark: Bool) async -> UIImage? {
-        await placeSnapshot(here: here, pins: pins, hereIsPin: hereIsPin, size: size, dark: dark)
+        await placeSnapshot(here: here, pins: pins, size: size, dark: dark)
     }
 }
 #endif

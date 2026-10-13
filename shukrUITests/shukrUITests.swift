@@ -267,7 +267,7 @@ final class ShortcutsOnDeviceTests: XCTestCase {
         // SHORTCUT_WARM: shukr already running (unlocked Zikr page) before the tile runs.
         if env["SHORTCUT_WARM"] != nil {
             let app = XCUIApplication(bundleIdentifier: "com.betternorms.shukr")
-            app.launchArguments = ["-zikrUnlocked"]
+            app.launchArguments = ["-zikrUnlocked"] + (env["SHORTCUT_ARGS"]?.split(separator: " ").map(String.init) ?? [])
             app.launch(); sleep(4)
             XCUIDevice.shared.press(.home); sleep(1)
         }

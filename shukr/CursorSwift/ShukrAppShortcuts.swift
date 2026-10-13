@@ -248,19 +248,14 @@ struct SnippetPreviewHost: View {
             mosquesLine = NearbyMosquesSearch.spoken(outcome)
             var map: UIImage?
             if case .found(let here, let list) = outcome, !list.isEmpty {
-                map = await PlaceShortcutPreview.snapshot(here: here.coordinate, pins: list.map(\.coordinate), hereIsPin: false,
-                                                          size: CGSize(width: 360, height: 150), dark: dark)
+                map = await PlaceShortcutPreview.snapshot(here: here.coordinate, pins: list.prefix(NearbyMosquesSnippet.shown).map(\.coordinate),
+                                                          size: CGSize(width: 360, height: 110), dark: dark)
             }
             mosquesCard = AnyView(NearbyMosquesSnippet(outcome: outcome, map: map))
         } else if what == "here" {
             let s = await PrayedHereLookup.run()
             hereLine = s?.spoken ?? "I couldn’t tell where you are right now."
-            var map: UIImage?
-            if let s {
-                map = await PlaceShortcutPreview.snapshot(here: s.here.coordinate, pins: [], hereIsPin: true,
-                                                          size: CGSize(width: 64, height: 64), dark: dark)
-            }
-            hereCard = AnyView(PrayedHereSnippet(summary: s, map: map))
+            hereCard = AnyView(PrayedHereSnippet(summary: s))
         }
     }
 
