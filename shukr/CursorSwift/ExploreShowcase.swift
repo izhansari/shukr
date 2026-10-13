@@ -1123,15 +1123,24 @@ private struct RealComplications: View {
     var body: some View {
         let p = ShownPrayer.now
         let entry = PrayerComplicationEntry(date: Date(), prayer: WatchPrayer(name: p.name, start: p.start, end: p.end), current: p.isOn)
-        HStack(alignment: .center, spacing: 16) {
-            face(entry, .accessoryCircular).frame(width: 64, height: 64)
-            VStack(alignment: .leading, spacing: 14) {
-                face(entry, .accessoryRectangular).frame(width: 170, height: 64, alignment: .leading)
-                face(entry, .accessoryInline).frame(width: 190, height: 18, alignment: .leading)
+        // Each its own piece (owner: "shouldn't they be separate objects?"), on black as a watch face shows it.
+        HStack(alignment: .center, spacing: 18) {
+            face(entry, .accessoryCircular)
+                .frame(width: 64, height: 64)
+                .padding(8)
+                .background(Circle().fill(Color.black))
+            VStack(alignment: .leading, spacing: 16) {
+                face(entry, .accessoryRectangular)
+                    .frame(width: 170, height: 64, alignment: .leading)
+                    .padding(.horizontal, 14).padding(.vertical, 10)
+                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.black))
+                face(entry, .accessoryInline)
+                    .frame(height: 18, alignment: .leading)
+                    .fixedSize()
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Capsule().fill(Color.black))
             }
         }
-        .padding(20)
-        .background(RoundedRectangle(cornerRadius: 30, style: .continuous).fill(Color.black))
         .environment(\.colorScheme, .dark)
         .foregroundStyle(.white)
         .allowsHitTesting(false)
