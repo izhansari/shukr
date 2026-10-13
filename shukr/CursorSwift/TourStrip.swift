@@ -345,10 +345,9 @@ struct TourEditorPanel: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 10) {
                 Color.clear.frame(width: 22, height: 30).padding(.leading, -6)   // the ‹'s place, as in the panel
-                Text("2 · \(TourCopy.List.title)")
-                    .font(.system(.caption, design: .rounded, weight: .semibold))
-                    .foregroundStyle(Color.primary.opacity(0.5))
-                    .textCase(.uppercase)
+                // The panel's chapter line, as TourTopPanel draws it.
+                (Text("2  ").foregroundStyle(Color.primary.opacity(0.4)) + Text(TourCopy.List.title).foregroundStyle(Color.primary))
+                    .font(.system(.headline, design: .rounded, weight: .semibold))
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 HStack(spacing: 4) {
