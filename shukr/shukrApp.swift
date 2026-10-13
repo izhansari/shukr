@@ -137,6 +137,9 @@ struct shukrApp: App {
         if !StoreFallback.active { WatchSync.shared.start(container: sharedModelContainer) }
         // A notification action wakes shukr in the background: it re-plans the reminders too (NotificationScheduler).
         NotificationScheduler.appContainer = sharedModelContainer
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-renderIconMocks") { Task { @MainActor in IconMocks.render() } }
+        #endif
         NextLabelTuning.clearSavedTuningOnce()   // back to the original NEXT look (2026-09-27)
         #if DEBUG
         SalahLook.seedExploringDefaults()   // dev builds start the look exploration on Sunken well, no lines
