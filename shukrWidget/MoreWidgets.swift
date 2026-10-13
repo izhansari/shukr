@@ -684,48 +684,9 @@ struct TasbeehControl: ControlWidget {
     }
 }
 
-/// Daily Ayah: straight to today's verse (owner: "it just takes them to that page").
-struct DailyAyahControl: ControlWidget {
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "betternorms.shukr.control.ayah") {
-            ControlWidgetButton(action: OpenDailyAyahIntent()) {
-                Label("Daily Ayah", systemImage: "book")
-            }
-        }
-        .displayName("Daily Ayah")
-        .description("Open today's ayah in shukr.")
-    }
-}
-
-/// 99 Names: straight to the Names.
-struct NamesControl: ControlWidget {
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "betternorms.shukr.control.names") {
-            ControlWidgetButton(action: OpenNamesIntent()) {
-                Label("99 Names", systemImage: "moon.stars")
-            }
-        }
-        .displayName("99 Names")
-        .description("Open the 99 Names in shukr.")
-    }
-}
-
-/// Memories: straight to your prayer photos.
-struct MemoriesControl: ControlWidget {
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "betternorms.shukr.control.memories") {
-            ControlWidgetButton(action: OpenMemoriesIntent()) {
-                Label("Memories", systemImage: "photo.stack")
-            }
-        }
-        .displayName("Memories")
-        .description("Open your prayer photos in shukr.")
-    }
-}
-
 /// The prayer that matters now (owner: "tells them info about current or next prayer — the relevant one"): its name and
 /// "ends 6:48 PM" / "at 5:32 AM" — clock times, so it never goes stale between refreshes (the app reloads it on a
-/// mark and as prayers change). A tap opens the Salah page.
+/// mark and as prayers change). A tap opens today's list.
 struct PrayerControl: ControlWidget {
     struct Value: Sendable { let name: String; let line: String; let symbol: String }
 
@@ -809,33 +770,9 @@ struct FajrAlarmControl: ControlWidget {
     }
 }
 
-/// Tasbih Fatimah, 33 · 33 · 34, straight away.
-struct TasbihFatimahControl: ControlWidget {
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "betternorms.shukr.control.tasbihFatimah") {
-            ControlWidgetButton(action: StartTasbihFatimahIntent()) {
-                Label("Tasbih Fatimah", systemImage: "circle.hexagonpath")
-            }
-        }
-        .displayName("Tasbih Fatimah")
-        .description("Start Tasbih Fatimah in shukr: 33 · 33 · 34.")
-    }
-}
-
-/// The map on the mosques near you.
-struct NearbyMosquesControl: ControlWidget {
-    var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "betternorms.shukr.control.mosques") {
-            ControlWidgetButton(action: FindNearbyMosquesIntent()) {
-                Label("Nearby Mosques", systemImage: "building.columns")
-            }
-        }
-        .displayName("Nearby Mosques")
-        .description("Open shukr’s map on the mosques near you.")
-    }
-}
-
-/// Every control in one group (a WidgetBundle holds at most ten — this is all ten).
+/// Every control in one group: only what earns a slot — live state, or an act without opening shukr, or a "right now"
+/// page (owner 2026-10-13, decision control-center-cut A: page openers like Daily Ayah, 99 Names, Memories, Nearby
+/// Mosques and Tasbih Fatimah went; they stay Shortcuts actions, so anyone can put one in Control Center themselves).
 struct ShukrControls: WidgetBundle {
     var body: some Widget {
         PrayerControl()
@@ -843,10 +780,5 @@ struct ShukrControls: WidgetBundle {
         FajrAlarmControl()
         QiblaControl()
         TasbeehControl()
-        TasbihFatimahControl()
-        NearbyMosquesControl()
-        DailyAyahControl()
-        NamesControl()
-        MemoriesControl()
     }
 }
