@@ -1276,6 +1276,8 @@ struct ChangeGlow: View {
             .shadow(color: TourInk.green.opacity(on ? 0.45 : 0), radius: 10)
             .frame(width: frame.width + 12, height: frame.height + 12)
             .position(x: frame.midX, y: frame.midY)
+            // The words it circles can change width as it glows (the time flipping): it follows them.
+            .animation(.smooth(duration: 0.3), value: frame)
             .allowsHitTesting(false)
             .task {
                 withAnimation(.easeOut(duration: 0.25)) { on = true }
@@ -2590,7 +2592,8 @@ extension TourLayer {
         let t = TourTargets.shared
         switch runtime.flashKey {
         case "circleTime":
-            return t.frame("circle").map { CGRect(x: $0.midX - $0.width * 0.36, y: $0.midY + 2, width: $0.width * 0.72, height: 30) }
+            // The time words themselves, a little room round them (ChangeGlow adds its own 6 pt).
+            return t.frame("circleTime").map { $0.insetBy(dx: -6, dy: -1) }
         case "qiblaArrow", "circle": return t.frame("circle")
         case "doneFold": return t.frame("doneFold")
         case "tourAgainRow": return t.frame("tourAgainRow")

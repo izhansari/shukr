@@ -1241,6 +1241,11 @@ struct PrayerTimeLine: View {
             .fontWeight(lastHourLeftShown ? .light : .thin)
             .foregroundStyle(lastHourLeftShown ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
             .modifier(CircleWordsAway(away: away))
+            // The tour circles exactly these words when they flip (owner: not a box through the prayer's name). Only
+            // while the tour runs: the pager moves this every frame.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                if TourRuntime.shared.active { TourTargets.shared.set("circleTime", frame) }
+            }
             .onAppear { if shown == nil { shown = wanted; shownFor = prayerKey } }
             .onChange(of: trigger) { _, _ in
                 triggerSomeVibration(type: .light)
