@@ -3295,12 +3295,16 @@ extension AlarmDemo {
 /// "alarm.slash", and the other "off" cards use bell.slash / iphone.slash / location.slash.
 private struct AlarmOffSymbol: View {
     var body: some View {
-        ZStack {
-            Image(systemName: "alarm.fill")   // filled, as bell.slash.fill beside it
-            Capsule().frame(width: 6, height: 33).rotationEffect(.degrees(-45)).blendMode(.destinationOut)
-            Capsule().frame(width: 2.2, height: 31).rotationEffect(.degrees(-45))
-        }
-        .compositingGroup()
+        // The gap is a mask, not a blend (a destinationOut blend drew nothing inside a Shortcuts card).
+        Image(systemName: "alarm.fill")   // filled, as bell.slash.fill beside it
+            .mask {
+                ZStack {
+                    Rectangle().padding(-4)
+                    Capsule().frame(width: 6, height: 33).rotationEffect(.degrees(-45)).blendMode(.destinationOut)
+                }
+                .compositingGroup()
+            }
+            .overlay { Capsule().frame(width: 2.2, height: 31).rotationEffect(.degrees(-45)) }
     }
 }
 
@@ -3316,6 +3320,9 @@ struct AlarmDemo: View {
     var off: Off? = nil
     /// A tap on the frost: Settings after iOS's no, turning it on after a no on the page.
     var turnOn: () -> Void = {}
+    /// Drawn already open (a Shortcuts card is drawn once: the island never got to open).
+    var startsOpen = false
+    private var isOpen: Bool { open || startsOpen }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The island has opened into the alarm (once, on arrival; the wheels only change its words).
     @State private var open = false
@@ -3356,14 +3363,14 @@ struct AlarmDemo: View {
         .padding(.leading, 14).padding(.trailing, 10)
         .padding(.vertical, 12)
         // The contents come in once the island has opened (and go first if it closes).
-        .opacity(open ? 1 : 0)
-        .blur(radius: open ? 0 : 4)
-        .animation(open ? .easeOut(duration: 0.25).delay(0.18) : .easeOut(duration: 0.1), value: open)
+        .opacity(isOpen ? 1 : 0)
+        .blur(radius: isOpen ? 0 : 4)
+        .animation(isOpen ? .easeOut(duration: 0.25).delay(0.18) : .easeOut(duration: 0.1), value: isOpen)
         // As iOS does it: the Dynamic Island, a small black pill at the top, widens and grows into the alarm (owner: the
         // slide-in from above "looks real tacky").
         .background(alignment: .top) {
             Capsule().fill(.black)
-                .frame(width: open ? nil : 112, height: open ? nil : 34)
+                .frame(width: isOpen ? nil : 112, height: isOpen ? nil : 34)
         }
     }
 

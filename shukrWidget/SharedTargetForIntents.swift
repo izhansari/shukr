@@ -471,6 +471,12 @@ enum SharedStore {
         return Set(done.map { $0.name })
     }
 
+    /// When a prayer was marked (its row on that prayer day), for I Prayed's card when it's already marked.
+    static func markedTime(of name: String, start: Date) -> Date? {
+        guard let container = widgetContainer else { return nil }
+        return fetchPrayer(named: name, on: start, in: ModelContext(container))?.timeAtComplete
+    }
+
     /// Last location the app saved for the widget (it writes lastLatitude/lastLongitude).
     /// When the saved spot was last a real fix (`PrayerViewModel.handleLocationChange`; cleared by a picked city).
     static let lastFixAtKey = "lastFixAt"
@@ -1741,6 +1747,57 @@ struct TodaysTimesSnippet: View {
     }
 }
 
+/// The look Shortcuts / Siri cards are drawn in: the phone's light or dark. Run in the background the app's views came
+/// out light, unreadable on a dark sheet (his phone).
+enum ShortcutLook {
+    static func scheme() async -> ColorScheme {
+        await MainActor.run { UIScreen.main.traitCollection.userInterfaceStyle == .dark ? .dark : .light }
+    }
+}
+
+/// Cards drawn with app-only views (the app sets them at launch; the widget never runs these actions).
+enum ShortcutCards {
+    /// Setup's alarm picture for Get Fajr Alarm Time; true = the alarm is off (frosted).
+    nonisolated(unsafe) static var fajrAlarm: ((Bool) -> AnyView)?
+}
+
+/// Time Left and I Prayed: the prayer's own Live Activity card (owner: "reuse the live activity view") — running, or
+/// once marked its ✓ in the grade's colour; no buttons yet (they come with iOS 26's interactive cards) and no 15 s bar.
+struct PrayerCardSnippet: View {
+    let state: PrayerWindowAttributes.ContentState
+    var body: some View {
+        var t = LATuning.current
+        t.barThickness = 0
+        return LALockCardBody(state: state, n: 0, ended: false, t: t, liveButtons: true)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .padding(10)
+    }
+}
+
+/// No prayer on (Sunrise to Dhuhr): the next one, its symbol, when it starts.
+struct NextPrayerSnippet: View {
+    let name: String
+    let start: Date
+    var now = Date()
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: prayerIcon(for: name).replacingOccurrences(of: ".fill", with: ""))
+                .font(.system(size: 22))
+                .foregroundStyle(TodaysTimesSnippet.sage)
+                .frame(width: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.system(.title3, design: .rounded, weight: .medium))
+                Text("starts in \(PrayerWindows.span(start.timeIntervalSince(now)))")
+                    .font(.system(.subheadline, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(shortTimePM(start)).font(.system(.title3, design: .rounded)).monospacedDigit()
+        }
+        .padding(16)
+    }
+}
+
 /// The same words wherever no prayer's time is on (Sunrise to Dhuhr).
 let noPrayerOnLine = "No prayer is on right now."
 
@@ -1758,7 +1815,7 @@ struct FajrAlarmTimeIntent: AppIntent {
                                                categoryName: "Fajr Alarm", searchKeywords: ["wake", "alarm", "fajr", "morning"],
                                                resultValueName: "Fajr Alarm Time")
 
-    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog & ShowsSnippetView {
         guard let calc = try? PrayerUtils.calculateAlarmDescription(ignoringSwitch: true) else { throw PrayerTimeUnavailable() }
         var time = calc.time
         // Between the alarm and Fajr the rule's time today has passed: the next day's, worked out from that day's Fajr.
@@ -1774,8 +1831,12 @@ struct FajrAlarmTimeIntent: AppIntent {
         FajrAlarmLog.add("Shortcut asked the rule's time: \(FajrAlarmLog.day(time))")
         // Say when it's off: the time is the rule's either way (an automation can still use it).
         let on = UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: "alarmEnabled") == true
+        // Setup's alarm picture (the app's view, through ShortcutCards), frosted when the alarm is off.
+        let scheme = await ShortcutLook.scheme()
+        let view = await MainActor.run { ShortcutCards.fajrAlarm?(!on) } ?? AnyView(EmptyView())
         return .result(value: time, dialog: on ? "Your Fajr alarm is at \(shortTimePM(time))."
-                                               : "Your Fajr alarm rule gives \(shortTimePM(time)), but the alarm is off.")
+                                               : "Your Fajr alarm rule gives \(shortTimePM(time)), but the alarm is off.",
+                       view: AnyView(view.environment(\.colorScheme, scheme)))
     }
 }
 
@@ -1840,15 +1901,21 @@ struct PrayerTimeLeftIntent: AppIntent {
         "Minutes left in the prayer whose time it is now — whether or not you've prayed it. Between Sunrise and Dhuhr, minutes until Dhuhr. Passes the minutes on.",
         categoryName: "Prayer Times", searchKeywords: ["salah", "how long", "remaining", "ends"], resultValueName: "Minutes Left")
 
-    func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog & ShowsSnippetView {
         let now = Date()
+        let scheme = await ShortcutLook.scheme()
         if let c = PrayerWindows.pick(.current) {
             let mins = max(1, Int((c.end.timeIntervalSince(now) / 60).rounded(.up)))
-            return .result(value: mins, dialog: "\(PrayerWindows.span(c.end.timeIntervalSince(now))) left for \(c.name). It ends at \(shortTimePM(c.end)).")
+            // The card as it runs on the Lock Screen: the ring filling in its colour, the time left, when it ends.
+            let state = PrayerWindowAttributes.ContentState(label: c.name, start: c.start, end: c.end, symbol: prayerIcon(for: c.name),
+                                                            dark: scheme == .dark)
+            return .result(value: mins, dialog: "\(PrayerWindows.span(c.end.timeIntervalSince(now))) left for \(c.name). It ends at \(shortTimePM(c.end)).",
+                           view: AnyView(PrayerCardSnippet(state: state).environment(\.colorScheme, scheme)))
         }
         guard let n = PrayerWindows.pick(.next) else { throw PrayerTimeUnavailable() }
         let mins = max(1, Int((n.start.timeIntervalSince(now) / 60).rounded(.up)))
-        return .result(value: mins, dialog: "\(noPrayerOnLine) \(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))).")
+        return .result(value: mins, dialog: "\(noPrayerOnLine) \(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))).",
+                       view: AnyView(NextPrayerSnippet(name: n.name, start: n.start, now: now).environment(\.colorScheme, scheme)))
     }
 }
 
@@ -1861,15 +1928,24 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
                                                resultValueName: "Grade")
     static var openAppWhenRun: Bool = false
 
-    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
+    func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetView {
+        let scheme = await ShortcutLook.scheme()
         guard let c = PrayerWindows.pick(.current) else {
             if let n = PrayerWindows.pick(.next) {
-                return .result(value: "", dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).")
+                return .result(value: "", dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).",
+                               view: AnyView(NextPrayerSnippet(name: n.name, start: n.start).environment(\.colorScheme, scheme)))
             }
             throw PrayerTimeUnavailable()
         }
+        /// The prayer's card in its marked look: the ✓ in its grade's colour, "Prayed 4:31 PM", the grade and score.
+        func card(markedAt: Date) -> AnyView {
+            AnyView(PrayerCardSnippet(state: .init(label: c.name, start: c.start, end: c.end, symbol: prayerIcon(for: c.name),
+                                                   markedAt: markedAt, dark: scheme == .dark))
+                .environment(\.colorScheme, scheme))
+        }
         if SharedStore.completedPrayerNamesToday().contains(c.name) {
-            return .result(value: "", dialog: "\(c.name) is already marked as prayed.")
+            let at = SharedStore.markedTime(of: c.name, start: c.start) ?? Date()
+            return .result(value: "", dialog: "\(c.name) is already marked as prayed.", view: card(markedAt: at))
         }
         let now = Date()
         let marked: Bool
@@ -1878,9 +1954,11 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
         } else {
             marked = SharedStore.markPrayerComplete(named: c.name, start: c.start, end: c.end)
         }
-        guard marked else { return .result(value: "", dialog: "\(c.name) is already marked as prayed.") }
+        guard marked else {
+            return .result(value: "", dialog: "\(c.name) is already marked as prayed.", view: card(markedAt: SharedStore.markedTime(of: c.name, start: c.start) ?? now))
+        }
         let grade = PrayerScoring.grade(for: PrayerScoring.score(start: c.start, end: c.end, markedAt: now)).rawValue
-        return .result(value: grade, dialog: "\(c.name) marked as prayed. \(grade).")
+        return .result(value: grade, dialog: "\(c.name) marked as prayed. \(grade).", view: card(markedAt: now))
     }
 }
 

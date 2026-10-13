@@ -193,12 +193,31 @@ struct SnippetPreviewHost: View {
         }
     }
     private func spoken(_ what: String) -> String {
+        switch what {
+        case "timeleft": return "2 hours 3 minutes left for Asr. It ends at 6:43 PM."
+        case "prayed": return "Asr marked as prayed. Perfect."
+        case "alarm": return "Your Fajr alarm is at 6:00 AM."
+        case "alarmoff": return "Your Fajr alarm rule gives 6:00 AM, but the alarm is off."
+        default: break
+        }
         if let on = rows.first(where: { $0.when == .now }) { return "\(on.name) is on until \(shortTimePM(on.end))." }
         return noPrayerOnLine
     }
     @ViewBuilder private func card(_ what: String) -> some View {
+        let now = Date().addingTimeInterval(-UserDefaults.standard.double(forKey: "snippetHoursAgo") * 3600)
+        let dark = UserDefaults.standard.bool(forKey: "snippetDark")
+        let on = PrayerWindows.pick(.current, now: now)
         switch what {
-        default: TodaysTimesSnippet(rows: rows, now: Date().addingTimeInterval(-UserDefaults.standard.double(forKey: "snippetHoursAgo") * 3600))
+        case "timeleft":
+            if let on { PrayerCardSnippet(state: .init(label: on.name, start: on.start, end: on.end, symbol: prayerIcon(for: on.name), dark: dark)) }
+        case "prayed":
+            if let on { PrayerCardSnippet(state: .init(label: on.name, start: on.start, end: on.end, symbol: prayerIcon(for: on.name),
+                                                       markedAt: on.start.addingTimeInterval(12 * 60), dark: dark)) }
+        case "next":
+            if let n = PrayerWindows.pick(.next, now: now) { NextPrayerSnippet(name: n.name, start: n.start, now: now) }
+        case "alarm": ShortcutCards.fajrAlarm?(false) ?? AnyView(EmptyView())
+        case "alarmoff": ShortcutCards.fajrAlarm?(true) ?? AnyView(EmptyView())
+        default: TodaysTimesSnippet(rows: rows, now: now)
         }
     }
 }
