@@ -478,7 +478,7 @@ struct SadaqahPage: View {
         .toolbar {
             // Kinds of giving (owner: "sadaqah versus zakat … I myself get confused").
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showGuide = true } label: { Image(systemName: "book") }
+                Button { showGuide = true } label: { Image(systemName: "info") }   // owner: an info button, not a book
                     .accessibilityLabel("Kinds of giving")
             }
             // Log a donation (owner): the bar's own button, so iOS 26 draws it in Liquid Glass.
@@ -1330,21 +1330,25 @@ struct GivingGuideSheet: View {
         let text: String
     }
 
+    /// Checked 2026-10-13 against mainstream sources (Zakat Foundation, IslamQA, SeekersGuidance, Darul Ifta Birmingham,
+    /// Muslim Aid, Human Appeal) and written for the average reader (owner); still for a knowledgeable check before release.
     private static let kinds: [Kind] = [
-        Kind(id: "zakat", symbol: "scalemass.fill", title: "Zakat", tagline: "The obligatory charity",
-             text: "One of the five pillars of Islam. Once a year you give 2.5% of the savings you've held for a full lunar year, if they're above the nisab, a minimum set by the value of gold or silver. It goes to the eight groups named in the Qur'an (9:60), such as the poor and the needy."),
-        Kind(id: "sadaqah", symbol: "heart.fill", title: "Sadaqah", tagline: "Voluntary charity",
-             text: "Any amount, any time, to anyone in need. It isn't only money: kindness, a good word or helping someone counts too."),
+        Kind(id: "zakat", symbol: "scalemass.fill", title: "Zakat", tagline: "The required charity",
+             text: "Zakat is one of the five pillars of Islam. If your savings (cash, gold, silver, investments) stay above a set minimum, called the nisab, for a full Islamic year, you give 2.5% of them. It goes to groups named in the Qur'an, like the poor, the needy and people in debt."),
+        Kind(id: "sadaqah", symbol: "heart.fill", title: "Sadaqah", tagline: "Giving by choice",
+             text: "Sadaqah is anything you give freely, in any amount, at any time. It isn't only money. A kind word, a smile or helping someone counts too."),
         Kind(id: "jariyah", symbol: "drop.fill", title: "Sadaqah Jariyah", tagline: "Charity that keeps on giving",
-             text: "Something that goes on benefiting people, like a well, a masjid or beneficial knowledge. Its reward continues, even after you've passed away."),
-        Kind(id: "fitr", symbol: "sparkles", title: "Zakat al-Fitr", tagline: "Before Eid al-Fitr",
-             text: "A small set amount for each person in the household, given before the Eid prayer, so that people in need can celebrate too. Masajid usually announce the amount each year."),
+             text: "A gift that keeps helping people long after you give it, like a well, a school, a masjid or knowledge people keep learning from. Its reward keeps reaching you, even after you pass away."),
+        Kind(id: "fitr", symbol: "sparkles", title: "Zakat al-Fitr", tagline: "Before the Eid prayer",
+             text: "A small, required gift for every person in your household, about the cost of one meal, given at the end of Ramadan. Give it before the Eid prayer so everyone can celebrate. Your masjid usually announces the amount each year."),
         Kind(id: "fidya", symbol: "fork.knife", title: "Fidya", tagline: "For fasts you can't make up",
-             text: "When illness or old age means you can't fast in Ramadan and can't make the days up later, you feed a person in need for each day missed."),
+             text: "If you're too ill or too old to fast, and can never make the days up, you feed one person in need for each fast you miss, about the cost of a meal each. If you can make the days up later, you do that instead."),
         Kind(id: "kaffarah", symbol: "arrow.uturn.backward.circle.fill", title: "Kaffarah", tagline: "For a fast broken on purpose",
-             text: "Breaking a Ramadan fast on purpose, without a valid reason, is made up by fasting 60 days in a row, or, if you can't, by feeding 60 people in need. A broken oath has its own, smaller kaffarah."),
+             text: "If you break a Ramadan fast on purpose, you make up the day. Some cases also need kaffarah: fasting 60 days in a row, or, if you can't, feeding 60 people in need. Which cases need it depends on your school of thought. A broken oath has its own, smaller kaffarah."),
         Kind(id: "qurbani", symbol: "leaf.fill", title: "Qurbani", tagline: "At Eid al-Adha",
-             text: "An animal sacrificed in the days of Eid al-Adha, with the meat shared and a part given to people in need. Many charities can do it for you abroad."),
+             text: "Sacrificing a sheep, goat, cow or camel in the days of Eid al-Adha, then sharing the meat with family, friends and people in need. Some schools say it's required if you can afford it; others say it's strongly encouraged. Many charities can do it for you abroad."),
+        Kind(id: "riba", symbol: "percent", title: "Bank interest", tagline: "Giving away interest",
+             text: "Islam forbids earning interest. If interest still lands in your account, many scholars say to give it to people in need, without counting it as your zakat or sadaqah."),
     ]
 
     var body: some View {
@@ -1390,7 +1394,8 @@ struct GivingGuideSheet: View {
                         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(SadaqahPage.card))
                         .padding(.horizontal, 20)
                     }
-                    Text("Simple summaries to help tell them apart. Scholars differ on some details, like which nisab to use. For your own zakat, ask a scholar you trust.")
+                    // Owner: the imam at your masjid, not "a scholar" — easier to find.
+                    Text("This is a short guide, not a ruling. Details differ between schools of thought, so ask the imam at your masjid about your own situation.")
                         .font(.footnote).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 28).padding(.top, 6).padding(.bottom, 24)
