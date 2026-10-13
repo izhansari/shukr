@@ -169,6 +169,9 @@ struct PrayerTimesView: View {
             let openNamesFromWidget = store.bool(forKey: "widgetNames")
             if openAyahFromWidget { store.setValue(false, forKey: "widgetDailyAyah") }
             if openNamesFromWidget { store.setValue(false, forKey: "widgetNames") }
+            // "Find Nearby Mosques" (Shortcuts / Siri): the map, on its mosques.
+            let openMosques = store.bool(forKey: FindNearbyMosquesIntent.flag)
+            if openMosques { store.set(false, forKey: FindNearbyMosquesIntent.flag) }
             // Whatever is covering the page (the map, a pushed page) goes first, or the
             // widget's page opened behind it (owner, 2026-09-26).
             let zikrTaskID = store.string(forKey: "widgetZikrTask")
@@ -229,7 +232,20 @@ struct PrayerTimesView: View {
                 }
             }
 
-            if openCompassFromWidget, !showQiblaMap {
+            if openMosques {
+                MapOpenRequest.mosques = true
+                if showQiblaMap {
+                    NotificationCenter.default.post(name: MapOpenRequest.changed, object: nil)   // already open: switch
+                } else {
+                    openFromWidget {
+                        instantly {
+                            sharedState.navPosition = .main
+                            showQiblaMap = true
+                        }
+                    }
+                }
+            }
+            else if openCompassFromWidget, !showQiblaMap {
                 openFromWidget {
                     instantly {
                         sharedState.navPosition = .main

@@ -963,6 +963,14 @@ struct LocationMapContentView: View {
     private var mosqueIcon: MosqueIconStyle { MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder }
 
     /// Qibla (both off), prayers or mosques — one at a time.
+    /// A layer asked for from outside (Find Nearby Mosques): once, after the map has settled on the dot.
+    private func openRequestedLayer(after seconds: Double) async {
+        guard MapOpenRequest.mosques else { return }
+        MapOpenRequest.mosques = false
+        if seconds > 0 { try? await Task.sleep(for: .seconds(seconds)) }
+        setMode(prayers: false, mosques: true)
+    }
+
     private func setMode(prayers: Bool, mosques: Bool) {
         let wasQibla = !viewModel.showPrayers && !viewModel.showMosques
         withAnimation {
@@ -1364,6 +1372,11 @@ struct LocationMapContentView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .whatsNewReturnPill()   // What's new → "Open in shukr" to the map
+        // "Find Nearby Mosques" (Shortcuts / Siri): the map opens on its mosques — the pins and the list.
+        .task { await openRequestedLayer(after: 0.6) }
+        .onReceive(NotificationCenter.default.publisher(for: MapOpenRequest.changed)) { _ in
+            Task { await openRequestedLayer(after: 0) }
+        }
         #if DEBUG
         .task {
             // Simulator only: some past prayers with spots around City Hall, to see the pins.
@@ -2609,4 +2622,11 @@ struct PrayerSpotsVerse: View {
             shape.fill(.regularMaterial)
         }
     }
+}
+
+/// The map opened from outside on a layer (Find Nearby Mosques): PrayerTimesView sets it before showing the map; the map
+/// takes it once. `changed` when the map is already up.
+@MainActor enum MapOpenRequest {
+    static var mosques = false
+    static let changed = Notification.Name("MapOpenRequest.changed")
 }

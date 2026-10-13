@@ -148,7 +148,7 @@ struct shukrApp: App {
             UserDefaults.standard.set(0, forKey: TourRuntime.startedKey)
             UserDefaults.standard.set(false, forKey: TourRuntime.doneKey)
         }
-        // `-widgetOpenTest ayah|names|compass|tasbeeh|task:<uuid>`: a launch as if from that widget (the flags its intent
+        // `-widgetOpenTest ayah|names|compass|tasbeeh|mosques|memories|task:<uuid>`: a launch as if from that widget (the flags its intent
         // sets before the app opens), to check the opening is skipped and the page comes up at once.
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-widgetOpenTest"),
            i + 1 < ProcessInfo.processInfo.arguments.count,
@@ -159,6 +159,8 @@ struct shukrApp: App {
             case "names": group.set(true, forKey: "widgetNames")
             case "compass": group.set(true, forKey: "widgetCompass")
             case "tasbeeh": group.set(true, forKey: "widgetTasbeeh")
+            case "mosques": group.set(true, forKey: FindNearbyMosquesIntent.flag)   // Find Nearby Mosques
+            case "memories": group.set(true, forKey: "widgetMemories")
             default:
                 if what.hasPrefix("task:") {
                     group.set(String(what.dropFirst(5)), forKey: "widgetZikrTask")
@@ -225,6 +227,9 @@ struct shukrApp: App {
         // the card's ✓ marked nothing and nothing planned — Frank's audit). Called directly, not in a Task: a cold launch
         // from the card's ✓ runs the intent right after, and its hooks must be set by then (Frank).
         PrayerLiveActivities.onLaunch()
+        #if DEBUG
+        IntentSelfTest.runIfAsked()   // `-intentSelfTest`
+        #endif
         WhatsNew.noteLaunch()      // a new build moves the last one to "previous" (NEW badges)
         // 1a) Create EnvLocationManager in a local var
         let manager = EnvLocationManager()
