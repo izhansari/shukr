@@ -434,11 +434,10 @@ struct ExploreGroupPage: View {
 
 /// A group's stories (owner, decision explore-story-next D, then his mock): only the pictures page — the neighbours peek in
 /// at the edges, the dots right under them — and the words below are the current one's, changing with it. Swipe the
-/// picture, or tap the Next card at the foot.
+/// picture (the Next card at the foot went — owner: "too many things on the page").
 struct ExploreStoryPager: View {
     let group: ExploreGroup
     @State private var current: ShowcaseCardID?
-    @Environment(\.dismiss) private var dismiss
     /// How much of each neighbour shows, and the gap to it.
     private static let peek: CGFloat = 14, gap: CGFloat = 10
 
@@ -473,12 +472,7 @@ struct ExploreStoryPager: View {
                 .contentMargins(.horizontal, Self.peek + Self.gap, for: .scrollContent)
                 .frame(height: 300)
                 if members.count > 1 { dots(members.count, i) }
-                ShowcaseStoryPage(card: members[i], next: i + 1 < members.count ? members[i + 1] : nil, backTitle: group.id.title,
-                                  onNext: {
-                                      if i + 1 < members.count { withAnimation(.snappy(duration: 0.4)) { current = members[i + 1].id } }
-                                      else { dismiss() }
-                                  },
-                                  marksOpened: false, embedded: true)
+                ShowcaseStoryPage(card: members[i], marksOpened: false, embedded: true)
                     .id(members[i].id)   // a new page's state (its steps folded) for each item
                     // The old words go at once, the new fade in: a crossfade laid two pages of text over each other.
                     .transition(.asymmetric(insertion: .opacity, removal: .identity))

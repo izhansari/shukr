@@ -334,10 +334,6 @@ private struct ShowcaseCardView: View {
 
 struct ShowcaseStoryPage: View {
     let card: ShowcaseCard
-    /// In a group's pager (ExploreStoryPager): the next member, the group's name for the last page's way back, and the tap.
-    var next: ShowcaseCard? = nil
-    var backTitle: String? = nil
-    var onNext: (() -> Void)? = nil
     /// The pager marks a page opened when it's the one shown (its neighbours are built early).
     var marksOpened = true
     /// The page's side margin.
@@ -432,43 +428,8 @@ struct ShowcaseStoryPage: View {
                 if card.id == .siri || card.id.isSiri {
                     ShortcutsLink().shortcutsLinkStyle(.automaticOutline).frame(maxWidth: .infinity)
                 }
-                if let onNext { nextCard(onNext) }
             }
             .padding(.vertical, embedded ? 0 : 16).padding(.horizontal, sideInset)
-    }
-
-    /// "Next · I Prayed ›" at the foot (owner, decision explore-story-next D — swiping works too); the last page's goes back.
-    private func nextCard(_ go: @escaping () -> Void) -> some View {
-        Button {
-            triggerSomeVibration(type: .light)
-            go()
-        } label: {
-            HStack(spacing: 12) {
-                Group {
-                    if let next {
-                        ShowcasePicture(id: next.id, thumb: true)
-                            .frame(width: 124, height: 124).scaleEffect(0.42).frame(width: 52, height: 52)
-                    } else {
-                        Image(systemName: "square.grid.2x2").font(.system(size: 20)).foregroundStyle(Color.sage)
-                            .frame(width: 52, height: 52).background(Color.sage.opacity(0.12))
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(next == nil ? "That's all" : "Next").font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
-                    Text(next?.id.memberName ?? "Back to \(backTitle ?? "the list")")
-                        .font(.system(.body, design: .rounded, weight: .semibold))
-                }
-                Spacer(minLength: 8)
-                Image(systemName: next == nil ? "chevron.left" : "chevron.right")
-                    .font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .padding(12)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .padding(.top, 8)
     }
 }
 
