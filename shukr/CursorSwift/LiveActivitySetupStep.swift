@@ -459,7 +459,7 @@ struct LiveActivityDemo: View {
     /// The words as shipped. Kept honest about what it does (the audit, 2026-10-11): a card shows from a prayer's
     /// start until it's marked, and marking or opening shukr keeps the next ones coming.
     /// iOS's five at a time, said the same way on the tiles, the scheduled page and the ⓘ (owner's words, 2026-10-12).
-    static let fiveAtATime = "iOS gives apps five Live Activities at a time. As long as you open shukr or mark prayers, we can top up so cards keep coming."
+    static let fiveAtATime = "iOS gives apps five Live Activities at a time. As long as you open shukr or mark prayers, we keep them coming."
 
     static let defaults: [Key: String] = [
         .title: "Live Activities",
