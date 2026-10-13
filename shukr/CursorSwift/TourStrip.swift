@@ -406,3 +406,64 @@ struct TourEditorPanel: View {
         }
     }
 }
+
+// MARK: - The panel over a cover (the map step)
+
+/// The tour's panel while the map is up (the new flow's map step): the map is a full-screen cover over the tour's layer,
+/// so the panel is in its own window above it — the same panel, its → closing the map for them (owner: the panel hides
+/// the map's own way back). Touches outside the panel go through to the map.
+@MainActor enum TourCoverPanelWindow {
+    private static var window: UIWindow?
+
+    static func show() {
+        guard window == nil,
+              let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
+        let w = PassThroughWindow(windowScene: scene)
+        w.windowLevel = .normal + 1
+        w.overrideUserInterfaceStyle = scene.keyWindow?.traitCollection.userInterfaceStyle ?? .unspecified
+        let host = UIHostingController(rootView: TourCoverPanelRoot())
+        host.view.backgroundColor = .clear
+        w.rootViewController = host
+        w.isHidden = false
+        window = w
+    }
+
+    static func hide() {
+        window?.isHidden = true
+        window = nil
+    }
+
+    /// Where the panel is (its root reports it): the window takes touches there only.
+    static var panelFrame: CGRect = .zero
+
+    /// Takes a touch only on the panel; the rest falls to the map under it (SwiftUI draws no subviews to test against).
+    private final class PassThroughWindow: UIWindow {
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+            guard TourCoverPanelWindow.panelFrame.insetBy(dx: -6, dy: -6).contains(point) else { return nil }
+            return super.hitTest(point, with: event)
+        }
+    }
+}
+
+private struct TourCoverPanelRoot: View {
+    private var runtime: TourRuntime { .shared }
+    var body: some View {
+        GeometryReader { geo in
+            if runtime.active, let step = runtime.step {
+                let page = runtime.page
+                TourTopPanel(page: page, mode: TourGuideMode.of(page, key: page.guideKey(step.rawValue)),
+                             guideKey: page.guideKey(step.rawValue), ticked: runtime.ticked, nudges: runtime.nudges,
+                             showsBack: false, qiblaSkip: false, openSection: nil, lit: [], step: step, place: nil,
+                             onPrimary: { runtime.event(.next) }, onSecondary: {}, onBack: {}, onToggle: { _ in },
+                             onSkipQibla: {}, onSkip: { runtime.skip() })
+                    .frame(width: min(geo.size.width - 28, 460))
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourCoverPanelWindow.panelFrame = $0 }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, TourTopPanel.topInset)
+                    .transition(.opacity)
+            }
+        }
+        .ignoresSafeArea()
+        .circleThemeRoot()
+    }
+}

@@ -944,7 +944,8 @@ struct LocationMapContentView: View {
     /// First visit to a layer: its guide, once (after the map / Explore sheet settle).
     private func showGuideIfFirstTime(_ topic: MapGuideTopic, after delay: Double) {
         let defaults = UserDefaults.standard
-        guard !defaults.bool(forKey: topic.seenKey) else { return }
+        // Not over the app tour's map step (owner: its own guide would pop up under the tour's panel); it shows next time.
+        guard !defaults.bool(forKey: topic.seenKey), !TourRuntime.shared.active else { return }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demo") })
             && !ProcessInfo.processInfo.arguments.contains("-demoQiblaGuide") { return }

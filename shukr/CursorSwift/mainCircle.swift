@@ -412,8 +412,9 @@ struct MainCircleView: View {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
                            tap: {
-                               // Inside the circle's opening, but not the tour's move (Sami): no map during the tour.
-                               guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
+                               // Inside the circle's opening, but not the tour's move (Sami): no map during the tour —
+                               // except its own map step (the new flow).
+                               guard !TourRuntime.shared.active || TourRuntime.shared.allowsMap else { TourRuntime.shared.nudge(); return }
                                TourRuntime.shared.event(.mapOpened); showQiblaMap = true
                            })
                 // "Compass needs a moment · tap" under the ring — laid out at zero size, so the circle
@@ -430,6 +431,9 @@ struct MainCircleView: View {
 
         }
         .transition(.opacity)
+        // The tour's map step: → closes the map for them; the map gone, by → or by itself, the tour knows.
+        .onChange(of: TourRuntime.shared.closeMapRequests) { _, _ in showQiblaMap = false }
+        .onChange(of: showQiblaMap) { _, open in if !open { TourRuntime.shared.mapClosed() } }
         .fullScreenCover(isPresented: $showQiblaMap) {
             // A cover on the stage: a widget open closes it and waits until it's gone (it pushed its page under the
             // closing map — tr-final), and moments wait for it.

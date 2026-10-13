@@ -1774,7 +1774,7 @@ struct BubbleShape: Shape {
     static var showsAzkarDoor: Bool { shared.step == .zikr && shared.phase != .go }
     /// Card 1 lets go once Asr is marked: its last to-do is the swipe up.
     var holdsSheet: Bool {
-        active && !(step == .zikr && phase == .go) && step != .settings && !(step == .circle && ticked.contains(2))
+        active && !(step == .zikr && phase == .go) && step != .settings && !(step == .circle && ticked.contains(Self.cMark))
     }
     /// The post-salah pill is on the page.
     @ObservationIgnored var pillVisible = false
@@ -1801,7 +1801,8 @@ struct BubbleShape: Shape {
     /// (the list's dots are mentioned, not tried).
     func allows(marking: Bool, _ prayer: PrayerModel) -> Bool {
         guard active else { return true }
-        return marking && step == .circle && phase == .tryIt && ticked.isSuperset(of: [0, 1]) && !ticked.contains(2)
+        return marking && step == .circle && phase == .tryIt && ticked.isSuperset(of: Set(0..<Self.cMark))
+            && !ticked.contains(Self.cMark)
             && pendingAck == nil
             && prayer.name == "Asr" && Self.isPracticeAnywhere(prayer)
     }
@@ -2070,8 +2071,8 @@ struct BubbleShape: Shape {
                 return p
             default:
                 shows.done = true
-                let marked = ticked.contains(2) && beat != 2 && pendingAck != 2   // its ✓ held first
-                let done = Double(ticked.intersection([0, 1, 2]).count)
+                let marked = ticked.contains(Self.cMark) && beat != Self.cMark && pendingAck != Self.cMark   // its ✓ held first
+                let done = Double(ticked.intersection(Set(0...Self.cMark)).count)
                 guard marked else { return chapter(.circle, 1 + done, of: 4, [shows, tryIt], locked: lockedCircle) }
                 // Marked: only the payoff (owner: no "3 done" fold, no back) — small enough to sit above the circle, the
                 // whole page under it free for the swipe.
@@ -2159,8 +2160,9 @@ struct BubbleShape: Shape {
     /// it comes last — owner); the swipe up until it's marked.
     private var lockedCircle: Set<Int> {
         var l: Set<Int> = []
-        if !ticked.isSuperset(of: [0, 1]) { l.insert(2) }
-        if !ticked.contains(2) { l.insert(3) }
+        if let map = Self.cMap, !ticked.isSuperset(of: [0, 1]) { l.insert(map) }
+        if !ticked.isSuperset(of: Set(0..<Self.cMark)) { l.insert(Self.cMark) }
+        if !ticked.contains(Self.cMark) { l.insert(Self.cSwipe) }
         return l
     }
     /// Settings': one side, then the next, then the ⓘ.
@@ -2205,12 +2207,29 @@ struct BubbleShape: Shape {
         if !holds { settled(i) }
     }
 
+    /// The new flow's map step: the map is up (opened by the arrow); → closes it for them (owner: the panel hides the
+    /// map's own way back).
+    private(set) var mapOpen = false
+    private(set) var closeMapRequests = 0
+    /// The arrow may open the map now: the map step is the one to do.
+    var allowsMap: Bool {
+        guard active, step == .circle, phase == .tryIt, let map = Self.cMap, pendingAck == nil else { return false }
+        return ticked.isSuperset(of: [0, 1]) && !ticked.contains(map)
+    }
+    /// The map went away (by → or by itself).
+    func mapClosed() {
+        guard mapOpen else { return }
+        mapOpen = false
+        TourCoverPanelWindow.hide()
+    }
+
     /// A to-do done and held for its teaching line (owner: "hold each completion … then bring in the continue
     /// button"): → lets it go.
     private(set) var pendingAck: Int?
 
     private func acknowledge() {
         guard let i = pendingAck else { return }
+        if i == Self.cMap, mapOpen { closeMapRequests += 1 }   // back from the map for them
         withAnimation(.smooth(duration: 0.35)) { pendingAck = nil }
         settled(i)
     }
@@ -2218,7 +2237,7 @@ struct BubbleShape: Shape {
     /// A to-do left behind: what it leads to.
     private func settled(_ i: Int) {
         // The Prayer Circle's last to-do ends the chapter: its moment, then chapter 2's first line.
-        if step == .circle, i == 2 {
+        if step == .circle, i == Self.cMark {
             celebrating = .circle
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(0.6 + TourTopPanel.momentLength))
@@ -2280,6 +2299,15 @@ struct BubbleShape: Shape {
     }
 
     /// A touch the tour didn't let through: the thing to touch pulses (no buzz — owner).
+    /// The circle's to-dos by name: the new flow adds "Tap the arrow" (the map) before the mark.
+    static var cMap: Int? { TourFlow.v2 ? 2 : nil }
+    static var cMark: Int { TourFlow.v2 ? 3 : 2 }
+    static var cSwipe: Int { cMark + 1 }
+    /// The list's: the new flow unfolds first, then a marked prayer's score, then a coming one's time.
+    static var lFold: Int { TourFlow.v2 ? 0 : 1 }
+    static var lMarked: Int { TourFlow.v2 ? 1 : 2 }
+    static var lComing: Int { TourFlow.v2 ? 2 : 0 }
+
     func nudge() {
         nudges += 1
         countQiblaTap()
@@ -2353,7 +2381,7 @@ struct BubbleShape: Shape {
     private var previousPhase: TourPhase? {
         switch (step, phase) {
         // Marked: back to the hold, Asr unmarked again (owner, 2026-10-13: ‹ everywhere — "go back whenever you want").
-        case (.circle, .tryIt): ticked.contains(2) ? .tryIt : .learn
+        case (.circle, .tryIt): ticked.contains(Self.cMark) ? .tryIt : .learn
         case (.list, .tryIt): .learn
         // The list's first card goes back to chapter 2's first line, the swipe up (owner: ‹ on "From here you can").
         case (.list, .learn): .tryIt
@@ -2450,6 +2478,7 @@ struct BubbleShape: Shape {
     private func finish(completed: Bool) {
         run += 1
         active = false
+        if mapOpen { closeMapRequests += 1 }
         UserDefaults.standard.set(true, forKey: Self.doneKey)
         if completed { UserDefaults.standard.set(true, forKey: Self.completedKey) }
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
@@ -2531,17 +2560,22 @@ struct BubbleShape: Shape {
         case (.circle, .tryIt, .skipQibla): tick(1)
         case (.circle, .tryIt, .marked(let prayer, _)):
             practicePrayer = prayer
-            tick(2)
+            tick(Self.cMark)
         // The swipe up is the `marked` sentence's ask, not a to-do line (three lines, counted by position — Ben's
         // audit): no tick, on to the list.
-        case (.circle, .tryIt, .listOpened) where ticked.contains(2):
+        // The new flow's map step: the arrow opened the map (its panel rides over the map, TourCoverPanelWindow).
+        case (.circle, .tryIt, .mapOpened) where Self.cMap != nil:
+            mapOpen = true
+            TourCoverPanelWindow.show()
+            tick(Self.cMap!)
+        case (.circle, .tryIt, .listOpened) where ticked.contains(Self.cMark):
             go(to: .list, after: 0.6)
 
         // 2 · The list: learn, then try.
         case (.list, .learn, .next): setPhase(.tryIt)
-        case (.list, .tryIt, .comingRowTapped): tick(0, flash: "comingRow")
-        case (.list, .tryIt, .foldTapped): tick(1)   // no glow on unfolding (owner)
-        case (.list, .tryIt, .markedRowTapped): tick(2, flash: "markedRow")
+        case (.list, .tryIt, .comingRowTapped): tick(Self.lComing, flash: "comingRow")
+        case (.list, .tryIt, .foldTapped): tick(Self.lFold)   // no glow on unfolding (owner)
+        case (.list, .tryIt, .markedRowTapped): tick(Self.lMarked, flash: "markedRow")
         case (.list, .tryIt, .editorSaved): tick(3)
         case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): endChapter(.list) { self.go(to: .settings) }
 
@@ -2623,7 +2657,7 @@ struct BubbleShape: Shape {
         // Inside a chapter's to-dos, ‹ is one step back (owner: it went to the chapter's start): a held to-do goes back to
         // being done again; otherwise the last one done is shown held (its teaching line), or undone if it has none.
         // (The circle's mark is the branch below: it unmarks Asr.)
-        if step.isCard, phase == .tryIt, !(step == .circle && ticked.contains(2)), !ticked.isEmpty || pendingAck != nil {
+        if step.isCard, phase == .tryIt, !(step == .circle && ticked.contains(Self.cMark)), !ticked.isEmpty || pendingAck != nil {
             if let i = pendingAck {
                 undo(i, in: step)
             } else if let m = ticked.max() {
@@ -2639,10 +2673,19 @@ struct BubbleShape: Shape {
         guard let back = previousPhase else { return }
         // Back from chapter 2's first line (the circle marked): the hold again, Asr unmarked (prepare), its first two
         // to-dos still done.
-        if step == .circle, phase == .tryIt, ticked.contains(2) {
+        // The new flow has no first cards: the circle's first to-do goes back to the welcome, the list's to its swipe up.
+        if TourFlow.v2, phase == .tryIt, ticked.isEmpty, pendingAck == nil, step == .circle {
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                self.step = .intro
+                phase = .learn
+                openSection = nil
+            }
+            return
+        }
+        if step == .circle, phase == .tryIt, ticked.contains(Self.cMark) {
             prepare(.circle)
             withAnimation(.smooth(duration: CircleMotion.standard)) {
-                ticked = [0, 1]
+                ticked = Set(0..<Self.cMark)
                 pendingAck = nil
                 openSection = nil
                 beat = nil
@@ -2694,11 +2737,11 @@ struct BubbleShape: Shape {
         }
         // Back from the list's first card: the circle's marked state again, whose line is chapter 2's first ("Asr has
         // moved… Swipe up"); the practice day stays as it is (Asr marked), only the list closes (`returnTo`).
-        if step == .list, phase == .learn {
+        if step == .list, phase == .learn || (TourFlow.v2 && phase == .tryIt && ticked.isEmpty && pendingAck == nil) {
             withAnimation(.smooth(duration: CircleMotion.standard)) {
                 self.step = .circle
                 phase = .tryIt
-                ticked = [0, 1, 2]
+                ticked = Set(0...Self.cMark)
                 pendingAck = nil
                 openSection = nil
                 folding = nil
@@ -2777,7 +2820,8 @@ struct BubbleShape: Shape {
             withAnimation(.smooth(duration: CircleMotion.standard)) {
                 resetCardState()
                 if next == .circle && back { sweepPlayed = true }   // back to the circle: its demo was seen
-                phase = (next == .zikr || next == .settings) ? .go : (next == .circle && back ? .tryIt : .learn)
+                phase = (next == .zikr || next == .settings) ? .go
+                    : (next == .circle && back ? .tryIt : (TourFlow.v2 && (next == .circle || next == .list) ? .tryIt : .learn))
                 step = next
             }
         }
@@ -2905,7 +2949,8 @@ struct TourLayer: View {
         // Azkar (shown while its card names it), Settings' light / dark (a row lower sat on the location's refresh).
         let besideCorner = (TourRuntime.showsAzkarDoor && sharedState.horizontalPage == .zikr)
             || sharedState.horizontalPage == .settings
-        if runtime.active, !covered, !TourTopPanel.Presence.shared.up {
+        // Not while a chapter is up: its panel has the ✕ (a flag the map's own panel could clear — so by step).
+        if runtime.active, !covered, !TourTopPanel.chapters.contains(runtime.step ?? .intro) {
             TourSkipButton {
                 runtime.skip()
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
@@ -3069,7 +3114,7 @@ extension TourLayer {
         switch step {
         case .list: return TourTargets.shared.frame("prayerList")?.minY
         // Marked: over the circle, so the swipe up has the page under it (the bubble there took the touches).
-        case .circle where runtime.ticked.contains(2): return TourTargets.shared.frame("circle").map { $0.minY - 10 }
+        case .circle where runtime.ticked.contains(TourRuntime.cMark): return TourTargets.shared.frame("circle").map { $0.minY - 10 }
         // Over the wheel: the tasks line under it is one of the things it talks about.
         case .zikr where runtime.phase != .go: return TourTargets.shared.frame("zikrSlot").map { $0.minY - 10 }
         default: return nil
@@ -3092,18 +3137,23 @@ extension TourLayer {
             if next(0) { return .init(kind: .tap, at: CGPoint(x: c.midX, y: c.midY + c.height * 0.3)) }   // low on the circle (owner)
             if next(1) { return nil }   // turning the phone: no touch
             // Low and right inside the ring, clear of the name and the time left (owner: it sat on "3h 1m left").
-            if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.2, y: c.midY + c.height * 0.22)) }
+            if let map = TourRuntime.cMap, next(map) {
+                // On the arrow, wherever the compass has turned it (QiblaArrow: 80 pt above the centre, rotated).
+                let a = compass.qibla.heading * .pi / 180
+                return .init(kind: .tap, at: CGPoint(x: c.midX + 80 * sin(a), y: c.midY - 80 * cos(a)))
+            }
+            if next(TourRuntime.cMark) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.2, y: c.midY + c.height * 0.22)) }
             // The swipe up waits for chapter 2's line (owner: it came as the chapter's end moment began).
-            if next(3) {
+            if next(TourRuntime.cSwipe) {
                 // Only once chapter 2's line is in (owner): not during the hold, the ✓ beat or the chapter's moment.
                 guard runtime.beat == nil, runtime.celebrating == nil, runtime.pendingAck == nil else { return nil }
                 return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) }
             }
             return nil
         case (.list, .tryIt):
-            if next(0) { return time("Maghrib").map { .init(kind: .tap, at: $0) } }
-            if next(1) { return mid(t.frame("doneFold")).map { .init(kind: .tap, at: $0) } }   // on "3 done"
-            if next(2) { return time("Fajr").map { .init(kind: .tap, at: $0) } }
+            if next(TourRuntime.lComing) { return time("Maghrib").map { .init(kind: .tap, at: $0) } }
+            if next(TourRuntime.lFold) { return mid(t.frame("doneFold")).map { .init(kind: .tap, at: $0) } }   // on "3 done"
+            if next(TourRuntime.lMarked) { return time("Fajr").map { .init(kind: .tap, at: $0) } }
             if next(3) { return t.frame("prayerRow.Fajr").map { .init(kind: .hold, at: CGPoint(x: $0.midX, y: $0.midY)) } }
             return nil
         case (.zikr, .tryIt):
@@ -3205,7 +3255,7 @@ extension TourLayer {
         }
         switch (step, runtime.phase) {
         case (.circle, .tryIt):
-            return f("circle") + (runtime.ticked.contains(2) ? swipeBand(from: t.frame("circle").map { $0.maxY + 8 }) : [])
+            return f("circle") + (runtime.ticked.contains(TourRuntime.cMark) ? swipeBand(from: t.frame("circle").map { $0.maxY + 8 }) : [])
         case (.list, .tryIt):
             let rows = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].flatMap { f("prayerRow." + $0) }
             return f("doneFold") + rows
@@ -3224,7 +3274,7 @@ extension TourLayer {
     private func onItsPage(_ step: TourStep) -> Bool {
         let page = sharedState.horizontalPage, list = sharedState.navPosition
         switch (step, runtime.phase) {
-        case (.circle, _): return page == .main && (list == .main || runtime.ticked.contains(2))
+        case (.circle, _): return page == .main && (list == .main || runtime.ticked.contains(TourRuntime.cMark))
         case (.list, _): return page == .main && list == .bottom
         case (.zikr, .go): return page == .main || page == .zikr
         case (.zikr, _): return page == .zikr
