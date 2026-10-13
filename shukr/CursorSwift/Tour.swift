@@ -2095,12 +2095,15 @@ struct BubbleShape: Shape {
     var canGoBack: Bool { previousPhase != nil }
     private var previousPhase: TourPhase? {
         switch (step, phase) {
-        // Marked: the payoff only, no way back (owner).
-        case (.circle, .tryIt): ticked.contains(2) ? nil : .learn
+        // Marked: back to the hold, Asr unmarked again (owner, 2026-10-13: ‹ everywhere — "go back whenever you want").
+        case (.circle, .tryIt): ticked.contains(2) ? .tryIt : .learn
         case (.list, .tryIt): .learn
         // The list's first card goes back to chapter 2's first line, the swipe up (owner: ‹ on "From here you can").
         case (.list, .learn): .tryIt
         case (.zikr, .tryIt): .learn
+        // A chapter's first line goes back to the chapter before's last (the markers are handled in goBack).
+        case (.zikr, .go): .tryIt
+        case (.settings, .go): .go
         case (.settings, .last): .learn
         default: nil
         }
@@ -2347,6 +2350,39 @@ struct BubbleShape: Shape {
     /// what they changed are undone — the circle's Asr unmarked again), the step's page back as it was.
     private func goBack(from step: TourStep) {
         guard let back = previousPhase else { return }
+        // Back from chapter 2's first line (the circle marked): the hold again, Asr unmarked (prepare), its first two
+        // to-dos still done.
+        if step == .circle, phase == .tryIt, ticked.contains(2) {
+            prepare(.circle)
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                ticked = [0, 1]
+                openSection = nil
+                beat = nil
+                celebrating = nil
+            }
+            return
+        }
+        // "3 Zikr · Swipe right" back to the list's end ("That's your day"); "4 Settings · Tap Settings" back to Zikr's.
+        if step == .zikr, phase == .go {
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                self.step = .list
+                phase = .tryIt
+                ticked = [0, 1, 2, 3]
+                openSection = nil
+                celebrating = nil
+            }
+            return
+        }
+        if step == .settings, phase == .go {
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                self.step = .zikr
+                phase = .go
+                ticked = []
+                openSection = nil
+                celebrating = nil
+            }
+            return
+        }
         // Back from the list's first card: the circle's marked state again, whose line is chapter 2's first ("Asr has
         // moved… Swipe up"); the practice day stays as it is (Asr marked), only the list closes (`returnTo`).
         if step == .list, phase == .learn {
@@ -2562,6 +2598,8 @@ struct TourLayer: View {
                 if old == .list, step == .circle, sharedState.navPosition != .main {
                     withAnimation(CircleMotion.page) { sharedState.navPosition = .main }
                 }
+                // ‹ from Settings' first line: back on the Salah page, where Zikr's "Swipe right" starts.
+                if old == .settings, step == .zikr { sharedState.go(to: .main) }
                 if step.isTourPage, !onItsPage(step) { returnTo(step) }
                 announce()
             }
