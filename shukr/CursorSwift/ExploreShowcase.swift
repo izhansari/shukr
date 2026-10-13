@@ -370,8 +370,15 @@ struct ShowcaseStoryPage: View {
                         .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(s.title).font(.system(.title2, design: .rounded, weight: .heavy))
-                        .fixedSize(horizontal: false, vertical: true)
+                    // Its name small, then what's good about it as the headline (owner: get across what's cool about it).
+                    if let hook = s.hook {
+                        ExploreEyebrow(text: s.title)
+                        Text(hook).font(.system(.title2, design: .rounded, weight: .heavy))
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text(s.title).font(.system(.title2, design: .rounded, weight: .heavy))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text(s.lead).font(.system(.body, design: .rounded)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -441,13 +448,18 @@ struct ShowcaseStoryPage: View {
     }
 }
 
-/// Each card's story: a title, one sentence, three good things, and its button (a link into shukr, Memories, or steps).
+/// Each card's story: its name, a headline saying what's good about it, what it is in plain words, the points the words
+/// don't already make, and its button (a link into shukr, Memories, or steps).
 /// An item's page (decision explore-detail-layout A, owner: "pretty easily manageable and it applies to all of our different
 /// pages"): one sentence, what it does as 2–4 points each with its own symbol and name (as many as it really has), how to
 /// add / run / use it shown right on the page, and a button only when it does something.
 struct ShowcaseStory {
     struct Point { let symbol: String; let name: String; let line: String }
+    /// Its name, small above the headline (what you'd search for).
     let title: String
+    /// What's good about it, as the headline (owner: "really want to … get the point across of what is cool about each one").
+    var hook: String? = nil
+    /// What it is and what it does for you, in plain words.
     let lead: String
     let points: [Point]
     var how: String? = nil
@@ -461,14 +473,14 @@ struct ShowcaseStory {
     private static func p(_ symbol: String, _ name: String, _ line: String) -> Point { Point(symbol: symbol, name: name, line: line) }
     static let homeSteps = ["Touch and hold an empty spot on your Home Screen", "Tap Edit, then Add Widget", "Search shukr and pick it"]
     static let lockSteps = ["Touch and hold your Lock Screen, then tap Customize", "Tap under the clock", "Find shukr and tap it"]
-    private static func control(_ name: String, _ lead: String, _ points: [Point]) -> ShowcaseStory {
-        ShowcaseStory(title: name, lead: lead, points: points, how: "How to add it",
+    private static func control(_ name: String, _ hook: String, _ lead: String, _ points: [Point]) -> ShowcaseStory {
+        ShowcaseStory(title: name, hook: hook, lead: lead, points: points, how: "How to add it",
                       steps: ["Swipe down from the top-right corner, tap +, then Add a Control", "Search shukr and tap \(name)",
                               "Or on a Lock Screen button or the Action button"])
     }
     /// A Shortcuts tile (owner: Shortcuts and their cards first; Siri one point).
-    private static func tile(_ name: String, _ lead: String, _ points: [Point], siri: String) -> ShowcaseStory {
-        ShowcaseStory(title: name, lead: lead, points: points + [p("waveform", "Or ask Siri", siri)], how: "How to run it",
+    private static func tile(_ name: String, _ hook: String, _ lead: String, _ points: [Point], siri: String) -> ShowcaseStory {
+        ShowcaseStory(title: name, hook: hook, lead: lead, points: points + [p("waveform", "Or ask Siri", siri)], how: "How to run it",
                       steps: ["Open Shortcuts and tap shukr", "Tap \(name)", "Or set it on the Action button: Settings → Action Button"],
                       action: "", shortcuts: true)
     }
@@ -476,156 +488,189 @@ struct ShowcaseStory {
     static func of(_ id: ShowcaseCardID) -> ShowcaseStory {
         switch id {
         // Home Screen
-        case .homePrayers: ShowcaseStory(title: "Prayer ring", lead: "The prayer that's on and how long is left, on your Home Screen.",
-            points: [p("checkmark.circle", "Mark it there", "Tap the corner circle. Scored like a tap in the app"),
-                     p("circle.dashed", "A ring that grades you", "Green, then yellow, then red as time runs out"),
-                     p("square.grid.2x2", "Your corners", "Qibla, Zikr, Daily Ayah or 99 Names")],
+        case .homePrayers: ShowcaseStory(title: "Prayer ring", hook: "The prayer that's on, and how long you have",
+            lead: "A ring fills as the prayer's time passes: green while you're early, then yellow, then red as it runs out. Prayed? Tap the circle in its corner and it's marked and scored, without opening shukr.",
+            points: [p("list.bullet", "All five, one tap", "The arrow shows today's times"),
+                     p("arrow.left.arrow.right", "Ends at, or time left", "Tap the ring to switch"),
+                     p("square.grid.2x2", "Corners you choose", "Qibla, Zikr, Daily Ayah or the 99 Names")],
             how: "How to add it", steps: homeSteps)
-        case .homeZikr: ShowcaseStory(title: "Zikr tasks", lead: "Today's zikr tasks and how far along each one is.",
-            points: [p("circle.dotted.circle", "A ring for the day", "All your tasks in one glance"),
-                     p("hand.tap", "Tap to start", "A task opens straight into counting")],
+        case .homeZikr: ShowcaseStory(title: "Zikr tasks", hook: "Today's zikr, waiting where you'll see it",
+            lead: "Your zikr tasks for today and how far along each one is. Tap one and shukr opens straight into counting it.",
+            points: [p("circle.dotted.circle", "One ring for the day", "All your tasks at a glance"),
+                     p("checkmark.circle", "What's left", "Finished tasks are ticked off")],
             how: "How to add it", steps: homeSteps)
-        case .homeName: ShowcaseStory(title: "Name of the Day", lead: "One of Allah's 99 Names each day, in Arabic, with its meaning.",
-            points: [p("calendar", "A new one each day", "The same Name everywhere in shukr"),
-                     p("book", "Tap to read more", "Its meaning and how to learn it")],
+        case .homeName: ShowcaseStory(title: "Name of the Day", hook: "Learn one of Allah's 99 Names each day",
+            lead: "A new Name every day, in Arabic with its meaning, on a dark card that suits any Home Screen.",
+            points: [p("calendar", "A new one each day", "The same Name across shukr"),
+                     p("book", "Tap to read more", "Opens its page in shukr")],
             how: "How to add it", steps: homeSteps)
-        case .homeAyah: ShowcaseStory(title: "Daily Ayah", lead: "The verse you revealed today, kept in view.",
-            points: [p("eye.slash", "Never spoils it", "It shows only once you've revealed it in shukr"),
+        case .homeAyah: ShowcaseStory(title: "Daily Ayah", hook: "Keep today's verse with you",
+            lead: "Reveal the day's verse in shukr and it stays on your Home Screen, in Arabic and English, so you come back to it through the day.",
+            points: [p("eye.slash", "No spoilers", "It waits until you've revealed it"),
                      p("character.book.closed", "Arabic and English", "Side by side")],
             how: "How to add it", steps: homeSteps)
-        case .standby: ShowcaseStory(title: "StandBy", lead: "Charging on its side, your iPhone shows the prayer ring big and dim.",
-            points: [p("bed.double", "From bed", "See Fajr's time without picking it up"),
-                     p("moon", "Dim red at night", "Easy on your eyes")],
+        case .standby: ShowcaseStory(title: "StandBy", hook: "A prayer clock on your nightstand",
+            lead: "Charge your iPhone on its side and it becomes a bedside clock, with your prayer ring beside the time.",
+            points: [p("bed.double", "From your pillow", "See Fajr's time without picking it up"),
+                     p("moon", "Red at night", "iOS dims it in the dark so it won't keep you up")],
             how: "How to set it up", steps: ["Add the Prayer ring to your Home Screen", "Charge your iPhone on its side, locked",
                                              "Swipe to the widgets and pick shukr"])
         // Lock Screen
-        case .lockTime: ShowcaseStory(title: "Time left", lead: "In a prayer's last hour, your Lock Screen counts down the minutes.",
-            points: [p("lock", "No unlocking", "Glance at it as you pick up your phone"),
-                     p("hourglass", "Only when it matters", "The ring the rest of the time"),
-                     p("textformat.123", "How it reads", "27m, 27:13 or 27 min, in Settings")],
+        case .lockTime: ShowcaseStory(title: "Time left", hook: "A small ring that speaks up when it matters",
+            lead: "A circle under your clock with the prayer that's on. In its last hour the name turns into the minutes left, so you notice before it's gone.",
+            points: [p("lock", "No unlocking", "There every time you lift your phone"),
+                     p("circle.dashed", "Fills as time passes", "The ring follows the prayer's window")],
             how: "How to add it", steps: lockSteps)
-        case .lockCountdown: ShowcaseStory(title: "Countdown", lead: "A live countdown to the end of the prayer, and the next one's time.",
-            points: [p("timer", "Counts down live", "With a bar that fills"),
-                     p("arrow.right.circle", "What's next", "The next prayer underneath")],
+        case .lockCountdown: ShowcaseStory(title: "Countdown", hook: "Watch the time tick down",
+            lead: "A wider widget under your clock: the prayer that's on, a live timer to its end, and a bar that fills as time passes.",
+            points: [p("timer", "To the second", "Hours, minutes and seconds left"),
+                     p("arrow.right.circle", "Between prayers", "When the next one starts")],
             how: "How to add it", steps: lockSteps)
-        case .lockName: ShowcaseStory(title: "Above the clock", lead: "One line above your clock: today's Name, or the prayer and when it ends.",
-            points: [p("textformat", "Small and quiet", "A single line over the time")],
+        case .lockName: ShowcaseStory(title: "Above the clock", hook: "One quiet line above the time",
+            lead: "A single line over your clock: today's Name of Allah, or the prayer that's on and when it ends.",
+            points: [p("textformat", "Fits any Lock Screen", "Just one line, nothing to rearrange")],
             how: "How to add it", steps: ["Touch and hold your Lock Screen, then tap Customize", "Tap the date above the clock", "Pick shukr's line"])
-        case .lockControls: ShowcaseStory(title: "Lock Screen buttons", lead: "Swap a Lock Screen button for the qibla or your counter.",
+        case .lockControls: ShowcaseStory(title: "Lock Screen buttons", hook: "The qibla, one press from your Lock Screen",
+            lead: "Swap a button at the bottom of your Lock Screen for the qibla or your counter.",
             points: [p("location.north.line", "One press", "The qibla map, or straight into counting")],
             how: "How to add it", steps: ["Touch and hold your Lock Screen, then tap Customize", "Tap a button at the bottom, then −", "Tap + and pick a shukr control"])
         // Watch
-        case .watchApp: ShowcaseStory(title: "The watch app", lead: "Your prayers and your zikr on your Apple Watch.",
-            points: [p("checkmark.circle", "Mark prayers", "Hold the ring, undo if you slip"),
-                     p("digitalcrown.horizontal.arrow.clockwise", "Count your way", "Tap, Double Tap or the Crown"),
-                     p("location.north.line", "The qibla", "A map that taps your wrist when you face it")],
+        case .watchApp: ShowcaseStory(title: "The watch app", hook: "Mark prayers and count zikr without your phone",
+            lead: "The same ring as on your phone, on your wrist. Mark a prayer, count zikr, and find the qibla, all without taking your phone out.",
+            points: [p("checkmark.circle", "Mark prayers", "Hold the ring; undo if you slip"),
+                     p("digitalcrown.horizontal.arrow.clockwise", "Count your way", "Tap, Double Tap or turn the Crown"),
+                     p("location.north.line", "The qibla", "Your wrist taps when you face it")],
             how: "How to install it", steps: ["Open the Watch app on your iPhone", "Scroll to Available Apps", "Tap Install next to shukr"])
-        case .watchFace: ShowcaseStory(title: "Your watch face", lead: "The prayer's ring as a complication, right on your watch face.",
-            points: [p("circle.dashed", "Always in view", "Fills as the window passes"),
+        case .watchFace: ShowcaseStory(title: "Your watch face", hook: "The prayer's ring, every time you check the time",
+            lead: "Put shukr on your watch face and the prayer that's on is there with every glance, its ring filling as the time passes.",
+            points: [p("circle.dashed", "Three shapes", "A circle, a wide card or a single line"),
                      p("hand.tap", "Tap it", "Opens shukr on your wrist")],
             how: "How to add it", steps: ["Touch and hold your watch face, then tap Edit", "Swipe to Complications", "Tap a spot and pick shukr"])
         // Hands-free and buttons
-        case .siri: ShowcaseStory(title: "Siri", lead: "Mark a prayer or ask the time left without picking up your phone.",
+        case .siri: ShowcaseStory(title: "Siri", hook: "Mark a prayer without touching your phone",
+            lead: "Ask Siri to mark a prayer or tell you the time left.",
             points: [p("checkmark.circle", "“I prayed in shukr”", "Marks it, and tells you how you did"),
                      p("hourglass", "“How long is left in shukr”", "The time left for the prayer that's on")],
             how: "How to use it", steps: ["Say “Hey Siri”, or hold the side button", "Say the phrase, ending in “in shukr”"])
-        case .answer: ShowcaseStory(title: "Notification buttons", lead: "Hold a prayer's notification to answer it.",
-            points: [p("checkmark.circle", "I already prayed", "Marks it right there"),
-                     p("clock.arrow.circlepath", "Nudge me later", "In 5 or 10 minutes"),
-                     p("bell.badge", "Halfway and 30 minutes left", "If you haven't marked it")],
+        case .answer: ShowcaseStory(title: "Notification buttons", hook: "Answer the reminder, right where it is",
+            lead: "When a prayer's reminder comes in, touch and hold it. Already prayed? Tap it and the prayer is marked and scored. Not yet? Ask to be nudged again in 5 or 10 minutes.",
+            points: [p("bell.badge", "It keeps you posted", "Halfway through and with 30 minutes left, until you've marked it"),
+                     p("lock", "No opening shukr", "Answer it from the Lock Screen")],
             how: "How to use it", steps: ["When a prayer's notification comes, touch and hold it", "Tap I already prayed, or a nudge"])
-        case .controlCenter: ShowcaseStory(title: "Control Center", lead: "shukr a swipe away, even inside another app.",
+        case .controlCenter: ShowcaseStory(title: "Control Center", hook: "shukr a swipe away, from any app",
+            lead: "Pull down from your phone's top-right corner for the prayer that's on, or the qibla.",
             points: [p("clock", "The prayer that's on", "And when it ends"),
                      p("location.north.line", "The qibla", "One tap to the map")],
             how: "How to add it", steps: ["Swipe down from the top-right corner", "Tap +, then Add a Control", "Search shukr"])
-        case .actionButton: ShowcaseStory(title: "Action button", lead: "Press the button on the side of your iPhone and the qibla opens.",
+        case .actionButton: ShowcaseStory(title: "Action button", hook: "The qibla on the side of your phone",
+            lead: "Press the button on the side of your iPhone and the qibla opens.",
             points: [p("hand.point.up", "One press, any time", "No unlocking first")],
             how: "How to set it up", steps: ["Open Settings, then Action Button", "Swipe to Controls", "Choose a shukr control"])
         // Around you
-        case .prayersMap: ShowcaseStory(title: "Your prayers on the map", lead: "Each prayer you mark is pinned where you prayed it, colored by how you did.",
+        case .prayersMap: ShowcaseStory(title: "Your prayers on the map", hook: "See everywhere you've prayed",
+            lead: "Every prayer you mark is pinned where you prayed it and colored by how you did: at home, at work, on the road.",
             points: [p("line.3.horizontal.decrease.circle", "Filter", "By prayer and by dates"),
                      p("mappin", "Tap a pin", "That prayer, when and how you did")],
             action: "Open the map", link: "map")
-        case .mosques: ShowcaseStory(title: "Mosques near you", lead: "The nearest first, with drive and walk times.",
+        case .mosques: ShowcaseStory(title: "Mosques near you", hook: "The nearest masjid, and how to get there",
+            lead: "The closest mosques first, with drive and walk times. Look around the entrance before you go, then get directions.",
             points: [p("binoculars", "Look Around", "See the entrance before you go"),
                      p("arrow.triangle.turn.up.right.diamond", "Directions", "Apple Maps or Google Maps"),
                      p("star", "Star yours", "The ones you go to, on top")],
             action: "Find mosques near me", link: "map")
-        case .jumuah: ShowcaseStory(title: "Jumu'ah at the masjid", lead: "Mark Friday's Dhuhr at a masjid and it counts as Jumu'ah, full marks.",
-            points: [p("building.columns", "On its own", "shukr notices the masjid you're at"),
+        case .jumuah: ShowcaseStory(title: "Jumu'ah at the masjid", hook: "Friday at the masjid counts as Jumu'ah",
+            lead: "Mark Dhuhr at a masjid on a Friday and shukr counts it as Jumu'ah, full marks. It notices the masjid you're at on its own.",
+            points: [p("building.columns", "Nothing to set", "shukr knows when you're at a masjid"),
                      p("star", "Your masjid", "Star it to give it its own pin")],
             action: "Find mosques near me", link: "map")
         // Your journey
-        case .memories: ShowcaseStory(title: "Memories", lead: "After you mark a prayer, keep a photo of where you are, and you, both at once.",
-            points: [p("lock", "Private", "Kept on your phone, day by day"),
+        case .memories: ShowcaseStory(title: "Memories", hook: "Remember where you prayed",
+            lead: "After you mark a prayer, take a photo with both cameras at once: where you are, and you. They're kept day by day, private on your phone.",
+            points: [p("lock", "Private", "Never leaves your phone"),
                      p("magnifyingglass", "Find any", "By prayer, place, note or date"),
                      p("calendar", "On this day", "What you saw a year ago")],
             action: "Open Memories", memories: true)
-        case .insights: ShowcaseStory(title: "Insights", lead: "How you're scoring, how consistent you are, and whether you're getting better.",
+        case .insights: ShowcaseStory(title: "Insights", hook: "See which prayer needs you most",
+            lead: "Your score for each prayer, how consistent you've been, and whether you're improving week by week, so you know where to focus.",
             points: [p("chart.bar", "Each prayer ranked", "By its recent score"),
-                     p("chart.line.uptrend.xyaxis", "An 8-week trend", "Are you getting better"),
+                     p("chart.line.uptrend.xyaxis", "An 8-week trend", "Are you getting better?"),
                      p("flame", "Streaks", "And a 14-day grid")],
             action: "Open Insights", link: "insights")
         // Your zikr
-        case .sleep: ShowcaseStory(title: "Sleep mode", lead: "Counting in bed? Sleep mode saves your session when you drift off.",
+        case .sleep: ShowcaseStory(title: "Sleep mode", hook: "Fall asleep counting, and lose nothing",
+            lead: "Counting in bed? Turn on sleep mode: if you drift off, shukr saves your session at your last count and lets your phone lock.",
             points: [p("moon", "Ends on its own", "45 seconds after your last tap"),
-                     p("tray.and.arrow.down", "Saved at your last count", "Nothing lost"),
-                     p("sun.max", "A card in the morning", "Pick up where you stopped")],
+                     p("sun.max", "A card in the morning", "Keep counting from where you stopped")],
             how: "How to use it", steps: ["Start a zikr session", "Tap pause", "Turn on the moon"])
-        case .tasbihFatimah: ShowcaseStory(title: "Tasbih Fatimah", lead: "33 · 33 · 34, offered each time you mark a prayer.",
-            points: [p("hand.tap", "One tap", "From the Salah page"),
-                     p("list.number", "Counts each phrase", "You just keep tapping")],
+        case .tasbihFatimah: ShowcaseStory(title: "Tasbih Fatimah", hook: "33 · 33 · 34, right after you pray",
+            lead: "Each time you mark a prayer, shukr offers Tasbih Fatimah. One tap and it counts each phrase for you.",
+            points: [p("list.number", "Counts each phrase", "You just keep tapping")],
             action: "Go to Salah", link: "salah")
-        case .goals: ShowcaseStory(title: "Daily goals", lead: "Pick a zikr and a daily goal; shukr keeps your streak.",
-            points: [p("number", "A count or minutes", "Whichever suits it"),
-                     p("flame", "A streak", "Every day you meet it"),
+        case .goals: ShowcaseStory(title: "Daily goals", hook: "Make your zikr a daily habit",
+            lead: "Pick a zikr and a daily goal, a count or minutes. Meet it each day and your streak grows.",
+            points: [p("flame", "A streak", "Every day you meet it"),
                      p("bell", "A reminder", "If you'd like one")],
             action: "Go to Zikr", link: "zikr")
         // Shortcuts (ShukrAppShortcuts.swift): each tile, its card first. The cards with buttons are iOS 26 (`available`).
-        case .siriTimeLeft: tile("Time Left", "The time left for the prayer that's on, on its Live Activity card.",
+        case .siriTimeLeft: tile("Time Left", "How long until it's gone?",
+            "A card with the time left in the prayer that's on, and a ✓ to mark it right there. Between sunrise and Dhuhr, it tells you when Dhuhr starts.",
             [p("checkmark.circle", "Mark it from the card", "Tap its ✓"),
-             p("sunrise", "After sunrise", "The time until Dhuhr")], siri: "“How long is left in shukr”")
-        case .siriPrayerTime: tile("Prayer Time", "Any prayer's time: one of the five, or the current, next or previous one.",
+             p("button.horizontal.top.press", "On the Action button", "One press, any time")], siri: "“How long is left in shukr”")
+        case .siriPrayerTime: tile("Prayer Time", "Any prayer's time, wherever you need it",
+            "The next prayer, the current one, or any of the five by name. Build it into your own shortcuts, like lights on before Fajr.",
             [p("checkmark.seal", "Knows you prayed", "Says so first"),
-             p("plus.forwardslash.minus", "For your own shortcuts", "Minutes before or after a prayer")], siri: "“When is Maghrib in shukr”")
-        case .siriTodaysTimes: tile("Today’s Times", "All five of today's times in one card, the one that's on highlighted.",
+             p("plus.forwardslash.minus", "Before or after", "Minutes either side of a prayer")], siri: "“When is Maghrib in shukr”")
+        case .siriTodaysTimes: tile("Today’s Times", "The whole day in one card",
+            "All five of today's times: what you've prayed ticked, the prayer that's on highlighted with its time left.",
             [p("circle", "Mark it", "Tap the circle beside the prayer that's on"),
              p("arrow.uturn.backward", "Unmark it", "Tap a ✓ and shukr asks first")], siri: "“Today's prayer times in shukr”")
-        case .siriIPrayed: tile("I Prayed", "Marks the prayer that's on, and shows how you did on its card.",
-            [p("star", "Scored at that moment", "Like a tap in the app"),
-             p("arrow.uturn.backward", "Undo", "Asks in shukr, so nothing goes by mistake")], siri: "“I prayed in shukr”")
-        case .siriFajrAlarm: tile("Fajr Alarm Time", "When your Fajr alarm rings next, shown as the alarm itself.",
-            [p("alarm", "Even when it's off", "When it would ring"),
-             p("lightbulb", "For your own shortcuts", "Lights on at that time")], siri: "“When is my Fajr alarm in shukr”")
-        case .siriOpenPage: tile("Open shukr", "Straight to a page: Salah, Qibla, Zikr, Daily Ayah, the 99 Names or Memories.",
-            [p("square.grid.2x2", "A tile for each page", "Pick the one you want")], siri: "“Open Qibla in shukr”")
-        case .siriTasbihFatimah: tile("Open Tasbih Fatimah", "Opens straight into 33 · 33 · 34.",
-            [p("list.number", "Counts each phrase", "Right after you pray")], siri: "“Start Tasbih Fatimah in shukr”")
-        case .siriZikrTasks: tile("Zikr Tasks", "Today's zikr tasks in a card, with how long what's left will take.",
-            [p("play.circle", "Tap a task", "shukr opens and starts counting"),
-             p("arrow.clockwise", "Picks up", "From today's count")], siri: "“My zikr tasks in shukr”")
-        case .siriMosques: tile("Nearby Mosques", "The nearest mosques on a map, with how far each one is.",
-            [p("arrow.triangle.turn.up.right.diamond", "Directions", "Tap one and Maps opens"),
-             p("map", "The full map", "Tap the map for shukr's own")], siri: "“Nearby mosques in shukr”")
-        case .siriPrayedHere: tile("Prayed Here", "How many prayers you've marked where you are, and when you last prayed there.",
-            [p("building.columns", "At a masjid", "Every prayer you marked there counts"),
-             p("chart.bar", "Each of the five", "A count for each")], siri: "“Have I prayed here in shukr”")
+        case .siriIPrayed: tile("I Prayed", "Mark it without opening shukr",
+            "Marks the prayer that's on and shows your score on its card. On the Action button, it's one press after you pray.",
+            [p("star", "Scored at that moment", "Just like a tap in the app"),
+             p("arrow.uturn.backward", "Undo", "Asks in shukr first, so nothing goes by mistake")], siri: "“I prayed in shukr”")
+        case .siriFajrAlarm: tile("Fajr Alarm Time", "When will Fajr's alarm ring?",
+            "When your Fajr alarm rings next, shown as the alarm itself. Use it in your own shortcuts, like turning the lights on at that time.",
+            [p("alarm", "Even when it's off", "When it would ring")], siri: "“When is my Fajr alarm in shukr”")
+        case .siriOpenPage: tile("Open shukr", "Straight to the page you want",
+            "Jump right into Salah, Qibla, Zikr, Daily Ayah, the 99 Names or Memories.",
+            [p("square.grid.2x2", "A tile for each page", "Pick the one you use most")], siri: "“Open Qibla in shukr”")
+        case .siriTasbihFatimah: tile("Open Tasbih Fatimah", "Tasbih Fatimah in one tap",
+            "Opens straight into 33 SubhanAllah, 33 Alhamdulillah and 34 Allahu Akbar, counting each phrase for you.",
+            [p("list.number", "Counts each phrase", "You just keep tapping")], siri: "“Start Tasbih Fatimah in shukr”")
+        case .siriZikrTasks: tile("Zikr Tasks", "Today's zikr, one tap from starting",
+            "A card with today's zikr tasks, what's done, and about how long the rest will take. Tap a task and shukr opens counting it.",
+            [p("arrow.clockwise", "Picks up where you were", "From today's count")], siri: "“My zikr tasks in shukr”")
+        case .siriMosques: tile("Nearby Mosques", "Where's the nearest masjid?",
+            "A map and the mosques around you, nearest first, with how far each one is. Tap one and Apple Maps opens with directions.",
+            [p("map", "The full map", "Tap the map for shukr's own"),
+             p("star", "Yours included", "The mosques you've starred")], siri: "“Nearby mosques in shukr”")
+        case .siriPrayedHere: tile("Prayed Here", "Have I prayed here before?",
+            "Wherever you are, see how many prayers you've marked there and when you last prayed. At a masjid it counts every prayer marked there.",
+            [p("chart.bar", "Each of the five", "A count for each"),
+             p("map", "See them on the map", "Every pin where you prayed")], siri: "“Have I prayed here in shukr”")
         // Controls (MoreWidgets.swift): Control Center, a Lock Screen button, or the Action button. Wide or square, a control
         // shows its line of text; small, just its symbol.
-        case .ccPrayer: control("Today's Prayers", "Shows the prayer that's on and when it ends, or the next one and when it starts. Tap it for all of today's prayers.",
-            [p("clock", "At a glance", "“Asr · ends 6:42 PM”"),
-             p("list.bullet", "Tap for today", "shukr opens on today's list")])
-        case .ccPrayed: control("I Prayed", "Tap it after you pray: the prayer that's on is marked and scored, without opening shukr.",
-            [p("checkmark.circle", "Shows what's next", "“Asr · Mark prayed”, then “Prayed”"),
-             p("checkmark.shield", "Never unmarks", "Tapped again, it only says it's marked")])
-        case .ccFajrAlarm: control("Fajr Alarm", "Shows when your Fajr alarm rings next. Tap it to turn the alarm off, and again to turn it back on.",
-            [p("alarm", "When it rings", "“Fajr Alarm · 5:40 AM”, right on it"),
-             p("power", "Off and on", "One tap, the same alarm as in Settings")])
-        case .ccQibla: control("Qibla", "Opens the qibla map, turned so the qibla points up.",
-            [p("apps.iphone", "From anywhere", "Even inside another app")])
-        case .ccZikr: control("Zikr", "Shows how much zikr you have left today. Tap it to start counting.",
-            [p("text.alignleft", "What's left", "“2 tasks left · about 9 min”"),
-             p("checkmark.circle", "All done", "Says so once you've finished")])
+        case .ccPrayer: control("Today's Prayers", "When does it end? Just swipe down",
+            "The prayer that's on and when it ends (or the next one and when it starts), right in Control Center. Tap it and shukr opens on today's list.",
+            [p("clock", "Always current", "“Asr · ends 7:40 PM”"),
+             p("list.bullet", "Tap for all five", "Today's list, with what you've marked")])
+        case .ccPrayed: control("I Prayed", "Prayed? One tap and it's counted",
+            "Tap it after you pray and the prayer that's on is marked and scored for when you prayed it, without opening shukr.",
+            [p("checkmark.circle", "It tells you", "“Asr · Mark prayed”, then “Prayed”"),
+             p("checkmark.shield", "Never unmarks by accident", "A second tap just says it's done"),
+             p("button.horizontal.top.press", "On the Action button", "One press after you pray")])
+        case .ccFajrAlarm: control("Fajr Alarm", "Tomorrow's Fajr alarm, on or off in a tap",
+            "See when your Fajr alarm rings next, right on the control. Away, or up early anyway? Tap it off, and on again, without digging through Settings.",
+            [p("alarm", "When it rings", "“Fajr Alarm · 5:10 AM”"),
+             p("arrow.triangle.2.circlepath", "The same alarm", "The one you set up in shukr")])
+        case .ccQibla: control("Qibla", "Find the qibla from any app",
+            "One tap opens shukr's qibla map, turned so the qibla points up, and your phone buzzes when you face it.",
+            [p("apps.iphone", "From anywhere", "Even with another app open"),
+             p("button.horizontal.top.press", "Or one press", "Put it on the Action button")])
+        case .ccZikr: control("Zikr", "How much zikr is left today?",
+            "What's left of today's zikr tasks and about how long it'll take, right in Control Center. Tap it to open your zikr.",
+            [p("text.alignleft", "What's left", "“2 tasks left · about 5 min”"),
+             p("checkmark.circle", "All done", "It says so when you've finished")])
         }
     }
 }

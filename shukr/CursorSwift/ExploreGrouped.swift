@@ -31,34 +31,50 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .zikrExtras: "Zikr extras"
         }
     }
-    /// What's inside, a few words (the card).
+    /// What it does for you, a few words (the card on Explore).
     var line: String {
         switch self {
-        case .homeWidgets: "Prayer ring, zikr, the Name, the verse, StandBy"
-        case .lockWidgets: "Time left, a countdown, the Name above the clock"
-        case .controls: "Today's Prayers, I Prayed, Fajr Alarm, Qibla, Zikr"
-        case .siri: "Cards for time left, today's times and mosques near you"
-        case .watch: "The app and your watch face"
-        case .answer: "I already prayed · nudge me later"
-        case .mapMasjid: "Your prayers on the map, mosques, Jumu'ah"
-        case .memories: "A photo with each prayer"
-        case .insights: "Which prayer needs you most"
-        case .zikrExtras: "Sleep mode, Tasbih Fatimah, daily goals"
+        case .homeWidgets: "Your prayer and the time left, before you even open shukr"
+        case .lockWidgets: "Time left in the prayer, every time you lift your phone"
+        case .controls: "Mark a prayer or find the qibla from any app"
+        case .siri: "Ask, and get a card you can tap"
+        case .watch: "Mark prayers and count zikr on your wrist"
+        case .answer: "Mark it prayed right from the reminder"
+        case .mapMasjid: "Where you've prayed, and the nearest masjid"
+        case .memories: "A photo with each prayer, kept day by day"
+        case .insights: "See which prayer needs you most"
+        case .zikrExtras: "Count in bed, after salah, or toward a daily goal"
         }
     }
-    /// What you get, one sentence (the group's page).
+    /// What's good about it: the group page's headline, under its name.
+    var headline: String {
+        switch self {
+        case .homeWidgets: "Your prayer, always a glance away"
+        case .lockWidgets: "Know how long you have before you even unlock"
+        case .controls: "Mark a prayer without opening anything"
+        case .siri: "Answers in a card, from anywhere"
+        case .watch: "Your prayers on your wrist"
+        case .answer: "Answer the reminder, right where it is"
+        case .mapMasjid: "Every place you've prayed, and the nearest masjid"
+        case .memories: "Remember where you prayed"
+        case .insights: "See which prayer needs you most"
+        case .zikrExtras: "Little things that make counting easier"
+        }
+    }
+    /// What it is, in plain words, and why you'd want it (the group's page; owner: each section should say what the
+    /// thing even is).
     var lead: String {
         switch self {
-        case .homeWidgets: "Your prayer, your zikr, the Name of the Day and today's verse on your Home Screen, and on your nightstand while it charges."
-        case .lockWidgets: "Time left and what's next, every time you pick up your phone, without unlocking it."
-        case .controls: "Five controls for Control Center, your Lock Screen buttons or the Action button. Make one wide or square and it shows a line of text too."
-        case .siri: "Tap a tile in the Shortcuts app and shukr answers with a card you can tap. Run them from the Action button too, or by asking Siri."
-        case .watch: "Your prayers and your zikr on your wrist, and the ring on your watch face."
-        case .answer: "Mark a prayer, or ask for a nudge, right from its notification."
-        case .mapMasjid: "Every prayer pinned where you prayed it, mosques near you, and Jumu'ah counted at the masjid."
-        case .memories: "A photo after you pray, kept day by day."
-        case .insights: "How you're scoring, how consistent you are, and which prayer needs you most."
-        case .zikrExtras: "Small things that make counting easier."
+        case .homeWidgets: "Widgets are the live tiles that sit among your apps. shukr's show the prayer that's on and how long you have, and you mark it with a tap. Your zikr, the Name of the Day and today's verse can live there too."
+        case .lockWidgets: "Lock Screen widgets sit right under your clock. Lift your phone and you see the prayer that's on and the time left, counting down in its last hour. No unlocking, no opening anything."
+        case .controls: "Control Center is the panel you pull down from your phone's top-right corner. Put shukr there and marking a prayer, checking when it ends or finding the qibla is a swipe and a tap from any app."
+        case .siri: "Shortcuts is Apple's app for quick actions. shukr's answer with a card, no opening the app: how long is left, today's times, the nearest mosques. Tap one, press the Action button, or ask Siri."
+        case .watch: "Mark a prayer, count zikr with taps, a pinch or the Crown, and see the prayer's ring right on your watch face, without taking your phone out."
+        case .answer: "When a prayer's reminder comes in, hold it: tell shukr you already prayed and it's marked and scored, or ask to be nudged again in 5 or 10 minutes."
+        case .mapMasjid: "Each prayer you mark is pinned where you prayed it, colored by how you did. Need a masjid? The nearest are listed with walk and drive times."
+        case .memories: "After you mark a prayer, take a photo with both cameras at once, and keep it with that prayer, day by day, private on your phone."
+        case .insights: "Your score for each prayer, how consistent you've been, and whether you're improving week by week."
+        case .zikrExtras: "Fall asleep counting and your session's saved. Tasbih Fatimah is a tap away after you pray. Set a daily goal and keep a streak."
         }
     }
     var members: [ShowcaseCardID] {
@@ -104,24 +120,24 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
 
 /// A member's short name in its group's list.
 extension ShowcaseCardID {
-    /// What it does, one line under its name in the group's list.
+    /// What it does for you, one line under its name in the group's list.
     var memberLine: String {
         switch self {
-        case .homePrayers: "The prayer that's on, marked with a tap"
-        case .homeZikr: "Today's tasks and what's left"
-        case .homeName: "One of the 99 Names each day"
-        case .homeAyah: "The verse you revealed today"
-        case .standby: "Your ring, big and dim, while it charges"
-        case .lockTime: "Minutes left in a prayer's last hour"
-        case .lockCountdown: "A live countdown, and the next prayer"
-        case .lockName: "Today's Name, above the clock"
+        case .homePrayers: "Time left in the prayer; mark it with a tap"
+        case .homeZikr: "Today's tasks; tap one to start counting"
+        case .homeName: "A new Name of Allah every day"
+        case .homeAyah: "Today's verse, once you've revealed it"
+        case .standby: "A bedside prayer clock while it charges"
+        case .lockTime: "The prayer under your clock; minutes left near the end"
+        case .lockCountdown: "A live timer to the end of the prayer"
+        case .lockName: "Today's Name or the prayer, above the clock"
         case .lockControls: "The qibla or your counter, one press away"
         case .controlCenter: "shukr a swipe away"
         case .actionButton: "The qibla on the side button"
         case .watchApp: "Mark prayers and count zikr on your wrist"
-        case .watchFace: "The prayer's ring as a complication"
+        case .watchFace: "The prayer's ring on your watch face"
         case .siri: "Ask Siri to mark a prayer"
-        case .answer: "Mark it or snooze it from the notification"
+        case .answer: "Mark it prayed or snooze it, from the reminder"
         case .prayersMap: "Every prayer pinned where you prayed it"
         case .mosques: "The nearest first, with directions"
         case .jumuah: "Friday at a masjid counts as Jumu'ah"
@@ -130,21 +146,21 @@ extension ShowcaseCardID {
         case .sleep: "Saves your count if you drift off"
         case .tasbihFatimah: "33 · 33 · 34, offered after each prayer"
         case .goals: "A daily goal, and a streak for keeping it"
-        case .siriTimeLeft: "A card with the time left to pray"
+        case .siriTimeLeft: "The time left, with a ✓ to mark it"
         case .siriPrayerTime: "Any prayer's time, for your own shortcuts"
-        case .siriTodaysTimes: "A card with all five of today's times"
-        case .siriIPrayed: "Marks the prayer that's on, with a card"
+        case .siriTodaysTimes: "All five times, with what you've prayed"
+        case .siriIPrayed: "Marks the prayer that's on, with your score"
         case .siriFajrAlarm: "When your Fajr alarm rings next"
-        case .siriOpenPage: "Opens a page: Qibla, Zikr, Memories…"
+        case .siriOpenPage: "Straight to Qibla, Zikr, Memories…"
         case .siriTasbihFatimah: "Starts 33 · 33 · 34"
-        case .siriZikrTasks: "Your tasks in a card. Tap one to start it"
-        case .siriMosques: "The nearest mosques, on a map"
+        case .siriZikrTasks: "Your tasks in a card; tap one to start it"
+        case .siriMosques: "The nearest mosques on a map, with directions"
         case .siriPrayedHere: "How often you've prayed where you are"
-        case .ccPrayer: "Shows the prayer that's on and when it ends"
+        case .ccPrayer: "The prayer that's on and when it ends"
         case .ccPrayed: "Marks the prayer that's on, without opening shukr"
-        case .ccFajrAlarm: "Shows when your Fajr alarm rings; tap to turn it off"
-        case .ccQibla: "Opens the qibla map"
-        case .ccZikr: "Shows the zikr you have left today"
+        case .ccFajrAlarm: "When your Fajr alarm rings; tap to switch it"
+        case .ccQibla: "Opens the qibla map, from any app"
+        case .ccZikr: "The zikr you have left today"
         }
     }
 
@@ -363,7 +379,9 @@ struct ExploreGroupPage: View {
                     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(group.id.title).font(.system(.title2, design: .rounded, weight: .heavy))
+                    ExploreEyebrow(text: group.id.title)
+                    Text(group.id.headline).font(.system(.title2, design: .rounded, weight: .heavy))
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(group.id.lead).font(.system(.body, design: .rounded)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(group.found == 0 ? "None \(group.id.doneWord) yet" : group.status).font(.system(.subheadline, design: .rounded, weight: .semibold))
@@ -515,5 +533,13 @@ struct ExploreStoryPager: View {
     private func markOpened() {
         guard let current else { return }
         UserDefaults.standard.set(true, forKey: ExploreShowcase.openedKey(current))
+    }
+}
+
+/// A section's or an item's name, small and sage above its headline.
+struct ExploreEyebrow: View {
+    let text: String
+    var body: some View {
+        Text(text).font(.system(.subheadline, design: .rounded, weight: .semibold)).foregroundStyle(Color.sage)
     }
 }
