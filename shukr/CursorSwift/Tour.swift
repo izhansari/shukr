@@ -1814,7 +1814,7 @@ struct BubbleShape: Shape {
                 return p
             default:
                 shows.done = true
-                let marked = ticked.contains(2)
+                let marked = ticked.contains(2) && beat != 2   // its ✓ a beat first
                 let done = Double(ticked.intersection([0, 1, 2]).count)
                 guard marked else { return chapter(.circle, 1 + done, of: 4, [shows, tryIt], locked: lockedCircle) }
                 // Marked: only the payoff (owner: no "3 done" fold, no back) — small enough to sit above the circle, the
@@ -1895,9 +1895,20 @@ struct BubbleShape: Shape {
     /// One to-do done (the green ✓) — only if it isn't waiting on another — and the thing that changed glows.
     private func tick(_ i: Int, flash key: String? = nil) {
         guard step != nil, !page.locked.contains(i), !ticked.contains(i) else { return }
+        // In the top panel the ✓ stays a beat before what comes next replaces it (owner: "hold the ✓ a beat").
+        if page.atTop || TourTopPanel.Presence.shared.up {
+            beat = i
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.6))
+                if beat == i { withAnimation(.smooth(duration: 0.35)) { beat = nil } }
+            }
+        }
         withAnimation(.snappy(duration: 0.3)) { _ = ticked.insert(i) }
         if let key { glow(key) }
     }
+
+    /// The to-do just ticked, still shown with its ✓ for a beat (the page after it waits).
+    private(set) var beat: Int?
 
     /// The thing that changed glows once — then the glow is forgotten, so a bubble rebuilt later (a new chapter, a menu
     /// closing) never plays it again somewhere stale (owner: a false glow lingered at the end of chapter 3).
