@@ -104,6 +104,50 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
 
 /// A member's short name in its group's list.
 extension ShowcaseCardID {
+    /// What it does, one line under its name in the group's list.
+    var memberLine: String {
+        switch self {
+        case .homePrayers: "The prayer that's on, marked with a tap"
+        case .homeZikr: "Today's tasks and what's left"
+        case .homeName: "One of the 99 Names each day"
+        case .homeAyah: "The verse you revealed today"
+        case .standby: "Your ring, big and dim, while it charges"
+        case .lockTime: "Minutes left in a prayer's last hour"
+        case .lockCountdown: "A live countdown, and the next prayer"
+        case .lockName: "Today's Name, above the clock"
+        case .lockControls: "The qibla or your counter, one press away"
+        case .controlCenter: "shukr a swipe away"
+        case .actionButton: "The qibla on the side button"
+        case .watchApp: "Mark prayers and count zikr on your wrist"
+        case .watchFace: "The prayer's ring as a complication"
+        case .siri: "Ask Siri to mark a prayer"
+        case .answer: "Mark it or snooze it from the notification"
+        case .prayersMap: "Every prayer pinned where you prayed it"
+        case .mosques: "The nearest first, with directions"
+        case .jumuah: "Friday at a masjid counts as Jumu'ah"
+        case .memories: "A photo after each prayer"
+        case .insights: "Which prayer needs you most"
+        case .sleep: "Saves your count if you drift off"
+        case .tasbihFatimah: "33 · 33 · 34, offered after each prayer"
+        case .goals: "A daily goal, and a streak for keeping it"
+        case .siriTimeLeft: "A card with the time left to pray"
+        case .siriPrayerTime: "Any prayer's time, for your own shortcuts"
+        case .siriTodaysTimes: "A card with all five of today's times"
+        case .siriIPrayed: "Marks the prayer that's on, with a card"
+        case .siriFajrAlarm: "When your Fajr alarm rings next"
+        case .siriOpenPage: "Opens a page: Qibla, Zikr, Memories…"
+        case .siriTasbihFatimah: "Starts 33 · 33 · 34"
+        case .siriZikrTasks: "Your tasks in a card. Tap one to start it"
+        case .siriMosques: "The nearest mosques, on a map"
+        case .siriPrayedHere: "How often you've prayed where you are"
+        case .ccPrayer: "Shows the prayer that's on. Opens today's list"
+        case .ccPrayed: "Marks the prayer that's on, in one tap"
+        case .ccFajrAlarm: "Turns your Fajr alarm on or off"
+        case .ccQibla: "Opens the qibla map"
+        case .ccZikr: "Opens your zikr, and shows what's left"
+        }
+    }
+
     /// The Siri cards with buttons are iOS 26 only (decision shortcut-buttons-ios26 A): before 26 they aren't offered.
     var available: Bool {
         if #available(iOS 26.0, *) { return true }
@@ -329,7 +373,7 @@ struct ExploreGroupPage: View {
                 VStack(spacing: 0) {
                     ForEach(Array(group.members.enumerated()), id: \.element.id) { i, member in
                         if i > 0 { Divider().padding(.leading, 76) }
-                        NavigationLink { ShowcaseStoryPage(card: member) } label: { row(member) }
+                        NavigationLink { ExploreStoryPager(group: group, start: i) } label: { row(member) }
                             .buttonStyle(.plain)
                     }
                 }
@@ -342,7 +386,9 @@ struct ExploreGroupPage: View {
         .fontDesign(.rounded)
         #if DEBUG
         .task { demoMember = demoMemberCard != nil }
-        .navigationDestination(isPresented: $demoMember) { if let c = demoMemberCard { ShowcaseStoryPage(card: c) } }
+        .navigationDestination(isPresented: $demoMember) {
+            if let c = demoMemberCard, let i = group.members.firstIndex(of: c) { ExploreStoryPager(group: group, start: i) }
+        }
         #endif
     }
 
@@ -359,11 +405,20 @@ struct ExploreGroupPage: View {
                 .scaleEffect(0.42)
                 .frame(width: 52, height: 52)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            // What it does, in a line (owner: "Today's Prayers" here and "Today's Times" in Shortcuts weren't clear from the
+            // names; "See how" / "Tried" said nothing — the ✓ on the right says that).
             VStack(alignment: .leading, spacing: 2) {
-                Text(member.id.memberName).font(.system(.body, design: .rounded))
-                Text(member.using ? (group.id.doneWord == "added" ? "Added" : "Tried") : member.isNew ? "New · see how" : "See how")
+                HStack(spacing: 6) {
+                    Text(member.id.memberName).font(.system(.body, design: .rounded))
+                    if member.isNew {
+                        Text("New").font(.system(.caption2, design: .rounded, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Color.sage))
+                    }
+                }
+                Text(member.id.memberLine)
                     .font(.system(.footnote, design: .rounded))
-                    .foregroundStyle(member.using ? Color.secondary : Color.sage)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             Image(systemName: member.using ? "checkmark.circle.fill" : "circle")
@@ -372,5 +427,54 @@ struct ExploreGroupPage: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - A group's members, one after another
+
+/// A group's stories as pages (owner, decision explore-story-next D): swipe to the next, or tap its card at the foot.
+struct ExploreStoryPager: View {
+    let group: ExploreGroup
+    @State private var index: Int
+    @Environment(\.dismiss) private var dismiss
+
+    init(group: ExploreGroup, start: Int) {
+        self.group = group
+        _index = State(initialValue: start)
+    }
+
+    var body: some View {
+        let members = group.members
+        TabView(selection: $index) {
+            ForEach(Array(members.enumerated()), id: \.element.id) { i, member in
+                ShowcaseStoryPage(card: member, next: i + 1 < members.count ? members[i + 1] : nil, backTitle: group.id.title,
+                                  onNext: {
+                                      if i + 1 < members.count { withAnimation(.snappy(duration: 0.35)) { index = i + 1 } }
+                                      else { dismiss() }
+                                  },
+                                  marksOpened: false)
+                    .tag(i)
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if members.count > 1 {
+                ToolbarItem(placement: .principal) {
+                    Text("\(index + 1) of \(members.count)")
+                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .onAppear { markOpened(index) }
+        .onChange(of: index) { _, i in markOpened(i) }
+    }
+
+    private func markOpened(_ i: Int) {
+        guard group.members.indices.contains(i) else { return }
+        UserDefaults.standard.set(true, forKey: ExploreShowcase.openedKey(group.members[i].id))
     }
 }
