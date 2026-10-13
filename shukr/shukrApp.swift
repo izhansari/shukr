@@ -227,6 +227,9 @@ struct shukrApp: App {
         // the card's ✓ marked nothing and nothing planned — Frank's audit). Called directly, not in a Task: a cold launch
         // from the card's ✓ runs the intent right after, and its hooks must be set by then (Frank).
         PrayerLiveActivities.onLaunch()
+        // Siri's phrases and the tiles' options, registered again each launch (his phone answered "Fajr time" with the
+        // old Fajr Time action after the tiles changed).
+        PrayerTimeShortcuts.updateAppShortcutParameters()
         #if DEBUG
         IntentSelfTest.runIfAsked()   // `-intentSelfTest`
         #endif

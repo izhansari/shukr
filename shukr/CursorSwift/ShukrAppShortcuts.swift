@@ -22,14 +22,13 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: GetPrayerTimeIntent(),
             phrases: [
+                // "the next prayer" / "the current prayer" are the choices' synonyms: a phrase without the choice ran
+                // Relevant, and answered "Asr isn't marked yet" to "next prayer" (review).
                 "\(\.$which) time in \(.applicationName)",
-                "\(\.$which) time from \(.applicationName)",
-                "When is \(\.$which) in \(.applicationName)",
                 "\(\.$which) prayer time in \(.applicationName)",
-                "Next prayer in \(.applicationName)",
-                "What's the next prayer in \(.applicationName)",
-                "When is the next prayer in \(.applicationName)",
-                "Prayer time in \(.applicationName)"
+                "When is \(\.$which) in \(.applicationName)",
+                "What's \(\.$which) in \(.applicationName)",
+                "\(\.$which) in \(.applicationName)"
             ],
             shortTitle: "Prayer Time",
             systemImageName: "clock",
@@ -47,9 +46,11 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: PrayerTimeLeftIntent(),
             phrases: [
+                // Not "Time left in …": Siri asked "shukr or Home?" on his phone.
                 "How long is left in \(.applicationName)",
                 "How much time is left in \(.applicationName)",
-                "Time left in \(.applicationName)"
+                "How long is left to pray in \(.applicationName)",
+                "Prayer time left in \(.applicationName)"
             ],
             shortTitle: "Time Left",
             systemImageName: "hourglass"
@@ -91,12 +92,13 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             intent: FindNearbyMosquesIntent(),
             phrases: [
                 "Nearby mosques in \(.applicationName)",
+                "Open nearby mosques in \(.applicationName)",
                 "Find nearby mosques in \(.applicationName)",
                 "Find a mosque in \(.applicationName)",
                 "Mosques near me in \(.applicationName)",
                 "Find a masjid in \(.applicationName)"
             ],
-            shortTitle: "Nearby Mosques",
+            shortTitle: "Open Nearby Mosques",
             systemImageName: "building.columns"
         )
 
@@ -140,16 +142,17 @@ enum IntentSelfTest {
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             func line(_ r: Any) -> String { String(describing: r).replacingOccurrences(of: "\n", with: " ") }
+            func log(_ s: String) { NSLog("%@", "INTENTTEST " + s) }   // never as the format: answers hold "%"
             for pick in PrayerPick.allCases {
                 var i = GetPrayerTimeIntent(); i.which = pick; i.minutes = 0; i.side = .before
-                do { NSLog("INTENTTEST Prayer Time \(pick.rawValue): \(line(try await i.perform()))") }
-                catch { NSLog("INTENTTEST Prayer Time \(pick.rawValue): threw \(error)") }
+                do { log("Prayer Time \(pick.rawValue): \(line(try await i.perform()))") }
+                catch { log("Prayer Time \(pick.rawValue): threw \(error)") }
             }
             var off = GetPrayerTimeIntent(); off.which = .maghrib; off.minutes = 15; off.side = .before
-            NSLog("INTENTTEST Prayer Time maghrib -15: \((try? await off.perform()).map(line) ?? "threw")")
-            NSLog("INTENTTEST Time Left: \((try? await PrayerTimeLeftIntent().perform()).map(line) ?? "threw")")
-            NSLog("INTENTTEST Today: \((try? await GetTodaysPrayerTimesIntent().perform()).map(line) ?? "threw")")
-            NSLog("INTENTTEST Fajr alarm: \((try? await FajrAlarmTimeIntent().perform()).map(line) ?? "threw")")
+            log("Prayer Time maghrib -15: \((try? await off.perform()).map(line) ?? "threw")")
+            log("Time Left: \((try? await PrayerTimeLeftIntent().perform()).map(line) ?? "threw")")
+            log("Today: \((try? await GetTodaysPrayerTimesIntent().perform()).map(line) ?? "threw")")
+            log("Fajr alarm: \((try? await FajrAlarmTimeIntent().perform()).map(line) ?? "threw")")
         }
     }
 }

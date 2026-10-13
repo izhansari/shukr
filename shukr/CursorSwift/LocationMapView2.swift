@@ -963,12 +963,12 @@ struct LocationMapContentView: View {
     private var mosqueIcon: MosqueIconStyle { MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder }
 
     /// Qibla (both off), prayers or mosques — one at a time.
-    /// A layer asked for from outside (Find Nearby Mosques): once, after the map has settled on the dot.
+    /// A layer asked for from outside (Open Nearby Mosques, or Open qibla over an open map): once, after the map has settled on the dot.
     private func openRequestedLayer(after seconds: Double) async {
-        guard MapOpenRequest.mosques else { return }
-        MapOpenRequest.mosques = false
+        guard let layer = MapOpenRequest.layer else { return }
+        MapOpenRequest.layer = nil
         if seconds > 0 { try? await Task.sleep(for: .seconds(seconds)) }
-        setMode(prayers: false, mosques: true)
+        setMode(prayers: false, mosques: layer == .mosques)
     }
 
     private func setMode(prayers: Bool, mosques: Bool) {
@@ -2627,6 +2627,7 @@ struct PrayerSpotsVerse: View {
 /// The map opened from outside on a layer (Find Nearby Mosques): PrayerTimesView sets it before showing the map; the map
 /// takes it once. `changed` when the map is already up.
 @MainActor enum MapOpenRequest {
-    static var mosques = false
+    enum Layer { case qibla, mosques }
+    static var layer: Layer?
     static let changed = Notification.Name("MapOpenRequest.changed")
 }

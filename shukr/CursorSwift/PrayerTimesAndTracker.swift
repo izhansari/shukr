@@ -232,24 +232,20 @@ struct PrayerTimesView: View {
                 }
             }
 
-            if openMosques {
-                MapOpenRequest.mosques = true
+            if openMosques || openCompassFromWidget {
                 if showQiblaMap {
-                    NotificationCenter.default.post(name: MapOpenRequest.changed, object: nil)   // already open: switch
+                    // Already open (on another layer, say): switch it — "Open qibla" left it on the mosques (review).
+                    MapOpenRequest.layer = openMosques ? .mosques : .qibla
+                    NotificationCenter.default.post(name: MapOpenRequest.changed, object: nil)
                 } else {
                     openFromWidget {
+                        // Set only once it really opens (an open skipped under a tasbeeh session left it waiting for the
+                        // next time the map was opened by hand — review). The qibla is the map's own first layer.
+                        MapOpenRequest.layer = openMosques ? .mosques : nil
                         instantly {
                             sharedState.navPosition = .main
                             showQiblaMap = true
                         }
-                    }
-                }
-            }
-            else if openCompassFromWidget, !showQiblaMap {
-                openFromWidget {
-                    instantly {
-                        sharedState.navPosition = .main
-                        showQiblaMap = true
                     }
                 }
             }

@@ -223,3 +223,71 @@ final class LiveActivityUITests: XCTestCase {
 
 
 }
+
+/// shukr's Shortcuts tiles and Siri phrases on a real phone (a simulator build can't run App Shortcuts: unsigned).
+/// Never runs "I Prayed" — it would mark a real prayer. Screenshots are kept in the result bundle.
+final class ShortcutsOnDeviceTests: XCTestCase {
+    private let shortcuts = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
+
+    private func shot(_ name: String) {
+        let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        a.name = name
+        a.lifetime = .keepAlways
+        add(a)
+    }
+
+    private func tree(_ name: String) {
+        let a = XCTAttachment(string: shortcuts.debugDescription)
+        a.name = name
+        a.lifetime = .keepAlways
+        add(a)
+    }
+
+    /// The shukr page in the Shortcuts app's Library.
+    private func openShukrPage() {
+        shortcuts.terminate()
+        shortcuts.launch()
+        sleep(3)
+        let library = shortcuts.buttons["Library"]
+        if library.exists { library.tap(); sleep(1) }
+        // Back to the top of the Library.
+        for _ in 0..<3 where shortcuts.navigationBars.buttons.firstMatch.exists && !shortcuts.staticTexts["All Shortcuts"].exists {
+            shortcuts.navigationBars.buttons.firstMatch.tap(); sleep(1)
+        }
+        // The Library lists apps as buttons, built as they scroll in; shukr is near the end.
+        let row = shortcuts.buttons["shukr"].firstMatch
+        for _ in 0..<14 where !(row.exists && row.isHittable) { shortcuts.swipeUp(velocity: .fast) }
+        if row.exists { row.tap(); sleep(2) }
+    }
+
+    func testTilesAndSiri() throws {
+        continueAfterFailure = true
+        openShukrPage()
+        shot("01-shukr-page")
+        tree("01-tree")
+
+        // Each tile but I Prayed: run it, keep what it shows.
+        for (i, title) in ["Prayer Time", "Time Left", "Today's Times", "Fajr Alarm Time", "Open Nearby Mosques",
+                           "Open shukr", "Open Tasbih Fatimah"].enumerated() {
+            openShukrPage()
+            let tile = shortcuts.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
+            guard tile.waitForExistence(timeout: 3) else { shot(String(format: "%02d-missing-%@", i + 10, title)); continue }
+            tile.tap()
+            sleep(5)
+            shot(String(format: "%02d-%@", i + 10, title))
+        }
+
+        // Siri, typed in.
+        // "Open qibla" right after "Nearby mosques": the open map must switch back to the qibla.
+        for (i, phrase) in ["Fajr time in shukr", "Next prayer in shukr", "How long is left in shukr", "Today's prayer times in shukr",
+                            "15 minutes before Maghrib in shukr", "Nearby mosques in shukr", "Open qibla in shukr",
+                            "Open memories in shukr"].enumerated() {
+            XCUIDevice.shared.press(.home)
+            sleep(1)
+            XCUIDevice.shared.siriService.activate(voiceRecognitionText: phrase)
+            sleep(7)
+            shot(String(format: "%02d-siri-%@", i + 30, phrase))
+        }
+        XCUIDevice.shared.press(.home)
+    }
+}

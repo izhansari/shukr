@@ -1454,15 +1454,18 @@ enum PrayerPick: String, AppEnum {
     static var caseDisplayRepresentations: [PrayerPick: DisplayRepresentation] = [
         .relevant: DisplayRepresentation(title: "Relevant", subtitle: "What shukr's circle shows: the one to pray now, next, or one you missed",
                                          image: .init(systemName: "scope")),
-        .current: DisplayRepresentation(title: "Current", subtitle: "The prayer whose time it is now, prayed or not", image: .init(systemName: "clock")),
-        .previous: DisplayRepresentation(title: "Previous", subtitle: "The one before it", image: .init(systemName: "arrow.uturn.backward")),
-        .next: DisplayRepresentation(title: "Next", subtitle: "The next to start", image: .init(systemName: "arrow.forward")),
+        .current: DisplayRepresentation(title: "Current", subtitle: "The prayer whose time it is now, prayed or not", image: .init(systemName: "clock"),
+                                        synonyms: ["current prayer", "the current prayer", "this prayer"]),
+        .previous: DisplayRepresentation(title: "Previous", subtitle: "The one before it", image: .init(systemName: "arrow.uturn.backward"),
+                                         synonyms: ["previous prayer", "the previous prayer", "the last prayer"]),
+        .next: DisplayRepresentation(title: "Next", subtitle: "The next to start", image: .init(systemName: "arrow.forward"),
+                                     synonyms: ["next prayer", "the next prayer"]),
         // The five by name (owner: one Prayer Time in place of Fajr Time / Chosen Prayer): today's, or the next once over.
-        .fajr: DisplayRepresentation(title: "Fajr", image: .init(systemName: prayerIcon(for: "Fajr"))),
-        .dhuhr: DisplayRepresentation(title: "Dhuhr", image: .init(systemName: prayerIcon(for: "Dhuhr"))),
-        .asr: DisplayRepresentation(title: "Asr", image: .init(systemName: prayerIcon(for: "Asr"))),
-        .maghrib: DisplayRepresentation(title: "Maghrib", image: .init(systemName: prayerIcon(for: "Maghrib"))),
-        .isha: DisplayRepresentation(title: "Isha", image: .init(systemName: prayerIcon(for: "Isha"))),
+        .fajr: DisplayRepresentation(title: "Fajr", image: .init(systemName: prayerIcon(for: "Fajr").replacingOccurrences(of: ".fill", with: ""))),
+        .dhuhr: DisplayRepresentation(title: "Dhuhr", image: .init(systemName: prayerIcon(for: "Dhuhr").replacingOccurrences(of: ".fill", with: ""))),
+        .asr: DisplayRepresentation(title: "Asr", image: .init(systemName: prayerIcon(for: "Asr").replacingOccurrences(of: ".fill", with: ""))),
+        .maghrib: DisplayRepresentation(title: "Maghrib", image: .init(systemName: prayerIcon(for: "Maghrib").replacingOccurrences(of: ".fill", with: ""))),
+        .isha: DisplayRepresentation(title: "Isha", image: .init(systemName: prayerIcon(for: "Isha").replacingOccurrences(of: ".fill", with: ""))),
     ]
     /// The prayer's name for the five; nil for relevant / current / previous / next.
     var prayerName: String? {
@@ -1554,7 +1557,8 @@ struct GetPrayerTimeIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Prayer Time"
     static var description = IntentDescription(
         "The relevant, current, previous or next prayer — or Fajr, Dhuhr, Asr, Maghrib or Isha — and its start time, or a time some minutes before or after it (Show More). Relevant is what shukr's circle shows: the prayer to pray now, the next one, or one you missed.",
-        categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "fajr", "dhuhr", "asr", "maghrib", "isha", "offset", "next prayer"])
+        categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "fajr", "dhuhr", "asr", "maghrib", "isha", "offset", "next prayer"],
+        resultValueName: "Prayer Time")
 
     @Parameter(title: "Which prayer", description: "Relevant, current, previous, next, or one of the five.", default: .relevant) var which: PrayerPick
     /// Under Show More (was its own "Offset" action): a time some minutes before or after the prayer starts.
@@ -1571,29 +1575,44 @@ struct GetPrayerTimeIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
         let now = Date()
+        let shift = TimeInterval(minutes * 60) * (side == .before ? -1 : 1)
+        if minutes > 0 {
+            // A time some minutes before / after the prayer: the next one that's still ahead (as the Offset action did —
+            // "15 min before Maghrib" asked during Maghrib is tomorrow's), else the picked one as it is.
+            let all = PrayerWindows.around(now)
+            let w = which.prayerName.flatMap { name in all.first { $0.name == name && $0.start.addingTimeInterval(shift) > now } }
+                ?? PrayerWindows.pick(which) ?? PrayerWindows.pick(.next)
+            guard let w else { throw PrayerTimeUnavailable() }
+            let t = w.start.addingTimeInterval(shift)
+            return .result(value: t, dialog: "\(minutes) minutes \(side == .before ? "before" : "after") \(w.name)\(Self.day(w.start)) is \(shortTimePM(t)) (\(w.name) at \(shortTimePM(w.start))).")
+        }
         guard let w = PrayerWindows.pick(which) else {
             if which == .current, let n = PrayerWindows.pick(.next) {
-                return .result(value: n.start, dialog: "No prayer is on right now. \(n.name) starts at \(shortTimePM(n.start)).")
+                return .result(value: n.start, dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).")
             }
             throw PrayerTimeUnavailable()
         }
         let on = w.start <= now && now < w.end
-        if minutes > 0 {
-            let t = w.start.addingTimeInterval(TimeInterval(minutes * 60) * (side == .before ? -1 : 1))
-            return .result(value: t, dialog: "\(minutes) min \(side == .before ? "before" : "after") \(w.name) is \(shortTimePM(t)).")
-        }
         let line: IntentDialog = switch which {
         case .current: "It's \(w.name), from \(shortTimePM(w.start)) to \(shortTimePM(w.end))."
-        case .previous: "The previous prayer was \(w.name), at \(shortTimePM(w.start))."
-        case .next: "The next prayer is \(w.name), at \(shortTimePM(w.start))."
+        case .previous: "The previous prayer was \(w.name)\(Self.day(w.start)), at \(shortTimePM(w.start))."
+        case .next: "The next prayer is \(w.name)\(Self.day(w.start)), at \(shortTimePM(w.start))."
         case .fajr, .dhuhr, .asr, .maghrib, .isha:
-            on ? "\(w.name) is on now, until \(shortTimePM(w.end))." : "\(w.name) is at \(shortTimePM(w.start))."
+            on ? "\(w.name) is on now, until \(shortTimePM(w.end))." : "\(w.name)\(Self.day(w.start)) is at \(shortTimePM(w.start))."
         case .relevant:
             on ? "\(w.name) is on now, until \(shortTimePM(w.end))."
             : w.end <= now ? "\(w.name) isn't marked yet. Its time ended at \(shortTimePM(w.end))."
             : "\(w.name) is next, at \(shortTimePM(w.start))."
         }
         return .result(value: w.start, dialog: line)
+    }
+
+    /// " tomorrow" / " yesterday" when the prayer isn't on today's prayer day (Fajr tomorrow, Isha last night).
+    static func day(_ start: Date) -> String {
+        let cal = Calendar.current
+        let today = PrayerDay.date()
+        if cal.isDate(start, inSameDayAs: today) { return "" }
+        return start > today ? " tomorrow" : " yesterday"
     }
 }
 
@@ -1602,7 +1621,7 @@ struct GetTodaysPrayerTimesIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Today's Prayer Times"
     static var description = IntentDescription(
         "Today's five prayer times with your method and madhab, as a list: what's passed (✓ when you marked it), what's on now, what's to come.",
-        categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "schedule", "timetable", "today"])
+        categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "schedule", "timetable", "today"], resultValueName: "Prayer Times")
 
     func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog {
         let now = Date()
@@ -1623,6 +1642,9 @@ struct GetTodaysPrayerTimesIntent: AppIntent {
     }
 }
 
+/// The same words wherever no prayer's time is on (Sunrise to Dhuhr).
+let noPrayerOnLine = "No prayer is on right now."
+
 struct PrayerTimeUnavailable: Error, CustomLocalizedStringResourceConvertible {
     var localizedStringResource: LocalizedStringResource { "Open shukr once so it knows where you are." }
 }
@@ -1634,23 +1656,36 @@ struct PrayerTimeUnavailable: Error, CustomLocalizedStringResourceConvertible {
 struct FajrAlarmTimeIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Fajr Alarm Time"   // was "Autopilot …" (owner: verb first, no jargon)
     static var description = IntentDescription("The next time your Fajr alarm rule gives — e.g. 20 minutes before Fajr starts — from Settings → Reminders → Fajr Alarm, whether or not the alarm is on. Use it in any shortcut: lights, music, a Focus.",
-                                               categoryName: "Fajr Alarm", searchKeywords: ["wake", "alarm", "fajr", "morning"])
+                                               categoryName: "Fajr Alarm", searchKeywords: ["wake", "alarm", "fajr", "morning"],
+                                               resultValueName: "Fajr Alarm Time")
 
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
-        let calc = try PrayerUtils.calculateAlarmDescription(ignoringSwitch: true)
-        FajrAlarmLog.add("Shortcut asked the rule's time: \(FajrAlarmLog.day(calc.time))")
+        guard let calc = try? PrayerUtils.calculateAlarmDescription(ignoringSwitch: true) else { throw PrayerTimeUnavailable() }
+        var time = calc.time
+        // Between the alarm and Fajr the rule's time today has passed: the next day's, worked out from that day's Fajr.
+        if time <= Date(), let g = UserDefaults(suiteName: SharedStore.appGroup),
+           let coords = try? PrayerUtils.getUserCoordinates(),
+           let day = Calendar.current.date(byAdding: .day, value: 1, to: time),
+           let times = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: PrayerUtils.getCalculationParameters()) {
+            let isFajr = g.object(forKey: "alarmIsFajr") as? Bool ?? true
+            let ref = PrayerUtils.getTime(for: isFajr ? .fajr : .sunrise, in: times)
+            let offset = TimeInterval(g.integer(forKey: "alarmOffsetMinutes") * 60)
+            time = ref.addingTimeInterval((g.object(forKey: "alarmIsBefore") as? Bool ?? true) ? -offset : offset)
+        }
+        FajrAlarmLog.add("Shortcut asked the rule's time: \(FajrAlarmLog.day(time))")
         // Say when it's off: the time is the rule's either way (an automation can still use it).
         let on = UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: "alarmEnabled") == true
-        return .result(value: calc.time, dialog: on ? "Your Fajr alarm is at \(shortTimePM(calc.time))."
-                                                    : "Your Fajr alarm rule gives \(shortTimePM(calc.time)), but the alarm is off.")
+        return .result(value: time, dialog: on ? "Your Fajr alarm is at \(shortTimePM(time))."
+                                               : "Your Fajr alarm rule gives \(shortTimePM(time)), but the alarm is off.")
     }
 }
 
 /// "Should a Shortcut Set the Fajr Alarm?": true only when the Daily alarm is on and shukr isn't setting it itself
 /// (iOS 26.1+). shukr's Clock-alarm Shortcut checks this first, so there's never a second alarm.
 struct FajrAlarmShortcutCheckIntent: AppIntent {
-    static var title: LocalizedStringResource = "Should a Shortcut Set the Fajr Alarm?"
-    static var description = IntentDescription("Yes when your Daily Fajr alarm is on and shukr isn't already setting it itself. Check it before making a Clock alarm, so you never get two.")
+    static var title: LocalizedStringResource = "Check Fajr Alarm Shortcut"   // verb first (was a question)
+    static var description = IntentDescription("Yes when your Daily Fajr alarm is on and shukr isn't already setting it itself. Check it before making a Clock alarm, so you never get two.",
+                                               categoryName: "Fajr Alarm", searchKeywords: ["alarm", "clock", "fajr"], resultValueName: "Should Set")
 
     func perform() async throws -> some IntentResult & ReturnsValue<Bool> {
         let g = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
@@ -1704,7 +1739,7 @@ struct PrayerTimeLeftIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Time Left"
     static var description = IntentDescription(
         "Minutes left in the prayer whose time it is now — whether or not you've prayed it. Between Sunrise and Dhuhr, minutes until Dhuhr. Passes the minutes on.",
-        categoryName: "Prayer Times", searchKeywords: ["salah", "how long", "remaining", "ends"])
+        categoryName: "Prayer Times", searchKeywords: ["salah", "how long", "remaining", "ends"], resultValueName: "Minutes Left")
 
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog {
         let now = Date()
@@ -1714,7 +1749,7 @@ struct PrayerTimeLeftIntent: AppIntent {
         }
         guard let n = PrayerWindows.pick(.next) else { throw PrayerTimeUnavailable() }
         let mins = max(1, Int((n.start.timeIntervalSince(now) / 60).rounded(.up)))
-        return .result(value: mins, dialog: "No prayer's time is on right now. \(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))).")
+        return .result(value: mins, dialog: "\(noPrayerOnLine) \(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))).")
     }
 }
 
@@ -1723,13 +1758,14 @@ struct PrayerTimeLeftIntent: AppIntent {
 struct MarkCurrentPrayerIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Mark Prayer as Prayed"
     static var description = IntentDescription("Marks the prayer whose time it is now as prayed, scored like in shukr. Passes the grade on (Perfect, On time, Late).",
-                                               categoryName: "Prayers", searchKeywords: ["salah", "namaz", "prayed", "mark", "done"])
+                                               categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "prayed", "mark", "done"],
+                                               resultValueName: "Grade")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
         guard let c = PrayerWindows.pick(.current) else {
             if let n = PrayerWindows.pick(.next) {
-                return .result(value: "", dialog: "No prayer's time is on right now. \(n.name) starts at \(shortTimePM(n.start)).")
+                return .result(value: "", dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).")
             }
             throw PrayerTimeUnavailable()
         }
@@ -1854,9 +1890,9 @@ struct OpenShukrIntent: AppIntent {
 /// opens on the map with its mosques — the pins and the list in the sheet.
 struct FindNearbyMosquesIntent: AppIntent {
     static let flag = "widgetMosques"
-    static var title: LocalizedStringResource = "Find Nearby Mosques"
+    static var title: LocalizedStringResource = "Open Nearby Mosques"   // it opens shukr, so it says Open (owner)
     static var description = IntentDescription("Opens shukr's map on the mosques near you: their pins, and the nearest in a list.",
-                                               categoryName: "Mosques", searchKeywords: ["masjid", "mosque", "near me", "jumuah", "map"])
+                                               categoryName: "Open shukr", searchKeywords: ["masjid", "mosque", "near me", "find", "jumuah", "map"])
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
