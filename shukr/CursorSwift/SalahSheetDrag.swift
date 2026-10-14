@@ -33,24 +33,37 @@ enum SalahSheetDrag {
         withTransaction(quiet) { state.navPosition = .main }
     }
     @MainActor private static var quietNext = false
-    /// The ☰ menu. A swipe that starts while it's up (and so closes it) must not move the sheet (owner, 2026-10-14).
-    /// Nothing else is ever ignored: no time window after the close — the menu reports closed a moment after it has
-    /// gone from the screen, and a window counted from then ate his next quick swipe (twice: 0.6 s, then 0.5 s).
+    /// The ☰ menu. The ONE swipe that closes it must not move the sheet (owner, 2026-10-14); nothing else is ever
+    /// ignored. That swipe marks the menu closed at its first move — iOS reports the close only once the fade has
+    /// finished (~0.4 s), and a quick next swipe in that time was ignored too (owner: "if I wait like half a second").
+    /// No time windows (0.6 s and 0.5 s ones both ate his next swipe).
     @MainActor private static var open = false
-    /// A swipe up already buzzed for this close.
-    @MainActor private static var closeBuzzed = false
     @MainActor static func menuChanged(open isOpen: Bool, byRow: Bool) {
+        // Closed by a touch outside it with no swipe having taken it: the light buzz the pull down opened it with.
+        if !isOpen && open && !byRow { triggerSomeVibration(type: .light) }
         open = isOpen
-        // Closed by a swipe or a touch outside it: the same light buzz the pull down opened it with (owner) — once.
-        if !isOpen && !byRow && !closeBuzzed { triggerSomeVibration(type: .light) }
-        closeBuzzed = false
+        log(isOpen ? "menu opened" : "menu closed (iOS)\(byRow ? " by a row" : "")")
     }
-    /// Asked once per drag, at its first move: is this the swipe that closes the menu?
+    /// Asked once per drag, at its first move: is this the swipe that closes the menu? Only the first one is.
     @MainActor static func dragClosesMenu(up: Bool) -> Bool {
-        guard open else { return false }
-        if up && !closeBuzzed { closeBuzzed = true; triggerSomeVibration(type: .light) }
+        guard open else { log("drag \(up ? "up" : "down/side") → moves"); return false }
+        open = false   // taken: the next swipe moves, whatever iOS says for the next ~0.4 s
+        triggerSomeVibration(type: .light)
+        log("drag \(up ? "up" : "down/side") → closes ☰ (ignored)")
         return true
     }
+
+    /// DEBUG: the ☰ / swipe story in Library/Caches/listdrag-frames.log, with ms since launch.
+    @MainActor static func log(_ line: String) {
+        #if DEBUG
+        let ms = Int((ProcessInfo.processInfo.systemUptime - launchUptime) * 1000)
+        let text = "\(ms) ms · \(line)\n"
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "listdrag-frames.log")
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() }
+        else { try? Data(text.utf8).write(to: url) }
+        #endif
+    }
+    private static let launchUptime = ProcessInfo.processInfo.systemUptime
 
     /// Whether the move the sheet is about to make was asked for quietly (once).
     @MainActor static func takeQuiet() -> Bool {
