@@ -86,6 +86,8 @@ enum ZikrMockFlag {
     var paused: Set<UUID> = []
     var seededPause = false
     var historyQuery = ""
+    /// `-zikrMock history-select`: History opens in select mode with its first day picked (a screenshot).
+    var startSelecting = false
 }
 
 struct ZikrMockHost: ViewModifier {
@@ -122,7 +124,7 @@ private struct ZikrMockRoot: View {
     @Query private var zikrs: [MantraModel]
     @State private var path: [Route] = []
     @State private var started = false
-    private enum Route: Hashable { case zikr(MantraModel), history(PersistentIdentifier?) }
+    private enum Route: Hashable { case zikr(MantraModel), history(PersistentIdentifier?), goal(TaskModel) }
     private var mainZikr: MantraModel? { zikrs.max(by: { $0.tasks.count < $1.tasks.count }) }
     var body: some View {
         NavigationStack(path: $path) {
@@ -131,6 +133,7 @@ private struct ZikrMockRoot: View {
                     switch route {
                     case .zikr(let z): MockZikrPage(zikr: z)
                     case .history(let id): MockHistoryPage(filter: id)
+                    case .goal(let t): MockGoalPage(task: t)
                     }
                 }
         }
@@ -144,6 +147,8 @@ private struct ZikrMockRoot: View {
             case "zikr", "zikr-card": path = [.zikr(z)]
             case "history": path = [.history(nil)]
             case "history-zikr": path = [.history(z.persistentModelID)]
+            case "history-select": ZikrMockState.shared.startSelecting = true; path = [.history(nil)]
+            case "goal": if let t = z.tasks.sorted(by: { $0.sortOrder < $1.sortOrder }).first { path = [.goal(t)] }
             case "tour": await tour(z)
             default: break
             }
@@ -572,7 +577,7 @@ private struct DayRows: View {
     var body: some View {
         ForEach(days, id: \.key) { day in
             Section {
-                SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(day.items)).bareRow(top: 16, bottom: 6)
+                dayHeader(day).bareRow(top: 16, bottom: 6)
                 ForEach(Array(day.items.enumerated()), id: \.element.id) { i, s in
                     let first = i == 0, last = i == day.items.count - 1
                     let row = SessionRow(session: s, showsMantraName: showsName, tappable: tappable,
@@ -581,7 +586,18 @@ private struct DayRows: View {
                                          rowBackground: AnyView(DayPiece(first: first, last: last)), quiet: true)
                     Group {
                         if let selection, !tappable {
-                            SelectableRow(selected: selection, id: s.persistentModelID) { row }
+                            // Select mode: the row stays in its day's card, a sage circle leads it, a tap picks it.
+                            let on = selection.wrappedValue.contains(s.persistentModelID)
+                            HStack(spacing: 12) {
+                                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                                    .font(.title3).foregroundStyle(on ? Color.sage : Color(.tertiaryLabel))
+                                row
+                            }
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                triggerSomeVibration(type: .light)
+                                if on { selection.wrappedValue.remove(s.persistentModelID) } else { selection.wrappedValue.insert(s.persistentModelID) }
+                            }
                         } else {
                             row
                         }
@@ -589,9 +605,30 @@ private struct DayRows: View {
                     .modifier(ZoomSource(id: "s-\(s.id)", zoom: zoom))
                     .listRowInsets(EdgeInsets(top: first ? 14 : 10, leading: 32, bottom: last ? 14 : 10, trailing: 32))
                     .listRowSeparator(.hidden)
+                    .listRowBackground(DayPiece(first: first, last: last))
                 }
             }
             .listSectionSeparator(.hidden)
+        }
+    }
+
+    /// The day, its time and count — in select mode, "Select day" / "Deselect day" instead (picks all of that day).
+    @ViewBuilder private func dayHeader(_ day: (key: String, date: Date, items: [SessionDataModel])) -> some View {
+        if let selection, !tappable {
+            let ids = Set(day.items.map(\.persistentModelID))
+            let all = ids.isSubset(of: selection.wrappedValue)
+            HStack {
+                Text(MockFmt.day(day.date).uppercased()).font(.caption.weight(.medium)).tracking(1.2).foregroundStyle(.secondary)
+                Spacer()
+                Button(all ? "Deselect day" : "Select day") {
+                    triggerSomeVibration(type: .light)
+                    if all { selection.wrappedValue.subtract(ids) } else { selection.wrappedValue.formUnion(ids) }
+                }
+                .font(.caption.weight(.medium)).foregroundStyle(Color.sage).buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 16).padding(.top, 8)
+        } else {
+            SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(day.items))
         }
     }
 }
@@ -1303,10 +1340,18 @@ private struct MockHistoryPage: View {
         let story = MonthStory(base)
         List {
             Section {
-                Soft.title(active.map { $0.title } ?? "History",
-                           "\(MockFmt.count(base.count)) sessions · \(MockFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted, all time")
-                    .bareRow(top: 0)
-                if state.historyQuery.isEmpty { hero(story).bareRow(top: 8, bottom: 4) }
+                if selecting {
+                    // Select mode is its own moment: the hero folds away, the title says what you're doing.
+                    let picked = shown.filter { selection.contains($0.persistentModelID) }
+                    Soft.title("Select sessions", picked.isEmpty ? "Tap sessions, or a day to pick all of it"
+                               : "\(picked.count) selected · \(MockFmt.count(picked.reduce(0) { $0 + $1.totalCount })) counted")
+                        .bareRow(top: 0)
+                } else {
+                    Soft.title(active.map { $0.title } ?? "History",
+                               "\(MockFmt.count(base.count)) sessions · \(MockFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted, all time")
+                        .bareRow(top: 0)
+                    if state.historyQuery.isEmpty { hero(story).bareRow(top: 8, bottom: 4) }
+                }
             }
             DayRows(days: byDay(Array(shown.prefix(150))), tappable: !selecting,
                     selection: $selection, zoom: zoom,
@@ -1323,7 +1368,8 @@ private struct MockHistoryPage: View {
             HStack(spacing: 10) {
                 if selecting {
                     Button(role: .destructive) { confirmDelete = true } label: {
-                        Text(selection.isEmpty ? "Delete" : "Delete (\(selection.count))")
+                        Text(selection.isEmpty ? "Select sessions to delete"
+                             : "Delete \(selection.count) session\(selection.count == 1 ? "" : "s")")
                             .font(.body.weight(.medium)).foregroundStyle(selection.isEmpty ? Color.secondary : Color.red)
                             .frame(maxWidth: .infinity).frame(height: 48)
                     }
@@ -1340,7 +1386,7 @@ private struct MockHistoryPage: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(selecting ? "Done" : "Select") {
-                    withAnimation { selecting.toggle() }
+                    withAnimation(.snappy) { selecting.toggle() }
                     if !selecting { selection.removeAll() } else { PaceCoordinator.stopAll() }
                 }
             }
@@ -1364,6 +1410,11 @@ private struct MockHistoryPage: View {
         .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
         .onAppear {
             if let filter, let z = zikrs.first(where: { $0.persistentModelID == filter }) { active = .zikr(z.persistentModelID, z.name) }
+            if state.startSelecting, let day = byDay(Array(shown.prefix(20))).first {
+                state.startSelecting = false
+                selecting = true
+                selection = Set(day.items.prefix(2).map(\.persistentModelID))
+            }
         }
     }
 
