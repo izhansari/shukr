@@ -2226,6 +2226,17 @@ private struct AppIconThumb: View {
 /// when something there is wrong, so it's found from the other side.
 struct ReminderSwitch: View {
     static let notifications = "notifications", liveActivities = "liveActivities", fajrAlarm = "fajrAlarm"
+    /// Leaving the app puts Settings → Reminders back on Notifications for the next visit (owner: on leaving the app,
+    /// not the page). Not during the tour, which switches it itself. Written only on change (a bound @AppStorage).
+    static func resetWhenLeaving() {
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                guard !TourRuntime.shared.active,
+                      UserDefaults.standard.string(forKey: "settings.remindersTab") ?? notifications != notifications else { return }
+                UserDefaults.standard.set(notifications, forKey: "settings.remindersTab")
+            }
+        }
+    }
     struct Side { let id: String; let title: String; let needsYou: Bool }
     @Binding var tab: String
     let sides: [Side]
