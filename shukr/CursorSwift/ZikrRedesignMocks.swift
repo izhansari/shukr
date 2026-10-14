@@ -954,7 +954,6 @@ private struct ZikrSheet: View {
         List {
             Section { VStack(alignment: .leading, spacing: 16) {
                 header
-                if goals.count > 1 { goalSwitch }
                 if let g = goal { hero(g) }
                 ModalLookCard(zikr: zikr) { card = ZikrCardRequest(mantra: zikr, pane: $0) }
                 if zikr.totalCount > 0 { record }
@@ -1008,17 +1007,20 @@ private struct ZikrSheet: View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(zikr.name).font(.system(size: 28, weight: .light, design: .rounded)).lineLimit(2)
-                Text(goal.map { MockFmt.goal($0) } ?? "No daily goal yet")
-                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                if let g = goal { reminderPill(g).padding(.top, 4) }
+                if goals.isEmpty {
+                    Text("No daily goal yet").font(.subheadline).foregroundStyle(.secondary)
+                }
             }
             Spacer(minLength: 8)
+            if let g = goal, let r = ZikrReminders.summary(g) { reminderBell(g, r) }
             Menu {
                 Button { card = ZikrCardRequest(mantra: zikr) } label: { Label("Edit the zikr", systemImage: "text.book.closed") }
                 if let g = goal {
                     let paused = state.paused.contains(g.id)
                     Button { editing = g } label: { Label("Edit goal", systemImage: "pencil") }
-                    Button { editing = g } label: { Label(g.reminderKind == nil ? "Add a reminder" : "Reminder", systemImage: "bell") }
+                    if g.reminderKind == nil {
+                        Button { editing = g } label: { Label("Add a reminder", systemImage: "bell") }
+                    }
                     Button {
                         withAnimation(.snappy) { if paused { state.paused.remove(g.id) } else { state.paused.insert(g.id) } }
                     } label: { Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.circle" : "pause.circle") }
@@ -1038,25 +1040,22 @@ private struct ZikrSheet: View {
         .padding(.horizontal, 4)
     }
 
-    /// The reminder, clear at a glance (owner: "the reminder isn't clear"; sage like Your tasks, decision zikr-reminder-color B): a bell
-    /// capsule with when it rings; without one, a quiet "Add a reminder". A tap opens the goal's edit, where it's set.
-    private func reminderPill(_ g: TaskModel) -> some View {
-        Button { editing = g } label: {
-            HStack(spacing: 5) {
-                if let r = ZikrReminders.summary(g) {
-                    Image(systemName: "bell.fill").font(.system(size: 11, weight: .semibold))
-                    Text(r).lineLimit(1)
-                } else {
-                    Image(systemName: "bell").font(.system(size: 11, weight: .semibold))
-                    Text("Add a reminder")
-                }
+    /// The reminder, top right beside ⋯ (owner): a sage-tinted bell in glass, only while the goal shown has one — it
+    /// comes and goes as the chips switch goals. A tap says when it rings and offers to change it.
+    private func reminderBell(_ g: TaskModel, _ when: String) -> some View {
+        Menu {
+            Section(when) {
+                Button { editing = g } label: { Label("Change reminder", systemImage: "bell.badge") }
             }
-            .font(.footnote.weight(.medium))
-            .foregroundStyle(g.reminderKind != nil ? Color.sage : Color.secondary)
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Capsule().fill(g.reminderKind != nil ? Color.sage.opacity(0.14) : Color.primary.opacity(0.06)))
+        } label: {
+            Image(systemName: "bell.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.sage)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Color.sage.opacity(0.14)))
+                .barGlass(Circle())
         }
-        .buttonStyle(.plain)
+        .tint(Color.sage)
+        .transition(.scale.combined(with: .opacity))
+        .accessibilityLabel("Reminder: \(when)")
     }
 
     /// More than one goal on this zikr: a row of chips, the picked one in sage, scrolling sideways when there are many
@@ -1075,8 +1074,8 @@ private struct ZikrSheet: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 4)
         }
+        .contentMargins(.horizontal, 16, for: .scrollContent)
         .scrollIndicators(.hidden)
         .sensoryFeedback(.selection, trigger: picked?.id)
     }
@@ -1102,7 +1101,25 @@ private struct ZikrSheet: View {
                   let end = cal.date(byAdding: .day, value: 1, to: start) else { return nil }
             return (start, fraction(g, g.sessions.filter { $0.startTime >= start && $0.startTime < end }))
         }
-        return VStack(spacing: 14) {
+        // Everything about this goal lives in its card (owner): its chips along the top edge (clipped by the card, scrolling
+        // sideways), what it asks ("50 a day") under them, then the ring, the sentence and its days.
+        let card = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        return VStack(spacing: 0) {
+            if goals.count > 1 { goalSwitch.padding(.top, 14) }
+            Text(goals.count > 1 ? MockFmt.goal(g) : (g.customName.map { "\($0) · \(MockFmt.goal(g))" } ?? MockFmt.goal(g)))
+                .font(.subheadline).foregroundStyle(.secondary)
+                .padding(.top, goals.count > 1 ? 10 : 18)
+            heroBody(g, p: p, f: f, paused: paused, s: s, days: days)
+                .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 18)
+        }
+        .frame(maxWidth: .infinity)
+        .clipShape(card)
+        .background(NeuRaised(shape: card, radius: 8, offset: 4))
+    }
+
+    private func heroBody(_ g: TaskModel, p: TaskProgress, f: Double, paused: Bool, s: TaskStreak,
+                          days: [(date: Date, fraction: Double)]) -> some View {
+        VStack(spacing: 14) {
             SegmentRing(parts: [f], size: 140) {
                 VStack(spacing: 0) {
                     if paused {
@@ -1142,9 +1159,6 @@ private struct ZikrSheet: View {
                 }
             }
         }
-        .padding(.vertical, 18).padding(.horizontal, 12)
-        .frame(maxWidth: .infinity)
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
     }
 
     /// "11 days since you last did this" · "4-day streak · keep it today" · "Done today · 5-day streak".
