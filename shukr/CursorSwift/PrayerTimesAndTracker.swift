@@ -1957,12 +1957,20 @@ struct PrayerTimesView: View {
         }
 
         /// One row of the hamburger popover; closes it and runs `action` after it's gone.
-        private func menuRow(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        /// `dot`: a badge on the row's symbol, the one ☰ carries for it (owner: say what ☰'s dot is for).
+        private func menuRow(_ title: String, _ symbol: String, dot: Color? = nil, action: @escaping () -> Void) -> some View {
             Button {
                 pendingMenuAction = action
                 showMenu = false
             } label: {
-                Label(title, systemImage: symbol)
+                Label {
+                    Text(title)
+                } icon: {
+                    Image(systemName: symbol)
+                        .overlay(alignment: .topTrailing) {
+                            if let dot { Circle().fill(dot).frame(width: 7, height: 7).offset(x: 2, y: -2) }
+                        }
+                }
                     .fontDesign(.rounded)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -2048,7 +2056,7 @@ struct PrayerTimesView: View {
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 // While excused only (owner): quick to manage or end (Excused.swift).
                                 if CircleStage.shared.excused != nil {
-                                    menuRow("Excused Mode", "pause.circle") { NotificationCenter.default.post(name: Excused.openSheet, object: nil) }
+                                    menuRow("Excused Mode", "pause.circle", dot: ExcusedMenuBadge.ink) { NotificationCenter.default.post(name: Excused.openSheet, object: nil) }
                                 }
                                 CompassMenuRow {
                                     pendingMenuAction = { showCalibration = true }
