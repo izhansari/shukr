@@ -33,15 +33,27 @@ enum SalahSheetDrag {
         withTransaction(quiet) { state.navPosition = .main }
     }
     @MainActor private static var quietNext = false
-    /// The ☰ menu: open now, or when it last closed. A swipe that only closes the menu (its touch-down dismisses the
-    /// popover, the drag then reaches the pager) must not move the sheet (owner, 2026-10-14).
-    @MainActor static var menuOpen = false
-    @MainActor static var menuClosedAt = Date.distantPast
-    /// Whether the drag whose first move came at `firstMove` began while the menu was up: it's open still, or it closed
-    /// after the touch came down (a few pt of movement ≈ 0.15 s before the first move). Only that one drag — a 0.6 s
-    /// window after the close also ate the next quick swipes (owner: "I swipe like 3 or 4 times").
-    @MainActor static func dragClosedMenu(firstMove: Date) -> Bool {
-        menuOpen || menuClosedAt > firstMove.addingTimeInterval(-0.15)
+    /// The ☰ menu. A swipe that closes it (its touch-down dismisses the popover, then the drag reaches the pager) must
+    /// not move the sheet (owner, 2026-10-14) — and only that ONE swipe: every other is left alone. No clocks (the
+    /// gesture's own timestamp isn't the wall clock: comparing them swallowed every swipe after the first close).
+    @MainActor private static var open = false
+    /// A drag already took this opening's close (it began with the menu up).
+    @MainActor private static var closeTaken = false
+    /// The menu closed before any drag claimed it (its fade can end before the swipe's first move): the next drag
+    /// takes it, if it starts within half a second.
+    @MainActor private static var closedUnclaimed: Date?
+    @MainActor static func menuChanged(open isOpen: Bool) {
+        open = isOpen
+        if isOpen { closeTaken = false; closedUnclaimed = nil; return }
+        closedUnclaimed = closeTaken ? nil : Date()
+        closeTaken = false
+    }
+    /// Asked once per drag, at its first move: is this the swipe that closed the menu?
+    @MainActor static func dragClosesMenu() -> Bool {
+        if open { closeTaken = true; return true }
+        defer { closedUnclaimed = nil }   // one drag at most
+        guard let at = closedUnclaimed else { return false }
+        return Date().timeIntervalSince(at) < 0.5
     }
 
     /// Whether the move the sheet is about to make was asked for quietly (once).
