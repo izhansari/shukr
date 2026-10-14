@@ -1359,6 +1359,7 @@ struct RealNotification: View {
         }
         .frame(width: 340)
         .allowsHitTesting(false)
+        .environment(\.colorScheme, .light)   // the light notification, whatever the phone's look (owner)
     }
 }
 
