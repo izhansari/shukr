@@ -8,9 +8,10 @@
 //
 //  Today (WidgetSoftBand / WatchSoftBand / LASoftBand; NeuRingTrack is the same idea at fixed 2 pt): the band in the
 //  surface colour, one shade down-right (radius 0.6 band, offset 0.3), one light up-left (0.9, −0.3).
-//  Lifted (IconMocks depth 3, at its 18 pt band): a long soft drop (black 16 % light / 45 % dark, blur 0.67 band,
-//  offset 0.44, 0.61); two shades stacked down-right (0.44 / 0.33, 0.28 / 0.2) and two lights up-left; a lit top-left
-//  rim (white 100 % / 22 %, a sixth of the band) and a shaded bottom-right one (black 12 % / 35 %).
+//  "Today" is each place's own band view at its real width (NeuRingTrack 6 pt, the card's LASoftBand 5.5, the widget's
+//  4.5, the watch's 6.05) — the first mocks drew them three times too thick, so their edges looked hard (owner).
+//  Lifted: the icon's idea (decision app-icon-depth D — stacked shade, a long drop, light catching the top-left) on
+//  today's soft radii, its rim a blurred glow, not a line.
 //
 
 import SwiftUI
@@ -91,48 +92,55 @@ enum RingDepthColors {
     static let arc = Color(red: 0.96, green: 0.77, blue: 0.20)   // on time: yellow
 }
 
-/// One soft ring: the raised band, today's way or lifted, then the prayer's arc on it.
+/// Where a soft ring is, so "Today" is drawn by that place's own band view at its real width.
+enum SoftRingPlace { case salah, liveActivity, widget, watch }
+
+/// One soft ring: the raised band — today's own view, or lifted — then the prayer's arc on it.
+/// Lifted keeps today's soft shadows (same radii: the edges stay soft, owner) and adds depth: the shade stacked again
+/// wider and further, the light the same up-left, a long blurred drop under the ring, and a soft glow on the band's
+/// top-left (blurred, never a hard rim).
 struct SoftRingMock: View {
+    let place: SoftRingPlace
     let diameter: CGFloat
     let band: CGFloat
-    var arcWidth: CGFloat? = nil
+    var arcWidth: CGFloat
     var progress: CGFloat = 0.42
     let lifted: Bool
     @Environment(\.colorScheme) private var scheme
 
+    /// Today's shadow radii and offset for that place (NeuRingTrack: 4 / 6, 2; the widget / watch / card bands: 0.6, 0.9, 0.3 of the band).
+    private var shadeR: CGFloat { place == .salah ? 4 : band * 0.6 }
+    private var lightR: CGFloat { place == .salah ? 6 : band * 0.9 }
+    private var off: CGFloat { place == .salah ? 2 : band * 0.3 }
+
     var body: some View {
-        let w = band
-        let surface = RingDepthColors.page(scheme), shade = RingDepthColors.shade(scheme), light = RingDepthColors.light(scheme)
         ZStack {
             if lifted {
-                Circle().stroke(lineWidth: w)
-                    .foregroundStyle(Color.black.opacity(scheme == .dark ? 0.45 : 0.16))
-                    .blur(radius: w * 0.67).offset(x: w * 0.44, y: w * 0.61)
-                    .frame(width: diameter, height: diameter)
-                Circle().stroke(surface, lineWidth: w)
-                    .frame(width: diameter, height: diameter)
-                    .shadow(color: shade, radius: w * 0.44, x: w / 3, y: w / 3)
-                    .shadow(color: shade, radius: w * 0.28, x: w * 0.2, y: w * 0.2)
-                    .shadow(color: light, radius: w * 0.44, x: -w / 3, y: -w / 3)
-                    .shadow(color: light, radius: w * 0.22, x: -w / 6, y: -w / 6)
-                Circle().stroke(LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.22 : 1), .white.opacity(0)],
-                                               startPoint: .topLeading, endPoint: .center), lineWidth: max(w / 6, 0.75))
-                    .frame(width: diameter + w, height: diameter + w)
-                Circle().stroke(LinearGradient(colors: [.black.opacity(0), .black.opacity(scheme == .dark ? 0.35 : 0.12)],
-                                               startPoint: .center, endPoint: .bottomTrailing), lineWidth: max(w * 0.14, 0.75))
-                    .frame(width: diameter + w, height: diameter + w)
+                Circle().stroke(lineWidth: band * 1.4)
+                    .foregroundStyle(Color.black.opacity(scheme == .dark ? 0.5 : 0.14))
+                    .blur(radius: max(shadeR * 2.2, band * 1.6))
+                    .offset(x: off * 2, y: off * 3)
+                Circle().stroke(RingDepthColors.page(scheme), lineWidth: band)
+                    .shadow(color: RingDepthColors.shade(scheme), radius: shadeR, x: off, y: off)
+                    .shadow(color: RingDepthColors.shade(scheme).opacity(0.8), radius: shadeR * 1.7, x: off * 1.8, y: off * 1.8)
+                    .shadow(color: RingDepthColors.light(scheme), radius: lightR, x: -off, y: -off)
+                    .shadow(color: RingDepthColors.light(scheme), radius: lightR * 1.5, x: -off * 1.6, y: -off * 1.6)
+                Circle().stroke(LinearGradient(colors: [.white.opacity(scheme == .dark ? 0.16 : 0.9), .white.opacity(0)],
+                                               startPoint: .topLeading, endPoint: .center), lineWidth: band * 0.6)
+                    .blur(radius: band * 0.35)
             } else {
-                Circle().stroke(surface, lineWidth: w)
-                    .frame(width: diameter, height: diameter)
-                    .shadow(color: shade, radius: w * 0.6, x: w * 0.3, y: w * 0.3)
-                    .shadow(color: light, radius: w * 0.9, x: -w * 0.3, y: -w * 0.3)
+                switch place {
+                case .salah: NeuRingTrack().scaleEffect(diameter / 200).environment(\.circleTheme, .publicLook)
+                case .liveActivity: LASoftBand(width: band, t: LATuning.current)
+                case .widget: WidgetSoftBand(width: band)
+                case .watch: WatchSoftBand(width: band)
+                }
             }
             Circle().trim(from: 0, to: progress)
-                .stroke(RingDepthColors.arc, style: StrokeStyle(lineWidth: arcWidth ?? w * 0.35, lineCap: .round))
+                .stroke(RingDepthColors.arc, style: StrokeStyle(lineWidth: arcWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .frame(width: diameter, height: diameter)
         }
-        .frame(width: diameter + w * 2, height: diameter + w * 2)
+        .frame(width: diameter, height: diameter)
     }
 }
 
@@ -140,7 +148,7 @@ private struct SalahCircleMock: View {
     let lifted: Bool
     var body: some View {
         ZStack {
-            SoftRingMock(diameter: 200, band: 18, arcWidth: 5, lifted: lifted)
+            SoftRingMock(place: .salah, diameter: 200, band: 6, arcWidth: 6, lifted: lifted)
             VStack(spacing: 2) {
                 Image(systemName: "sun.haze").font(.system(size: 22, weight: .light))
                 Text("Asr").font(.system(size: 34, weight: .light, design: .rounded))
@@ -156,7 +164,7 @@ private struct LACardMock: View {
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
-                SoftRingMock(diameter: 52, band: 9, arcWidth: 3.5, lifted: lifted)
+                SoftRingMock(place: .liveActivity, diameter: 60, band: 5.5, arcWidth: 3.5, lifted: lifted)
                 Image(systemName: "sun.haze").font(.system(size: 16, weight: .light))
             }
             .frame(width: 73, height: 73)
@@ -182,7 +190,7 @@ private struct WidgetMock: View {
     @Environment(\.colorScheme) private var scheme
     var body: some View {
         ZStack {
-            SoftRingMock(diameter: 104, band: 12, arcWidth: 4, lifted: lifted)
+            SoftRingMock(place: .widget, diameter: 90, band: 4.5, arcWidth: 4.5, lifted: lifted)
             VStack(spacing: 1) {
                 Image(systemName: "sun.haze").font(.system(size: 12, weight: .light))
                 Text("Asr").font(.system(size: 17, weight: .regular, design: .rounded))
@@ -201,7 +209,7 @@ private struct WatchMock: View {
     var body: some View {
         ZStack {
             RingDepthColors.page(scheme)
-            SoftRingMock(diameter: 132, band: 10, arcWidth: 6, lifted: lifted)
+            SoftRingMock(place: .watch, diameter: 126, band: 6.05, arcWidth: 6.05, lifted: lifted)
             VStack(spacing: 2) {
                 Image(systemName: "sun.haze").font(.system(size: 14, weight: .light))
                 Text("Asr").font(.system(size: 22, weight: .regular, design: .rounded))
