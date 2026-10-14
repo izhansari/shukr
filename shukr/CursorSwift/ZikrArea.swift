@@ -1726,19 +1726,12 @@ private struct ZikrHistoryHome: View {
         let story = monthStory ?? MonthStory(base)
         List {
             Section {
-                if selecting {
-                    // Select mode is its own moment: the hero folds away, the title says what you're doing.
-                    let picked = shown.filter { selection.contains($0.persistentModelID) }
-                    Soft.title("Select sessions", picked.isEmpty ? "Tap sessions, or a day to pick all of it"
-                               : "\(picked.count) selected · \(ZikrFmt.count(picked.reduce(0) { $0 + $1.totalCount })) counted")
-                        .bareRow(top: 0)
-                } else {
-                    // All time up here (owner): sessions, count, time.
-                    Soft.title(active.map { $0.title } ?? "History",
-                               "All time: \(ZikrFmt.count(base.count)) sessions · \(ZikrFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(ZikrFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
-                        .bareRow(top: 0)
-                    if state.historyQuery.isEmpty { MonthHero(s: story).bareRow(top: 8, bottom: 4) }
-                }
+                // Select is a mode on this same page (owner, as Photos / Mail): the title and the card stay put, only the
+                // edges change — circles on the rows, Delete in the glass bar, Done / Cancel in the bar.
+                Soft.title(active.map { $0.title } ?? "History",
+                           "All time: \(ZikrFmt.count(base.count)) sessions · \(ZikrFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(ZikrFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
+                    .bareRow(top: 0)
+                if state.historyQuery.isEmpty { MonthHero(s: story).bareRow(top: 8, bottom: 4) }
             }
             DayRows(days: byDay(Array(shown.prefix(150))), tappable: !selecting,
                     selection: $selection, zoom: zoom,
@@ -1755,7 +1748,7 @@ private struct ZikrHistoryHome: View {
             HStack(spacing: 10) {
                 if selecting {
                     Button(role: .destructive) { confirmDelete = true } label: {
-                        Text(selection.isEmpty ? "Select sessions to delete"
+                        Text(selection.isEmpty ? "Delete"
                              : "Delete \(selection.count) session\(selection.count == 1 ? "" : "s")")
                             .font(.body.weight(.medium)).foregroundStyle(selection.isEmpty ? Color.secondary : Color.red)
                             .frame(maxWidth: .infinity).frame(height: 48)
@@ -1777,7 +1770,14 @@ private struct ZikrHistoryHome: View {
                     if !selecting { selection.removeAll() } else { PaceCoordinator.stopAll() }
                 }
             }
+            // While selecting, Cancel stands where back was: you can't fall out of History mid-selection.
+            if selecting {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { withAnimation(.snappy) { selecting = false }; selection.removeAll() }
+                }
+            }
         }
+        .navigationBarBackButtonHidden(selecting)
         .zikrSheets($open, zoom: zoom, onHistory: { f in withAnimation(.snappy) { active = f } })
         .sheet(item: $sessionToOpen) { s in
             SessionPage(session: s, onOpenZikr: s.mantra.map { m in {
