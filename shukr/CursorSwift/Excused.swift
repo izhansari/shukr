@@ -247,7 +247,7 @@ struct ExcusedSettingsRow: View {
         NavigationLink { ExcusedSheet(pushed: true) } label: {
             HStack(spacing: 12) {
                 Image(systemName: "pause.circle").frame(width: 24)
-                Text("Excused from prayer").lineLimit(1)
+                Text("Excused Mode").lineLimit(1)   // owner, 2026-10-14: two words, like its card's rows
                 Spacer(minLength: 8)
                 Text(current.map { "Day \(Excused.dayNumber($0))" } ?? "Off").foregroundStyle(.secondary).lineLimit(1)
             }
@@ -329,7 +329,7 @@ struct ExcusedSheet: View {
         VStack(spacing: 22) {
             // Named plainly (owner: no dodging the words — this was made for her too); the lock screen, Siri and the
             // widget stay neutral, as anyone can see or hear those.
-            heading("Excused from prayer", "For your period (haid), or the bleeding after giving birth (nifas). Prayer is lifted for you: your streaks and scores pause, and nothing counts as missed.")
+            heading("Excused Mode", "For your period (haid), or the bleeding after giving birth (nifas). Prayer is lifted for you: your streaks and scores pause, and nothing counts as missed.")
             daysRing(min: 1, caption: "days, about")
             card {
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
@@ -348,7 +348,7 @@ struct ExcusedSheet: View {
     private func running(_ r: ExcusedRange) -> some View {
         let today = Excused.dayNumber(r)
         return VStack(spacing: 22) {
-            heading("Excused from prayer", "Since \(r.start.formatted(.dateTime.month(.abbreviated).day())) · Day \(today)")
+            heading("Excused Mode", "Since \(r.start.formatted(.dateTime.month(.abbreviated).day())) · Day \(today)")
             daysRing(min: today, caption: "days in all, about")
             card {
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }

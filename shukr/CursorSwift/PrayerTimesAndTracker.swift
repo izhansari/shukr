@@ -2048,7 +2048,7 @@ struct PrayerTimesView: View {
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 // While excused only (owner): quick to manage or end (Excused.swift).
                                 if CircleStage.shared.excused != nil {
-                                    menuRow("Excused from prayer", "pause.circle") { NotificationCenter.default.post(name: Excused.openSheet, object: nil) }
+                                    menuRow("Excused Mode", "pause.circle") { NotificationCenter.default.post(name: Excused.openSheet, object: nil) }
                                 }
                                 CompassMenuRow {
                                     pendingMenuAction = { showCalibration = true }
