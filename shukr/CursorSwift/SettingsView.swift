@@ -1507,8 +1507,8 @@ struct AlarmSettingsView: View {
                     }
                 } label: { pill(alarmIsFajr ? "Fajr starts" : "Fajr ends") }
                 .tint(.primary)
-                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity)   // centred in the card (owner: equal room both sides)
             .font(.system(.subheadline, design: .rounded))
             timeline
         }
@@ -1694,6 +1694,9 @@ struct AlarmSettingsView: View {
                 }
             } else {
                 hooked(statusRow)
+                    // No line between the switch and its rule (owner): painted in the card's colour, not hidden — a hidden
+                    // separator left a hairline seam of the page (see the Reminders switch).
+                    .listRowSeparatorTint(alarmEnabled ? Color(.secondarySystemGroupedBackground) : nil)
                 if alarmEnabled {
                     ruleControls
                     if !FajrAlarms.supported { shortcutSteps }
