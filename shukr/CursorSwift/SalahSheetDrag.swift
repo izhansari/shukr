@@ -52,15 +52,17 @@ struct SheetRests: Equatable {
 /// chrome and the page's two movers read it, nothing else. Its tuning is the owner's sandbox pick (2026-10-14: "it makes
 /// it interactive while being calm and not too hyper").
 final class SheetSpring: NSObject {
-    /// List points per finger point.
-    static let ratio = 1.13
+    /// List points per finger point (sandbox 1.13; on the real page "a little fast" — owner, 2026-10-14: with the finger).
+    static let ratio = 1.0
     /// The landing: a 0.2 s spring with no bounce.
     static let response = 0.20
     static let damping = 1.0
     /// How far a slow let-go's speed carries before deciding where it lands (seconds of travel).
     static let throwTime = 0.03
-    /// Past either rest the list gives this much (as a share of its run), less and less.
+    /// Past the closed rest (the ☰ pull) the list gives this much (a share of its run), less and less.
     static let stretch = 0.16
+    /// Past the open rest only a few points (owner: it rode up over the day page's Memories link).
+    static let openStretchPoints = 10.0
     /// A flick faster than this (pt/s) opens or closes by its direction, whatever the distance.
     static let flick: CGFloat = 500
 
@@ -105,7 +107,7 @@ final class SheetSpring: NSObject {
 
     func drag(_ dy: CGFloat) {
         guard dragging else { return }
-        progress = Self.rubber(start - Double(dy) * Self.ratio / run)
+        progress = Self.rubber(start - Double(dy) * Self.ratio / run, openGive: Self.openStretchPoints / run)
     }
 
     /// The let-go: where it lands (true = open), springing there with the finger's speed.
@@ -144,10 +146,10 @@ final class SheetSpring: NSObject {
         live?.sheetPhase = .idle
     }
 
-    private static func rubber(_ x: Double) -> Double {
-        func give(_ d: Double) -> Double { stretch * d / (d + stretch) }
-        if x < 0 { return -give(-x) }
-        if x > 1 { return 1 + give(x - 1) }
+    private static func rubber(_ x: Double, openGive: Double) -> Double {
+        func give(_ d: Double, _ most: Double) -> Double { most * d / (d + most) }
+        if x < 0 { return -give(-x, stretch) }
+        if x > 1 { return 1 + give(x - 1, openGive) }
         return x
     }
 
