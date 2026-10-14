@@ -1365,9 +1365,10 @@ struct StreakDropdownInfo: View {
 
 
 /// Reminders' Fajr Alarm side (owner, 2026-10-12: "put fajr alarm in reminders tab switcher"): refused in iOS Settings →
-/// the warning row and its way back; else the switch, and while on "Rings · 20 min before Fajr starts", which opens
-/// setup's three wheels in place (an iOS-style inline picker: wheels always open would turn under a scrolling finger),
-/// the result in green and Fajr's time as its proof. A change is saved and re-planned a beat after the wheels stop.
+/// the warning row and its way back; else a status row with the switch, and while on the rule on one line (− / + minutes,
+/// before / after, start / end) with the proof under it — the alarm and Fajr's own time, the gap between them (decision
+/// fajr-tab-height C3: about the other two sides' height; the wheels made it twice as tall). A change is saved and
+/// re-planned a beat after it.
 struct AlarmSettingsView: View {
     @EnvironmentObject var viewModel: PrayerViewModel
     
@@ -1375,8 +1376,6 @@ struct AlarmSettingsView: View {
     // Local state to manage alert presentation
     @State private var isShowingShortcutAlert: Bool = false
     
-    // To minimize the editing basically
-    @State private var isEditingAlarm: Bool = false
     
     // For reference and shown at bottom while setting the alarm
     @State private var nextFajrTime: Date = Date()
@@ -1442,18 +1441,22 @@ struct AlarmSettingsView: View {
             let floored = FajrAlarmRule.clamp(alarmOffsetMinutes, isFajr: isFajr)
             if floored != alarmOffsetMinutes { alarmOffsetMinutes = floored }
             }
-            .onChange(of: alarmEnabled){_, newValue in
-                if newValue {
-                    isEditingAlarm = true
-            }
-            }
     }
 
-    private var toggleRow: some View {
-        HStack(spacing: 12) {
+    /// As the other two sides open (owner, decision fajr-tab-height C3): the state in a line, its switch on the right.
+    private var statusRow: some View {
+        HStack(spacing: 14) {
             Image(systemName: "alarm")
-                .frame(width: 24)   // the qibla row's column (owner: it sat right against the words)
-            Toggle("Daily alarm", isOn: Binding(
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(alarmEnabled ? Color(.systemGreen) : .secondary)
+                .frame(width: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(alarmEnabled ? "Fajr alarm is on" : "Fajr alarm is off").font(.system(.body, design: .rounded))
+                Text(alarmEnabled ? "Every morning, moving with Fajr" : "Turn it on to wake up for Fajr")
+                    .font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Toggle("Fajr alarm", isOn: Binding(
                 get: { alarmEnabled },
                 set: { newValue in
                     withAnimation { alarmEnabled = newValue }
@@ -1477,71 +1480,106 @@ struct AlarmSettingsView: View {
                         didShowAlarmSetupAlert = true
                     }
                 }
-            ))
+            )).labelsHidden()
         }
+        .padding(.vertical, 2)
     }
 
-    /// "Rings · 20 min before Fajr starts" — a tap opens / closes the wheels under it.
-    private var ruleRow: some View {
-        Button {
-            withAnimation(.snappy(duration: 0.3)) { isEditingAlarm.toggle() }
-            if !isEditingAlarm { saveTask?.cancel(); saveRule() }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "clock").frame(width: 24)
-                Text("Rings").foregroundStyle(.primary)
-                Spacer(minLength: 8)
-                Text(ruleText)
-                    .foregroundStyle(isEditingAlarm ? Color.green : .secondary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
-                    .contentTransition(.numericText())
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(isEditingAlarm ? 90 : 0))
+    /// The rule on one line (decision fajr-tab-height C3): the minutes with − / +, before / after and start / end as small
+    /// menus; under it, in the same row, the proof (owner: "showing the calculated time as well as the Fajr time, so someone
+    /// can double check"): the alarm and Fajr's own time with the gap the rule makes between them.
+    private var ruleControls: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 8) {
+                minutesStepper
+                Menu {
+                    Picker("Before or after", selection: $alarmIsBefore) {
+                        Text("before").tag(true)
+                        if alarmIsFajr { Text("after").tag(false) }
+                    }
+                } label: { pill(alarmIsBefore ? "before" : "after") }
+                .tint(.primary)   // our pill, not the accent's blue
+                Menu {
+                    // The start / end of Fajr (stored as alarmIsFajr true / false).
+                    Picker("Start or end of Fajr", selection: $alarmIsFajr) {
+                        Text("Fajr starts").tag(true)
+                        if alarmIsBefore { Text("Fajr ends").tag(false) }
+                    }
+                } label: { pill(alarmIsFajr ? "Fajr starts" : "Fajr ends") }
+                .tint(.primary)
+                Spacer(minLength: 0)
             }
-            .contentShape(Rectangle())
+            .font(.system(.subheadline, design: .rounded))
+            timeline
         }
-        // Plain: our colours and the full-width hit area (iOS 26 restyles a Form's buttons).
-        .buttonStyle(.plain)
-        .accessibilityHint(isEditingAlarm ? "Closes the time picker" : "Opens the time picker")
+        .padding(.vertical, 4)
     }
 
-    /// Setup's three wheels (owner: "it's perfected in onboarding"), then the result big and Fajr's time as its proof.
-    private var wheels: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 0) {
-                // 5-minute steps (owner, 2026-09-29); before the end of Fajr from 10 (FajrAlarmRule).
-                Picker("Minutes", selection: $alarmOffsetMinutes) {
-                    ForEach(FajrAlarmRule.minutes(isFajr: alarmIsFajr), id: \.self) { Text("\($0) min").tag($0) }
-                }
-                Picker("Before or after", selection: $alarmIsBefore) {
-                    Text("before").tag(true)
-                    if alarmIsFajr { Text("after").tag(false) }
-                }
-                // The start / end of Fajr (stored as alarmIsFajr true / false).
-                Picker("Start or end of Fajr", selection: $alarmIsFajr) {
-                    Text("Fajr starts").tag(true)
-                    if alarmIsBefore { Text("Fajr ends").tag(false) }
-                }
+    /// 5-minute steps (owner, 2026-09-29); before the end of Fajr from 10 (FajrAlarmRule).
+    private var minutesStepper: some View {
+        let steps = FajrAlarmRule.minutes(isFajr: alarmIsFajr)
+        let i = steps.firstIndex(of: alarmOffsetMinutes) ?? 0
+        return HStack(spacing: 0) {
+            Button { if i > 0 { alarmOffsetMinutes = steps[i - 1]; triggerSomeVibration(type: .light) } } label: {
+                Image(systemName: "minus").frame(width: 36, height: 34).contentShape(Rectangle())
             }
-            .pickerStyle(.wheel)
-            .frame(height: 100)
-            .clipped()
-            Text(timeOfCalcAlarmText)
-                .font(.headline.weight(.semibold))
-                .fontDesign(.rounded)
-                .foregroundStyle(Color.green)   // Settings' green (owner, note C9FB37FF)
+            .disabled(i == 0)
+            Text("\(alarmOffsetMinutes) min")
+                .font(.system(.subheadline, design: .rounded, weight: .semibold)).monospacedDigit()
+                .frame(minWidth: 56)
                 .contentTransition(.numericText())
-            Text(fajrTimeRangeText)
-                .foregroundStyle(.secondary)
-                .font(.footnote)
+            Button { if i < steps.count - 1 { alarmOffsetMinutes = steps[i + 1]; triggerSomeVibration(type: .light) } } label: {
+                Image(systemName: "plus").frame(width: 36, height: 34).contentShape(Rectangle())
+            }
+            .disabled(i >= steps.count - 1)
         }
-        .padding(.bottom, 4)
-        .transition(.opacity)
-        // The divider under the wheels runs the card's full width.
-        .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+        .buttonStyle(.borderless)   // each its own target in a List row
+        .foregroundStyle(.primary)
+        .background(Capsule().fill(Color.primary.opacity(0.08)))
+        .animation(.snappy(duration: 0.2), value: alarmOffsetMinutes)
+    }
+
+    private func pill(_ word: String) -> some View {
+        HStack(spacing: 3) {
+            Text(word)
+            Image(systemName: "chevron.up.chevron.down").font(.caption2)
+        }
+        .foregroundStyle(.primary)
+        .lineLimit(1).fixedSize()
+        .padding(.horizontal, 10).frame(height: 34)
+        .background(Capsule().fill(Color.primary.opacity(0.08)))
+    }
+
+    /// The alarm, the gap, then Fajr (or Fajr first when it rings after the start).
+    private var timeline: some View {
+        let ref = alarmIsFajr ? nextFajrTime : nextSunriseTime
+        let alarm = ref.addingTimeInterval((alarmIsBefore ? -1 : 1) * Double(alarmOffsetMinutes) * 60)
+        let alarmEnd = (time: shortTimePM(alarm), word: "Alarm", green: true)
+        let fajrEnd = (time: shortTimePM(ref), word: alarmIsFajr ? "Fajr starts" : "Fajr ends", green: false)
+        let (first, last) = alarmIsBefore || alarmOffsetMinutes == 0 ? (alarmEnd, fajrEnd) : (fajrEnd, alarmEnd)
+        func end(_ e: (time: String, word: String, green: Bool), leading: Bool) -> some View {
+            VStack(alignment: leading ? .leading : .trailing, spacing: 1) {
+                Text(e.time).font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(e.green ? Color.green : .primary)   // Settings' green (owner, note C9FB37FF)
+                    .contentTransition(.numericText())
+                Text(e.word).font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        return HStack(spacing: 8) {
+            end(first, leading: true)
+            ZStack {
+                Capsule().fill(Color.secondary.opacity(0.25)).frame(height: 2)
+                Text(alarmOffsetMinutes == 0 ? "same time" : "\(alarmOffsetMinutes) min")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .background(Color(.secondarySystemGroupedBackground))
+                    .contentTransition(.numericText())
+            }
+            end(last, leading: false)
+        }
+        .animation(.snappy(duration: 0.25), value: ruleKey)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Alarm \(shortTimePM(alarm)), \(alarmOffsetMinutes) minutes \(alarmIsBefore ? "before" : "after") Fajr \(alarmIsFajr ? "starts" : "ends") at \(shortTimePM(ref))")
     }
 
     /// The row's words for the Shortcut (alarmTimeSetFor / alarmDescription) and the alarms ahead.
@@ -1572,25 +1610,6 @@ struct AlarmSettingsView: View {
         else {
             return nil
         }
-    }
-    
-    private var timeOfCalcAlarmText: String {
-        let ref = alarmIsFajr ? nextFajrTime : nextSunriseTime
-        let offsetSeconds = alarmIsBefore ? -Double(alarmOffsetMinutes)*60 : Double(alarmOffsetMinutes)*60
-        let calcDate = ref.addingTimeInterval(offsetSeconds)
-        let day = Calendar.current.isDateInToday(calcDate) ? "today" : "tomorrow"
-        return "Alarm \(day) \(shortTimePM(calcDate))"
-//        return "\(shortTime(alarmIsFajr ? nextFajrTime : nextSunriseTime)) \(alarmIsBefore ? "-" : "+") \(alarmOffsetMinutes)m = \(shortTimePM(calcDate))"
-//        return "is \(shortTimePM(calcDate))"
-//        return alarmIsFajr ? "\(shortTimePM(calcDate)) (Fajr is at \(shortTimePM(nextFajrTime)))" : "\(shortTimePM(calcDate)) (Sunrise at \(shortTimePM(nextSunriseTime)))"
-//        return "\(shortTimePM(calcDate))"
-    }
-    
-    private var fajrTimeRangeText: String {
-//        return "(Fajr is \(shortTime(nextFajrTime)) - \(shortTimePM(nextSunriseTime)))"
-//        return alarmIsFajr ? shortTimePM(nextFajrTime) : shortTimePM(nextSunriseTime)
-        // "Start" / "End" of Fajr (owner, 2026-09-28), not "Fajr" / "Sunrise".
-        return alarmIsFajr ? "Fajr starts \(shortTimePM(nextFajrTime))" : "Fajr ends \(shortTimePM(nextSunriseTime))"
     }
     
     // ------------------------------------------
@@ -1642,16 +1661,6 @@ struct AlarmSettingsView: View {
 
     var body: some View {
         Group {
-            #if DEBUG
-            if let mock = UserDefaults.standard.string(forKey: "demoFajrMock") { FajrTabMock(variant: mock) } else { realBody }
-            #else
-            realBody
-            #endif
-        }
-    }
-
-    @ViewBuilder private var realBody: some View {
-        Group {
             if FajrAlarms.supported && status.allowed != true {
                 // Not allowed yet (asks, and turns the alarm on) or refused in iOS Settings (the way back there): as the
                 // notifications side says each.
@@ -1673,7 +1682,7 @@ struct AlarmSettingsView: View {
                     guard !refused else { SettingsLinks.app(); return }
                     Task { @MainActor in
                         if await FajrAlarms.enable() {
-                            withAnimation { alarmEnabled = true }   // allowed: on, and its wheels open
+                            withAnimation { alarmEnabled = true }   // allowed: on, and its rule shows
                         } else {
                             alarmKitRefused = true
                         }
@@ -1684,10 +1693,9 @@ struct AlarmSettingsView: View {
                         .font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
                 }
             } else {
-                hooked(toggleRow)
+                hooked(statusRow)
                 if alarmEnabled {
-                    ruleRow
-                    if isEditingAlarm { wheels }
+                    ruleControls
                     if !FajrAlarms.supported { shortcutSteps }
                     // (No "Let shukr set it" row — owner: only someone who set it up on the Shortcut before iOS 26.1 ever saw
                     // it, and switching the alarm off and on does the same.)
