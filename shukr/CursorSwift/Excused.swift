@@ -723,8 +723,9 @@ struct ExcusedIntroStory: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                if showsClose {
+            // Pushed, the count sits in the bar, level with back (owner: a row of its own under the bar "looks weird").
+            if showsClose {
+                HStack {
                     Button(action: close) {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .semibold))
@@ -733,11 +734,11 @@ struct ExcusedIntroStory: View {
                             .barGlass(Circle())
                     }
                     .buttonStyle(.plain)
+                    Spacer()
+                    counter
                 }
-                Spacer()
-                Text("\(page + 1) of \(Self.pages.count)").font(.footnote).foregroundStyle(.secondary)
+                .padding(.horizontal, 20).padding(.top, 18)
             }
-            .padding(.horizontal, 20).padding(.top, 18)
             TabView(selection: $page) {
                 ForEach(Self.pages.indices, id: \.self) { i in
                     let p = Self.pages[i]
@@ -778,6 +779,19 @@ struct ExcusedIntroStory: View {
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         .fontDesign(.rounded)
+        .toolbar {
+            if !showsClose {
+                if #available(iOS 26.0, *) {
+                    ToolbarItem(placement: .topBarTrailing) { counter }.sharedBackgroundVisibility(.hidden)   // words, not a button
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) { counter }
+                }
+            }
+        }
+    }
+
+    private var counter: some View {
+        Text("\(page + 1) of \(Self.pages.count)").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
     }
 }
 
