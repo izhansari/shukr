@@ -472,16 +472,19 @@ struct SessionRow: View {
                     Text(session.displayTitle)
                         .font(.body.weight(.medium))
                 } else if showsDay {
-                    // A zikr's sheet lists its last few sessions in one card: the day goes in the row.
-                    Text(session.startTime.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
-                         + " · " + session.startTime.formatted(date: .omitted, time: .shortened))
-                        .font(.body.weight(.medium))
+                    // A zikr's sheet lists its last few sessions in one card: the day heads the row (lighter — owner:
+                    // the day and time on one line was too big), the time under it in place of the goal.
+                    Text(session.startTime.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                        .font(.callout)
                 } else {
                     Text(session.startTime, style: .time)
                         .font(.body.weight(.medium))
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    if quiet {
+                    if quiet && showsDay {
+                        // Everything on the sheet is this goal's: no "50 goal" (owner), just the time.
+                        Text(session.startTime, style: .time)
+                    } else if quiet {
                         if showsMantraName { Text(session.startTime, style: .time) }
                         if showsMantraName && quietTarget != nil { Text("·") }
                         if let quietTarget { Text(quietTarget) }
