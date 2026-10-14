@@ -37,7 +37,12 @@ enum SalahSheetDrag {
     /// popover, the drag then reaches the pager) must not move the sheet (owner, 2026-10-14).
     @MainActor static var menuOpen = false
     @MainActor static var menuClosedAt = Date.distantPast
-    @MainActor static var menuJustClosed: Bool { menuOpen || Date().timeIntervalSince(menuClosedAt) < 0.6 }
+    /// Whether the drag whose first move came at `firstMove` began while the menu was up: it's open still, or it closed
+    /// after the touch came down (a few pt of movement ≈ 0.15 s before the first move). Only that one drag — a 0.6 s
+    /// window after the close also ate the next quick swipes (owner: "I swipe like 3 or 4 times").
+    @MainActor static func dragClosedMenu(firstMove: Date) -> Bool {
+        menuOpen || menuClosedAt > firstMove.addingTimeInterval(-0.15)
+    }
 
     /// Whether the move the sheet is about to make was asked for quietly (once).
     @MainActor static func takeQuiet() -> Bool {
@@ -243,7 +248,16 @@ struct SheetListRide: ViewModifier {
     let live: PagerLiveState
     let openTop: CGFloat
     func body(content: Content) -> some View {
-        content.offset(y: openTop + live.sheetRun - live.sheetOffset)
+        content
+            .offset(y: openTop + live.sheetRun - live.sheetOffset)
+            .opacity(Self.fade(live.sheetOffset / max(live.sheetRun, 1)))
+    }
+
+    /// It fades in with the finger as it rises, still from the bottom edge (owner, 2026-10-14: "fade in again, like
+    /// how it used to … dynamic with the drag"): clear when closed, whole by 70 % of the way, eased.
+    static func fade(_ progress: CGFloat) -> Double {
+        let x = min(max(progress / 0.7, 0), 1)
+        return Double(x * x * (3 - 2 * x))
     }
 }
 

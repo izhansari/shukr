@@ -52,7 +52,7 @@ struct PrayerTimesView: View {
     @State private var dragAxis = DragAxis()
     final class DragAxis {
         var vertical: Bool?
-        /// This drag only closed the ☰ menu: it moves nothing (`SalahSheetDrag.menuJustClosed`).
+        /// This drag only closed the ☰ menu: it moves nothing (`SalahSheetDrag.dragClosedMenu`).
         var swallowed = false
     }
     @GestureState private var pagerDragActive = false      // a finger on the pager's drag (resets on cancel too)
@@ -587,7 +587,9 @@ struct PrayerTimesView: View {
                     guard abs(t.width) > decideAt || abs(t.height) > decideAt else { return }
                     dismissKeyboard()
                     dragAxis.vertical = abs(t.height) > abs(t.width)
-                    dragAxis.swallowed = SalahSheetDrag.menuJustClosed
+                    dragAxis.swallowed = SalahSheetDrag.dragClosedMenu(firstMove: value.time)
+                    // Swiping up closes ☰ with the same light buzz a pull down opens it with (owner).
+                    if dragAxis.swallowed && dragAxis.vertical == true && t.height < 0 { triggerSomeVibration(type: .light) }
                     if dragAxis.vertical == true {
                         live.pagerLocked = true
                     } else {
