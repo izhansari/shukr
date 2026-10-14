@@ -4147,10 +4147,7 @@ private struct BismillahCapsule: View {
 
     var body: some View {
         Button(action: action) {
-            Text("bismillah")
-                .font(.title)
-                .fontWeight(.thin)
-                .fontDesign(.rounded)
+            word
                 .foregroundStyle(.white.opacity(0.8))
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: 68)
@@ -4189,6 +4186,25 @@ private struct BismillahCapsule: View {
             withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) { noiseOpacity = 0.3 }
         }
         .accessibilityLabel("Bismillah, begin")
+    }
+
+    /// The word. DEBUG `-demoBismillahType 1…4` (owner, 2026-10-14: other typefaces to compare): 1 New York light,
+    /// 2 the Arabic in the Quran's face, 3 SF Pro ultralight spaced capitals, 4 Continue's (rounded medium).
+    @ViewBuilder private var word: some View {
+        #if DEBUG
+        switch UserDefaults.standard.integer(forKey: "demoBismillahType") {
+        case 1: Text("bismillah").font(.system(.title, weight: .light)).fontDesign(.serif)   // the page's design would win
+        case 2: Text("بِسْمِ ٱللَّٰهِ").font(.custom("KFGQPCUthmanTahaNaskh", size: 32))
+        case 3: Text("BISMILLAH").font(.system(.title3, weight: .ultraLight)).fontDesign(.default).tracking(6)
+        case 4: Text("bismillah").font(.system(.body, weight: .medium)).fontDesign(.rounded)
+        default: standard
+        }
+        #else
+        standard
+        #endif
+    }
+    private var standard: some View {
+        Text("bismillah").font(.title).fontWeight(.thin).fontDesign(.rounded)
     }
 }
 
