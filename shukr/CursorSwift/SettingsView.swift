@@ -1512,7 +1512,9 @@ struct AlarmSettingsView: View {
             .font(.system(.subheadline, design: .rounded))
             timeline
         }
-        .padding(.vertical, 4)
+        .padding(.bottom, 4)
+        // Close under the switch (owner: less room between them); the row's sides as the card's other rows.
+        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 10, trailing: 20))
     }
 
     /// 5-minute steps (owner, 2026-09-29); before the end of Fajr from 10 (FajrAlarmRule).
