@@ -940,6 +940,8 @@ private struct ZikrSheet: View {
     @State private var toDelete: TaskModel?
     @State private var addingGoal = false
     @State private var sessionToDelete: SessionDataModel?
+    /// The goal whose reminder is being set: just the Remind me sheet (owner: not the whole edit, then the reminder).
+    @State private var reminding: TaskModel?
 
     private var sessions: [SessionDataModel] { zikr.sessions.sorted { $0.startTime > $1.startTime } }
     private var goals: [TaskModel] { zikr.tasks.sorted { $0.sortOrder < $1.sortOrder } }
@@ -993,6 +995,15 @@ private struct ZikrSheet: View {
         .sheet(isPresented: $addingGoal) { NewTaskFlow(locked: zikr) }
         .modifier(DeleteGoalAlert(task: $toDelete))
         .modifier(DeleteSessionAlert(session: $sessionToDelete))
+        .sheet(item: $reminding) { t in
+            // The real Remind me sheet on its own; Save writes the goal's reminder and replans the notifications.
+            TaskReminderSheet(draft: ReminderDraft(t), onCancel: { reminding = nil }) { picked in
+                picked.apply(to: t)
+                try? context.save()
+                NotificationScheduler.reschedule(context: context, reason: "task reminder")
+                reminding = nil
+            }
+        }
         .onAppear { today = ZikrReminders.todaysSessions(context) }
         .onChange(of: editing) { _, _ in today = ZikrReminders.todaysSessions(context) }
         .task {   // `-zikrMock zikr-card`: the real card modal over the sheet
@@ -1019,7 +1030,7 @@ private struct ZikrSheet: View {
                     let paused = state.paused.contains(g.id)
                     Button { editing = g } label: { Label("Edit goal", systemImage: "pencil") }
                     if g.reminderKind == nil {
-                        Button { editing = g } label: { Label("Add a reminder", systemImage: "bell") }
+                        Button { reminding = g } label: { Label("Add a reminder", systemImage: "bell") }
                     }
                     Button {
                         withAnimation(.snappy) { if paused { state.paused.remove(g.id) } else { state.paused.insert(g.id) } }
@@ -1041,19 +1052,15 @@ private struct ZikrSheet: View {
     }
 
     /// The reminder, top right beside ⋯ (owner): a sage-tinted bell in glass, only while the goal shown has one — it
-    /// comes and goes as the chips switch goals. A tap says when it rings and offers to change it.
+    /// comes and goes as the chips switch goals. A tap opens just the Remind me sheet.
     private func reminderBell(_ g: TaskModel, _ when: String) -> some View {
-        Menu {
-            Section(when) {
-                Button { editing = g } label: { Label("Change reminder", systemImage: "bell.badge") }
-            }
-        } label: {
+        Button { reminding = g } label: {
             Image(systemName: "bell.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.sage)
                 .frame(width: 40, height: 40)
                 .background(Circle().fill(Color.sage.opacity(0.14)))
                 .barGlass(Circle())
         }
-        .tint(Color.sage)
+        .buttonStyle(.plain)
         .transition(.scale.combined(with: .opacity))
         .accessibilityLabel("Reminder: \(when)")
     }
