@@ -1039,7 +1039,7 @@ struct DonationDraft: Identifiable {
 
     init(after charity: SadaqahCharity) {
         donation = SadaqahDonation(to: charity.name, charityID: charity.id, amount: 0, currency: SadaqahLog.currency,
-                                   purpose: charity.kind == .community ? .community : .unspecified, note: "", date: .now)
+                                   purpose: charity.kind == .community ? .community : .sadaqah, note: "", date: .now)   // known from the list (owner)
         askedAfterVisit = true
     }
     init(manual: Void) {
@@ -1108,7 +1108,7 @@ struct DonationSheet: View {
                         purposeMenu
                         Divider().padding(.leading, 52)
                         row("calendar", "When") {
-                            DatePicker("", selection: $date, in: ...Date.now).labelsHidden()
+                            DatePicker("", selection: $date, in: ...Date.now, displayedComponents: .date).labelsHidden()   // the day is enough (owner)
                         }
                         Divider().padding(.leading, 52)
                         row("note.text", "Note") {
@@ -1225,9 +1225,14 @@ struct DonationSheet: View {
     private var purposeMenu: some View {
         Menu {
             Picker("For", selection: $purpose) {
-                // Four at most (owner); an older donation's own "For" stays in the list so it shows.
-                ForEach(SadaqahPurpose.offered + (SadaqahPurpose.offered.contains(purpose) ? [] : [purpose])) { p in
-                    Label(p.title, systemImage: p.symbol).tag(p)
+                // Four up front (owner: "no more than four"); the rest folded under More.
+                ForEach(SadaqahPurpose.offered) { p in Label(p.title, systemImage: p.symbol).tag(p) }
+            }
+            Menu("More") {
+                Picker("More", selection: $purpose) {
+                    ForEach(SadaqahPurpose.allCases.filter { !SadaqahPurpose.offered.contains($0) }) { p in
+                        Label(p.title, systemImage: p.symbol).tag(p)
+                    }
                 }
             }
         } label: {
