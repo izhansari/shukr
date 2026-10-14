@@ -1516,7 +1516,8 @@ struct PrayerTimesView: View {
         }
         #endif
         .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
-        .sheet(isPresented: $demoSadaqah) { NavigationStack { SadaqahPage() } }   // DEBUG `-demoSadaqah`
+        // DEBUG `-demoSadaqah`: full screen, as Settings pushes it (a sheet put its own sheets on a sheet in the shots).
+        .fullScreenCover(isPresented: $demoSadaqah) { NavigationStack { SadaqahPage() } }
         .sheet(isPresented: $demoExplore) {
             NavigationStack {
                 switch ExplorePageVariant(rawValue: UserDefaults.standard.string(forKey: ExplorePageVariant.key) ?? "") ?? .simple {
