@@ -3039,17 +3039,17 @@ struct LATuning: Codable, Equatable {
     var gapRingToText: Double = 12
     var cardSurfaceGrey: Double = 0.12
     // Ring
-    var ringSize: Double = 69
-    var ringArcDiameter: Double = 0.8      // of the ring size
+    var ringSize: Double = 73   // his phone's tuner, 2026-10-14 (and the nine below)
+    var ringArcDiameter: Double = 0.82      // of the ring size
     var ringBandWidth: Double = 5.5          // at the 90 pt design size
-    var ringArcWidth: Double = 2          // at the 90 pt design size
+    var ringArcWidth: Double = 3.5          // at the 90 pt design size
     var ringSymbolSize: Double = 17
     var ringBandLift: Double = 0.1
     // Text
-    var titleSize: Double = 19
-    var timeLeftSize: Double = 13   // 12 read too small on his phone (owner, 2026-10-12)
-    var endsSize: Double = 11
-    var lineSpacing: Double = 2
+    var titleSize: Double = 20
+    var timeLeftSize: Double = 14   // 12 read too small on his phone (owner, 2026-10-12)
+    var endsSize: Double = 12
+    var lineSpacing: Double = 1.5
     var textOffsetY: Double = 0
     // Glow
     var glowStrength: Double = 0.16
@@ -3074,7 +3074,7 @@ struct LATuning: Codable, Equatable {
     var islandButtonSize: Double = 38
     var islandTimeSizeOpt: Double? = nil        // nil = 17: the folded island's "24m"
     /// The prayer name's weight: 0 light · 1 regular · 2 medium (nil — owner) · 3 semibold · 4 bold — the card and the island apart.
-    var titleWeight: Int? = nil
+    var titleWeight: Int? = 1   // regular (his tuner, 2026-10-14; was medium)
     var islandTitleWeight: Int? = nil
     static let weights: [Font.Weight] = [.light, .regular, .medium, .semibold, .bold]
     static let weightNames = ["Light", "Regular", "Medium", "Semibold", "Bold"]
@@ -3086,7 +3086,7 @@ struct LATuning: Codable, Equatable {
     var endedDashCountOpt: Double? = nil
     var endedDashShareOpt: Double? = nil
     var endedDashOpacityOpt: Double? = nil
-    var endedDashWidthOpt: Double? = nil
+    var endedDashWidthOpt: Double? = 2.5
     var endedDashCount: Double { get { endedDashCountOpt ?? 16 } set { endedDashCountOpt = newValue } }
     var endedDashShare: Double { get { endedDashShareOpt ?? 0.5 } set { endedDashShareOpt = newValue } }
     var endedDashOpacity: Double { get { endedDashOpacityOpt ?? 0.5 } set { endedDashOpacityOpt = newValue } }
@@ -3095,7 +3095,7 @@ struct LATuning: Codable, Equatable {
     // 39 minutes" (offset) · 1 "1 hr, 39 min" (relative; under an hour it ticks seconds) · 2 "1:39" · 3 "1:39:12" ·
     // 4 (nil, the default — owner: no seconds) relative over an hour, then "59 minutes", then "under a minute", switched
     // by timer gates. Optional so a saved tuning without it still decodes (renamed from timeLeftStyle so earlier picks drop).
-    var timeLeftFormat: Int? = nil
+    var timeLeftFormat: Int? = 4
 
     /// Only what differs from the defaults is saved, laid over the defaults on reading — so a new default reaches every
     /// value nobody tuned (a full save kept the old ones). 3: earlier full saves are left behind.

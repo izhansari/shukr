@@ -4138,7 +4138,7 @@ private struct ReviewStep: View {
 
 /// The owner's pick: the capsule, with the old first screen borrowed whole — its slowly moving
 /// green / black gradient and breathing grain (`AnimatedWavyGradient` + `NoiseOverlay`) — and
-/// "bismillah" in the type that screen wrote "shukr" in (title, thin, rounded, white 0.8).
+/// "bismillah" in the type that screen wrote "shukr" in (thin, rounded, white 0.8), at Continue's body size (owner).
 private struct BismillahCapsule: View {
     let action: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -4188,24 +4188,9 @@ private struct BismillahCapsule: View {
         .accessibilityLabel("Bismillah, begin")
     }
 
-    /// The word. DEBUG `-demoBismillahType 1…4` (owner, 2026-10-14: other typefaces to compare): 1 New York light,
-    /// 2 the Arabic in the Quran's face, 3 SF Pro ultralight spaced capitals, 4 Continue's (rounded medium), 5 today's thin at Continue's size.
-    @ViewBuilder private var word: some View {
-        #if DEBUG
-        switch UserDefaults.standard.integer(forKey: "demoBismillahType") {
-        case 1: Text("bismillah").font(.system(.title, weight: .light)).fontDesign(.serif)   // the page's design would win
-        case 2: Text("بِسْمِ ٱللَّٰهِ").font(.custom("KFGQPCUthmanTahaNaskh", size: 32))
-        case 3: Text("BISMILLAH").font(.system(.title3, weight: .ultraLight)).fontDesign(.default).tracking(6)
-        case 4: Text("bismillah").font(.system(.body, weight: .medium)).fontDesign(.rounded)
-        case 5: Text("bismillah").font(.system(.body, weight: .thin)).fontDesign(.rounded)   // today's, at Continue's size
-        default: standard
-        }
-        #else
-        standard
-        #endif
-    }
-    private var standard: some View {
-        Text("bismillah").font(.title).fontWeight(.thin).fontDesign(.rounded)
+    /// The word: the rounded thin it always had, at Continue's size (owner, 2026-10-14, decision bismillah-type).
+    private var word: some View {
+        Text("bismillah").font(.system(.body, weight: .thin)).fontDesign(.rounded)
     }
 }
 

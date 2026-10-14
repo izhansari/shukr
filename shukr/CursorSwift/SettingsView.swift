@@ -12,7 +12,6 @@ struct SettingsView: View {
     @ObservedObject private var notificationHealth = NotificationHealth.shared
     /// Settings → Reminders' switch: which side shows (kept), and whether each side needs a look (its orange dot).
     @AppStorage("settings.remindersTab") private var remindersTab = ReminderSwitch.notifications
-    @AppStorage(TourFlow.key) private var tourFlowRaw = "v2"
     @State private var liveActivitiesOn = LiveActivitySetupStep.systemEnabled
     private var notificationsNeedYou: Bool {
         #if DEBUG
@@ -655,17 +654,6 @@ struct SettingsView: View {
                         ZikrTourAgainRow()
                         // The tour's words, editable with the panel drawn (owner; beta builds).
                         if betaAccess.beta {
-                            // Which tour runs: the new flow, or the classic one kept to compare (owner, dev setting).
-                            Picker(selection: $tourFlowRaw) {
-                                Text("New").tag("v2")
-                                Text("Classic").tag("classic")
-                            } label: {
-                                Label {
-                                    Text("Tour flow")
-                                } icon: {
-                                    Image(systemName: "arrow.triangle.branch").foregroundStyle(Color(.label))
-                                }
-                            }
                             NavigationLink {
                                 TourCopyTuner()
                             } label: {

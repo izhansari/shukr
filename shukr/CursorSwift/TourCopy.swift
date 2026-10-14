@@ -15,11 +15,11 @@
 
 import Foundation
 
-/// Which tour runs (Settings → Tours → Tour flow, beta): the new one (show, name, pay off — no intro cards, the map step,
-/// the list unfolded first; owner 2026-10-13) or the classic one, kept to compare.
+/// Which tour runs: the new one (show, name, pay off — no intro cards, the map step, the list unfolded first; owner
+/// 2026-10-13). The Settings switch to the classic one is gone (owner, 2026-10-14), so it's always the new one; the classic
+/// paths are unreached.
 enum TourFlow {
-    static let key = "tour.flow"
-    static var v2: Bool { UserDefaults.standard.string(forKey: key) != "classic" }
+    static var v2: Bool { true }
 }
 
 enum TourCopy {
