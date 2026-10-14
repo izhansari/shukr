@@ -3694,13 +3694,49 @@ struct LASoftBand: View {
     let width: Double
     let t: LATuning
     var surface: Color? = nil
+    /// The lifted band (owner, 2026-10-14: "more apparent on the lock screen"); the island keeps the flat one (each of
+    /// its regions clips, so no drop or glow there — island-rules.md).
+    var lifted = true
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        Circle()
-            .stroke(surface ?? LASoft.surface(t, scheme), lineWidth: width)
-            .shadow(color: LASoft.shade(surface == nil ? scheme : .dark), radius: width * 0.6, x: width * 0.3, y: width * 0.3)
-            .shadow(color: LASoft.light(surface == nil ? scheme : .dark), radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
-            .shadow(color: .white.opacity(t.ringBandLift), radius: width * 0.5, x: -width * 0.25, y: -width * 0.25)
+        if lifted && surface == nil {
+            LiftedSoftBand(width: width, surface: LASoft.surface(t, scheme), shade: LASoft.shade(scheme), light: LASoft.light(scheme))
+        } else {
+            Circle()
+                .stroke(surface ?? LASoft.surface(t, scheme), lineWidth: width)
+                .shadow(color: LASoft.shade(surface == nil ? scheme : .dark), radius: width * 0.6, x: width * 0.3, y: width * 0.3)
+                .shadow(color: LASoft.light(surface == nil ? scheme : .dark), radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
+                .shadow(color: .white.opacity(t.ringBandLift), radius: width * 0.5, x: -width * 0.25, y: -width * 0.25)
+        }
+    }
+}
+
+/// The soft ring's band, lifted off its surface (the app icon's idea, decision app-icon-depth D, on the soft ring's own
+/// radii — the edges stay soft, owner): today's shade and light, each stacked again wider and further; a long blurred
+/// drop under the ring; a blurred glow along the band's top-left. Dark reads as raised, not a black outline. Mocked in
+/// Settings → My Dev Stuff → Ring depth (RingDepthMocks.swift); used by the Live Activity card and the Prayers widget.
+struct LiftedSoftBand: View {
+    let width: Double
+    let surface: Color
+    let shade: Color
+    let light: Color
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        let w = width, dark = scheme == .dark
+        ZStack {
+            Circle().stroke(lineWidth: w * 1.4)
+                .foregroundStyle(Color.black.opacity(dark ? 0.5 : 0.14))
+                .blur(radius: w * 1.6)
+                .offset(x: w * 0.6, y: w * 0.9)
+            Circle().stroke(surface, lineWidth: w)
+                .shadow(color: shade, radius: w * 0.6, x: w * 0.3, y: w * 0.3)
+                .shadow(color: shade.opacity(0.8), radius: w * 1.02, x: w * 0.54, y: w * 0.54)
+                .shadow(color: light, radius: w * 0.9, x: -w * 0.3, y: -w * 0.3)
+                .shadow(color: light, radius: w * 1.35, x: -w * 0.48, y: -w * 0.48)
+            Circle().stroke(LinearGradient(colors: [.white.opacity(dark ? 0.16 : 0.9), .white.opacity(0)],
+                                           startPoint: .topLeading, endPoint: .center), lineWidth: w * 0.6)
+                .blur(radius: w * 0.35)
+        }
     }
 }
 

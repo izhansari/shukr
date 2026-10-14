@@ -1527,12 +1527,18 @@ enum WidgetSoft {
 /// The soft ring's raised band: the surface, lifted — shade down-right, light up-left.
 struct WidgetSoftBand: View {
     var width: CGFloat
+    /// Lifted (owner, 2026-10-14; in dark the flat band read as a black ring on his phone): LiftedSoftBand.
+    var lifted = true
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        Circle()
-            .stroke(WidgetSoft.surface(scheme), lineWidth: width)
-            .shadow(color: WidgetSoft.shade(scheme), radius: width * 0.6, x: width * 0.3, y: width * 0.3)
-            .shadow(color: WidgetSoft.light(scheme), radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
+        if lifted {
+            LiftedSoftBand(width: width, surface: WidgetSoft.surface(scheme), shade: WidgetSoft.shade(scheme), light: WidgetSoft.light(scheme))
+        } else {
+            Circle()
+                .stroke(WidgetSoft.surface(scheme), lineWidth: width)
+                .shadow(color: WidgetSoft.shade(scheme), radius: width * 0.6, x: width * 0.3, y: width * 0.3)
+                .shadow(color: WidgetSoft.light(scheme), radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
+        }
     }
 }
 

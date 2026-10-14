@@ -131,8 +131,8 @@ struct SoftRingMock: View {
             } else {
                 switch place {
                 case .salah: NeuRingTrack().scaleEffect(diameter / 200).environment(\.circleTheme, .publicLook)
-                case .liveActivity: LASoftBand(width: band, t: LATuning.current)
-                case .widget: WidgetSoftBand(width: band)
+                case .liveActivity: LASoftBand(width: band, t: LATuning.current, lifted: false)
+                case .widget: WidgetSoftBand(width: band, lifted: false)
                 case .watch: WatchSoftBand(width: band)
                 }
             }
