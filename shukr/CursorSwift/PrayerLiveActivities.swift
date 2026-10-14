@@ -63,7 +63,10 @@ enum PrayerLiveActivities {
                 let late = st == .active ? String(format: " · %+.0f s after its start", Date().timeIntervalSince(activity.content.state.start)) : ""
                 PrayerWindowLog.add("#\(activity.attributes.n) \(activity.content.state.label) → \(st)\(late)"
                                     + (UIApplication.shared.applicationState == .background ? " · bg" : ""))
-                if st == .active { plan(reason: "\(activity.content.state.label) started") }
+                if st == .active {
+                    plan(reason: "\(activity.content.state.label) started")
+                    AutoTopUp.request("\(activity.content.state.label) card started")   // a moment iOS gives shukr: top everything up
+                }
             }
         }
     }
@@ -98,6 +101,7 @@ enum PrayerLiveActivities {
         if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
         if a.activityState == .active { await a.end(nil, dismissalPolicy: .immediate) }
         plan(reason: "card ✓, after its 15 s")   // its slot is free now (the 5 were full at the tap — Frank)
+        AutoTopUp.request("card ✓")
     }
 
     /// Cards turning to their marked look right now (`plan` leaves them be).
@@ -143,6 +147,7 @@ enum PrayerLiveActivities {
     @MainActor static func widgetMark(_ name: String, _ start: Date, _ end: Date) async -> Bool {
         let marked = markPrayer(name, start: start, end: end, from: "widget")
         if PrayerViewModel.current == nil { plan(reason: "widget mark") }   // the VM's toggle re-plans by itself
+        AutoTopUp.request("widget ✓")
         WidgetCenter.shared.reloadAllTimelines()
         if marked && rowLocation(name, start) == nil {
             // After this run returns (the widget redraws at once): kept alive by a background task, 10 s at most.

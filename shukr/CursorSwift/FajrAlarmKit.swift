@@ -404,6 +404,7 @@ struct FajrAlarmStopIntent: LiveActivityIntent {
         FajrAlarmLog.add("Stop: \(FajrAlarms.describe(alarmID))")
         if let id = UUID(uuidString: alarmID) { try? AlarmManager.shared.stop(id: id) }
         await FajrAlarms.plan(reason: "alarm stopped")
+        AutoTopUp.request("alarm Stop")   // the morning's moment: notifications and cards too
         return .result()
     }
 }
@@ -481,6 +482,8 @@ struct FajrAlarmCheckView: View {
 
     @State private var why: Why?
     enum Why { case limit, topsUp }
+    /// The testing sections (Mornings, Check, Log), closed until tapped.
+    @State private var showTesting = false
     @State private var fajrStatus = FajrAlarmStatus.shared
     @ObservedObject private var health = NotificationHealth.shared
     private var group: UserDefaults? { UserDefaults(suiteName: SharedStore.appGroup) }
@@ -507,6 +510,25 @@ struct FajrAlarmCheckView: View {
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             } header: { Text("Coming up") }
+            // Everything below is for testing (owner: "collapse all the debug stuff … so I can see clearly what our
+            // actual users would see"): one closed row; Mornings, the checks and the log open under it.
+            Section {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) { showTesting.toggle() }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "wrench.and.screwdriver").foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
+                        Text("Testing").foregroundStyle(Color(.label))
+                        Spacer()
+                        Text("Mornings, checks, log").font(.subheadline).foregroundStyle(Color(.secondaryLabel))
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
+                            .rotationEffect(.degrees(showTesting ? 90 : 0))
+                    }
+                }
+            } footer: {
+                Text("Beta builds only — not part of what everyone sees.")
+            }
+            if showTesting {
             Section {
                 if mornings.isEmpty {
                     Text("No alarm has rung yet").foregroundStyle(.secondary)
@@ -555,6 +577,7 @@ struct FajrAlarmCheckView: View {
                 }
                 .textCase(nil)
             }
+            }
         }
         .reminderPageTitle("Your Fajr Alarms")
         .onAppear(perform: load)
@@ -575,7 +598,7 @@ struct FajrAlarmCheckView: View {
                 .init(big: "Opening shukr", small: "Any time you open the app, the days ahead fill back up to \(FajrAlarms.daysAhead).", symbol: "iphone", warn: false),
                 bgOn ? .init(big: "Background App Refresh is on", small: "iOS wakes shukr now and then, and the alarms are topped up with your reminders.", symbol: "arrow.triangle.2.circlepath", warn: false)
                      : .init(big: "Background App Refresh is off", small: "Turn it on in Settings, or open shukr every few weeks.", symbol: "arrow.triangle.2.circlepath", warn: true),
-                .init(big: "Your reminders' buttons", small: "Tapping one on a prayer reminder, like I already prayed, tops them up too.", symbol: "bell", warn: false),
+                .wakes,
             ], fix: bgOn ? nil : ("Fix in Settings", { SettingsLinks.app() }))
         }
     }

@@ -81,6 +81,7 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
                 bgOn ? Point(big: "Background App Refresh is on", small: "iOS wakes shukr now and then to add the next days." + ran, symbol: "arrow.triangle.2.circlepath", warn: false)
                      : Point(big: "Background App Refresh is off", small: "Turn it on in Settings, or open shukr every few days.", symbol: "arrow.triangle.2.circlepath", warn: true),
                 Point(big: "Opening shukr tops it up too", small: "Any time you open the app, the week refills.", symbol: "iphone", warn: false),
+                .wakes,
                 Point(big: "Never a silent stop", small: "If iOS can't refresh, shukr tells you first: when it eases off to just the starts, two days before your reminders run out, and at the last one\(keep).", symbol: "bell.badge", warn: false),
             ], fix: !bgOn)
         case .onTime:

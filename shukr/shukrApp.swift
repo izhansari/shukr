@@ -238,15 +238,21 @@ struct shukrApp: App {
         // Shortcuts that only answer top the reminders up after answering (ShortcutTopUp: at most every 3 h), under a
         // background-task assertion so it finishes once the shortcut has its answer.
         let container = sharedModelContainer
-        ShortcutTopUp.run = {
-            var bg = UIBackgroundTaskIdentifier.invalid
-            bg = UIApplication.shared.beginBackgroundTask(withName: "shortcut top-up") {
-                UIApplication.shared.endBackgroundTask(bg); bg = .invalid
-            }
+        ShortcutTopUp.run = { AutoTopUp.request("shortcut") }   // AutoTopUp: notifications + alarms + cards, logged
+        #if DEBUG
+        // `-autoTopUpTest`: one top-up 4 s in, then one asked inside the 3 h (logged as skipped) — topups.log.
+        if ProcessInfo.processInfo.arguments.contains("-autoTopUpTest") {
             Task { @MainActor in
-                await NotificationScheduler.rescheduleNow(context: container.mainContext, reason: "shortcut")   // + Fajr alarms
-                PrayerLiveActivities.plan(reason: "shortcut")
-                if bg != .invalid { UIApplication.shared.endBackgroundTask(bg); bg = .invalid }
+                try? await Task.sleep(for: .seconds(4))
+                await AutoTopUp.run("debug test", force: true)
+                AutoTopUp.request("debug test again")
+            }
+        }
+        #endif
+        // A location fix while in the background (Always: iOS wakes shukr for a big move) — a moment to top up.
+        EnvLocationManager.onFix = {
+            Task { @MainActor in
+                if UIApplication.shared.applicationState == .background { AutoTopUp.request("location update") }
             }
         }
         // Explore draws the real Prayers widget: its arcs and timers drawn at its preset moment (the timer-driven ones
@@ -410,7 +416,7 @@ struct shukrApp: App {
         // Tops the prayer notifications up while the app isn't opened (NotificationScheduler).
         .backgroundTask(.appRefresh(NotificationScheduler.refreshTaskID)) {
             NotificationHealth.noteBackgroundRefreshRan()   // for Settings → Scheduled notifications (beta)
-            await NotificationScheduler.rescheduleNow(context: sharedModelContainer.mainContext, reason: "background refresh")
+            await AutoTopUp.run("background refresh", force: true)   // notifications + alarms + cards, logged
         }
         .environmentObject(environmentLocationManager)
         .environmentObject(environmentLocationManager.compass)   // compass views subscribe to this, nothing else does
@@ -600,7 +606,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let original = response.notification.request.content
         let subject = original.subtitle.isEmpty ? original.title : original.subtitle
         // Every answer to a notification tops the plan up (plan v2): it may be all the app sees of someone for days.
-        DispatchQueue.main.async { NotificationScheduler.topUp(reason: "notification action") }
+        DispatchQueue.main.async { AutoTopUp.request("notification button", force: true) }
         let userInfo = original.userInfo
         // Zikr task reminders (ZikrReminders): Start now / tap, Later.
         if original.categoryIdentifier == ZikrReminders.category, let taskID = userInfo["zikrTaskID"] as? String {

@@ -68,7 +68,10 @@ enum CompassStatus: Equatable {
     case unreliable
 }
 
-class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate { //locman_flag used for the compass in MainCircle and with injection on @Main
+class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    /// Each fix (the app sets it at launch: a background one tops everything up — AutoTopUp; this file is in the widget too).
+    nonisolated(unsafe) static var onFix: (() -> Void)?
+ //locman_flag used for the compass in MainCircle and with injection on @Main
     @ObservationIgnored let manager = CLLocationManager()
     
     // Location and Heading Data
@@ -293,6 +296,8 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         userLocation = locations.last
         locationUpdates.send(locations.last)
+        // With Always, iOS wakes shukr for a big move: a moment to top everything up (the app sets this; AutoTopUp).
+        Self.onFix?()
         setQiblaOrigin(locations.last)
     }
     

@@ -199,3 +199,11 @@ extension View {
             }
     }
 }
+
+extension ReminderWhy.Point {
+    /// Every "Tops itself up" says it the same way (AutoTopUp): the moments shukr gets without being opened.
+    static let wakes = ReminderWhy.Point(
+        big: "Whenever shukr wakes",
+        small: "A prayer card starting, a ✓ on a card or the widget, a reminder's button, stopping the alarm, or a big move with Always location: each one tops up your reminders, alarms and cards.",
+        symbol: "bolt.horizontal.circle", warn: false)
+}
