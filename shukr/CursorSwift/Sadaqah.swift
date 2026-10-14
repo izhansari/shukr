@@ -504,6 +504,9 @@ struct SadaqahPage: View {
         .fontDesign(.rounded)
         .navigationDestination(isPresented: $showHistory) { SadaqahHistoryPage() }
         .sheet(isPresented: $showGuide) { GivingGuideSheet() }
+        #if DEBUG
+        .task { if ProcessInfo.processInfo.arguments.contains("-demoGivingGuide") { showGuide = true } }   // with -demoSadaqah
+        #endif
         .sheet(item: $asking, onDismiss: {
             if let charity = confirmed { confirmed = nil; editing = DonationDraft(after: charity) }
         }) { charity in
@@ -1340,80 +1343,95 @@ private struct CharityInfoSheet: View {
 struct GivingGuideSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    private struct Kind: Identifiable {
+    private struct Kind: Identifiable, Hashable {
         let id: String
-        let symbol: String
         let title: String
-        let tagline: String
-        let text: String
+        /// The one thing to know, on the list.
+        let line: String
+        /// The rest, a tap away.
+        let more: String
+    }
+    private struct Group: Identifiable {
+        let id: String
+        let kinds: [Kind]
     }
 
     /// Checked 2026-10-13 against mainstream sources (Zakat Foundation, IslamQA, SeekersGuidance, Darul Ifta Birmingham,
-    /// Muslim Aid, Human Appeal) and written for the average reader (owner); still for a knowledgeable check before release.
-    private static let kinds: [Kind] = [
-        Kind(id: "zakat", symbol: "scalemass.fill", title: "Zakat", tagline: "The required charity",
-             text: "Zakat is one of the five pillars of Islam. If your savings (cash, gold, silver, investments) stay above a set minimum, called the nisab, for a full Islamic year, you give 2.5% of them. It goes to groups named in the Qur'an, like the poor, the needy and people in debt."),
-        Kind(id: "sadaqah", symbol: "heart.fill", title: "Sadaqah", tagline: "Giving by choice",
-             text: "Sadaqah is anything you give freely, in any amount, at any time. It isn't only money. A kind word, a smile or helping someone counts too."),
-        Kind(id: "jariyah", symbol: "drop.fill", title: "Sadaqah Jariyah", tagline: "Charity that keeps on giving",
-             text: "A gift that keeps helping people long after you give it, like a well, a school, a masjid or knowledge people keep learning from. Its reward keeps reaching you, even after you pass away."),
-        Kind(id: "fitr", symbol: "sparkles", title: "Zakat al-Fitr", tagline: "Before the Eid prayer",
-             text: "A small, required gift for every person in your household, about the cost of one meal, given at the end of Ramadan. Give it before the Eid prayer so everyone can celebrate. Your masjid usually announces the amount each year."),
-        Kind(id: "fidya", symbol: "fork.knife", title: "Fidya", tagline: "For fasts you can't make up",
-             text: "If you're too ill or too old to fast, and can never make the days up, you feed one person in need for each fast you miss, about the cost of a meal each. If you can make the days up later, you do that instead. Fasts missed for your period or after childbirth are simply made up later, with no fidya or kaffarah. If you're pregnant or nursing, you make the days up too; schools differ on whether fidya is also owed."),
-        Kind(id: "kaffarah", symbol: "arrow.uturn.backward.circle.fill", title: "Kaffarah", tagline: "For a fast broken on purpose",
-             text: "If you break a Ramadan fast on purpose, you make up the day. Some cases also need kaffarah: fasting 60 days in a row, or, if you can't, feeding 60 people in need. Which cases need it depends on your school of thought. A broken oath has its own, smaller kaffarah."),
-        Kind(id: "qurbani", symbol: "leaf.fill", title: "Qurbani", tagline: "At Eid al-Adha",
-             text: "Sacrificing a sheep, goat, cow or camel in the days of Eid al-Adha, then sharing the meat with family, friends and people in need. Some schools say it's required if you can afford it; others say it's strongly encouraged. Many charities can do it for you abroad."),
-        Kind(id: "riba", symbol: "percent", title: "Bank interest", tagline: "Giving away interest",
-             text: "Islam forbids earning interest. If interest still lands in your account, many scholars say to give it to people in need, without counting it as your zakat or sadaqah."),
+    /// Muslim Aid, Human Appeal); still for a knowledgeable check before release. Grouped by when you give, one line each,
+    /// the rest a tap away (owner, decision giving-guide-voice A: it read like an AI list article — no taglines, no icons,
+    /// "schools differ" said once at the foot).
+    private static let groups: [Group] = [
+        Group(id: "Every year", kinds: [
+            Kind(id: "zakat", title: "Zakat",
+                 line: "2.5% of savings you've held for a full year above the nisab.",
+                 more: "One of the five pillars. Count what you've saved: cash, gold and silver, investments. If it has stayed above the nisab, a set minimum, for a full Islamic year, 2.5% of it is your zakat. It goes to the people the Qur'an names, among them the poor and people in debt."),
+        ]),
+        Group(id: "Any time", kinds: [
+            Kind(id: "sadaqah", title: "Sadaqah",
+                 line: "Any gift, any amount. A kind word counts too.",
+                 more: "There's no minimum and no set time, and it doesn't have to be money. Helping someone, or a smile, is sadaqah as well."),
+            Kind(id: "jariyah", title: "Sadaqah Jariyah",
+                 line: "A gift that keeps helping after you've gone, like a well or a Qur'an someone reads.",
+                 more: "Its reward keeps reaching you for as long as people benefit from it, even after you pass away. A well people drink from, a masjid people pray in, or knowledge people keep learning from."),
+        ]),
+        Group(id: "Ramadan and Eid", kinds: [
+            Kind(id: "fitr", title: "Zakat al-Fitr",
+                 line: "About one meal per person in your home, before the Eid prayer.",
+                 more: "Owed for every person in your household at the end of Ramadan. Give it before the Eid prayer, so people in need can celebrate too. Your masjid usually announces the amount each year."),
+            Kind(id: "fidya", title: "Fidya",
+                 line: "One meal for someone in need for each fast you can never make up.",
+                 more: "For when you're too ill or too old to fast and can't make the days up. If you can make them up later, you do that instead. Fasts missed for your period or after childbirth are made up later, with no fidya. If you're pregnant or nursing you make the days up too; schools differ on whether fidya is also owed."),
+            Kind(id: "kaffarah", title: "Kaffarah",
+                 line: "For a Ramadan fast broken on purpose: fast 60 days in a row, or feed 60 people.",
+                 more: "You make up the day itself either way. Which cases also need kaffarah depends on your school of thought. A broken oath has its own, smaller kaffarah."),
+            Kind(id: "qurbani", title: "Qurbani",
+                 line: "An animal at Eid al-Adha, its meat shared.",
+                 more: "A sheep, goat, cow or camel, sacrificed in the days of Eid al-Adha, with the meat shared among family, friends and people in need. Some schools hold it's required if you can afford it, others that it's strongly encouraged. Many charities can do it for you abroad."),
+        ]),
+        Group(id: "Not yours to keep", kinds: [
+            Kind(id: "riba", title: "Bank interest",
+                 line: "Give it away. It doesn't count as zakat or sadaqah.",
+                 more: "Islam forbids earning interest. If some still lands in your account, many scholars say to pass it on to people in need, without counting it as your zakat or sadaqah."),
+        ]),
     ]
 
     /// The page's title has scrolled under the bar: the bar shows it (owner).
     @State private var titleInBar = false
 
     var body: some View {
-        // In its own NavigationStack: the ✕ is the bar's own button (Liquid Glass on iOS 26 — owner), and the title goes
-        // up into the bar as it scrolls.
+        // In its own NavigationStack: the ✕ is the bar's own button (Liquid Glass on iOS 26 — owner), the title goes up
+        // into the bar as it scrolls, and a row pushes its page.
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    VStack(spacing: 6) {
-                        Text("Kinds of giving").font(.system(size: 30, weight: .light, design: .rounded))
-                        Text("What each one is, in a few lines").font(.subheadline).foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 8).padding(.bottom, 8)
-                    ForEach(Self.kinds) { k in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 12) {
-                                Image(systemName: k.symbol)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 32, height: 32)
-                                    .background(Circle().fill(Color.sage))
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(k.title).font(.body.weight(.semibold))
-                                    Text(k.tagline).font(.footnote).foregroundStyle(Color.sage)
+            List {
+                Text("Kinds of giving")
+                    .font(.system(size: 30, weight: .light, design: .rounded))
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                ForEach(Self.groups) { group in
+                    Section {
+                        ForEach(group.kinds) { k in
+                            NavigationLink(value: k) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(k.title).font(.body.weight(.medium))
+                                    Text(k.line).font(.subheadline).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
                                 }
+                                .padding(.vertical, 3)
                             }
-                            Text(k.text)
-                                .font(.subheadline).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                            .listRowBackground(SadaqahPage.card)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(SadaqahPage.card))
-                        .padding(.horizontal, 20)
+                    } header: {
+                        Text(group.id)
                     }
-                    // Owner: the imam at your masjid, not "a scholar" — easier to find.
-                    Text("This is a short guide, not a ruling. Details differ between schools of thought, so ask the imam at your masjid about your own situation.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 28).padding(.top, 6).padding(.bottom, 24)
                 }
+                Section {} footer: { Self.footer(.center) }
             }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
             .background(Color(.systemBackground).ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: Kind.self) { KindPage(kind: $0) }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }
@@ -1434,6 +1452,35 @@ struct GivingGuideSheet: View {
         .fontDesign(.rounded)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
+    }
+
+    // Owner: the imam at your masjid, not "a scholar" — easier to find.
+    private static func footer(_ alignment: TextAlignment) -> some View {
+        Text("Schools differ on the details. The imam at your masjid can tell you what applies to you.")
+            .font(.footnote).foregroundStyle(.secondary)
+            .multilineTextAlignment(alignment)
+            .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
+            .padding(.top, 4)
+    }
+
+    /// A kind's page: its line, then the rest.
+    private struct KindPage: View {
+        let kind: Kind
+        var body: some View {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(kind.title).font(.system(size: 30, weight: .light, design: .rounded))
+                    Text(kind.line).font(.title3)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(kind.more).font(.body).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    GivingGuideSheet.footer(.leading).padding(.top, 10)
+                }
+                .padding(.horizontal, 24).padding(.top, 8).padding(.bottom, 24)
+            }
+            .background(Color(.systemBackground).ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
 }
 
