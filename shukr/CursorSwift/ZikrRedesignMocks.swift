@@ -178,6 +178,12 @@ private enum MockFmt {
         default: return days < 730 ? "a year ago" : "\(days / 365) years ago"
         }
     }
+    /// "1 h 12 min" · "23 min" · "40 s": time spent in all.
+    static func spent(_ s: TimeInterval) -> String {
+        let m = Int(s / 60)
+        if m >= 60 { return m % 60 == 0 ? "\(m / 60) h" : "\(m / 60) h \(m % 60) min" }
+        return m >= 1 ? "\(m) min" : "\(Int(s)) s"
+    }
     static func hours(_ s: TimeInterval) -> String {
         let h = Int(s / 3600)
         return h >= 1 ? "\(h) h" : "\(Int(s / 60)) min"
@@ -487,8 +493,10 @@ private struct ZikrRow: View {
     let zikr: MantraModel
     var body: some View {
         let last = zikr.sessions.map(\.startTime).max()
+        // The time spent on it in all, not the pace (owner: "we don't need to see how many seconds each").
+        let spent = zikr.sessions.reduce(0) { $0 + $1.secondsPassed }
         let parts = [zikr.totalCount > 0 ? "\(MockFmt.count(zikr.totalCount)) counted" : nil,
-                     zikr.secondsPerCount.map { String(format: "%.1fs each", $0) },
+                     spent >= 1 ? MockFmt.spent(spent) : nil,
                      last.map { "last \(MockFmt.ago($0))" }].compactMap { $0 }
         HStack(spacing: 14) {
             SoftRing(symbol: zikr.isBuiltIn ? "book.closed" : "circle.hexagonpath", size: 30)
