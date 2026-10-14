@@ -360,6 +360,16 @@ struct SessionRow: View {
     var onDelete: (() -> Void)? = nil
     /// The row's card (the Zikr redesign mockups draw raised soft cards).
     var rowBackground = AnyView(Color(.secondarySystemGroupedBackground))
+    /// The Zikr redesign mockups' quieter line (Sami's review): "50 goal" for the "# 50" glyph, no "∞ freestyle" under
+    /// "Freestyle", the pace as plain grey text (still a tap target) without its capsule.
+    var quiet = false
+    private var quietTarget: String? {
+        switch session.sessionMode {
+        case 1: return "\(session.targetMin) min goal"
+        case 2: return "\(session.targetCount.formatted()) goal"
+        default: return session.displayTitle == "Freestyle" ? nil : "freestyle"
+        }
+    }
 
     private var modeIcon: String {
         switch session.sessionMode {
@@ -463,12 +473,18 @@ struct SessionRow: View {
                         .font(.body.weight(.medium))
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    if quiet {
+                        if showsMantraName { Text(session.startTime, style: .time) }
+                        if showsMantraName && quietTarget != nil { Text("·") }
+                        if let quietTarget { Text(quietTarget) }
+                    } else {
                     if showsMantraName {
                         Text(session.startTime, style: .time)
                         Text("·")
                     }
                     Text("\(Image(systemName: modeIcon))")   // a glyph on the line, like the moon
                     Text(target)
+                    }
                     // Sleep mode ended it (owner, idea 4WTV). Set as a text glyph, after a "·" like the
                     // rest of the line: as a free Image it was centred by its box and the top-heavy
                     // zzz sat off the text's baseline (owner, K8TN).
@@ -495,7 +511,7 @@ struct SessionRow: View {
                             .padding(.horizontal, 6)   // fixed: a layout change mid-hold must not disturb the touch
                             .padding(.vertical, 2)
                             // A tap target now (the pace button): a faint capsule says so.
-                            .background(Capsule().fill(Color.primary.opacity(tappable && !feelingPace ? 0.06 : 0)))
+                            .background(Capsule().fill(Color.primary.opacity(tappable && !feelingPace && !quiet ? 0.06 : 0)))
                             // Only the pill plays the pace (owner: "1m 27s" beside it opens the session like
                             // the rest of the row). A child's tap wins over the row's; a few points of slop
                             // round the capsule so a thumb finds it.
