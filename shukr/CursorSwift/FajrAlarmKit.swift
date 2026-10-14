@@ -556,6 +556,9 @@ struct FajrAlarmCheckView: View {
                 row("shukr sets the alarms", FajrAlarms.isActive ? "yes" : "no (the Shortcut)")
                 row("Alarms set", "\(ours.count)" + (alarms.count > ours.count ? " + \(alarms.count - ours.count) test" : ""))
                 Button("Ring a test alarm in 1 minute") {
+                    // The Stop wake test: no 3 h top-up limit for 10 min, so its Stop is logged running (topups.log).
+                    UserDefaults.standard.set(Date().timeIntervalSince1970 + 600, forKey: "autoTopUp.noLimitUntil")
+                    TopUpLog.add("wake test: a test alarm set for 1 min from now")
                     Task { _ = await FajrAlarms.scheduleTest(at: Date().addingTimeInterval(60)); load() }
                 }
                 Button(planning ? "Planning…" : "Re-plan now") {
