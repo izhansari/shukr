@@ -1520,7 +1520,6 @@ private struct MonthHero: View {
     /// A day shown for a moment (a tap on Best day lights it on the ring).
     @State private var pointed: Int?
     @State private var revert: Task<Void, Never>?
-    @State private var unpoint: Task<Void, Never>?
     private var shownDay: Int? { scrub ?? pointed }
     private let ringSize: CGFloat = 126
 
@@ -1537,13 +1536,20 @@ private struct MonthHero: View {
                     .sensoryFeedback(.selection, trigger: scrub)
                 VStack(alignment: .leading, spacing: 8) {
                     if let b = s.bestDay {
+                        let on = pointed != nil
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("Best day").font(.footnote).foregroundStyle(.secondary)
+                            Text("Best day").font(.footnote).foregroundStyle(on ? Color.sage : .secondary)
                             Text("\(MockFmt.compact(b.seconds)) · \(b.date.formatted(.dateTime.month(.abbreviated).day()))")
                                 .font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
+                                .foregroundStyle(on ? Color.sage : .primary)
                         }
+                        // Selected: sage on a soft sage pill, as long as its day is lit on the ring.
+                        .padding(.horizontal, on ? 8 : 0).padding(.vertical, on ? 4 : 0)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.sage.opacity(on ? 0.14 : 0)))
+                        .padding(.horizontal, on ? -8 : 0).padding(.vertical, on ? -4 : 0)
                         .contentShape(Rectangle())
-                        .onTapGesture { point(at: b.date) }   // lights that day on the ring for a moment
+                        .onTapGesture { point(at: b.date) }   // lights that day on the ring; a second tap lets go
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         if let t = s.today { Text("\(s.activeDays) of \(t + 1) days") }
@@ -1626,16 +1632,11 @@ private struct MonthHero: View {
         }
     }
 
+    /// Best day: a tap selects its day (lit on the ring, the text in sage) until tapped again (owner).
     private func point(at date: Date) {
         guard let i = s.dates.firstIndex(where: { Calendar.current.isDate($0, inSameDayAs: date) }) else { return }
         triggerSomeVibration(type: .light)
-        unpoint?.cancel()
-        withAnimation(.snappy) { pointed = i }
-        unpoint = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3))
-            guard !Task.isCancelled else { return }
-            withAnimation(.snappy) { pointed = nil }
-        }
+        withAnimation(.snappy) { pointed = pointed == nil ? i : nil }
     }
 
     /// The day under a point on the ring (the 1st at the top, clockwise), up to today.
