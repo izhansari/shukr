@@ -107,7 +107,7 @@ struct ZikrCircleWheel: View {
     @State private var tasksSheetOn: TaskModel?
     /// The hold menu's Open zikr / Delete….
     @State private var wheelOpenZikr: MantraModel?
-    /// The redesign mockups' zikr page, pushed from the wheel's hold menu (DEBUG `-zikrMockApp`).
+    /// The redesign mockups' zikr sheet, from the wheel's hold menu (DEBUG `-zikrMockApp`).
     @State private var mockZikr: MantraModel?
     @State private var wheelDelete: TaskModel?
     /// How the circles fall away from the middle (Settings → My Dev Stuff while the owner picks).
@@ -214,7 +214,7 @@ struct ZikrCircleWheel: View {
                 CircleCover.set("yourTasks", open, close: { showTasksPage = false })
             }
             .sheet(item: $wheelOpenZikr) { MantraEditorView(mantra: $0).stageCover("wheelZikrPage") }
-            .navigationDestination(item: $mockZikr) { zikrMockZikrPage($0) }
+            .sheet(item: $mockZikr) { zikrMockZikrPage($0) }   // a zikr is a sheet in the mockups (zikr-flow-shape A)
             .alert(wheelDelete.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
                    isPresented: Binding(get: { wheelDelete != nil }, set: { if !$0 { wheelDelete = nil } }),
                    presenting: wheelDelete) { task in
