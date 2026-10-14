@@ -2709,8 +2709,21 @@ struct PrayersWidgetAppearancePage: View {
             Section {
                 RealPrayersWidget(style: shown)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
+                    .padding(.top, 40).padding(.bottom, 18)
                     .animation(.easeInOut(duration: 0.35), value: shown)
+                    // What's shown and where, top left — as the Icon and Card look pages label theirs (owner).
+                    .overlay(alignment: .topLeading) {
+                        HStack(spacing: 6) {
+                            Text(style.title).fontWeight(.semibold)
+                            Text("·")
+                            Text("Home Screen")
+                        }
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle((scheme == .dark ? Color.white : .black).opacity(0.7))
+                        .contentTransition(.opacity)
+                        .animation(.easeInOut(duration: 0.35), value: style)
+                        .padding(.leading, 4).padding(.top, 14)
+                    }
                     // A wallpaper behind it, as Explore's pictures have (a dark widget on the dark row was lost).
                     .listRowBackground(LinearGradient(colors: scheme == .dark
                         ? [Color(red: 0.17, green: 0.33, blue: 0.25), Color(red: 0.07, green: 0.10, blue: 0.08)]

@@ -1515,12 +1515,13 @@ struct PrayerTimesView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { WhatsNewPerf.opened = 0; demoWhatsNew = true }
         }
         #endif
-        // DEBUG `-demoScheduledNotifications [-demoReminderPage la|alarm]`: Your Notifications / Live Activities / Fajr Alarms.
+        // DEBUG `-demoScheduledNotifications [-demoReminderPage la|alarm|widget]`: Your Notifications / Live Activities / Fajr Alarms.
         .sheet(isPresented: $demoScheduled) {
             NavigationStack {
                 switch UserDefaults.standard.string(forKey: "demoReminderPage") {
                 case "la": ScheduledLiveActivitiesPage()
                 case "alarm": FajrAlarmCheckView()
+                case "widget": PrayersWidgetAppearancePage()
                 default: YourRemindersView()
                 }
             }
