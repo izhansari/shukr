@@ -924,7 +924,7 @@ private struct ZikrSheet: View {
                     header
                     if goals.count > 1 { goalSwitch }
                     if let g = goal { hero(g) }
-                    ModalLookCard(zikr: zikr, showsName: false) { card = ZikrCardRequest(mantra: zikr) }
+                    ModalLookCard(zikr: zikr) { card = ZikrCardRequest(mantra: zikr, pane: $0) }
                     if zikr.totalCount > 0 { record }
                     if goals.isEmpty { Soft.addRow("Make it a daily goal") { addingGoal = true } }
                 }.bareRow(top: 18) }
@@ -1112,71 +1112,163 @@ private struct ZikrSheet: View {
 
 // MARK: - A zikr
 
-/// The zikr card as the modal shows it (owner: "we poured a lot of our heart and soul into that"), raised off the page:
-/// the name and its lock, the tabs down the left, the words and notes in the inner box. A tap opens the real modal.
+/// The zikr's card in its sheet, in the modal's look but for looking, not editing (owner: tapping the waveform should
+/// play the memo, not open the editor; "I like how you put the little pencil inside"): the tabs down the left switch the
+/// box in place — the words and notes (scrolling inside a fixed box, so a long note never stretches the sheet), the
+/// voice memo (play, 0.75×, loop), the photo (tap to see it whole) — and only ✎ opens the editor, on the tab you're on.
 private struct ModalLookCard: View {
     let zikr: MantraModel
-    /// Off in the zikr's sheet, whose title is already the name (no name twice): the ✎ moves into the card's corner.
-    var showsName = true
-    let open: () -> Void
+    /// The editor, opened on this tab.
+    let edit: (MantraCardFields.Pane) -> Void
+    @State private var pane: MantraCardFields.Pane = .words
+    @State private var engine = ZikrAudio()
+    @State private var photo: UIImage?
+    @State private var viewing = false
+    static let boxHeight: CGFloat = 150
+
     var body: some View {
-        let full = zikr.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let notes = zikr.notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        Button(action: open) {
-            VStack(alignment: .leading, spacing: 12) {
-                if showsName {
-                    HStack(spacing: 8) {
-                        Text(zikr.name).font(.system(size: 24, weight: .light, design: .rounded)).lineLimit(1)
-                        if zikr.isBuiltIn { Image(systemName: "lock.fill").font(.system(size: 11)).foregroundStyle(.tertiary) }
-                        Spacer()
-                        Image(systemName: "pencil").font(.system(size: 14, weight: .medium)).foregroundStyle(.secondary)
-                            .frame(width: 34, height: 34).barGlass(Circle())
-                    }
-                }
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(spacing: 14) {
-                        Image(systemName: "doc.text").foregroundStyle(Color.sage)
-                            .frame(width: 32, height: 32).background(Circle().fill(Color.sage.opacity(0.14)))
-                        tab("waveform", has: zikr.audioData != nil)
-                        tab("photo", has: zikr.imageData != nil)
-                    }
-                    VStack(spacing: 10) {
-                        if full.isEmpty && notes.isEmpty {
-                            Text("No words or notes yet. Tap to add them.").font(.footnote).foregroundStyle(.tertiary)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        if !full.isEmpty { ZikrFullText(text: full, arabicSize: 22, otherSize: 15).frame(maxWidth: .infinity) }
-                        if !full.isEmpty && !notes.isEmpty { Divider() }
-                        if !notes.isEmpty {
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Image(systemName: "doc.text").foregroundStyle(.tertiary)
-                                BulletedNotes(text: notes).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .font(.footnote)
-                        }
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, minHeight: 124)   // as tall as the tabs beside it (no gap under it)
-                    .background(NeuPressed(shape: RoundedRectangle(cornerRadius: 16, style: .continuous)))
-                }
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 14) {
+                tab(.words, "doc.text", has: false)
+                tab(.memo, "waveform", has: zikr.audioData != nil)
+                tab(.photo, "photo", has: zikr.imageData != nil)
             }
-            .padding(16)
-            .overlay(alignment: .bottomTrailing) {
-                if !showsName {
+            ZStack(alignment: .bottomTrailing) {
+                Group {
+                    switch pane {
+                    case .words: words
+                    case .memo: memo
+                    case .photo: photoPane
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: Self.boxHeight)
+                .transition(.opacity)
+                Button { engine.stopPlaying(); edit(pane) } label: {
                     Image(systemName: "pencil").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32).barGlass(Circle()).padding(22)
+                        .frame(width: 32, height: 32).barGlass(Circle())
                 }
+                .buttonStyle(.plain)
+                .padding(8)
+                .accessibilityLabel("Edit")
             }
-            .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
-            .contentShape(Rectangle())
+            .background(NeuPressed(shape: RoundedRectangle(cornerRadius: 16, style: .continuous)))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .padding(16)
+        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
+        .task(id: blobKey(zikr.imageData)) { photo = await decodedImage(zikr.imageData) }
+        .onDisappear { engine.stopPlaying() }
+        .onChange(of: pane) { _, _ in engine.stopPlaying() }
+        .fullScreenCover(isPresented: $viewing) { if let photo { ZikrPhotoViewer(image: photo) } }
+    }
+
+    /// A tab: sage and filled when it's the one showing; a sage dot when the memo / photo has something in it.
+    private func tab(_ p: MantraCardFields.Pane, _ symbol: String, has: Bool) -> some View {
+        let on = pane == p
+        return Button { triggerSomeVibration(type: .light); withAnimation(.easeOut(duration: 0.15)) { pane = p } } label: {
+            Image(systemName: symbol).foregroundStyle(on ? Color.sage : .secondary)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(on ? Color.sage.opacity(0.14) : .clear))
+                .overlay(alignment: .topTrailing) {
+                    if has && !on { Circle().fill(Color.sage).frame(width: 6, height: 6).offset(x: -4, y: 6) }
+                }
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(p.label)
     }
-    private func tab(_ symbol: String, has: Bool) -> some View {
-        Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 32, height: 32)
-            .overlay(alignment: .topTrailing) {
-                if has { Circle().fill(Color.sage).frame(width: 6, height: 6).offset(x: -4, y: 6) }
+
+    /// The words and the notes; a long note scrolls inside the box (its foot fades so it reads as more below).
+    @ViewBuilder private var words: some View {
+        let full = zikr.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let notes = zikr.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if full.isEmpty && notes.isEmpty {
+            empty("doc.text", "No words or notes yet", "Add them", .words)
+        } else {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if !full.isEmpty { ZikrFullText(text: full, arabicSize: 22, otherSize: 15).frame(maxWidth: .infinity) }
+                    if !full.isEmpty && !notes.isEmpty { Divider() }
+                    if !notes.isEmpty {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "doc.text").foregroundStyle(.tertiary)
+                            BulletedNotes(text: notes).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .font(.footnote)
+                    }
+                }
+                .padding(14).padding(.bottom, 26)   // clear of ✎
             }
+            .scrollIndicators(.hidden)
+            .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.82),
+                                         .init(color: .black.opacity(0), location: 1)], startPoint: .top, endPoint: .bottom))
+        }
+    }
+
+    /// The voice memo, played right here: the ring play button, when it was recorded (or where it is), 0.75× and loop.
+    @ViewBuilder private var memo: some View {
+        if let data = zikr.audioData {
+            VStack(spacing: 10) {
+                Button { engine.togglePlay(data) } label: {
+                    RingPlayButton(playing: engine.state == .playing, progress: engine.progress, size: 54)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(engine.state == .playing ? "Pause" : "Play voice memo")
+                Text(memoLine(data)).font(.footnote.monospacedDigit()).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    chip("0.75×", on: engine.slow) { engine.slow.toggle() }
+                    chip(nil, symbol: "repeat", on: engine.loop) { engine.loop.toggle() }
+                }
+            }
+        } else {
+            empty("waveform", "No voice memo yet", "Record one", .memo)
+        }
+    }
+
+    /// The photo, whole in the box; a tap shows it full screen.
+    @ViewBuilder private var photoPane: some View {
+        if zikr.imageData != nil {
+            if let photo {
+                Button { ZikrPhotoViewer.open { viewing = true } } label: {
+                    Image(uiImage: photo).resizable().scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(10)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show photo")
+            } else {
+                ProgressView()
+            }
+        } else {
+            empty("photo", "No photo yet", "Add one", .photo)
+        }
+    }
+
+    private func empty(_ symbol: String, _ line: String, _ action: String, _ p: MantraCardFields.Pane) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: symbol).font(.system(size: 22, weight: .light)).foregroundStyle(.tertiary)
+            Text(line).font(.footnote).foregroundStyle(.secondary)
+            Button(action) { edit(p) }.font(.footnote.weight(.medium)).foregroundStyle(Color.sage).buttonStyle(.plain)
+        }
+    }
+
+    private func memoLine(_ data: Data) -> String {
+        func mmss(_ t: TimeInterval) -> String { String(format: "%d:%02d", Int(t) / 60, Int(t) % 60) }
+        if engine.state == .playing || engine.state == .paused { return "\(mmss(engine.elapsed)) / \(mmss(engine.duration))" }
+        if let d = ZikrAudio.recordedDate(of: data) { return "Recorded " + d.formatted(.dateTime.month(.abbreviated).day()) }
+        return "Voice memo"
+    }
+
+    private func chip(_ title: String?, symbol: String? = nil, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Group { if let symbol { Image(systemName: symbol) } else { Text(title ?? "") } }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(on ? Color.sage : Color.secondary)
+                .padding(.horizontal, 9).frame(height: 26)
+                .background(Capsule().fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.06)))
+        }
+        .buttonStyle(.plain)
     }
 }
 
