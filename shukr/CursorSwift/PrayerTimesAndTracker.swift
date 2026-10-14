@@ -1538,10 +1538,10 @@ struct PrayerTimesView: View {
             LocationMapContentView()
         }
         .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
-        .navigationDestination(isPresented: $showMantrasPage) { zikrRedesign(.azkar) { AzkarPage() } }
+        .navigationDestination(isPresented: $showMantrasPage) { ZikrAreaPage(start: .azkar) }
         .navigationDestination(isPresented: $showSalahHistoryV1) { SimpleDailyScoreView() }
         .navigationDestination(isPresented: $showSalahHistoryV2) { PrayerEditorView() }
-        .navigationDestination(isPresented: $showZikrHistory) { zikrRedesign(.history) { ZikrHistoryPage() } }
+        .navigationDestination(isPresented: $showZikrHistory) { ZikrAreaPage(start: .history) }
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
         .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }
@@ -2449,12 +2449,11 @@ struct PrayerTimesView: View {
                     Image(systemName: streak.keptToday && streak.current > 0 ? "flame.fill" : "flame")
                         .foregroundColor(streak.keptToday && streak.current > 0 ? Color.sage : .secondary)
                     Group {
-                        // The mockups name whose streak it is (the cold test met four unlabelled streaks).
+                        // Whose streak it is (the cold test met four unlabelled streaks).
                         if showBest {
-                            Text(ZikrMockFlag.on ? "Best goal streak: \(streak.best) days" : "Best \(streak.best) Days").transition(.blurReplace)
+                            Text("Best goal streak: \(streak.best) days").transition(.blurReplace)
                         } else {
-                            Text(ZikrMockFlag.on ? "Goal streak: \(streak.current) day\(streak.current == 1 ? "" : "s")" : "\(streak.current) Day Streak")
-                                .transition(.blurReplace)
+                            Text("Goal streak: \(streak.current) day\(streak.current == 1 ? "" : "s")").transition(.blurReplace)
                         }
                     }
                     .fixedSize()

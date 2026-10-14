@@ -1,13 +1,13 @@
 //
-//  ZikrRedesignMocks.swift
+//  ZikrArea.swift
 //  shukr
 //
 //  The Zikr area (owner, 2026-10-14: built from the redesign mockups and their rounds with Sami — "I wanna get this new
 //  flow in today"). Places are pages: Your azkar (the daily goals in the wheel's order, paused goals, the other azkar)
 //  and History (the month's reward hero, each day in its own flat card); things are sheets: a zikr (its goal's card —
 //  chips, "50 a day", ring, sentence, 14 days — the card, its last 3 sessions, Start) and a session. Pausing a goal is
-//  real (`TaskModel.pausedAt`, schema 2.9.0): off the wheel, reminders, widgets and Shortcuts. The type names still say
-//  Mock…; `-zikrMock [azkar|zikr|zikr-card|goal|history|history-zikr|history-select|tour]` opens a page over the app (DEBUG
+//  real (`TaskModel.pausedAt`, schema 2.9.0): off the wheel, reminders, widgets and Shortcuts. Its pages: `ZikrAreaPage` → `YourAzkarPage` / `ZikrHistoryHome`, `ZikrSheet`;
+//  DEBUG `-zikrMock [azkar|zikr|zikr-card|goal|history|history-zikr|history-select|tour]` opens a page over the app (DEBUG
 //  screenshots). The audit and flow board: board/mocks/zikr-redesign/artifact/.
 //
 
@@ -15,25 +15,12 @@ import SwiftUI
 import SwiftData
 import WidgetKit
 
-/// Where the redesign mockups take over from the real Zikr tab's pages (`-zikrMockApp`: the real wheel, with its History
-/// door, Azkar door and "N of M tasks done ›" leading to the mockups — owner: "feel how the navigation is").
-enum ZikrMockStart { case azkar, history }
+/// Which of the Zikr area's two places a door opens (the wheel's clock → History, books → Your azkar).
+enum ZikrAreaStart { case azkar, history }
 
-@MainActor @ViewBuilder func zikrRedesign<Real: View>(_ start: ZikrMockStart, @ViewBuilder real: () -> Real) -> some View {
-    ZikrMockPage(start: start)
-}
-
-/// The wheel's side of the mockups (DailyTasksView): its hold menu, a paused goal off the wheel, a zikr's new page.
-enum ZikrMockFlag {
-    /// The redesign is the app now (2026-10-14); kept so the wheel's call sites read the same.
-    static let on = true
-    /// A paused goal leaves the wheel (and its count, reminders, widgets).
-    @MainActor static func paused(_ t: TaskModel) -> Bool { t.pausedAt != nil }
-}
-
-/// The wheel's hold menu in the mockups' words (owner, with his screenshot): Edit goal · Open zikr (the new page, not
+/// The wheel's hold menu (owner, with his screenshot): Edit goal · Open zikr (the new page, not
 /// the old stats sheet) · Reorder goals · Pause · Share goal… · Delete….
-@MainActor @ViewBuilder func zikrMockWheelMenu(_ task: TaskModel, onEdit: @escaping () -> Void, onOpenZikr: @escaping () -> Void,
+@MainActor @ViewBuilder func goalWheelMenu(_ task: TaskModel, onEdit: @escaping () -> Void, onOpenZikr: @escaping () -> Void,
                                               onReorder: @escaping () -> Void, onDelete: @escaping () -> Void) -> some View {
     Button(action: onEdit) { Label("Edit goal", systemImage: "pencil") }
     if task.mantra != nil { Button(action: onOpenZikr) { Label("Open zikr", systemImage: "circle.hexagonpath") } }
@@ -61,24 +48,25 @@ enum ZikrMockFlag {
 }
 
 extension View {
-    /// The wheel's "Open zikr" in the mockups: a zikr is a sheet (decision zikr-flow-shape A).
-    @MainActor @ViewBuilder func zikrMockSheet(_ item: Binding<MantraModel?>) -> some View {
+    /// The wheel's "Open zikr": a zikr is a sheet (decision zikr-flow-shape A).
+    @MainActor @ViewBuilder func zikrSheet(_ item: Binding<MantraModel?>) -> some View {
         modifier(WheelZikrSheet(item: item))
     }
 }
 
 /// History's search text and the DEBUG screenshot routes' state.
-@MainActor @Observable final class ZikrMockState {
-    static let shared = ZikrMockState()
+@MainActor @Observable final class ZikrAreaState {
+    static let shared = ZikrAreaState()
     var historyQuery = ""
     /// `-zikrMock history-select`: History opens in select mode with its first day picked (a screenshot).
     var startSelecting = false
 }
 
-struct ZikrMockHost: ViewModifier {
+#if DEBUG
+struct ZikrScreenshotHost: ViewModifier {
     @State private var open = false
     func body(content: Content) -> some View {
-        content.fullScreenCover(isPresented: $open) { ZikrMockRoot() }
+        content.fullScreenCover(isPresented: $open) { ZikrScreenshotRoot() }
             .task {   // a cover asked for on the first frame is dropped: a moment after launch
                 guard ProcessInfo.processInfo.arguments.contains("-zikrMock") else { return }
                 try? await Task.sleep(for: .seconds(1.5))
@@ -87,37 +75,47 @@ struct ZikrMockHost: ViewModifier {
     }
 }
 
+#endif
+
 extension View {
-    func zikrMockHost() -> some View { modifier(ZikrMockHost()) }
+    /// DEBUG `-zikrMock <route>`: a Zikr page over the app for screenshots; nothing in release builds.
+    @ViewBuilder func zikrScreenshotHost() -> some View {
+        #if DEBUG
+        modifier(ZikrScreenshotHost())
+        #else
+        self
+        #endif
+    }
 }
 
-/// A mockup page pushed onto the real app's stack.
-struct ZikrMockPage: View {
-    let start: ZikrMockStart
+/// Your azkar or History, pushed from the wheel's doors.
+struct ZikrAreaPage: View {
+    let start: ZikrAreaStart
     var body: some View {
         Group {
             switch start {
-            case .azkar: MockAzkarPage()
-            case .history: MockHistoryPage()
+            case .azkar: YourAzkarPage()
+            case .history: ZikrHistoryHome()
             }
         }
         .fontDesign(.rounded)
     }
 }
 
-private struct ZikrMockRoot: View {
+#if DEBUG
+private struct ZikrScreenshotRoot: View {
     @Query private var zikrs: [MantraModel]
     @State private var path: [Route] = []
     @State private var started = false
-    private enum Route: Hashable { case history(MockHistoryPage.Filter?) }
+    private enum Route: Hashable { case history(ZikrHistoryHome.Filter?) }
     @State private var sheet: Dest?
     private var mainZikr: MantraModel? { zikrs.max(by: { $0.tasks.count < $1.tasks.count }) }
     var body: some View {
         NavigationStack(path: $path) {
-            MockAzkarPage()
+            YourAzkarPage()
                 .navigationDestination(for: Route.self) { route in
                     switch route {
-                    case .history(let f): MockHistoryPage(initial: f)
+                    case .history(let f): ZikrHistoryHome(initial: f)
                     }
                 }
         }
@@ -132,7 +130,7 @@ private struct ZikrMockRoot: View {
             case "zikr", "zikr-card": sheet = .zikr(z, source: "root")
             case "history": path = [.history(nil)]
             case "history-zikr": path = [.history(.zikr(z.persistentModelID, z.name))]
-            case "history-select": ZikrMockState.shared.startSelecting = true; path = [.history(nil)]
+            case "history-select": ZikrAreaState.shared.startSelecting = true; path = [.history(nil)]
             case "goal": if let t = z.tasks.sorted(by: { $0.sortOrder < $1.sortOrder }).first { sheet = .goal(t, source: "root") }
             case "tour": await tour(z)
             default: break
@@ -154,10 +152,11 @@ private struct ZikrMockRoot: View {
         await wait(3)
     }
 }
+#endif
 
 // MARK: - Shared bits
 
-private enum MockFmt {
+private enum ZikrFmt {
     static func count(_ n: Int) -> String { n.formatted(.number) }
     static func goal(_ t: TaskModel) -> String { t.isCountMode ? "\(count(t.goal)) a day" : "\(t.goal) min a day" }
     static func day(_ d: Date) -> String {
@@ -393,9 +392,9 @@ private struct SegmentRing<Center: View>: View {
 @MainActor private func goalLine(_ t: TaskModel, _ today: [SessionDataModel]) -> String {
     let p = t.progress(in: today)
     if t.isCompleted(with: p) { return "done today" }
-    let of = t.isCountMode ? "\(p.count) of \(MockFmt.count(t.goal))" : "\(Int(p.seconds / 60)) of \(t.goal) min"
+    let of = t.isCountMode ? "\(p.count) of \(ZikrFmt.count(t.goal))" : "\(Int(p.seconds / 60)) of \(t.goal) min"
     if p.count > 0 || p.seconds >= 1 { return of + " today" }
-    return of + " · " + (t.sessions.map(\.startTime).max().map { "last \(MockFmt.ago($0))" } ?? "not started yet")
+    return of + " · " + (t.sessions.map(\.startTime).max().map { "last \(ZikrFmt.ago($0))" } ?? "not started yet")
 }
 /// Sessions grouped by prayer day, newest first; `limit` days at most.
 @MainActor private func byDay(_ sessions: [SessionDataModel], limit: Int = .max) -> [(key: String, date: Date, items: [SessionDataModel])] {
@@ -414,7 +413,7 @@ private struct SegmentRing<Center: View>: View {
 @MainActor private func dayTotals(_ items: [SessionDataModel]) -> String {
     let seconds = items.reduce(0) { $0 + $1.secondsPassed }
     let count = items.reduce(0) { $0 + $1.totalCount }
-    return "\(zikrDurationString(seconds)) · \(MockFmt.count(count)) counted"
+    return "\(zikrDurationString(seconds)) · \(ZikrFmt.count(count)) counted"
 }
 
 /// Where a tap on a zikr or a goal goes: its zikr's sheet (focused on that goal), zooming out of the row tapped
@@ -430,16 +429,16 @@ private struct Dest: Identifiable, Hashable {
 private extension View {
     /// A zikr's sheet, and its "All sessions in History": the sheet closes and History is pushed on this page's stack,
     /// filtered (or, on History itself, `onHistory` just sets the filter).
-    func mockSheets(_ item: Binding<Dest?>, zoom: Namespace.ID,
-                    onHistory: ((MockHistoryPage.Filter) -> Void)? = nil) -> some View {
-        modifier(MockSheets(item: item, zoom: zoom, onHistory: onHistory))
+    func zikrSheets(_ item: Binding<Dest?>, zoom: Namespace.ID,
+                    onHistory: ((ZikrHistoryHome.Filter) -> Void)? = nil) -> some View {
+        modifier(ZikrSheets(item: item, zoom: zoom, onHistory: onHistory))
     }
 }
-private struct MockSheets: ViewModifier {
+private struct ZikrSheets: ViewModifier {
     @Binding var item: Dest?
     let zoom: Namespace.ID
-    let onHistory: ((MockHistoryPage.Filter) -> Void)?
-    @State private var history: MockHistoryPage.Filter?
+    let onHistory: ((ZikrHistoryHome.Filter) -> Void)?
+    @State private var history: ZikrHistoryHome.Filter?
     func body(content: Content) -> some View {
         content
             .sheet(item: $item) { dest in
@@ -448,18 +447,18 @@ private struct MockSheets: ViewModifier {
                 })
                 .navigationTransition(.zoom(sourceID: dest.source, in: zoom))
             }
-            .navigationDestination(item: $history) { MockHistoryPage(initial: $0) }
+            .navigationDestination(item: $history) { ZikrHistoryHome(initial: $0) }
     }
 }
 
 /// The wheel's hold menu → "Open zikr": the same sheet, History pushed on the Zikr tab's stack.
 private struct WheelZikrSheet: ViewModifier {
     @Binding var item: MantraModel?
-    @State private var history: MockHistoryPage.Filter?
+    @State private var history: ZikrHistoryHome.Filter?
     func body(content: Content) -> some View {
         content
             .sheet(item: $item) { ZikrSheet(zikr: $0, onHistory: { history = $0 }) }
-            .navigationDestination(item: $history) { MockHistoryPage(initial: $0).fontDesign(.rounded) }
+            .navigationDestination(item: $history) { ZikrHistoryHome(initial: $0).fontDesign(.rounded) }
     }
 }
 
@@ -469,14 +468,14 @@ private struct GoalRow: View {
     let task: TaskModel
     let today: [SessionDataModel]
     var showsZikr = true
-    @State private var state = ZikrMockState.shared
+    @State private var state = ZikrAreaState.shared
     var body: some View {
         let paused = task.pausedAt != nil
         let streak = task.streak()
         HStack(spacing: 14) {
             SoftRing(progress: fraction(task, today), paused: paused, size: 30)
             VStack(alignment: .leading, spacing: 3) {
-                Text(showsZikr ? task.title : (task.customName ?? MockFmt.goal(task))).lineLimit(1)
+                Text(showsZikr ? task.title : (task.customName ?? ZikrFmt.goal(task))).lineLimit(1)
                 HStack(spacing: 5) {
                     Text(paused ? "Paused · history kept" : goalLine(task, today)).lineLimit(1)
                     if !paused, task.reminderKind != nil {
@@ -509,9 +508,9 @@ private struct ZikrRow: View {
         let last = zikr.sessions.map(\.startTime).max()
         // The time spent on it in all, not the pace (owner: "we don't need to see how many seconds each").
         let spent = zikr.sessions.reduce(0) { $0 + $1.secondsPassed }
-        let parts = [zikr.totalCount > 0 ? "\(MockFmt.count(zikr.totalCount)) counted" : nil,
-                     spent >= 1 ? MockFmt.spent(spent) : nil,
-                     last.map { "last \(MockFmt.ago($0))" }].compactMap { $0 }
+        let parts = [zikr.totalCount > 0 ? "\(ZikrFmt.count(zikr.totalCount)) counted" : nil,
+                     spent >= 1 ? ZikrFmt.spent(spent) : nil,
+                     last.map { "last \(ZikrFmt.ago($0))" }].compactMap { $0 }
         HStack(spacing: 14) {
             SoftRing(symbol: zikr.isBuiltIn ? "book.closed" : "circle.hexagonpath", size: 30)
             VStack(alignment: .leading, spacing: 3) {
@@ -537,7 +536,7 @@ private struct GoalMenu: View {
     let onDelete: () -> Void
     /// Start: the page asks Continue / Start over when the goal is part-done today (owner: the same everywhere).
     var onStart: (() -> Void)? = nil
-    @State private var state = ZikrMockState.shared
+    @State private var state = ZikrAreaState.shared
     var body: some View {
         let paused = task.pausedAt != nil
         if !paused {
@@ -675,7 +674,7 @@ private struct DayRows: View {
             let ids = Set(day.items.map(\.persistentModelID))
             let all = ids.isSubset(of: selection.wrappedValue)
             HStack {
-                Text(MockFmt.day(day.date).uppercased()).font(.caption.weight(.medium)).tracking(1.2).foregroundStyle(.secondary)
+                Text(ZikrFmt.day(day.date).uppercased()).font(.caption.weight(.medium)).tracking(1.2).foregroundStyle(.secondary)
                 Spacer()
                 Button(all ? "Deselect day" : "Select day") {
                     triggerSomeVibration(type: .light)
@@ -685,7 +684,7 @@ private struct DayRows: View {
             }
             .padding(.horizontal, 16).padding(.top, 8)
         } else {
-            SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(fullDays?[day.key] ?? day.items))
+            SoftLabel(title: ZikrFmt.day(day.date), trailing: dayTotals(fullDays?[day.key] ?? day.items))
         }
     }
 }
@@ -725,8 +724,8 @@ private struct HistoryLink: View {
             Image(systemName: "clock.arrow.circlepath").font(.system(size: 16, weight: .light)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text("History")
-                Text(["\(sessions.count) session\(sessions.count == 1 ? "" : "s")", "\(MockFmt.count(count)) counted",
-                      last.map { "last \(MockFmt.ago($0))" }].compactMap { $0 }.joined(separator: " · "))
+                Text(["\(sessions.count) session\(sessions.count == 1 ? "" : "s")", "\(ZikrFmt.count(count)) counted",
+                      last.map { "last \(ZikrFmt.ago($0))" }].compactMap { $0 }.joined(separator: " · "))
                     .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
@@ -762,12 +761,12 @@ private struct BottomBar<Bar: View>: ViewModifier {
 
 // MARK: - Your azkar (Azkar + Your tasks in one place)
 
-private struct MockAzkarPage: View {
+private struct YourAzkarPage: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \MantraModel.name) private var zikrs: [MantraModel]
     @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
     @Namespace private var zoom
-    @State private var state = ZikrMockState.shared
+    @State private var state = ZikrAreaState.shared
     @State private var query = ""
     @State private var showBuiltIns = false
     @State private var today: [SessionDataModel] = []
@@ -864,7 +863,7 @@ private struct MockAzkarPage: View {
         .modifier(BottomBar {   // search in a Liquid Glass bar at the bottom (owner, decision zikr-search-place A)
             Soft.search("Search your azkar", $query).padding(.horizontal, 16).padding(.bottom, 6)
         })
-        .mockSheets($open, zoom: zoom)
+        .zikrSheets($open, zoom: zoom)
         .sheet(item: $editing) { NewTaskFlow(editing: $0) }
         .sheet(item: $newGoalFor) { NewTaskFlow(locked: $0) }
         .newZikrCard(isPresented: $newZikr)
@@ -975,11 +974,11 @@ private struct ZikrSheet: View {
     var focus: TaskModel? = nil
     /// "All N sessions in History ›": the sheet closes and whoever opened it shows History, filtered to this zikr — History
     /// is only ever a page (owner: not a sheet and a page; Sami's review).
-    var onHistory: ((MockHistoryPage.Filter) -> Void)? = nil
+    var onHistory: ((ZikrHistoryHome.Filter) -> Void)? = nil
     @Environment(\.circleTheme) private var theme
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @State private var state = ZikrMockState.shared
+    @State private var state = ZikrAreaState.shared
     @State private var card: ZikrCardRequest?
     @State private var today: [SessionDataModel] = []
     @State private var picked: TaskModel?
@@ -1144,7 +1143,7 @@ private struct ZikrSheet: View {
                 ForEach(goals) { g in
                     let on = g.id == goal?.id
                     Button { withAnimation(.snappy) { picked = g } } label: {
-                        Text(g.customName ?? MockFmt.goal(g)).font(.footnote.weight(on ? .semibold : .regular))
+                        Text(g.customName ?? ZikrFmt.goal(g)).font(.footnote.weight(on ? .semibold : .regular))
                             .foregroundStyle(on ? Color.sage : .secondary)
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(Capsule().fill(on ? Color.sage.opacity(0.14) : Color.primary.opacity(0.05)))
@@ -1159,7 +1158,7 @@ private struct ZikrSheet: View {
     }
 
     private func goToHistory() {
-        let f = MockHistoryPage.Filter.zikr(zikr.persistentModelID, zikr.name)
+        let f = ZikrHistoryHome.Filter.zikr(zikr.persistentModelID, zikr.name)
         dismiss()
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(0.4))   // after the sheet has gone
@@ -1184,7 +1183,7 @@ private struct ZikrSheet: View {
         let card = RoundedRectangle(cornerRadius: 24, style: .continuous)
         return VStack(spacing: 0) {
             if goals.count > 1 { goalSwitch.padding(.top, 14) }
-            Text(goals.count > 1 ? MockFmt.goal(g) : (g.customName.map { "\($0) · \(MockFmt.goal(g))" } ?? MockFmt.goal(g)))
+            Text(goals.count > 1 ? ZikrFmt.goal(g) : (g.customName.map { "\($0) · \(ZikrFmt.goal(g))" } ?? ZikrFmt.goal(g)))
                 .font(.subheadline).foregroundStyle(.secondary)
                 .padding(.top, goals.count > 1 ? 10 : 18)
             heroBody(g, p: p, f: f, paused: paused, s: s, days: days)
@@ -1207,9 +1206,9 @@ private struct ZikrSheet: View {
                         Image(systemName: "checkmark").font(.system(size: 30, weight: .light)).foregroundStyle(Color.sage)
                         Text("done today").font(.caption).foregroundStyle(.secondary)
                     } else {
-                        Text(g.isCountMode ? MockFmt.count(p.count) : "\(Int(p.seconds / 60))")
+                        Text(g.isCountMode ? ZikrFmt.count(p.count) : "\(Int(p.seconds / 60))")
                             .font(.system(size: 38, weight: .light, design: .rounded)).monospacedDigit()
-                        Text(g.isCountMode ? "of \(MockFmt.count(g.goal)) today" : "of \(g.goal) min today")
+                        Text(g.isCountMode ? "of \(ZikrFmt.count(g.goal)) today" : "of \(g.goal) min today")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -1259,7 +1258,7 @@ private struct ZikrSheet: View {
     private var record: some View {
         let monthStart = Calendar.current.dateInterval(of: .month, for: Date())?.start ?? Date()
         let month = sessions.filter { $0.startTime >= monthStart }.reduce(0) { $0 + $1.totalCount }
-        return Text([ "\(MockFmt.count(zikr.totalCount)) counted all time", "\(MockFmt.count(month)) this month",
+        return Text([ "\(ZikrFmt.count(zikr.totalCount)) counted all time", "\(ZikrFmt.count(month)) this month",
                       zikr.secondsPerCount.map { String(format: "%.1fs each", $0) } ].compactMap { $0 }.joined(separator: " · "))
             .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
             .frame(maxWidth: .infinity)
@@ -1539,7 +1538,7 @@ private struct MonthHero: View {
                         let on = pointed != nil
                         VStack(alignment: .leading, spacing: 1) {
                             Text("Best day").font(.footnote).foregroundStyle(on ? Color.sage : .secondary)
-                            Text("\(MockFmt.compact(b.seconds)) · \(b.date.formatted(.dateTime.month(.abbreviated).day()))")
+                            Text("\(ZikrFmt.compact(b.seconds)) · \(b.date.formatted(.dateTime.month(.abbreviated).day()))")
                                 .font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
                                 .foregroundStyle(on ? Color.sage : .primary)
                         }
@@ -1553,7 +1552,7 @@ private struct MonthHero: View {
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         if let t = s.today { Text("\(s.activeDays) of \(t + 1) days") }
-                        if s.activeDays > 0 { Text("Avg \(MockFmt.compact(s.averageSeconds)) a day") }
+                        if s.activeDays > 0 { Text("Avg \(ZikrFmt.compact(s.averageSeconds)) a day") }
                     }
                     .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
                 }
@@ -1577,7 +1576,7 @@ private struct MonthHero: View {
                             SoftRing(progress: share, size: 24)
                             Text(t.name).font(.subheadline).lineLimit(1)
                             Spacer(minLength: 8)
-                            Text("\(counting ? MockFmt.count(t.count) : MockFmt.compact(t.seconds)) · \(Int((share * 100).rounded()))%")
+                            Text("\(counting ? ZikrFmt.count(t.count) : ZikrFmt.compact(t.seconds)) · \(Int((share * 100).rounded()))%")
                                 .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
                                 .contentTransition(.numericText())
                         }
@@ -1601,12 +1600,12 @@ private struct MonthHero: View {
                 let byCount = showCount || (day.seconds < 1 && day.count > 0)
                 Text(s.dates[d].formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
                     .font(.caption2).foregroundStyle(.secondary)
-                Text(byCount ? MockFmt.count(day.count) : (day.seconds >= 1 ? MockFmt.compact(day.seconds) : "—"))
+                Text(byCount ? ZikrFmt.count(day.count) : (day.seconds >= 1 ? ZikrFmt.compact(day.seconds) : "—"))
                     .font(.system(size: 26, weight: .light, design: .rounded)).monospacedDigit()
                 Text(byCount ? "counted" : (d > (s.today ?? 0) ? "to come" : "of zikr"))
                     .font(.caption2).foregroundStyle(.secondary)
             } else {
-                Text(showCount ? MockFmt.count(s.count) : MockFmt.compact(s.seconds))
+                Text(showCount ? ZikrFmt.count(s.count) : ZikrFmt.compact(s.seconds))
                     .font(.system(size: 28, weight: .light, design: .rounded)).monospacedDigit()
                     .contentTransition(.numericText())
                 Text(showCount ? "counted" : "over \(s.activeDays) day\(s.activeDays == 1 ? "" : "s")")
@@ -1650,7 +1649,7 @@ private struct MonthHero: View {
     }
 }
 
-private struct MockHistoryPage: View {
+private struct ZikrHistoryHome: View {
     /// Opened filtered: a goal's or a zikr's page shows its sessions here (owner: "make the history page filtered to show
     /// the same stuff it would show here").
     var initial: Filter? = nil
@@ -1658,7 +1657,7 @@ private struct MockHistoryPage: View {
     @Query(sort: \SessionDataModel.startTime, order: .reverse) private var sessions: [SessionDataModel]
     @Query private var zikrs: [MantraModel]
     @Namespace private var zoom
-    @State private var state = ZikrMockState.shared
+    @State private var state = ZikrAreaState.shared
     @State private var open: Dest?
     @State private var sessionToOpen: SessionDataModel?
     @State private var sessionToDelete: SessionDataModel?
@@ -1666,6 +1665,9 @@ private struct MockHistoryPage: View {
     @State private var selection = Set<PersistentIdentifier>()
     @State private var confirmDelete = false
     @State private var titleShown = false
+    /// The month card's numbers, worked out once per change of the sessions or the filter, not on every redraw (scrolling
+    /// moves the title into the bar, typing searches).
+    @State private var monthStory: MonthStory?
     /// One filter at a time, as Give to Causes' (owner: search, or a filter for common things — no chips).
     enum Filter: Hashable {
         case goals, freestyle, zikr(PersistentIdentifier, String), goal(PersistentIdentifier, String), week, month, days30
@@ -1721,19 +1723,19 @@ private struct MockHistoryPage: View {
 
     var body: some View {
         let base = filtered
-        let story = MonthStory(base)
+        let story = monthStory ?? MonthStory(base)
         List {
             Section {
                 if selecting {
                     // Select mode is its own moment: the hero folds away, the title says what you're doing.
                     let picked = shown.filter { selection.contains($0.persistentModelID) }
                     Soft.title("Select sessions", picked.isEmpty ? "Tap sessions, or a day to pick all of it"
-                               : "\(picked.count) selected · \(MockFmt.count(picked.reduce(0) { $0 + $1.totalCount })) counted")
+                               : "\(picked.count) selected · \(ZikrFmt.count(picked.reduce(0) { $0 + $1.totalCount })) counted")
                         .bareRow(top: 0)
                 } else {
                     // All time up here (owner): sessions, count, time.
                     Soft.title(active.map { $0.title } ?? "History",
-                               "All time: \(MockFmt.count(base.count)) sessions · \(MockFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(MockFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
+                               "All time: \(ZikrFmt.count(base.count)) sessions · \(ZikrFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(ZikrFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
                         .bareRow(top: 0)
                     if state.historyQuery.isEmpty { MonthHero(s: story).bareRow(top: 8, bottom: 4) }
                 }
@@ -1776,7 +1778,7 @@ private struct MockHistoryPage: View {
                 }
             }
         }
-        .mockSheets($open, zoom: zoom, onHistory: { f in withAnimation(.snappy) { active = f } })
+        .zikrSheets($open, zoom: zoom, onHistory: { f in withAnimation(.snappy) { active = f } })
         .sheet(item: $sessionToOpen) { s in
             SessionPage(session: s, onOpenZikr: s.mantra.map { m in {
                 sessionToOpen = nil
@@ -1796,8 +1798,12 @@ private struct MockHistoryPage: View {
             Text("Their counts come off your totals and today's goals. This can't be undone.")
         }
         .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
+        // Recount the month card only when what it's about changes.
+        .onChange(of: sessions.count) { _, _ in monthStory = MonthStory(filtered) }
+        .onChange(of: active) { _, _ in monthStory = MonthStory(filtered) }
         .onAppear {
             if let initial, active == nil { active = initial }
+            monthStory = MonthStory(filtered)
             if state.startSelecting, let day = byDay(Array(shown.prefix(20))).first {
                 state.startSelecting = false
                 selecting = true

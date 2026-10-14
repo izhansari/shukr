@@ -107,7 +107,7 @@ struct ZikrCircleWheel: View {
     @State private var tasksSheetOn: TaskModel?
     /// The hold menu's Open zikr / Delete….
     @State private var wheelOpenZikr: MantraModel?
-    /// The redesign mockups' zikr sheet, from the wheel's hold menu (DEBUG `-zikrMockApp`).
+    /// A zikr's sheet, from the wheel's hold menu.
     @State private var mockZikr: MantraModel?
     @State private var wheelDelete: TaskModel?
     /// How the circles fall away from the middle (Settings → My Dev Stuff while the owner picks).
@@ -171,8 +171,8 @@ struct ZikrCircleWheel: View {
     /// any tasks that are finished"); the summary under the wheel opens the Tasks sheet with all of
     /// them. Coming back from a session centres the next one still to do (`landAfterSession`).
     private var items: [Item] {
-        // A goal paused in the redesign mockups (DEBUG `-zikrMockApp`) leaves the wheel.
-        [.freestyle] + tasks.filter { (!isDone($0) || $0.id == heldTaskID) && !ZikrMockFlag.paused($0) }.map { .task($0) } + [.add]
+        // A paused goal leaves the wheel (TaskModel.pausedAt).
+        [.freestyle] + tasks.filter { (!isDone($0) || $0.id == heldTaskID) && $0.pausedAt == nil }.map { .task($0) } + [.add]
     }
     /// The summary's tap: Your tasks, the whole list, finished ones included (a page).
     @State private var showTasksPage = false
@@ -180,11 +180,14 @@ struct ZikrCircleWheel: View {
     var body: some View {
         wheel
             .overlay(alignment: .bottom) {
-                // "2 of 9 tasks done" opens Your tasks (owner): the full list, what's finished.
+                // "2 of 9 daily goals done · about 14 min to go": information only (owner, 2026-10-14 — the books
+                // door is the one way to Your azkar). The Zikr Tour's step that opens it still does.
                 Button {
-                    // The tours: the summary stays put — except the Zikr Tour's step that opens it.
-                    if ZikrTour.shared.step == .timeLeft { ZikrTour.shared.summaryTapped() }
-                    else if TourRuntime.shared.active || ZikrTour.shared.active { TourRuntime.shared.nudge(); return }
+                    guard ZikrTour.shared.step == .timeLeft else {
+                        if TourRuntime.shared.active || ZikrTour.shared.active { TourRuntime.shared.nudge() }
+                        return
+                    }
+                    ZikrTour.shared.summaryTapped()
                     triggerSomeVibration(type: .light)
                     showTasksPage = true
                 } label: {
@@ -194,7 +197,6 @@ struct ZikrCircleWheel: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("Shows all your tasks")
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("zikrSummary", $0) }
                 .padding(.bottom, 100)
                 .opacity(openingSoft ? 0 : 1)
@@ -203,7 +205,7 @@ struct ZikrCircleWheel: View {
             // Edit task: the task's review, the page that made it (task-edit-review-page).
             .sheet(item: $tasksSheetOn) { NewTaskFlow(editing: $0) }
             .navigationDestination(isPresented: $showTasksPage) {
-                zikrRedesign(.azkar) { YourTasksPage() }   // `-zikrMockApp`: the redesign's Your azkar
+                ZikrAreaPage(start: .azkar)   // Your azkar (the Zikr area, 2026-10-14)
                     // The Zikr Tour's "Hold and drag to change their order" (ZikrTour.swift), then back.
                     .overlay { ZikrTourInline(place: .yourTasks) }
                     .onChange(of: ZikrTour.shared.popPage) { _, _ in showTasksPage = false }
@@ -214,7 +216,7 @@ struct ZikrCircleWheel: View {
                 CircleCover.set("yourTasks", open, close: { showTasksPage = false })
             }
             .sheet(item: $wheelOpenZikr) { MantraEditorView(mantra: $0).stageCover("wheelZikrPage") }
-            .zikrMockSheet($mockZikr)   // a zikr is a sheet in the mockups (zikr-flow-shape A)
+            .zikrSheet($mockZikr)   // a zikr is a sheet (zikr-flow-shape A)
             .alert(wheelDelete.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
                    isPresented: Binding(get: { wheelDelete != nil }, set: { if !$0 { wheelDelete = nil } }),
                    presenting: wheelDelete) { task in
@@ -243,12 +245,10 @@ struct ZikrCircleWheel: View {
     }
 
     /// "1 of 3 tasks done · about 14 min to go" / "all 3 tasks done today".
-    /// The tasks the summary counts: all of them, less any paused in the redesign mockups (DEBUG `-zikrMockApp`), so the
-    /// wheel and Your azkar agree.
-    private var countedTasks: [TaskModel] { tasks.filter { !ZikrMockFlag.paused($0) } }
+    /// The goals the summary counts: paused ones left out, so the wheel and Your azkar agree.
+    private var countedTasks: [TaskModel] { tasks.filter { $0.pausedAt == nil } }
     private func summaryText(done: Int, secondsLeft: TimeInterval) -> String {
-        // The mockups say "daily goals" (decision zikr-goal-word A; the cold test caught "tasks" here vs "goals" there).
-        let word = ZikrMockFlag.on ? "daily goals" : "tasks"
+        let word = "daily goals"   // decision zikr-goal-word A
         let n = countedTasks.count
         if done == n { return "all \(n) \(word) done today" }
         let base = "\(done) of \(n) \(word) done"
@@ -316,9 +316,6 @@ struct ZikrCircleWheel: View {
                 if done == tasks.count { Image(systemName: "checkmark") }
                 Text(summaryText(done: done, secondsLeft: left))
                     .contentTransition(.numericText())
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .opacity(0.6)
             }
             .font(.footnote)
             .fontWeight(.light)
@@ -622,8 +619,7 @@ struct ZikrCircleWheel: View {
                 // circle (owner: glass broke under the wheel's shrink and tilt; "Frosted always, on the circle").
                 .overlay(alignment: .bottom) { freestyleChip.offset(y: 16) }
         case .add:
-            ZikrCircleFace(title: ZikrMockFlag.on ? "New goal" : "New task", icon: "plus",
-                           subtitle: ZikrMockFlag.on ? "for any zikr" : "a daily goal", ring: .dashed)
+            ZikrCircleFace(title: "New goal", icon: "plus", subtitle: "for any zikr", ring: .dashed)
         case .task(let task):
             // Hold = the task's options, like every task row in the tab (tap still starts it).
             let example = TourExamples.shared.isExample(task)
@@ -639,9 +635,9 @@ struct ZikrCircleWheel: View {
                     // Only the circle in focus (owner: "only allow long press on a task ring that's in focus"): an
                     // off-centre one's hold does nothing (no items, no menu) — its tap brings it to the middle.
                     // An example's options change nothing: picking one is the tour's to-do (Tour.swift).
-                    if centered == task.id.uuidString, ZikrMockFlag.on, !example {
-                        // The redesign mockups' menu (DEBUG `-zikrMockApp`): goal words, Pause, the new zikr page.
-                        zikrMockWheelMenu(task, onEdit: { tasksSheetOn = task }, onOpenZikr: { mockZikr = task.mantra },
+                    if centered == task.id.uuidString, !example {
+                        // Edit goal · Open zikr (its sheet) · Reorder goals · Pause · Share · Delete.
+                        goalWheelMenu(task, onEdit: { tasksSheetOn = task }, onOpenZikr: { mockZikr = task.mantra },
                                           onReorder: { showTasksPage = true }, onDelete: { wheelDelete = task })
                     } else if centered == task.id.uuidString {
                         TaskMenu(task: task,
