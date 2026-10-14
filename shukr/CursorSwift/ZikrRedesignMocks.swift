@@ -315,7 +315,6 @@ private struct MockAzkarPage: View {
         .scrollDismissesKeyboard(.immediately)
         .background(Color(.systemBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button {} label: { Image(systemName: "plus") } } }
         .task {
             // The Paused group with something in it: the least-used goal (pretend).
             guard !state.seededPause, tasks.count > 2,
@@ -343,9 +342,13 @@ private struct MockAzkarPage: View {
         else if !goals.isEmpty { detail.append("Paused") }
         else if z.totalCount > 0 { detail.append("\(MockFmt.count(z.totalCount)) counted") }
         if let last { detail.append("last \(MockFmt.ago(last))") }
-        return FlowRow(title: z.name, detail: detail.joined(separator: " · ")) {
-            if goals.isEmpty { Chevron() }
-            else { MockGoalRing(progress: progress, paused: liveGoals.isEmpty, size: 24) }
+        // Sami's review: the ring leads, as on Your tasks (on the right it read as a checkbox to tick), and every row
+        // ends in the same chevron, as "Which zikr?" does.
+        return HStack(spacing: 0) {
+            if !goals.isEmpty {
+                MockGoalRing(progress: progress, paused: liveGoals.isEmpty, size: 24).padding(.leading, 16)
+            }
+            FlowRow(title: z.name, detail: detail.joined(separator: " · ")) { Chevron() }
         }
     }
 }
@@ -452,7 +455,8 @@ private struct MockZikrPage: View {
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
+        .modifier(SoftBottomEdge())
+        .modifier(BottomBar {
             // Start floats in Liquid Glass, always in reach.
             Button {} label: {
                 HStack(spacing: 8) {
@@ -465,7 +469,7 @@ private struct MockZikrPage: View {
             .buttonStyle(.plain)
             .barGlass(Capsule())
             .padding(.bottom, 6)
-        }
+        })
         .zikrCardEditor($card, allowDelete: false)
         .task {   // `-zikrMock zikr-card`: the real card modal over the page
             guard ProcessInfo.processInfo.arguments.contains("zikr-card") else { return }
@@ -475,27 +479,23 @@ private struct MockZikrPage: View {
     }
 
     private var recordStrip: some View {
+        // Sami's review: one number leads, as Give to Causes' total and the goal page's 33 do; the rest is one quiet
+        // line (four equal cells gave nothing to look at first).
         let monthStart = Calendar.current.dateInterval(of: .month, for: Date())?.start ?? Date()
         let month = sessions.filter { $0.startTime >= monthStart }.reduce(0) { $0 + $1.totalCount }
         let counted = sessions.filter { $0.totalCount > 0 }
         let pace = counted.isEmpty ? 0 : counted.reduce(0) { $0 + $1.secondsPassed } / Double(counted.reduce(0) { $0 + $1.totalCount })
-        let cells: [(String, String)] = [
-            (MockFmt.count(zikr.totalCount), "counted"),
-            (MockFmt.count(month), "this month"),
-            (String(format: "%.1fs", pace), "each"),
-            (sessions.first.map { MockFmt.ago($0.startTime).replacingOccurrences(of: " ago", with: "") } ?? "–", "since last"),
-        ]
-        return HStack(spacing: 0) {
-            ForEach(Array(cells.enumerated()), id: \.offset) { i, c in
-                if i > 0 { Divider().frame(height: 26) }
-                VStack(spacing: 2) {
-                    Text(c.0).font(.system(size: 17, weight: .light, design: .rounded)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-                    Text(c.1).font(.caption2).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(MockFmt.count(zikr.totalCount)).font(.system(size: 30, weight: .light, design: .rounded)).monospacedDigit()
+            Text("counted").font(.subheadline).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(MockFmt.count(month)) this month")
+                Text(String(format: "%.1f s each", pace))   // "last …" is on each goal's row already
             }
+            .font(.footnote).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
         }
-        .padding(.vertical, 12)
+        .padding(.horizontal, 16).padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Flow.card))
     }
 
@@ -504,6 +504,8 @@ private struct MockZikrPage: View {
         let s = g.streak()
         let p = todayProgress(g)
         HStack(spacing: 12) {
+            // The ring leads, as on the azkar list and Your tasks (Sami's review).
+            MockGoalRing(progress: p, paused: isPaused, size: 24)
             VStack(alignment: .leading, spacing: 3) {
                 Text(g.customName.map { "\($0) · \(MockFmt.goal(g))" } ?? MockFmt.goal(g)).lineLimit(1)
                 Text(line(g, p, s, isPaused)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
@@ -519,8 +521,6 @@ private struct MockZikrPage: View {
                         .background(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
                 }
                 .buttonStyle(.plain)
-            } else {
-                MockGoalRing(progress: p, size: 24)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 13)
@@ -568,6 +568,24 @@ private struct MockZikrPage: View {
     if let t = s.task { parts.append(t.title + " goal") }
     if s.endedAsleep { parts.append("fell asleep") }
     return parts.joined(separator: " · ")
+}
+
+/// Sami's review: rows under the floating Start fade out (iOS 26's soft scroll edge) — in v3 "Morning Durood goal" read
+/// through the glass.
+private struct SoftBottomEdge: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) { content.scrollEdgeEffectStyle(.soft, for: .bottom) } else { content }
+    }
+}
+
+/// Start's bar: on iOS 26 a safe-area BAR (`safeAreaBar`), which the soft scroll edge fades the rows under — a plain
+/// `safeAreaInset` gets no edge effect.
+private struct BottomBar<Bar: View>: ViewModifier {
+    @ViewBuilder let bar: () -> Bar
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) { content.safeAreaBar(edge: .bottom, content: bar) }
+        else { content.safeAreaInset(edge: .bottom, content: bar) }
+    }
 }
 
 // MARK: - History
@@ -640,7 +658,7 @@ private struct MockHistoryPage: View {
                     filterMenu
                 }
                 ForEach(days, id: \.key) { day in
-                    Flow.group(MockFmt.day(day.date), trailing: MockFmt.count(day.items.reduce(0) { $0 + $1.totalCount })) {
+                    Flow.group(MockFmt.day(day.date), trailing: MockFmt.count(day.items.reduce(0) { $0 + $1.totalCount }) + " counted") {
                         ForEach(Array(day.items.enumerated()), id: \.element.id) { i, s in
                             if i > 0 { Flow.divider }
                             FlowRow(title: s.mantra?.name ?? "Freestyle", detail: sessionDetail(s)) {
