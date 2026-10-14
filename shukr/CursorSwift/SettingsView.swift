@@ -571,20 +571,18 @@ struct SettingsView: View {
                             }
                         }
                         // Every Prayers widget's look (decision widget-style-shared A): the widget's own settings say
-                        // "Change in shukr Settings" — iOS never lets the app change those.
-                        Picker(selection: $widgetStyleRaw) {
-                            // WidgetStyle's cases and titles (the widget's own file isn't in the app target).
-                            Text("System").tag("system")
-                            Text("Light").tag("light")
-                            Text("Dark").tag("dark")
-                            Text("Sun").tag("auto")
+                        // "Change in shukr Settings" — iOS never lets the app change those. A page with the widget as its
+                        // preview, as Live Activity card and Icon have (owner, 2026-10-14).
+                        NavigationLink {
+                            PrayersWidgetAppearancePage { widgetStyleRaw = $0 }
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "square.grid.2x2").frame(width: 24)
                                 Text("Prayers widget")   // only the Prayers widget follows it (owner: not all widgets)
+                                Spacer(minLength: 8)
+                                Text((WidgetStyle(rawValue: widgetStyleRaw) ?? .system).title).foregroundStyle(.secondary)
                             }
                         }
-                        .onChange(of: widgetStyleRaw) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
                         AppIconRow()
                     } header: {
                         // What each look means is in the ⓘ (owner: not as text under the section).
@@ -2618,6 +2616,89 @@ struct LiveActivityAppearancePage: View {
             #if DEBUG
             if let l = UserDefaults.standard.string(forKey: "laLook"), LiveActivityLook(rawValue: l) != nil { raw = l }
             #endif
+        }
+    }
+}
+
+/// Settings → Appearance → Prayers widget (owner, 2026-10-14: as Live Activity card and Icon do): the real Prayers widget
+/// (`RealPrayersWidget`, Explore's preset day) as the preview, changing as one of System · Light · Dark · Sun is picked;
+/// every Prayers widget follows at once.
+struct PrayersWidgetAppearancePage: View {
+    /// Called with each pick, for the Settings row.
+    var picked: (String) -> Void = { _ in }
+    @AppStorage(WidgetStyle.sharedKey, store: UserDefaults(suiteName: SharedStore.appGroup)) private var raw = WidgetStyle.system.rawValue
+    /// Sun: which time the preview shows (day light, after Maghrib dark).
+    @State private var night = false
+    @Environment(\.colorScheme) private var scheme
+    private var style: WidgetStyle { WidgetStyle(rawValue: raw) ?? .system }
+    /// What the preview draws: Sun as the time picked shows it.
+    private var shown: WidgetStyle { style == .auto ? (night ? .dark : .light) : style }
+
+    var body: some View {
+        Form {
+            Section {
+                RealPrayersWidget(style: shown)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .animation(.easeInOut(duration: 0.35), value: shown)
+                    // A wallpaper behind it, as Explore's pictures have (a dark widget on the dark row was lost).
+                    .listRowBackground(LinearGradient(colors: scheme == .dark
+                        ? [Color(red: 0.17, green: 0.33, blue: 0.25), Color(red: 0.07, green: 0.10, blue: 0.08)]
+                        : [Color(red: 0.85, green: 0.92, blue: 0.87), Color(red: 0.93, green: 0.96, blue: 0.94)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing))
+                if style == .auto {
+                    Picker("Time", selection: $night.animation(.easeInOut(duration: 0.35))) {
+                        Text("Asr").tag(false)
+                        Text("Maghrib").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            Section {
+                ForEach(WidgetStyle.allCases, id: \.self) { option in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.35)) { raw = option.rawValue }
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(option.title).foregroundStyle(.primary)
+                                Text(option.detail).font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if option == style {
+                                Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.sage)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowInsets(AppIconChoice.rowInsets)
+                }
+            } footer: {
+                Text("Every Prayers widget on your Home Screen changes right away.")
+            }
+        }
+        .navigationTitle("Prayers widget")
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: raw) { _, new in
+            picked(new)
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+}
+
+extension WidgetStyle {
+    /// The page's words (the same as the widget's own picker).
+    var title: String {
+        switch self { case .system: "System"; case .light: "Light"; case .dark: "Dark"; case .auto: "Sun" }
+    }
+    var detail: String {
+        switch self {
+        case .system: "Follows your iPhone's light or dark"
+        case .light: "Always light"
+        case .dark: "Always dark"
+        case .auto: "Light after Fajr, dark at Maghrib"
         }
     }
 }

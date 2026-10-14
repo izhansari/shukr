@@ -337,6 +337,12 @@ struct ExcusedSheet: View {
             heading("Excused Mode", "For your period (haid), or the bleeding after giving birth (nifas). Prayer is lifted for you: your streaks and scores pause, and nothing counts as missed.")
             Spacer(minLength: 22)
             daysRing(min: 1, caption: "days, about")
+            // When the first "ready to start again?" comes (owner: so she knows when to expect it), as `checkIns` plans it.
+            Text("First check-in: \(firstCheckIn.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) at \(shortTimePM(firstCheckIn))")
+                .font(.footnote).foregroundStyle(.secondary)
+                .contentTransition(.numericText())
+                .animation(.snappy(duration: 0.2), value: firstCheckIn)
+                .padding(.top, 12)
             Spacer(minLength: 22)
             card {
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
@@ -353,6 +359,15 @@ struct ExcusedSheet: View {
             Spacer(minLength: 8)
         }
         .frame(maxHeight: .infinity)
+    }
+
+    /// 10 AM on the estimated day (the start day plus the days picked), else the next 10 AM — `Excused.checkIns`' first.
+    private var firstCheckIn: Date {
+        let cal = Calendar.current
+        let day = cal.date(byAdding: .day, value: max(days, 1), to: cal.startOfDay(for: startDay)) ?? startDay
+        let at = cal.date(bySettingHour: 10, minute: 0, second: 0, of: day) ?? day
+        if at > Date() { return at }
+        return cal.nextDate(after: Date(), matching: DateComponents(hour: 10, minute: 0), matchingPolicy: .nextTime) ?? at
     }
 
     private func running(_ r: ExcusedRange) -> some View {

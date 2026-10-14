@@ -1008,6 +1008,8 @@ struct RealPrayersWidget: View {
     var playing = false
     /// StandBy: the widget's dark style on black, no container (as iOS shows widgets there).
     var standby = false
+    /// A style to show (Settings → Appearance → Prayers widget's preview); nil = the widget's default.
+    var style: WidgetStyle? = nil
     @State private var entry: PrayersWidgetEntry?
     @State private var touch: UnitPoint?
     @State private var touches = 0
@@ -1035,11 +1037,12 @@ struct RealPrayersWidget: View {
         .shadow(color: .black.opacity(standby ? 0 : 0.15), radius: 10, y: 5)
         .environment(\.colorScheme, standby ? .dark : scheme)
         .allowsHitTesting(false)
-        .task { await run() }
+        .task(id: style) { await run() }
     }
 
     private func run() async {
         var first = ExplorePreset.prayersEntry()
+        if let style { first.style = style }
         if standby { first.style = .dark }
         entry = first
         guard playing else { return }
