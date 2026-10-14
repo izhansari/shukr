@@ -972,7 +972,7 @@ struct PrayerTimesView: View {
         } message: {
             Text("You're set as excused from prayer. Are you back to praying?")
         }
-        .sheet(isPresented: $showExcused) { ExcusedSheet().stageCover("excused") }
+        .sheet(isPresented: $showExcused) { NavigationStack { ExcusedSheet() }.stageCover("excused") }   // its ⓘ pushes
         .onAppear { CircleStage.shared.excused = Excused.current }
         .onReceive(NotificationCenter.default.publisher(for: TaskModel.didDelete)) { note in
             guard let gone = note.object as? Set<PersistentIdentifier>,

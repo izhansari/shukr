@@ -242,20 +242,17 @@ struct ExcusedFace: View {
 /// The Settings row (decision excused-where B: Settings only): "Off", or how far in she is; a tap opens the sheet.
 struct ExcusedSettingsRow: View {
     @State private var current: ExcusedRange? = Excused.current
-    @State private var showing = false
     var body: some View {
-        Button { showing = true } label: {
+        // Pushed, not a sheet (owner: never two sheets at once — its ⓘ pushes too).
+        NavigationLink { ExcusedSheet(pushed: true) } label: {
             HStack(spacing: 12) {
                 Image(systemName: "pause.circle").frame(width: 24)
                 Text("Excused from prayer").lineLimit(1)
                 Spacer(minLength: 8)
                 Text(current.map { "Day \(Excused.dayNumber($0))" } ?? "Off").foregroundStyle(.secondary).lineLimit(1)
-                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .sheet(isPresented: $showing) { ExcusedSheet() }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in current = Excused.current }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in current = Excused.current }
         .onAppear { current = Excused.current }
@@ -267,6 +264,9 @@ struct ExcusedSettingsRow: View {
 /// a tap on it types one; "Started" sits lower down, a secondary thing (owner). No Haid / After childbirth choice: it
 /// only set the estimate (owner); ranges are saved as haid.
 struct ExcusedSheet: View {
+    /// Pushed from Settings (the system back, the ⓘ in the bar); otherwise a sheet in its own NavigationStack (☰, the
+    /// circle) with the ✕ and ⓘ drawn at the top. Either way the ⓘ pushes, so there's never a second sheet (owner).
+    var pushed = false
     @Environment(\.dismiss) private var dismiss
     @State private var current: ExcusedRange? = Excused.current
     @State private var startDay = Date()
@@ -277,49 +277,36 @@ struct ExcusedSheet: View {
     @State private var welcomeBack = false
     /// The first time: the story (owner, decision excused-info B), then the sheet.
     @State private var intro = !UserDefaults.standard.bool(forKey: Excused.introSeenKey) && Excused.current == nil
-    /// The ⓘ: the illustrated rows (decision excused-info, C after the story).
-    @State private var showInfo = false
 
     static let maxDays = 60
 
     var body: some View {
-        if intro {
-            ExcusedIntroStory {
-                UserDefaults.standard.set(true, forKey: Excused.introSeenKey)
-                withAnimation(.snappy(duration: 0.3)) { intro = false }
-            } close: { dismiss() }
-            .presentationDetents([.large])
-        } else {
-            sheet
+        Group {
+            if intro {
+                ExcusedIntroStory(showsClose: !pushed) {
+                    UserDefaults.standard.set(true, forKey: Excused.introSeenKey)
+                    withAnimation(.snappy(duration: 0.3)) { intro = false }
+                } close: { dismiss() }
+            } else {
+                sheet
+            }
+        }
+        .presentationDetents([.large])
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(pushed ? .visible : .hidden, for: .navigationBar)
+        .toolbar {
+            if pushed && !intro && !welcomeBack {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink { ExcusedInfoSheet() } label: { Image(systemName: "info") }
+                        .accessibilityLabel("How Excused works")
+                }
+            }
         }
     }
 
     private var sheet: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .barGlass(Circle())
-                }
-                .buttonStyle(.plain)
-                Spacer()
-                if !welcomeBack {
-                    Button { showInfo = true } label: {
-                        Image(systemName: "info")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 36, height: 36)
-                            .barGlass(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("How Excused works")
-                }
-            }
-            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
-            .sheet(isPresented: $showInfo) { ExcusedInfoSheet() }
+            if !pushed { topBar }
             ScrollView {
                 VStack(spacing: 22) {
                     if welcomeBack { back } else if let current { running(current) } else { starting }
@@ -352,7 +339,7 @@ struct ExcusedSheet: View {
                                displayedComponents: .date).labelsHidden()
                 }
             }
-            Text("Started earlier? Pick that day so your streak isn't broken.\nAfter your estimate we'll check in once a day until you're back.")
+            Text("Started earlier? Pick that day so your streak isn't broken.\nOnce your estimate is up, we'll send you one notification a day until you're back.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }
@@ -366,7 +353,7 @@ struct ExcusedSheet: View {
             card {
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
             }
-            Text("While you're on your period or recovering after birth, your prayer reminders, the Fajr alarm and prayer cards are paused. From your estimated day we'll check in once a day; need longer, add days here.")
+            Text("While you're on your period or recovering after birth, your prayer reminders, the Fajr alarm and Live Activity cards are paused. Once your estimate is up we'll send you one notification a day; need longer, add days here.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }
@@ -404,6 +391,33 @@ struct ExcusedSheet: View {
     }
 
     // MARK: Pieces
+
+    /// The sheet's own top: ✕ and the ⓘ (which pushes the illustrated rows).
+    private var topBar: some View {
+        HStack {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+                    .barGlass(Circle())
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            if !welcomeBack {
+                NavigationLink { ExcusedInfoSheet() } label: {
+                    Image(systemName: "info")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .barGlass(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("How Excused works")
+            }
+        }
+        .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
+    }
 
     private func daysRing(min low: Int, caption: String) -> some View {
         ExcusedDaysRing(days: $days, range: low...Self.maxDays, caption: caption, typing: $typing)
@@ -544,7 +558,7 @@ struct ExcusedExtendSheet: View {
             }
             .padding(.top, 28)
             ExcusedDaysRing(days: $days, range: 1...30, plus: true, caption: days == 1 ? "more day" : "more days", typing: $typing)
-            Text("We'll check in again once a day after that.")
+            Text("After that, one notification a day until you're back.")
                 .font(.footnote).foregroundStyle(.secondary)
             Spacer(minLength: 0)
             if !typing {
@@ -659,9 +673,10 @@ enum ExcusedPicture {
                 RoundedRectangle(cornerRadius: 6 * k).fill(Color.sage).frame(width: 26 * k, height: 26 * k)
                 if big {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Ready to start again?").font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        Text("Turn your reminders back on whenever you're ready.").font(.caption).foregroundStyle(.secondary)
+                        Text("Ready to start again?").font(.system(size: 13, weight: .semibold, design: .rounded))
+                        Text("Turn your reminders back on whenever you're ready.").font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
                     }
+                    .frame(width: 140, alignment: .leading)
                 } else {
                     Capsule().fill(Color.primary.opacity(0.12)).frame(width: 18, height: 3)
                 }
@@ -685,6 +700,7 @@ enum ExcusedPicture {
 /// The first time (decision excused-info B): six pages, one picture each, swiped across like the tour; the last says
 /// shukr never tracks her cycle (owner: testers asked "will it know my time of month?").
 struct ExcusedIntroStory: View {
+    var showsClose = true
     let done: () -> Void
     let close: () -> Void
     @State private var page = 0
@@ -696,9 +712,9 @@ struct ExcusedIntroStory: View {
         Page(picture: .paused, title: "Paused, not missed",
              text: "Those days are skipped: your streaks stay exactly where they were, and your list shows each prayer paused."),
         Page(picture: .quiet, title: "Quiet",
-             text: "No prayer reminders, prayer cards or Fajr alarm while you're excused. Zikr keeps going, unless you pause its reminders."),
-        Page(picture: .checkIn, title: "We'll check in",
-             text: "From your estimated day, once a day: ready to start again? Not yet? Add a few more days."),
+             text: "No prayer reminders, Live Activity cards or Fajr alarm while you're excused. Zikr keeps going, unless you pause its reminders."),
+        Page(picture: .checkIn, title: "After your estimate",
+             text: "Once your estimated days are up, we'll send you one notification a day asking if you're ready to pray again. Not yet? Add a few more days."),
         Page(picture: .privacy, title: "Private by design",
              text: "shukr never tracks or predicts your cycle. Each month you turn this on yourself, on purpose, so nothing is guessed or kept beyond what you set. It stays on this phone."),
         Page(picture: .elsewhere, title: "Everywhere else",
@@ -708,14 +724,16 @@ struct ExcusedIntroStory: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Button(action: close) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .barGlass(Circle())
+                if showsClose {
+                    Button(action: close) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 36)
+                            .barGlass(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 Spacer()
                 Text("\(page + 1) of \(Self.pages.count)").font(.footnote).foregroundStyle(.secondary)
             }
@@ -765,30 +783,17 @@ struct ExcusedIntroStory: View {
 
 /// The ⓘ after the story (decision excused-info C): one page, a tiny picture of what she'll see beside each row.
 struct ExcusedInfoSheet: View {
-    @Environment(\.dismiss) private var dismiss
     private static let rows: [(ExcusedPicture, String, String)] = [
         (.ring, "The Salah circle", "Shows the time as usual; open your prayer list and it reads \u{201C}Excused \u{00B7} Day 3\u{201D}."),
         (.paused, "Paused, not missed", "Grey pause dots in your list; your streaks stay as they were."),
-        (.quiet, "Quiet", "No prayer reminders, prayer cards or Fajr alarm. Zikr keeps going unless you pause it."),
-        (.checkIn, "Check-ins", "From your estimated day, once a day. Not yet? Add a few more days."),
+        (.quiet, "Quiet", "No prayer reminders, Live Activity cards or Fajr alarm. Zikr keeps going unless you pause it."),
+        (.checkIn, "After your estimate", "Once your estimated days are up, we'll send you one notification a day asking if you're back. Not yet? Add a few more days."),
         (.privacy, "Private by design", "shukr never tracks or predicts your cycle: you turn this on each month yourself. It stays on this phone."),
         (.elsewhere, "Widgets, Siri, watch", "Prayer times as usual. Tapping \u{2713} asks if you're back; nothing is said out loud."),
     ]
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .barGlass(Circle())
-                }
-                .buttonStyle(.plain)
-                Spacer()
-            }
-            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
             ScrollView {
                 VStack(spacing: 16) {
                     VStack(spacing: 6) {
@@ -821,7 +826,6 @@ struct ExcusedInfoSheet: View {
         }
         .background(Color(.systemBackground).ignoresSafeArea())
         .fontDesign(.rounded)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        .navigationBarTitleDisplayMode(.inline)   // pushed: the system back
     }
 }
