@@ -222,69 +222,88 @@ struct TopUpBannerHost: ViewModifier {
     private struct SummaryBox: Identifiable { let summary: TopUpBanner.Summary; var id: Int { 0 } }
 }
 
-/// What the top-up set, one row per kind, each opening its page (owner: "if they click on any of those items in the sheet,
-/// then it takes them to that scheduler page"). Your Fajr Alarms opens on beta builds only, as in Settings.
+/// What the top-up set, in ReminderHealthCard's look (owner: "the no location or no notifications sheet … we can copy
+/// that"): the thin sage ring with a light symbol, a light title and line, one sage-symbol line per kind — each opens its
+/// page (owner: "takes them to that scheduler page") — and Done. The sheet fits that, and goes full height while a page is
+/// open. Your Fajr Alarms opens on beta builds only, as in Settings.
 struct TopUpSheet: View {
     let summary: TopUpBanner.Summary
     @ObservedObject private var betaAccess = WhatsNewAccess.shared
     @Environment(\.dismiss) private var dismiss
+    private enum Page: Hashable { case cards, notifications, alarms }
+    @State private var path: [Page] = []
+    @State private var detent: PresentationDetent = .height(TopUpSheet.height)
+    static let height: CGFloat = 430
+
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    VStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill").font(.system(size: 40)).foregroundStyle(.green)
-                        Text("All reminders topped up").font(.system(.title3, design: .rounded, weight: .semibold))
-                        Text("shukr set up everything it can ahead of time, so your reminders keep coming.")
-                            .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .listRowBackground(Color.clear)
+        NavigationStack(path: $path) {
+            VStack(spacing: 0) {
+                ZStack {
+                    Circle().stroke(Color.sage.opacity(0.18), lineWidth: 1.2)
+                    Image(systemName: "checkmark").font(.system(size: 22, weight: .light)).foregroundStyle(Color.sage)
                 }
-                Section {
-                    NavigationLink { ScheduledLiveActivitiesPage() } label: {
-                        row("platter.filled.bottom.iphone", "Prayer cards",
-                            "\(summary.cards) on your Lock Screen" + (summary.cardsThrough.map { ", through \($0)" } ?? ""))
-                    }
+                .frame(width: 64, height: 64)
+                .padding(.top, 26)
+                Text("All reminders topped up")
+                    .font(.system(.title2, design: .rounded, weight: .light))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28).padding(.top, 16)
+                Text("shukr set these up ahead, so they keep coming:")
+                    .font(.system(.callout, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 32).padding(.top, 8)
+                VStack(alignment: .leading, spacing: 4) {
+                    line(.cards, "platter.filled.bottom.iphone",
+                         "\(summary.cards) prayer card\(summary.cards == 1 ? "" : "s")" + (summary.cardsThrough.map { ", through \($0)" } ?? ""))
                     if let d = summary.notificationDays {
-                        NavigationLink { YourRemindersView() } label: {
-                            row("bell", "Notifications", "\(summary.notifications) set, for the next \(TopUpBanner.days(d))")
-                        }
+                        line(.notifications, "bell", "notifications for the next \(TopUpBanner.days(d))")
                     }
                     if let d = summary.alarmDays {
-                        let alarm = row("alarm", "Fajr alarm", "Set for the next \(TopUpBanner.days(d))")
-                        if betaAccess.beta {
-                            NavigationLink { FajrAlarmCheckView() } label: { alarm }
-                        } else {
-                            alarm
-                        }
+                        line(betaAccess.beta ? .alarms : nil, "alarm", "Fajr alarms for the next \(TopUpBanner.days(d))")
                     }
                 }
+                .padding(.horizontal, 36).padding(.top, 14)
+                Spacer(minLength: 16)
+                PrimaryButton(title: "Done") { dismiss() }
+                    .padding(.bottom, 12)
             }
-            .listStyle(.insetGrouped)
-            .fontDesign(.rounded)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: Page.self) { page in
+                switch page {
+                case .cards: ScheduledLiveActivitiesPage()
+                case .notifications: YourRemindersView()
+                case .alarms: FajrAlarmCheckView()
                 }
             }
         }
+        .fontDesign(.rounded)
         .infoModalHost()   // the pages' ⓘ cards over the sheet
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.height(Self.height), .large], selection: $detent)
         .presentationDragIndicator(.visible)
+        // A page needs the room: full height while one is open, back when it closes.
+        .onChange(of: path) { _, p in withAnimation { detent = p.isEmpty ? .height(Self.height) : .large } }
     }
 
-    private func row(_ symbol: String, _ title: String, _ line: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol).foregroundStyle(Color(.systemGreen)).frame(width: 26)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(line).font(.footnote).foregroundStyle(.secondary)
+    /// ReminderHealthCard's line — a light sage symbol and light words — with a small chevron when it opens a page.
+    private func line(_ page: Page?, _ symbol: String, _ text: String) -> some View {
+        Button { if let page { path.append(page) } } label: {
+            HStack(spacing: 10) {
+                Image(systemName: symbol).font(.system(size: 14, weight: .light)).foregroundStyle(Color.sage).frame(width: 20)
+                Text(text).font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(Color(.label))
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 8)
+                if page != nil {
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(.tertiaryLabel))
+                }
             }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
+        .disabled(page == nil)
     }
 }
 
