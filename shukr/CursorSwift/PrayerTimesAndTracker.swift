@@ -1449,9 +1449,17 @@ struct PrayerTimesView: View {
                 // pair with circle-check's fake clock late in the evening).
                 try? await Task.sleep(for: .seconds(1.5))
                 withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
-                for prayer in viewModel.todaysPrayers where !prayer.isCompleted && prayer.startTime <= Date() {
+                // `-demoKeepCurrent YES`: all but the prayer on now (the list's looks with done, now and coming rows).
+                let keepCurrent = UserDefaults.standard.bool(forKey: "demoKeepCurrent")
+                for prayer in viewModel.todaysPrayers where !prayer.isCompleted && prayer.startTime <= Date()
+                    && !(keepCurrent && prayer.endTime > Date()) {
                     try? await Task.sleep(for: .seconds(0.6))
                     viewModel.togglePrayerCompletion(for: prayer)
+                }
+                // `-demoShowDone YES`: the "N done" fold open, so the done rows show too.
+                if UserDefaults.standard.bool(forKey: "demoShowDone") {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    PrayerListFold.shared.showDone = true
                 }
                 return
             }
@@ -2984,8 +2992,38 @@ struct PrayerButton: View {
             else { NeuRaised(shape: shape) }
         case .quiet:
             if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
-        case .card, .well:
+        case .now:
+            // C · the prayer on now is the one raised block in the well (PrayerListLooks.swift).
+            if isCurrentPrayer { NeuRaised(shape: shape, radius: 8, offset: 4) } else { Color.clear }
+        case .card, .well, .rings, .timeline:
             Color.clear
+        }
+    }
+
+    /// The row's status mark for the look: the trial looks' ring (A), the dot with a soft halo while on now (B), or the
+    /// chosen dot style.
+    @ViewBuilder private var statusGlyph: some View {
+        let excused = Excused.covers(start: prayerObject.startTime, end: prayerObject.endTime)
+        let dot = PrayerStatusDot(style: PrayerDotStyle(rawValue: dotStyleRaw) ?? .muted,
+                                  done: prayerObject.isCompleted && !isFuturePrayer,
+                                  future: isFuturePrayer,
+                                  scoreColor: prayerObject.getColorForPrayerScore(),
+                                  pulse: completionPulse,
+                                  excused: excused)
+        switch look {
+        case .rings:
+            PrayerRingGlyph(kind: excused && !prayerObject.isCompleted && !isFuturePrayer ? .excused
+                            : isFuturePrayer ? .future
+                            : prayerObject.isCompleted ? .done(prayerObject.getColorForPrayerScore())
+                            : isCurrentPrayer ? .current(start: prayerObject.startTime, end: prayerObject.endTime)
+                            : .missed,
+                            pulse: completionPulse)
+        case .timeline:
+            dot.background {
+                if isCurrentPrayer { Circle().fill(Color.sage.opacity(0.18)).frame(width: 26, height: 26) }
+            }
+        default:
+            dot
         }
     }
 
@@ -3030,6 +3068,7 @@ struct PrayerButton: View {
     // Text Properties
     private var statusBasedOpacity: Double {
         if isFuturePrayer { return 0.6 }
+        if look == .now && prayerObject.isCompleted { return 0.55 }   // C · prayed ones step back
         return prayerObject.isCompleted ? 1 : 1
     }
     
@@ -3158,12 +3197,7 @@ struct PrayerButton: View {
             // dot (`markRadius`), stopping short of the name; the rest of the row flips the time as before.
             // The dot used to be a Button round its 14 pt circle, the only place a tap marked.
             HStack {
-                PrayerStatusDot(style: PrayerDotStyle(rawValue: dotStyleRaw) ?? .muted,
-                                done: prayerObject.isCompleted && !isFuturePrayer,
-                                future: isFuturePrayer,
-                                scoreColor: prayerObject.getColorForPrayerScore(),
-                                pulse: completionPulse,
-                                excused: Excused.covers(start: prayerObject.startTime, end: prayerObject.endTime))
+                statusGlyph
                     .onGeometryChange(for: CGPoint.self) { proxy in
                         let f = proxy.frame(in: .named(PrayerButton.rowSpace))
                         return CGPoint(x: f.midX, y: f.midY)
@@ -3200,6 +3234,8 @@ struct PrayerButton: View {
                 if let line = TourHints.shared.markLine, isCurrentPrayer {
                     // The tour's mark hint in the current row's time place (Tour.swift).
                     Text(line).font(.footnote).fontDesign(.rounded).fontWeight(.light).foregroundStyle(.secondary)
+                } else if look == .now && isCurrentPrayer {
+                    NowTimeLeft(start: prayerObject.startTime, end: prayerObject.endTime)   // C · in place of its start
                 } else {
                     timeColumn
                         // The tour rings exactly this time when a tap flips it (owner: not a fixed box). Only while the
@@ -3238,6 +3274,14 @@ struct PrayerButton: View {
             #endif
             .padding(.horizontal)
             .padding(.vertical, theme.rowVerticalPadding)   // the well's rows a bit shorter (owner, 2026-10-01)
+            // C · the prayer on now: a slim line under it, filling with its window.
+            .padding(.bottom, look == .now && isCurrentPrayer ? 9 : 0)
+            .overlay(alignment: .bottom) {
+                if look == .now && isCurrentPrayer {
+                    NowProgressLine(start: prayerObject.startTime, end: prayerObject.endTime)
+                        .padding(.horizontal, 18).padding(.bottom, 9)
+                }
+            }
             .contentShape(Rectangle())
             .coordinateSpace(.named(PrayerButton.rowSpace))
             .gesture(rowGesture)
@@ -3245,6 +3289,15 @@ struct PrayerButton: View {
             .accessibilityAction(named: prayerObject.isCompleted ? "Mark not prayed" : "Mark prayed") { markTap() }
             // Background Effects Container
             .background { rowBackground }
+            .background(alignment: .topLeading) {
+                if look == .timeline {
+                    // B · the day's line through the dots (PrayerListLooks.swift).
+                    let names = viewModel.orderedPrayerNames
+                    TimelineSpine(dot: dotCenter, gapBelow: theme.rowSpacing,
+                                  showsAbove: names.first != name, showsBelow: names.last != name,
+                                  litAbove: !isFuturePrayer, litBelow: !isFuturePrayer && !isCurrentPrayer)
+                }
+            }
             .animation(Self.dotPress, value: prayerObject.isCompleted)
             .onChange(of: prayerObject.isCompleted) { _, done in
                 if done { completionPulse += 1 }

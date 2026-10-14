@@ -270,6 +270,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 **Salah circle & prayer list** (mainCircle.swift, PrayerCompletionFX.swift)
 - The ring fills with the window, coloured by the score you'd get now; a tap flips "ends at" / time left. Not yet started: dashed `UpcomingTrack` + `NextTag`, solid at the start (`settleTrack`).
 - Marking: haptic, `CompletionFlourish` (`heldPrayer`), done rows fold into "N done"; tap the dot's circle to mark, elsewhere flips the time, hold opens `PrayerTimeEditSheet` (local draft; recorded value kept, 2.3.0). `PostSalahNudge` (15 s ring) is the only post-salah prompt.
+- Trial list looks (owner 2026-10-14, PrayerListLooks.swift): the palette menu's List adds New A · Rings (`PrayerRingGlyph`), New B · Timeline (`TimelineSpine`), New C · Now (the current row `NeuRaised` + `NowTimeLeft` / `NowProgressLine`) — all in the public well, only the row's look changes (`PrayerButton.statusGlyph`); the public look stays `.well` until he picks. DEBUG `-salahLook.list rings|timeline|now`, `-demoMarkAll [-demoKeepCurrent YES] [-demoShowDone YES]`.
 - DEBUG: `-demoPrayerStart [-demoPrayerStartThenMark]`, `-demoPrayerCompletion`.
 - **The day's page** (decision day-score-end; DaySummary.swift, DayInsight.swift): the summary's score side (all five
   marked, list open) — `DayRing` on the ring's band: five fifths (Fajr at the top) in their grade colours, a dot where in

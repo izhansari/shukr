@@ -21,6 +21,12 @@ enum SalahLook: String, CaseIterable, Identifiable {
     case well
     /// No card, pills or lines; only the current prayer pressed in.
     case quiet
+    /// Trial looks (PrayerListLooks.swift, owner 2026-10-14), in the well: A · each status a small ring.
+    case rings
+    /// B · the day as one thin line through the dots.
+    case timeline
+    /// C · the prayer on now raised, with its time left and a slim line.
+    case now
 
     var id: String { rawValue }
     var title: String {
@@ -30,6 +36,9 @@ enum SalahLook: String, CaseIterable, Identifiable {
         case .card: "Raised card"
         case .well: "Sunken well"
         case .quiet: "Quiet"
+        case .rings: "New A · Rings"
+        case .timeline: "New B · Timeline"
+        case .now: "New C · Now"
         }
     }
 
@@ -359,7 +368,7 @@ struct SalahLookListFrame: ViewModifier {
         case .today:
             // Exactly as before the look prototype: not clipped (Sami's audit — the clip cut Today's slide-in rows).
             content.frame(width: 260).background(FlatBorder())
-        case .card, .well, .pills, .quiet:
+        case .card, .well, .pills, .quiet, .rings, .timeline, .now:
             content.frame(width: 290)   // the card goes round the rows only (SalahLookCard), "N done" under it
         }
     }
@@ -377,7 +386,7 @@ struct SalahLookCard: ViewModifier {
         switch theme.list {
         case .card:
             content.clipShape(card).background(NeuRaised(shape: card, radius: 14, offset: 7))
-        case .well:
+        case .well, .rings, .timeline, .now:   // the trial looks sit in the public look's well
             content.clipShape(card)
                 .background(NeuLiftCard(shape: card, lift: raised ? 1 : 0))
                 .scaleEffect(raised && !reduceMotion ? 1.012 : 1)
