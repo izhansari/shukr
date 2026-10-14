@@ -533,11 +533,22 @@ enum WhatsNew {
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
+    /// Each string parsed once: the log's sort compared `when` — two parses per comparison, ~40 000 for ~1 700 entries,
+    /// and a new DateFormatter for every date-only one — 1.8 s on the main thread just after every launch on his 13 Pro
+    /// Max (perf-recheck, 2026-10-14).
     static func date(from s: String) -> Date? {
-        if let d = iso.date(from: s) { return d }
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
-        return f.date(from: String(s.prefix(10)))
+        dateLock.lock(); defer { dateLock.unlock() }
+        if let known = parsedDates[s] { return known }
+        let d = iso.date(from: s) ?? dayOnly.date(from: String(s.prefix(10)))
+        parsedDates[s] = .some(d)
+        return d
     }
+    private static let dayOnly: DateFormatter = {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
+    private static let dateLock = NSLock()
+    nonisolated(unsafe) private static var parsedDates: [String: Date?] = [:]
 
     /// "today 4:07 AM" · "yesterday 9:12 PM" · "Sep 25, 4:07 AM".
     static func whenLabel(_ date: Date?) -> String {
