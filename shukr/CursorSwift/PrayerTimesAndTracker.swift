@@ -1943,6 +1943,7 @@ struct PrayerTimesView: View {
         @State private var demoViewer = false
         @State private var demoAlarmCheck = false
         @State private var demoRingDepth = false
+        @State private var demoListSandbox = false
         @State private var demoLATuner = false
         @State private var demoPileMock: String?
         @State private var demoLiveActivityStep = false
@@ -2237,6 +2238,10 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(2))
                     demoViewer = PrayerPhotos.newestKey != nil
                 }
+                if ProcessInfo.processInfo.arguments.contains("-demoListSandbox") {   // ListDragSandbox.swift
+                    try? await Task.sleep(for: .seconds(2))
+                    demoListSandbox = true
+                }
                 if ProcessInfo.processInfo.arguments.contains("-demoRingDepth") {   // RingDepthMocks.swift
                     try? await Task.sleep(for: .seconds(2))
                     demoRingDepth = true
@@ -2270,6 +2275,7 @@ struct PrayerTimesView: View {
             // `-demoAlarmCheck`: Settings' Alarm check page (FajrAlarmKit.swift).
             .sheet(isPresented: $demoAlarmCheck) { NavigationStack { FajrAlarmCheckView() } }
             .sheet(isPresented: $demoRingDepth) { NavigationStack { RingDepthMockPage() } }
+            .fullScreenCover(isPresented: $demoListSandbox) { ListDragSandbox() }
             // `-laTuner`: Settings → Live Activities → Tune the card's look.
             .sheet(isPresented: $demoLATuner) { LATunerView() }
             #endif

@@ -98,6 +98,7 @@ struct SettingsView: View {
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
     @State private var showWhatsNew = false
     @State private var showRingPlayground = false
+    @State private var showListSandbox = false
     @State private var showLiveActivitySetup = false
     @State private var showLATuner = false
     @State private var showNextPlayground = false
@@ -794,6 +795,8 @@ struct SettingsView: View {
 
                         Section {
                             Button("Ring playground…") { showRingPlayground = true }
+                            // The Salah list following the finger, away from the real pager (owner, 2026-10-14).
+                            Button("Prayer list drag (sandbox)…") { showListSandbox = true }
                             // Today's soft ring beside the app icon's lifted one, everywhere it shows (owner, 2026-10-14).
                             NavigationLink("Ring depth mock-ups") { RingDepthMockPage() }
                             // The setup's Live Activity page on its own, its words editable from its ⚙ (owner).
@@ -900,6 +903,7 @@ struct SettingsView: View {
             #endif
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
+        .fullScreenCover(isPresented: $showListSandbox) { ListDragSandbox() }
         // The Reminders switch's dots, live (owner: turned off in iOS, back through the app switcher, no badge until a
         // force quit): iOS's own change streams while the page lives, plus one re-read each time the app comes back —
         // nothing polls. Notifications are re-read on every return by the app (shukrApp).
