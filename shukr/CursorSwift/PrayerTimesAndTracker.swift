@@ -86,6 +86,8 @@ struct PrayerTimesView: View {
     @State private var askingResume = false
     /// The prayer tapped, marked once she's back if it's due then.
     @State private var resumePrayer: PrayerModel?
+    /// Past her estimate: once a day on opening, "Are you back to praying?" (Excused.swift).
+    @State private var askingOverdue = false
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoNewZikr = false
@@ -160,6 +162,17 @@ struct PrayerTimesView: View {
     /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
     /// first-run setup is up — the flags stay set and this runs again once it's done
     /// (`FirstRunSetup.finished`), so its hand-off always lands on this page's circle.
+    /// Past her estimate: ask once a day, a moment after the page is up (Excused.swift; owner: notifications may be off).
+    private func askIfOverdue() {
+        guard Excused.shouldAskToday else { return }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard Excused.shouldAskToday, !FirstRunSetup.isShowing, !askingResume, !showExcused else { return }
+            Excused.markAskedToday()
+            askingOverdue = true
+        }
+    }
+
     private func openFromWidgetFlags() {
         guard !FirstRunSetup.isShowing else { return }
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
@@ -935,6 +948,16 @@ struct PrayerTimesView: View {
             resumePrayer = note.object as? PrayerModel
             askingResume = true
         }
+        .alert("Are you back to praying?", isPresented: $askingOverdue) {
+            Button("I'm back") { Excused.end() }
+            Button("2 more days") { Excused.extend(days: 2) }
+            Button("3 more days") { Excused.extend(days: 3) }
+            Button("Not yet", role: .cancel) {}
+        } message: {
+            Text("You're set as excused from prayer, and your estimate has passed. We'll check in once a day.")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in askIfOverdue() }
+        .onAppear { askIfOverdue() }
         .alert("Prayers are paused", isPresented: $askingResume) {
             Button("I'm back") {
                 Excused.end()

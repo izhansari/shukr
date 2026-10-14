@@ -78,6 +78,21 @@ extension Excused {
         apply(list, reason: "excused changed", light: true)
     }
 
+    /// "Not yet": n more days, from today once the estimate has passed (owner: "ask for 2 more days or 3 more days").
+    @MainActor static func extend(days n: Int) {
+        guard let r = current else { return }
+        let from = max(r.expectedEnd, Date())
+        update(expectedEnd: Calendar.current.date(byAdding: .day, value: n, to: from) ?? from)
+    }
+
+    /// Past her estimate and not yet asked today: the app asks once a day too (owner: notifications may be off).
+    static var shouldAskToday: Bool {
+        guard let r = current, Date() >= r.expectedEnd else { return false }
+        return UserDefaults.standard.string(forKey: askedDayKey) != PrayerNotificationID.dayKey(Date())
+    }
+    static let askedDayKey = "excused.askedDay"
+    static func markAskedToday() { UserDefaults.standard.set(PrayerNotificationID.dayKey(Date()), forKey: askedDayKey) }
+
     /// She's back: everything is planned again from now. A start ended within half an hour was a mistake: it's removed,
     /// so it leaves no excused day behind (review). `planNotifications: false` = the caller awaits the plan itself.
     @MainActor static func end(at date: Date = Date(), planNotifications: Bool = true) {
@@ -127,8 +142,9 @@ extension Excused {
     static let notYetAction = "EXCUSED_NOT_YET"
     static func owns(_ id: String) -> Bool { id.hasPrefix(checkInPrefix) }
 
-    /// On her estimated day, then 2 and 4 days later, at 10 AM; never one in the past. Worded so a glance at her lock
-    /// screen says nothing (owner).
+    /// Every day at 10 AM from her estimated day until she's back (owner: "to stay safe, we're going to keep notifying you
+    /// every day"), two weeks planned at a time (prayers are paused, so there's room); never one in the past. Worded so a
+    /// glance at her lock screen says nothing (owner).
     static func checkIns(now: Date = Date()) -> [(id: String, date: Date, content: UNNotificationContent)] {
         guard let r = current else { return [] }
         let cal = Calendar.current
@@ -137,8 +153,8 @@ extension Excused {
         if first <= now, let next = cal.nextDate(after: now, matching: DateComponents(hour: 10, minute: 0), matchingPolicy: .nextTime) {
             first = next
         }
-        return [0, 2, 4].enumerated().compactMap { i, offset in
-            guard let date = cal.date(byAdding: .day, value: offset, to: first), date > now else { return nil }
+        return (0..<14).compactMap { i in
+            guard let date = cal.date(byAdding: .day, value: i, to: first), date > now else { return nil }
             let content = UNMutableNotificationContent()
             content.title = "Ready to start again?"
             // The same words for both kinds: "40 days" on a lock screen could say why (review).
@@ -252,7 +268,9 @@ struct ExcusedSheet: View {
     /// Just ended: the welcome back.
     @State private var welcomeBack = false
 
-    private static let dayChoices = [3, 4, 5, 6, 7, 8, 9, 10, 15, 40]
+    private static let dayChoices = Array(3...15) + [20, 25, 30, 40, 45, 60]
+    /// The choices, with the current length in them (an extension can land between them).
+    private var choices: [Int] { Array(Set(Self.dayChoices + [days])).sorted() }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -301,7 +319,7 @@ struct ExcusedSheet: View {
                 Divider().padding(.leading, 52)
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
             }
-            Text("Started a few days ago? Pick that day and those prayers count as excused too.")
+            Text("Started a few days ago? Pick that day and those prayers count as excused too.\n\nAfter your estimate we'll check in once a day until you're back. Need longer? Come back and add days any time.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }
@@ -318,7 +336,7 @@ struct ExcusedSheet: View {
                 Divider().padding(.leading, 52)
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
             }
-            Text("Your reminders, the Fajr alarm and prayer cards are paused. We'll check in on your estimated day.")
+            Text("Your reminders, the Fajr alarm and prayer cards are paused. From your estimated day we'll check in once a day; need longer, add days here.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }
@@ -385,7 +403,7 @@ struct ExcusedSheet: View {
     private var daysRow: some View {
         Menu {
             Picker("About how long", selection: $days) {
-                ForEach(Self.dayChoices, id: \.self) { Text("\($0) days").tag($0) }
+                ForEach(choices, id: \.self) { Text("\($0) days").tag($0) }
             }
         } label: {
             HStack(spacing: 12) {
