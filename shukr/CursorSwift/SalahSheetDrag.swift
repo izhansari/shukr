@@ -33,27 +33,23 @@ enum SalahSheetDrag {
         withTransaction(quiet) { state.navPosition = .main }
     }
     @MainActor private static var quietNext = false
-    /// The ☰ menu. A swipe that closes it (its touch-down dismisses the popover, then the drag reaches the pager) must
-    /// not move the sheet (owner, 2026-10-14) — and only that ONE swipe: every other is left alone. No clocks (the
-    /// gesture's own timestamp isn't the wall clock: comparing them swallowed every swipe after the first close).
+    /// The ☰ menu. A swipe that starts while it's up (and so closes it) must not move the sheet (owner, 2026-10-14).
+    /// Nothing else is ever ignored: no time window after the close — the menu reports closed a moment after it has
+    /// gone from the screen, and a window counted from then ate his next quick swipe (twice: 0.6 s, then 0.5 s).
     @MainActor private static var open = false
-    /// A drag already took this opening's close (it began with the menu up).
-    @MainActor private static var closeTaken = false
-    /// The menu closed before any drag claimed it (its fade can end before the swipe's first move): the next drag
-    /// takes it, if it starts within half a second.
-    @MainActor private static var closedUnclaimed: Date?
-    @MainActor static func menuChanged(open isOpen: Bool) {
+    /// A swipe up already buzzed for this close.
+    @MainActor private static var closeBuzzed = false
+    @MainActor static func menuChanged(open isOpen: Bool, byRow: Bool) {
         open = isOpen
-        if isOpen { closeTaken = false; closedUnclaimed = nil; return }
-        closedUnclaimed = closeTaken ? nil : Date()
-        closeTaken = false
+        // Closed by a swipe or a touch outside it: the same light buzz the pull down opened it with (owner) — once.
+        if !isOpen && !byRow && !closeBuzzed { triggerSomeVibration(type: .light) }
+        closeBuzzed = false
     }
-    /// Asked once per drag, at its first move: is this the swipe that closed the menu?
-    @MainActor static func dragClosesMenu() -> Bool {
-        if open { closeTaken = true; return true }
-        defer { closedUnclaimed = nil }   // one drag at most
-        guard let at = closedUnclaimed else { return false }
-        return Date().timeIntervalSince(at) < 0.5
+    /// Asked once per drag, at its first move: is this the swipe that closes the menu?
+    @MainActor static func dragClosesMenu(up: Bool) -> Bool {
+        guard open else { return false }
+        if up && !closeBuzzed { closeBuzzed = true; triggerSomeVibration(type: .light) }
+        return true
     }
 
     /// Whether the move the sheet is about to make was asked for quietly (once).

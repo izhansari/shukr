@@ -587,9 +587,7 @@ struct PrayerTimesView: View {
                     guard abs(t.width) > decideAt || abs(t.height) > decideAt else { return }
                     dismissKeyboard()
                     dragAxis.vertical = abs(t.height) > abs(t.width)
-                    dragAxis.swallowed = SalahSheetDrag.dragClosesMenu()
-                    // Swiping up closes ☰ with the same light buzz a pull down opens it with (owner).
-                    if dragAxis.swallowed && dragAxis.vertical == true && t.height < 0 { triggerSomeVibration(type: .light) }
+                    dragAxis.swallowed = SalahSheetDrag.dragClosesMenu(up: dragAxis.vertical == true && t.height < 0)
                     if dragAxis.vertical == true {
                         live.pagerLocked = true
                     } else {
@@ -2079,7 +2077,7 @@ struct PrayerTimesView: View {
                             showMenu = true
                         }
                         .onChange(of: showMenu) { _, open in
-                            SalahSheetDrag.menuChanged(open: open)
+                            SalahSheetDrag.menuChanged(open: open, byRow: pendingMenuAction != nil)
                             // The chosen row runs once the popover has faded (its push isn't attempted while the
                             // presentation is still going). Not at its onDisappear: that comes ~0.4 s after it's gone
                             // from the screen, and the row felt slow (sim, tr-pager).
