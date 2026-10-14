@@ -178,6 +178,12 @@ private enum MockFmt {
         default: return days < 730 ? "a year ago" : "\(days / 365) years ago"
         }
     }
+    /// "3h 12m" · "48m" · "52s": the short form for History's ring and card.
+    static func compact(_ s: TimeInterval) -> String {
+        let m = Int(s / 60)
+        if m >= 60 { return m % 60 == 0 ? "\(m / 60)h" : "\(m / 60)h \(m % 60)m" }
+        return m >= 1 ? "\(m)m" : "\(Int(s))s"
+    }
     /// "1 h 12 min" · "23 min" · "40 s": time spent in all.
     static func spent(_ s: TimeInterval) -> String {
         let m = Int(s / 60)
@@ -336,6 +342,10 @@ private struct SoftRing: View {
 private struct SegmentRing<Center: View>: View {
     let parts: [Double]
     var size: CGFloat = 150
+    /// Parts from this one on are still to come (greyed out); the ones before are days already entered.
+    var future: Int? = nil
+    /// The part a finger is on (History's ring), drawn bolder.
+    var highlight: Int? = nil
     @ViewBuilder var center: () -> Center
     @Environment(\.circleTheme) private var theme
     var body: some View {
@@ -347,12 +357,14 @@ private struct SegmentRing<Center: View>: View {
                 .shadow(color: theme.light, radius: 6, x: -2, y: -2)
             ForEach(Array(parts.enumerated()), id: \.offset) { i, f in
                 let a = Double(i) / Double(n) + gap / 2, b = Double(i + 1) / Double(n) - gap / 2
+                let toCome = future.map { i >= $0 } ?? false
                 Circle().trim(from: a, to: b)
-                    .stroke(Color.primary.opacity(0.07), style: StrokeStyle(lineWidth: 4, lineCap: .butt))
+                    .stroke(Color.primary.opacity(toCome ? 0.03 : (future != nil ? 0.13 : 0.07)),
+                            style: StrokeStyle(lineWidth: highlight == i ? 7 : 4, lineCap: .butt))
                     .rotationEffect(.degrees(-90))
                 if f > 0 {
                     Circle().trim(from: a, to: a + (b - a) * min(f, 1))
-                        .stroke(Color.sage.opacity(f >= 1 ? 1 : 0.6), style: StrokeStyle(lineWidth: 5, lineCap: n == 1 ? .round : .butt))
+                        .stroke(Color.sage.opacity(f >= 1 ? 1 : 0.6), style: StrokeStyle(lineWidth: highlight == i ? 8 : 5, lineCap: n == 1 ? .round : .butt))
                         .rotationEffect(.degrees(-90))
                 }
             }
@@ -1451,65 +1463,155 @@ private struct ModalLookCard: View {
 
 // MARK: - History
 
-/// What the hero says about the month (owner: "reward user … wow i did that yay me"; "we got so much data and they
-/// don't see it").
+/// The month in History's top card (owner, 2026-10-14: time first — "my best day might have 10,000 count but five
+/// minutes"): each prayer day's time and count, the month's totals, the best day by time, the most-said azkar by time.
 private struct MonthStory {
+    struct Day { var seconds: TimeInterval = 0; var count = 0 }
+    var monthName = ""
+    var days: [Day] = []           // the month's prayer days; 0 = the 1st
+    var dates: [Date] = []
+    var today: Int?                // today's index (days after it are still to come)
+    var seconds: TimeInterval = 0
     var count = 0
-    var lastMonthCount = 0
-    var lastMonthName = ""
-    var dayParts: [Double] = []        // the month's days, lit when you said zikr that day
-    var activeDays = 0
-    var streak = 0
-    var bestStreak = 0
-    var allTimeSeconds: TimeInterval = 0
-    var bestDay: (count: Int, date: Date)?
-    var top: [(name: String, count: Int)] = []
+    var bestDay: (seconds: TimeInterval, date: Date)?
+    var top: [(name: String, seconds: TimeInterval, count: Int)] = []
+    var activeDays: Int { days.filter { $0.seconds >= 1 || $0.count > 0 }.count }
+    var averageSeconds: TimeInterval { activeDays > 0 ? seconds / Double(activeDays) : 0 }
 
     init(_ sessions: [SessionDataModel]) {
-        let cal = Calendar.current, now = Date()
-        guard let month = cal.dateInterval(of: .month, for: now),
-              let last = cal.dateInterval(of: .month, for: cal.date(byAdding: .month, value: -1, to: now) ?? now),
-              let days = cal.range(of: .day, in: .month, for: now) else { return }
-        lastMonthName = last.start.formatted(.dateTime.month(.wide))
-        var perDay: [Int: Int] = [:], byName: [String: Int] = [:]
-        var dayKeys = Set<String>()
+        let cal = Calendar.current, todayStart = PrayerDay.start()
+        guard let month = cal.dateInterval(of: .month, for: todayStart),
+              let range = cal.range(of: .day, in: .month, for: todayStart) else { return }
+        monthName = todayStart.formatted(.dateTime.month(.wide))
+        days = Array(repeating: Day(), count: range.count)
+        dates = (0..<range.count).compactMap { cal.date(byAdding: .day, value: $0, to: month.start) }
+        today = cal.component(.day, from: todayStart) - 1
+        var byName: [String: (seconds: TimeInterval, count: Int)] = [:]
         for s in sessions {
-            allTimeSeconds += s.secondsPassed
-            dayKeys.insert(PrayerDay.key(for: s.startTime))
-            if month.contains(s.startTime) {
-                count += s.totalCount
-                perDay[cal.component(.day, from: s.startTime), default: 0] += s.totalCount
-                byName[s.mantra?.name ?? "Freestyle", default: 0] += s.totalCount
-            } else if last.contains(s.startTime) {
-                lastMonthCount += s.totalCount
+            // By prayer day, as the rest of History (the ring and "N of M days" agree).
+            let day = PrayerDay.start(for: s.startTime)
+            guard month.contains(day) else { continue }
+            let i = cal.component(.day, from: day) - 1
+            guard days.indices.contains(i) else { continue }
+            days[i].seconds += s.secondsPassed; days[i].count += s.totalCount
+            seconds += s.secondsPassed; count += s.totalCount
+            let name = s.mantra?.name ?? "Freestyle"
+            byName[name, default: (0, 0)].seconds += s.secondsPassed
+            byName[name, default: (0, 0)].count += s.totalCount
+        }
+        if let b = days.indices.max(by: { days[$0].seconds < days[$1].seconds }), days[b].seconds >= 1, dates.indices.contains(b) {
+            bestDay = (days[b].seconds, dates[b])
+        }
+        top = byName.sorted { $0.value.seconds > $1.value.seconds }.prefix(3).map { ($0.key, $0.value.seconds, $0.value.count) }
+    }
+}
+
+/// History's top card (owner): the month as a ring of days — entered days solid, the days to come greyed — with the time
+/// spent in the middle ("3h 12m · over 4 days"); a tap shows the count for a few seconds (the rows follow); a finger along
+/// the ring reads one day. Right: the best day by time, "4 of 14 days", the average time on a day you did zikr. The most-
+/// said azkar by time under it; a tap there flips just the rows to counts.
+private struct MonthHero: View {
+    let s: MonthStory
+    @State private var showCount = false
+    @State private var rowsCount = false
+    @State private var scrub: Int?
+    @State private var revert: Task<Void, Never>?
+    private let ringSize: CGFloat = 126
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 18) {
+                SegmentRing(parts: s.days.map { $0.seconds >= 1 || $0.count > 0 ? 1 : 0 }, size: ringSize,
+                            future: s.today.map { $0 + 1 }, highlight: scrub) { center }
+                    .contentShape(Circle())
+                    .onTapGesture { flipToCount() }
+                    .gesture(DragGesture(minimumDistance: 4)
+                        .onChanged { v in scrub = day(at: v.location) }
+                        .onEnded { _ in withAnimation(.easeOut(duration: 0.2)) { scrub = nil } })
+                    .sensoryFeedback(.selection, trigger: scrub)
+                VStack(alignment: .leading, spacing: 8) {
+                    if let b = s.bestDay {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Best day").font(.footnote).foregroundStyle(.secondary)
+                            Text("\(MockFmt.compact(b.seconds)) · \(b.date.formatted(.dateTime.month(.abbreviated).day()))")
+                                .font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let t = s.today { Text("\(s.activeDays) of \(t + 1) days") }
+                        if s.activeDays > 0 { Text("Avg \(MockFmt.compact(s.averageSeconds)) a day") }
+                    }
+                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                }
+                Spacer(minLength: 0)
+            }
+            if !s.top.isEmpty, s.seconds >= 1 || s.count > 0 {
+                let counting = showCount || rowsCount
+                VStack(spacing: 10) {
+                    ForEach(Array(s.top.enumerated()), id: \.offset) { _, t in
+                        let share = counting ? Double(t.count) / Double(max(s.count, 1)) : t.seconds / max(s.seconds, 1)
+                        HStack(spacing: 12) {
+                            SoftRing(progress: share, size: 24)
+                            Text(t.name).font(.subheadline).lineLimit(1)
+                            Spacer(minLength: 8)
+                            Text("\(counting ? MockFmt.count(t.count) : MockFmt.compact(t.seconds)) · \(Int((share * 100).rounded()))%")
+                                .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                                .contentTransition(.numericText())
+                        }
+                    }
+                }
+                .padding(.top, 2)
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation(.snappy) { rowsCount.toggle() } }
             }
         }
-        dayParts = days.map { perDay[$0].map { $0 > 0 ? 1 : 0 } ?? 0 }
-        activeDays = perDay.values.filter { $0 > 0 }.count
-        if let best = perDay.max(by: { $0.value < $1.value }), best.value > 0,
-           let d = cal.date(bySetting: .day, value: best.key, of: month.start) {
-            bestDay = (best.value, d)
+        .padding(18)
+        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
+    }
+
+    /// The month's time (or count), or the day under the finger.
+    @ViewBuilder private var center: some View {
+        VStack(spacing: 1) {
+            if let d = scrub, s.days.indices.contains(d), s.dates.indices.contains(d) {
+                Text(s.dates[d].formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                    .font(.caption2).foregroundStyle(.secondary)
+                Text(showCount ? MockFmt.count(s.days[d].count) : (s.days[d].seconds >= 1 ? MockFmt.compact(s.days[d].seconds) : "—"))
+                    .font(.system(size: 26, weight: .light, design: .rounded)).monospacedDigit()
+                Text(showCount ? "counted" : (d > (s.today ?? 0) ? "to come" : "of zikr"))
+                    .font(.caption2).foregroundStyle(.secondary)
+            } else {
+                Text(showCount ? MockFmt.count(s.count) : MockFmt.compact(s.seconds))
+                    .font(.system(size: 28, weight: .light, design: .rounded)).monospacedDigit()
+                    .contentTransition(.numericText())
+                Text(showCount ? "counted" : "over \(s.activeDays) day\(s.activeDays == 1 ? "" : "s")")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("in \(s.monthName)").font(.caption2).foregroundStyle(.tertiary)
+            }
         }
-        top = byName.sorted { $0.value > $1.value }.prefix(3).map { ($0.key, $0.value) }
-        // Days in a row (prayer days): up to today, or up to yesterday while today is still open.
-        func key(_ offset: Int) -> String { PrayerDay.key(for: cal.date(byAdding: .day, value: -offset, to: PrayerDay.start()) ?? now) }
-        var i = dayKeys.contains(key(0)) ? 0 : 1
-        while dayKeys.contains(key(i)) { streak += 1; i += 1 }
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
-        var run = 0, prev: Date?
-        for k in dayKeys.sorted() {
-            guard let d = f.date(from: k) else { continue }
-            if let p = prev, cal.dateComponents([.day], from: p, to: d).day == 1 { run += 1 } else { run = 1 }
-            bestStreak = max(bestStreak, run); prev = d
+        .minimumScaleFactor(0.6).lineLimit(1)
+        .padding(.horizontal, 16)
+    }
+
+    /// A tap: the count for a few seconds, then back to time (the app's rings flip the same way).
+    private func flipToCount() {
+        triggerSomeVibration(type: .light)
+        withAnimation(.snappy) { showCount = true }
+        revert?.cancel()
+        revert = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy) { showCount = false }
         }
     }
 
-    /// The one reward sentence: the biggest true thing.
-    var reward: String {
-        if lastMonthCount > 0 && count > lastMonthCount { return "Already more than all of \(lastMonthName)" }
-        if streak >= 3 { return "\(streak)-day streak" + (streak >= bestStreak ? ", your longest yet" : "") }
-        if let b = bestDay, b.count > 0 { return "Your best day: \(MockFmt.count(b.count)) on \(b.date.formatted(.dateTime.month(.abbreviated).day()))" }
-        return "Every day you say zikr lights up a part of the ring"
+    /// The day under a point on the ring (the 1st at the top, clockwise), up to today.
+    private func day(at p: CGPoint) -> Int? {
+        let side = ringSize + 20, c = side / 2
+        var angle = atan2(p.x - c, c - p.y)
+        if angle < 0 { angle += 2 * .pi }
+        let n = s.days.count
+        guard n > 0 else { return nil }
+        return min(Int(angle / (2 * .pi) * Double(n)), n - 1)
     }
 }
 
@@ -1594,10 +1696,11 @@ private struct MockHistoryPage: View {
                                : "\(picked.count) selected · \(MockFmt.count(picked.reduce(0) { $0 + $1.totalCount })) counted")
                         .bareRow(top: 0)
                 } else {
+                    // All time up here (owner): sessions, count, time.
                     Soft.title(active.map { $0.title } ?? "History",
-                               "\(MockFmt.count(base.count)) sessions · \(MockFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted, all time")
+                               "All time: \(MockFmt.count(base.count)) sessions · \(MockFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(MockFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
                         .bareRow(top: 0)
-                    if state.historyQuery.isEmpty { hero(story).bareRow(top: 8, bottom: 4) }
+                    if state.historyQuery.isEmpty { MonthHero(s: story).bareRow(top: 8, bottom: 4) }
                 }
             }
             DayRows(days: byDay(Array(shown.prefix(150))), tappable: !selecting,
@@ -1666,51 +1769,6 @@ private struct MockHistoryPage: View {
                 selection = Set(day.items.prefix(2).map(\.persistentModelID))
             }
         }
-    }
-
-    /// The reward (owner): the month as one ring — a part per day, lit on the days you said zikr — the month's count in
-    /// the middle, one sentence about the biggest true thing, then the month's most-said azkar as small rings.
-    private func hero(_ s: MonthStory) -> some View {
-        let month = Date().formatted(.dateTime.month(.wide))
-        return VStack(spacing: 14) {
-            HStack(spacing: 18) {
-                SegmentRing(parts: s.dayParts, size: 126) {
-                    VStack(spacing: 0) {
-                        Text(MockFmt.count(s.count)).font(.system(size: 30, weight: .light, design: .rounded))
-                            .monospacedDigit().minimumScaleFactor(0.6).lineLimit(1)
-                        Text("in \(month)").font(.caption).foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 16)
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(s.reward).font(.system(size: 18, weight: .light, design: .rounded))
-                        .fixedSize(horizontal: false, vertical: true)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("\(s.activeDays) day\(s.activeDays == 1 ? "" : "s") this month")
-                        if s.bestStreak > 1 { Text(streakLabel(s.bestStreak)).fixedSize(horizontal: false, vertical: true) }
-                        Text("\(MockFmt.hours(s.allTimeSeconds)) of zikr, all time")
-                    }
-                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-                }
-                Spacer(minLength: 0)
-            }
-            if !s.top.isEmpty, s.count > 0 {
-                VStack(spacing: 10) {
-                    ForEach(Array(s.top.enumerated()), id: \.offset) { _, t in
-                        HStack(spacing: 12) {
-                            SoftRing(progress: Double(t.count) / Double(max(s.count, 1)), size: 24)
-                            Text(t.name).font(.subheadline).lineLimit(1)
-                            Spacer(minLength: 8)
-                            Text("\(MockFmt.count(t.count)) · \(Int((Double(t.count) / Double(max(s.count, 1)) * 100).rounded()))%")
-                                .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-                        }
-                    }
-                }
-                .padding(.top, 2)
-            }
-        }
-        .padding(18)
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
     }
 
     /// Whose streak (the cold test met four unlabelled ones): any zikr, or the zikr / goal History is filtered to.
