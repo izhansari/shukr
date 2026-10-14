@@ -66,7 +66,7 @@ struct CircleTheme: Equatable {
     var rowVerticalPadding: CGFloat {
         switch list {
         case .well, .now: 8
-        case .timeline, .prayedAt: 10
+        case .timeline, .prayedAt, .prayedOnTap: 10
         case .dayNow: 12        // D · more air
         case .nowLeads: 6       // E · the rest compact (the raised one gets its own room)
         default: 12

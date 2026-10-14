@@ -2999,7 +2999,7 @@ struct PrayerButton: View {
             else { NeuRaised(shape: shape) }
         case .quiet:
             if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
-        case .now, .dayNow, .nowLeads, .prayedAt:
+        case .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap:
             // Sami's C–F · the prayer on now is the one raised block in the well (PrayerListLooks.swift).
             if isCurrentPrayer { NeuRaised(shape: shape, radius: 8, offset: 4) } else { Color.clear }
         case .card, .well, .timeline:
@@ -3034,8 +3034,10 @@ struct PrayerButton: View {
         default: .callout
         }
     }
-    /// F · a prayer still to say reads in regular; the rest light (as everywhere).
-    private var nameWeight: Font.Weight { look == .prayedAt && !prayerObject.isCompleted ? .regular : .light }
+    /// F / G · a prayer still to say reads in regular; the rest light (as everywhere).
+    private var nameWeight: Font.Weight {
+        (look == .prayedAt || look == .prayedOnTap) && !prayerObject.isCompleted ? .regular : .light
+    }
 
     private var isFuturePrayer: Bool {
 //        withAnimation(.spring(duration: 0.5)) {
@@ -3388,7 +3390,8 @@ struct PrayerButton: View {
                         ExternalToggleText(
                             // F · when you prayed it, not when it started (the flip still shows the score).
                             originalText: look == .prayedAt ? "prayed \(shortTimePM(prayedAt))" : shortTimePM(shownStart),
-                            toggledText: completedTimeAndScore,
+                            // G · the tap shows when you prayed, with the score.
+                            toggledText: look == .prayedOnTap ? "\(shortTimePM(prayedAt)) · \(completedTimeAndScore)" : completedTimeAndScore,
                             externalTrigger: $toggledText,
                             font: timeFontSize,
                             fontDesign: .rounded,

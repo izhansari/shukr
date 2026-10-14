@@ -33,6 +33,9 @@ enum SalahLook: String, CaseIterable, Identifiable {
     case nowLeads
     /// F · each row says what matters for it: when you prayed, the time left, when it starts.
     case prayedAt
+    /// G · F's shape, quieter (owner: not the word "prayed"): prayed rows keep their start time and a tap shows when you
+    /// prayed with the score ("1:12 PM · On time · 88").
+    case prayedOnTap
 
     var id: String { rawValue }
     var title: String {
@@ -47,16 +50,17 @@ enum SalahLook: String, CaseIterable, Identifiable {
         case .dayNow: "D · Line + Now"
         case .nowLeads: "E · Now leads"
         case .prayedAt: "F · What happened"
+        case .prayedOnTap: "G · F, prayed time on tap"
         }
     }
 
     /// The looks before Sami's (the palette's List picker).
     static let originals: [SalahLook] = [.today, .pills, .card, .well, .quiet]
     /// Sami's trial looks (the palette's "Sami list").
-    static let sami: [SalahLook] = [.timeline, .now, .dayNow, .nowLeads, .prayedAt]
+    static let sami: [SalahLook] = [.timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap]
     var isSami: Bool { Self.sami.contains(self) }
     /// The prayer on now is the one raised block, with its time left (C, D, E, F).
-    var raisesNow: Bool { [.now, .dayNow, .nowLeads, .prayedAt].contains(self) }
+    var raisesNow: Bool { [.now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap].contains(self) }
     /// The day's line through the dots (B, D).
     var drawsDayLine: Bool { self == .timeline || self == .dayNow }
 
@@ -386,7 +390,7 @@ struct SalahLookListFrame: ViewModifier {
         case .today:
             // Exactly as before the look prototype: not clipped (Sami's audit — the clip cut Today's slide-in rows).
             content.frame(width: 260).background(FlatBorder())
-        case .card, .well, .pills, .quiet, .timeline, .now, .dayNow, .nowLeads, .prayedAt:
+        case .card, .well, .pills, .quiet, .timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap:
             content.frame(width: 290)   // the card goes round the rows only (SalahLookCard), "N done" under it
         }
     }
@@ -404,7 +408,7 @@ struct SalahLookCard: ViewModifier {
         switch theme.list {
         case .card:
             content.clipShape(card).background(NeuRaised(shape: card, radius: 14, offset: 7))
-        case .well, .timeline, .now, .dayNow, .nowLeads, .prayedAt:   // Sami's looks sit in the public look's well
+        case .well, .timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap:   // Sami's looks sit in the public look's well
             content.clipShape(card)
                 .background(NeuLiftCard(shape: card, lift: raised ? 1 : 0))
                 .scaleEffect(raised && !reduceMotion ? 1.012 : 1)
