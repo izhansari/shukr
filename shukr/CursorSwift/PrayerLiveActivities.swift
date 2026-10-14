@@ -267,6 +267,20 @@ enum PrayerLiveActivities {
     }
 
     #if DEBUG
+    /// The Stop-adds-a-card test (Your Fajr Alarms → Testing): the furthest card ended, and plans held until `until`
+    /// (the alarm) so nothing refills its slot before the Stop runs. Returns what it did, for the log.
+    @MainActor static func freeOneSlotForTest(until: Date) async -> String {
+        guard #available(iOS 26.0, *) else { return "needs iOS 26" }
+        // holdPlans holds for 10 min from its stamp: stamp it so the hold ends as the alarm rings.
+        UserDefaults.standard.set(until.timeIntervalSince1970 - 600, forKey: "la.debugHoldAt")
+        let held = Activity<PrayerWindowAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active }
+        guard let last = held.max(by: { $0.content.state.start < $1.content.state.start }) else { return "no cards held" }
+        let name = "\(last.content.state.label) \(last.content.state.start.formatted(.dateTime.weekday(.abbreviated).hour().minute()))"
+        await last.end(nil, dismissalPolicy: .immediate)
+        PrayerWindowLog.add("Stop test: ended \(name) to free a slot; plans held until \(until.formatted(date: .omitted, time: .standard))")
+        return "freed \(name) (\(held.count - 1) left)"
+    }
+
     /// `-laNowAgo`: the stand-in alone — no planning for 10 min (the sim's real windows took the island; iOS relaunches
     /// shukr without the args, so it's kept in UserDefaults). `-laEndAll` alone lifts it.
     @MainActor static var holdPlans: Bool {

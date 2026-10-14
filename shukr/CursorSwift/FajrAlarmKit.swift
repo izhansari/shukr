@@ -555,6 +555,20 @@ struct FajrAlarmCheckView: View {
                 row("AlarmKit permission", permission)
                 row("shukr sets the alarms", FajrAlarms.isActive ? "yes" : "no (the Shortcut)")
                 row("Alarms set", "\(ours.count)" + (alarms.count > ours.count ? " + \(alarms.count - ours.count) test" : ""))
+                Button("Free a card slot, then ring a test alarm in 90 s") {
+                    // Can the alarm's Stop add a prayer card? One slot freed, held empty until the alarm, no top-up limit.
+                    let at = Date().addingTimeInterval(90)
+                    UserDefaults.standard.set(Date().timeIntervalSince1970 + 600, forKey: "autoTopUp.noLimitUntil")
+                    Task {
+                        #if DEBUG
+                        let freed = await PrayerLiveActivities.freeOneSlotForTest(until: at)
+                        #else
+                        let freed = "debug builds only"
+                        #endif
+                        TopUpLog.add("card test: \(freed); a test alarm set for 90 s from now")
+                        _ = await FajrAlarms.scheduleTest(at: at); load()
+                    }
+                }
                 Button("Ring a test alarm in 1 minute") {
                     // The Stop wake test: no 3 h top-up limit for 10 min, so its Stop is logged running (topups.log).
                     UserDefaults.standard.set(Date().timeIntervalSince1970 + 600, forKey: "autoTopUp.noLimitUntil")
