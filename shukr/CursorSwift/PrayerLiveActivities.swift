@@ -12,6 +12,7 @@
 //
 
 import ActivityKit
+import UserNotifications
 import CoreLocation
 import SwiftData
 import SwiftUI
@@ -52,12 +53,49 @@ enum PrayerLiveActivities {
             Task { @MainActor in plan(reason: "background") }
         }
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in plan(reason: "foreground") }
+            Task { @MainActor in planOnOpen(reason: "foreground") }
         }
         #if DEBUG
         if debugLaunch() { return }
         #endif
-        Task { @MainActor in plan(reason: "launch") }
+        Task { @MainActor in planOnOpen(reason: "launch") }
+    }
+
+    /// Cards held right now (waiting or on).
+    @MainActor static var heldCount: Int {
+        guard #available(iOS 26.0, *) else { return 0 }
+        return Activity<PrayerWindowAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active }.count
+    }
+
+    /// Opening shukr refills everything; when something had run out, the app says so with the same banner as the last
+    /// card's ↻ (owner): the cards (one or none left, and this refilled them — "whenever they open the app after all of
+    /// their live activities have been exhausted"), or the notifications (none left, or one of the running-low warnings —
+    /// easing off, heads-up, the last one — had come in: "after the first heads up reminder comes in"). Not before cards
+    /// were ever held (a first setup isn't a "top-up").
+    @MainActor static func planOnOpen(reason: String) {
+        let before = heldCount
+        let added = plan(reason: reason)
+        let group = UserDefaults(suiteName: SharedStore.appGroup)
+        let everHeld = group?.bool(forKey: "la.everHeld") == true
+        if heldCount > 0, !everHeld { group?.set(true, forKey: "la.everHeld") }
+        let cardsRanOut = added > 0 && before <= 1 && everHeld
+        Task { @MainActor in
+            let center = UNUserNotificationCenter.current()
+            guard await center.notificationSettings().authorizationStatus == .authorized || cardsRanOut else { return }
+            let pending = await center.pendingNotificationRequests()
+            let warnings = await center.deliveredNotifications().map(\.request.identifier)
+                .filter { $0.hasPrefix(NotificationScheduler.keepAlivePrefix) }
+            let notificationsRanLow = (pending.isEmpty || !warnings.isEmpty)
+                && UserDefaults.standard.bool(forKey: "firstRunSetup.v1")
+            guard cardsRanOut || notificationsRanLow else { return }
+            try? await Task.sleep(for: .seconds(2))   // the open's own notification re-plan first
+            // Only on screen: a background wake (a card starting, the alarm's Stop) runs this too.
+            guard UIApplication.shared.applicationState == .active else { return }
+            await TopUpBanner.show()
+            // Said once: the warnings are stale now (else every open would show it again).
+            center.removeDeliveredNotifications(withIdentifiers: warnings)
+            TopUpLog.add("open after running low (\(cardsRanOut ? "cards" : "")\(cardsRanOut && notificationsRanLow ? " + " : "")\(notificationsRanLow ? "notifications" : "")) · the banner shown")
+        }
     }
 
     /// Each card's state changes: a window starting is shukr's chance to end the one before it and top up.
@@ -112,6 +150,7 @@ enum PrayerLiveActivities {
 
     /// The last card's ↻: as many as this run may add; the tapped card then says how far they go; everything else topped up.
     @discardableResult @MainActor static func refresh(_ n: Int) async -> Int {
+        let heldAtTap = heldCount
         #if DEBUG
         holdPlans = false   // an explicit ask (a stand-in's hold would turn it away)
         #endif
@@ -120,13 +159,13 @@ enum PrayerLiveActivities {
             try? await Task.sleep(for: .milliseconds(100))
         }
         PrayerWindowLog.add("refresh: shukr is \(UIApplication.shared.applicationState == .active ? "in front" : "still not in front")")
-        var total = 0
         for attempt in 1...6 {
             let added = plan(reason: "refresh, try \(attempt)")
-            total += added
             if added == 0 { break }
             try? await Task.sleep(for: .milliseconds(400))
         }
+        // Counted from the tap, not this plan alone: the open's own plan may have added them a moment before.
+        let total = max(heldCount - heldAtTap, 0)
         PrayerWindowLog.add("refresh added \(total)")
         // The tapped card says how far the cards now go (owner) — only when it's no longer the last.
         if total > 0, #available(iOS 26.0, *),

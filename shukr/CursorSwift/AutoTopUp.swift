@@ -109,61 +109,182 @@ enum TopUpLog {
 }
 
 // MARK: - The in-app "topped up" banner (owner, 2026-10-14: "something that appears in the app … that acknowledges that it
-// was refreshed properly … with all reminders being refreshed as well") — shown when shukr opens from the last card's ↻.
+// was refreshed properly … with all reminders being refreshed as well") — after the last card's ↻, or opening shukr once the
+// cards had run out. Relative terms (owner), a tap opens what's set, each row opens its page.
 
 enum TopUpBanner {
     static let shown = Notification.Name("TopUpBannerShown")
 
-    /// After a full top-up in front: what's set now — cards held, notifications and Fajr alarms through when.
-    @MainActor static func show() async {
-        let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
-        let through = pending.compactMap { ($0.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() }.max()
-        let alarms = FajrAlarms.scheduled().filter { !$0.test && ($0.date ?? .distantPast) > Date() }
+    /// What's set after a top-up.
+    struct Summary {
         var cards = 0
-        if #available(iOS 26.0, *) {
-            cards = Activity<PrayerWindowAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active }.count
+        /// The last card's prayer, in words ("tonight's Maghrib").
+        var cardsThrough: String?
+        var notifications = 0
+        var notificationDays: Int?
+        var alarmDays: Int?
+        /// "5 prayer cards · notifications for 6 days · Fajr alarms for 60 days".
+        var line: String {
+            var parts = ["\(cards) prayer card\(cards == 1 ? "" : "s")"]
+            if let d = notificationDays { parts.append("notifications for \(TopUpBanner.days(d))") }
+            if let d = alarmDays { parts.append("Fajr alarms for \(TopUpBanner.days(d))") }
+            return parts.joined(separator: " · ")
         }
-        func day(_ d: Date) -> String { d.formatted(.dateTime.month(.abbreviated).day()) }
-        var parts = ["\(cards) prayer card\(cards == 1 ? "" : "s")"]
-        if let through { parts.append("notifications to \(day(through))") }
-        if let last = alarms.compactMap(\.date).max() { parts.append("Fajr alarms to \(day(last))") }
-        NotificationCenter.default.post(name: shown, object: parts.joined(separator: " · "))
+    }
+
+    static func days(_ n: Int) -> String { n == 1 ? "1 day" : "\(n) days" }
+    /// Days from today to that day, counting both ends ("today" = 1).
+    static func daysAhead(_ d: Date) -> Int {
+        let cal = Calendar.current
+        return (cal.dateComponents([.day], from: cal.startOfDay(for: Date()), to: cal.startOfDay(for: d)).day ?? 0) + 1
+    }
+
+    @MainActor private static var lastShown = Date.distantPast
+    @MainActor static func show() async {
+        guard Date().timeIntervalSince(lastShown) > 10 else { return }   // once (the ↻ and the open's refill both ask)
+        lastShown = Date()
+        var s = Summary()
+        let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
+        s.notifications = pending.count
+        s.notificationDays = pending.compactMap { ($0.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() }.max().map(daysAhead)
+        s.alarmDays = FajrAlarms.scheduled().filter { !$0.test && ($0.date ?? .distantPast) > Date() }
+            .compactMap(\.date).max().map(daysAhead)
+        if #available(iOS 26.0, *) {
+            let held = Activity<PrayerWindowAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active }
+            s.cards = held.count
+            if let last = held.max(by: { $0.content.state.start < $1.content.state.start })?.content.state {
+                let cal = Calendar.current
+                s.cardsThrough = cal.isDateInToday(last.start) ? ((last.label == "Maghrib" || last.label == "Isha" ? "tonight's " : "today's ") + last.label)
+                    : cal.isDateInTomorrow(last.start) ? "tomorrow's \(last.label)"
+                    : last.start.formatted(.dateTime.weekday(.wide)) + "'s \(last.label)"
+            }
+        }
+        TopUpLog.add("banner: \(s.line)")
+        NotificationCenter.default.post(name: shown, object: s)
     }
 }
 
-/// The banner itself: a glass card at the top for a few seconds — a green check, "All reminders topped up", the details.
+/// The banner: a glass card at the top for a few seconds; a tap opens the sheet (what's set, each row → its page).
 struct TopUpBannerHost: ViewModifier {
-    @State private var detail: String?
+    @State private var summary: TopUpBanner.Summary?
+    @State private var sheet: TopUpBanner.Summary?
     @State private var hide: Task<Void, Never>?
     func body(content: Content) -> some View {
         content.overlay(alignment: .top) {
-            if let detail {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(.green)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("All reminders topped up").font(.system(.subheadline, design: .rounded, weight: .semibold))
-                        Text(detail).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+            if let summary {
+                Button {
+                    sheet = summary
+                    withAnimation(.easeOut(duration: 0.25)) { self.summary = nil }
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(.green)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("All reminders topped up").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                .foregroundStyle(.primary)
+                            Text(summary.line).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                            .padding(.top, 4)
                     }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                    .frame(maxWidth: 360, alignment: .leading)
+                    .mapGlass(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
-                .padding(.horizontal, 16).padding(.vertical, 12)
-                .frame(maxWidth: 360, alignment: .leading)
-                .mapGlass(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .buttonStyle(.plain)
                 .padding(.horizontal, 16).padding(.top, 8)
                 .transition(.move(edge: .top).combined(with: .opacity))
-                .onTapGesture { withAnimation(.easeOut(duration: 0.25)) { self.detail = nil } }
-                .accessibilityElement(children: .combine)
             }
         }
+        .sheet(item: Binding(get: { sheet.map(SummaryBox.init) }, set: { sheet = $0?.summary })) { box in
+            TopUpSheet(summary: box.summary)
+        }
+        #if DEBUG
+        .task {   // `-demoTopUpSheet`: the sheet with sample numbers (screenshots)
+            guard ProcessInfo.processInfo.arguments.contains("-demoTopUpSheet") else { return }
+            try? await Task.sleep(for: .seconds(2))
+            sheet = TopUpBanner.Summary(cards: 5, cardsThrough: "tonight's Maghrib", notifications: 60, notificationDays: 7, alarmDays: 60)
+        }
+        #endif
         .onReceive(NotificationCenter.default.publisher(for: TopUpBanner.shown)) { note in
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { detail = note.object as? String }
+            guard let s = note.object as? TopUpBanner.Summary else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { summary = s }
             hide?.cancel()
             hide = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(5))
+                try? await Task.sleep(for: .seconds(6))
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.3)) { detail = nil }
+                withAnimation(.easeOut(duration: 0.3)) { summary = nil }
             }
         }
+    }
+    private struct SummaryBox: Identifiable { let summary: TopUpBanner.Summary; var id: Int { 0 } }
+}
+
+/// What the top-up set, one row per kind, each opening its page (owner: "if they click on any of those items in the sheet,
+/// then it takes them to that scheduler page"). Your Fajr Alarms opens on beta builds only, as in Settings.
+struct TopUpSheet: View {
+    let summary: TopUpBanner.Summary
+    @ObservedObject private var betaAccess = WhatsNewAccess.shared
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill").font(.system(size: 40)).foregroundStyle(.green)
+                        Text("All reminders topped up").font(.system(.title3, design: .rounded, weight: .semibold))
+                        Text("shukr set up everything it can ahead of time, so your reminders keep coming.")
+                            .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                }
+                Section {
+                    NavigationLink { ScheduledLiveActivitiesPage() } label: {
+                        row("platter.filled.bottom.iphone", "Prayer cards",
+                            "\(summary.cards) on your Lock Screen" + (summary.cardsThrough.map { ", through \($0)" } ?? ""))
+                    }
+                    if let d = summary.notificationDays {
+                        NavigationLink { YourRemindersView() } label: {
+                            row("bell", "Notifications", "\(summary.notifications) set, for the next \(TopUpBanner.days(d))")
+                        }
+                    }
+                    if let d = summary.alarmDays {
+                        let alarm = row("alarm", "Fajr alarm", "Set for the next \(TopUpBanner.days(d))")
+                        if betaAccess.beta {
+                            NavigationLink { FajrAlarmCheckView() } label: { alarm }
+                        } else {
+                            alarm
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .fontDesign(.rounded)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close")
+                }
+            }
+        }
+        .infoModalHost()   // the pages' ⓘ cards over the sheet
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func row(_ symbol: String, _ title: String, _ line: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).foregroundStyle(Color(.systemGreen)).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(line).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 
