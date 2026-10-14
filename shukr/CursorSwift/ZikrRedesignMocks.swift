@@ -291,7 +291,6 @@ private struct MockAzkarPage: View {
             VStack(spacing: 18) {
                 Flow.heading("Your azkar", live.isEmpty ? "Everything you say, and how often"
                               : "\(doneToday) of \(live.count) daily goals done today")
-                Flow.search("Search", $query)
                 Flow.newCard("A new zikr")
                 if !daily.isEmpty { Flow.group("Daily") { rows(daily) } }
                 if !paused.isEmpty { Flow.group("Paused") { rows(paused) } }
@@ -313,6 +312,10 @@ private struct MockAzkarPage: View {
             .padding(.bottom, 30)
         }
         .scrollDismissesKeyboard(.immediately)
+        .modifier(SoftBottomEdge())
+        .modifier(BottomBar {   // search in a Liquid Glass bar at the bottom (owner, decision zikr-search-place A)
+            Flow.search("Search your azkar", $query).padding(.horizontal, 16).padding(.bottom, 6)
+        })
         .background(Color(.systemBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -394,13 +397,6 @@ private struct ModalLookCard: View {
                     .frame(maxWidth: .infinity, minHeight: 124)   // as tall as the tabs beside it (no gap under it)
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.systemBackground)))
                 }
-                HStack {
-                    Text("Count in sets").font(.subheadline)
-                    Spacer()
-                    Text(zikr.quickAddStep > 0 ? "+\(zikr.quickAddStep)" : "off").font(.subheadline).monospacedDigit()
-                        .foregroundStyle(zikr.quickAddStep > 0 ? Color.sage : .secondary)
-                }
-                .padding(.horizontal, 2)
             }
             .padding(16)
             .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Flow.card))
@@ -653,10 +649,6 @@ private struct MockHistoryPage: View {
         ScrollView {
             LazyVStack(spacing: 18) {
                 Flow.heading("History", "\(MockFmt.count(shown.count)) sessions · \(MockFmt.count(shown.reduce(0) { $0 + $1.totalCount })) counted")
-                HStack(spacing: 10) {
-                    Flow.search("A zikr, a goal, \"Friday\"", Binding(get: { state.historyQuery }, set: { state.historyQuery = $0 }))
-                    filterMenu
-                }
                 ForEach(days, id: \.key) { day in
                     Flow.group(MockFmt.day(day.date), trailing: MockFmt.count(day.items.reduce(0) { $0 + $1.totalCount }) + " counted") {
                         ForEach(Array(day.items.enumerated()), id: \.element.id) { i, s in
@@ -675,6 +667,14 @@ private struct MockHistoryPage: View {
             .padding(.bottom, 30)
         }
         .scrollDismissesKeyboard(.immediately)
+        .modifier(SoftBottomEdge())
+        .modifier(BottomBar {   // search + filter in a Liquid Glass bar at the bottom (decision zikr-search-place A)
+            HStack(spacing: 10) {
+                Flow.search("A zikr, a goal, \"Friday\"", Binding(get: { state.historyQuery }, set: { state.historyQuery = $0 }))
+                filterMenu
+            }
+            .padding(.horizontal, 16).padding(.bottom, 6)
+        })
         .background(Color(.systemBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Select") {} } }
