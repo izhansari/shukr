@@ -148,9 +148,9 @@ struct AyahShareCard: View {
     /// like the welcome screen's button.
     @ViewBuilder private var mark: some View {
         let row = HStack(spacing: 8) {
-            // The app icon itself (owner: the share card kept the old mark after the icon changed) — the light one on
-            // mint, the dark one on the dark looks; the Home Screen's corner shape.
-            Image(style == .mint ? "IconPreviewLight" : "IconPreviewDark")
+            // The app icon itself (owner: the share card kept the old mark after the icon changed) — always the light
+            // one, as the App Store shows it (owner); the Home Screen's corner shape.
+            Image("IconPreviewLight")
                 .resizable()
                 .frame(width: 22, height: 22)
                 .clipShape(RoundedRectangle(cornerRadius: 22 * 0.2237, style: .continuous))
