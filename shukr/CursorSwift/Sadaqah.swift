@@ -494,7 +494,7 @@ struct SadaqahPage: View {
         .toolbar {
             // Kinds of giving (owner: "sadaqah versus zakat … I myself get confused").
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showGuide = true } label: { Image(systemName: "info") }   // owner: an info button, not a book
+                Button { showGuide = true } label: { Image(systemName: "info.circle") }   // owner: an info button, not a book
                     .accessibilityLabel("Kinds of giving")
             }
             // Log a donation (owner): the bar's own button, so iOS 26 draws it in Liquid Glass.

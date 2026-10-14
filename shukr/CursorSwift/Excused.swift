@@ -297,7 +297,7 @@ struct ExcusedSheet: View {
         .toolbar {
             if pushed && !intro && !welcomeBack {
                 ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink { ExcusedInfoSheet() } label: { Image(systemName: "info") }
+                    NavigationLink { ExcusedInfoSheet() } label: { Image(systemName: "info.circle") }
                         .accessibilityLabel("How Excused works")
                 }
             }
@@ -406,7 +406,7 @@ struct ExcusedSheet: View {
             Spacer()
             if !welcomeBack {
                 NavigationLink { ExcusedInfoSheet() } label: {
-                    Image(systemName: "info")
+                    Image(systemName: "info.circle")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 36, height: 36)
