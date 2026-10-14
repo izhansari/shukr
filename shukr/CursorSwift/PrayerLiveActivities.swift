@@ -139,7 +139,14 @@ enum PrayerLiveActivities {
             st.toppedUp = "\(total)"
             await tapped.update(ActivityContent(state: st, staleDate: st.end))
         }
-        AutoTopUp.request("last card's refresh", force: true)
+        // In front: notifications and Fajr alarms now too (not the 3 h limit), then the banner says what's set.
+        if UIApplication.shared.applicationState == .active, let container = NotificationScheduler.appContainer {
+            await NotificationScheduler.rescheduleNow(context: container.mainContext, reason: "last card's refresh")   // + Fajr alarms
+            TopUpLog.add("last card's refresh · open · cards +\(total), notifications and alarms re-planned")
+            await TopUpBanner.show()
+        } else {
+            AutoTopUp.request("last card's refresh", force: true)
+        }
         return total
     }
 

@@ -357,6 +357,7 @@ struct shukrApp: App {
             // The ⓘ cards float over everything the stack shows, pushed pages too (Your reminders) — on PrayerTimesView
             // they opened under a pushed page (InfoModal.swift).
             .infoModalHost()
+            .topUpBannerHost()   // the last card's ↻ opened shukr: "All reminders topped up" (AutoTopUp.swift)
             .overlay {
                 if setupShowing {
                     FirstRunSetupView(onFinish: {

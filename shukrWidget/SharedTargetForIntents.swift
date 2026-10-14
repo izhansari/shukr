@@ -2947,8 +2947,8 @@ struct PrayerWindowAttributes: ActivityAttributes {
         /// Optional, so cards already held decode.
         var last: Bool? = nil
         /// After the last card's ↻ added more (owner: "you're all good"): how many cards it added, said on the card that
-        /// was tapped ("4" → "Your next 4 prayer cards are set" — owner: a count, not "through …"). Optional, so cards
-        /// already held decode.
+        /// was tapped ("4" → "All reminders topped up · 4 more cards" — owner: a count, and that notifications and the
+        /// Fajr alarm were topped up too). Optional, so cards already held decode.
         var toppedUp: String? = nil
     }
     /// The window's id: its start in whole minutes since 1970 (so a window is never scheduled twice).
@@ -3296,7 +3296,7 @@ struct LALastNote: View {
             // After a tap added more: a plain line with a green check, not a pill (owner) — it isn't a button.
             HStack(spacing: 4) {
                 Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.green)
-                Text(added == 1 ? "Your next prayer card is set" : "Your next \(added) prayer cards are set")
+                Text("All reminders topped up · \(added) more card\(added == 1 ? "" : "s")")
             }
             .font(.system(.caption2, design: .rounded))
             .foregroundStyle(.secondary)

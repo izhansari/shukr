@@ -107,3 +107,66 @@ enum TopUpLog {
         }
     }
 }
+
+// MARK: - The in-app "topped up" banner (owner, 2026-10-14: "something that appears in the app … that acknowledges that it
+// was refreshed properly … with all reminders being refreshed as well") — shown when shukr opens from the last card's ↻.
+
+enum TopUpBanner {
+    static let shown = Notification.Name("TopUpBannerShown")
+
+    /// After a full top-up in front: what's set now — cards held, notifications and Fajr alarms through when.
+    @MainActor static func show() async {
+        let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
+        let through = pending.compactMap { ($0.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() }.max()
+        let alarms = FajrAlarms.scheduled().filter { !$0.test && ($0.date ?? .distantPast) > Date() }
+        var cards = 0
+        if #available(iOS 26.0, *) {
+            cards = Activity<PrayerWindowAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active }.count
+        }
+        func day(_ d: Date) -> String { d.formatted(.dateTime.month(.abbreviated).day()) }
+        var parts = ["\(cards) prayer card\(cards == 1 ? "" : "s")"]
+        if let through { parts.append("notifications to \(day(through))") }
+        if let last = alarms.compactMap(\.date).max() { parts.append("Fajr alarms to \(day(last))") }
+        NotificationCenter.default.post(name: shown, object: parts.joined(separator: " · "))
+    }
+}
+
+/// The banner itself: a glass card at the top for a few seconds — a green check, "All reminders topped up", the details.
+struct TopUpBannerHost: ViewModifier {
+    @State private var detail: String?
+    @State private var hide: Task<Void, Never>?
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            if let detail {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("All reminders topped up").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        Text(detail).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .frame(maxWidth: 360, alignment: .leading)
+                .mapGlass(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .padding(.horizontal, 16).padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .onTapGesture { withAnimation(.easeOut(duration: 0.25)) { self.detail = nil } }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: TopUpBanner.shown)) { note in
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { detail = note.object as? String }
+            hide?.cancel()
+            hide = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.3)) { detail = nil }
+            }
+        }
+    }
+}
+
+extension View {
+    func topUpBannerHost() -> some View { modifier(TopUpBannerHost()) }
+}
