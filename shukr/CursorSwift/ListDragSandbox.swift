@@ -4,7 +4,10 @@
 //
 //  Settings → My Dev Stuff → Prayer list drag (sandbox) (owner, 2026-10-14: "perfect the interaction of swiping up the
 //  prayer list … reacting with our finger … the same way it feels smooth when we scroll to the right or left"). A mock
-//  of the three pages — Zikr · Salah · Settings — away from the real pager, so nothing in the app can break.
+//  of the three pages — Zikr · Salah · Settings — away from the real pager, so nothing in the app can break. The pieces
+//  are the real ones where that's safe (owner: "using those components"): the prayer list (BottomSharedView), the Zikr
+//  page and its task ring (ZikrPageView), Settings, the top bar's titles and the bottom bar — none taking a touch but
+//  the bar, all on its own SharedStateClass. The Salah circle is the real track + arc (MainCircleView writes for real).
 //
 //  One gesture owns both axes: the first 6 pt pick the axis (as the app's pager does). Both axes move 1 : 1 with the
 //  finger and, on release, spring to their rest from where they are WITH the finger's speed (`SpringDriver`, a display
@@ -46,31 +49,51 @@ struct ListDragSandbox: View {
     /// or 2 units").
     @State private var ratio = 1.5
 
+    /// Its own page state, so the bar's buttons and the wheel never move the real pager underneath.
+    @State private var sandboxState = SharedStateClass()
+    @Environment(\.circleTheme) private var theme
+
     var body: some View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
-            let travel = h * 0.52   // finger distance for closed → open
+            let bottomInset = geo.safeAreaInsets.bottom
             ZStack(alignment: .top) {
-                SandboxColors.page(scheme).ignoresSafeArea()
+                // The real backdrop's colours: the theme's page for Zikr and Salah, the grouped grey for Settings.
+                HStack(spacing: 0) {
+                    theme.backdrop.frame(width: w)
+                    theme.backdrop.frame(width: w)
+                    Color(scheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: w)
+                }
+                .offset(x: -pager.value * w)
+                .frame(width: w, alignment: .leading)
+                .ignoresSafeArea()
                 HStack(spacing: 0) {
                     zikrPage.frame(width: w, height: h)
-                    salahPage(h: h).frame(width: w, height: h)
+                    salahPage(w: w, h: h, bottomInset: bottomInset).frame(width: w, height: h)
                     settingsPage.frame(width: w, height: h)
                 }
                 .offset(x: -pager.value * w)
                 .frame(width: w, alignment: .leading)
-                topBar
-                dots.frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 8)
+                chrome(h: h).frame(width: w, height: h)
             }
             .contentShape(Rectangle())
-            .gesture(drag(w: w, travel: travel))
+            .gesture(drag(w: w, travel: CircleMotion.listTravel * 1.4))
         }
+        .environment(sandboxState)
+        .circleThemeRoot()
         .onAppear { applyTuning() }
         .onChange(of: response) { _, _ in applyTuning() }
         .onChange(of: damping) { _, _ in applyTuning() }
+        // The real bottom bar's buttons set the page: the sandbox pager follows (and lands the same way).
+        .onChange(of: sandboxState.horizontalPage) { _, page in
+            let i = Self.index(page)
+            if Double(i) != pager.value.rounded() || abs(pager.value - Double(i)) > 0.01 { pager.animate(to: Double(i), velocity: 0) }
+        }
         .sheet(isPresented: $tuning) { tuner.presentationDetents([.medium]) }
-        .statusBarHidden(false)
     }
+
+    private static func index(_ p: SharedStateClass.HorizontalPage) -> Int { p == .zikr ? 0 : p == .main ? 1 : 2 }
+    private static func page(_ i: Int) -> SharedStateClass.HorizontalPage { i <= 0 ? .zikr : i == 1 ? .main : .settings }
 
     private func applyTuning() {
         for d in [pager, list] { d.response = response; d.dampingRatio = damping }
@@ -104,6 +127,8 @@ struct ListDragSandbox: View {
                     let thrown = pager.value + speed * projection
                     let target = min(max((thrown).rounded(), max(start.rounded() - 1, 0)), min(start.rounded() + 1, 2))
                     pager.animate(to: target, velocity: speed)
+                    let landed = Self.page(Int(target))
+                    if sandboxState.horizontalPage != landed { sandboxState.horizontalPage = landed }
                 case .v:
                     let speed = -v.velocity.height * ratio / travel
                     if mode == .follow {
@@ -128,78 +153,86 @@ struct ListDragSandbox: View {
         return x
     }
 
-    // MARK: Pages
+    // MARK: Pages (the real views where they're safe; never taking a touch — their buttons would really run)
 
-    private func salahPage(h: CGFloat) -> some View {
+    /// The real page's geometry (PrayerTimesView.poppingBody): closed, the 200 pt ring in the middle of the page above a
+    /// 34 pt reserve; open, it rises ~150 pt and the list (290 pt wide) sits under it, above the bottom bar's 86 + 44 pt.
+    /// The ring only moves, never scales; the list comes in from 200 pt below, fading (theme.listEntrance).
+    private func salahPage(w: CGFloat, h: CGFloat, bottomInset: CGFloat) -> some View {
         let p = list.value
-        let closedY = h * 0.40, openY = h * 0.17
+        let closedY = (h - 34) / 2, openY = (h - 34) / 2 - 150
+        let listTop = openY + 100 + 26
+        let listRoom = max(h + bottomInset - 130 - listTop, 120)
         return ZStack(alignment: .top) {
-            // The circle rises and shrinks as the list comes up (both follow `p`, so they move as one).
-            SandboxRing(progress: 0.42)
-                .scaleEffect(1 - 0.42 * min(max(p, 0), 1.1))
-                .position(x: UIScreen.main.bounds.width / 2, y: closedY + (openY - closedY) * p)
-            Image(systemName: "chevron.up")
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(.tertiary)
-                .opacity(1 - min(max(p, 0) * 3, 1))
-                .position(x: UIScreen.main.bounds.width / 2, y: h - 70)
-            SandboxList()
-                .frame(height: h * 0.58)
-                .offset(y: h * 0.34 + (1 - p) * h * 0.66)
-                .opacity(min(max(p, 0) * 2.5, 1))
+            SandboxRing()
+                .position(x: w / 2, y: closedY + (openY - closedY) * p)
+            PrayerTimesView.BottomSharedView(showDailyAyahView: .constant(false))
+                .frame(maxHeight: listRoom, alignment: .top)
+                .frame(width: w)
+                .offset(y: listTop + (1 - p) * CircleMotion.listTravel)
+                .opacity(min(max(p, 0) * 2, 1))
+                .allowsHitTesting(false)
         }
     }
 
     private var zikrPage: some View {
-        VStack(spacing: 18) {
-            Spacer()
-            ForEach(0..<3) { i in
-                Circle().stroke(Color.primary.opacity(i == 1 ? 0.5 : 0.15), lineWidth: i == 1 ? 3 : 2)
-                    .frame(width: i == 1 ? 150 : 80, height: i == 1 ? 150 : 80)
-                    .overlay(Text(i == 1 ? "Subhanallah" : "").font(.system(.subheadline, design: .rounded)))
-            }
-            Spacer()
+        NavigationStack {
+            ZikrPageView(showMantraSheetFromHomePage: .constant(false), showTasbeehPage: .constant(false))
+                .toolbar(.hidden, for: .navigationBar)
+                .background(theme.backdrop)
         }
+        .allowsHitTesting(false)
     }
 
     private var settingsPage: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 110)
-            ForEach(["Location", "Method", "Madhab", "Qibla", "Excused Mode"], id: \.self) { row in
-                HStack { Text(row); Spacer(); Image(systemName: "chevron.right").foregroundStyle(.tertiary) }
-                    .padding(.horizontal, 18).frame(height: 50)
-                Divider().padding(.leading, 18)
-            }
-            Spacer()
-        }
-        .background(RoundedRectangle(cornerRadius: 22).fill(Color.primary.opacity(0.04)).padding(.top, 100).padding(.bottom, 300))
-        .padding(.horizontal, 16)
+        SettingsView(refetchOnLeave: false)
+            .allowsHitTesting(false)
     }
 
-    private var topBar: some View {
-        HStack {
-            Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.primary.opacity(0.08)))
+    /// The real page's chrome (PagerChromeView, faded as ChromeFollow does): the top bar's two titles crossfading with the
+    /// Zikr page, the chevron while the Salah list is closed, the bottom bar while it's open or on Zikr. ✕ and ⚙ sit where
+    /// ☰ and the doors are.
+    private func chrome(h: CGFloat) -> some View {
+        let zikr = min(max(1 - pager.value, 0), 1)
+        let open = min(max(list.value, 0), 1)
+        let onSettings = min(max(pager.value - 1, 0), 1)
+        return ZStack(alignment: .top) {
+            ZStack {
+                PrayerTimesView.ZikrPageTitle().opacity(zikr).offset(x: (1 - zikr) * -150)
+                TopBar().opacity((1 - zikr) * (1 - onSettings)).offset(x: zikr * 150)
             }
-            Spacer()
-            Text(["Zikr", "Salah", "Settings"][Int(min(max(pager.value.rounded(), 0), 2))])
-                .font(.system(.headline, design: .rounded))
-            Spacer()
-            Button { tuning = true } label: {
-                Image(systemName: "slider.horizontal.3").font(.system(size: 15, weight: .semibold)).frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.primary.opacity(0.08)))
+            .frame(maxWidth: .infinity)
+            .allowsHitTesting(false)
+            HStack {
+                corner("xmark") { dismiss() }
+                Spacer()
+                corner("slider.horizontal.3") { tuning = true }
             }
+            .padding(.horizontal, 12).padding(.top, 10)
+            VStack(spacing: 0) {
+                Spacer()
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.tertiary)
+                    .opacity((1 - open) * (1 - zikr) * (1 - onSettings))
+                    .padding(.bottom, 40)
+            }
+            .allowsHitTesting(false)
+            VStack(spacing: 0) {
+                Spacer()
+                PrayerTimesView.CustomBottomBar()
+                    .opacity(max(open * (1 - onSettings), zikr))
+            }
+            .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    private func corner(_ symbol: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Color.primary.opacity(0.07)))
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 16).padding(.top, 8)
-    }
-
-    private var dots: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<3) { i in
-                Circle().fill(Color.primary.opacity(abs(pager.value - Double(i)) < 0.5 ? 0.8 : 0.2)).frame(width: 7, height: 7)
-            }
-        }
     }
 
     private var tuner: some View {
@@ -235,46 +268,25 @@ enum SandboxColors {
     static func page(_ s: ColorScheme) -> Color { s == .dark ? Color(white: 0.10) : Color(red: 0.890, green: 0.898, blue: 0.933) }
 }
 
+/// The Salah circle's look at its real size: the app's own soft track (`NeuRingTrack`, 200 pt) and a 6 pt arc, the name
+/// and time as the circle sets them. Not MainCircleView itself: that needs the live prayers and really marks one on a
+/// hold, plays the circle's moments (stealing them from the real circle) and starts location updates.
 private struct SandboxRing: View {
-    let progress: CGFloat
-    @Environment(\.colorScheme) private var scheme
     var body: some View {
         ZStack {
-            LiftedSoftBand(width: 6, surface: SandboxColors.page(scheme), shade: WidgetSoft.shade(scheme), light: WidgetSoft.light(scheme))
-            Circle().trim(from: 0, to: progress)
-                .stroke(Color(red: 0.96, green: 0.77, blue: 0.20), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+            NeuRingTrack()
+            Circle().trim(from: 0, to: 0.42)
+                .stroke(Color(red: 0.96, green: 0.77, blue: 0.20), style: StrokeStyle(lineWidth: AliveRingTuning.fine.band, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+                .frame(width: 200, height: 200)
             VStack(spacing: 2) {
-                Image(systemName: "sun.haze").font(.system(size: 22, weight: .light))
-                Text("Asr").font(.system(size: 38, weight: .light, design: .rounded))
-                Text("1 hr 50 min left").font(.system(size: 14, design: .rounded)).foregroundStyle(.secondary)
+                Image(systemName: "sun.haze").font(.system(size: 20, weight: .light))
+                Text("Asr").font(.system(size: 34, weight: .light, design: .rounded))
+                Text("ends 7:40 PM").font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
         }
         .frame(width: 230, height: 230)
-    }
-}
-
-private struct SandboxList: View {
-    @Environment(\.colorScheme) private var scheme
-    private let rows: [(String, String, Bool)] = [("Fajr", "5:30 AM", true), ("Dhuhr", "1:10 PM", true),
-                                                  ("Asr", "4:50 PM", false), ("Maghrib", "7:40 PM", false), ("Isha", "9:05 PM", false)]
-    var body: some View {
-        VStack(spacing: 0) {
-            Capsule().fill(Color.secondary.opacity(0.4)).frame(width: 36, height: 5).padding(.top, 10).padding(.bottom, 8)
-            ForEach(rows, id: \.0) { r in
-                HStack(spacing: 14) {
-                    Image(systemName: r.2 ? "checkmark.circle.fill" : "circle").foregroundStyle(r.2 ? Color.sage : .secondary)
-                    Text(r.0).font(.system(.body, design: .rounded))
-                    Spacer()
-                    Text(r.1).font(.system(.body, design: .rounded)).foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 22).frame(height: 54)
-            }
-            Spacer(minLength: 0)
-        }
-        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(SandboxColors.page(scheme))
-            .shadow(color: .black.opacity(scheme == .dark ? 0.6 : 0.15), radius: 14, y: -4))
-        .padding(.horizontal, 12)
+        .allowsHitTesting(false)
     }
 }
 
