@@ -162,6 +162,8 @@ struct TaskRow: View {
     let sessions: [SessionDataModel]
     var showsZikr = true
     var showsHandle = true
+    /// After the progress ("0 of 100 count · last 3 days ago"; the Zikr redesign mockups).
+    var note: String? = nil
 
     var body: some View {
         let p = task.progress(in: sessions)
@@ -187,7 +189,7 @@ struct TaskRow: View {
                 // On a zikr's page the zikr is the page: its name, or "Every day". The goal and its unit are
                 // on the line below ("0 of 100 count"; owner: not repeated after the name).
                 Text(showsZikr ? task.title : (task.customName ?? "Every day")).lineLimit(1)
-                Text(progressText(p, done: done))
+                Text(progressText(p, done: done) + (note.map { " · \($0)" } ?? ""))
                     .font(.subheadline)
                     .foregroundStyle(done ? Color.sage : Color.secondary)
                     .monospacedDigit()

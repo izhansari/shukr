@@ -358,6 +358,8 @@ struct SessionRow: View {
     var onOpen: (() -> Void)? = nil
     /// Long-press → "Delete…" (asks first).
     var onDelete: (() -> Void)? = nil
+    /// The row's card colour (the Zikr redesign mockups draw grey cards on a white page).
+    var rowBackground = Color(.secondarySystemGroupedBackground)
 
     private var modeIcon: String {
         switch session.sessionMode {
@@ -445,7 +447,7 @@ struct SessionRow: View {
         // The whole row tints while the pace plays.
         // Always an explicit background: the system's grey selected-row fill looked off in Edit
         // mode (owner) — the selection circle is enough.
-        .listRowBackground(feelingPace ? Color.green.opacity(0.08) : Color(.secondarySystemGroupedBackground))
+        .listRowBackground(feelingPace ? Color.green.opacity(0.08) : rowBackground)
     }
 
     private var summary: some View {

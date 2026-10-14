@@ -280,80 +280,239 @@ private struct Chevron: View {
     var body: some View { Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.secondary.opacity(0.5)) }
 }
 
-@MainActor private func todaysSessions(_ t: TaskModel) -> [SessionDataModel] {
-    let start = PrayerDay.start()
-    return t.sessions.filter { $0.startTime >= start }
+// MARK: - The real rows in the redesign's look (owner, round 5: "more like the real deal")
+
+/// Round 5: the pages are Lists again, so the real rows come with their real gestures — hold and drag to reorder,
+/// hold for the options, swipe to delete, the pace pill — drawn as grey cards on the white page.
+private extension View {
+    func mockList() -> some View {
+        listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemBackground).ignoresSafeArea())
+            .listSectionSpacing(16)
+            .fontDesign(.rounded)
+    }
+    /// A row with no card (the heading, the dashed "new" card, the zikr card).
+    func bareRow() -> some View {
+        // 4 pt in from the section's edge: its larger corner radius clipped an 18 pt card's corners.
+        listRowBackground(Color.clear).listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4))
+            .listRowSeparator(.hidden)
+    }
 }
-@MainActor private func todayProgress(_ t: TaskModel) -> Double {
-    let p = t.progress(in: todaysSessions(t))
-    return t.isCountMode ? Double(p.count) / Double(max(t.goal, 1)) : p.seconds / Double(max(t.goal, 1) * 60)
+
+private extension Flow {
+    /// A section's small caps label (List headers are title case on 26).
+    static func header(_ title: String, trailing: String? = nil) -> some View {
+        HStack {
+            Text(title.uppercased()).font(.caption.weight(.medium)).tracking(1.2)
+            Spacer()
+            if let trailing { Text(trailing).font(.caption).monospacedDigit() }
+        }
+        .foregroundStyle(.secondary)
+        .textCase(nil)
+    }
+}
+
+/// Started from any of the pages: the app closes what covers the wheel and the wheel starts it (the real path).
+@MainActor private func startGoal(_ t: TaskModel, resume: Bool) {
+    ZikrFocus.start(t.id.uuidString, resume: resume)
+}
+/// "last 3 days ago" on a goal not started today (owner: how long since you did this).
+@MainActor private func lastDone(_ t: TaskModel, _ today: [SessionDataModel]) -> String? {
+    let p = t.progress(in: today)
+    guard p.count == 0, p.seconds < 1 else { return nil }
+    return t.sessions.map(\.startTime).max().map { "last \(MockFmt.ago($0))" } ?? "not started yet"
+}
+@MainActor private func partDone(_ t: TaskModel, _ today: [SessionDataModel]) -> Bool {
+    let p = t.progress(in: today)
+    return !t.isCompleted(with: p) && (p.count > 0 || p.seconds >= 1)
+}
+
+/// A daily goal's hold menu, the same on every page: TaskMenu's, with Pause (pretend) in it.
+private struct GoalMenu: View {
+    let task: TaskModel
+    let today: [SessionDataModel]
+    let onEdit: () -> Void
+    var onOpenZikr: (() -> Void)? = nil
+    let onDelete: () -> Void
+    @State private var state = ZikrMockState.shared
+    var body: some View {
+        let paused = state.paused.contains(task.id)
+        if !paused {
+            Button { startGoal(task, resume: partDone(task, today)) } label: { Label("Start", systemImage: "play.fill") }
+        }
+        Button(action: onEdit) { Label("Edit goal", systemImage: "pencil") }
+        if let onOpenZikr { Button(action: onOpenZikr) { Label("Open zikr", systemImage: "circle.hexagonpath") } }
+        Button {
+            withAnimation(.snappy) { if paused { state.paused.remove(task.id) } else { state.paused.insert(task.id) } }
+        } label: { Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.circle" : "pause.circle") }
+        Button {
+            Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); TaskSharing.share(task) }
+        } label: { Label("Share goal…", systemImage: "square.and.arrow.up") }
+        Divider()
+        Button(role: .destructive, action: onDelete) { Label("Delete…", systemImage: "trash") }
+    }
+}
+
+/// A paused goal: the pause ring, its name, what's kept, Resume.
+private struct PausedGoalRow: View {
+    let task: TaskModel
+    var showsZikr = true
+    @State private var state = ZikrMockState.shared
+    var body: some View {
+        let best = task.streak().best
+        HStack(spacing: 12) {
+            MockGoalRing(paused: true, size: 30)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(showsZikr ? task.title : (task.customName ?? MockFmt.goal(task))).lineLimit(1)
+                Text("Paused · history kept" + (best > 1 ? " · best \(best)" : ""))
+                    .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Button { withAnimation(.snappy) { _ = state.paused.remove(task.id) } } label: {
+                Text("Resume").font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
+            }
+            .buttonStyle(.borderless)
+        }
+        .padding(.vertical, 3)
+        .contentShape(Rectangle())
+    }
+}
+
+/// "Delete “Morning Durood”?" — the real delete.
+private struct DeleteGoalAlert: ViewModifier {
+    @Binding var task: TaskModel?
+    @Environment(\.modelContext) private var context
+    func body(content: Content) -> some View {
+        content.alert(task.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
+                      isPresented: Binding(get: { task != nil }, set: { if !$0 { task = nil } }),
+                      presenting: task) { t in
+            Button("Delete Goal", role: .destructive) {
+                withAnimation { TaskModel.delete(t, in: context) }
+                task = nil
+            }
+            Button("Cancel", role: .cancel) { task = nil }
+        } message: { _ in
+            Text("Its reminder goes too. The sessions you've counted stay in your history.")
+        }
+    }
 }
 
 // MARK: - Azkar (Azkar + Your tasks in one place)
 
 private struct MockAzkarPage: View {
+    @Environment(\.modelContext) private var context
     @Query(sort: \MantraModel.name) private var zikrs: [MantraModel]
     @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
     @State private var state = ZikrMockState.shared
     @State private var query = ""
     @State private var showBuiltIns = false
+    @State private var today: [SessionDataModel] = []
+    @State private var openZikr: MantraModel?
+    @State private var editing: TaskModel?
+    @State private var toDelete: TaskModel?
+    @State private var newGoalFor: MantraModel?
+    @State private var newZikr = false
 
-    private func matches(_ z: MantraModel) -> Bool {
+    private var searching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+    private func matches(_ z: MantraModel?) -> Bool {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return true }
+        guard let z else { return false }
         return [z.name, z.fullText, z.notes].contains { $0.localizedCaseInsensitiveContains(q) }
             || z.tasks.contains { $0.title.localizedCaseInsensitiveContains(q) }
     }
+    /// The wheel's order (sortOrder), paused ones left out.
     private var live: [TaskModel] { tasks.filter { !state.paused.contains($0.id) } }
-    private var daily: [MantraModel] {
-        var seen = Set<PersistentIdentifier>(), out: [MantraModel] = []
-        for t in live {
-            if let z = t.mantra, !seen.contains(z.persistentModelID), matches(z) { seen.insert(z.persistentModelID); out.append(z) }
-        }
-        return out
-    }
-    private var paused: [MantraModel] {
-        let dailyIDs = Set(daily.map(\.persistentModelID))
-        return zikrs.filter { z in !dailyIDs.contains(z.persistentModelID) && z.tasks.contains { state.paused.contains($0.id) } && matches(z) }
-    }
+    private var liveShown: [TaskModel] { live.filter { matches($0.mantra) } }
+    private var pausedShown: [TaskModel] { tasks.filter { state.paused.contains($0.id) && matches($0.mantra) } }
     private var other: [MantraModel] {
         zikrs.filter { $0.tasks.isEmpty && !$0.isBuiltIn && matches($0) }.sorted { $0.totalCount > $1.totalCount }
     }
     private var builtIns: [MantraModel] { zikrs.filter { $0.tasks.isEmpty && $0.isBuiltIn && matches($0) } }
-    private var doneToday: Int { live.filter { todayProgress($0) >= 1 }.count }
+    private var doneToday: Int { live.filter { $0.isCompleted(with: $0.progress(in: today)) }.count }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                Flow.heading("Your azkar", live.isEmpty ? "Everything you say, and how often"
-                              : "\(doneToday) of \(live.count) daily goals done today")
-                Flow.newCard("A new zikr")
-                if !daily.isEmpty { Flow.group("Daily") { rows(daily) } }
-                if !paused.isEmpty { Flow.group("Paused") { rows(paused) } }
-                if !other.isEmpty { Flow.group("Other azkar") { rows(other) } }
-                if !builtIns.isEmpty {
-                    Flow.group("Built-in") {
-                        Button { withAnimation(.snappy) { showBuiltIns.toggle() } } label: {
-                            FlowRow(title: showBuiltIns ? "Hide the built-in azkar" : "Show \(builtIns.count) built-in azkar") {
-                                Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.secondary.opacity(0.5)).rotationEffect(.degrees(showBuiltIns ? 180 : 0))
+        List {
+            Section {
+                VStack(spacing: 16) {
+                    Flow.heading("Your azkar", live.isEmpty ? "Everything you say, and how often"
+                                  : "\(doneToday) of \(live.count) daily goals done today")
+                    Flow.newCard("A new zikr") { newZikr = true }
+                }
+                .bareRow()
+            }
+            if !liveShown.isEmpty {
+                Section {
+                    ForEach(liveShown) { t in
+                        // Tap → its zikr (the goal, the card, its sessions); hold → the options, or drag to reorder.
+                        Button { openZikr = t.mantra } label: { TaskRow(task: t, sessions: today, note: lastDone(t, today)) }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                GoalMenu(task: t, today: today, onEdit: { editing = t },
+                                         onOpenZikr: { openZikr = t.mantra }, onDelete: { toDelete = t })
                             }
-                        }
-                        .buttonStyle(.plain)
-                        if showBuiltIns { Flow.divider; rows(builtIns) }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button { toDelete = t } label: { Label("Delete", systemImage: "trash") }.tint(.red)
+                            }
+                            .listRowBackground(Flow.card)
                     }
+                    .onMove(perform: searching ? nil : move)
+                } header: {
+                    Flow.header("Daily goals")
+                } footer: {
+                    if !searching { Text("The wheel's order. Hold and drag to change it; hold for options.") }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 30)
+            if !pausedShown.isEmpty {
+                Section {
+                    ForEach(pausedShown) { t in
+                        Button { openZikr = t.mantra } label: { PausedGoalRow(task: t) }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                GoalMenu(task: t, today: today, onEdit: { editing = t },
+                                         onOpenZikr: { openZikr = t.mantra }, onDelete: { toDelete = t })
+                            }
+                            .listRowBackground(Flow.card)
+                    }
+                } header: { Flow.header("Paused") }
+            }
+            if !other.isEmpty {
+                Section { ForEach(other) { zikrRow($0) } } header: { Flow.header("Other azkar") }
+            }
+            if !builtIns.isEmpty {
+                Section {
+                    Button { withAnimation(.snappy) { showBuiltIns.toggle() } } label: {
+                        HStack {
+                            Text(showBuiltIns ? "Hide the built-in azkar" : "Show \(builtIns.count) built-in azkar")
+                            Spacer()
+                            Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color.secondary.opacity(0.5)).rotationEffect(.degrees(showBuiltIns ? 180 : 0))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Flow.card)
+                    if showBuiltIns { ForEach(builtIns) { zikrRow($0) } }
+                } header: { Flow.header("Built-in") }
+            }
         }
+        .mockList()
         .scrollDismissesKeyboard(.immediately)
         .modifier(SoftBottomEdge())
         .modifier(BottomBar {   // search in a Liquid Glass bar at the bottom (owner, decision zikr-search-place A)
             Flow.search("Search your azkar", $query).padding(.horizontal, 16).padding(.bottom, 6)
         })
-        .background(Color(.systemBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $openZikr) { MockZikrPage(zikr: $0) }
+        .sheet(item: $editing) { NewTaskFlow(editing: $0) }
+        .sheet(item: $newGoalFor) { NewTaskFlow(locked: $0) }
+        .newZikrCard(isPresented: $newZikr)
+        .modifier(DeleteGoalAlert(task: $toDelete))
+        .onAppear { today = ZikrReminders.todaysSessions(context) }
+        .onChange(of: editing) { _, _ in today = ZikrReminders.todaysSessions(context) }
         .task {
             // The Paused group with something in it: the least-used goal (pretend).
             guard !state.seededPause, tasks.count > 2,
@@ -363,32 +522,25 @@ private struct MockAzkarPage: View {
         }
     }
 
-    @ViewBuilder private func rows(_ list: [MantraModel]) -> some View {
-        ForEach(Array(list.enumerated()), id: \.element.id) { i, z in
-            if i > 0 { Flow.divider }
-            NavigationLink(value: MockRoute.zikr(z.persistentModelID)) { row(z) }.buttonStyle(.plain)
-        }
+    /// A zikr without a goal: the Azkar list's own row (its words, count and pace); hold → make it a daily goal.
+    private func zikrRow(_ z: MantraModel) -> some View {
+        Button { openZikr = z } label: { ZikrListRow(mantra: z) }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Button { openZikr = z } label: { Label("Open", systemImage: "circle.hexagonpath") }
+                Button { newGoalFor = z } label: { Label("Make it a daily goal", systemImage: "target") }
+            }
+            .listRowBackground(Flow.card)
     }
 
-    private func row(_ z: MantraModel) -> some View {
-        let goals = z.tasks.sorted { $0.sortOrder < $1.sortOrder }
-        let liveGoals = goals.filter { !state.paused.contains($0.id) }
-        let last = z.sessions.map(\.startTime).max()
-        let progress = liveGoals.isEmpty ? 0 : liveGoals.map(todayProgress).reduce(0, +) / Double(liveGoals.count)
-        var detail: [String] = []
-        if liveGoals.count > 1 { detail.append("\(liveGoals.count) daily goals") }
-        else if let g = liveGoals.first { detail.append(MockFmt.goal(g)) }
-        else if !goals.isEmpty { detail.append("Paused") }
-        else if z.totalCount > 0 { detail.append("\(MockFmt.count(z.totalCount)) counted") }
-        if let last { detail.append("last \(MockFmt.ago(last))") }
-        // Sami's review: the ring leads, as on Your tasks (on the right it read as a checkbox to tick), and every row
-        // ends in the same chevron, as "Which zikr?" does.
-        return HStack(spacing: 0) {
-            if !goals.isEmpty {
-                MockGoalRing(progress: progress, paused: liveGoals.isEmpty, size: 24).padding(.leading, 16)
-            }
-            FlowRow(title: z.name, detail: detail.joined(separator: " · ")) { Chevron() }
-        }
+    /// The real reorder (the wheel follows sortOrder); paused goals keep their places.
+    private func move(from source: IndexSet, to destination: Int) {
+        var order = live
+        order.move(fromOffsets: source, toOffset: destination)
+        var next = order.makeIterator()
+        let full = tasks.map { state.paused.contains($0.id) ? $0 : (next.next() ?? $0) }
+        for (i, t) in full.enumerated() where t.sortOrder != i { t.sortOrder = i }
+        try? context.save()
     }
 }
 
@@ -419,6 +571,10 @@ private struct ModalLookCard: View {
                         tab("photo", has: zikr.imageData != nil)
                     }
                     VStack(spacing: 10) {
+                        if full.isEmpty && notes.isEmpty {
+                            Text("No words or notes yet. Tap to add them.").font(.footnote).foregroundStyle(.tertiary)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
                         if !full.isEmpty { ZikrFullText(text: full, arabicSize: 22, otherSize: 15).frame(maxWidth: .infinity) }
                         if !full.isEmpty && !notes.isEmpty { Divider() }
                         if !notes.isEmpty {
@@ -450,59 +606,145 @@ private struct ModalLookCard: View {
 
 private struct MockZikrPage: View {
     let zikr: MantraModel
+    @Environment(\.modelContext) private var context
     @State private var state = ZikrMockState.shared
     @State private var card: ZikrCardRequest?
+    @State private var today: [SessionDataModel] = []
+    @State private var asking: TaskModel?
+    @State private var editing: TaskModel?
+    @State private var toDelete: TaskModel?
+    @State private var addingGoal = false
+    @State private var showAll = false
+    @State private var sessionToOpen: SessionDataModel?
+    @State private var sessionToDelete: SessionDataModel?
 
     private var sessions: [SessionDataModel] { zikr.sessions.sorted { $0.startTime > $1.startTime } }
     private var goals: [TaskModel] { zikr.tasks.sorted { $0.sortOrder < $1.sortOrder } }
+    /// Start's goal: the first one still to do today, else the first.
+    private var nextGoal: TaskModel? {
+        let live = goals.filter { !state.paused.contains($0.id) }
+        return live.first { !$0.isCompleted(with: $0.progress(in: today)) } ?? live.first
+    }
+    /// The last few prayer days' sessions, a section each as History groups them.
+    private var recentDays: [(key: String, date: Date, items: [SessionDataModel])] {
+        var order: [String] = [], groups: [String: [SessionDataModel]] = [:], dates: [String: Date] = [:]
+        for s in sessions {
+            let k = PrayerDay.key(for: s.startTime)
+            if groups[k] == nil {
+                guard order.count < 3 else { break }
+                order.append(k); dates[k] = PrayerDay.start(for: s.startTime)
+            }
+            groups[k, default: []].append(s)
+        }
+        return order.map { ($0, dates[$0] ?? Date(), groups[$0] ?? []) }
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                ModalLookCard(zikr: zikr) { card = ZikrCardRequest(mantra: zikr) }
-                if zikr.totalCount > 0 { recordStrip }
-                Flow.group(goals.count > 1 ? "Daily goals" : "Daily goal") {
-                    ForEach(Array(goals.enumerated()), id: \.element.id) { i, g in
-                        if i > 0 { Flow.divider }
-                        goalRow(g)
-                    }
-                }
-                Flow.newCard(goals.isEmpty ? "Make it a daily goal" : "Another daily goal")
-                if !sessions.isEmpty {
-                    Flow.group("Recent") {
-                        ForEach(Array(sessions.prefix(3).enumerated()), id: \.element.id) { i, s in
-                            if i > 0 { Flow.divider }
-                            sessionRow(s)
+        List {
+            Section { ModalLookCard(zikr: zikr) { card = ZikrCardRequest(mantra: zikr) }.bareRow() }
+            if zikr.totalCount > 0 { Section { recordStrip.bareRow() } }
+            if !goals.isEmpty {
+                Section {
+                    ForEach(goals) { g in
+                        Group {
+                            if state.paused.contains(g.id) {
+                                PausedGoalRow(task: g, showsZikr: false)
+                            } else {
+                                // Tap → "Start …?" (Continue / Start over when part-done), as the zikr page does now.
+                                Button { triggerSomeVibration(type: .light); asking = g } label: {
+                                    TaskRow(task: g, sessions: today, showsZikr: false, showsHandle: false, note: lastDone(g, today))
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        Flow.divider
-                        NavigationLink(value: MockRoute.history(zikr.persistentModelID)) {
-                            FlowRow(title: "All \(sessions.count) sessions") { Chevron() }
+                        .contextMenu {
+                            GoalMenu(task: g, today: today, onEdit: { editing = g }, onDelete: { toDelete = g })
                         }
-                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button { toDelete = g } label: { Label("Delete", systemImage: "trash") }.tint(.red)
+                        }
+                        .listRowBackground(Flow.card)
                     }
+                } header: {
+                    Flow.header(goals.count > 1 ? "Daily goals" : "Daily goal")
+                } footer: {
+                    Text("Tap a goal to start it; hold it for options.")
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 90)
+            Section {
+                Flow.newCard(goals.isEmpty ? "Make it a daily goal" : "Another daily goal") { addingGoal = true }.bareRow()
+            }
+            ForEach(Array(recentDays.enumerated()), id: \.element.key) { i, day in
+                Section {
+                    ForEach(day.items) { s in
+                        SessionRow(session: s, showsMantraName: false,
+                                   onOpen: { sessionToOpen = s }, onDelete: { sessionToDelete = s },
+                                   rowBackground: Flow.card)
+                    }
+                    if i == recentDays.count - 1 {
+                        Button { showAll = true } label: {
+                            HStack {
+                                Text("All \(sessions.count) sessions")
+                                Spacer()
+                                Chevron()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(Flow.card)
+                    }
+                } header: {
+                    Flow.header(MockFmt.day(day.date), trailing: dayTotals(day.items))
+                }
+            }
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .mockList()
         .navigationBarTitleDisplayMode(.inline)
         .modifier(SoftBottomEdge())
         .modifier(BottomBar {
-            // Start floats in Liquid Glass, always in reach.
-            Button {} label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "play.fill").font(.system(size: 13))
-                    Text("Start").font(.system(.body, design: .rounded, weight: .medium))
+            // Start floats in Liquid Glass, always in reach: the next goal still to do.
+            if let g = nextGoal {
+                Button { asking = g } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "play.fill").font(.system(size: 13))
+                        Text("Start").font(.system(.body, design: .rounded, weight: .medium))
+                    }
+                    .foregroundStyle(Color.sage)
+                    .padding(.horizontal, 34).frame(height: 50)
                 }
-                .foregroundStyle(Color.sage)
-                .padding(.horizontal, 34).frame(height: 50)
+                .buttonStyle(.plain)
+                .barGlass(Capsule())
+                .padding(.bottom, 6)
             }
-            .buttonStyle(.plain)
-            .barGlass(Capsule())
-            .padding(.bottom, 6)
         })
         .zikrCardEditor($card, allowDelete: false)
+        .navigationDestination(isPresented: $showAll) { MockHistoryPage(filter: zikr.persistentModelID) }
+        .sheet(item: $editing) { NewTaskFlow(editing: $0) }
+        .sheet(isPresented: $addingGoal) { NewTaskFlow(locked: zikr) }
+        .sheet(item: $sessionToOpen) { SessionPage(session: $0) }
+        .modifier(DeleteGoalAlert(task: $toDelete))
+        .modifier(DeleteSessionAlert(session: $sessionToDelete))
+        .alert(asking.map { "Start \($0.title)?" } ?? "",
+               isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
+               presenting: asking) { task in
+            let p = task.progress(in: today)
+            if partDone(task, today) {
+                Button(task.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))") {
+                    asking = nil; startGoal(task, resume: true)
+                }
+                Button("Start over") { asking = nil; startGoal(task, resume: false) }
+            } else {
+                Button("Start") { asking = nil; startGoal(task, resume: false) }
+            }
+            Button("Cancel", role: .cancel) { asking = nil }
+        } message: { task in
+            let p = task.progress(in: today)
+            Text(task.isCompleted(with: p) ? "Done today. Start another session?"
+                 : task.isCountMode ? "\(p.count) of \(task.goal) today." : "\(Int(p.seconds / 60)) of \(task.goal) min today.")
+        }
+        .onAppear { today = ZikrReminders.todaysSessions(context) }
+        .onChange(of: editing) { _, _ in today = ZikrReminders.todaysSessions(context) }
+        .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
         .task {   // `-zikrMock zikr-card`: the real card modal over the page
             guard ProcessInfo.processInfo.arguments.contains("zikr-card") else { return }
             try? await Task.sleep(for: .seconds(1.2))
@@ -515,91 +757,45 @@ private struct MockZikrPage: View {
         // line (four equal cells gave nothing to look at first).
         let monthStart = Calendar.current.dateInterval(of: .month, for: Date())?.start ?? Date()
         let month = sessions.filter { $0.startTime >= monthStart }.reduce(0) { $0 + $1.totalCount }
-        let counted = sessions.filter { $0.totalCount > 0 }
-        let pace = counted.isEmpty ? 0 : counted.reduce(0) { $0 + $1.secondsPassed } / Double(counted.reduce(0) { $0 + $1.totalCount })
+        let last = sessions.first?.startTime
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(MockFmt.count(zikr.totalCount)).font(.system(size: 30, weight: .light, design: .rounded)).monospacedDigit()
             Text("counted").font(.subheadline).foregroundStyle(.secondary)
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 2) {
-                Text("\(MockFmt.count(month)) this month")
-                Text(String(format: "%.1f s each", pace))   // "last …" is on each goal's row already
+                Text("\(MockFmt.count(month)) this month · \(sessions.count) sessions")
+                Text([zikr.secondsPerCount.map { String(format: "%.1f s each", $0) }, last.map { "last \(MockFmt.ago($0))" }]
+                    .compactMap { $0 }.joined(separator: " · "))
             }
             .font(.footnote).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Flow.card))
     }
-
-    @ViewBuilder private func goalRow(_ g: TaskModel) -> some View {
-        let isPaused = state.paused.contains(g.id)
-        let s = g.streak()
-        let p = todayProgress(g)
-        HStack(spacing: 12) {
-            // The ring leads, as on the azkar list and Your tasks (Sami's review).
-            MockGoalRing(progress: p, paused: isPaused, size: 24)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(g.customName.map { "\($0) · \(MockFmt.goal(g))" } ?? MockFmt.goal(g)).lineLimit(1)
-                Text(line(g, p, s, isPaused)).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                if !isPaused, let r = ZikrReminders.summary(g) {
-                    Label(r, systemImage: "bell").font(.footnote).foregroundStyle(Color.sage)
-                }
-            }
-            Spacer(minLength: 8)
-            if isPaused {
-                Button { withAnimation(.snappy) { _ = state.paused.remove(g.id) } } label: {
-                    Text("Resume").font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 13)
-        .contentShape(Rectangle())
-        .contextMenu {
-            Button { } label: { Label("Start", systemImage: "play.fill") }
-            Button { } label: { Label("Edit goal", systemImage: "pencil") }
-            Button { withAnimation(.snappy) { if isPaused { state.paused.remove(g.id) } else { state.paused.insert(g.id) } } } label: {
-                Label(isPaused ? "Resume" : "Pause", systemImage: isPaused ? "play.circle" : "pause.circle")
-            }
-        }
-    }
-
-    private func line(_ g: TaskModel, _ p: Double, _ s: TaskStreak, _ paused: Bool) -> String {
-        var parts: [String] = []
-        if paused {
-            parts.append("Paused · history kept")
-        } else if p >= 1 {
-            parts.append("Done today")
-        } else if p > 0 {
-            let done = g.progress(in: todaysSessions(g))
-            parts.append(g.isCountMode ? "\(done.count) of \(g.goal) today" : "\(Int(done.seconds / 60)) of \(g.goal) min today")
-        } else if let last = g.sessions.map(\.startTime).max() {
-            parts.append("last \(MockFmt.ago(last))")
-        } else {
-            parts.append("not started yet")
-        }
-        if !paused, s.current > 1 { parts.append("\(s.current)-day streak") }
-        if s.best > 1 { parts.append("best \(s.best)") }
-        return parts.joined(separator: " · ")
-    }
-
-    private func sessionRow(_ s: SessionDataModel) -> some View {
-        FlowRow(title: MockFmt.day(s.startTime), detail: sessionDetail(s)) {
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(MockFmt.count(s.totalCount)).monospacedDigit()
-                Text(MockFmt.duration(s.secondsPassed)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            }
-        }
-    }
 }
 
-@MainActor private func sessionDetail(_ s: SessionDataModel) -> String {
-    var parts = [s.startTime.formatted(date: .omitted, time: .shortened)]
-    if let t = s.task { parts.append(t.title + " goal") }
-    if s.endedAsleep { parts.append("fell asleep") }
-    return parts.joined(separator: " · ")
+/// A day's time and count, as History's header flips between them — both at once here.
+@MainActor private func dayTotals(_ items: [SessionDataModel]) -> String {
+    let seconds = items.reduce(0) { $0 + $1.secondsPassed }
+    let count = items.reduce(0) { $0 + $1.totalCount }
+    return "\(zikrDurationString(seconds)) · \(MockFmt.count(count)) counted"
+}
+
+/// "Delete this session?" — the real delete (counts come off totals and today's goals).
+private struct DeleteSessionAlert: ViewModifier {
+    @Binding var session: SessionDataModel?
+    @Environment(\.modelContext) private var context
+    func body(content: Content) -> some View {
+        content.alert("Delete this session?", isPresented: Binding(get: { session != nil }, set: { if !$0 { session = nil } })) {
+            Button("Delete", role: .destructive) {
+                if let s = session { SessionDeletion.delete([s], in: context) }
+                session = nil
+            }
+            Button("Cancel", role: .cancel) { session = nil }
+        } message: {
+            Text("Its count comes off your totals and today's goals. This can't be undone.")
+        }
+    }
 }
 
 /// Sami's review: rows under the floating Start fade out (iOS 26's soft scroll edge) — in v3 "Morning Durood goal" read
@@ -624,9 +820,16 @@ private struct BottomBar<Bar: View>: ViewModifier {
 
 private struct MockHistoryPage: View {
     let filter: PersistentIdentifier?
+    @Environment(\.modelContext) private var context
     @Query(sort: \SessionDataModel.startTime, order: .reverse) private var sessions: [SessionDataModel]
     @Query private var zikrs: [MantraModel]
     @State private var state = ZikrMockState.shared
+    @State private var openZikr: MantraModel?
+    @State private var sessionToOpen: SessionDataModel?
+    @State private var sessionToDelete: SessionDataModel?
+    @State private var selecting = false
+    @State private var selection = Set<PersistentIdentifier>()
+    @State private var confirmDelete = false
     /// One filter at a time, as Give to Causes' (owner: search, or a filter for common things — no chips).
     enum Filter: Hashable {
         case goals, freestyle, zikr(PersistentIdentifier, String), week, month, days30
@@ -672,7 +875,7 @@ private struct MockHistoryPage: View {
     }
     private var days: [(key: String, date: Date, items: [SessionDataModel])] {
         var order: [String] = [], groups: [String: [SessionDataModel]] = [:], dates: [String: Date] = [:]
-        for s in shown.prefix(120) {
+        for s in shown.prefix(150) {
             let k = PrayerDay.key(for: s.startTime)
             if groups[k] == nil { order.append(k); dates[k] = PrayerDay.start(for: s.startTime) }
             groups[k, default: []].append(s)
@@ -682,40 +885,84 @@ private struct MockHistoryPage: View {
     private var usedZikrs: [MantraModel] { zikrs.filter { !$0.sessions.isEmpty }.sorted { $0.sessions.count > $1.sessions.count } }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 18) {
+        List {
+            Section {
                 Flow.heading("History", "\(MockFmt.count(shown.count)) sessions · \(MockFmt.count(shown.reduce(0) { $0 + $1.totalCount })) counted")
-                ForEach(days, id: \.key) { day in
-                    Flow.group(MockFmt.day(day.date), trailing: MockFmt.count(day.items.reduce(0) { $0 + $1.totalCount }) + " counted") {
-                        ForEach(Array(day.items.enumerated()), id: \.element.id) { i, s in
-                            if i > 0 { Flow.divider }
-                            FlowRow(title: s.mantra?.name ?? "Freestyle", detail: sessionDetail(s)) {
-                                VStack(alignment: .trailing, spacing: 2) {
-                                    Text(MockFmt.count(s.totalCount)).monospacedDigit()
-                                    Text(MockFmt.duration(s.secondsPassed)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                                }
-                            }
-                        }
-                    }
+                    .frame(maxWidth: .infinity)
+                    .bareRow()
+            }
+            ForEach(days, id: \.key) { day in
+                Section {
+                    ForEach(day.items) { s in row(s) }
+                } header: {
+                    Flow.header(MockFmt.day(day.date), trailing: dayTotals(day.items))
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 30)
         }
+        .mockList()
         .scrollDismissesKeyboard(.immediately)
         .modifier(SoftBottomEdge())
         .modifier(BottomBar {   // search + filter in a Liquid Glass bar at the bottom (decision zikr-search-place A)
             HStack(spacing: 10) {
-                Flow.search("A zikr, a goal, \"Friday\"", Binding(get: { state.historyQuery }, set: { state.historyQuery = $0 }))
-                filterMenu
+                if selecting {
+                    // Select mode: the bar holds Delete instead (History's bottom-bar Delete, in glass).
+                    Button(role: .destructive) { confirmDelete = true } label: {
+                        Text(selection.isEmpty ? "Delete" : "Delete (\(selection.count))")
+                            .font(.body.weight(.medium)).foregroundStyle(selection.isEmpty ? Color.secondary : Color.red)
+                            .frame(maxWidth: .infinity).frame(height: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .barGlass(Capsule())
+                    .disabled(selection.isEmpty)
+                } else {
+                    Flow.search("A zikr, a goal, \"Friday\"", Binding(get: { state.historyQuery }, set: { state.historyQuery = $0 }))
+                    filterMenu
+                }
             }
             .padding(.horizontal, 16).padding(.bottom, 6)
         })
-        .background(Color(.systemBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Select") {} } }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(selecting ? "Done" : "Select") {
+                    withAnimation { selecting.toggle() }
+                    if !selecting { selection.removeAll() } else { PaceCoordinator.stopAll() }
+                }
+            }
+        }
+        .navigationDestination(item: $openZikr) { MockZikrPage(zikr: $0) }
+        .sheet(item: $sessionToOpen) { s in
+            SessionPage(session: s, onOpenZikr: s.mantra.map { m in { openZikr = m } })
+        }
+        .modifier(DeleteSessionAlert(session: $sessionToDelete))
+        .alert(selection.count == 1 ? "Delete 1 session?" : "Delete \(selection.count) sessions?", isPresented: $confirmDelete) {
+            Button("Delete", role: .destructive) {
+                let doomed = shown.filter { selection.contains($0.persistentModelID) }
+                withAnimation { SessionDeletion.delete(doomed, in: context) }
+                selection.removeAll()
+                selecting = false
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Their counts come off your totals and today's goals. This can't be undone.")
+        }
+        .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
         .onAppear {
             if let filter, let z = zikrs.first(where: { $0.persistentModelID == filter }) { active = .zikr(z.persistentModelID, z.name) }
+        }
+    }
+
+    /// History's own row: the zikr, the time, the kind and goal, the moon, the count, the time and the pace pill (tap it
+    /// to feel the pace); tap → the session's page, hold → its options, swipe → delete.
+    @ViewBuilder private func row(_ s: SessionDataModel) -> some View {
+        let r = SessionRow(session: s, tappable: !selecting,
+                           onMantra: s.mantra.map { m in { openZikr = m } },
+                           onOpen: { sessionToOpen = s }, onDelete: { sessionToDelete = s },
+                           rowBackground: Flow.card)
+        if selecting {
+            SelectableRow(selected: $selection, id: s.persistentModelID) { r }.listRowBackground(Flow.card)
+        } else {
+            r
         }
     }
 
