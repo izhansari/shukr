@@ -364,6 +364,8 @@ struct SessionRow: View {
     /// "Freestyle", the pace as plain grey text (still a tap target) without its capsule; feeling the pace lights only the
     /// pace text, not the whole row (owner).
     var quiet = false
+    /// With `showsMantraName` off: "Tue, Sep 29 · 7:10 AM" as the headline instead of just the time.
+    var showsDay = false
     private var quietTarget: String? {
         switch session.sessionMode {
         case 1: return "\(session.targetMin) min goal"
@@ -468,6 +470,11 @@ struct SessionRow: View {
                     Text("Practice").font(.body.weight(.medium))
                 } else if showsMantraName {
                     Text(session.displayTitle)
+                        .font(.body.weight(.medium))
+                } else if showsDay {
+                    // A zikr's sheet lists its last few sessions in one card: the day goes in the row.
+                    Text(session.startTime.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+                         + " · " + session.startTime.formatted(date: .omitted, time: .shortened))
                         .font(.body.weight(.medium))
                 } else {
                     Text(session.startTime, style: .time)

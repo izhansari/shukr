@@ -965,32 +965,43 @@ private struct ZikrSheet: View {
             }.bareRow(top: 18) }
             // Its last 3 sessions as flat rows (Sami: its own recent data, so you never leave just to glance) — a tap
             // opens nothing here (a sheet never opens over a sheet); the pace and swipe-to-delete still work.
-            DayRows(days: byDay(Array(sessions.prefix(3))), fullDays: Dictionary(grouping: sessions) { PrayerDay.key(for: $0.startTime) },
-                    showsName: false,
-                    onOpen: { _ in }, onDelete: { sessionToDelete = $0 })
-            Section {
-                if sessions.count > 3 || onHistory != nil, !sessions.isEmpty {
+            // Its 5 most recent sessions in ONE flat card, the day inside each row, then "See all history" (owner: the
+            // day-by-day cards looked disconnected and made the sheet long).
+            if !sessions.isEmpty {
+                let recent = Array(sessions.prefix(5))
+                Section {
+                    SoftLabel(title: "Recent").bareRow(top: 16, bottom: 6)
+                    ForEach(Array(recent.enumerated()), id: \.element.id) { i, s in
+                        SessionRow(session: s, showsMantraName: false, onOpen: {}, onDelete: { sessionToDelete = s },
+                                   rowBackground: AnyView(DayPiece(first: i == 0, last: false)), quiet: true, showsDay: true)
+                            .listRowInsets(EdgeInsets(top: i == 0 ? 14 : 10, leading: 32, bottom: 10, trailing: 32))
+                            .listRowSeparator(.hidden)
+                    }
                     Button { goToHistory() } label: {
                         HStack {
-                            Text("All \(sessions.count) sessions in History").foregroundStyle(Color.sage)
+                            Text("See all history").foregroundStyle(Color.sage)
                             Spacer()
                             Soft.chevron()
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .pieceRow()
+                    .listRowInsets(EdgeInsets(top: 12, leading: 32, bottom: 14, trailing: 32))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(DayPiece(first: false, last: true))
                 }
-                Color.clear.frame(height: 96).bareRow()
+                .listSectionSeparator(.hidden)
             }
-            .listSectionSeparator(.hidden)
+            Section { Color.clear.frame(height: 96).bareRow() }
+                .listSectionSeparator(.hidden)
         }
         .softList()
         .modifier(SoftBottomEdge())
         .modifier(BottomBar { startBar })
         .fontDesign(.rounded)
         .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
+        .presentationDragIndicator(.hidden)
+        .interactiveDismissDisabled()   // owner: swiping it away by accident was annoying — the ✕ closes it
         .presentationBackground(theme.surface)
         .presentationCornerRadius(34)
         .zikrCardEditor($card, allowDelete: false)
@@ -1050,6 +1061,12 @@ private struct ZikrSheet: View {
                     .frame(width: 40, height: 40).barGlass(Circle())
             }
             .tint(.primary)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
+                    .frame(width: 40, height: 40).barGlass(Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close")
         }
         .padding(.horizontal, 4)
     }
@@ -1175,6 +1192,12 @@ private struct ZikrSheet: View {
     private func headline(_ g: TaskModel, done: Bool, paused: Bool, streak s: TaskStreak) -> String {
         if paused { return "Paused · your history is kept" }
         if done { return s.current > 1 ? "Done today · \(s.current)-day streak" : "Done today" }
+        // Started today but not done yet: what's left, not when it was last done.
+        let p = g.progress(in: today)
+        if p.count > 0 || p.seconds >= 1 {
+            let left = g.isCountMode ? "\(max(g.goal - p.count, 0)) to go today" : "\(max(g.goal - Int(p.seconds / 60), 0)) min to go today"
+            return s.current >= 1 ? "\(s.current)-day streak · \(left)" : left
+        }
         if s.current >= 1 { return "\(s.current)-day streak · keep it today" }
         guard let last = g.sessions.map(\.startTime).max() else { return "Not started yet · today's a good day" }
         let n = Calendar.current.dateComponents([.day], from: PrayerDay.start(for: last), to: PrayerDay.start()).day ?? 0
