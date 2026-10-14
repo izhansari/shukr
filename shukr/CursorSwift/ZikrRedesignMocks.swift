@@ -363,8 +363,10 @@ private struct SegmentRing<Center: View>: View {
                             style: StrokeStyle(lineWidth: highlight == i ? 7 : 4, lineCap: .butt))
                     .rotationEffect(.degrees(-90))
                 if f > 0 {
+                    // One day picked out: it stands bold, the others step back.
+                    let dim = highlight != nil && highlight != i
                     Circle().trim(from: a, to: a + (b - a) * min(f, 1))
-                        .stroke(Color.sage.opacity(f >= 1 ? 1 : 0.6), style: StrokeStyle(lineWidth: highlight == i ? 8 : 5, lineCap: n == 1 ? .round : .butt))
+                        .stroke(Color.sage.opacity(dim ? 0.3 : (f >= 1 ? 1 : 0.6)), style: StrokeStyle(lineWidth: highlight == i ? 9 : 5, lineCap: n == 1 ? .round : .butt))
                         .rotationEffect(.degrees(-90))
                 }
             }
@@ -1515,14 +1517,18 @@ private struct MonthHero: View {
     @State private var showCount = false
     @State private var rowsCount = false
     @State private var scrub: Int?
+    /// A day shown for a moment (a tap on Best day lights it on the ring).
+    @State private var pointed: Int?
     @State private var revert: Task<Void, Never>?
+    @State private var unpoint: Task<Void, Never>?
+    private var shownDay: Int? { scrub ?? pointed }
     private let ringSize: CGFloat = 126
 
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 18) {
                 SegmentRing(parts: s.days.map { $0.seconds >= 1 || $0.count > 0 ? 1 : 0 }, size: ringSize,
-                            future: s.today.map { $0 + 1 }, highlight: scrub) { center }
+                            future: s.today.map { $0 + 1 }, highlight: shownDay) { center }
                     .contentShape(Circle())
                     .onTapGesture { flipToCount() }
                     .gesture(DragGesture(minimumDistance: 4)
@@ -1536,6 +1542,8 @@ private struct MonthHero: View {
                             Text("\(MockFmt.compact(b.seconds)) · \(b.date.formatted(.dateTime.month(.abbreviated).day()))")
                                 .font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
                         }
+                        .contentShape(Rectangle())
+                        .onTapGesture { point(at: b.date) }   // lights that day on the ring for a moment
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         if let t = s.today { Text("\(s.activeDays) of \(t + 1) days") }
@@ -1548,6 +1556,13 @@ private struct MonthHero: View {
             if !s.top.isEmpty, s.seconds >= 1 || s.count > 0 {
                 let counting = showCount || rowsCount
                 VStack(spacing: 10) {
+                    // Says what the shares are of (owner: else the percentages changing would confuse).
+                    HStack {
+                        Text("MOST SAID").font(.caption.weight(.medium)).tracking(1.2)
+                        Spacer()
+                        Text(counting ? "by count" : "by time").font(.caption).contentTransition(.opacity)
+                    }
+                    .foregroundStyle(.secondary)
                     ForEach(Array(s.top.enumerated()), id: \.offset) { _, t in
                         let share = counting ? Double(t.count) / Double(max(s.count, 1)) : t.seconds / max(s.seconds, 1)
                         HStack(spacing: 12) {
@@ -1572,12 +1587,15 @@ private struct MonthHero: View {
     /// The month's time (or count), or the day under the finger.
     @ViewBuilder private var center: some View {
         VStack(spacing: 1) {
-            if let d = scrub, s.days.indices.contains(d), s.dates.indices.contains(d) {
+            if let d = shownDay, s.days.indices.contains(d), s.dates.indices.contains(d) {
+                let day = s.days[d]
+                // A day with counts but no time recorded (a 1-count session) shows its count, not "—".
+                let byCount = showCount || (day.seconds < 1 && day.count > 0)
                 Text(s.dates[d].formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
                     .font(.caption2).foregroundStyle(.secondary)
-                Text(showCount ? MockFmt.count(s.days[d].count) : (s.days[d].seconds >= 1 ? MockFmt.compact(s.days[d].seconds) : "—"))
+                Text(byCount ? MockFmt.count(day.count) : (day.seconds >= 1 ? MockFmt.compact(day.seconds) : "—"))
                     .font(.system(size: 26, weight: .light, design: .rounded)).monospacedDigit()
-                Text(showCount ? "counted" : (d > (s.today ?? 0) ? "to come" : "of zikr"))
+                Text(byCount ? "counted" : (d > (s.today ?? 0) ? "to come" : "of zikr"))
                     .font(.caption2).foregroundStyle(.secondary)
             } else {
                 Text(showCount ? MockFmt.count(s.count) : MockFmt.compact(s.seconds))
@@ -1595,12 +1613,26 @@ private struct MonthHero: View {
     /// A tap: the count for a few seconds, then back to time (the app's rings flip the same way).
     private func flipToCount() {
         triggerSomeVibration(type: .light)
-        withAnimation(.snappy) { showCount = true }
         revert?.cancel()
+        // A tap while the count shows goes straight back to time (owner: the second tap did nothing).
+        if showCount { withAnimation(.snappy) { showCount = false }; return }
+        withAnimation(.snappy) { showCount = true }
         revert = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { return }
             withAnimation(.snappy) { showCount = false }
+        }
+    }
+
+    private func point(at date: Date) {
+        guard let i = s.dates.firstIndex(where: { Calendar.current.isDate($0, inSameDayAs: date) }) else { return }
+        triggerSomeVibration(type: .light)
+        unpoint?.cancel()
+        withAnimation(.snappy) { pointed = i }
+        unpoint = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy) { pointed = nil }
         }
     }
 
