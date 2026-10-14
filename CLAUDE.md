@@ -191,6 +191,11 @@ TestFlight install. "Run setup from the start" and What's new follow `.available
 
 ## Architecture rules and traps
 
+**Design language — read before designing any new view:** `docs/design-language.md` (12 findings + vocabulary, from the
+24 pages in `shukrGit/board/mocks/design-library/`). In short: one hero per screen, often in a ring; the soft look raises
+heroes and block cards only (lists stay flat); light type with a grey line; sage = tap; one soft pill + one quiet line;
+frost, don't scold; show the real thing; "streak", never "run". Data-heavy pages: its "The gap" section.
+
 **UI wording.** Every look picker (app, Live Activity card, Prayers widget, setup, the ⓘ, the watch) says System · Light · Dark · **Sun** in that order (System only in Settings; the watch has iPhone), and Sun is explained in one sentence: "Light after Fajr, dark at Maghrib." (owner, 2026-10-12). Users read "zikr" / "Azkar", never "mantra"; code and SwiftData names keep `Mantra` (a model rename is a schema risk).
 
 **Navigation / pager**
