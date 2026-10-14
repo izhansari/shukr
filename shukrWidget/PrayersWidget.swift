@@ -65,6 +65,9 @@ struct PrayersWidgetEntry: TimelineEntry {
     var ringAbove = 0.6
     /// Edit Widget → Style (the home-screen widget only).
     var style: WidgetStyle = .system
+    /// A mock-up for the owner (2026-10-14): once the prayer that's on is marked, the top right offers a camera (1) or a
+    /// camera and a tasbih (2) — pictures only, 0 everywhere real until he picks.
+    var markedExtras = 0
 
     /// "Follows the sun" (`auto`) night: from Maghrib until the next sunrise (the app's auto rule — `isDaytime` is
     /// after Fajr's window, before Maghrib), and before this prayer day's sunrise.
@@ -95,12 +98,14 @@ struct PrayersWidgetEntry: TimelineEntry {
     /// The same data, shown from `date` on (a later timeline entry); `list` overrides whether the
     /// times list shows (the ring comes back `WidgetListState.openFor` after it opened).
     func at(_ date: Date, list: Bool? = nil) -> PrayersWidgetEntry {
-        PrayersWidgetEntry(date: date, heading: heading, latitude: latitude, longitude: longitude,
+        var e = PrayersWidgetEntry(date: date, heading: heading, latitude: latitude, longitude: longitude,
                            toggleShowAllTImes: list ?? toggleShowAllTImes, prayerDict: prayerDict,
                            todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: textToggle,
                            completedScores: completedScores, nextFajr: nextFajr, nextSunrise: nextSunrise,
                            leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
                            ringAbove: ringAbove, style: style)
+        e.markedExtras = markedExtras
+        return e
     }
 }
 
@@ -782,9 +787,10 @@ struct PrayersWidgetView: View {
                 // None) with an up chevron between them that opens today's times. The ring sits in
                 // the true centre: the top and bottom rows are the same height.
                 VStack {
-                    HStack {
+                    HStack(spacing: 0) {
                         checkButton
                         Spacer()
+                        markedExtrasView
                     }
                     Spacer()
                     HStack(spacing: 0) {
@@ -806,6 +812,22 @@ struct PrayersWidgetView: View {
             } else {
                 Color.clear.frame(width: 30, height: 30)
             }
+        }
+
+        /// The mock-up's top right (`markedExtras`): only once the prayer that's on has been marked, in the corners' look.
+        @ViewBuilder private var markedExtrasView: some View {
+            if entry.markedExtras > 0, let current = prayerInWindow, entry.completedToday.contains(current) {
+                HStack(spacing: 0) {
+                    if entry.markedExtras > 1 { extra("circle.hexagonpath") }
+                    extra("camera")
+                }
+            }
+        }
+        private func extra(_ symbol: String) -> some View {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .light))
+                .foregroundColor(.primary)
+                .frame(width: 30, height: 30)
         }
 
         /// Filled once the prayer whose window is open has been prayed (the circle has moved on

@@ -1189,12 +1189,14 @@ struct RealPrayersWidget: View {
 extension PrayersWidgetEntry {
     /// The same entry with the ring's text side flipped (the widget's own tap).
     func with(text: Bool) -> PrayersWidgetEntry {
-        PrayersWidgetEntry(date: date, heading: heading, latitude: latitude, longitude: longitude,
+        var e = PrayersWidgetEntry(date: date, heading: heading, latitude: latitude, longitude: longitude,
                            toggleShowAllTImes: toggleShowAllTImes, prayerDict: prayerDict,
                            todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: text,
                            completedScores: completedScores, nextFajr: nextFajr, nextSunrise: nextSunrise,
                            leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
                            ringAbove: ringAbove, style: style)
+        e.markedExtras = markedExtras
+        return e
     }
 }
 
@@ -1260,11 +1262,15 @@ enum ExplorePreset {
     static func prayersEntry() -> PrayersWidgetEntry {
         let w = windows
         let fajr = w["Fajr"]!
-        return PrayersWidgetEntry(date: now, heading: 0, latitude: 0, longitude: 0, toggleShowAllTImes: false,
+        var e = PrayersWidgetEntry(date: now, heading: 0, latitude: 0, longitude: 0, toggleShowAllTImes: false,
                                   prayerDict: w.mapValues { (start: $0.start, end: $0.end, window: $0.end.timeIntervalSince($0.start)) },
                                   todayPrayerTimes: PrayerUtils.dummyPrayerTimes(), locationName: city, textToggle: false,
                                   completedScores: scores,
                                   nextFajr: fajr.start.addingTimeInterval(86_400), nextSunrise: fajr.end.addingTimeInterval(86_400))
+        #if DEBUG
+        e.markedExtras = UserDefaults.standard.integer(forKey: "widgetMarkedExtras")   // `-widgetMarkedExtras 1|2` (mock-ups)
+        #endif
+        return e
     }
 
     /// Today's Times' rows for that day.
