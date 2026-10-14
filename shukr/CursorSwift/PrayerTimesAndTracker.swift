@@ -1280,6 +1280,12 @@ struct PrayerTimesView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoExplore") { demoExplore = true }
             Excused.applyDebugArgs()   // -demoExcused N / -demoExcusedOff
             if ProcessInfo.processInfo.arguments.contains("-demoSadaqah") { demoSadaqah = true }
+            // `-yourDataExportNow`: Your Data's copy made at launch into tmp/YourData (pull it with devicectl: the store
+            // itself sits outside what devicectl may copy). Nothing else changes.
+            if ProcessInfo.processInfo.arguments.contains("-yourDataExportNow") {
+                let url = await DataExport.makeCopy(context, media: true)
+                print("📦 Your Data copy:", url?.path ?? "failed")
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoScheduledNotifications") {
                 try? await Task.sleep(for: .seconds(1.5))
                 demoScheduled = true
