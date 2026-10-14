@@ -481,3 +481,54 @@ struct ExcusedMenuBadge: View {
             .accessibilityHidden(true)
     }
 }
+
+/// "Not yet" past her estimate (owner: ask for another estimate): about how much longer, then the check-ins move with it.
+struct ExcusedExtendSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var days = 2
+    private static let options = [1, 2, 3, 4, 5, 7, 10, 14]
+
+    var body: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 6) {
+                Text("Not yet?").font(.system(size: 30, weight: .light, design: .rounded))
+                Text("About how much longer?").font(.subheadline).foregroundStyle(.secondary)
+            }
+            .padding(.top, 28)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
+                ForEach(Self.options, id: \.self) { n in
+                    let on = days == n
+                    Button { withAnimation(.snappy(duration: 0.2)) { days = n } } label: {
+                        Text(n == 1 ? "1 day" : "\(n) days")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity).frame(height: 40)
+                            .background(Capsule().fill(on ? Color.sage : Color.primary.opacity(0.06)))
+                            .foregroundStyle(on ? Color.white : Color.primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 20)
+            Text("We'll check in again once a day after that.")
+                .font(.footnote).foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            Button {
+                Excused.extend(days: days)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
+            } label: {
+                Text("Set new estimate")
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 240, height: 52)
+                    .background(Capsule().fill(Color.sage.opacity(0.08)))
+                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 16)
+        }
+        .fontDesign(.rounded)
+        .presentationDetents([.height(380)])
+        .presentationDragIndicator(.visible)
+    }
+}

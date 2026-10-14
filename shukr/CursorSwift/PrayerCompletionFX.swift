@@ -307,6 +307,8 @@ struct PrayerStatusDot: View {
     let future: Bool
     let scoreColor: Color
     let pulse: Int
+    /// A prayer she's excused from (Excused.swift): grey, filled, a pause inside — the marks carry on, just paused (owner).
+    var excused = false
     @Environment(\.colorScheme) private var colorScheme
 
     private var edge: Color { Color.secondary.opacity(future ? 0.2 : 0.5) }
@@ -315,7 +317,14 @@ struct PrayerStatusDot: View {
         Group {
             // A prayer still to come: a dashed ring, like the main circle's upcoming track (owner, 2026-10-06: tells a
             // future prayer from the current and past ones at a glance), whatever the dot style.
-            if future {
+            if excused && !done && !future {
+                ZStack {
+                    Circle().fill(Color.secondary.opacity(0.35))
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 6, weight: .heavy))
+                        .foregroundStyle(Color(.systemBackground))
+                }
+            } else if future {
                 Circle()
                     .inset(by: 0.6)
                     .stroke(Color.secondary.opacity(0.6), style: Self.futureDashes)   // the future row's own grey (statusBasedOpacity)

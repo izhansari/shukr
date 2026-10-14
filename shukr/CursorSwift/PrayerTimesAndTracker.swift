@@ -88,6 +88,8 @@ struct PrayerTimesView: View {
     @State private var resumePrayer: PrayerModel?
     /// Past her estimate: once a day on opening, "Are you back to praying?" (Excused.swift).
     @State private var askingOverdue = false
+    /// Its "Not yet": "About how much longer?"
+    @State private var showExtend = false
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoNewZikr = false
@@ -950,12 +952,11 @@ struct PrayerTimesView: View {
         }
         .alert("Are you back to praying?", isPresented: $askingOverdue) {
             Button("I'm back") { Excused.end() }
-            Button("2 more days") { Excused.extend(days: 2) }
-            Button("3 more days") { Excused.extend(days: 3) }
-            Button("Not yet", role: .cancel) {}
+            Button("Not yet") { showExtend = true }   // a new estimate (owner)
         } message: {
-            Text("You're set as excused from prayer, and your estimate has passed. We'll check in once a day.")
+            Text("You're set as excused from prayer, and your estimate has passed.")
         }
+        .sheet(isPresented: $showExtend) { ExcusedExtendSheet().stageCover("excusedExtend") }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in askIfOverdue() }
         .onAppear { askIfOverdue() }
         .alert("Prayers are paused", isPresented: $askingResume) {
@@ -3136,7 +3137,8 @@ struct PrayerButton: View {
                                 done: prayerObject.isCompleted && !isFuturePrayer,
                                 future: isFuturePrayer,
                                 scoreColor: prayerObject.getColorForPrayerScore(),
-                                pulse: completionPulse)
+                                pulse: completionPulse,
+                                excused: Excused.covers(start: prayerObject.startTime, end: prayerObject.endTime))
                     .onGeometryChange(for: CGPoint.self) { proxy in
                         let f = proxy.frame(in: .named(PrayerButton.rowSpace))
                         return CGPoint(x: f.midX, y: f.midY)
