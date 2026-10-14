@@ -444,3 +444,20 @@ struct ExcusedSheet: View {
         .frame(minHeight: 52)
     }
 }
+
+/// The ☰ button's dot while excused (owner: "something to indicate there's something in this menu"): a soft slate blue —
+/// not the tour's green, not red (it reads as blood), not the pinks / lavenders period apps use (it would give it away).
+struct ExcusedMenuBadge: View {
+    static let ink = Color(red: 0.45, green: 0.56, blue: 0.70)
+    var body: some View {
+        let show = CircleStage.shared.excused != nil
+        Circle()
+            .fill(Self.ink)
+            .frame(width: 8, height: 8)
+            .scaleEffect(show ? 1 : 0.1)
+            .opacity(show ? 1 : 0)
+            .animation(show ? .spring(response: 0.45, dampingFraction: 0.55).delay(0.6) : .easeOut(duration: 0.25), value: show)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}

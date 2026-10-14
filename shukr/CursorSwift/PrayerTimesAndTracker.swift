@@ -1976,7 +1976,8 @@ struct PrayerTimesView: View {
                                 // chrome doesn't redraw with the compass).
                                 // The tour not yet taken to its end: a green dot (Tour.swift), under the compass's.
                                 .overlay(alignment: .topTrailing) {
-                                    ZStack { TourMenuBadge(); CompassMenuBadge() }.offset(x: 3, y: -1)
+                                    // Excused (Excused.swift): its own dot, under the tour's and the compass's.
+                                    ZStack { ExcusedMenuBadge(); TourMenuBadge(); CompassMenuBadge() }.offset(x: 3, y: -1)
                                 }
                                 .padding()
                         }
