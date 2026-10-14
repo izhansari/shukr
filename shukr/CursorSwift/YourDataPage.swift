@@ -411,6 +411,7 @@ private struct RestoreSheet: View {
     @State private var plan = RestorePlan()
     @State private var added: RestorePlan?
     @State private var planned = false
+    @State private var restoring = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -434,9 +435,15 @@ private struct RestoreSheet: View {
                 PrimaryButton(title: "Done") { dismiss() }
                     .padding(.bottom, 26)
             } else {
-                PrimaryButton(title: "Restore", enabled: planned) {
-                    added = DataRestore.apply(source, context)
-                    done()
+                PrimaryButton(title: restoring ? "Restoring…" : "Restore", enabled: planned && !restoring) {
+                    restoring = true
+                    Task { @MainActor in
+                        // A frame for "Restoring…" first: thousands of rows take a moment.
+                        try? await Task.sleep(for: .milliseconds(80))
+                        added = DataRestore.apply(source, context)
+                        restoring = false
+                        done()
+                    }
                 }
                 SecondaryButton(title: "Not now") { dismiss() }
                     .padding(.bottom, 14)
@@ -454,7 +461,7 @@ private struct RestoreSheet: View {
         func n(_ count: Int, _ one: String, _ many: String) -> String { "\(count.formatted()) \(count == 1 ? one : many)" }
         var out: [(String, String)] = []
         if p.prayers > 0 { out.append(("checkmark.circle", n(p.prayers, "prayer", "prayers"))) }
-        if p.prayersMarked > 0 { out.append(("checkmark.circle.fill", n(p.prayersMarked, "prayer marked", "prayers marked") + " that weren't here")) }
+        if p.prayersMarked > 0 { out.append(("checkmark.circle.fill", n(p.prayersMarked, "mark", "marks") + " for prayers left unmarked here")) }
         if p.sessions > 0 { out.append(("circle.hexagonpath", n(p.sessions, "zikr session", "zikr sessions"))) }
         if p.azkar > 0 { out.append(("books.vertical", n(p.azkar, "zikr of yours", "azkar of yours"))) }
         if p.goals > 0 { out.append(("target", n(p.goals, "daily goal", "daily goals"))) }

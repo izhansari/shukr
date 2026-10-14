@@ -212,6 +212,7 @@ enum DataRestore {
             m.id = z.id
             m.quickAddStep = z.quickAddStep
             m.createdAt = z.createdAt
+            m.builtInID = z.builtInID   // a built-in this build doesn't seed keeps its tag
             m.imageData = z.photo.flatMap(source.file)
             m.audioData = z.memo.flatMap(source.file)
             context.insert(m)
