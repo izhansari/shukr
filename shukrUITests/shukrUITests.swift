@@ -77,6 +77,41 @@ final class shukrUITests: XCTestCase {
         }
     }
 
+    /// Explore shukr, scrolled down its sections and back (run with PERF_ARGS="-perfExplore" on a PERFARGS build: the page
+    /// opens over Salah). Its pictures are whole phones drawn and scaled (perf-recheck, 2026-10-14).
+    @available(iOS 26.0, *)
+    func testExploreScrollHitches() throws {
+        let app = launchForPerf()
+        let window = app.windows.firstMatch
+        measure(metrics: [XCTHitchMetric(application: app)], options: perfOptions()) {
+            window.swipeUp(velocity: .default)
+            usleep(800_000)
+            window.swipeUp(velocity: .default)
+            usleep(800_000)
+            window.swipeDown(velocity: .default)
+            usleep(800_000)
+            window.swipeDown(velocity: .default)
+            usleep(800_000)
+        }
+    }
+
+    /// A section's pictures paged sideways (PERF_ARGS="-perfExplore -demoExploreGroup lockWidgets -demoExploreMember
+    /// lockTime": the Lock Screen widgets, each a whole phone).
+    @available(iOS 26.0, *)
+    func testExplorePagerHitches() throws {
+        let app = launchForPerf()
+        let window = app.windows.firstMatch
+        func page(_ left: Bool) {
+            let from = window.coordinate(withNormalizedOffset: CGVector(dx: left ? 0.85 : 0.15, dy: 0.28))
+            let to = window.coordinate(withNormalizedOffset: CGVector(dx: left ? 0.15 : 0.85, dy: 0.28))
+            from.press(forDuration: 0.02, thenDragTo: to, withVelocity: .default, thenHoldForDuration: 0)
+            usleep(700_000)
+        }
+        measure(metrics: [XCTHitchMetric(application: app)], options: perfOptions()) {
+            page(true); page(true); page(false); page(false)
+        }
+    }
+
     /// The Salah page's swipe up (list) and back down.
     @available(iOS 26.0, *)
     func testSalahVerticalHitches() throws {
