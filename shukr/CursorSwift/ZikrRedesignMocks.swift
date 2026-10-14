@@ -113,7 +113,7 @@ struct ZikrMockPage: View {
         Group {
             switch start {
             case .azkar: MockAzkarPage()
-            case .history: MockHistoryPage(filter: nil)
+            case .history: MockHistoryPage()
             }
         }
         .fontDesign(.rounded)
@@ -124,7 +124,7 @@ private struct ZikrMockRoot: View {
     @Query private var zikrs: [MantraModel]
     @State private var path: [Route] = []
     @State private var started = false
-    private enum Route: Hashable { case zikr(MantraModel), history(PersistentIdentifier?), goal(TaskModel) }
+    private enum Route: Hashable { case zikr(MantraModel), history(MockHistoryPage.Filter?), goal(TaskModel) }
     private var mainZikr: MantraModel? { zikrs.max(by: { $0.tasks.count < $1.tasks.count }) }
     var body: some View {
         NavigationStack(path: $path) {
@@ -132,7 +132,7 @@ private struct ZikrMockRoot: View {
                 .navigationDestination(for: Route.self) { route in
                     switch route {
                     case .zikr(let z): MockZikrPage(zikr: z)
-                    case .history(let id): MockHistoryPage(filter: id)
+                    case .history(let f): MockHistoryPage(initial: f)
                     case .goal(let t): MockGoalPage(task: t)
                     }
                 }
@@ -146,7 +146,7 @@ private struct ZikrMockRoot: View {
             switch args[i + 1] {
             case "zikr", "zikr-card": path = [.zikr(z)]
             case "history": path = [.history(nil)]
-            case "history-zikr": path = [.history(z.persistentModelID)]
+            case "history-zikr": path = [.history(.zikr(z.persistentModelID, z.name))]
             case "history-select": ZikrMockState.shared.startSelecting = true; path = [.history(nil)]
             case "goal": if let t = z.tasks.sorted(by: { $0.sortOrder < $1.sortOrder }).first { path = [.goal(t)] }
             case "tour": await tour(z)
@@ -161,7 +161,7 @@ private struct ZikrMockRoot: View {
         await wait(3)
         path = [.zikr(z)]
         await wait(3.5)
-        path.append(.history(z.persistentModelID))
+        path.append(.history(.zikr(z.persistentModelID, z.name)))
         await wait(3.5)
         path = [.history(nil)]
         await wait(4)
@@ -658,6 +658,27 @@ private extension View {
     }
 }
 
+/// "History · 39 sessions · last 11 days ago ›": a goal's or a zikr's way into History, filtered to it.
+private struct HistoryLink: View {
+    let sessions: [SessionDataModel]
+    var body: some View {
+        let count = sessions.reduce(0) { $0 + $1.totalCount }
+        let last = sessions.map(\.startTime).max()
+        HStack(spacing: 12) {
+            Image(systemName: "clock.arrow.circlepath").font(.system(size: 16, weight: .light)).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("History")
+                Text(["\(sessions.count) session\(sessions.count == 1 ? "" : "s")", "\(MockFmt.count(count)) counted",
+                      last.map { "last \(MockFmt.ago($0))" }].compactMap { $0 }.joined(separator: " · "))
+                    .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Soft.chevron()
+        }
+        .contentShape(Rectangle())
+    }
+}
+
 private struct ZoomSource: ViewModifier {
     let id: String
     let zoom: Namespace.ID?
@@ -960,15 +981,12 @@ private struct MockGoalPage: View {
                     .matchedTransitionSource(id: "goal-zikr", in: zoom)
                 }
             }.bareRow(top: 0) }
-            DayRows(days: byDay(sessions, limit: 4), showsName: false,
-                    onOpen: { sessionToOpen = $0 }, onDelete: { sessionToDelete = $0 })
             Section {
+                // One History row, not a second session list (owner): History opens filtered to this goal.
                 if !sessions.isEmpty {
-                    Button { showAll = true } label: {
-                        HStack { Text("All \(sessions.count) sessions"); Spacer(); Soft.chevron() }.contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .pieceRow()
+                    Button { showAll = true } label: { HistoryLink(sessions: sessions) }
+                        .buttonStyle(.plain)
+                        .pieceRow()
                 }
                 Color.clear.frame(height: 90).bareRow()
             }
@@ -1013,7 +1031,7 @@ private struct MockGoalPage: View {
             }
         }
         .mockDestinations($open, zoom: zoom)
-        .navigationDestination(isPresented: $showAll) { MockHistoryPage(filter: task.mantra?.persistentModelID) }
+        .navigationDestination(isPresented: $showAll) { MockHistoryPage(initial: .goal(task.persistentModelID, task.title)) }
         .sheet(item: $editing) { NewTaskFlow(editing: $0) }
         .sheet(item: $sessionToOpen) { SessionPage(session: $0) }
         .modifier(DeleteGoalAlert(task: $toDelete, then: { dismiss() }))
@@ -1136,15 +1154,12 @@ private struct MockZikrPage: View {
                 }
                 Soft.addRow(goals.isEmpty ? "Make it a daily goal" : "Another daily goal") { addingGoal = true }
             }.bareRow(top: 4) }
-            DayRows(days: byDay(sessions, limit: 3), showsName: false,
-                    onOpen: { sessionToOpen = $0 }, onDelete: { sessionToDelete = $0 })
             Section {
+                // One History row (as on a goal's page): History opens filtered to this zikr.
                 if !sessions.isEmpty {
-                    Button { showAll = true } label: {
-                        HStack { Text("All \(sessions.count) sessions"); Spacer(); Soft.chevron() }.contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .pieceRow()
+                    Button { showAll = true } label: { HistoryLink(sessions: sessions) }
+                        .buttonStyle(.plain)
+                        .pieceRow()
                 }
                 Color.clear.frame(height: 70).bareRow()   // room above Start
             }
@@ -1171,7 +1186,7 @@ private struct MockZikrPage: View {
         })
         .zikrCardEditor($card, allowDelete: false)
         .mockDestinations($open, zoom: zoom)
-        .navigationDestination(isPresented: $showAll) { MockHistoryPage(filter: zikr.persistentModelID) }
+        .navigationDestination(isPresented: $showAll) { MockHistoryPage(initial: .zikr(zikr.persistentModelID, zikr.name)) }
         .sheet(item: $editing) { NewTaskFlow(editing: $0) }
         .sheet(isPresented: $addingGoal) { NewTaskFlow(locked: zikr) }
         .sheet(item: $sessionToOpen) { SessionPage(session: $0) }
@@ -1272,7 +1287,9 @@ private struct MonthStory {
 }
 
 private struct MockHistoryPage: View {
-    let filter: PersistentIdentifier?
+    /// Opened filtered: a goal's or a zikr's page shows its sessions here (owner: "make the history page filtered to show
+    /// the same stuff it would show here").
+    var initial: Filter? = nil
     @Environment(\.modelContext) private var context
     @Query(sort: \SessionDataModel.startTime, order: .reverse) private var sessions: [SessionDataModel]
     @Query private var zikrs: [MantraModel]
@@ -1287,9 +1304,10 @@ private struct MockHistoryPage: View {
     @State private var titleShown = false
     /// One filter at a time, as Give to Causes' (owner: search, or a filter for common things — no chips).
     enum Filter: Hashable {
-        case goals, freestyle, zikr(PersistentIdentifier, String), week, month, days30
+        case goals, freestyle, zikr(PersistentIdentifier, String), goal(PersistentIdentifier, String), week, month, days30
         var title: String {
             switch self {
+            case .goal(_, let name): name
             case .goals: "Daily goals"
             case .freestyle: "Freestyle"
             case .zikr(_, let name): name
@@ -1300,7 +1318,7 @@ private struct MockHistoryPage: View {
         }
         var symbol: String {
             switch self {
-            case .goals: "target"
+            case .goals, .goal: "target"
             case .freestyle: "infinity"
             case .zikr: "circle.hexagonpath"
             case .week, .month, .days30: "calendar"
@@ -1317,6 +1335,7 @@ private struct MockHistoryPage: View {
             case .goals?: return s.task != nil
             case .freestyle?: return s.mantra == nil
             case .zikr(let id, _)?: return s.mantra?.persistentModelID == id
+            case .goal(let id, _)?: return s.task?.persistentModelID == id
             case .week?: return s.startTime >= (cal.date(byAdding: .day, value: -7, to: now) ?? now)
             case .month?: return s.startTime >= (cal.dateInterval(of: .month, for: now)?.start ?? now)
             case .days30?: return s.startTime >= (cal.date(byAdding: .day, value: -30, to: now) ?? now)
@@ -1334,6 +1353,7 @@ private struct MockHistoryPage: View {
         }
     }
     private var usedZikrs: [MantraModel] { zikrs.filter { !$0.sessions.isEmpty }.sorted { $0.sessions.count > $1.sessions.count } }
+    private var usedGoals: [TaskModel] { zikrs.flatMap(\.tasks).filter { !$0.sessions.isEmpty }.sorted { $0.sortOrder < $1.sortOrder } }
 
     var body: some View {
         let base = filtered
@@ -1409,7 +1429,7 @@ private struct MockHistoryPage: View {
         }
         .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
         .onAppear {
-            if let filter, let z = zikrs.first(where: { $0.persistentModelID == filter }) { active = .zikr(z.persistentModelID, z.name) }
+            if let initial, active == nil { active = initial }
             if state.startSelecting, let day = byDay(Array(shown.prefix(20))).first {
                 state.startSelecting = false
                 selecting = true
@@ -1474,6 +1494,9 @@ private struct MockHistoryPage: View {
             Menu {
                 ForEach(usedZikrs) { z in option(.zikr(z.persistentModelID, z.name)) }
             } label: { Label("A zikr", systemImage: "circle.hexagonpath") }
+            Menu {
+                ForEach(usedGoals) { t in option(.goal(t.persistentModelID, t.title)) }
+            } label: { Label("A daily goal", systemImage: "target") }
         } label: {
             if let active {
                 HStack(spacing: 5) {
