@@ -10,7 +10,7 @@
 //             white base, with a glassy capsule mark
 //  - forest:  deep green → near-black with a soft light from the top (the first version)
 //  Same layout for all: date line, ayah, dot, translation, reference, translator, and the main
-//  circle as a tiny mark next to a thin "shukr", clear of the areas Stories cover.
+//  app icon as a tiny mark next to a thin "shukr", clear of the areas Stories cover.
 //
 
 import SwiftUI
@@ -148,15 +148,15 @@ struct AyahShareCard: View {
     /// like the welcome screen's button.
     @ViewBuilder private var mark: some View {
         let row = HStack(spacing: 8) {
-            ZStack {
-                Circle().stroke(ink.opacity(0.14), lineWidth: 2.4)
-                Circle()
-                    .trim(from: 0, to: 0.3)
-                    .stroke(accent, style: StrokeStyle(lineWidth: 1.4, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .shadow(color: accent.opacity(0.5), radius: 2)
-            }
-            .frame(width: 15, height: 15)
+            // The app icon itself (owner: the share card kept the old mark after the icon changed) — the light one on
+            // mint, the dark one on the dark looks; the Home Screen's corner shape.
+            Image(style == .mint ? "IconPreviewLight" : "IconPreviewDark")
+                .resizable()
+                .frame(width: 22, height: 22)
+                .clipShape(RoundedRectangle(cornerRadius: 22 * 0.2237, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 22 * 0.2237, style: .continuous)
+                    .strokeBorder(ink.opacity(0.12), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
             Text("shukr")
                 .font(.system(size: 18, weight: .thin, design: .rounded))
                 .foregroundStyle(ink.opacity(0.8))
