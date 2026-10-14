@@ -57,22 +57,25 @@ struct ListDragSandbox: View {
         GeometryReader { geo in
             let w = geo.size.width, h = geo.size.height
             let bottomInset = geo.safeAreaInsets.bottom
+            // Nothing here reads the drivers: only the small `Follows` wrappers do, so each frame moves views already
+            // drawn (an offset, an opacity) instead of rebuilding the list, Settings and the Zikr page — the lost frames.
             ZStack(alignment: .top) {
-                // The real backdrop's colours: the theme's page for Zikr and Salah, the grouped grey for Settings.
-                HStack(spacing: 0) {
-                    theme.backdrop.frame(width: w)
-                    theme.backdrop.frame(width: w)
-                    Color(scheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: w)
+                Follows(pager, list, offset: { pg, _ in CGSize(width: -pg * w, height: 0) }) {
+                    HStack(spacing: 0) {
+                        theme.backdrop.frame(width: w)
+                        theme.backdrop.frame(width: w)
+                        Color(scheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: w)
+                    }
                 }
-                .offset(x: -pager.value * w)
                 .frame(width: w, alignment: .leading)
                 .ignoresSafeArea()
-                HStack(spacing: 0) {
-                    zikrPage.frame(width: w, height: h)
-                    salahPage(w: w, h: h, bottomInset: bottomInset).frame(width: w, height: h)
-                    settingsPage.frame(width: w, height: h)
+                Follows(pager, list, offset: { pg, _ in CGSize(width: -pg * w, height: 0) }) {
+                    HStack(spacing: 0) {
+                        zikrPage.frame(width: w, height: h)
+                        salahPage(w: w, h: h, bottomInset: bottomInset).frame(width: w, height: h)
+                        settingsPage.frame(width: w, height: h)
+                    }
                 }
-                .offset(x: -pager.value * w)
                 .frame(width: w, alignment: .leading)
                 chrome(h: h).frame(width: w, height: h)
             }
@@ -159,19 +162,21 @@ struct ListDragSandbox: View {
     /// 34 pt reserve; open, it rises ~150 pt and the list (290 pt wide) sits under it, above the bottom bar's 86 + 44 pt.
     /// The ring only moves, never scales; the list comes in from 200 pt below, fading (theme.listEntrance).
     private func salahPage(w: CGFloat, h: CGFloat, bottomInset: CGFloat) -> some View {
-        let p = list.value
         let closedY = (h - 34) / 2, openY = (h - 34) / 2 - 150
         let listTop = openY + 100 + 26
         let listRoom = max(h + bottomInset - 130 - listTop, 120)
+        let below = h + bottomInset - listTop   // from just under the screen's bottom edge (owner: not faded in)
         return ZStack(alignment: .top) {
-            SandboxRing()
-                .position(x: w / 2, y: closedY + (openY - closedY) * p)
-            PrayerTimesView.BottomSharedView(showDailyAyahView: .constant(false))
-                .frame(maxHeight: listRoom, alignment: .top)
-                .frame(width: w)
-                .offset(y: listTop + (1 - p) * CircleMotion.listTravel)
-                .opacity(min(max(p, 0) * 2, 1))
-                .allowsHitTesting(false)
+            Follows(pager, list, offset: { _, p in CGSize(width: 0, height: (openY - closedY) * p) }) {
+                SandboxRing().position(x: w / 2, y: closedY)
+            }
+            Follows(pager, list, offset: { _, p in CGSize(width: 0, height: listTop + (1 - p) * below) }) {
+                PrayerTimesView.BottomSharedView(showDailyAyahView: .constant(false))
+                    .frame(maxHeight: listRoom, alignment: .top)
+                    .frame(width: w)
+                    .allowsHitTesting(false)
+                    .compositingGroup()   // its shadows drawn once, then moved as one picture
+            }
         }
     }
 
@@ -193,13 +198,15 @@ struct ListDragSandbox: View {
     /// Zikr page, the chevron while the Salah list is closed, the bottom bar while it's open or on Zikr. ✕ and ⚙ sit where
     /// ☰ and the doors are.
     private func chrome(h: CGFloat) -> some View {
-        let zikr = min(max(1 - pager.value, 0), 1)
-        let open = min(max(list.value, 0), 1)
-        let onSettings = min(max(pager.value - 1, 0), 1)
+        func zikr(_ pg: Double) -> Double { min(max(1 - pg, 0), 1) }
+        func settings(_ pg: Double) -> Double { min(max(pg - 1, 0), 1) }
+        func open(_ p: Double) -> Double { min(max(p, 0), 1) }
         return ZStack(alignment: .top) {
             ZStack {
-                PrayerTimesView.ZikrPageTitle().opacity(zikr).offset(x: (1 - zikr) * -150)
-                TopBar().opacity((1 - zikr) * (1 - onSettings)).offset(x: zikr * 150)
+                Follows(pager, list, offset: { pg, _ in CGSize(width: (1 - zikr(pg)) * -150, height: 0) },
+                        opacity: { pg, _ in zikr(pg) }) { PrayerTimesView.ZikrPageTitle() }
+                Follows(pager, list, offset: { pg, _ in CGSize(width: zikr(pg) * 150, height: 0) },
+                        opacity: { pg, _ in (1 - zikr(pg)) * (1 - settings(pg)) }) { TopBar() }
             }
             .frame(maxWidth: .infinity)
             .allowsHitTesting(false)
@@ -211,16 +218,18 @@ struct ListDragSandbox: View {
             .padding(.horizontal, 12).padding(.top, 10)
             VStack(spacing: 0) {
                 Spacer()
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(.tertiary)
-                    .opacity((1 - open) * (1 - zikr) * (1 - onSettings))
-                    .padding(.bottom, 40)
+                Follows(pager, list, opacity: { pg, p in (1 - open(p)) * (1 - zikr(pg)) * (1 - settings(pg)) }) {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.tertiary)
+                }
+                .padding(.bottom, 40)
             }
             .allowsHitTesting(false)
             VStack(spacing: 0) {
                 Spacer()
-                PrayerTimesView.CustomBottomBar()
-                    .opacity(max(open * (1 - onSettings), zikr))
+                Follows(pager, list, opacity: { pg, p in max(open(p) * (1 - settings(pg)), zikr(pg)) }) {
+                    PrayerTimesView.CustomBottomBar()
+                }
             }
             .ignoresSafeArea(edges: .bottom)
         }
@@ -287,6 +296,24 @@ private struct SandboxRing: View {
         }
         .frame(width: 230, height: 230)
         .allowsHitTesting(false)
+    }
+}
+
+/// Moves (and fades) an already-built view by the drivers' values; the only views that read them, so a frame redraws
+/// just these modifiers, never their content.
+private struct Follows<Content: View>: View {
+    let pager: SpringDriver
+    let list: SpringDriver
+    var offset: (Double, Double) -> CGSize = { _, _ in .zero }
+    var opacity: ((Double, Double) -> Double)? = nil
+    let content: Content
+    init(_ pager: SpringDriver, _ list: SpringDriver, offset: @escaping (Double, Double) -> CGSize = { _, _ in .zero },
+         opacity: ((Double, Double) -> Double)? = nil, @ViewBuilder content: () -> Content) {
+        self.pager = pager; self.list = list; self.offset = offset; self.opacity = opacity; self.content = content()
+    }
+    var body: some View {
+        let pg = pager.value, p = list.value
+        content.offset(offset(pg, p)).opacity(opacity?(pg, p) ?? 1)
     }
 }
 
