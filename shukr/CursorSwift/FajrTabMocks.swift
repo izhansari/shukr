@@ -3,7 +3,7 @@
 //  shukr
 //
 //  DEBUG mocks (owner, 2026-10-14): three layouts for Settings → Reminders → Fajr Alarm that keep it about the height of
-//  the Notifications and Live Activities sides (a status row, a row of five columns). `-demoFajrMock A|B|C` with
+//  the Notifications and Live Activities sides (a status row, a row of five columns). `-demoFajrMock A|B|C|C1|C2|C3` with
 //  `-demoSettings -settings.remindersTab fajrAlarm`. Not wired to anything: pictures to choose from.
 //
 
@@ -19,8 +19,41 @@ struct FajrTabMock: View {
         switch variant {
         case "A": presets
         case "B": week
+        case "C2": compact; proofBig
+        case "C3": compact; proofTimeline
         default: compact
         }
+    }
+
+    /// The proof (owner: "showing the calculated time as well as the Fajr time, so someone can double check"): the alarm
+    /// in green, Fajr's own time under it — the original design's two lines, under the controls.
+    private var proofBig: some View {
+        VStack(spacing: 2) {
+            Text("Alarm tomorrow 5:10 AM").font(.headline.weight(.semibold)).fontDesign(.rounded).foregroundStyle(Color.green)
+            Text("Fajr starts 5:30 AM").font(.footnote).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 2)
+    }
+
+    /// The proof as a short line: the alarm, the gap the rule makes, then Fajr.
+    private var proofTimeline: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("5:10 AM").font(.system(.subheadline, design: .rounded, weight: .semibold)).foregroundStyle(Color.green)
+                Text("Alarm").font(.caption2).foregroundStyle(.secondary)
+            }
+            ZStack {
+                Capsule().fill(Color.secondary.opacity(0.25)).frame(height: 2)
+                Text("20 min").font(.caption2).foregroundStyle(.secondary)
+                    .padding(.horizontal, 6).background(Color(.secondarySystemGroupedBackground))
+            }
+            VStack(alignment: .trailing, spacing: 1) {
+                Text("5:30 AM").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                Text("Fajr starts").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 
     /// As the other two sides open: the state in a line, its switch on the right.
@@ -32,7 +65,9 @@ struct FajrTabMock: View {
                 .frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text(on ? "Fajr alarm is on" : "Fajr alarm is off").font(.system(.body, design: .rounded))
-                Text(on ? "Rings 5:10 AM tomorrow" : "Turn it on to wake for Fajr")
+                Text(!on ? "Turn it on to wake for Fajr"
+                     : variant == "C1" ? "Rings 5:10 AM · Fajr starts 5:30 AM"
+                     : variant.hasPrefix("C") && variant != "C" ? "Every morning, moving with Fajr" : "Rings 5:10 AM tomorrow")
                     .font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
