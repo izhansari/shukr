@@ -1033,7 +1033,9 @@ struct RealPrayersWidget: View {
 
     var body: some View {
         ZStack {
-            if let entry { PrayersWidgetView(entry: entry).padding(14) }
+            // No padding: the widget turns its content margins off (contentMarginsDisabled), so its view fills the widget —
+            // padded here, its corner buttons sat in on the ring (owner).
+            if let entry { PrayersWidgetView(entry: entry) }
         }
         .frame(width: Self.side, height: Self.side)
         .background(standby ? Color.black : (entry?.background ?? WidgetSoft.surface(scheme)))
@@ -1100,11 +1102,11 @@ struct RealPrayersWidget: View {
         a.textToggle == b.textToggle && a.toggleShowAllTImes == b.toggleShowAllTImes && a.completedToday == b.completedToday
     }
 
-    /// A tap on the widget: which of its buttons it was on (the widget's layout: 14 pt in, its buttons' row 6 pt in from
-    /// that, 30 pt targets — the check top left, the corners and the arrow along the bottom, the ring in the middle).
+    /// A tap on the widget: which of its buttons it was on (the widget's own layout, no margins: its buttons 6 pt in,
+    /// 30 pt targets — the check top left, the corners and the arrow along the bottom, the ring in the middle).
     private func press(_ at: CGPoint) {
         guard var e = entry else { return }
-        let side = Self.side, inset: CGFloat = 20, target: CGFloat = 30
+        let side = Self.side, inset: CGFloat = 6, target: CGFloat = 30
         let bottom = at.y > side - inset - target - 6
         let left = at.x < inset + target + 6, right = at.x > side - inset - target - 6
         let middle = abs(at.x - side / 2) < target / 2 + 8
