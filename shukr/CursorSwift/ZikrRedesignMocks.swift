@@ -2,62 +2,45 @@
 //  ZikrRedesignMocks.swift
 //  shukr
 //
-//  DEBUG only: mockups of the Zikr area redesign (audit for the owner, 2026-10-14). Round 7 (round 6 + the owner's and
-//  Sami's notes: one raised card per section, no ≡, a goal's own page instead of the Start sheet). In Sami's design language
-//  (board/mocks/design-library/README.md): the soft look (the Zikr page's surface, raised cards, rings in a groove), one
-//  hero ring per page and quiet rows under it with small rings as data, search and filters in a bottom glass bar, a
-//  zikr's page zooming out of the row you tapped, Start as a glass sheet (symbol in a ring → light title → grey line →
-//  icon lines → soft pill + quiet line). Round 5's behaviour stays: the pages are Lists, so the gestures are the real
-//  ones (hold-and-drag reorder, hold menus, swipe, the pace pill). Drawn on the real data; starting, editing, reordering
-//  and deleting are real; pausing is held in memory. `-zikrMockApp` = the real wheel leading here;
-//  `-zikrMock [azkar|zikr|zikr-card|history|history-zikr|tour]` opens them over the app.
+//  The Zikr area (owner, 2026-10-14: built from the redesign mockups and their rounds with Sami — "I wanna get this new
+//  flow in today"). Places are pages: Your azkar (the daily goals in the wheel's order, paused goals, the other azkar)
+//  and History (the month's reward hero, each day in its own flat card); things are sheets: a zikr (its goal's card —
+//  chips, "50 a day", ring, sentence, 14 days — the card, its last 3 sessions, Start) and a session. Pausing a goal is
+//  real (`TaskModel.pausedAt`, schema 2.9.0): off the wheel, reminders, widgets and Shortcuts. The type names still say
+//  Mock…; `-zikrMock [azkar|zikr|zikr-card|goal|history|history-zikr|history-select|tour]` opens a page over the app (DEBUG
+//  screenshots). The audit and flow board: board/mocks/zikr-redesign/artifact/.
 //
 
 import SwiftUI
 import SwiftData
+import WidgetKit
 
 /// Where the redesign mockups take over from the real Zikr tab's pages (`-zikrMockApp`: the real wheel, with its History
 /// door, Azkar door and "N of M tasks done ›" leading to the mockups — owner: "feel how the navigation is").
 enum ZikrMockStart { case azkar, history }
 
 @MainActor @ViewBuilder func zikrRedesign<Real: View>(_ start: ZikrMockStart, @ViewBuilder real: () -> Real) -> some View {
-    #if DEBUG
-    if ZikrMockFlag.on { ZikrMockPage(start: start) } else { real() }
-    #else
-    real()
-    #endif
+    ZikrMockPage(start: start)
 }
 
 /// The wheel's side of the mockups (DailyTasksView): its hold menu, a paused goal off the wheel, a zikr's new page.
 enum ZikrMockFlag {
-    static var on: Bool {
-        #if DEBUG
-        ProcessInfo.processInfo.arguments.contains("-zikrMockApp")
-        #else
-        false
-        #endif
-    }
-    /// A goal paused in the mockups (memory only) leaves the wheel.
-    @MainActor static func paused(_ t: TaskModel) -> Bool {
-        #if DEBUG
-        on && ZikrMockState.shared.paused.contains(t.id)
-        #else
-        false
-        #endif
-    }
+    /// The redesign is the app now (2026-10-14); kept so the wheel's call sites read the same.
+    static let on = true
+    /// A paused goal leaves the wheel (and its count, reminders, widgets).
+    @MainActor static func paused(_ t: TaskModel) -> Bool { t.pausedAt != nil }
 }
 
 /// The wheel's hold menu in the mockups' words (owner, with his screenshot): Edit goal · Open zikr (the new page, not
 /// the old stats sheet) · Reorder goals · Pause · Share goal… · Delete….
 @MainActor @ViewBuilder func zikrMockWheelMenu(_ task: TaskModel, onEdit: @escaping () -> Void, onOpenZikr: @escaping () -> Void,
                                               onReorder: @escaping () -> Void, onDelete: @escaping () -> Void) -> some View {
-    #if DEBUG
     Button(action: onEdit) { Label("Edit goal", systemImage: "pencil") }
     if task.mantra != nil { Button(action: onOpenZikr) { Label("Open zikr", systemImage: "circle.hexagonpath") } }
     Button {
         Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); onReorder() }
     } label: { Label("Reorder goals", systemImage: "arrow.up.arrow.down") }
-    Button { withAnimation(.snappy) { _ = ZikrMockState.shared.paused.insert(task.id) } } label: {
+    Button { withAnimation(.snappy) { setGoalPaused(task, true) } } label: {
         Label("Pause", systemImage: "pause.circle")
     }
     Button {
@@ -65,29 +48,28 @@ enum ZikrMockFlag {
     } label: { Label("Share goal…", systemImage: "square.and.arrow.up") }
     Divider()
     Button(role: .destructive, action: onDelete) { Label("Delete…", systemImage: "trash") }
-    #else
-    EmptyView()
-    #endif
+}
+
+/// Pause or resume a daily goal (decision zikr-pause A): off the wheel, its reminder and the widgets while paused; its
+/// history and best streak are kept.
+@MainActor func setGoalPaused(_ t: TaskModel, _ on: Bool) {
+    t.pausedAt = on ? Date() : nil
+    guard let context = t.modelContext else { return }
+    try? context.save()
+    NotificationScheduler.reschedule(context: context, reason: on ? "goal paused" : "goal resumed")
+    WidgetCenter.shared.reloadAllTimelines()
 }
 
 extension View {
     /// The wheel's "Open zikr" in the mockups: a zikr is a sheet (decision zikr-flow-shape A).
     @MainActor @ViewBuilder func zikrMockSheet(_ item: Binding<MantraModel?>) -> some View {
-        #if DEBUG
         modifier(WheelZikrSheet(item: item))
-        #else
-        self
-        #endif
     }
 }
 
-#if DEBUG
-
-/// Pretend state (pausing isn't real yet) and the tour's script.
+/// History's search text and the DEBUG screenshot routes' state.
 @MainActor @Observable final class ZikrMockState {
     static let shared = ZikrMockState()
-    var paused: Set<UUID> = []
-    var seededPause = false
     var historyQuery = ""
     /// `-zikrMock history-select`: History opens in select mode with its first day picked (a screenshot).
     var startSelecting = false
@@ -469,7 +451,7 @@ private struct GoalRow: View {
     var showsZikr = true
     @State private var state = ZikrMockState.shared
     var body: some View {
-        let paused = state.paused.contains(task.id)
+        let paused = task.pausedAt != nil
         let streak = task.streak()
         HStack(spacing: 14) {
             SoftRing(progress: fraction(task, today), paused: paused, size: 30)
@@ -485,7 +467,7 @@ private struct GoalRow: View {
             }
             Spacer(minLength: 4)
             if paused {
-                Button { withAnimation(.snappy) { _ = state.paused.remove(task.id) } } label: {
+                Button { withAnimation(.snappy) { setGoalPaused(task, false) } } label: {
                     Text("Resume").font(.footnote.weight(.medium)).foregroundStyle(Color.sage)
                         .padding(.horizontal, 11).padding(.vertical, 5)
                         .background(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.1))
@@ -533,14 +515,14 @@ private struct GoalMenu: View {
     let onDelete: () -> Void
     @State private var state = ZikrMockState.shared
     var body: some View {
-        let paused = state.paused.contains(task.id)
+        let paused = task.pausedAt != nil
         if !paused {
             Button { startGoal(task, resume: partDone(task, today)) } label: { Label("Start", systemImage: "play.fill") }
         }
         Button(action: onEdit) { Label("Edit goal", systemImage: "pencil") }
         if let onOpenZikr { Button(action: onOpenZikr) { Label("Open zikr", systemImage: "circle.hexagonpath") } }
         Button {
-            withAnimation(.snappy) { if paused { state.paused.remove(task.id) } else { state.paused.insert(task.id) } }
+            withAnimation(.snappy) { setGoalPaused(task, !paused) }
         } label: { Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.circle" : "pause.circle") }
         Button {
             Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); TaskSharing.share(task) }
@@ -760,9 +742,9 @@ private struct MockAzkarPage: View {
             || z.tasks.contains { $0.title.localizedCaseInsensitiveContains(q) }
     }
     /// The wheel's order (sortOrder), paused ones left out.
-    private var live: [TaskModel] { tasks.filter { !state.paused.contains($0.id) } }
+    private var live: [TaskModel] { tasks.filter { $0.pausedAt == nil } }
     private var liveShown: [TaskModel] { live.filter { matches($0.mantra) } }
-    private var pausedShown: [TaskModel] { tasks.filter { state.paused.contains($0.id) && matches($0.mantra) } }
+    private var pausedShown: [TaskModel] { tasks.filter { $0.pausedAt != nil && matches($0.mantra) } }
     private var other: [MantraModel] {
         zikrs.filter { $0.tasks.isEmpty && !$0.isBuiltIn && matches($0) }.sorted { $0.totalCount > $1.totalCount }
     }
@@ -833,13 +815,6 @@ private struct MockAzkarPage: View {
         .modifier(DeleteGoalAlert(task: $toDelete))
         .onAppear { today = ZikrReminders.todaysSessions(context) }
         .onChange(of: editing) { _, _ in today = ZikrReminders.todaysSessions(context) }
-        .task {
-            // The Paused group with something in it: the least-used goal (pretend).
-            guard !state.seededPause, tasks.count > 2,
-                  let t = tasks.min(by: { $0.sessions.count < $1.sessions.count }) else { return }
-            state.seededPause = true
-            state.paused.insert(t.id)
-        }
     }
 
     /// The daily goals: a List that doesn't scroll, inside the card (its rows keep hold-and-drag reorder and swipe; a List
@@ -913,7 +888,7 @@ private struct MockAzkarPage: View {
         var order = live
         order.move(fromOffsets: source, toOffset: destination)
         var next = order.makeIterator()
-        let full = tasks.map { state.paused.contains($0.id) ? $0 : (next.next() ?? $0) }
+        let full = tasks.map { $0.pausedAt != nil ? $0 : (next.next() ?? $0) }
         for (i, t) in full.enumerated() where t.sortOrder != i { t.sortOrder = i }
         try? context.save()
     }
@@ -1032,13 +1007,13 @@ private struct ZikrSheet: View {
             Menu {
                 Button { card = ZikrCardRequest(mantra: zikr) } label: { Label("Edit the zikr", systemImage: "text.book.closed") }
                 if let g = goal {
-                    let paused = state.paused.contains(g.id)
+                    let paused = g.pausedAt != nil
                     Button { editing = g } label: { Label("Edit goal", systemImage: "pencil") }
                     if g.reminderKind == nil {
                         Button { reminding = g } label: { Label("Add a reminder", systemImage: "bell") }
                     }
                     Button {
-                        withAnimation(.snappy) { if paused { state.paused.remove(g.id) } else { state.paused.insert(g.id) } }
+                        withAnimation(.snappy) { setGoalPaused(g, !paused) }
                     } label: { Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.circle" : "pause.circle") }
                     Button {
                         Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); TaskSharing.share(g) }
@@ -1105,7 +1080,7 @@ private struct ZikrSheet: View {
     private func hero(_ g: TaskModel) -> some View {
         let p = g.progress(in: today)
         let f = fraction(g, today)
-        let paused = state.paused.contains(g.id)
+        let paused = g.pausedAt != nil
         let s = g.streak()
         let cal = Calendar.current, todayStart = PrayerDay.start()
         let days: [(date: Date, fraction: Double)] = (0..<14).reversed().compactMap { back in
@@ -1198,8 +1173,8 @@ private struct ZikrSheet: View {
         VStack(spacing: 6) {
             if let g = goal {
                 let p = g.progress(in: today)
-                if state.paused.contains(g.id) {
-                    PrimaryButton(title: "Resume this goal") { withAnimation(.snappy) { _ = state.paused.remove(g.id) } }
+                if g.pausedAt != nil {
+                    PrimaryButton(title: "Resume this goal") { withAnimation(.snappy) { setGoalPaused(g, false) } }
                 } else {
                     PrimaryButton(title: partDone(g, today)
                                   ? (g.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))")
@@ -1702,4 +1677,3 @@ private struct MockHistoryPage: View {
         }
     }
 }
-#endif

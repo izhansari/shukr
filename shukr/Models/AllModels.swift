@@ -467,6 +467,9 @@ class TaskModel: Identifiable {
     /// Position on the Zikr page's card strip; the user sets it from the card's edit button.
     /// New tasks go to the end. (Schema V2; the migration numbers existing tasks.)
     var sortOrder: Int = 0
+    /// Paused (decision zikr-pause A, schema 2.9.0): off the wheel, its reminder, the widgets and Shortcuts while set;
+    /// its sessions and best streak are kept. nil = active. Optional, so the migration is lightweight.
+    var pausedAt: Date? = nil
 
     /// Sessions started from this task's card. Inverse of `SessionDataModel.task`.
     /// Deleting a task keeps its sessions in history (nullify), it just unlinks them.

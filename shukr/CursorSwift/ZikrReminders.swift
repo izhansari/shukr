@@ -92,7 +92,7 @@ enum ZikrReminders {
 
     static func items(context: ModelContext, now: Date = Date(), horizon: Date,
                       prayerStart: (String, Date) -> Date?) -> [NotificationScheduler.Item] {
-        let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(predicate: #Predicate { $0.reminderKind != nil }))) ?? []
+        let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(predicate: #Predicate { $0.reminderKind != nil && $0.pausedAt == nil }))) ?? []
         guard !tasks.isEmpty else { return [] }
         let sessions = todaysSessions(context)
         let todayKey = PrayerNotificationID.dayKey(PrayerDay.date(for: now))

@@ -485,8 +485,8 @@ struct WhatsNewView: View {
 
     @ViewBuilder private func pushedPage(_ link: String) -> some View {
         switch link {
-        case "history": ZikrHistoryPage()
-        case "azkar": AzkarPage()
+        case "history": ZikrMockPage(start: .history)   // the Zikr area's pages since 2026-10-14
+        case "azkar": ZikrMockPage(start: .azkar)
         case "names": NamesOfAllahView()
         case "ayah": DailyAyahView()
         case "insights": InsightsView()

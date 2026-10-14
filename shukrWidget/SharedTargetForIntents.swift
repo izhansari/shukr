@@ -2026,7 +2026,8 @@ extension ZikrTaskSnapshot {
     static func today() -> [ZikrTaskSnapshot]? {
         guard let container = SharedStore.widgetContainer else { return nil }
         let context = ModelContext(container)
-        let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
+        // Paused goals are left out (TaskModel.pausedAt, decision zikr-pause A).
+        let tasks = ((try? context.fetch(FetchDescriptor<TaskModel>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []).filter { $0.pausedAt == nil }
         let dayStart = PrayerDay.sessionDayStart()
         let sessions = (try? context.fetch(FetchDescriptor<SessionDataModel>(
             predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
