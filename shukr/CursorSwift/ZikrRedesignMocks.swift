@@ -572,12 +572,13 @@ private struct DayRows: View {
     var body: some View {
         ForEach(days, id: \.key) { day in
             Section {
-                SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(day.items), inset: 4).bareRow(top: 14, bottom: 2)
-                ForEach(day.items) { s in
+                SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(day.items)).bareRow(top: 16, bottom: 6)
+                ForEach(Array(day.items.enumerated()), id: \.element.id) { i, s in
+                    let first = i == 0, last = i == day.items.count - 1
                     let row = SessionRow(session: s, showsMantraName: showsName, tappable: tappable,
                                          onMantra: (onZikr != nil && s.mantra != nil) ? { onZikr?(s) } : nil,
                                          onOpen: { onOpen(s) }, onDelete: { onDelete(s) },
-                                         rowBackground: AnyView(Color.clear), quiet: true)
+                                         rowBackground: AnyView(DayPiece(first: first, last: last)), quiet: true)
                     Group {
                         if let selection, !tappable {
                             SelectableRow(selected: selection, id: s.persistentModelID) { row }
@@ -586,11 +587,37 @@ private struct DayRows: View {
                         }
                     }
                     .modifier(ZoomSource(id: "s-\(s.id)", zoom: zoom))
-                    .flatRow()
+                    .listRowInsets(EdgeInsets(top: first ? 14 : 10, leading: 32, bottom: last ? 14 : 10, trailing: 32))
+                    .listRowSeparator(.hidden)
                 }
             }
             .listSectionSeparator(.hidden)
         }
+    }
+}
+
+/// A day's sessions sit in their own flat card (owner: the day headers got lost among flat rows): each row draws its
+/// piece — rounded on top for the first, at the bottom for the last — a soft lighter panel, no shadow, a faint line
+/// between rows.
+private struct DayPiece: View {
+    let first: Bool
+    let last: Bool
+    var body: some View {
+        UnevenRoundedRectangle(topLeadingRadius: first ? 18 : 0, bottomLeadingRadius: last ? 18 : 0,
+                               bottomTrailingRadius: last ? 18 : 0, topTrailingRadius: first ? 18 : 0, style: .continuous)
+            .fill(Color(.systemBackground).opacity(0.55))
+            .overlay(alignment: .bottom) {
+                if !last { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5).padding(.horizontal, 16) }
+            }
+            .padding(.horizontal, 16)
+    }
+}
+private extension View {
+    /// A single row in its own flat card ("All N sessions").
+    func pieceRow() -> some View {
+        listRowInsets(EdgeInsets(top: 14, leading: 32, bottom: 14, trailing: 32))
+            .listRowSeparator(.hidden)
+            .listRowBackground(DayPiece(first: true, last: true))
     }
 }
 
@@ -904,7 +931,7 @@ private struct MockGoalPage: View {
                         HStack { Text("All \(sessions.count) sessions"); Spacer(); Soft.chevron() }.contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .flatRow()
+                    .pieceRow()
                 }
                 Color.clear.frame(height: 90).bareRow()
             }
@@ -1080,7 +1107,7 @@ private struct MockZikrPage: View {
                         HStack { Text("All \(sessions.count) sessions"); Spacer(); Soft.chevron() }.contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .flatRow()
+                    .pieceRow()
                 }
                 Color.clear.frame(height: 70).bareRow()   // room above Start
             }
