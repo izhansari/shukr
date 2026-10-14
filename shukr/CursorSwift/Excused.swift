@@ -480,7 +480,8 @@ struct ExcusedSheet: View {
             Text(title).font(.system(size: 30, weight: .light, design: .rounded)).multilineTextAlignment(.center)
             Text(subtitle).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 28).padding(.top, 14)
+        // Pushed, the bar above already gives it room (owner: the gap under back / ⓘ); the sheet's own ✕ row needs the 14.
+        .padding(.horizontal, 28).padding(.top, pushed ? 0 : 14)
     }
 
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
