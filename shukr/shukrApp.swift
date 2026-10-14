@@ -256,6 +256,9 @@ struct shukrApp: App {
         WatchRingFace.drawsStatically = true   // the watch's complication, drawn in Explore
         // The Fajr Alarm control's switch re-plans the alarms in the app.
         FajrAlarmHooks.replan = { await FajrAlarms.plan(reason: "control") }
+        // The Shortcuts app's shukr page builds its option tiles (Prayer Time's and Open shukr's sections) from the options
+        // providers only once the app asks it to: without this, those two tiles never showed (simulator + his phone).
+        PrayerTimeShortcuts.updateAppShortcutParameters()
         // Get Fajr Alarm Time's card: setup's alarm picture, open, for the rule as set (frosted when the alarm is off).
         ShortcutCards.fajrAlarm = { off, next in
             let g = UserDefaults(suiteName: SharedStore.appGroup)
