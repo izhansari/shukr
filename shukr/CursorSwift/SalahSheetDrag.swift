@@ -1,50 +1,30 @@
 import SwiftUI
+import QuartzCore
 
-/// The Salah sheet following the finger (queue salah-sheet-drag; Ben's brief, board/brief-frank-salah-drag.md). The owner:
-/// "the ring moves up as we pull the page up and prayer list comes in right too". Built like the horizontal pager he
-/// likes: a native vertical ScrollView with two rests (closed, open) that UIKit tracks, flings and bounces; the list
-/// rides in the scroll content (1:1 with the finger), the circle is pinned to the page and lerps between its two resting
-/// places by the progress. `navPosition` is only the resting state, set when the scroll settles.
+/// The Salah sheet following the finger — the owner's "vertical live dragging" (vs "gesture completion drag", the pop).
 ///
-/// The owner's names: "vertical live dragging" (this) vs "gesture completion drag" (the pop). He went back to the pop
-/// (2026-10-04); this stays behind the palette menu's "Salah list drag" and My Dev Stuff, off.
+/// Round 5 (owner, 2026-10-14), from the sandbox he tuned on his phone (ListDragSandbox.swift, My Dev Stuff → Prayer
+/// list drag): no nested scroll view any more (rounds 1–4, 2026-10-04: stalls on quick up-and-downs, a let-go cut off).
+/// The pager's own vertical drag (PrayerTimesView.abstractedDragGesture) moves the list and the ring with the finger,
+/// and on release `SheetSpring` lands them from where they are with the finger's speed — a display link integrating a
+/// spring, catchable mid-flight. The list runs from under the page's bottom edge to its open place; the circle moves
+/// between its two rests (`SheetRests`, measured from the pop's own Spacer layout). `navPosition` is only the resting
+/// state, set once the spring lands.
+///
+/// Behind the palette menu's "Salah list drag" (off by default until the owner has lived with it).
 enum SalahSheetDrag {
-    /// Off by default everywhere (owner, 2026-10-04, after round 3: "go back to gesture completion drag … it doesn't
-    /// feel right"). A new key, so an "on" saved by the test builds doesn't carry over. The palette menu still switches it.
-    static let key = "salahSheetFollows.v2"
+    /// Off by default (owner, 2026-10-04: "go back to gesture completion drag"); round 5 is tried from the palette menu
+    /// first. A new key, so an "on" saved by the 2026-10-04 builds doesn't carry over.
+    static let key = "salahSheetFollows.v3"
     static let defaultOn = false
-    /// Pull-down from closed: a release this far past the closed rest opens the ☰ menu (was the refresh — owner moved it
-    /// to Settings; decision salah-drag-tradeoffs B set the distance).
+    /// Pull-down from closed: a release this far past the closed rest opens the ☰ menu (decision salah-drag-tradeoffs B).
     static let refreshPull: CGFloat = 60
     /// Posted by the pull-down; the top bar's ☰ opens.
     static let openMenu = Notification.Name("SalahSheetDrag.openMenu")
-    /// The scroll between the rests, as a share of the page's height: the list moves exactly this far with the finger,
-    /// from under the page's bottom edge (a full list; a short one starts a little higher, faded out) to its open place.
-    /// Fixed per page, so the range never changes under a finger or when "N done" folds.
-    static let travelShare: CGFloat = 0.5
-    /// How far the list and the ring move for each point of finger (owner, 2026-10-04: "moving one to one with my finger
-    /// … I'd be better off if … the prayer list drags up by 1.5 units or maybe two"). The finger's scroll between the
-    /// rests is the list's run ÷ this; the palette menu picks it (1×, 1.5×, 2×).
-    static let speedKey = "salahSheetSpeed"
-    static let defaultSpeed: Double = 1.5
-    static let speeds: [Double] = [1, 1.5, 2]
-    /// Dead scroll room past each rest (round 2, owner: "it bounces way too much at the ends … I can push the whole ring
-    /// out of the page"): the rests sit inside the content, so a push past one scrolls into this room — no rubber band —
-    /// and `SheetPin` / `SheetWall` hold everything still there. Fixed, not a share of the page: the page's height
-    /// changes during launch, and a dead room that moved with it moved every measured offset.
-    static let dead: CGFloat = 400
-    /// Past a rest the page rubber-bands like any iOS scroll view (owner, round 4: "continuous dragging on the edges …
-    /// keeps the thing moving but progressively less and less"): UIKit's own curve, (1 − 1 / (x·0.55/d + 1))·d, with d
-    /// half the page — no wall; the more you push, the less it moves.
-    static func give(_ excess: CGFloat, page: CGFloat) -> CGFloat {
-        guard excess > 0 else { return 0 }
-        let d = max(page / 2, 1)
-        return (1 - 1 / (excess * 0.55 / d + 1)) * d
-    }
     static let space = "salahSheet"
 
     /// A close nobody should see (behind the sleep curtain, before the morning card, under the lost page): the sheet
-    /// goes to closed at once instead of scrolling there. Like the pager's `go(to:animated: false)`.
+    /// goes to closed at once instead of springing there. Like the pager's `go(to:animated: false)`.
     @MainActor static func closeQuietly(_ state: SharedStateClass) {
         guard state.navPosition != .main else { return }
         quietNext = true
@@ -60,82 +40,6 @@ enum SalahSheetDrag {
     }
 }
 
-/// Where a let-go goes (round 3): still moving (≥ 0.15 pt/ms) → the way it was going (a short swipe opens or closes, as
-/// the pop's did); stopped → the nearer rest; past a rest → that rest. No ScrollTargetBehavior: SwiftUI's own snap to a
-/// target cut off (or crawled to) every let-go — owner: "it just stops", "a slow flick moves really, really slow" — so
-/// the page reads the speed from the scroll view's pan and moves there itself with UIKit's animated scroll.
-enum SheetRelease {
-    /// Points per millisecond: slower than this at the let-go counts as stopped.
-    static let flick: CGFloat = 0.15
-    static func open(at now: CGFloat, velocity v: CGFloat, travel: CGFloat) -> Bool {
-        if now <= 0 { return false }
-        if now >= travel { return true }
-        if abs(v) >= flick { return v > 0 }
-        return now > travel / 2
-    }
-}
-
-/// The page round the circle, pinned to the viewport while the sheet's content scrolls under it, and moved from the
-/// closed rest toward the open one by the progress (`delta` = open − closed). Worked out in the render pass from the
-/// scroll position itself, so the circle never lags the finger by a frame. Past either rest the counter-move equals
-/// the scroll but for the rubber band (round 2; the band, rounds 3–4).
-///
-/// Animatable on `delta`: when the open rest moves ("N done" folding, the list changing), the circle glides there.
-struct SheetPin: ViewModifier, Animatable {
-    let travel: CGFloat
-    let page: CGFloat
-    var delta: CGFloat
-    var animatableData: CGFloat {
-        get { delta }
-        set { delta = newValue }
-    }
-    func body(content: Content) -> some View {
-        content.visualEffect { content, proxy in
-            let s = -proxy.frame(in: .scrollView(axis: .vertical)).minY
-            let p = min(max(s / travel, 0), 1)
-            // Past a rest: the rubber band (SalahSheetDrag.give).
-            let give = SalahSheetDrag.give(-s, page: page) - SalahSheetDrag.give(s - travel, page: page)
-            return content.offset(y: s + delta * p + give)
-        }
-    }
-}
-
-/// The list's layer (one page tall, laid at the closed rest): between the rests it runs `run` points while the finger
-/// scrolls `travel` (the speed, SalahSheetDrag.speedKey), and it's held past them (but for the same rubber band), so
-/// the list never runs past its open place or back up after closing.
-struct SheetWall: ViewModifier {
-    let travel: CGFloat
-    let run: CGFloat
-    let page: CGFloat
-    func body(content: Content) -> some View {
-        content.visualEffect { content, proxy in
-            let s = -proxy.frame(in: .scrollView(axis: .vertical)).minY
-            let p = min(max(s / travel, 0), 1)
-            let give = SalahSheetDrag.give(-s, page: page) - SalahSheetDrag.give(s - travel, page: page)
-            return content.offset(y: s - run * p + give)
-        }
-    }
-}
-
-/// The list fading in with the progress (it moves with the scroll content itself); it takes taps once it's mostly in.
-struct SheetListFade: ViewModifier {
-    let live: PagerLiveState
-    func body(content: Content) -> some View {
-        content
-            .opacity(Double(live.sheetProgress))
-            .allowsHitTesting(live.sheetProgress > 0.5)
-    }
-}
-
-/// The sheet's ScrollView stays still while the pager is turning a page, and on the lost page.
-struct SheetLock: ViewModifier {
-    let live: PagerLiveState
-    let lost: Bool
-    func body(content: Content) -> some View {
-        content.scrollDisabled(lost || live.pagerPhase == .interacting || live.pagerPhase == .decelerating)
-    }
-}
-
 /// The two resting layouts, measured from invisible copies of the old Spacer layout (the circle's and the list's boxes
 /// at their real sizes), so open and closed sit exactly where the pop put them.
 struct SheetRests: Equatable {
@@ -144,126 +48,199 @@ struct SheetRests: Equatable {
     var openListTop: CGFloat = 0
 }
 
-/// The sheet's own UIScrollView, for the let-go (round 3, owner: "I can't move up and down very fast. Sometimes it just
-/// stops"): a SwiftUI-animated `scrollTo` started at the let-go was cut off ~35 ms later by the scroll view's own
-/// zero-length coast finishing, and the sheet stopped between the rests. UIKit's animated `setContentOffset` is one
-/// fixed time whatever the flick, and a new finger stops it where it is.
-final class SheetScrollHandle: NSObject {
-    weak var view: UIScrollView?
-    /// The finger's speed, from the scroll's own samples while it's down (the pan's velocity had already reset by the
-    /// time the let-go reached the page): content points per millisecond, positive = toward open.
-    private var lastOffset: CGFloat = 0
-    private var lastTime: CFTimeInterval = 0
-    private var velocity: CGFloat = 0
-    func sample(_ offset: CGFloat) {
-        let now = CACurrentMediaTime()
-        let dt = (now - lastTime) * 1000
-        if lastTime > 0, dt > 0, dt < 100 {
-            let v = (offset - lastOffset) / CGFloat(dt)
-            velocity = velocity * 0.4 + v * 0.6
-        } else { velocity = 0 }
-        lastOffset = offset
-        lastTime = now
-    }
-    /// The speed at the let-go: nothing if the finger had stopped (no sample for 50 ms).
-    var releaseVelocity: CGFloat {
-        (CACurrentMediaTime() - lastTime) * 1000 > 50 ? 0 : velocity
-    }
-    /// Put on its first rest (the scroll starts at 0, in the dead room above the closed rest).
-    var placed = false
-    /// Moves the scroll by `delta` points — worked out from the page's own measure (SwiftUI's insets and UIKit's
-    /// `adjustedContentInset` disagreed by 53 pt, which left the closed page in the dead room).
-    func scroll(by delta: CGFloat, animated: Bool) {
-        guard let view, abs(delta) > 0.25 else { return }
-        if animated { spring(by: delta, velocity: 0); return }
-        stop()
-        view.setContentOffset(CGPoint(x: view.contentOffset.x, y: view.contentOffset.y + delta), animated: false)
-    }
+/// The sheet's position and its spring. Writes `live.sheetOffset` (points the list has come up, 0 … `sheetRun`); the
+/// chrome and the page's two movers read it, nothing else. Its tuning is the owner's sandbox pick (2026-10-14: "it makes
+/// it interactive while being calm and not too hyper").
+final class SheetSpring: NSObject {
+    /// List points per finger point.
+    static let ratio = 1.13
+    /// The landing: a 0.2 s spring with no bounce.
+    static let response = 0.20
+    static let damping = 1.0
+    /// How far a slow let-go's speed carries before deciding where it lands (seconds of travel).
+    static let throwTime = 0.03
+    /// Past either rest the list gives this much (as a share of its run), less and less.
+    static let stretch = 0.16
+    /// A flick faster than this (pt/s) opens or closes by its direction, whatever the distance.
+    static let flick: CGFloat = 500
 
-    // MARK: the landing spring (owner's recording, 2026-10-04: "it like hits a snag")
-    // UIKit's animated setContentOffset starts from a standstill (ease in): after a fast flick the list stopped dead for
-    // ~4 frames, then eased off. This spring starts at the finger's speed (response 0.35, damping 0.72: one subtle
-    // bounce past the rest, drawn through the rubber band), stepped each frame on the scroll view itself, so a finger can
-    // take it at any frame.
-
+    weak var live: PagerLiveState?
+    /// Landed: true = open. The page sets navPosition from it.
+    var onRest: ((Bool) -> Void)?
+    private(set) var dragging = false
+    private var start = 0.0
+    private var velocity = 0.0
+    private var target = 0.0
     private var link: CADisplayLink?
-    private var target: CGFloat = 0     // contentOffset.y
-    private var position: CGFloat = 0   // contentOffset.y, kept here (the view rounds it to pixels: read back, the
-                                        // spring never got within 0.3 pt and crept on)
-    private var speed: CGFloat = 0      // points per second
-    private var started: CFTimeInterval = 0
-    private var onRest: (() -> Void)?
-    static let response: CGFloat = 0.35
-    /// A touch under the page's 0.85, so a landing bounces once, subtly (owner, round 4: "should do a subtle bounce").
-    static let damping: CGFloat = 0.72
-    var springing: Bool { link != nil }
+    private var last: CFTimeInterval = 0
 
-    /// Springs the scroll by `delta` points, starting at `velocity` (points per millisecond, as `releaseVelocity`).
-    func spring(by delta: CGFloat, velocity: CGFloat, onRest: (() -> Void)? = nil) {
-        guard let view else { return }
-        stop()
-        // Stop UIKit's own coast where it is.
-        view.setContentOffset(view.contentOffset, animated: false)
-        position = view.contentOffset.y
-        target = position + delta
-        speed = velocity * 1000
-        started = CACurrentMediaTime()
-        self.onRest = onRest
-        let link = CADisplayLink(target: self, selector: #selector(step(_:)))
-        link.add(to: .main, forMode: .common)
-        self.link = link
-    }
+    init(live: PagerLiveState) { self.live = live }
 
-    /// A finger took it (or code moved it): no more spring.
-    func stop() {
-        link?.invalidate()
-        link = nil
-        onRest = nil
-    }
-
-    @objc private func step(_ link: CADisplayLink) {
-        guard let view else { stop(); return }
-        let dt = CGFloat(min(max(link.targetTimestamp - link.timestamp, 1.0 / 240), 1.0 / 30))
-        let omega = 2 * .pi / Self.response
-        let k = omega * omega, c = 2 * Self.damping * omega
-        var x = position - target
-        for _ in 0..<4 {   // four small steps a frame: steady at any refresh rate
-            let h = dt / 4
-            speed += (-k * x - c * speed) * h
-            x += speed * h
+    private var run: Double { Double(max(live?.sheetRun ?? 1, 1)) }
+    /// 0 closed … 1 open; past either end while stretched.
+    var progress: Double {
+        get { Double(live?.sheetOffset ?? 0) / run }
+        set {
+            let points = CGFloat(newValue * run)
+            if let live, abs(live.sheetOffset - points) > 0.01 { live.sheetOffset = points }
         }
-        position = target + x
-        if (abs(x) < 1 && abs(speed) < 30) || CACurrentMediaTime() - started > 1.5 {
-            view.contentOffset.y = target
-            let done = onRest
-            stop()
-            done?()
+    }
+    var isMoving: Bool { link != nil }
+    /// Where it's going (or resting): true = open.
+    var heading: Bool { target >= 0.5 }
+    /// The drag began on the closed page.
+    var startedClosed: Bool { start < 0.5 }
+
+    /// A finger took it (mid-spring or at rest).
+    func begin() {
+        dragging = true
+        start = progress
+        velocity = 0
+        live?.sheetPhase = .interacting
+        startLink()
+        #if DEBUG
+        meterBegin("salah drag")
+        #endif
+    }
+
+    func drag(_ dy: CGFloat) {
+        guard dragging else { return }
+        progress = Self.rubber(start - Double(dy) * Self.ratio / run)
+    }
+
+    /// The let-go: where it lands (true = open), springing there with the finger's speed.
+    @discardableResult func release(velocityY vy: CGFloat) -> Bool {
+        guard dragging else { return heading }
+        dragging = false
+        let speed = -Double(vy) * Self.ratio / run
+        let open: Bool = abs(vy) > Self.flick ? vy < 0 : progress + speed * Self.throwTime > 0.5
+        go(open: open, velocity: speed)
+        return open
+    }
+
+    /// To a rest by code (the chevron, a widget, the tour) or after a let-go.
+    func go(open: Bool, velocity v: Double = 0, animated: Bool = true) {
+        target = open ? 1 : 0
+        velocity = v
+        if !animated || UIAccessibility.isReduceMotionEnabled {
+            stopLink()
+            progress = target
+            land()
+            return
+        }
+        live?.sheetPhase = .animating
+        startLink()
+        #if DEBUG
+        meterBegin("salah spring")
+        #endif
+    }
+
+    /// At a rest without a move or a landing call (the page's first layout).
+    func place(open: Bool) {
+        stopLink()
+        dragging = false
+        target = open ? 1 : 0
+        progress = target
+        live?.sheetPhase = .idle
+    }
+
+    private static func rubber(_ x: Double) -> Double {
+        func give(_ d: Double) -> Double { stretch * d / (d + stretch) }
+        if x < 0 { return -give(-x) }
+        if x > 1 { return 1 + give(x - 1) }
+        return x
+    }
+
+    private func startLink() {
+        guard link == nil else { return }
+        last = 0
+        let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)
+        l.add(to: .main, forMode: .common)
+        link = l
+    }
+    private func stopLink() { link?.invalidate(); link = nil }
+
+    @objc private func tick(_ l: CADisplayLink) {
+        let dt = last == 0 ? 1.0 / 120 : min(l.timestamp - last, 1.0 / 30)
+        #if DEBUG
+        meterFrame(l, dt: last == 0 ? nil : l.timestamp - last)
+        #endif
+        last = l.timestamp
+        guard !dragging else { return }
+        // A damped spring (mass 1): stiffness from the response, damping from the ratio; small steps keep it stable.
+        let k = pow(2 * .pi / Self.response, 2), c = 4 * .pi * Self.damping / Self.response
+        var x = progress, v = velocity
+        let n = 4, h = dt / Double(n)
+        for _ in 0..<n {
+            v += (-k * (x - target) - c * v) * h
+            x += v * h
+        }
+        velocity = v
+        if abs(x - target) < 0.0008 && abs(v) < 0.02 {
+            stopLink()
+            progress = target
+            land()
         } else {
-            view.contentOffset.y = position
+            progress = x
         }
+    }
+
+    private func land() {
+        #if DEBUG
+        meterEnd()
+        #endif
+        live?.sheetPhase = .idle
+        onRest?(target >= 0.5)
+    }
+
+    // MARK: Frame timing (DEBUG; owner 2026-10-14: "put something on my phone so you can measure")
+
+    #if DEBUG
+    private var meterPhase: String?
+    private var meterFrames = 0
+    private var meterLate = 0
+    private var meterWorst = 0.0
+    private var meterBegan = Date()
+    private func meterBegin(_ phase: String) {
+        meterEnd()
+        meterPhase = phase; meterFrames = 0; meterLate = 0; meterWorst = 0; meterBegan = Date()
+    }
+    private func meterFrame(_ l: CADisplayLink, dt: Double?) {
+        guard meterPhase != nil, let dt else { return }
+        meterFrames += 1
+        if dt > (l.targetTimestamp - l.timestamp) * 1.5 { meterLate += 1 }
+        meterWorst = max(meterWorst, dt)
+    }
+    /// One line per drag and per landing in Library/Caches/listdrag-frames.log (the sandbox's file).
+    private func meterEnd() {
+        guard let phase = meterPhase else { return }
+        meterPhase = nil
+        guard meterFrames > 2 else { return }
+        let line = String(format: "%@ %4.0f ms · %3d frames · %2d late · worst %.1f ms\n", phase,
+                          Date().timeIntervalSince(meterBegan) * 1000, meterFrames, meterLate, meterWorst * 1000)
+        let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "listdrag-frames.log")
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
+        else { try? Data(line.utf8).write(to: url) }
+    }
+    #endif
+}
+
+/// The list's place: from under the page's bottom edge (closed) to its open top, by the sheet's progress. Its own
+/// modifier, so a frame re-renders only this, never the list (the sandbox's lost frames).
+struct SheetListRide: ViewModifier {
+    let live: PagerLiveState
+    let openTop: CGFloat
+    func body(content: Content) -> some View {
+        content.offset(y: openTop + live.sheetRun - live.sheetOffset)
     }
 }
 
-/// Finds the nearest UIScrollView above it (the sheet's vertical one: it sits in the sheet's content).
-struct SheetScrollFinder: UIViewRepresentable {
-    let handle: SheetScrollHandle
-    func makeUIView(context: Context) -> Finder { Finder(handle: handle) }
-    func updateUIView(_ view: Finder, context: Context) {}
-
-    final class Finder: UIView {
-        let handle: SheetScrollHandle
-        init(handle: SheetScrollHandle) {
-            self.handle = handle
-            super.init(frame: .zero)
-            isUserInteractionEnabled = false
-        }
-        required init?(coder: NSCoder) { fatalError() }
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            var v = superview
-            while let current = v, !(current is UIScrollView) { v = current.superview }
-            handle.view = v as? UIScrollView
-
-        }
+/// The circle's place: between its closed and open rests by the sheet's progress (it only moves, never scales).
+struct SheetCircleRide: ViewModifier {
+    let live: PagerLiveState
+    let delta: CGFloat
+    func body(content: Content) -> some View {
+        content.offset(y: delta * live.sheetOffset / max(live.sheetRun, 1))
     }
 }
