@@ -766,7 +766,6 @@ private struct MockAzkarPage: View {
                 Soft.title("Your azkar", "\(zikrs.filter { !$0.isBuiltIn }.count) azkar · \(live.count) daily goals"
                            + (tasks.count > live.count ? " · \(tasks.count - live.count) paused" : ""))
                 if !live.isEmpty && !searching { hero(parts: parts, done: done) }
-                Soft.addRow("A new zikr") { newZikr = true }
                 if !liveShown.isEmpty {
                     SoftLabel(title: "Daily goals", trailing: "in the wheel's order")
                     SoftCard { goalList }
@@ -811,6 +810,15 @@ private struct MockAzkarPage: View {
         }
         .softPage()
         .titleInBar("Your azkar", shown: $titleShown)
+        // A new zikr: the bar's own + (owner: an SF symbol top right in Liquid Glass, green — as Give to Causes' +;
+        // the bar's button, so iOS 26 draws the glass).
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { newZikr = true } label: { Image(systemName: "plus") }
+                    .tint(Color.sage)
+                    .accessibilityLabel("A new zikr")
+            }
+        }
         .scrollDismissesKeyboard(.immediately)
         .modifier(SoftBottomEdge())
         .modifier(BottomBar {   // search in a Liquid Glass bar at the bottom (owner, decision zikr-search-place A)
@@ -869,6 +877,13 @@ private struct MockAzkarPage: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(left == 0 ? "All done today" : "\(left) to go today")
                     .font(.system(size: 19, weight: .light, design: .rounded))
+                // The time left for today's goals at your own pace (owner), as the wheel's line works it out.
+                let secondsLeft = live.filter { !$0.isCompleted(with: $0.progress(in: today)) }
+                    .compactMap { $0.secondsLeft($0.progress(in: today)) }.reduce(0, +)
+                if left > 0, secondsLeft > 0 {
+                    Text("about " + zikrEstimateString(secondsLeft).replacingOccurrences(of: "~", with: "") + " left")
+                        .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                }
                 // The ring's key only until a goal is done (Sami: good once).
                 if done == 0 {
                     Text("Each part of the ring is one goal.").font(.footnote).foregroundStyle(.secondary)
