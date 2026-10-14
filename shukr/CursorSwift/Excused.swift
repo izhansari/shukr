@@ -256,21 +256,22 @@ struct ExcusedSettingsRow: View {
     }
 }
 
-/// Turning it on, changing it, ending it, and coming back — one sheet in the new-task flow's look (owner: the log
-/// sheet's vibe), so it reads like the rest of shukr.
+/// Turning it on, changing it, ending it, and coming back — one sheet in the new-task flow's look (owner: "stay on
+/// brand"): the estimate is a number in the Excused ring's dashes with − and + either side (NewTaskFlow's goal page),
+/// a tap on it types one; "Started" sits lower down, a secondary thing (owner). No Haid / After childbirth choice: it
+/// only set the estimate (owner); ranges are saved as haid.
 struct ExcusedSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var current: ExcusedRange? = Excused.current
-    @State private var kind: ExcusedRange.Kind = .haid
     @State private var startDay = Date()
     @State private var days = 7
+    @State private var daysText = "7"
+    @FocusState private var typing: Bool
     @State private var keepZikr = true
     /// Just ended: the welcome back.
     @State private var welcomeBack = false
 
-    private static let dayChoices = Array(3...15) + [20, 25, 30, 40, 45, 60]
-    /// The choices, with the current length in them (an extension can land between them).
-    private var choices: [Int] { Array(Set(Self.dayChoices + [days])).sorted() }
+    static let maxDays = 60
 
     var body: some View {
         VStack(spacing: 0) {
@@ -287,53 +288,49 @@ struct ExcusedSheet: View {
             }
             .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 22) {
                     if welcomeBack { back } else if let current { running(current) } else { starting }
                 }
                 .padding(.bottom, 20)
             }
-            primaryButton
+            .scrollDismissesKeyboard(.immediately)
+            if !typing { primaryButton.transition(.opacity) }
         }
         .background(Color(.systemBackground).ignoresSafeArea())
+        .contentShape(Rectangle())
+        .onTapGesture { typing = false }   // the keypad has no return key
         .fontDesign(.rounded)
         .presentationDetents([.large])
-        .onChange(of: kind) { _, k in days = k == .nifas ? 40 : 7 }
+        .onChange(of: days) { _, d in if !typing || Int(daysText) != d { daysText = "\(d)" } }
+        .onChange(of: typing) { _, on in daysText = on ? "" : "\(days)" }
     }
 
     // MARK: The three states
 
     private var starting: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 22) {
             heading("Excused from prayer", "Your streaks and scores pause. Nothing counts as missed.")
-            kindSwitch
-            Text("Haid is your monthly period. After childbirth (nifas) is the bleeding after giving birth, up to about 40 days.")
-                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                .padding(.horizontal, 28)
+            daysRing(min: 1, caption: "days, about")
             card {
+                row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
+                Divider().padding(.leading, 52)
                 row("calendar", "Started") {
                     DatePicker("", selection: $startDay, in: Calendar.current.date(byAdding: .day, value: -40, to: .now)!...Date.now,
                                displayedComponents: .date).labelsHidden()
                 }
-                Divider().padding(.leading, 52)
-                daysRow
-                Divider().padding(.leading, 52)
-                row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
             }
-            Text("Started a few days ago? Pick that day and those prayers count as excused too.\n\nAfter your estimate we'll check in once a day until you're back. Need longer? Come back and add days any time.")
+            Text("Started earlier? Pick that day so your streak isn't broken.\nAfter your estimate we'll check in once a day until you're back.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }
     }
 
     private func running(_ r: ExcusedRange) -> some View {
-        VStack(spacing: 20) {
-            heading("Excused from prayer", "Since \(r.start.formatted(.dateTime.month(.abbreviated).day())) · \(r.kind == .haid ? "Haid" : "After childbirth")")
-            Text(Excused.dayLine(r))
-                .font(.system(size: 40, weight: .light, design: .rounded))
-                .padding(.vertical, 6)
+        let today = Excused.dayNumber(r)
+        return VStack(spacing: 22) {
+            heading("Excused from prayer", "Since \(r.start.formatted(.dateTime.month(.abbreviated).day())) · Day \(today)")
+            daysRing(min: today, caption: "days in all, about")
             card {
-                daysRow
-                Divider().padding(.leading, 52)
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
             }
             Text("Your reminders, the Fajr alarm and prayer cards are paused. From your estimated day we'll check in once a day; need longer, add days here.")
@@ -344,11 +341,14 @@ struct ExcusedSheet: View {
             keepZikr = !r.pauseZikr
             let cal = Calendar.current
             days = max(cal.dateComponents([.day], from: cal.startOfDay(for: r.start), to: cal.startOfDay(for: r.expectedEnd)).day ?? 7, 1)
+            daysText = "\(days)"
         }
         .onChange(of: keepZikr) { _, keep in if keep == r.pauseZikr { Excused.update(pauseZikr: !keep); refresh() } }
-        .onChange(of: days) { _, n in
-            let end = Calendar.current.date(byAdding: .day, value: n, to: r.start) ?? r.expectedEnd
-            if !Calendar.current.isDate(end, inSameDayAs: r.expectedEnd) { Excused.update(expectedEnd: end); refresh() }
+        // A new estimate is saved as the sheet goes (− / + can be held: one save, one re-plan).
+        .onDisappear {
+            guard !welcomeBack, let r = Excused.current else { return }
+            let end = Calendar.current.date(byAdding: .day, value: days, to: r.start) ?? r.expectedEnd
+            if !Calendar.current.isDate(end, inSameDayAs: r.expectedEnd) { Excused.update(expectedEnd: end) }
         }
     }
 
@@ -373,12 +373,44 @@ struct ExcusedSheet: View {
 
     // MARK: Pieces
 
+    /// The estimate: the number inside the Excused ring's dashes, − and + either side (held, they keep going), a tap on
+    /// the number types one (NewTaskFlow's goal page).
+    private func daysRing(min low: Int, caption: String) -> some View {
+        HStack(spacing: 18) {
+            RepeatRoundButton(symbol: "minus") { step in days = max(low, days - step) }
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [3, 4.5]))
+                Circle().stroke(Color.sage.opacity(typing ? 0.9 : 0), lineWidth: 2).padding(6)
+                VStack(spacing: 2) {
+                    TextField("\(days)", text: $daysText)
+                        .keyboardType(.numberPad)
+                        .focused($typing)
+                        .multilineTextAlignment(.center)
+                        .font(.system(size: 60, weight: .light, design: .rounded))
+                        .monospacedDigit()
+                        .frame(width: 150)
+                        .onChange(of: daysText) { _, t in
+                            let digits = String(t.filter(\.isNumber).prefix(2))
+                            if digits != t { daysText = digits }
+                            if let n = Int(digits), n > 0 { days = min(Swift.max(n, low), Self.maxDays) }
+                        }
+                    Text(caption).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 190, height: 190)
+            .contentShape(Circle())
+            .onTapGesture { typing = true }
+            RepeatRoundButton(symbol: "plus") { step in days = min(Self.maxDays, days + step) }
+        }
+        .padding(.vertical, 4)
+    }
+
     private var primaryButton: some View {
         let title = welcomeBack ? "Done" : current == nil ? "Start" : "I'm back: end it"
         return Button {
             if welcomeBack { dismiss() }
             else if current == nil {
-                Excused.start(kind: kind, fromDay: startDay, days: days, pauseZikr: !keepZikr)
+                Excused.start(kind: .haid, fromDay: startDay, days: days, pauseZikr: !keepZikr)
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 dismiss()
             } else {
@@ -399,45 +431,6 @@ struct ExcusedSheet: View {
     }
 
     private func refresh() { current = Excused.current }
-
-    private var daysRow: some View {
-        Menu {
-            Picker("About how long", selection: $days) {
-                ForEach(choices, id: \.self) { Text("\($0) days").tag($0) }
-            }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "hourglass").foregroundStyle(Color.sage).frame(width: 24)
-                Text("About how long").foregroundStyle(.primary)
-                Spacer()
-                Text("\(days) days").foregroundStyle(.secondary)
-                Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 16).frame(minHeight: 52)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// Haid | After childbirth, in the goal page's capsule switch (NewTaskFlow's Count | Minutes).
-    private var kindSwitch: some View {
-        HStack(spacing: 0) {
-            ForEach(ExcusedRange.Kind.allCases, id: \.self) { k in
-                let on = kind == k
-                Button { withAnimation(.snappy(duration: 0.25)) { kind = k } } label: {
-                    Text(k == .haid ? "Haid" : "After childbirth")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(on ? Color.primary : Color.secondary)
-                        .frame(width: 140, height: 34)
-                        .background(Capsule().fill(on ? Color(.systemBackground) : .clear)
-                            .shadow(color: .black.opacity(on ? 0.08 : 0), radius: 4, y: 1))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(4)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
-    }
 
     private func heading(_ title: String, _ subtitle: String) -> some View {
         VStack(spacing: 6) {
