@@ -2946,6 +2946,10 @@ struct PrayerWindowAttributes: ActivityAttributes {
         /// The last card shukr has queued (owner): nothing comes after it until shukr opens, so it says so at its foot.
         /// Optional, so cards already held decode.
         var last: Bool? = nil
+        /// After the last card's ↻ added more (owner: "you're all good"): how many cards it added, said on the card that
+        /// was tapped ("4" → "Your next 4 prayer cards are set" — owner: a count, not "through …"). Optional, so cards
+        /// already held decode.
+        var toppedUp: String? = nil
     }
     /// The window's id: its start in whole minutes since 1970 (so a window is never scheduled twice).
     var n: Int
@@ -2969,6 +2973,26 @@ struct PrayerWindowMarkIntent: LiveActivityIntent {
             await a.end(nil, dismissalPolicy: .immediate)
             PrayerWindowLog.add("Mark prayed #\(n) without the app's hooks: store mark \(done ? "done" : "not needed / failed"), card ended")
         }
+        return .result()
+    }
+}
+
+/// The last card's ↻ (owner, 2026-10-14: "a refresh button on that last card"): runs in shukr without opening it — a
+/// card button's run is when iOS lets shukr add cards from the background (the alarm's Stop can't) — and adds the next ones.
+struct PrayerWindowRefreshIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Get more prayer cards"
+    static var isDiscoverable = false
+    /// Opens shukr (decision last-card-refresh B): in front it fills all five; from the Lock Screen a tap adds only one.
+    static var openAppWhenRun = true
+    @Parameter(title: "Window") var n: Int
+    init() {}
+    init(n: Int) { self.n = n }
+    func perform() async throws -> some IntentResult {
+        PrayerWindowLog.add("Refresh tapped on the last card (#\(n))")
+        if let refresh = PrayerWindowHooks.refresh { _ = await refresh(n) }
+        else { PrayerWindowLog.add("Refresh: the app's hooks weren't set") }
+        // Without opening, iOS let a tap add one card only (the allowance is the tap's, not the run's — a chained second
+        // intent was refused too, his phone 2026-10-14), so this opens shukr, which fills all five in front.
         return .result()
     }
 }
@@ -3010,6 +3034,8 @@ enum PrayerWindowHooks {
     nonisolated(unsafe) static var openPhoto: ((String) async -> Void)?
     nonisolated(unsafe) static var mark: ((Int) async -> Void)?
     nonisolated(unsafe) static var open: ((Int, String) async -> Void)?
+    /// The last card's refresh: as many next cards as iOS lets this run add.
+    nonisolated(unsafe) static var refresh: ((Int) async -> Int)?
     /// A widget's mark, run in the app (owner: the card goes at once; and a fresh location — S9FJ). Returns whether it marked.
     nonisolated(unsafe) static var widgetMark: ((String, Date, Date) async -> Bool)?
 }
@@ -3200,6 +3226,9 @@ struct LALockCard: View {
                     // Level with the ring's row, not the middle of a card grown by the last card's note.
                     .padding(.bottom, LALastNote.shows(state) ? LALastNote.room : 0)
             }
+            .overlay(alignment: .bottom) {
+                if LALastNote.shows(state) { LALastNote(state: state, n: n, live: true).padding(.bottom, 8) }
+            }
             .environment(\.colorScheme, state.dark.map { $0 ? .dark : .light } ?? system)
     }
 }
@@ -3239,7 +3268,10 @@ struct LALockCardBody: View {
                 .padding(.horizontal, t.barSideInset).padding(.bottom, t.barBottomInset)
         }
         .overlay(alignment: .bottom) {
-            if LALastNote.shows(state) { LALastNote().padding(.bottom, 10) }
+            if LALastNote.shows(state) {
+                LALastNote(state: state).padding(.bottom, 8)
+                    .opacity(liveButtons ? 0 : 1).allowsHitTesting(false)   // the real card draws its button once (LALockCard)
+            }
         }
         .activityBackgroundTint(LASoft.surface(t, scheme))
         .activitySystemActionForegroundColor(.primary)
@@ -3250,16 +3282,44 @@ struct LALockCardBody: View {
 /// quiet line at the card's foot, centred. Not once marked (the card is going), never on the island. Marking from the
 /// card also adds the next ones (iOS lets a card's ✓ add cards; the alarm's Stop can't) — decision last-card-note B.
 struct LALastNote: View {
-    static let room: CGFloat = 20
-    static let text = "Last card · mark here or open shukr for more"
-    static func shows(_ s: PrayerWindowAttributes.ContentState) -> Bool { s.last == true && s.markedAt == nil }
+    static let room: CGFloat = 22
+    static let text = "Last card · tap to add more"
+    static func shows(_ s: PrayerWindowAttributes.ContentState) -> Bool {
+        s.markedAt == nil && (s.last == true || s.toppedUp != nil)
+    }
+    let state: PrayerWindowAttributes.ContentState
+    var n = 0
+    /// The real card's button (drawn once, in LALockCard's overlay); elsewhere the same pill as a picture.
+    var live = false
     var body: some View {
-        Text(Self.text)
+        if let added = state.toppedUp.flatMap(Int.init), state.last != true {
+            // After a tap added more: a plain line with a green check, not a pill (owner) — it isn't a button.
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.green)
+                Text(added == 1 ? "Your next prayer card is set" : "Your next \(added) prayer cards are set")
+            }
             .font(.system(.caption2, design: .rounded))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 3)
+        } else if live {
+            Button(intent: PrayerWindowRefreshIntent(n: n)) { pill(symbol: "arrow.clockwise", text: Self.text) }.buttonStyle(.plain)
+        } else {
+            pill(symbol: "arrow.clockwise", text: Self.text)
+        }
+    }
+    private func pill(symbol: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol).font(.system(size: 9, weight: .semibold))
+            Text(text)
+        }
+        .font(.system(.caption2, design: .rounded))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .padding(.horizontal, 9).padding(.vertical, 3)
+        .background(Capsule().fill(Color.primary.opacity(0.08)))
     }
 }
 
@@ -3564,13 +3624,23 @@ struct LAGlyphs: View {
                 LARoundButton(intent: PrayerWindowOpenIntent(what: "Tasbih", n: n), symbol: "circle.hexagonpath", size: pair, symbolSize: min(t.buttonSymbolSize * 0.9, pair * 0.5), onIsland: onIsland, t: t)
             }
             .transition(LATransitions.swap)
-        } else if ended {
-            LARoundButton(intent: PrayerWindowMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
-                .transition(LATransitions.swap)
         } else {
-            LARoundButton(intent: PrayerWindowMarkIntent(n: n), symbol: "checkmark", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland,
-                          endsAt: live ? state.end : nil, t: t)
-                .transition(LATransitions.swap)
+            HStack(spacing: t.buttonStackGap) {
+                // The last card's ↻ beside the ✓ (owner: "more in your face"), as well as its pill; never on the island.
+                if state.last == true && !onIsland {
+                    LARoundButton(intent: PrayerWindowRefreshIntent(n: n), symbol: "arrow.clockwise", size: size,
+                                  symbolSize: t.buttonSymbolSize * 0.9, t: t)
+                        .transition(LATransitions.swap)
+                }
+                if ended {
+                    LARoundButton(intent: PrayerWindowMarkIntent(n: n), symbol: "circle.dashed", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland, dim: true, t: t)
+                        .transition(LATransitions.swap)
+                } else {
+                    LARoundButton(intent: PrayerWindowMarkIntent(n: n), symbol: "checkmark", size: size, symbolSize: t.buttonSymbolSize, onIsland: onIsland,
+                                  endsAt: live ? state.end : nil, t: t)
+                        .transition(LATransitions.swap)
+                }
+            }
         }
     }
 }

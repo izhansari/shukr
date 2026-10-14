@@ -43,6 +43,7 @@ enum PrayerLiveActivities {
         PrayerWindowHooks.mark = { n in await mark(n) }
         PrayerWindowHooks.open = { n, what in await open(n, what) }
         PrayerWindowHooks.widgetMark = { name, start, end in await widgetMark(name, start, end) }
+        PrayerWindowHooks.refresh = { n in await refresh(n) }
         for activity in Activity<PrayerWindowAttributes>.activities { observe(activity) }
         Task { @MainActor in
             for await activity in Activity<PrayerWindowAttributes>.activityUpdates { observe(activity) }
@@ -107,6 +108,39 @@ enum PrayerLiveActivities {
         if a.activityState == .active { await a.end(nil, dismissalPolicy: .immediate) }
         plan(reason: "card ✓, after its 15 s")   // its slot is free now (the 5 were full at the tap — Frank)
         AutoTopUp.request("card ✓")
+    }
+
+    /// The last card's ↻: as many as this run may add; the tapped card then says how far they go; everything else topped up.
+    @discardableResult @MainActor static func refresh(_ n: Int) async -> Int {
+        #if DEBUG
+        holdPlans = false   // an explicit ask (a stand-in's hold would turn it away)
+        #endif
+        // The intent opens shukr: wait until it's in front (up to 5 s), where iOS lets it fill every free slot.
+        for _ in 0..<50 where UIApplication.shared.applicationState != .active {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        PrayerWindowLog.add("refresh: shukr is \(UIApplication.shared.applicationState == .active ? "in front" : "still not in front")")
+        var total = 0
+        for attempt in 1...6 {
+            let added = plan(reason: "refresh, try \(attempt)")
+            total += added
+            if added == 0 { break }
+            try? await Task.sleep(for: .milliseconds(400))
+        }
+        PrayerWindowLog.add("refresh added \(total)")
+        // The tapped card says how far the cards now go (owner) — only when it's no longer the last.
+        if total > 0, #available(iOS 26.0, *),
+           let tapped = Activity<PrayerWindowAttributes>.activities.first(where: { $0.attributes.n == n }),
+           let newest = Activity<PrayerWindowAttributes>.activities
+               .filter({ $0.activityState == .pending || $0.activityState == .active })
+               .max(by: { $0.content.state.start < $1.content.state.start }) {
+            var st = tapped.content.state
+            st.last = nil
+            st.toppedUp = "\(total)"
+            await tapped.update(ActivityContent(state: st, staleDate: st.end))
+        }
+        AutoTopUp.request("last card's refresh", force: true)
+        return total
     }
 
     /// Cards turning to their marked look right now (`plan` leaves them be).
@@ -408,7 +442,11 @@ enum PrayerLiveActivities {
             var st = updates[a.id]?.1 ?? a.content.state
             let isLast = st.start == lastStart
             if isLast { lastLabel = "\(st.label) \(st.start.formatted(.dateTime.weekday(.abbreviated).hour().minute()))" }
-            if (st.last ?? false) != isLast { st.last = isLast ? true : nil; updates[a.id] = (a, st) }
+            if (st.last ?? false) != isLast {
+                st.last = isLast ? true : nil
+                if isLast { st.toppedUp = nil }   // the last again: the ↻ comes back
+                updates[a.id] = (a, st)
+            }
         }
         for (_, u) in updates { Task { await u.0.update(ActivityContent(state: u.1, staleDate: u.1.end)) } }
         var line = "plan (\(reason)\(bg ? ", bg" : "")): holding \(held.count)"
