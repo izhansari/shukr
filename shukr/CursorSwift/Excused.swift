@@ -309,7 +309,9 @@ struct ExcusedSheet: View {
 
     private var starting: some View {
         VStack(spacing: 22) {
-            heading("Excused from prayer", "Your streaks and scores pause. Nothing counts as missed.")
+            // Named plainly (owner: no dodging the words — this was made for her too); the lock screen, Siri and the
+            // widget stay neutral, as anyone can see or hear those.
+            heading("Excused from prayer", "For your period (haid), or the bleeding after giving birth (nifas). Prayer is lifted for you: your streaks and scores pause, and nothing counts as missed.")
             daysRing(min: 1, caption: "days, about")
             card {
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
@@ -333,7 +335,7 @@ struct ExcusedSheet: View {
             card {
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
             }
-            Text("Your reminders, the Fajr alarm and prayer cards are paused. From your estimated day we'll check in once a day; need longer, add days here.")
+            Text("While you're on your period or recovering after birth, your prayer reminders, the Fajr alarm and prayer cards are paused. From your estimated day we'll check in once a day; need longer, add days here.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }
@@ -365,7 +367,7 @@ struct ExcusedSheet: View {
                 Divider().padding(.leading, 52)
                 row("flame", "Your streaks") { Text("Kept").foregroundStyle(.secondary) }
             }
-            Text("If it ended during a prayer's time, that prayer is due. Some schools also count the prayer before it. Ask the imam at your masjid if you're unsure.")
+            Text("If your period or bleeding ended during a prayer's time, that prayer is due. Some schools also count the prayer before it. Ask the imam at your masjid if you're unsure.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }
