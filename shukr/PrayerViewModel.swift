@@ -611,6 +611,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         // still works).
         if !prayer.isCompleted, Excused.covers(start: prayer.startTime, end: prayer.endTime) {
             triggerSomeVibration(type: .light)
+            // Ask whether she's back (owner: never a silent no); the Salah page shows the question.
+            NotificationCenter.default.post(name: Excused.askResume, object: prayer)
             return
         }
         if prayer.startTime <= Date() {

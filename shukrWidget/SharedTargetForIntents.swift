@@ -2219,8 +2219,19 @@ struct MarkPrayerFromControlIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Mark Prayer as Prayed"
     static var isDiscoverable: Bool = false
     static var openAppWhenRun: Bool = false
+    /// iOS 26: it can bring shukr forward when she's excused (owner: ask, never a silent no).
+    @available(iOS 26.0, *)
+    static var supportedModes: IntentModes { [.background, .foreground(.dynamic)] }
     func perform() async throws -> some IntentResult & ProvidesDialog {
         defer { ControlCenter.shared.reloadAllControls() }
+        if Excused.isActive {
+            if #available(iOS 26.0, *) {
+                try await continueInForeground(alwaysConfirm: false)
+                ExcusedResume.ask()
+                return .result(dialog: "")
+            }
+            return .result(dialog: "Prayers are paused. Open shukr to turn them back on.")
+        }
         guard let c = PrayerMarkNow.target() else {
             if let n = PrayerWindows.pick(.next) { return .result(dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).") }
             throw PrayerTimeUnavailable()
@@ -3872,5 +3883,26 @@ enum Excused {
     static func save(_ list: [ExcusedRange]) {
         guard list != ranges, let data = try? JSONEncoder().encode(list) else { return }
         UserDefaults(suiteName: SharedStore.appGroup)?.set(data, forKey: key)
+    }
+}
+
+/// Excused, and someone tried to mark a prayer (she may be done and forgot): shukr opens and asks whether she's back,
+/// never a silent no (owner). The flag is read by the Salah page (`openFromWidgetFlags`).
+enum ExcusedResume {
+    static let askKey = "excused.askResume"
+    static func ask() {
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: askKey)
+        DeepLinkSignal.post()
+    }
+}
+
+/// The Prayers widget's check and rows while excused: opens shukr to "Prayers are paused · I'm back".
+struct ExcusedResumeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Resume Prayers"
+    static var isDiscoverable: Bool = false
+    static var openAppWhenRun: Bool = true
+    func perform() async throws -> some IntentResult {
+        ExcusedResume.ask()
+        return .result()
     }
 }

@@ -82,6 +82,10 @@ struct PrayerTimesView: View {
     @State private var widgetUnmarkToken = 0
     /// Excused from prayer's sheet, from a tap on the circle (Excused.swift).
     @State private var showExcused = false
+    /// Something tried to mark a prayer while excused: "Prayers are paused · I'm back" (owner: never a silent no).
+    @State private var askingResume = false
+    /// The prayer tapped, marked once she's back if it's due then.
+    @State private var resumePrayer: PrayerModel?
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoNewZikr = false
@@ -167,6 +171,11 @@ struct PrayerTimesView: View {
             }
             // Clear only when set: every write to the group suite invalidates every
             // @AppStorage bound to it and re-renders Settings.
+            // Excused, and the widget or Control Center tried to mark a prayer: ask whether she's back (Excused.swift).
+            if store.bool(forKey: ExcusedResume.askKey) {
+                store.set(false, forKey: ExcusedResume.askKey)
+                if Excused.isActive { resumePrayer = nil; askingResume = true }
+            }
             if openCompassFromWidget { store.setValue(false, forKey: "widgetCompass") }
             if openTasbeehFromWidget { store.setValue(false, forKey: "widgetTasbeeh") }
             let openAyahFromWidget  = store.bool(forKey: "widgetDailyAyah")
@@ -922,6 +931,23 @@ struct PrayerTimesView: View {
             CircleStage.shared.excused = Excused.current
         }
         .onReceive(NotificationCenter.default.publisher(for: Excused.openSheet)) { _ in showExcused = true }
+        .onReceive(NotificationCenter.default.publisher(for: Excused.askResume)) { note in
+            resumePrayer = note.object as? PrayerModel
+            askingResume = true
+        }
+        .alert("Prayers are paused", isPresented: $askingResume) {
+            Button("I'm back") {
+                Excused.end()
+                // The prayer she tapped, if it's due now (its time still on), is marked: that's what she meant.
+                if let p = resumePrayer, !p.isCompleted, !Excused.covers(start: p.startTime, end: p.endTime), p.startTime <= Date() {
+                    viewModel.togglePrayerCompletion(for: p)
+                }
+                resumePrayer = nil
+            }
+            Button("Not yet", role: .cancel) { resumePrayer = nil }
+        } message: {
+            Text("You're set as excused from prayer. Are you back to praying?")
+        }
         .sheet(isPresented: $showExcused) { ExcusedSheet().stageCover("excused") }
         .onAppear { CircleStage.shared.excused = Excused.current }
         .onReceive(NotificationCenter.default.publisher(for: TaskModel.didDelete)) { note in

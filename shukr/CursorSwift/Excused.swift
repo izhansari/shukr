@@ -188,6 +188,8 @@ extension Excused {
 extension Excused {
     /// A tap on the Salah circle while excused: PrayerTimesView opens the sheet.
     static let openSheet = Notification.Name("ExcusedOpenSheet")
+    /// Something in the app tried to mark a prayer while excused (object: the PrayerModel): PrayerTimesView asks.
+    static let askResume = Notification.Name("ExcusedAskResume")
 }
 
 /// The Salah circle while excused: the word, the day, and how to end it — no countdown, no colour, nothing due.

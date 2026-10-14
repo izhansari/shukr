@@ -517,7 +517,10 @@ struct PrayersWidgetView: View {
         @ViewBuilder private func row(_ name: String, _ start: Date, _ end: Date) -> some View {
             let content = rowContent(name, start, end)
             // Excused from prayer (Excused.swift): the times show, nothing is marked from here.
-            if name != "Sunrise", start <= entry.date, !Excused.covers(start: start, end: end) {
+            if name != "Sunrise", start <= entry.date, Excused.covers(start: start, end: end) {
+                // Excused (Excused.swift): a tap opens shukr to "Prayers are paused · I'm back" (owner: never a silent no).
+                Button(intent: ExcusedResumeIntent()) { content }.buttonStyle(.plain)
+            } else if name != "Sunrise", start <= entry.date {
                 if entry.completedScores[name] != nil {
                     Button(intent: AskUnmarkPrayerIntent(prayerName: name, prayerStart: start)) { content }
                         .buttonStyle(.plain)
@@ -810,8 +813,15 @@ struct PrayersWidgetView: View {
         @ViewBuilder private var checkButton: some View {
             let shown = relevantPrayer
             if Excused.covers(start: shown.start, end: shown.end) {
-                // Excused from prayer (owner): the windows still show; the check goes.
-                Color.clear.frame(width: 30, height: 30)
+                // Excused (owner): the check stays, and opens shukr to ask whether she's back — never a silent no.
+                Button(intent: ExcusedResumeIntent()) {
+                    Image(systemName: "circle")
+                        .font(.system(size: 15))
+                        .foregroundColor(.primary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             } else if let current = prayerInWindow, entry.completedToday.contains(current) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 15))
