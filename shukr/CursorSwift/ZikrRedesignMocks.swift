@@ -521,11 +521,13 @@ private struct GoalMenu: View {
     let onEdit: () -> Void
     var onOpenZikr: (() -> Void)? = nil
     let onDelete: () -> Void
+    /// Start: the page asks Continue / Start over when the goal is part-done today (owner: the same everywhere).
+    var onStart: (() -> Void)? = nil
     @State private var state = ZikrMockState.shared
     var body: some View {
         let paused = task.pausedAt != nil
         if !paused {
-            Button { startGoal(task, resume: partDone(task, today)) } label: { Label("Start", systemImage: "play.fill") }
+            Button { if let onStart { onStart() } else { startGoal(task, resume: false) } } label: { Label("Start", systemImage: "play.fill") }
         }
         Button(action: onEdit) { Label("Edit goal", systemImage: "pencil") }
         if let onOpenZikr { Button(action: onOpenZikr) { Label("Open zikr", systemImage: "circle.hexagonpath") } }
@@ -557,6 +559,28 @@ private struct DeleteGoalAlert: ViewModifier {
             Button("Cancel", role: .cancel) { task = nil }
         } message: { _ in
             Text("Its reminder goes too. The sessions you've counted stay in your history.")
+        }
+    }
+}
+
+/// "Start Morning Durood? 1 of 50 today." → Continue from N · Start over · Cancel (the wheel's question, everywhere).
+private struct ResumeAsk: ViewModifier {
+    @Binding var task: TaskModel?
+    let today: [SessionDataModel]
+    let start: (TaskModel, Bool) -> Void
+    func body(content: Content) -> some View {
+        content.alert(task.map { "Start \($0.title)?" } ?? "",
+                      isPresented: Binding(get: { task != nil }, set: { if !$0 { task = nil } }),
+                      presenting: task) { g in
+            let p = g.progress(in: today)
+            Button(g.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))") {
+                task = nil; start(g, true)
+            }
+            Button("Start over") { task = nil; start(g, false) }
+            Button("Cancel", role: .cancel) { task = nil }
+        } message: { g in
+            let p = g.progress(in: today)
+            Text(g.isCountMode ? "\(p.count) of \(g.goal) today." : "\(Int(p.seconds / 60)) of \(g.goal) min today.")
         }
     }
 }
@@ -738,6 +762,7 @@ private struct MockAzkarPage: View {
     @State private var toDelete: TaskModel?
     @State private var newGoalFor: MantraModel?
     @State private var newZikr = false
+    @State private var askingResume: TaskModel?
     @State private var titleShown = false
     private let rowHeight: CGFloat = 62
 
@@ -778,7 +803,8 @@ private struct MockAzkarPage: View {
                                 .buttonStyle(.plain)
                                 .cardRow()
                                 .matchedTransitionSource(id: "goal-\(t.id)", in: zoom)
-                                .contextMenu { GoalMenu(task: t, today: today, onEdit: { editing = t }, onDelete: { toDelete = t }) }
+                                .contextMenu { GoalMenu(task: t, today: today, onEdit: { editing = t }, onDelete: { toDelete = t },
+                                                        onStart: { askStart(t) }) }
                         }
                     }
                 }
@@ -829,8 +855,13 @@ private struct MockAzkarPage: View {
         .sheet(item: $newGoalFor) { NewTaskFlow(locked: $0) }
         .newZikrCard(isPresented: $newZikr)
         .modifier(DeleteGoalAlert(task: $toDelete))
+        .modifier(ResumeAsk(task: $askingResume, today: today) { g, resume in startGoal(g, resume: resume) })
         .onAppear { today = ZikrReminders.todaysSessions(context) }
         .onChange(of: editing) { _, _ in today = ZikrReminders.todaysSessions(context) }
+    }
+
+    private func askStart(_ t: TaskModel) {
+        if partDone(t, today) { askingResume = t } else { startGoal(t, resume: false) }
     }
 
     /// The daily goals: a List that doesn't scroll, inside the card (its rows keep hold-and-drag reorder and swipe; a List
@@ -843,7 +874,7 @@ private struct MockAzkarPage: View {
                     .matchedTransitionSource(id: "goal-\(t.id)", in: zoom)
                     .contextMenu {
                         GoalMenu(task: t, today: today, onEdit: { editing = t },
-                                 onDelete: { toDelete = t })
+                                 onDelete: { toDelete = t }, onStart: { askStart(t) })
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button { toDelete = t } label: { Label("Delete", systemImage: "trash") }.tint(.red)
@@ -1011,19 +1042,7 @@ private struct ZikrSheet: View {
         .sheet(isPresented: $addingGoal) { NewTaskFlow(locked: zikr) }
         .modifier(DeleteGoalAlert(task: $toDelete))
         .modifier(DeleteSessionAlert(session: $sessionToDelete))
-        .alert(askingResume.map { "Start \($0.title)?" } ?? "",
-               isPresented: Binding(get: { askingResume != nil }, set: { if !$0 { askingResume = nil } }),
-               presenting: askingResume) { g in
-            let p = g.progress(in: today)
-            Button(g.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))") {
-                askingResume = nil; start(g, resume: true)
-            }
-            Button("Start over") { askingResume = nil; start(g, resume: false) }
-            Button("Cancel", role: .cancel) { askingResume = nil }
-        } message: { g in
-            let p = g.progress(in: today)
-            Text(g.isCountMode ? "\(p.count) of \(g.goal) today." : "\(Int(p.seconds / 60)) of \(g.goal) min today.")
-        }
+        .modifier(ResumeAsk(task: $askingResume, today: today) { g, resume in start(g, resume: resume) })
         .sheet(item: $reminding) { t in
             // The real Remind me sheet on its own; Save writes the goal's reminder and replans the notifications.
             TaskReminderSheet(draft: ReminderDraft(t), onCancel: { reminding = nil }) { picked in
