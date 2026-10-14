@@ -231,12 +231,16 @@ struct SadaqahDonation: Codable, Identifiable, Hashable {
 
 /// What a donation was for.
 enum SadaqahPurpose: String, Codable, CaseIterable, Identifiable {
-    case sadaqah, zakat, zakatFitr, jariyah, fidya, kaffarah, qurbani, ramadan, relief, orphans, masjid, community, other
+    case unspecified, sadaqah, zakat, zakatFitr, jariyah, fidya, kaffarah, qurbani, ramadan, relief, orphans, masjid, community, other
     var id: String { rawValue }
+    /// The For menu's choices (owner: "way too many options … no more than four", optional): None, Sadaqah, Zakat,
+    /// Community. The others stay readable for donations logged with them.
+    static let offered: [SadaqahPurpose] = [.unspecified, .sadaqah, .zakat, .community]
     /// Which side of the page it counts towards (Zakat / Sadaqah totals never include community gifts).
     var kind: GiveKind { self == .community ? .community : .sadaqah }
     var title: String {
         switch self {
+        case .unspecified: "None"
         case .sadaqah: "Sadaqah"
         case .zakat: "Zakat"
         case .zakatFitr: "Zakat al-Fitr"
@@ -254,6 +258,7 @@ enum SadaqahPurpose: String, Codable, CaseIterable, Identifiable {
     }
     var symbol: String {
         switch self {
+        case .unspecified: "circle.dashed"
         case .sadaqah: "heart.fill"
         case .zakat: "scalemass.fill"
         case .zakatFitr: "sparkles"
@@ -341,7 +346,7 @@ final class SadaqahLog {
         f.formatOptions = [.withFullDate]
         func cell(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         let rows = donations.map { d in
-            [f.string(from: d.date), cell(d.to), d.purpose.title, String(format: "%.2f", d.amount), d.currency, cell(d.note)]
+            [f.string(from: d.date), cell(d.to), d.purpose == .unspecified ? "" : d.purpose.title, String(format: "%.2f", d.amount), d.currency, cell(d.note)]
                 .joined(separator: ",")
         }
         return (["Date,To,For,Amount,Currency,Note"] + rows).joined(separator: "\n")
@@ -660,14 +665,15 @@ private struct DonationRow: View {
     let donation: SadaqahDonation
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: donation.purpose.symbol)
+            Image(systemName: donation.purpose == .unspecified ? "gift.fill" : donation.purpose.symbol)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.sage)
                 .frame(width: 28, height: 28)
                 .background(Circle().fill(Color.sage.opacity(0.15)))
             VStack(alignment: .leading, spacing: 1) {
                 Text(donation.to).lineLimit(1)
-                Text("\(donation.purpose.title) · \(donation.date.formatted(date: .abbreviated, time: .shortened))")
+                // No "For" picked: just the day (owner: it's optional).
+                Text((donation.purpose == .unspecified ? "" : "\(donation.purpose.title) · ") + donation.date.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
@@ -1033,12 +1039,12 @@ struct DonationDraft: Identifiable {
 
     init(after charity: SadaqahCharity) {
         donation = SadaqahDonation(to: charity.name, charityID: charity.id, amount: 0, currency: SadaqahLog.currency,
-                                   purpose: charity.kind == .community ? .community : .sadaqah, note: "", date: .now)
+                                   purpose: charity.kind == .community ? .community : .unspecified, note: "", date: .now)
         askedAfterVisit = true
     }
     init(manual: Void) {
         donation = SadaqahDonation(to: "", charityID: nil, amount: 0, currency: SadaqahLog.currency,
-                                   purpose: .sadaqah, note: "", date: .now)
+                                   purpose: .unspecified, note: "", date: .now)
     }
     init(editing existing: SadaqahDonation) {
         donation = existing
@@ -1150,7 +1156,7 @@ struct DonationSheet: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
+                    .barGlass(Circle())   // Liquid Glass (owner)
             }
             .buttonStyle(.plain)
             Spacer()
@@ -1219,7 +1225,10 @@ struct DonationSheet: View {
     private var purposeMenu: some View {
         Menu {
             Picker("For", selection: $purpose) {
-                ForEach(SadaqahPurpose.allCases) { p in Label(p.title, systemImage: p.symbol).tag(p) }
+                // Four at most (owner); an older donation's own "For" stays in the list so it shows.
+                ForEach(SadaqahPurpose.offered + (SadaqahPurpose.offered.contains(purpose) ? [] : [purpose])) { p in
+                    Label(p.title, systemImage: p.symbol).tag(p)
+                }
             }
         } label: {
             HStack(spacing: 12) {
@@ -1244,7 +1253,7 @@ struct DonationSheet: View {
     private func row<Value: View>(_ icon: String, _ label: String, @ViewBuilder value: () -> Value) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon).foregroundStyle(Color.sage).frame(width: 24)
-            Text(label).foregroundStyle(.primary)
+            Text(label).foregroundStyle(.primary).lineLimit(1).fixedSize()   // "When" never wraps beside the date
             Spacer(minLength: 12)
             value()
         }
