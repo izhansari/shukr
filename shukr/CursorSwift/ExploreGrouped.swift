@@ -12,6 +12,7 @@
 
 import SwiftUI
 import SwiftData
+import AppIntents
 
 enum ExploreGroupID: String, CaseIterable, Identifiable {
     case homeWidgets, lockWidgets, controls, siri, watch, answer, mapMasjid, memories, insights, zikrExtras
@@ -396,6 +397,10 @@ struct ExploreGroupPage: View {
                     }
                 }
                 .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+                if group.id == .siri {
+                    // shukr's page in the Shortcuts app, every tile on it (owner; iOS has no link to a single tile).
+                    ShortcutsLink().shortcutsLinkStyle(.automaticOutline).frame(maxWidth: .infinity).padding(.top, 4)
+                }
             }
             .padding(16)
         }

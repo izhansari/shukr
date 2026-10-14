@@ -47,7 +47,7 @@ struct ExploreGroupPicture: View {
     @ViewBuilder private var picture: some View {
         switch group {
         case .homeWidgets: phone { HomeScreenScene() }
-        case .lockWidgets: phone { LockScreenScene() }
+        case .lockWidgets: phone { LockScreenScene(show: [.lockTime, .lockCountdown, .lockName]) }
         case .controls: phone { ControlCenterScene() }
         case .siri:
             // The Shortcuts app's own icon, in Apple's button (owner: "show the shortcuts icon so people are familiar").
@@ -155,22 +155,43 @@ private struct AppIcon: View {
     }
 }
 
-/// A Lock Screen: today's Name on the line above the clock, the Prayers widget's circle and countdown under it.
+/// One Lock Screen item on a phone's Lock Screen (owner: "how it would look on the phone lock screen").
+struct ExploreLockPicture: View {
+    let id: ShowcaseCardID
+    var scale: CGFloat = 0.55
+    var body: some View {
+        ExplorePhone { LockScreenScene(show: [id]) }
+            .scaleEffect(scale, anchor: .top)
+            .frame(width: phoneSize.width * scale, height: phoneSize.height * scale, alignment: .top)
+            .padding(.top, 16)
+            .allowsHitTesting(false)
+    }
+}
+
+/// A Lock Screen: today's Name on the line above the clock (else the date, as iOS has it), the Prayers widget's circle
+/// and countdown under it — whichever of them `show` holds.
 private struct LockScreenScene: View {
+    var show: Set<ShowcaseCardID>
     var body: some View {
         ZStack(alignment: .top) {
             RadialGradient(colors: [Color(red: 0.25, green: 0.33, blue: 0.42), Color(red: 0.06, green: 0.08, blue: 0.10)],
                            center: UnitPoint(x: 0.3, y: 0.1), startRadius: 0, endRadius: 700)
             VStack(spacing: 4) {
-                NameOfTheDayView(entry: NameOfTheDayEntry(date: ExplorePreset.now, name: NamesOfAllah.nameOfTheDay()), familyOverride: .accessoryInline)
-                    .frame(width: 300, height: 22)
-                    .font(.system(size: 17, weight: .semibold))
+                Group {
+                    if show.contains(.lockName) {
+                        NameOfTheDayView(entry: NameOfTheDayEntry(date: ExplorePreset.now, name: NamesOfAllah.nameOfTheDay()), familyOverride: .accessoryInline)
+                    } else {
+                        Text(ExplorePreset.now, format: .dateTime.weekday(.wide).month(.wide).day())
+                    }
+                }
+                .frame(width: 340, height: 22)
+                .font(.system(size: 17, weight: .semibold))
                 Text(ExplorePreset.clockFace)
                     .font(.system(size: 104, weight: .semibold, design: .rounded))
                     .lineLimit(1).fixedSize()
                 HStack(spacing: 12) {
-                    RealLockWidget(family: .accessoryCircular)
-                    RealLockWidget(family: .accessoryRectangular)
+                    if show.contains(.lockTime) { RealLockWidget(family: .accessoryCircular) }
+                    if show.contains(.lockCountdown) { RealLockWidget(family: .accessoryRectangular) }
                 }
                 .padding(.top, 6)
             }

@@ -427,10 +427,9 @@ struct ShowcaseStoryPage: View {
                     }
                     .padding(.horizontal, 4)
                 }
-                // One button, only when it does something.
-                if s.shortcuts {
-                    ShortcutsLink().shortcutsLinkStyle(.automaticOutline).frame(maxWidth: .infinity)
-                } else if let action = s.action {
+                // One button, only when it does something. (Shortcuts' own link only opens shukr's whole page there — iOS
+                // can't open one tile's — so it sits on the Shortcuts section's page, not each tile's.)
+                if let action = s.action, !s.shortcuts {
                     Button {
                         triggerSomeVibration(type: .light)
                         if let link = s.link { NotificationCenter.default.post(name: WhatsNew.go, object: link) }
@@ -698,6 +697,8 @@ struct ShowcasePicture: View {
         background.overlay {
             if thumb, let symbol = controlSymbol {
                 CCCircle(symbol: symbol, on: id == .ccFajrAlarm).scaleEffect(1.5)
+            } else if !thumb, onPhone {
+                EmptyView()
             } else {
                 picture.scaleEffect((scale ?? (big ? 1.7 : compact ? 0.8 : 1)) * fit)
                     .id(sizeIndex)
@@ -705,9 +706,15 @@ struct ShowcasePicture: View {
                     .offset(y: families.isEmpty ? 0 : 14)   // under the label row, as the setup's demo card sits under its label
             }
         }
+        .overlay(alignment: .top) {
+            if !thumb, onPhone { ExploreLockPicture(id: id, scale: big || live ? 0.55 : compact ? 0.36 : 0.45) }
+        }
         .overlay(alignment: .topLeading) { if !thumb && !families.isEmpty { sizeLabel } }
         .clipped()
     }
+
+    /// A Lock Screen item, drawn on a phone's Lock Screen (a list row's small square keeps the plain clock).
+    private var onPhone: Bool { [.lockTime, .lockCountdown, .lockName].contains(id) }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
     private var fit: CGFloat {
@@ -775,6 +782,7 @@ struct ShowcasePicture: View {
 
     @ViewBuilder private var background: some View {
         switch id {
+        case _ where onPhone && !thumb: sage
         case .lockTime, .lockCountdown, .lockName, .lockControls, .siri, .answer, .controlCenter, .actionButton, .sleep: night
         case _ where id.isControl: night
         case _ where id.isSiri: sage   // the cards as they look in the Shortcuts app
