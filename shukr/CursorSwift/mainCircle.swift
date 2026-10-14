@@ -151,6 +151,8 @@ struct MainCircleView: View {
     /// The prayer on the circle just came into its window, on screen: the moment plays once.
     /// The track: 0 = dashed (a prayer that hasn't started), 1 = the solid band (`CircleTrack`).
     @State private var trackSolid: CGFloat = 1
+    /// The dashed ring's drawing (CircleTrack.dashesDrawn): 0 → 1 as a prayer still to come comes in.
+    @State private var dashesDrawn: CGFloat = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Settings → My Dev Stuff → Preview (`PrayerStartPreview`): the circle draws its prayer in this
     /// state instead of the real one — "next", then "now" as the moment plays. Visual only.
@@ -179,7 +181,7 @@ struct MainCircleView: View {
                     .animation(CircleStage.shared.opening?.inPlace == true ? .easeOut(duration: CircleMotion.openingTrackOutDuration) : nil, value: openingHides)
             }
             // main outer circle: dashed for a prayer that hasn't started, the solid band otherwise
-            CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !theme.track.lifted)
+            CircleTrack(solid: trackSolid, dashesDrawn: dashesDrawn, reduceMotion: reduceMotion, band: !theme.track.lifted)
                 .opacity(openingHides ? 0 : 1)
                     // ▶︎ Opening over the page as it is: the track fades out first (a launch has nothing to fade).
                     .animation(CircleStage.shared.opening?.inPlace == true ? .easeOut(duration: CircleMotion.openingTrackOutDuration) : nil, value: openingHides)
@@ -547,6 +549,8 @@ struct MainCircleView: View {
             playBeginsPreview()
         }
         .onChange(of: trackWantsSolid) { _, solid in settleTrack(solid) }
+        // A mark's flourish gone: the dashes it held back draw now.
+        .onChange(of: flourish == nil) { _, clear in if clear, trackSolid == 0, dashesDrawn == 0 { drawDashes() } }
         .onChange(of: scenePhase, initial: true) { _, phase in
             CircleStage.shared.sceneActive = phase == .active
             // Away mid-moment: it snaps to its end (its sleeps would otherwise fire back to back on return — audit A).
@@ -838,10 +842,28 @@ struct MainCircleView: View {
             // every look (rule 9: Today's waited 0.45 s after the sweep, on a `.delay`).
             let animation: Animation = solid ? CircleMotion.trackExpand : .easeInOut(duration: CircleMotion.trackNarrowDuration)
             withAnimation(CircleMotion.movement(animation, reduced: reduceMotion)) { trackSolid = target }
+            // A prayer still to come: its dashes appear one by one from the top (owner). Under a mark's flourish they
+            // wait for it to clear (the track goes dashed at the tap, solid while the flourish holds the marked prayer,
+            // then dashed again — they'd have drawn twice). Reduce Motion: there at once.
+            if !solid && !reduceMotion {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { dashesDrawn = 0 }
+                if flourish == nil { drawDashes() }
+            }
         } else {
             var quiet = Transaction()
             quiet.disablesAnimations = true
-            withTransaction(quiet) { trackSolid = target }
+            withTransaction(quiet) { trackSolid = target; dashesDrawn = 1 }
+        }
+    }
+
+    /// The dashes drawn in, one by one (CircleMotion.dashesDraw), from the empty ring.
+    private func drawDashes() {
+        Task { @MainActor in
+            await Task.yield()   // the empty ring drawn first, so the draw animates from it
+            guard trackSolid == 0, dashesDrawn == 0 else { return }
+            withAnimation(CircleMotion.dashesDraw) { dashesDrawn = 1 }
         }
     }
 

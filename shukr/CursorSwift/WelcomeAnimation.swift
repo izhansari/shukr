@@ -251,11 +251,12 @@ struct WelcomeMark: View {
                 // Starts snug round the word, grows to the circle (frame, not scale, so the line keeps its own width).
                 .frame(width: size, height: size)
                 .opacity(reduceMotion || portal || (state.dashesIn && !track.dashesInBand) ? 0 : 1)
-            // The dashed track, when that's what the circle is showing: in once the ring is there.
-            Circle()
+            // The dashed track, when that's what the circle is showing: once the ring is there, its dashes appear one by
+            // one from the top (owner), as the circle's own do.
+            DashedRing(drawn: state.dashesIn || reduceMotion ? 1 : 0)
                 .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
                 .frame(width: Self.ringSize, height: Self.ringSize)
-                .opacity(state.dashesIn && !portal ? 1 : 0)
+                .opacity((state.dashesIn || reduceMotion && state.dashedTarget) && !portal ? 1 : 0)
             wordmark
                 .scaleEffect(grow ? 0.9 : (portal ? 1.15 : 1))
                 .blur(radius: grow || portal ? 4 : 0)
@@ -509,8 +510,8 @@ extension CircleMotion {
         static let toBandDuration: Double = 0.65
         /// …or, for a prayer that hasn't started, its edge first, then the dashes.
         static let toDashesDuration: Double = 0.56
-        static let dashes = Animation.easeInOut(duration: 0.3)
-        static let dashesDuration: Double = 0.32
+        static let dashes = CircleMotion.dashesDraw   // the dashes appear one by one (the circle's own draw)
+        static let dashesDuration: Double = CircleMotion.dashesDrawDuration + 0.02
         /// The page round it fading in (CircleMotion.pageRevealDuration, the chrome's and the list's), and the overlay
         /// going on a landing that isn't the circle's.
         static let overlayAway = Animation.easeInOut(duration: CircleMotion.pageRevealDuration)

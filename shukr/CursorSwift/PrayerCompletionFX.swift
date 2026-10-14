@@ -236,6 +236,29 @@ struct CompletionDotPop: ViewModifier {
     }
 }
 
+/// The dashed ring drawn up to `drawn` (0…1), clockwise from the top, in WHOLE dashes: animated 0 → 1 the dashes appear
+/// one after another (owner: "dash dash dash dash appearing") — never a part-drawn dash, never a fade. Stroke it with
+/// `UpcomingTrack.style(diameter:)` for the same diameter: the dashes are fitted to a whole number round the ring, so
+/// `drawn` is rounded down to whole dashes and the pattern starts where the path does.
+struct DashedRing: Shape {
+    var drawn: CGFloat = 1
+    var animatableData: CGFloat {
+        get { drawn }
+        set { drawn = newValue }
+    }
+    func path(in rect: CGRect) -> Path {
+        let d = min(rect.width, rect.height)
+        let count = max((CGFloat.pi * d / 8).rounded(), 1)   // UpcomingTrack.style's whole number of dashes
+        let shown = drawn >= 0.999 ? count : (min(max(drawn, 0), 1) * count).rounded(.down)
+        guard shown > 0 else { return Path() }
+        let start = Angle.degrees(-90)
+        return Path { p in
+            p.addArc(center: CGPoint(x: rect.midX, y: rect.midY), radius: d / 2, startAngle: start,
+                     endAngle: start + .degrees(360 * Double(shown / count)), clockwise: false)
+        }
+    }
+}
+
 // MARK: - The circle's track
 
 /// The main circle's track (2026-09-27, owner). A prayer that hasn't started yet — including the
@@ -246,6 +269,8 @@ struct CompletionDotPop: ViewModifier {
 /// With Reduce Motion the band stays 12 pt and just fades.
 struct CircleTrack: View {
     var solid: CGFloat
+    /// How much of the dashed ring is drawn (DashedRing): 1 at rest; run 0 → 1 as a prayer still to come comes in.
+    var dashesDrawn: CGFloat = 1
     var reduceMotion = false
     /// False under the Salah look prototype's soft ring (SalahLook.swift): its raised band is the track, and
     /// this grey band showed through as a dark ring under the arc (owner, 2026-10-01).
@@ -254,9 +279,10 @@ struct CircleTrack: View {
 
     var body: some View {
         ZStack {
-            Circle()
+            DashedRing(drawn: dashesDrawn)
                 .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
-                .opacity(Double(1 - solid))
+                // While they're drawing, each dash appears whole — no fade (owner); otherwise they fade with the band.
+                .opacity(dashesDrawn < 1 ? 1 : Double(1 - solid))
             TrackBand(width: reduceMotion ? 12 : max(12 * solid, 0.001))
                 .fill(Color(.secondarySystemFill))
                 .opacity(band ? (reduceMotion ? Double(solid) : (solid > 0.001 ? 1 : 0)) : 0)

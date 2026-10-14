@@ -129,6 +129,11 @@ enum CircleMotion {
     /// The track: the dashes expanding into the band (a prayer begins), and narrowing back.
     static let trackExpand = Animation.spring(response: 0.75, dampingFraction: 0.9)
     static let trackNarrowDuration: Double = 0.5
+    /// The dashed ring of a prayer still to come coming in: its dashes appear one by one, clockwise from the top (owner:
+    /// "dash dash dash dash appearing", not a fade) — DashedRing's `drawn` run 0 → 1. After a mark, the day page's next
+    /// Fajr, and the welcome's landing.
+    static let dashesDrawDuration: Double = 0.9
+    static let dashesDraw = Animation.easeOut(duration: dashesDrawDuration)
     /// ▶︎ Opening over the page as it is: the track fading out first; the welcome's mark fading once it's landed.
     static let openingTrackOutDuration: Double = 0.2
     static let openingMarkOutDuration: Double = 0.25
