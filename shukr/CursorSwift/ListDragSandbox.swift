@@ -9,10 +9,9 @@
 //  page and its task ring (ZikrPageView), Settings, the top bar's titles and the bottom bar — none taking a touch but
 //  the bar, all on its own SharedStateClass. The Salah circle is the real track + arc (MainCircleView writes for real).
 //
-//  One gesture owns both axes: the first 6 pt pick the axis (as the app's pager does). Both axes move 1 : 1 with the
-//  finger and, on release, spring to their rest from where they are WITH the finger's speed (`SpringDriver`, a display
-//  link integrating a spring — a SwiftUI animation can't be caught mid-flight or handed a velocity in points), so a flick
-//  carries through and a slow drag settles. A touch during a spring catches it where it is. "Today" mode copies the app:
+//  The pager is the app's own kind (a paging ScrollView); the list's vertical drag moves it with the finger and, on
+//  release, springs to its rest from where it is WITH the finger's speed (`SpringDriver`, a display link integrating a
+//  spring — a SwiftUI animation can't be caught mid-flight or handed a velocity in points). "Today" mode copies the app:
 //  nothing moves while dragging, the list animates after the finger lifts. DEBUG `-demoListSandbox`.
 //
 //  What we learned before (2026-10-04, "vertical live dragging", What's new topic salah-sheet; owner went back to
@@ -28,7 +27,7 @@ import QuartzCore
 
 struct ListDragSandbox: View {
     enum Mode: String, CaseIterable { case follow = "Follows finger", today = "Today (after release)" }
-    private enum Axis { case h, v }
+    enum Axis { case h, v }
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var scheme
@@ -39,8 +38,11 @@ struct ListDragSandbox: View {
     /// The list: 0 closed · 1 open.
     @State private var list = SpringDriver(0)
     @State private var pageID: Int? = 1
-    @State private var axis: Axis?
-    @State private var start = 0.0
+    /// The drag's axis and start, in a plain object: as @State, setting them at a drag's first move rebuilt the whole
+    /// Salah page — the real list included — and dropped a frame at the start of nearly every drag (his phone's log,
+    /// 2026-10-14: 126 late of 1,883 drag frames, almost all the first).
+    @State private var track = DragTrack()
+    @State private var flickDecides = true
     @State private var mode = Mode.follow
     @State private var tuning = false
     @State private var showMeter = true
@@ -51,13 +53,15 @@ struct ListDragSandbox: View {
     /// Its own page state, so the bar's buttons and the wheel never move the real pager underneath.
     @State private var sandboxState = SharedStateClass()
     // Tuning (the sliders).
-    @State private var response = 0.42
-    @State private var damping = 0.86
-    @State private var projection = 0.12
-    @State private var stretch = 0.2
-    /// How far the list moves per point of finger (owner 2026-10-04 wanted 1.5–2×; the first sandbox was ~1.8×).
-    @State private var ratio = 1.8
+    @State private var response = 0.20
+    @State private var damping = 1.0
+    @State private var projection = 0.03
+    @State private var stretch = 0.16
+    /// How far the list moves per point of finger. Defaults = his phone's pick (2026-10-14: "interactive while being calm
+    /// and not too hyper"): ratio 1.13, response 0.20, damping 1.00, throw 0.03, stretch 0.16.
+    @State private var ratio = 1.13
 
+    final class DragTrack { var axis: Axis?; var start = 0.0 }
     struct Rests: Equatable { var closedY: CGFloat = 0; var openY: CGFloat = 0; var listTop: CGFloat = 0; var height: CGFloat = 0 }
 
     var body: some View {
@@ -124,22 +128,25 @@ struct ListDragSandbox: View {
     private var drag: some Gesture {
         DragGesture(minimumDistance: 5)
             .onChanged { v in
-                if axis == nil {
+                if track.axis == nil {
                     guard max(abs(v.translation.width), abs(v.translation.height)) >= 6 else { return }   // the app's 6 pt lock
                     let onSalah = pageID == 1 && abs(pager.value - 1) < 0.02
-                    axis = abs(v.translation.height) > abs(v.translation.width) && onSalah ? .v : .h
-                    if axis == .v { pan.locked = true; list.stop(); start = list.value }
+                    track.axis = abs(v.translation.height) > abs(v.translation.width) && onSalah ? .v : .h
+                    if track.axis == .v { pan.locked = true; list.stop(); track.start = list.value }
                 }
-                guard axis == .v, mode == .follow else { return }
+                guard track.axis == .v, mode == .follow else { return }
                 // The list moves `ratio` × the finger; the ring follows the same progress.
-                list.set(rubber(start - v.translation.height * ratio / listTravel))
+                list.set(rubber(track.start - v.translation.height * ratio / listTravel))
             }
             .onEnded { v in
-                defer { axis = nil; pan.locked = false }
-                guard axis == .v else { return }
+                defer { track.axis = nil; pan.locked = false }
+                guard track.axis == .v else { return }
                 if mode == .follow {
                     let speed = -v.velocity.height * ratio / listTravel
-                    let target: Double = list.value + speed * projection > 0.5 ? 1 : 0
+                    // A clearly fast flick decides by its direction (as an iOS sheet does); slower, where it was let go.
+                    let target: Double
+                    if flickDecides && abs(v.velocity.height) > 500 { target = v.velocity.height < 0 ? 1 : 0 }
+                    else { target = list.value + speed * projection > 0.5 ? 1 : 0 }
                     list.animate(to: target, velocity: speed)
                 } else {
                     // Today: the drag only decides; the list goes once the finger has lifted.
@@ -280,6 +287,7 @@ struct ListDragSandbox: View {
                 slider("Damping", $damping, 0.5...1.0)
                 slider("Flick throw (s)", $projection, 0...0.4)
                 slider("Edge stretch", $stretch, 0.05...0.6)
+                Toggle("Fast flicks always open / close", isOn: $flickDecides)
                 Toggle("Frame meter", isOn: $showMeter)
                 Button("Copy values") {
                     UIPasteboard.general.string = String(format: "ratio %.2f · response %.2f · damping %.2f · throw %.2f · stretch %.2f",
