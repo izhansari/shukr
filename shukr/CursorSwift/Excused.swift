@@ -195,6 +195,7 @@ extension Excused {
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-demoExcusedOff") { save([]) }
         if args.contains("-demoExcusedAsk") { UserDefaults.standard.removeObject(forKey: askedDayKey) }   // ask again today
+        if args.contains("-demoExcusedIntro") { UserDefaults.standard.removeObject(forKey: introSeenKey) }   // the story again
         if let i = args.firstIndex(of: "-demoExcused"), i + 1 < args.count, let n = Int(args[i + 1]), !isActive {
             let from = Calendar.current.date(byAdding: .day, value: -n, to: Date()) ?? Date()
             start(kind: .haid, fromDay: from, days: 7, pauseZikr: false)
@@ -204,6 +205,9 @@ extension Excused {
 }
 
 extension Excused {
+    /// The story has been seen (then the ⓘ shows the illustrated rows).
+    static let introSeenKey = "excused.introSeen"
+
     /// A tap on the Salah circle while excused: PrayerTimesView opens the sheet.
     static let openSheet = Notification.Name("ExcusedOpenSheet")
     /// Something in the app tried to mark a prayer while excused (object: the PrayerModel): PrayerTimesView asks.
@@ -271,10 +275,26 @@ struct ExcusedSheet: View {
     @State private var keepZikr = true
     /// Just ended: the welcome back.
     @State private var welcomeBack = false
+    /// The first time: the story (owner, decision excused-info B), then the sheet.
+    @State private var intro = !UserDefaults.standard.bool(forKey: Excused.introSeenKey) && Excused.current == nil
+    /// The ⓘ: the illustrated rows (decision excused-info, C after the story).
+    @State private var showInfo = false
 
     static let maxDays = 60
 
     var body: some View {
+        if intro {
+            ExcusedIntroStory {
+                UserDefaults.standard.set(true, forKey: Excused.introSeenKey)
+                withAnimation(.snappy(duration: 0.3)) { intro = false }
+            } close: { dismiss() }
+            .presentationDetents([.large])
+        } else {
+            sheet
+        }
+    }
+
+    private var sheet: some View {
         VStack(spacing: 0) {
             HStack {
                 Button { dismiss() } label: {
@@ -286,8 +306,20 @@ struct ExcusedSheet: View {
                 }
                 .buttonStyle(.plain)
                 Spacer()
+                if !welcomeBack {
+                    Button { showInfo = true } label: {
+                        Image(systemName: "info")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(Color.primary.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("How Excused works")
+                }
             }
             .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
+            .sheet(isPresented: $showInfo) { ExcusedInfoSheet() }
             ScrollView {
                 VStack(spacing: 22) {
                     if welcomeBack { back } else if let current { running(current) } else { starting }
@@ -537,6 +569,213 @@ struct ExcusedExtendSheet: View {
         .onTapGesture { typing = false }   // the keypad has no return key
         .fontDesign(.rounded)
         .presentationDetents([.height(470)])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+
+// MARK: - How Excused works (decision excused-info: B the first time, C behind the ⓘ)
+
+/// The small pictures both pages share, drawn from the real pieces so they follow light and dark.
+enum ExcusedPicture {
+    case ring, paused, quiet, checkIn, privacy, elsewhere
+
+    @ViewBuilder func view(big: Bool) -> some View {
+        let k: CGFloat = big ? 1 : 0.42
+        switch self {
+        case .ring:
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [3, 4.5]))
+                if big {
+                    VStack(spacing: 2) {
+                        Text("Excused").font(.system(size: 26, weight: .light, design: .rounded))
+                        Text("Day 3 of about 7").font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .frame(width: big ? 170 : 34, height: big ? 170 : 34)
+        case .paused:
+            VStack(alignment: .leading, spacing: big ? 10 : 4) {
+                ForEach(big ? ["Fajr", "Dhuhr", "Asr"] : ["Fajr", "Dhuhr"], id: \.self) { name in
+                    HStack(spacing: 10) {
+                        PrayerStatusDot(style: .muted, done: false, future: false, scoreColor: .secondary, pulse: 0, excused: true)
+                        if big { Text(name).font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(.secondary) }
+                        else { Capsule().fill(Color.primary.opacity(0.12)).frame(width: 18, height: 3) }
+                    }
+                }
+            }
+            .padding(big ? 22 : 0)
+            .background(RoundedRectangle(cornerRadius: big ? 22 : 8, style: .continuous).fill(Color.primary.opacity(big ? 0.045 : 0)))
+            .scaleEffect(big ? 1 : 0.85)
+        case .quiet:
+            Image(systemName: "bell.slash").font(.system(size: 64 * k, weight: .light)).foregroundStyle(.secondary)
+        case .checkIn:
+            HStack(spacing: 8 * k) {
+                RoundedRectangle(cornerRadius: 6 * k).fill(Color.sage).frame(width: 26 * k, height: 26 * k)
+                if big {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Ready to start again?").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        Text("Turn your reminders back on whenever you're ready.").font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    Capsule().fill(Color.primary.opacity(0.12)).frame(width: 18, height: 3)
+                }
+            }
+            .padding(big ? 14 : 5)
+            .background(RoundedRectangle(cornerRadius: big ? 18 : 7, style: .continuous).fill(Color.primary.opacity(0.06)))
+        case .privacy:
+            Image(systemName: "lock.iphone").font(.system(size: 64 * k, weight: .light)).foregroundStyle(Color.sage)
+        case .elsewhere:
+            HStack(spacing: 10 * k) {
+                Image(systemName: "square.grid.2x2")
+                Image(systemName: "switch.2")
+                Image(systemName: "applewatch")
+            }
+            .font(.system(size: 34 * k, weight: .light))
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The first time (decision excused-info B): six pages, one picture each, swiped across like the tour; the last says
+/// shukr never tracks her cycle (owner: testers asked "will it know my time of month?").
+struct ExcusedIntroStory: View {
+    let done: () -> Void
+    let close: () -> Void
+    @State private var page = 0
+
+    private struct Page { let picture: ExcusedPicture; let title: String; let text: String }
+    private static let pages: [Page] = [
+        Page(picture: .ring, title: "Made for you",
+             text: "For your period (haid), or the bleeding after giving birth (nifas). Prayer is lifted for you, and shukr follows."),
+        Page(picture: .paused, title: "Paused, not missed",
+             text: "Those days are skipped: your streaks stay exactly where they were, and your list shows each prayer paused."),
+        Page(picture: .quiet, title: "Quiet",
+             text: "No prayer reminders, prayer cards or Fajr alarm while you're excused. Zikr keeps going, unless you pause its reminders."),
+        Page(picture: .checkIn, title: "We'll check in",
+             text: "From your estimated day, once a day: ready to start again? Not yet? Add a few more days."),
+        Page(picture: .privacy, title: "Private by design",
+             text: "shukr never tracks or predicts your cycle. Each month you turn this on yourself, on purpose, so nothing is guessed or kept beyond what you set. It stays on this phone."),
+        Page(picture: .elsewhere, title: "Everywhere else",
+             text: "Widgets, Siri and your watch still show prayer times. Tapping ✓ asks if you're back, and nothing is ever said out loud."),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                Spacer()
+                Text("\(page + 1) of \(Self.pages.count)").font(.footnote).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20).padding(.top, 18)
+            TabView(selection: $page) {
+                ForEach(Self.pages.indices, id: \.self) { i in
+                    let p = Self.pages[i]
+                    VStack(spacing: 22) {
+                        Spacer(minLength: 0)
+                        p.picture.view(big: true).frame(height: 190)
+                        Text(p.title).font(.system(size: 30, weight: .light, design: .rounded))
+                        Text(p.text).font(.subheadline).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center).padding(.horizontal, 36)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            HStack(spacing: 6) {
+                ForEach(Self.pages.indices, id: \.self) { i in
+                    Capsule().fill(i == page ? Color.sage : Color.primary.opacity(0.12)).frame(width: i == page ? 18 : 7, height: 7)
+                }
+            }
+            .animation(.snappy(duration: 0.25), value: page)
+            .padding(.bottom, 14)
+            Button {
+                if page < Self.pages.count - 1 { withAnimation(.snappy(duration: 0.3)) { page += 1 } } else { done() }
+            } label: {
+                Text(page < Self.pages.count - 1 ? "Next" : "Got it")
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 240, height: 52)
+                    .background(Capsule().fill(Color.sage.opacity(0.08)))
+                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 16)
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .fontDesign(.rounded)
+    }
+}
+
+/// The ⓘ after the story (decision excused-info C): one page, a tiny picture of what she'll see beside each row.
+struct ExcusedInfoSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    private static let rows: [(ExcusedPicture, String, String)] = [
+        (.ring, "The Salah circle", "Shows the time as usual; open your prayer list and it reads \u{201C}Excused \u{00B7} Day 3\u{201D}."),
+        (.paused, "Paused, not missed", "Grey pause dots in your list; your streaks stay as they were."),
+        (.quiet, "Quiet", "No prayer reminders, prayer cards or Fajr alarm. Zikr keeps going unless you pause it."),
+        (.checkIn, "Check-ins", "From your estimated day, once a day. Not yet? Add a few more days."),
+        (.privacy, "Private by design", "shukr never tracks or predicts your cycle: you turn this on each month yourself. It stays on this phone."),
+        (.elsewhere, "Widgets, Siri, watch", "Prayer times as usual. Tapping \u{2713} asks if you're back; nothing is said out loud."),
+    ]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
+            ScrollView {
+                VStack(spacing: 16) {
+                    VStack(spacing: 6) {
+                        Text("How Excused works").font(.system(size: 30, weight: .light, design: .rounded))
+                        Text("For your period (haid), or after giving birth (nifas). Prayer is lifted for you.")
+                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
+                    .padding(.horizontal, 28).padding(.top, 8)
+                    VStack(spacing: 0) {
+                        ForEach(Array(Self.rows.enumerated()), id: \.offset) { i, r in
+                            if i > 0 { Divider().padding(.leading, 86) }
+                            HStack(alignment: .center, spacing: 14) {
+                                r.0.view(big: false)
+                                    .frame(width: 58, height: 46)
+                                    .clipped()
+                                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(.systemBackground)))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(r.1).font(.subheadline.weight(.semibold))
+                                    Text(r.2).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 12)
+                        }
+                    }
+                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
+                    .padding(.horizontal, 20)
+                }
+                .padding(.bottom, 24)
+            }
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .fontDesign(.rounded)
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
 }
