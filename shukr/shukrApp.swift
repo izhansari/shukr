@@ -359,6 +359,9 @@ struct shukrApp: App {
             // they opened under a pushed page (InfoModal.swift).
             .infoModalHost()
             .topUpBannerHost()   // the last card's ↻ opened shukr: "All reminders topped up" (AutoTopUp.swift)
+            #if DEBUG
+            .zikrMockHost()   // `-zikrMock [azkar|zikr|history]`: the Zikr redesign mockups (ZikrRedesignMocks.swift)
+            #endif
             .overlay {
                 if setupShowing {
                     FirstRunSetupView(onFinish: {
