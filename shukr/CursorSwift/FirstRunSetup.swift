@@ -3082,6 +3082,8 @@ struct NotificationBanner: View {
         HStack(alignment: .top, spacing: 10) {
             Image("NotificationIcon")
                 .resizable()
+                // The light icon in every picture, whatever the look (owner: a general rule for the graphics).
+                .environment(\.colorScheme, .light)
                 .frame(width: 34, height: 34)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 0.5))

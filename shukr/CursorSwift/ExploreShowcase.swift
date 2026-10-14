@@ -707,14 +707,19 @@ struct ShowcasePicture: View {
             }
         }
         .overlay(alignment: .top) {
-            if !thumb, onPhone { ExploreLockPicture(id: id, scale: big || live ? 0.55 : compact ? 0.36 : 0.45) }
+            if !thumb, onPhone {
+                let s: CGFloat = big || live ? 0.55 : compact ? 0.36 : 0.45
+                if ExploreItemPhonePicture.ids.contains(id) { ExploreItemPhonePicture(id: id, scale: s) }
+                else { ExploreLockPicture(id: id, scale: s) }
+            }
         }
         .overlay(alignment: .topLeading) { if !thumb && !families.isEmpty { sizeLabel } }
         .clipped()
     }
 
-    /// A Lock Screen item, drawn on a phone's Lock Screen (a list row's small square keeps the plain clock).
-    private var onPhone: Bool { [.lockTime, .lockCountdown, .lockName].contains(id) }
+    /// A Lock Screen item drawn on a phone's Lock Screen; the notification, the map's items and Jumu'ah on the phone too
+    /// (owner: "look like our actual app's map"). A list row's small square keeps the plain picture.
+    private var onPhone: Bool { [.lockTime, .lockCountdown, .lockName].contains(id) || ExploreItemPhonePicture.ids.contains(id) }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
     private var fit: CGFloat {
@@ -1191,7 +1196,7 @@ enum ControlFaces {
 
 /// A prayer notification held open, as iOS shows it: the scheduler's own halfway notification for the prayer that's on
 /// (NotificationScheduler.prayerNotification — the words your phone gets), and its buttons (ActionTitle).
-private struct RealNotification: View {
+struct RealNotification: View {
     var body: some View {
         let p = ShownPrayer.now
         let window = (start: p.start, end: p.end, window: p.end.timeIntervalSince(p.start))
