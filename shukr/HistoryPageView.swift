@@ -361,7 +361,8 @@ struct SessionRow: View {
     /// The row's card (the Zikr redesign mockups draw raised soft cards).
     var rowBackground = AnyView(Color(.secondarySystemGroupedBackground))
     /// The Zikr redesign mockups' quieter line (Sami's review): "50 goal" for the "# 50" glyph, no "∞ freestyle" under
-    /// "Freestyle", the pace as plain grey text (still a tap target) without its capsule.
+    /// "Freestyle", the pace as plain grey text (still a tap target) without its capsule; feeling the pace lights only the
+    /// pace text, not the whole row (owner).
     var quiet = false
     private var quietTarget: String? {
         switch session.sessionMode {
@@ -444,7 +445,7 @@ struct SessionRow: View {
             if feelingPace && active != session.persistentModelID { stopFeelingPace() }
         }
         // Each count: a soft green edge glow around the row, like the qibla map's aligned glow.
-        .background { PaceEdgeGlow(beat: paceBeat).padding(-8) }
+        .background { if !quiet { PaceEdgeGlow(beat: paceBeat).padding(-8) } }   // quiet: only the pace text pulses (owner)
         // The practice session the tip asks to delete, ringed so it's the one swiped (not a real one).
         .overlay {
             if tourPractice {
@@ -457,7 +458,7 @@ struct SessionRow: View {
         // The whole row tints while the pace plays.
         // Always an explicit background: the system's grey selected-row fill looked off in Edit
         // mode (owner) — the selection circle is enough.
-        .listRowBackground(feelingPace ? AnyView(Color.green.opacity(0.08)) : rowBackground)
+        .listRowBackground(feelingPace && !quiet ? AnyView(Color.green.opacity(0.08)) : rowBackground)
     }
 
     private var summary: some View {

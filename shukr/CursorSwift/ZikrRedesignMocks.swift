@@ -265,6 +265,21 @@ private extension View {
     }
     /// The soft page behind a ScrollView: the Zikr page's surface.
     func softPage() -> some View { modifier(SoftPage()) }
+    /// A plain List on the soft page: the session lists are regular flat rows with swipe (owner: no shadow per row).
+    func softList() -> some View {
+        listStyle(.plain).scrollContentBackground(.hidden).environment(\.defaultMinListRowHeight, 1).softPage()
+    }
+    /// A List row with no background or lines (the title, the hero, a card, a label).
+    func bareRow(top: CGFloat = 6, bottom: CGFloat = 6) -> some View {
+        listRowInsets(EdgeInsets(top: top, leading: 16, bottom: bottom, trailing: 16))
+            .listRowBackground(Color.clear).listRowSeparator(.hidden)
+    }
+    /// A regular flat list row on the soft page, a faint line between rows.
+    func flatRow() -> some View {
+        listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
+            .listRowBackground(Color.clear)
+            .listRowSeparatorTint(Color.primary.opacity(0.1))
+    }
 }
 
 private struct SoftPage: ViewModifier {
@@ -278,6 +293,7 @@ private struct SoftPage: ViewModifier {
 private struct SoftLabel: View {
     let title: String
     var trailing: String? = nil
+    var inset: CGFloat = 16
     var body: some View {
         HStack {
             Text(title.uppercased()).font(.caption.weight(.medium)).tracking(1.2)
@@ -285,7 +301,7 @@ private struct SoftLabel: View {
             if let trailing { Text(trailing).font(.caption).monospacedDigit() }
         }
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, inset)
         .padding(.top, 8)
     }
 }
@@ -541,9 +557,10 @@ private struct DeleteSessionAlert: ViewModifier {
     }
 }
 
-/// Sessions as one card per day (Sami): the label with the day's time and count, the real rows inside (tap → the
-/// session's page, hold → its menu, the pace as quiet text you can tap to feel).
-private struct DayCards: View {
+/// Sessions as regular flat rows under a label per day (owner: "flat instead and keep them like regular list items"),
+/// inside the page's List so swipe-to-delete works: tap → the session's page, hold → its menu, swipe → delete, the pace as
+/// quiet text you can tap to feel (only the text pulses).
+private struct DayRows: View {
     let days: [(key: String, date: Date, items: [SessionDataModel])]
     var showsName = true
     var tappable = true
@@ -554,25 +571,25 @@ private struct DayCards: View {
     let onDelete: (SessionDataModel) -> Void
     var body: some View {
         ForEach(days, id: \.key) { day in
-            VStack(alignment: .leading, spacing: 8) {
-                SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(day.items))
-                SoftCard {
-                    ForEach(day.items) { s in
-                        let row = SessionRow(session: s, showsMantraName: showsName, tappable: tappable,
-                                             onMantra: (onZikr != nil && s.mantra != nil) ? { onZikr?(s) } : nil,
-                                             onOpen: { onOpen(s) }, onDelete: { onDelete(s) }, quiet: true)
-                        Group {
-                            if let selection, !tappable {
-                                SelectableRow(selected: selection, id: s.persistentModelID) { row }
-                            } else {
-                                row
-                            }
+            Section {
+                SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(day.items), inset: 4).bareRow(top: 14, bottom: 2)
+                ForEach(day.items) { s in
+                    let row = SessionRow(session: s, showsMantraName: showsName, tappable: tappable,
+                                         onMantra: (onZikr != nil && s.mantra != nil) ? { onZikr?(s) } : nil,
+                                         onOpen: { onOpen(s) }, onDelete: { onDelete(s) },
+                                         rowBackground: AnyView(Color.clear), quiet: true)
+                    Group {
+                        if let selection, !tappable {
+                            SelectableRow(selected: selection, id: s.persistentModelID) { row }
+                        } else {
+                            row
                         }
-                        .cardRow()
-                        .modifier(ZoomSource(id: "s-\(s.id)", zoom: zoom))
                     }
+                    .modifier(ZoomSource(id: "s-\(s.id)", zoom: zoom))
+                    .flatRow()
                 }
             }
+            .listSectionSeparator(.hidden)
         }
     }
 }
@@ -826,8 +843,8 @@ private struct MockGoalPage: View {
         let f = fraction(task, today)
         let paused = state.paused.contains(task.id)
         let streak = task.streak()
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        List {
+            Section { VStack(alignment: .leading, spacing: 14) {
                 Soft.title(task.title, MockFmt.goal(task) + (ZikrReminders.summary(task).map { " · \($0)" } ?? ""))
                 // The hero: today's ring, the streak, the last two weeks.
                 VStack(spacing: 14) {
@@ -873,25 +890,27 @@ private struct MockGoalPage: View {
                             Text("the zikr").font(.footnote).foregroundStyle(.tertiary)
                             Soft.chevron()
                         }
-                        .cardRow()
+                        .padding(.horizontal, 4).padding(.vertical, 6).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .matchedTransitionSource(id: "goal-zikr", in: zoom)
-                    .background(NeuRaised(shape: RoundedRectangle(cornerRadius: Soft.radius, style: .continuous), radius: 6, offset: 3))
                 }
-                DayCards(days: byDay(sessions, limit: 4), showsName: false,
-                         onOpen: { sessionToOpen = $0 }, onDelete: { sessionToDelete = $0 })
+            }.bareRow(top: 0) }
+            DayRows(days: byDay(sessions, limit: 4), showsName: false,
+                    onOpen: { sessionToOpen = $0 }, onDelete: { sessionToDelete = $0 })
+            Section {
                 if !sessions.isEmpty {
                     Button { showAll = true } label: {
-                        HStack { Text("All \(sessions.count) sessions"); Spacer(); Soft.chevron() }.cardRow()
+                        HStack { Text("All \(sessions.count) sessions"); Spacer(); Soft.chevron() }.contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .flatRow()
                 }
-                Color.clear.frame(height: 90)
+                Color.clear.frame(height: 90).bareRow()
             }
-            .padding(.horizontal, 16)
+            .listSectionSeparator(.hidden)
         }
-        .softPage()
+        .softList()
         .titleInBar(task.title, shown: $titleShown)
         .modifier(SoftBottomEdge())
         .modifier(BottomBar {
@@ -1032,8 +1051,8 @@ private struct MockZikrPage: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        List {
+            Section { VStack(alignment: .leading, spacing: 14) {
                 ModalLookCard(zikr: zikr) { card = ZikrCardRequest(mantra: zikr) }
                 if zikr.totalCount > 0 { recordStrip }
                 if !goals.isEmpty {
@@ -1052,19 +1071,22 @@ private struct MockZikrPage: View {
                     }
                 }
                 Soft.addRow(goals.isEmpty ? "Make it a daily goal" : "Another daily goal") { addingGoal = true }
-                DayCards(days: byDay(sessions, limit: 3), showsName: false,
-                         onOpen: { sessionToOpen = $0 }, onDelete: { sessionToDelete = $0 })
+            }.bareRow(top: 4) }
+            DayRows(days: byDay(sessions, limit: 3), showsName: false,
+                    onOpen: { sessionToOpen = $0 }, onDelete: { sessionToDelete = $0 })
+            Section {
                 if !sessions.isEmpty {
                     Button { showAll = true } label: {
-                        HStack { Text("All \(sessions.count) sessions"); Spacer(); Soft.chevron() }.cardRow()
+                        HStack { Text("All \(sessions.count) sessions"); Spacer(); Soft.chevron() }.contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .flatRow()
                 }
-                Color.clear.frame(height: 70)   // room above Start
+                Color.clear.frame(height: 70).bareRow()   // room above Start
             }
-            .padding(.horizontal, 16)
+            .listSectionSeparator(.hidden)
         }
-        .softPage()
+        .softList()
         .titleInBar(zikr.name, shown: $titleShown)
         .modifier(SoftBottomEdge())
         .modifier(BottomBar {
@@ -1252,21 +1274,21 @@ private struct MockHistoryPage: View {
     var body: some View {
         let base = filtered
         let story = MonthStory(base)
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
+        List {
+            Section {
                 Soft.title(active.map { $0.title } ?? "History",
                            "\(MockFmt.count(base.count)) sessions · \(MockFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted, all time")
-                if state.historyQuery.isEmpty { hero(story) }
-                DayCards(days: byDay(Array(shown.prefix(150))), tappable: !selecting,
-                         selection: $selection, zoom: zoom,
-                         onOpen: { sessionToOpen = $0 },
-                         onZikr: { s in if let m = s.mantra { open = .zikr(m, source: "s-\(s.id)") } },
-                         onDelete: { sessionToDelete = $0 })
-                Color.clear.frame(height: 20)
+                    .bareRow(top: 0)
+                if state.historyQuery.isEmpty { hero(story).bareRow(top: 8, bottom: 4) }
             }
-            .padding(.horizontal, 16)
+            DayRows(days: byDay(Array(shown.prefix(150))), tappable: !selecting,
+                    selection: $selection, zoom: zoom,
+                    onOpen: { sessionToOpen = $0 },
+                    onZikr: { s in if let m = s.mantra { open = .zikr(m, source: "s-\(s.id)") } },
+                    onDelete: { sessionToDelete = $0 })
+            Color.clear.frame(height: 20).bareRow()
         }
-        .softPage()
+        .softList()
         .titleInBar(active.map { $0.title } ?? "History", shown: $titleShown)
         .scrollDismissesKeyboard(.immediately)
         .modifier(SoftBottomEdge())
