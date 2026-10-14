@@ -132,7 +132,7 @@ enum CircleMotion {
     /// The dashed ring of a prayer still to come coming in: its dashes appear one by one, clockwise from the top (owner:
     /// "dash dash dash dash appearing", not a fade) — DashedRing's `drawn` run 0 → 1. After a mark, the day page's next
     /// Fajr, and the welcome's landing.
-    static let dashesDrawDuration: Double = 0.9
+    static let dashesDrawDuration: Double = 1.8   // owner: the half-speed recording read better than 0.9
     static let dashesDraw = Animation.easeOut(duration: dashesDrawDuration)
     /// ▶︎ Opening over the page as it is: the track fading out first; the welcome's mark fading once it's landed.
     static let openingTrackOutDuration: Double = 0.2
