@@ -1034,6 +1034,9 @@ private struct ZikrSheet: View {
                 Text(zikr.name).font(.system(size: 28, weight: .light, design: .rounded)).lineLimit(2)
                 if goals.isEmpty {
                     Text("No daily goal yet").font(.subheadline).foregroundStyle(.secondary)
+                } else if goals.count > 1 {
+                    // How many goals this zikr has (owner: no hint before; one needs no saying — its card says it).
+                    Text("\(goals.count) daily goals").font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 8)
