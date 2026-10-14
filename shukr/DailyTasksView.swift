@@ -107,6 +107,8 @@ struct ZikrCircleWheel: View {
     @State private var tasksSheetOn: TaskModel?
     /// The hold menu's Open zikr / Delete….
     @State private var wheelOpenZikr: MantraModel?
+    /// The redesign mockups' zikr page, pushed from the wheel's hold menu (DEBUG `-zikrMockApp`).
+    @State private var mockZikr: MantraModel?
     @State private var wheelDelete: TaskModel?
     /// How the circles fall away from the middle (Settings → My Dev Stuff while the owner picks).
     @AppStorage(ZikrWheelStyle.key) private var wheelStyleRaw = ZikrWheelStyle.gentle.rawValue
@@ -169,7 +171,8 @@ struct ZikrCircleWheel: View {
     /// any tasks that are finished"); the summary under the wheel opens the Tasks sheet with all of
     /// them. Coming back from a session centres the next one still to do (`landAfterSession`).
     private var items: [Item] {
-        [.freestyle] + tasks.filter { !isDone($0) || $0.id == heldTaskID }.map { .task($0) } + [.add]
+        // A goal paused in the redesign mockups (DEBUG `-zikrMockApp`) leaves the wheel.
+        [.freestyle] + tasks.filter { (!isDone($0) || $0.id == heldTaskID) && !ZikrMockFlag.paused($0) }.map { .task($0) } + [.add]
     }
     /// The summary's tap: Your tasks, the whole list, finished ones included (a page).
     @State private var showTasksPage = false
@@ -211,6 +214,7 @@ struct ZikrCircleWheel: View {
                 CircleCover.set("yourTasks", open, close: { showTasksPage = false })
             }
             .sheet(item: $wheelOpenZikr) { MantraEditorView(mantra: $0).stageCover("wheelZikrPage") }
+            .navigationDestination(item: $mockZikr) { zikrMockZikrPage($0) }
             .alert(wheelDelete.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
                    isPresented: Binding(get: { wheelDelete != nil }, set: { if !$0 { wheelDelete = nil } }),
                    presenting: wheelDelete) { task in
@@ -627,7 +631,11 @@ struct ZikrCircleWheel: View {
                     // Only the circle in focus (owner: "only allow long press on a task ring that's in focus"): an
                     // off-centre one's hold does nothing (no items, no menu) — its tap brings it to the middle.
                     // An example's options change nothing: picking one is the tour's to-do (Tour.swift).
-                    if centered == task.id.uuidString {
+                    if centered == task.id.uuidString, ZikrMockFlag.on, !example {
+                        // The redesign mockups' menu (DEBUG `-zikrMockApp`): goal words, Pause, the new zikr page.
+                        zikrMockWheelMenu(task, onEdit: { tasksSheetOn = task }, onOpenZikr: { mockZikr = task.mantra },
+                                          onReorder: { showTasksPage = true }, onDelete: { wheelDelete = task })
+                    } else if centered == task.id.uuidString {
                         TaskMenu(task: task,
                                  onEdit: { example ? TourRuntime.shared.event(.exampleOption) : (tasksSheetOn = task) },
                                  onOpenZikr: { example ? TourRuntime.shared.event(.exampleOption) : (wheelOpenZikr = task.mantra) },
