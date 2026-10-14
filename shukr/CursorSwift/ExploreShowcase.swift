@@ -713,7 +713,7 @@ struct ShowcasePicture: View {
         background.overlay {
             if thumb, let symbol = controlSymbol {
                 CCCircle(symbol: symbol, on: id == .ccFajrAlarm).scaleEffect(1.5)
-            } else if !thumb, onPhone {
+            } else if onPhone {
                 EmptyView()
             } else {
                 picture.scaleEffect((scale ?? (big ? 1.7 : compact ? 0.8 : 1)) * fit)
@@ -723,8 +723,9 @@ struct ShowcasePicture: View {
             }
         }
         .overlay(alignment: .top) {
-            if !thumb, onPhone {
-                let s: CGFloat = big || live ? 0.55 : compact ? 0.36 : 0.45
+            if onPhone {
+                // A list row's small square shows the same phone, smaller (owner: the rows still had the old pictures).
+                let s: CGFloat = thumb ? 0.3 : big || live ? 0.55 : compact ? 0.36 : 0.45
                 if ExploreItemPhonePicture.ids.contains(id) { ExploreItemPhonePicture(id: id, scale: s) }
                 else { ExploreLockPicture(id: id, scale: s) }
             }
@@ -738,7 +739,7 @@ struct ShowcasePicture: View {
     }
 
     /// A Lock Screen item drawn on a phone's Lock Screen; the notification, the map's items and Jumu'ah on the phone too
-    /// (owner: "look like our actual app's map"). A list row's small square keeps the plain picture.
+    /// (owner: "look like our actual app's map"), in a list row's small square too.
     private var onPhone: Bool { [.lockTime, .lockCountdown, .lockName].contains(id) || ExploreItemPhonePicture.ids.contains(id) }
 
     /// Control Center's grid is wider than the other pictures: drawn at its real size, then fitted.
@@ -807,7 +808,7 @@ struct ShowcasePicture: View {
 
     @ViewBuilder private var background: some View {
         switch id {
-        case _ where onPhone && !thumb: sage
+        case _ where onPhone: sage
         case .lockTime, .lockCountdown, .lockName, .lockControls, .siri, .answer, .controlCenter, .actionButton, .sleep: night
         case _ where id.isControl: night
         case _ where id.isSiri: sage   // the cards as they look in the Shortcuts app
