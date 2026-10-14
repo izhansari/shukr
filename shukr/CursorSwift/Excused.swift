@@ -273,6 +273,8 @@ struct ExcusedSheet: View {
     @State private var days = 7
     @FocusState private var typing: Bool
     @State private var keepZikr = true
+    /// The page's height, so the first screen can spread down it.
+    @State private var scrollHeight: CGFloat = 0
     /// Just ended: the welcome back.
     @State private var welcomeBack = false
     /// The first time: the story (owner, decision excused-info B), then the sheet.
@@ -312,7 +314,10 @@ struct ExcusedSheet: View {
                     if welcomeBack { back } else if let current { running(current) } else { starting }
                 }
                 .padding(.bottom, 20)
+                // At least the page's height, so the first screen's parts can spread down it (owner: use the space).
+                .frame(minHeight: scrollHeight, alignment: .top)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollHeight = $0 }
             .scrollDismissesKeyboard(.immediately)
             if !typing { primaryButton.transition(.opacity) }
         }
@@ -326,11 +331,13 @@ struct ExcusedSheet: View {
     // MARK: The three states
 
     private var starting: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 0) {
             // Named plainly (owner: no dodging the words — this was made for her too); the lock screen, Siri and the
             // widget stay neutral, as anyone can see or hear those.
             heading("Excused Mode", "For your period (haid), or the bleeding after giving birth (nifas). Prayer is lifted for you: your streaks and scores pause, and nothing counts as missed.")
+            Spacer(minLength: 22)
             daysRing(min: 1, caption: "days, about")
+            Spacer(minLength: 22)
             card {
                 row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
                 Divider().padding(.leading, 52)
@@ -342,7 +349,10 @@ struct ExcusedSheet: View {
             Text("Started earlier? Pick that day so your streak isn't broken.\nOnce your estimate is up, we'll send you one notification a day until you're back.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
+                .padding(.top, 14)
+            Spacer(minLength: 8)
         }
+        .frame(maxHeight: .infinity)
     }
 
     private func running(_ r: ExcusedRange) -> some View {
