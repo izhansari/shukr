@@ -937,9 +937,9 @@ struct LocationMapContentView: View {
     /// under it (owner: the pill is what the step is about) — the panel's measured bottom on this screen, no fixed number.
     @State private var controlsTop: CGFloat = 0
     private var tourRoom: CGFloat {
-        guard TourRuntime.shared.mapOpen, controlsTop > 0,
-              let panel = TourTargets.shared.frame("topPanel"), panel.height < 320 else { return 0 }
-        return max(0, (panel.maxY + 4 - controlsTop).rounded())
+        let tour = TourRuntime.shared
+        guard tour.mapOpen, controlsTop > 0, tour.panelBottom > 0, tour.panelBottom < 500 else { return 0 }
+        return max(0, (tour.panelBottom + 4 - controlsTop).rounded())
     }
 
     /// First visit: how the qibla map works (owner, 2026-09-25: people don't get why the arrows

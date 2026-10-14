@@ -71,6 +71,9 @@ enum CompassStatus: Equatable {
 class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     /// Each fix (the app sets it at launch: a background one tops everything up — AutoTopUp; this file is in the widget too).
     nonisolated(unsafe) static var onFix: (() -> Void)?
+    nonisolated(unsafe) private static var lastFixHandedOn = Date.distantPast
+    /// Whether the app is in the background (set by the app at launch: `UIApplication.shared` isn't there in an extension).
+    nonisolated(unsafe) static var inBackground: () -> Bool = { false }
  //locman_flag used for the compass in MainCircle and with injection on @Main
     @ObservationIgnored let manager = CLLocationManager()
     
@@ -143,6 +146,14 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         let center = NotificationCenter.default
         center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.setAppActive(true)
+            // Fine updates again (they stop in the background — below).
+            if let self, self.isAuthorized { self.manager.startUpdatingLocation() }
+        }
+        // In the background only the significant-change monitor (Always) wakes shukr: fine updates restarted on every wake
+        // delivered a fix at once, two or three per wake, each running the full prayer-time pass (perf-recheck, 2026-10-14:
+        // a wake every 2–15 min overnight in his topups.log).
+        center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.manager.stopUpdatingLocation()
         }
         center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.setAppActive(false)
@@ -252,7 +263,8 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
             if group?.bool(forKey: "locationWasAuthorized") != true { group?.set(true, forKey: "locationWasAuthorized") }
             if locationLost { locationLost = false }
-            manager.startUpdatingLocation()
+            // Not in a background (re)launch: the significant-change monitor below is what wakes it there.
+            if !Self.inBackground() { manager.startUpdatingLocation() }
             if qiblaBearing == nil, let cached = manager.location { setQiblaOrigin(cached) }
             startHeading()   // (again: with a location, Core Motion switches to true north)
             // Travel (notes #18): with Always, big moves wake the app — even when it isn't running
@@ -288,7 +300,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     // Function to explicitly start updating location and heading
     func startUpdating() {
         if Self.setupDone { manager.requestWhenInUseAuthorization() }
-        manager.startUpdatingLocation()
+        if !Self.inBackground() { manager.startUpdatingLocation() }
         startHeading()
     }
     
@@ -296,8 +308,12 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         userLocation = locations.last
         locationUpdates.send(locations.last)
-        // With Always, iOS wakes shukr for a big move: a moment to top everything up (the app sets this; AutoTopUp).
-        Self.onFix?()
+        // With Always, iOS wakes shukr for a big move: a moment to top everything up (the app sets this; AutoTopUp) —
+        // once a minute at most (a wake delivered the same fix two or three times).
+        if Date().timeIntervalSince(Self.lastFixHandedOn) > 60 {
+            Self.lastFixHandedOn = Date()
+            Self.onFix?()
+        }
         setQiblaOrigin(locations.last)
     }
     

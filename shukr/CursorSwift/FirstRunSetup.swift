@@ -3338,6 +3338,8 @@ struct AlarmDemo: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The island has opened into the alarm (once, on arrival; the wheels only change its words).
     @State private var open = false
+    /// A still picture (Explore): no shake (it repeats forever).
+    @Environment(\.laStillMoment) private var stillMoment
     /// The alarm's own tint (FajrAlarms' `tintColor`), so the button is the green iOS shows.
     private static let alarmGreen = Color(red: 0.43, green: 0.62, blue: 0.5)
 
@@ -3348,7 +3350,7 @@ struct AlarmDemo: View {
             Image(systemName: "alarm.fill")
                 .font(.system(size: 36))
                 .foregroundStyle(Self.alarmGreen)
-                .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.25)), isActive: open && !reduceMotion && off == nil)
+                .symbolEffect(.wiggle, options: .repeat(.periodic(delay: 0.25)), isActive: open && !reduceMotion && off == nil && stillMoment == nil)
             VStack(alignment: .leading, spacing: 1) {
                 Text("shukr")
                     .font(.system(.footnote, design: .default))

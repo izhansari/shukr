@@ -188,7 +188,7 @@ extension Excused {
         return day <= total ? "Day \(day) of about \(total)" : "Day \(day)"
     }
 
-    #if DEBUG
+    #if DEBUG || PERFARGS
     /// `-demoExcused N`: excused since N days ago (estimate 7), for screenshots; `-demoExcusedOff`: clears it;
     /// `-demoExcusedAsk`: the once-a-day question may come again today.
     @MainActor static func applyDebugArgs() {

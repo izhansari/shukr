@@ -169,6 +169,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     private let geocoder = CLGeocoder()
     private var lastGeocodeRequestTime: Date?
     private var lastAppLocation: CLLocation?
+    private static let lastPassKey = "location.lastPass"
     private var cancellables = Set<AnyCancellable>()
 
     func handleLocationChange(for location: CLLocation?) {
@@ -178,6 +179,17 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
 
         let now = Date()
+        // The last pass, kept on disk: a background wake is a fresh process, and with only memory every wake looked like
+        // the first and ran the whole pass (geocode, times, 30 days of reminders, the Fajr alarms) — perf-recheck,
+        // 2026-10-14.
+        if lastAppLocation == nil, let saved = UserDefaults.standard.array(forKey: Self.lastPassKey) as? [Double], saved.count == 3 {
+            lastAppLocation = CLLocation(latitude: saved[0], longitude: saved[1])
+            lastGeocodeRequestTime = Date(timeIntervalSince1970: saved[2])
+        }
+        // In the background only a real move (≥ 500 m) re-plans; the 10-minute refresh is for when the app is open.
+        if UIApplication.shared.applicationState == .background, let last = lastAppLocation, last.distance(from: location) < 500 {
+            return
+        }
         if let lastAppLocation = lastAppLocation {
             let distanceChange = lastAppLocation.distance(from: location)
             if let lastRequestTime = lastGeocodeRequestTime {
@@ -206,6 +218,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         self.lastGeocodeRequestTime = Date()
         self.lastAppLocation = location
+        UserDefaults.standard.set([location.coordinate.latitude, location.coordinate.longitude, now.timeIntervalSince1970],
+                                  forKey: Self.lastPassKey)
         if travelled {
             print("🧳 moved \(Int(moved / 1000)) km: updating times, widgets, watch")
             WidgetCenter.shared.reloadAllTimelines()
@@ -802,18 +816,25 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         let descriptor = FetchDescriptor<DailyPrayerScore>(predicate: #Predicate<DailyPrayerScore> { $0.date >= startOfDay && $0.date <= startOfDay })
         guard let records = try? context.fetch(descriptor), records.contains(where: { $0.averageScore != nil }) else { return }
         for r in records { r.averageScore = nil }
-        try? context.save()
+        if !batchingScores { try? context.save() }
     }
+
+    /// While excusedChanged re-scores 60 days: one save at the end, not one a day (perf-recheck, 2026-10-14: ~60 saves on
+    /// the main thread in one go when Excused Mode went on or off).
+    private var batchingScores = false
 
     /// After Excused changes: the last 60 days' scores (a removed mistaken start gives its day's score back) and the
     /// streaks, recounted.
     @MainActor func excusedChanged() {
         let cal = Calendar.current
         let today = PrayerDay.start(for: Date())
+        batchingScores = true
         for back in 0..<60 {
             guard let day = cal.date(byAdding: .day, value: -back, to: today) else { break }
             calculateDayScore(for: day.addingTimeInterval(12 * 3600), fromStore: true)
         }
+        batchingScores = false
+        if context.hasChanges { try? context.save() }
         DayHistory.invalidate()
         calculatePrayerStreak()
         pushCompletionsToWidget()
@@ -846,6 +867,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             let existingRecords = try context.fetch(fetchDescriptor)
             
             if let existingRecord = existingRecords.first {
+                guard existingRecord.averageScore != score else { return }   // unchanged: nothing to write
                 // Update existing record
                 existingRecord.averageScore = score
                 // We could also update individual prayer scores here if needed
@@ -856,7 +878,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 context.insert(newDailyScore)
             }
             
-            try context.save()
+            if !batchingScores { try context.save() }
         } catch {
             print("❌ Error saving daily prayer score: \(error.localizedDescription)")
         }

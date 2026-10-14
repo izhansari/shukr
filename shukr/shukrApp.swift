@@ -265,6 +265,7 @@ struct shukrApp: App {
         }
         #endif
         // A location fix while in the background (Always: iOS wakes shukr for a big move) — a moment to top up.
+        EnvLocationManager.inBackground = { UIApplication.shared.applicationState == .background }
         EnvLocationManager.onFix = {
             Task { @MainActor in
                 if UIApplication.shared.applicationState == .background { AutoTopUp.request("location update") }

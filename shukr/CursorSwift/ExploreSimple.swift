@@ -53,7 +53,7 @@ struct ExploreSimplePage: View {
         .fontDesign(.rounded)
         .task {
             await model.load(context: context)
-            #if DEBUG
+            #if DEBUG || PERFARGS
             if let raw = UserDefaults.standard.string(forKey: "demoExploreGroup"), let id = ExploreGroupID(rawValue: raw) {
                 demoGroup = groups.first { $0.id == id }
             }
@@ -62,7 +62,7 @@ struct ExploreSimplePage: View {
         .navigationDestination(item: $demoGroup) { destination($0) }
         // Back from the Home Screen or Control Center: what they just added shows as added inside.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            Task { await model.load(context: context) }
+            Task { await model.refreshIfStale(context: context) }
         }
     }
 

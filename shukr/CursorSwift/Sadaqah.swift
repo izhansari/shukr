@@ -293,10 +293,27 @@ final class SadaqahLog {
         return dir.appendingPathComponent("donations.json")
     }()
 
+    /// The file is there but couldn't be read: it's written with complete protection, so a launch while the phone is
+    /// locked (a background wake builds Settings, and this) can't read it. Never written over then — it read as empty, and
+    /// the next save replaced the whole log (perf-recheck review, 2026-10-14) — and read again before any change.
+    private var fileUnread = false
+
+    @discardableResult private func load() -> Bool {
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { fileUnread = false; return true }
+        guard let data = try? Data(contentsOf: fileURL),
+              let list = try? JSONDecoder.sadaqah.decode([SadaqahDonation].self, from: data) else { fileUnread = true; return false }
+        donations = list.sorted { $0.date > $1.date }
+        fileUnread = false
+        return true
+    }
+
     private init() {
-        if let data = try? Data(contentsOf: fileURL),
-           let list = try? JSONDecoder.sadaqah.decode([SadaqahDonation].self, from: data) {
-            donations = list.sorted { $0.date > $1.date }
+        load()
+        // Unlocked again: what couldn't be read is read now.
+        NotificationCenter.default.addObserver(forName: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil,
+                                               queue: .main) { [weak self] _ in
+            guard let self, self.fileUnread else { return }
+            self.load()
         }
         #if DEBUG
         // `-demoDonations`: stand-ins to look at (in memory; written only if one is edited).
@@ -314,17 +331,20 @@ final class SadaqahLog {
     }
 
     func save(_ donation: SadaqahDonation) {
+        if fileUnread { load() }
         if let i = donations.firstIndex(where: { $0.id == donation.id }) { donations[i] = donation } else { donations.append(donation) }
         donations.sort { $0.date > $1.date }
         write()
     }
 
     func delete(_ donation: SadaqahDonation) {
+        if fileUnread { load() }
         donations.removeAll { $0.id == donation.id }
         write()
     }
 
     private func write() {
+        guard !fileUnread else { return }   // never over a log that couldn't be read
         guard let data = try? JSONEncoder.sadaqah.encode(donations) else { return }
         try? data.write(to: fileURL, options: [.atomic, .completeFileProtection])
     }

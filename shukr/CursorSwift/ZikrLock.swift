@@ -517,11 +517,15 @@ struct ZikrLockCover: View {
                 // The tour's thumbprint tapping the circle (owner: "a ghost tap graphic on the task ring"), off the
                 // name, with the prompt.
                 .overlay {
-                    GeometryReader { geo in
-                        TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 48,
-                                                                              y: geo.size.height / 2 + 44)))
+                    // Only there while it shows: its TimelineView redraws every frame, so at opacity 0 it cost CPU the
+                    // whole time the (always mounted) Zikr page was locked (perf-recheck, 2026-10-14).
+                    if thirdShown >= 4 && !launching {
+                        GeometryReader { geo in
+                            TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 48,
+                                                                                  y: geo.size.height / 2 + 44)))
+                        }
+                        .transition(.opacity)
                     }
-                    .opacity(thirdShown >= 4 && !launching ? 1 : 0)
                 }
                 .padding(.top, 2)
                 .opacity(thirdShown >= 3 ? 1 : 0)
@@ -749,11 +753,14 @@ struct ZikrLockCover: View {
         .offset(launchOffset)
         .frame(height: 166)
         .overlay {
-            GeometryReader { geo in
-                TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 48,
-                                                                      y: geo.size.height / 2 + 44)))
+            // Only there while it shows (its TimelineView redraws every frame — see the ring's above).
+            if thirdShown >= 4 && reveal >= 4 && !launching {
+                GeometryReader { geo in
+                    TouchHint(spec: TouchHintSpec(kind: .tap, at: CGPoint(x: geo.size.width / 2 + 48,
+                                                                          y: geo.size.height / 2 + 44)))
+                }
+                .transition(.opacity)
             }
-            .opacity(thirdShown >= 4 && reveal >= 4 && !launching ? 1 : 0)
         }
     }
 

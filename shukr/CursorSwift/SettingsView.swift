@@ -324,8 +324,8 @@ struct SettingsView: View {
     private var tourRoomNow: CGFloat {
         let tour = TourRuntime.shared
         guard tour.active, tour.step == .settings, tour.phase != .go,
-              let panel = TourTargets.shared.frame("topPanel"), panel.height < 320, listTop > 0 else { return 0 }
-        return max(0, (panel.maxY + 4 - listTop).rounded())
+              tour.panelBottom > 0, tour.panelBottom < 500, listTop > 0 else { return 0 }
+        return max(0, (tour.panelBottom + 4 - listTop).rounded())
     }
     /// The room kept: it only grows within the chapter (the panel's height changes with each to-do; the page shouldn't
     /// move up and down with it), back to 0 once the chapter's over.

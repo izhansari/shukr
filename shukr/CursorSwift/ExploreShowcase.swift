@@ -105,7 +105,18 @@ enum ExploreShowcase {
     var byID: [ShowcaseCardID: ShowcaseCard] { Dictionary((sections.flatMap(\.cards) + extras).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
     var total: Int { sections.flatMap(\.cards).count }
 
+    /// When it last looked (`refreshIfStale`).
+    private var loadedAt = Date.distantPast
+
+    /// Back in the app: looked again only if it's been a while — pulling Control Center or Notification Center down on the
+    /// page made the app active again and re-ran every check, re-rendering the whole page (perf-recheck, 2026-10-14).
+    func refreshIfStale(context: ModelContext) async {
+        guard Date().timeIntervalSince(loadedAt) > 30 else { return }
+        await load(context: context)
+    }
+
     func load(context: ModelContext) async {
+        loadedAt = Date()
         let d = UserDefaults.standard
         let configs: [WidgetInfo] = await withCheckedContinuation { c in
             WidgetCenter.shared.getCurrentConfigurations { c.resume(returning: (try? $0.get()) ?? []) }
@@ -264,7 +275,7 @@ struct ExploreShowcasePage: View {
         .navigationDestination(item: $demoCard) { ShowcaseStoryPage(card: $0) }
         // Back from the Home Screen or Control Center: what was just added counts.
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            Task { await model.load(context: context) }
+            Task { await model.refreshIfStale(context: context) }
         }
     }
 
@@ -681,6 +692,8 @@ struct ShowcaseStory {
 
 struct ShowcasePicture: View {
     let id: ShowcaseCardID
+    /// When the picture appeared: its live arcs are drawn as they stood then (`laStillMoment`).
+    @State private var appearedAt = Date()
     var big = false
     /// In the two-by-two grids: a little smaller, as in the mockup.
     var compact = false
@@ -718,6 +731,10 @@ struct ShowcasePicture: View {
         }
         .overlay(alignment: .topLeading) { if !thumb && !families.isEmpty { sizeLabel } }
         .clipped()
+        // A still picture: the cards' live arcs and the alarm's shake drawn once, as they stood when it appeared (the Time
+        // Left card's window sits round the real now) — perf-recheck: the Shortcuts section sat at ~37 % CPU idle
+        // redrawing them.
+        .environment(\.laStillMoment, appearedAt)
     }
 
     /// A Lock Screen item drawn on a phone's Lock Screen; the notification, the map's items and Jumu'ah on the phone too

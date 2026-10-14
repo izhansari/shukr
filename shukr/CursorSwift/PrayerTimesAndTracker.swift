@@ -16,6 +16,11 @@ import WidgetKit
 // MARK: - Prayer Times View
 
 struct PrayerTimesView: View {
+    #if PERFARGS
+    /// The Release perf build's shortcuts (board/perf-recheck-plan.md): `-perfExplore` opens Explore (with `-demoExploreGroup`
+    /// / `-demoExploreMember`), `-demoExcused N` starts Excused Mode. Compiled only into that build.
+    @State private var perfExplore = false
+    #endif
     @Environment(SharedStateClass.self) var sharedState
     @EnvironmentObject var viewModel: PrayerViewModel
     @Environment(\.presentationMode) var presentationMode
@@ -1551,6 +1556,14 @@ struct PrayerTimesView: View {
             }
         }
         .whatsNewReturnPill()   // after What's new → "Open in shukr" to a pager page
+        #if PERFARGS
+        .task {
+            Excused.applyDebugArgs()
+            try? await Task.sleep(for: .seconds(2))
+            if ProcessInfo.processInfo.arguments.contains("-perfExplore") { perfExplore = true }
+        }
+        .sheet(isPresented: $perfExplore) { NavigationStack { ExploreSimplePage() } }
+        #endif
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .newZikrCard(isPresented: $demoNewZikr)

@@ -3829,27 +3829,44 @@ struct LiftedSoftBand: View {
     }
 }
 
+/// A still picture of a card (Explore's pictures): its live arcs drawn once, at this moment, not redrawn 30 times a
+/// second — a list of them sat at ~37 % CPU idle on the owner's 13 Pro Max (perf-recheck, 2026-10-14). nil = live.
+private struct LAStillMomentKey: EnvironmentKey { static let defaultValue: Date? = nil }
+extension EnvironmentValues {
+    var laStillMoment: Date? {
+        get { self[LAStillMomentKey.self] }
+        set { self[LAStillMomentKey.self] = newValue }
+    }
+}
+
 /// The live arc (the widget's `LiveArc`): a round arc with a glow, shown up to now by the stock timer ring used as a mask.
 struct LALiveArc: View {
     let start: Date
     let end: Date
     let color: Color
     let width: Double
+    @Environment(\.laStillMoment) private var stillMoment
     /// In the app (the tuner's preview) the stock timer ring is a spinner, not a gauge: there the arc is drawn up to now
     /// (once a second); on the Lock Screen it's the system's own, self-updating mask.
     private static let inApp = Bundle.main.bundleURL.pathExtension != "appex"
     var body: some View {
-        if Self.inApp {
+        if Self.inApp, let stillMoment {
+            arc(upTo: stillMoment)
+        } else if Self.inApp {
             TimelineView(.animation(minimumInterval: 1.0 / 30)) { ctx in   // smooth: the setup / Card look demo plays a window in seconds
-                let f = min(max(ctx.date.timeIntervalSince(start) / max(end.timeIntervalSince(start), 1), 0), 1)
-                Circle().trim(from: 0, to: f)
-                    .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .shadow(color: color.opacity(0.45), radius: 3)
+                arc(upTo: ctx.date)
             }
         } else {
             systemArc
         }
+    }
+
+    private func arc(upTo now: Date) -> some View {
+        let f = min(max(now.timeIntervalSince(start) / max(end.timeIntervalSince(start), 1), 0), 1)
+        return Circle().trim(from: 0, to: f)
+            .stroke(color, style: StrokeStyle(lineWidth: width, lineCap: .round))
+            .rotationEffect(.degrees(-90))
+            .shadow(color: color.opacity(0.45), radius: 3)
     }
 
     private var systemArc: some View {
@@ -4027,11 +4044,19 @@ enum Excused {
     static let key = "excused.ranges"
     static let changed = Notification.Name("ExcusedChanged")
 
+    /// Decoded once per change, not per call: every prayer row, the circle (≈10×/s while idle) and the widget's rows ask
+    /// (perf-recheck, 2026-10-14). The stored bytes are compared — cheap — so a change from any process is seen at once.
     static var ranges: [ExcusedRange] {
-        guard let data = UserDefaults(suiteName: SharedStore.appGroup)?.data(forKey: key),
-              let list = try? JSONDecoder().decode([ExcusedRange].self, from: data) else { return [] }
+        guard let data = defaults?.data(forKey: key) else { return [] }
+        rangesLock.lock(); defer { rangesLock.unlock() }
+        if let cached = rangesCache, cached.data == data { return cached.list }
+        let list = (try? JSONDecoder().decode([ExcusedRange].self, from: data)) ?? []
+        rangesCache = (data, list)
         return list
     }
+    private static let defaults = UserDefaults(suiteName: SharedStore.appGroup)
+    private static let rangesLock = NSLock()
+    nonisolated(unsafe) private static var rangesCache: (data: Data, list: [ExcusedRange])?
     static var current: ExcusedRange? { ranges.last(where: { $0.end == nil }) }
     static var isActive: Bool { current != nil }
 

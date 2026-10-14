@@ -735,8 +735,8 @@ struct TourTopPanel: View {
         .onTapGesture { TourRuntime.shared.screenTap() }
         // Where the panel ends on this screen: Settings starts its page under it (SettingsView.tourRoom). Not the
         // tuner's pictures of it.
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-            if !guideKey.hasPrefix("tuner.") { TourTargets.shared.set("topPanel", frame) }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY.rounded() } action: { bottom in
+            if !guideKey.hasPrefix("tuner."), TourRuntime.shared.panelBottom != bottom { TourRuntime.shared.panelBottom = bottom }
         }
         .onAppear { Presence.shared.up = true }
         .onDisappear { Presence.shared.up = false }
@@ -2364,6 +2364,9 @@ struct BubbleShape: Shape {
     var editorInYellow = false
     /// Its score (0…100), for the line held under it.
     var editorScore = 0
+    /// Where the top panel ends on this screen (its own value, not one of TourTargets' frames: Settings and the map read
+    /// it in their bodies, and reading the frames dictionary re-rendered Settings on every scroll frame — perf-recheck).
+    var panelBottom: CGFloat = 0
 
     /// The to-do just ticked, still shown with its ✓ for a beat (the page after it waits).
     private(set) var beat: Int?

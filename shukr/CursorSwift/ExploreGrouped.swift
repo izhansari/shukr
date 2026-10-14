@@ -282,7 +282,7 @@ struct ExploreGroupedPage: View {
         .fontDesign(.rounded)
         .task {
             await model.load(context: context)
-            #if DEBUG
+            #if DEBUG || PERFARGS
             if let raw = UserDefaults.standard.string(forKey: "demoExploreGroup"), let id = ExploreGroupID(rawValue: raw) {
                 demoGroup = groups.first { $0.id == id }
             }
@@ -290,7 +290,7 @@ struct ExploreGroupedPage: View {
         }
         .navigationDestination(item: $demoGroup) { ExploreGroupPage(group: $0) }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            Task { await model.load(context: context) }
+            Task { await model.refreshIfStale(context: context) }
         }
     }
 
@@ -407,7 +407,7 @@ struct ExploreGroupPage: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
-        #if DEBUG
+        #if DEBUG || PERFARGS
         .task { demoMember = demoMemberCard != nil }
         .navigationDestination(isPresented: $demoMember) {
             if let c = demoMemberCard, let i = group.members.firstIndex(of: c) { ExploreStoryPager(group: group, start: i) }
@@ -415,7 +415,7 @@ struct ExploreGroupPage: View {
         #endif
     }
 
-    #if DEBUG
+    #if DEBUG || PERFARGS
     private var demoMemberCard: ShowcaseCard? {
         UserDefaults.standard.string(forKey: "demoExploreMember").flatMap { raw in group.members.first { $0.id.rawValue == raw } }
     }

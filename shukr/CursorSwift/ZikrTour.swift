@@ -531,17 +531,8 @@ struct ZikrTourLayer: View {
             }
         }
         #endif
-        // The first Zikr visit: offered once, if the tour hasn't been seen (not over the app tour, not before setup) —
-        // and not while the page is locked: the lock's card is the offer then (ZikrLock).
-        .onChange(of: onZikr, initial: true) { _, on in
-            guard on, !covered, !tour.active, !TourRuntime.shared.active, FirstRunSetup.isDone, !ZikrLock.shared.locked,
-                  !ZikrTour.completed, !UserDefaults.standard.bool(forKey: ZikrTour.offeredKey) else { return }
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(0.6))
-                guard onZikr, !tour.active, !TourRuntime.shared.active else { return }
-                tour.offer(inAppTour: false)
-            }
-        }
+        // No first-visit offer any more (owner, 2026-10-14: "we can just get rid of that" — the old "Want to learn Zikr
+        // properly? About 2 minutes" bubble): new people meet the lock page; anyone else finds the Zikr Tour in ☰.
     }
 
     @ViewBuilder private func bubble(_ t: TourTargets, origin: CGPoint, height: CGFloat) -> some View {

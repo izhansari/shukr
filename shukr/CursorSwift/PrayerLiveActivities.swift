@@ -67,34 +67,30 @@ enum PrayerLiveActivities {
         return Activity<PrayerWindowAttributes>.activities.filter { $0.activityState == .pending || $0.activityState == .active }.count
     }
 
-    /// Opening shukr refills everything; when something had run out, the app says so with the same banner as the last
-    /// card's ↻ (owner): the cards (one or none left, and this refilled them — "whenever they open the app after all of
-    /// their live activities have been exhausted"), or the notifications (none left, or one of the running-low warnings —
-    /// easing off, heads-up, the last one — had come in: "after the first heads up reminder comes in"). Not before cards
-    /// were ever held (a first setup isn't a "top-up").
+    /// Opening shukr refills everything. The banner says so only after the warning that notifications are running out
+    /// (owner, 2026-10-14: "I only want it to come up on the app on its own after the heads up notification that
+    /// notifications are running out. The only other time … from pressing the refresh on the live activity card"): the
+    /// heads-up (keepalive.ahead.*) or, if that was swiped away, the last one (plain keepalive.<day>) — not easing off,
+    /// not cards running low (every install wiped them, so it showed on most opens), not "nothing pending". The ↻ path
+    /// (`refresh`) shows it itself.
     @MainActor static func planOnOpen(reason: String) {
-        let before = heldCount
-        let added = plan(reason: reason)
+        plan(reason: reason)
         let group = UserDefaults(suiteName: SharedStore.appGroup)
-        let everHeld = group?.bool(forKey: "la.everHeld") == true
-        if heldCount > 0, !everHeld { group?.set(true, forKey: "la.everHeld") }
-        let cardsRanOut = added > 0 && before <= 1 && everHeld
+        if heldCount > 0, group?.bool(forKey: "la.everHeld") != true { group?.set(true, forKey: "la.everHeld") }
         Task { @MainActor in
             let center = UNUserNotificationCenter.current()
-            guard await center.notificationSettings().authorizationStatus == .authorized || cardsRanOut else { return }
-            let pending = await center.pendingNotificationRequests()
+            guard await center.notificationSettings().authorizationStatus == .authorized,
+                  UserDefaults.standard.bool(forKey: "firstRunSetup.v1") else { return }
             let warnings = await center.deliveredNotifications().map(\.request.identifier)
-                .filter { $0.hasPrefix(NotificationScheduler.keepAlivePrefix) }
-            let notificationsRanLow = (pending.isEmpty || !warnings.isEmpty)
-                && UserDefaults.standard.bool(forKey: "firstRunSetup.v1")
-            guard cardsRanOut || notificationsRanLow else { return }
+                .filter { $0.hasPrefix(NotificationScheduler.headsUpPrefix) || NotificationScheduler.isLastKeepAlive($0) }
+            guard !warnings.isEmpty else { return }
             try? await Task.sleep(for: .seconds(2))   // the open's own notification re-plan first
             // Only on screen: a background wake (a card starting, the alarm's Stop) runs this too.
             guard UIApplication.shared.applicationState == .active else { return }
             await TopUpBanner.show()
             // Said once: the warnings are stale now (else every open would show it again).
             center.removeDeliveredNotifications(withIdentifiers: warnings)
-            TopUpLog.add("open after running low (\(cardsRanOut ? "cards" : "")\(cardsRanOut && notificationsRanLow ? " + " : "")\(notificationsRanLow ? "notifications" : "")) · the banner shown")
+            TopUpLog.add("open after the running-low warning · the banner shown")
         }
     }
 
