@@ -886,7 +886,7 @@ private struct MockAzkarPage: View {
                 if done == 0 {
                     Text("Each part of the ring is one goal.").font(.footnote).foregroundStyle(.secondary)
                 } else if bestStreak > 1 {
-                    Text("Your longest run now: \(bestStreak) days").font(.footnote).foregroundStyle(.secondary)
+                    Text("Your longest streak now: \(bestStreak) days").font(.footnote).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
@@ -1038,7 +1038,7 @@ private struct ZikrSheet: View {
         .padding(.horizontal, 4)
     }
 
-    /// The reminder, clear at a glance (owner: "the reminder isn't clear … maybe we use the sf green"): a green bell
+    /// The reminder, clear at a glance (owner: "the reminder isn't clear"; sage like Your tasks, decision zikr-reminder-color B): a bell
     /// capsule with when it rings; without one, a quiet "Add a reminder". A tap opens the goal's edit, where it's set.
     private func reminderPill(_ g: TaskModel) -> some View {
         Button { editing = g } label: {
@@ -1052,31 +1052,32 @@ private struct ZikrSheet: View {
                 }
             }
             .font(.footnote.weight(.medium))
-            .foregroundStyle(g.reminderKind != nil ? Color.green : Color.secondary)
+            .foregroundStyle(g.reminderKind != nil ? Color.sage : Color.secondary)
             .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Capsule().fill(g.reminderKind != nil ? Color.green.opacity(0.14) : Color.primary.opacity(0.06)))
+            .background(Capsule().fill(g.reminderKind != nil ? Color.sage.opacity(0.14) : Color.primary.opacity(0.06)))
         }
         .buttonStyle(.plain)
     }
 
-    /// More than one goal on this zikr: Give to Causes' capsule switch (Sami: not chips), the hero follows.
+    /// More than one goal on this zikr: a row of chips, the picked one in sage, scrolling sideways when there are many
+    /// (owner: he liked this over a capsule switch — "what if they have 10 for one azkar"). The hero follows.
     private var goalSwitch: some View {
-        HStack(spacing: 0) {
-            ForEach(goals) { g in
-                let on = g.id == goal?.id
-                Button { withAnimation(.snappy(duration: 0.25)) { picked = g } } label: {
-                    Text(g.customName ?? MockFmt.goal(g))
-                        .font(.subheadline.weight(.medium)).lineLimit(1)
-                        .foregroundStyle(on ? Color.primary : Color.secondary)
-                        .frame(maxWidth: .infinity).frame(height: 34)
-                        .background(Capsule().fill(on ? Color(.systemBackground) : .clear)
-                            .shadow(color: .black.opacity(on ? 0.08 : 0), radius: 4, y: 1))
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(goals) { g in
+                    let on = g.id == goal?.id
+                    Button { withAnimation(.snappy) { picked = g } } label: {
+                        Text(g.customName ?? MockFmt.goal(g)).font(.footnote.weight(on ? .semibold : .regular))
+                            .foregroundStyle(on ? Color.sage : .secondary)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Capsule().fill(on ? Color.sage.opacity(0.14) : Color.primary.opacity(0.05)))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+            .padding(.horizontal, 4)
         }
-        .padding(4)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        .scrollIndicators(.hidden)
         .sensoryFeedback(.selection, trigger: picked?.id)
     }
 
@@ -1124,9 +1125,9 @@ private struct ZikrSheet: View {
                 Text(line)
                     .font(.system(size: 17, weight: .light, design: .rounded))
                     .multilineTextAlignment(.center)
-                // The 14 rings already say how many days (Sami): only the best run, when the sentence isn't about a run.
-                if s.best > 1, !line.contains("in a row") {
-                    Text("best run \(s.best) days").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                // The 14 rings already say how many days (Sami): only the best streak, when the sentence isn't about one.
+                if s.best > 1, !line.contains("streak") {
+                    Text("best streak \(s.best) days").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
                 }
             }
             HStack(spacing: 0) {
@@ -1146,11 +1147,11 @@ private struct ZikrSheet: View {
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
     }
 
-    /// "11 days since you last did this" · "4 days in a row · keep it today" · "Done today · 5 days in a row".
+    /// "11 days since you last did this" · "4-day streak · keep it today" · "Done today · 5-day streak".
     private func headline(_ g: TaskModel, done: Bool, paused: Bool, streak s: TaskStreak) -> String {
         if paused { return "Paused · your history is kept" }
-        if done { return s.current > 1 ? "Done today · \(s.current) days in a row" : "Done today" }
-        if s.current >= 1 { return "\(s.current) day\(s.current == 1 ? "" : "s") in a row · keep it today" }
+        if done { return s.current > 1 ? "Done today · \(s.current)-day streak" : "Done today" }
+        if s.current >= 1 { return "\(s.current)-day streak · keep it today" }
         guard let last = g.sessions.map(\.startTime).max() else { return "Not started yet · today's a good day" }
         let n = Calendar.current.dateComponents([.day], from: PrayerDay.start(for: last), to: PrayerDay.start()).day ?? 0
         return n <= 1 ? "Last done yesterday" : "\(n) days since you last did this"
@@ -1421,7 +1422,7 @@ private struct MonthStory {
     /// The one reward sentence: the biggest true thing.
     var reward: String {
         if lastMonthCount > 0 && count > lastMonthCount { return "Already more than all of \(lastMonthName)" }
-        if streak >= 3 { return "\(streak) days in a row" + (streak >= bestStreak ? " — your longest yet" : "") }
+        if streak >= 3 { return "\(streak)-day streak" + (streak >= bestStreak ? ", your longest yet" : "") }
         if let b = bestDay, b.count > 0 { return "Your best day: \(MockFmt.count(b.count)) on \(b.date.formatted(.dateTime.month(.abbreviated).day()))" }
         return "Every day you say zikr lights up a part of the ring"
     }
@@ -1601,7 +1602,7 @@ private struct MockHistoryPage: View {
                         .fixedSize(horizontal: false, vertical: true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(s.activeDays) day\(s.activeDays == 1 ? "" : "s") this month")
-                        if s.bestStreak > 1 { Text("Longest run \(s.bestStreak) days") }
+                        if s.bestStreak > 1 { Text("Longest streak \(s.bestStreak) days") }
                         Text("\(MockFmt.hours(s.allTimeSeconds)) of zikr, all time")
                     }
                     .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
