@@ -124,7 +124,7 @@ extension ShowcaseCardID {
     /// What it does for you, one line under its name in the group's list.
     var memberLine: String {
         switch self {
-        case .homePrayers: "Time left in the prayer; mark it with a tap"
+        case .homePrayers: "The Salah page on your Home Screen"
         case .homeZikr: "Today's tasks; tap one to start counting"
         case .homeName: "A new Name of Allah every day"
         case .homeAyah: "Today's verse, once you've revealed it"
@@ -173,7 +173,7 @@ extension ShowcaseCardID {
 
     var memberName: String {
         switch self {
-        case .homePrayers: "Prayer ring"
+        case .homePrayers: "Prayers widget"
         case .homeZikr: "Zikr tasks"
         case .homeName: "Name of the Day"
         case .homeAyah: "Daily Ayah"

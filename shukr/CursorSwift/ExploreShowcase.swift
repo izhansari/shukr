@@ -487,10 +487,13 @@ struct ShowcaseStory {
     static func of(_ id: ShowcaseCardID) -> ShowcaseStory {
         switch id {
         // Home Screen
-        case .homePrayers: ShowcaseStory(title: "Prayer ring", hook: "The prayer that's on, and how long you have",
-            lead: "A ring fills as the prayer's time passes: green while you're early, then yellow, then red as it runs out. Prayed? Tap the circle in its corner and it's marked and scored, without opening shukr.",
-            points: [p("list.bullet", "All five, one tap", "The arrow shows today's times"),
-                     p("arrow.left.arrow.right", "Ends at, or time left", "Tap the ring to switch"),
+        // The one to have (owner: "it's basically a mini version of the app and salah page on your home screen with
+        // everything you need"): its picture is the one you can play with.
+        case .homePrayers: ShowcaseStory(title: "Prayers widget", hook: "The Salah page, on your Home Screen",
+            lead: "Everything the Salah page gives you, without opening shukr: the prayer that's on and how long you have, today's times one tap away, and a ✓ to mark it prayed. Try it above — it works like the real one.",
+            points: [p("circle.dashed", "The ring you know", "Green while you're early, then yellow, then red"),
+                     p("checkmark.circle", "Mark it right there", "Marked and scored; it moves on to the next prayer"),
+                     p("list.bullet", "All five, one tap", "The arrow shows today's times"),
                      p("square.grid.2x2", "Corners you choose", "Qibla, Zikr, Daily Ayah or the 99 Names")],
             how: "How to add it", steps: homeSteps)
         case .homeZikr: ShowcaseStory(title: "Zikr tasks", hook: "Today's zikr, waiting where you'll see it",
@@ -1006,9 +1009,12 @@ struct CCCircle: View {
 }
 
 /// You ask, Siri answers with a card (the phrase's own words; the answer shaped like the shortcut's).
-/// The Prayers widget itself, at a small widget's size, on Explore's preset day (`ExplorePreset`). `playing` (an item's page)
-/// runs what a person does with it, a finger mark on each tap: the ring's tap flips to time left, the arrow opens today's
-/// list, and back. It never takes a touch: its buttons would really run.
+/// The Prayers widget itself, at a small widget's size, on Explore's preset day (`ExplorePreset`). `playing` (its item's
+/// page) makes it the one picture in Explore you can play with (owner: "allow just this graphic the special ability to be
+/// interactive so the user can demo it"): every button does what the real one does on the preset day — the ring flips
+/// ends-at ⇄ time left, ✓ marks Asr (the ring moves on to Maghrib), the arrow opens today's times and back, a corner says
+/// where it would open shukr — nothing saved; "Start over" puts it back. The widget's own buttons never get the touch
+/// (they'd really run): one layer over it takes every tap and works out which button it was on.
 struct RealPrayersWidget: View {
     var playing = false
     /// StandBy: the widget's dark style on black, no container (as iOS shows widgets there).
@@ -1016,8 +1022,12 @@ struct RealPrayersWidget: View {
     /// A style to show (Settings → Appearance → Prayers widget's preview); nil = the widget's default.
     var style: WidgetStyle? = nil
     @State private var entry: PrayersWidgetEntry?
+    @State private var first: PrayersWidgetEntry?
     @State private var touch: UnitPoint?
     @State private var touches = 0
+    /// What a corner would open, said under the widget for a moment.
+    @State private var note: String?
+    @State private var notes = 0
     @Environment(\.colorScheme) private var scheme
     static let side: CGFloat = 170
 
@@ -1038,36 +1048,119 @@ struct RealPrayersWidget: View {
                         .transition(.scale(scale: 1.6).combined(with: .opacity))
                 }
             }
+            .allowsHitTesting(false)
         }
+        .overlay {
+            if playing {
+                Color.clear.contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+                    .onTapGesture(coordinateSpace: .local) { press($0) }
+                    .accessibilityHidden(true)
+            }
+        }
+        .overlay(alignment: .bottom) { if playing { footer.offset(y: 21) } }
         .shadow(color: .black.opacity(standby ? 0 : 0.15), radius: 10, y: 5)
         .environment(\.colorScheme, standby ? .dark : scheme)
-        .allowsHitTesting(false)
-        .task(id: style) { await run() }
+        .allowsHitTesting(playing)
+        .task(id: style) { start() }
     }
 
-    private func run() async {
-        var first = ExplorePreset.prayersEntry()
-        if let style { first.style = style }
-        if standby { first.style = .dark }
-        entry = first
-        guard playing else { return }
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(2.2))
-            await tap(at: .center) { $0.with(text: !$0.textToggle) }       // the ring: ends at ⇄ time left
-            try? await Task.sleep(for: .seconds(2.2))
-            await tap(at: UnitPoint(x: 0.5, y: 0.9)) { $0.at($0.date, list: true) }   // the arrow: today's list
-            try? await Task.sleep(for: .seconds(3))
-            await tap(at: UnitPoint(x: 0.5, y: 0.9)) { $0.at($0.date, list: false).with(text: first.textToggle) }
+    private func start() {
+        var e = ExplorePreset.prayersEntry()
+        if let style { e.style = style }
+        if standby { e.style = .dark }
+        first = e
+        entry = e
+    }
+
+    /// Under the widget: a hint until it's been played with, then what a corner would do, or Start over.
+    private var footer: some View {
+        Group {
+            if let note {
+                Text(note).id(notes)
+            } else if let entry, let first, !Self.same(entry, first) {
+                Button {
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.easeInOut(duration: 0.35)) { self.entry = first }
+                } label: {
+                    Label("Start over", systemImage: "arrow.counterclockwise").padding(.vertical, 6).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.sage)
+            } else {
+                Text("Try it: tap the ring, the ✓ or the arrow")
+            }
+        }
+        .font(.system(size: 11, weight: .medium, design: .rounded))
+        .foregroundStyle(Color.primary.opacity(0.6))
+        .fixedSize()
+        .transition(.opacity)
+    }
+
+    private static func same(_ a: PrayersWidgetEntry, _ b: PrayersWidgetEntry) -> Bool {
+        a.textToggle == b.textToggle && a.toggleShowAllTImes == b.toggleShowAllTImes && a.completedToday == b.completedToday
+    }
+
+    /// A tap on the widget: which of its buttons it was on (the widget's layout: 14 pt in, its buttons' row 6 pt in from
+    /// that, 30 pt targets — the check top left, the corners and the arrow along the bottom, the ring in the middle).
+    private func press(_ at: CGPoint) {
+        guard var e = entry else { return }
+        let side = Self.side, inset: CGFloat = 20, target: CGFloat = 30
+        let bottom = at.y > side - inset - target - 6
+        let left = at.x < inset + target + 6, right = at.x > side - inset - target - 6
+        let middle = abs(at.x - side / 2) < target / 2 + 8
+        func show(_ change: () -> Void) {
+            touches += 1
+            withAnimation(.easeOut(duration: 0.15)) { touch = UnitPoint(x: at.x / side, y: at.y / side) }
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeInOut(duration: 0.35)) { change() }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.2))
+                withAnimation(.easeOut(duration: 0.3)) { touch = nil }
+            }
+        }
+        if e.toggleShowAllTImes {
+            // Today's times: only the arrow (back to the ring) does anything.
+            if bottom && middle { show { entry = e.at(e.date, list: false) } }
+            return
+        }
+        if bottom && middle {
+            show { entry = e.at(e.date, list: true) }
+        } else if bottom && (left || right) {
+            let corner = left ? e.leftCorner : e.rightCorner
+            guard let name = Self.opens(corner) else { return }
+            show {}
+            say("Opens shukr on \(name)")
+        } else if !bottom && left && at.y < inset + target + 6 {
+            // ✓: Asr marked at the preset moment, scored as the app would; the ring moves on to the next prayer.
+            let asr = ExplorePreset.asr
+            guard e.completedScores[ExplorePreset.prayer] == nil else { return }
+            show {
+                e.completedScores[ExplorePreset.prayer] = PrayerScoring.score(start: asr.start, end: asr.end, markedAt: ExplorePreset.now)
+                entry = e
+            }
+        } else if hypot(at.x - side / 2, at.y - side / 2) < 52 {
+            show { entry = e.with(text: !e.textToggle) }
         }
     }
 
-    @MainActor private func tap(at point: UnitPoint, _ change: (PrayersWidgetEntry) -> PrayersWidgetEntry) async {
-        guard let current = entry, !Task.isCancelled else { return }
-        touches += 1
-        withAnimation(.easeOut(duration: 0.15)) { touch = point }
-        try? await Task.sleep(for: .seconds(0.18))
-        withAnimation(.easeInOut(duration: 0.35)) { entry = change(current) }
-        withAnimation(.easeOut(duration: 0.3)) { touch = nil }
+    private static func opens(_ corner: WidgetCornerAction) -> String? {
+        switch corner {
+        case .qibla: "the qibla"
+        case .tasbeeh: "a tasbih"
+        case .dailyAyah: "the Daily Ayah"
+        case .names: "the 99 Names"
+        case .none: nil
+        }
+    }
+
+    private func say(_ text: String) {
+        notes += 1
+        let mine = notes
+        withAnimation(.easeOut(duration: 0.2)) { note = text }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2))
+            if notes == mine { withAnimation(.easeOut(duration: 0.3)) { note = nil } }
+        }
     }
 }
 
