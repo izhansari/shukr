@@ -65,9 +65,6 @@ struct PrayersWidgetEntry: TimelineEntry {
     var ringAbove = 0.6
     /// Edit Widget → Style (the home-screen widget only).
     var style: WidgetStyle = .system
-    /// A mock-up for the owner (2026-10-14): once the prayer that's on is marked, the top right offers a camera (1) or a
-    /// camera and a tasbih (2) — pictures only, 0 everywhere real until he picks.
-    var markedExtras = 0
 
     /// "Follows the sun" (`auto`) night: from Maghrib until the next sunrise (the app's auto rule — `isDaytime` is
     /// after Fajr's window, before Maghrib), and before this prayer day's sunrise.
@@ -104,7 +101,6 @@ struct PrayersWidgetEntry: TimelineEntry {
                            completedScores: completedScores, nextFajr: nextFajr, nextSunrise: nextSunrise,
                            leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
                            ringAbove: ringAbove, style: style)
-        e.markedExtras = markedExtras
         return e
     }
 }
@@ -790,7 +786,7 @@ struct PrayersWidgetView: View {
                     HStack(spacing: 0) {
                         checkButton
                         Spacer()
-                        markedExtrasView
+                        cameraButton
                     }
                     Spacer()
                     HStack(spacing: 0) {
@@ -814,20 +810,13 @@ struct PrayersWidgetView: View {
             }
         }
 
-        /// The mock-up's top right (`markedExtras`): only once the prayer that's on has been marked, in the corners' look.
-        @ViewBuilder private var markedExtrasView: some View {
-            if entry.markedExtras > 0, let current = prayerInWindow, entry.completedToday.contains(current) {
-                HStack(spacing: 0) {
-                    if entry.markedExtras > 1 { extra("circle.hexagonpath") }
-                    extra("camera")
-                }
+        /// Top right, once the prayer that's on is marked (decision widget-camera A — owner: "let's do camera"): a camera
+        /// that opens shukr on that prayer's photo, in the corners' look. Gone when its window ends.
+        @ViewBuilder private var cameraButton: some View {
+            if let current = prayerInWindow, entry.completedToday.contains(current) {
+                CornerButton(intent: OpenPrayerPhotoIntent(prayerName: current), systemImage: "camera")
+                    .accessibilityLabel("Take a photo for \(current)")
             }
-        }
-        private func extra(_ symbol: String) -> some View {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .light))
-                .foregroundColor(.primary)
-                .frame(width: 30, height: 30)
         }
 
         /// Filled once the prayer whose window is open has been prayed (the circle has moved on

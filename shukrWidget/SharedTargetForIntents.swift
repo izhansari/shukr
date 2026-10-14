@@ -2989,8 +2989,25 @@ struct PrayerWindowOpenIntent: LiveActivityIntent {
     }
 }
 
+/// The Prayers widget's camera (decision widget-camera A): once the prayer that's on is marked, it opens shukr on the
+/// prayer photo's camera for it — as the Live Activity card's Photo does.
+struct OpenPrayerPhotoIntent: AppIntent {
+    static var title: LocalizedStringResource = "Take a prayer photo"
+    static var isDiscoverable = false
+    static var openAppWhenRun = true
+    @Parameter(title: "Prayer") var prayerName: String
+    init() {}
+    init(prayerName: String) { self.prayerName = prayerName }
+    func perform() async throws -> some IntentResult {
+        await PrayerWindowHooks.openPhoto?(prayerName)
+        return .result()
+    }
+}
+
 /// Set by the app at launch (an intent's run is always in the app's process).
 enum PrayerWindowHooks {
+    /// The widget's camera: the prayer's photo camera, once shukr is in front.
+    nonisolated(unsafe) static var openPhoto: ((String) async -> Void)?
     nonisolated(unsafe) static var mark: ((Int) async -> Void)?
     nonisolated(unsafe) static var open: ((Int, String) async -> Void)?
     /// A widget's mark, run in the app (owner: the card goes at once; and a fresh location — S9FJ). Returns whether it marked.

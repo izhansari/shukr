@@ -1149,6 +1149,11 @@ struct RealPrayersWidget: View {
             guard let name = Self.opens(corner) else { return }
             show {}
             say("Opens shukr on \(name)")
+        } else if !bottom && right && at.y < inset + target + 6 {
+            // The camera, once Asr is marked: it would open shukr's camera for Asr's photo.
+            guard e.completedScores[ExplorePreset.prayer] != nil else { return }
+            show {}
+            say("Opens shukr's camera for a photo of \(ExplorePreset.prayer)")
         } else if !bottom && left && at.y < inset + target + 6 {
             // ✓: Asr marked at the preset moment, scored as the app would; the ring moves on to the next prayer.
             let asr = ExplorePreset.asr
@@ -1195,7 +1200,6 @@ extension PrayersWidgetEntry {
                            completedScores: completedScores, nextFajr: nextFajr, nextSunrise: nextSunrise,
                            leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
                            ringAbove: ringAbove, style: style)
-        e.markedExtras = markedExtras
         return e
     }
 }
@@ -1267,9 +1271,6 @@ enum ExplorePreset {
                                   todayPrayerTimes: PrayerUtils.dummyPrayerTimes(), locationName: city, textToggle: false,
                                   completedScores: scores,
                                   nextFajr: fajr.start.addingTimeInterval(86_400), nextSunrise: fajr.end.addingTimeInterval(86_400))
-        #if DEBUG
-        e.markedExtras = UserDefaults.standard.integer(forKey: "widgetMarkedExtras")   // `-widgetMarkedExtras 1|2` (mock-ups)
-        #endif
         return e
     }
 

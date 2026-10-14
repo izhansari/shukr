@@ -28,6 +28,11 @@ enum PrayerLiveActivities {
     // MARK: Launch
 
     @MainActor static func onLaunch() {
+        // The Prayers widget's camera (any iOS): the same camera the card's Photo opens.
+        PrayerWindowHooks.openPhoto = { name in
+            try? await Task.sleep(for: .milliseconds(700))   // shukr in front first
+            NotificationCenter.default.post(name: openPhoto, object: name)
+        }
         guard #available(iOS 26.0, *) else { return }
         let state = UIApplication.shared.applicationState
         var line = "launch · " + (state == .background ? "background" : state == .active ? "active" : "inactive")
