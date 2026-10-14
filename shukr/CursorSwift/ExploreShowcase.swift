@@ -1121,8 +1121,25 @@ struct RealPrayersWidget: View {
             }
         }
         if e.toggleShowAllTImes {
-            // Today's times: only the arrow (back to the ring) does anything.
-            if bottom && middle { show { entry = e.at(e.date, list: false) } }
+            // Today's times: the arrow goes back to the ring; a row that has started marks it, or unmarks it if it's
+            // marked (owner: in the demo just do it — the real widget opens shukr to ask "Unmark …?"). The rows share
+            // the list's height as TimesListView lays them out: 10 pt in, the place's line, then six rows above the
+            // arrow's 30 pt.
+            if bottom && middle { show { entry = e.at(e.date, list: false) } ; return }
+            let order = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
+            let top: CGFloat = 23, rowHeight = min(22, (side - top - WidgetChevronButtonReserved) / CGFloat(order.count))
+            let i = Int(floor((at.y - top) / rowHeight))
+            guard order.indices.contains(i), at.y >= top, order[i] != "Sunrise",
+                  let window = e.prayerDict[order[i]], window.start <= e.date else { return }
+            let name = order[i]
+            show {
+                if e.completedScores[name] != nil {
+                    e.completedScores[name] = nil
+                } else {
+                    e.completedScores[name] = PrayerScoring.score(start: window.start, end: window.end, markedAt: ExplorePreset.now)
+                }
+                entry = e
+            }
             return
         }
         if bottom && middle {
@@ -1144,6 +1161,9 @@ struct RealPrayersWidget: View {
             show { entry = e.with(text: !e.textToggle) }
         }
     }
+
+    /// The list's room kept for its arrow (PrayersWidgetView.WidgetChevronButton.reserved).
+    private var WidgetChevronButtonReserved: CGFloat { PrayersWidgetView.WidgetChevronButton.reserved }
 
     private static func opens(_ corner: WidgetCornerAction) -> String? {
         switch corner {
