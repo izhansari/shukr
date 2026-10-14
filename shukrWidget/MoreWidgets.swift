@@ -794,7 +794,7 @@ struct FajrAlarmControl: ControlWidget {
     struct Provider: ControlValueProvider {
         var previewValue: Value { Value(on: true, time: "5:40 AM") }
         func currentValue() async throws -> Value {
-            let on = UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: "alarmEnabled") == true
+            let on = UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: "alarmEnabled") == true && !Excused.isActive
             let time = (try? PrayerUtils.calculateAlarmDescription(ignoringSwitch: true)).map { shortTimePM($0.time) } ?? ""
             return Value(on: on, time: time)
         }

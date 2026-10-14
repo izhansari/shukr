@@ -49,7 +49,8 @@ final class WatchSync: NSObject, WCSessionDelegate {
             "completed": Array(SharedStore.completedPrayerNamesToday()).sorted(),
             "completedDay": dayStart.timeIntervalSince1970,
             // Excused from prayer (Excused.swift): the watch shows the same as the phone (owner).
-            "excused": Excused.current.map { Excused.dayLine($0) } ?? "",
+            // Its start and estimate (the watch works the day line out itself, so it moves on with the days — review).
+            "excused": Excused.current.map { [$0.start.timeIntervalSince1970, $0.expectedEnd.timeIntervalSince1970] } ?? [Double](),
             // Light / dark / auto, the phone's Settings (0 / 1 / 2): the watch follows it (owner, watch-appearance).
             // System (3) isn't a watch setting: the iPhone's look right now, light or dark.
             "appearance": { () -> Int in

@@ -235,6 +235,8 @@ enum NotificationScheduler {
         let stale = delivered.map(\.request.identifier).filter { id in
             // A delivered last-resort reminder has done its job: this plan has just replaced it.
             if id.hasPrefix(keepAlivePrefix) { return true }
+            // A check-in already answered: she's back (Excused.swift).
+            if Excused.owns(id) && !Excused.isActive { return true }
             // Zikr reminders (and their "later" ones) from earlier days too (2026-09-27 review).
             if ZikrReminders.isStaleDelivered(id, todayKey: todayKey, dayStart: dayStart) { return true }
             guard let parsed = PrayerNotificationID.parse(id) else { return false }

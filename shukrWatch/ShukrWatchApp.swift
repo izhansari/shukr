@@ -519,7 +519,7 @@ struct WatchPrayerRing: View {
     var body: some View {
         ZStack {
             // The look is WatchRingFace (shukrWatchShared: the iPhone's Explore draws the same ring); here, the taps.
-            if let excused = WatchStore.excused {
+            if let excused = WatchStore.excusedLine(now: now) {
                 // Excused from prayer on the phone: the same calm face, nothing to mark (Excused.swift).
                 Circle()
                     .stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
@@ -565,7 +565,7 @@ struct WatchPrayerRing: View {
             if let start = pressY, abs(y - start) > 2 { cancelHold() }
         }
         .onLongPressGesture(minimumDuration: 0.8, maximumDistance: 4, perform: {
-            guard current, !compact, !holdCancelled, WatchStore.excused == nil else { return }
+            guard current, !compact, !holdCancelled, !WatchStore.excusedCovers(start: prayer.start, end: prayer.end) else { return }
             holdToken += 1
             pressY = nil
             holdFill = 0
@@ -634,6 +634,8 @@ final class WatchNotifications: NSObject, UNUserNotificationCenterDelegate {
                 if let prayer { WatchPrayerMarker.mark(prayer) }
                 completionHandler()
             }
+        case "SNOOZE_5_ACTION", "SNOOZE_10_ACTION" where WatchStore.excused != nil:
+            completionHandler()   // excused on the phone: no nudge (Excused.swift)
         case "SNOOZE_5_ACTION", "SNOOZE_10_ACTION":
             let minutes = response.actionIdentifier == "SNOOZE_5_ACTION" ? 5 : 10
             Self.nudge(after: Double(minutes * 60), title: "It's been \(minutes) minutes", body: subject,

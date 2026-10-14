@@ -1318,8 +1318,17 @@ struct SetFajrAlarmIntent: AppIntent {
         }
     }
 
+    /// Excused (Excused.swift): no alarm, said neutrally.
+    struct NoAlarmNeededError: Error, CustomLocalizedStringResourceConvertible {
+        var localizedStringResource: LocalizedStringResource { "No Fajr alarm is needed right now." }
+    }
+
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
+        if Excused.isActive {
+            FajrAlarmLog.add("Shortcut asked: excused — no alarm")
+            throw NoAlarmNeededError()
+        }
         if let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"), group.bool(forKey: "alarmKitActive") {
             // AlarmKit's permission taken away while the app wasn't running (audit B13): the Shortcut takes over
             // again, instead of neither setting an alarm.
@@ -1850,7 +1859,8 @@ struct FajrAlarmTimeIntent: AppIntent {
         let time = today > now ? today : (Calendar.current.date(byAdding: .day, value: 1, to: now).flatMap(rule) ?? today)
         FajrAlarmLog.add("Shortcut asked the rule's time: \(FajrAlarmLog.day(time))")
         // Say when it's off: the time is the rule's either way (an automation can still use it).
-        let on = UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: "alarmEnabled") == true
+        // Excused (Excused.swift): it won't ring, so it reads as off.
+        let on = UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: "alarmEnabled") == true && !Excused.isActive
         // Setup's alarm picture (the app's view, through ShortcutCards), frosted when the alarm is off.
         let scheme = await ShortcutLook.scheme()
         let view = await MainActor.run { ShortcutCards.fajrAlarm?(!on, time) } ?? AnyView(EmptyView())
@@ -1874,8 +1884,9 @@ struct FajrAlarmShortcutCheckIntent: AppIntent {
         #if canImport(AlarmKit)
         if #available(iOS 26.1, *), AlarmManager.shared.authorizationState == .denied { shukrSetsIt = false }
         #endif
-        let answer = on && !shukrSetsIt
-        FajrAlarmLog.add("Shortcut asked whether to set the alarm: \(answer) (switch \(on), shukr sets it \(shukrSetsIt))")
+        let excused = Excused.isActive   // no alarm while excused (Excused.swift)
+        let answer = on && !shukrSetsIt && !excused
+        FajrAlarmLog.add("Shortcut asked whether to set the alarm: \(answer) (switch \(on), shukr sets it \(shukrSetsIt)\(excused ? ", excused" : ""))")
         return .result(value: answer)
     }
 }
@@ -2270,7 +2281,9 @@ enum PrayerMarkNow {
         let marked = SharedStore.markedTime(of: c.name, start: c.start)
         let state = PrayerWindowAttributes.ContentState(label: c.name, start: c.start, end: c.end, symbol: prayerIcon(for: c.name),
                                                         markedAt: marked, dark: scheme == .dark)
-        return AnyView(PrayerCardSnippet(state: state, action: marked == nil ? .mark : undo ? .undo : .none)
+        // Excused (Excused.swift): no ✓ that would do nothing.
+        let mark: PrayerCardSnippet.Action = Excused.covers(start: c.start, end: c.end) ? .none : .mark
+        return AnyView(PrayerCardSnippet(state: state, action: marked == nil ? mark : undo ? .undo : .none)
             .environment(\.colorScheme, scheme))
     }
 }
@@ -2347,7 +2360,7 @@ struct TodaysTimesCardIntent: SnippetIntent {
     func perform() async throws -> some IntentResult & ShowsSnippetView {
         let scheme = await ShortcutLook.scheme()
         let now = Date()
-        return .result(view: AnyView(TodaysTimesSnippet(rows: TodaysTimesSnippet.rows(now: now), markable: true, now: now)
+        return .result(view: AnyView(TodaysTimesSnippet(rows: TodaysTimesSnippet.rows(now: now), markable: !Excused.isActive, now: now)
             .environment(\.colorScheme, scheme)))
     }
 }

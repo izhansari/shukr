@@ -552,7 +552,9 @@ enum WatchZikrSync {
         let dayStart = PrayerDay.start(ofKey: PrayerDay.key(forRow: name, startingAt: startDate)) ?? Calendar.current.startOfDay(for: startDate)
         let dayPrayers = (try? context.fetch(FetchDescriptor<PrayerModel>(
             predicate: PrayerDay.rowsPredicate(forDayStarting: dayStart)))) ?? []
-        let score = PrayerScoring.dayScore(for: dayPrayers)
+        // An excused day not prayed in full has no score (Excused.swift; review).
+        let excusedDay = Set(dayPrayers.filter(\.isCompleted).map(\.name)).count < 5 && Excused.Days().excludes(dayStart)
+        let score: Double? = excusedDay ? nil : PrayerScoring.dayScore(for: dayPrayers)
         if let row = try? context.fetch(FetchDescriptor<DailyPrayerScore>(
             predicate: #Predicate { $0.date >= dayStart && $0.date <= dayStart })).first {
             row.averageScore = score

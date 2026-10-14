@@ -35,9 +35,7 @@ struct ProgressData {
         let cal = Calendar.current
         let today = PrayerDay.start(for: now)
         // Only prayers whose outcome is known: marked, or window over; never an excused day's (Excused.swift).
-        let excused = Excused.ranges
-        let known = rows.filter { $0.startTime < today.addingTimeInterval(86_400) && ($0.isCompleted || $0.endTime < now)
-            && Excused.counts(day: $0.dayStart, in: excused) }
+        let known = Excused.countedRows(rows).filter { $0.startTime < today.addingTimeInterval(86_400) && ($0.isCompleted || $0.endTime < now) }
         func points(_ p: PrayerModel) -> Double { p.isCompleted ? (p.numberScore ?? 0) : 0 }
         func average(_ list: [PrayerModel]) -> Double? {
             list.isEmpty ? nil : list.map(points).reduce(0, +) / Double(list.count)

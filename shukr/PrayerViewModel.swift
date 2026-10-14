@@ -779,8 +779,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         // practice ones (Bradley's review: a mid-tour widget / banner mark saved the practice score as today's).
         let practiceShown = TourRuntime.practiceMirror != nil
         let objectsToCheck: [PrayerModel] = updatingToday && !practiceShown && !fromStore ? todaysPrayers : loadPrayerObjects(for: date)
-        // An excused day has no score (Excused.swift): the charts leave it out rather than show it low.
-        if Excused.excludesDay(PrayerDay.start(for: date), in: Excused.ranges) {
+        // An excused day not prayed in full has no score (Excused.swift): the charts leave it out rather than show it low.
+        if Set(objectsToCheck.filter(\.isCompleted).map(\.name)).count < 5, Excused.Days().excludes(PrayerDay.start(for: date)) {
             if updatingToday { todaysScore = 0 }
             clearDailyScore(for: date)
             return
@@ -803,18 +803,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         try? context.save()
     }
 
-    /// After Excused changes: the touched days' scores and the streaks, recounted.
+    /// After Excused changes: the last 60 days' scores (a removed mistaken start gives its day's score back) and the
+    /// streaks, recounted.
     @MainActor func excusedChanged() {
         let cal = Calendar.current
         let today = PrayerDay.start(for: Date())
-        for r in Excused.ranges {
-            var day = PrayerDay.start(for: r.start)
-            let last = r.end.map { PrayerDay.start(for: $0) } ?? today
-            while day <= min(last, today) {
-                calculateDayScore(for: day.addingTimeInterval(12 * 3600), fromStore: true)
-                guard let next = cal.date(byAdding: .day, value: 1, to: day) else { break }
-                day = next
-            }
+        for back in 0..<60 {
+            guard let day = cal.date(byAdding: .day, value: -back, to: today) else { break }
+            calculateDayScore(for: day.addingTimeInterval(12 * 3600), fromStore: true)
         }
         DayHistory.invalidate()
         calculatePrayerStreak()
@@ -917,8 +913,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         guard let todayPrayers = getTodaysPrayersFromContext() else{ return }
         let validPrayersToday = todayPrayers.filter { gradingCriteria(for: $0) }.count
         self.validPrayersToday = validPrayersToday
-        // An excused day (Excused.swift) neither adds to the streaks nor takes from them.
-        if Excused.excludesDay(todayStart, in: Excused.ranges) { return }
+        // An excused day (Excused.swift) not prayed in full neither adds to the streaks nor takes from them (once counted,
+        // an unmark still takes it back below).
+        if validPrayersToday < 5, lastStreakDateStart != todayStart, Excused.Days().excludes(todayStart) { return }
         let decrementStreak = validPrayersToday < 5 && lastStreakDateStart == todayStart
 
         if validPrayersToday == 5 {
@@ -1036,7 +1033,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         var streakAlive = true, inTimeAlive = true
         var batchEnd = todayStart                     // exclusive
         var day = yesterdayStart
-        let excused = Excused.ranges                  // excused days are stepped over: they neither count nor break a run
+        let excused = Excused.Days()                  // excused days not prayed in full are stepped over: they never break a run
         batches: for _ in 0..<150 {                   // ≤ ~1000 days
             guard let batchStart = calendar.date(byAdding: .day, value: -7, to: batchEnd) else { break }
             // 2.8.0: a day's Isha can start after midnight, so fetch 6 h past the batch and group rows by their own
@@ -1052,16 +1049,15 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 if d >= batchStart && d < batchEnd { byDay[d, default: []].append(row) }
             }
             while day >= batchStart {
-                if !Excused.excludesDay(day, in: excused) {
-                    let dayRows = byDay[day] ?? []
-                    if streakAlive {
-                        if five.isSubset(of: Set(dayRows.filter { self.gradingCriteria(for: $0) }.map(\.name))) { streakRun += 1 } else { streakAlive = false }
-                    }
-                    if inTimeAlive {
-                        if five.isSubset(of: Set(dayRows.filter(inWindow).map(\.name))) { inTimeRun += 1 } else { inTimeAlive = false }
-                    }
-                    if !streakAlive && !inTimeAlive { break batches }
+                let dayRows = byDay[day] ?? []
+                let skippable = excused.excludes(day)
+                if streakAlive {
+                    if five.isSubset(of: Set(dayRows.filter { self.gradingCriteria(for: $0) }.map(\.name))) { streakRun += 1 } else if !skippable { streakAlive = false }
                 }
+                if inTimeAlive {
+                    if five.isSubset(of: Set(dayRows.filter(inWindow).map(\.name))) { inTimeRun += 1 } else if !skippable { inTimeAlive = false }
+                }
+                if !streakAlive && !inTimeAlive { break batches }
                 guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break batches }
                 day = previous
             }

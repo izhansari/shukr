@@ -209,11 +209,13 @@ enum DayHistory {
             byDay[key, default: [:]][row.name] = row
         }
         // Excused days (Excused.swift) are left out, so a run of good days or a "missed" pattern steps over them.
-        let excused = Excused.ranges
+        let excused = Excused.Days()
         return (1...days).compactMap { back in
             let date = Calendar.current.date(byAdding: .day, value: -back, to: today) ?? today
-            guard Excused.counts(day: Calendar.current.startOfDay(for: date), in: excused) else { return nil }
-            return (byDay[PrayerNotificationID.dayKey(date)] ?? [:]).values.map(DayPrayer.init)
+            let rows = byDay[PrayerNotificationID.dayKey(date)] ?? [:]
+            let full = rows.values.filter(\.isCompleted).count >= 5
+            guard Excused.counts(day: Calendar.current.startOfDay(for: date), fullyPrayed: full, in: excused) else { return nil }
+            return rows.values.map(DayPrayer.init)
         }
     }
 }

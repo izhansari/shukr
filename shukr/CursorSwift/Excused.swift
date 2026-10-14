@@ -23,16 +23,32 @@ extension Excused {
 
     // MARK: Days that count
 
-    /// A prayer day (a `PrayerDay.start` date) that an excused range touches: left out of streaks and stats.
-    static func excludesDay(_ dayStart: Date, in list: [ExcusedRange]) -> Bool {
-        list.contains { r in
-            guard PrayerDay.start(for: r.start) <= dayStart else { return false }
-            guard let end = r.end else { return true }
-            return dayStart <= PrayerDay.start(for: end)
+    /// The excused prayer days, worked out once per loop (each range's first and last `PrayerDay.start`): comparing dates,
+    /// with no prayer-time maths per call (review: per row × range it thrashed PrayerDay's Fajr cache).
+    struct Days {
+        let spans: [(first: Date, last: Date?)]
+        init(_ list: [ExcusedRange] = Excused.ranges) {
+            spans = list.map { (PrayerDay.start(for: $0.start), $0.end.map { PrayerDay.start(for: $0) }) }
+        }
+        /// A prayer day (a `PrayerDay.start` date) an excused range touches.
+        func excludes(_ dayStart: Date) -> Bool {
+            spans.contains { $0.first <= dayStart && ($0.last.map { dayStart <= $0 } ?? true) }
         }
     }
-    /// Whether a prayer day counts towards streaks and stats. Read `ranges` once and pass it in loops.
-    static func counts(day dayStart: Date, in list: [ExcusedRange] = ranges) -> Bool { !excludesDay(dayStart, in: list) }
+
+    /// Whether a prayer day counts towards streaks and stats: always when all five were prayed (a day she prayed in full
+    /// is never taken away — review), else only when no excused range touches it.
+    static func counts(day dayStart: Date, fullyPrayed: Bool, in days: Days) -> Bool { fullyPrayed || !days.excludes(dayStart) }
+
+    /// The rows of the prayer days that count (grouped by each row's own prayer day).
+    static func countedRows(_ rows: [PrayerModel], in days: Days = Days()) -> [PrayerModel] {
+        guard !days.spans.isEmpty else { return rows }
+        var byDay: [Date: [PrayerModel]] = [:]
+        for r in rows { byDay[r.dayStart, default: []].append(r) }
+        return byDay.flatMap { day, list in
+            counts(day: day, fullyPrayed: Set(list.filter(\.isCompleted).map(\.name)).count >= 5, in: days) ? list : []
+        }
+    }
 
     // MARK: Changes (the app only)
 
@@ -40,7 +56,9 @@ extension Excused {
     @MainActor static func start(kind: ExcusedRange.Kind, fromDay: Date, days: Int, pauseZikr: Bool) {
         let now = Date()
         let start: Date
-        if Calendar.current.isDate(fromDay, inSameDayAs: PrayerDay.date(for: now)) || fromDay > now {
+        // Today (the calendar's, or the prayer day's before Fajr) starts now (review: before Fajr, "today" became a Fajr
+        // still to come).
+        if Calendar.current.isDateInToday(fromDay) || Calendar.current.isDate(fromDay, inSameDayAs: PrayerDay.date(for: now)) || fromDay > now {
             start = now
         } else {
             start = PrayerDay.fajr(onCalendarDayOf: fromDay) ?? Calendar.current.startOfDay(for: fromDay).addingTimeInterval(3 * 3600)
@@ -57,26 +75,48 @@ extension Excused {
         guard let i = list.lastIndex(where: { $0.end == nil }) else { return }
         if let expectedEnd { list[i].expectedEnd = expectedEnd }
         if let pauseZikr { list[i].pauseZikr = pauseZikr }
-        apply(list, reason: "excused changed")
+        apply(list, reason: "excused changed", light: true)
     }
 
-    /// She's back: everything is planned again from now.
-    @MainActor static func end(at date: Date = Date()) {
+    /// She's back: everything is planned again from now. A start ended within half an hour was a mistake: it's removed,
+    /// so it leaves no excused day behind (review). `planNotifications: false` = the caller awaits the plan itself.
+    @MainActor static func end(at date: Date = Date(), planNotifications: Bool = true) {
         var list = ranges
         guard let i = list.lastIndex(where: { $0.end == nil }) else { return }
-        list[i].end = max(date, list[i].start)
-        apply(list, reason: "excused off")
+        if date.timeIntervalSince(list[i].start) < 30 * 60 { list.remove(at: i) } else { list[i].end = max(date, list[i].start) }
+        apply(list, reason: "excused off", planNotifications: planNotifications)
     }
 
     /// Saves, then tells everything that plans or counts.
-    @MainActor private static func apply(_ list: [ExcusedRange], reason: String) {
+    /// `changed`'s object for a change that moves no day in or out (the estimate, the zikr switch).
+    static let lightChange = "light"
+
+    @MainActor private static func apply(_ list: [ExcusedRange], reason: String, planNotifications: Bool = true, light: Bool = false) {
+        let starting = !isActive && list.contains { $0.end == nil }
         save(list)
-        NotificationCenter.default.post(name: changed, object: nil)   // the Salah page recounts streaks and scores
-        NotificationScheduler.topUp(reason: reason)                   // notifications, then the Fajr alarm
+        NotificationCenter.default.post(name: changed, object: light ? lightChange : nil)   // the Salah page recounts
+        if starting { clearPrayerBanners() }
+        if planNotifications { NotificationScheduler.topUp(reason: reason) }   // notifications, then the Fajr alarm
         PrayerLiveActivities.plan(reason: reason)
         WidgetCenter.shared.reloadAllTimelines()
         if #available(iOS 18.0, *) { ControlCenter.shared.reloadAllControls() }
         WatchSync.shared.send()
+    }
+
+    /// Starting: today's prayer banners already on the screen and any nudge she'd asked for go (review: a "Nudge in 5
+    /// minutes" on a banner from before still nagged).
+    private static func clearPrayerBanners() {
+        let center = UNUserNotificationCenter.current()
+        func prayerOrSnooze(_ id: String) -> Bool {
+            PrayerNotificationID.parse(id) != nil || id.hasPrefix(PrayerNotificationID.snoozeHead) || id.hasPrefix("snooze-")
+        }
+        center.getPendingNotificationRequests { requests in
+            center.removePendingNotificationRequests(withIdentifiers: requests.map(\.identifier).filter {
+                $0.hasPrefix(PrayerNotificationID.snoozeHead) || $0.hasPrefix("snooze-") })
+        }
+        center.getDeliveredNotifications { delivered in
+            center.removeDeliveredNotifications(withIdentifiers: delivered.map(\.request.identifier).filter(prayerOrSnooze))
+        }
     }
 
     // MARK: The check-in (planned with the notifications)
@@ -92,13 +132,17 @@ extension Excused {
     static func checkIns(now: Date = Date()) -> [(id: String, date: Date, content: UNNotificationContent)] {
         guard let r = current else { return [] }
         let cal = Calendar.current
-        let first = cal.date(bySettingHour: 10, minute: 0, second: 0, of: r.expectedEnd) ?? r.expectedEnd
+        var first = cal.date(bySettingHour: 10, minute: 0, second: 0, of: r.expectedEnd) ?? r.expectedEnd
+        // An estimate already past (a start picked far back): from the next 10 AM, so she still gets them (review).
+        if first <= now, let next = cal.nextDate(after: now, matching: DateComponents(hour: 10, minute: 0), matchingPolicy: .nextTime) {
+            first = next
+        }
         return [0, 2, 4].enumerated().compactMap { i, offset in
             guard let date = cal.date(byAdding: .day, value: offset, to: first), date > now else { return nil }
             let content = UNMutableNotificationContent()
             content.title = "Ready to start again?"
-            content.body = i == 0 ? "You said about \(r.kind == .nifas ? "40 days" : "a week"). Turn your reminders back on whenever you're ready."
-                                  : "Turn your reminders back on whenever you're ready."
+            // The same words for both kinds: "40 days" on a lock screen could say why (review).
+            content.body = "Turn your reminders back on whenever you're ready."
             content.categoryIdentifier = checkInCategory
             return ("\(checkInPrefix)\(i)", date, content)
         }
@@ -149,11 +193,13 @@ extension Excused {
 /// The Salah circle while excused: the word, the day, and how to end it — no countdown, no colour, nothing due.
 struct ExcusedFace: View {
     let range: ExcusedRange
+    /// The circle's clock: the day line follows it (review: the same input every second, so it never redrew).
+    var now: Date = Date()
     var body: some View {
         VStack(spacing: 4) {
             Text("Excused")
                 .font(.system(size: 30, weight: .light, design: .rounded))
-            Text(Excused.dayLine(range))
+            Text(Excused.dayLine(range, now: now))
                 .font(.system(.subheadline, design: .rounded, weight: .light))
                 .foregroundStyle(.secondary)
             Text("Tap to end")
@@ -187,6 +233,7 @@ struct ExcusedSettingsRow: View {
         .buttonStyle(.plain)
         .sheet(isPresented: $showing) { ExcusedSheet() }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in current = Excused.current }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in current = Excused.current }
         .onAppear { current = Excused.current }
     }
 }

@@ -81,7 +81,8 @@ struct MainCircleView: View {
     private var derivedFace: CircleFace {
         if let lost = CircleStage.shared.lost, !lost.landed { return .lost }
         if let session = CircleStage.shared.morning { return .morning(session) }
-        if let range = CircleStage.shared.excused { return .excused(range) }
+        // Excused (Excused.swift): only with the list open (owner: the circle keeps showing the time, a little privacy).
+        if let range = CircleStage.shared.excused, sharedState.navPosition == .bottom { return .excused(range) }
         return prayersFace
     }
     /// The prayer on the circle, or the day's summary (none; or the next prayer is tomorrow's Fajr).
@@ -197,7 +198,7 @@ struct MainCircleView: View {
                 }
                 else if let range = excusedShown {
                     // Excused from prayer: what it is and the day, nothing to mark (Excused.swift).
-                    ExcusedFace(range: range)
+                    ExcusedFace(range: range, now: currentTime)
                         .transition(.opacity)
                 }
                 else if let session = morningShown {

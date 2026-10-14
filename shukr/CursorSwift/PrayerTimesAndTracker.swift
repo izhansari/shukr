@@ -912,12 +912,17 @@ struct PrayerTimesView: View {
         // and the page used to show it unmarked until the next activation (a re-tap then rescored it).
         .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in openFromWidgetFlags() }
         // Excused from prayer turned on / off / changed (Excused.swift): the touched days' scores and the streaks.
-        .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { note in
             CircleStage.shared.excused = Excused.current
-            viewModel.excusedChanged()
+            // A new estimate or the zikr switch changes no counted day: no recount (review).
+            if note.object as? String != Excused.lightChange { viewModel.excusedChanged() }
+        }
+        // The circle's day line moves on with the day (review: it stayed "Day 3" past midnight).
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            CircleStage.shared.excused = Excused.current
         }
         .onReceive(NotificationCenter.default.publisher(for: Excused.openSheet)) { _ in showExcused = true }
-        .sheet(isPresented: $showExcused) { ExcusedSheet() }
+        .sheet(isPresented: $showExcused) { ExcusedSheet().stageCover("excused") }
         .onAppear { CircleStage.shared.excused = Excused.current }
         .onReceive(NotificationCenter.default.publisher(for: TaskModel.didDelete)) { note in
             guard let gone = note.object as? Set<PersistentIdentifier>,
@@ -1989,6 +1994,10 @@ struct PrayerTimesView: View {
                                 menuRow("Memories", "photo.stack") { MemoriesPresenter.shared.open = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
+                                // While excused only (owner): quick to manage or end (Excused.swift).
+                                if CircleStage.shared.excused != nil {
+                                    menuRow("Excused from prayer", "pause.circle") { NotificationCenter.default.post(name: Excused.openSheet, object: nil) }
+                                }
                                 CompassMenuRow {
                                     pendingMenuAction = { showCalibration = true }
                                     showMenu = false

@@ -31,8 +31,8 @@ extension TaskModel {
         let cal = Calendar.current
         func before(_ d: Date) -> Date { cal.date(byAdding: .day, value: -1, to: d) ?? d.addingTimeInterval(-86_400) }
         // Excused days (Excused.swift) never break a run: a day she did it still counts, a day she didn't is stepped over.
-        let excused = Excused.ranges
-        func skipped(_ d: Date) -> Bool { !met.contains(d) && Excused.excludesDay(d, in: excused) }
+        let excused = Excused.Days()
+        func skipped(_ d: Date) -> Bool { !met.contains(d) && excused.excludes(d) }
         let today = PrayerDay.start(for: now)
         let keptToday = met.contains(today)
         var current = 0

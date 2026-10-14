@@ -33,8 +33,8 @@ enum WatchStore {
         static let masajid = "watch.masajid"
         /// The phone's light / dark / auto (0 / 1 / 2; WatchLook).
         static let appearance = "watch.appearance"
-        /// Excused from prayer on the phone (Excused.swift): its day line ("Day 3 of about 7"), "" when off.
-        static let excused = "watch.excused"
+        /// Excused from prayer on the phone (Excused.swift): [start, estimated end] as seconds since 1970, [] when off.
+        static let excused = "watch.excused.v2"
         /// Prayers unmarked on the watch, shown undone until the phone stops listing them:
         /// name → prayer-day start.
         static let localUnmarks = "watch.localUnmarks"
@@ -42,10 +42,20 @@ enum WatchStore {
         static let localUnmarkIDs = "watch.localUnmarkIDs"
     }
 
-    /// Excused from prayer on the phone: the day line while it runs (the ring shows it; nothing is marked here).
-    static var excused: String? {
-        guard let line = defaults.string(forKey: Key.excused), !line.isEmpty else { return nil }
-        return line
+    /// Excused from prayer on the phone, while it runs: its start and estimate (the ring shows it; nothing is marked).
+    static var excused: (start: Date, expectedEnd: Date)? {
+        guard let pair = defaults.array(forKey: Key.excused) as? [Double], pair.count == 2 else { return nil }
+        return (Date(timeIntervalSince1970: pair[0]), Date(timeIntervalSince1970: pair[1]))
+    }
+    /// A prayer she's excused from: its window ends after the stretch began (the phone's rule while it runs).
+    static func excusedCovers(start: Date, end: Date) -> Bool { excused.map { end > $0.start } ?? false }
+    /// "Day 3 of about 7", as the phone says it.
+    static func excusedLine(now: Date) -> String? {
+        guard let e = excused else { return nil }
+        let cal = Calendar.current
+        let day = (cal.dateComponents([.day], from: cal.startOfDay(for: e.start), to: cal.startOfDay(for: now)).day ?? 0) + 1
+        let total = max(cal.dateComponents([.day], from: cal.startOfDay(for: e.start), to: cal.startOfDay(for: e.expectedEnd)).day ?? 0, 1)
+        return day <= total ? "Day \(day) of about \(total)" : "Day \(day)"
     }
 
     /// Saves what the phone sent. Returns true if anything changed.

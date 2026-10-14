@@ -616,11 +616,21 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         // Excused's check-in (Excused.swift): "I'm ready" ends it from the lock screen; a tap opens shukr as usual.
         if original.categoryIdentifier == Excused.checkInCategory {
             DispatchQueue.main.async {
-                if response.actionIdentifier == Excused.readyAction { Excused.end() }
-                completionHandler()
+                guard response.actionIdentifier == Excused.readyAction else { completionHandler(); return }
+                // From the lock screen shukr may run only for this: the plan (notifications, then the Fajr alarm) is
+                // awaited before iOS is told it's done (review: it could be suspended mid-plan).
+                Excused.end(planNotifications: false)
+                Task { @MainActor in
+                    if let container = NotificationScheduler.appContainer {
+                        await NotificationScheduler.rescheduleNow(context: container.mainContext, reason: "excused off (lock screen)")
+                    }
+                    completionHandler()
+                }
             }
             return
         }
+        // Excused (Excused.swift): a nudge asked for on an older banner never comes (review).
+        if Excused.isActive, response.actionIdentifier.contains("SNOOZE") { completionHandler(); return }
         switch response.actionIdentifier {
         case "MARK_PRAYED_ACTION":
             if let name = userInfo["prayerName"] as? String,
