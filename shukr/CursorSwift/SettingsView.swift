@@ -699,6 +699,19 @@ struct SettingsView: View {
                         }
                     }
 
+                    // Your Data (YourDataPage.swift; owner, 2026-10-14): what's kept, that it's private and on this iPhone,
+                    // whether it's backed up, and an export. At the bottom, above Sneak Peek (owner).
+                    Section {
+                        NavigationLink { YourDataPage() } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "lock.shield").frame(width: 24)
+                                Text("Your Data")
+                            }
+                        }
+                    } footer: {
+                        Text("Everything in shukr stays private, on this iPhone.")
+                    }
+
                     //MARK: - Suggestions / Up and Coming
 //                    Section(header: Text("Sneak Peek...")) {
 //                        

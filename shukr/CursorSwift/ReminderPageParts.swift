@@ -52,6 +52,8 @@ struct ReminderSlotsBar: View {
         let count: Int
         let color: Color
         let label: String
+        /// Said in the key instead of the count (Your Data: "4.8 MB").
+        var value: String? = nil
     }
     let caption: String
     let limit: Int
@@ -80,7 +82,7 @@ struct ReminderSlotsBar: View {
                     if part.count > 0 {
                         HStack(spacing: 4) {
                             Circle().fill(part.color).frame(width: 7, height: 7)
-                            Text("\(part.label) \(part.count)")
+                            Text("\(part.label) \(part.value ?? String(part.count))")
                         }
                     }
                 }
