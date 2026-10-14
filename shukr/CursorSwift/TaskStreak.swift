@@ -21,7 +21,14 @@ struct TaskStreak: Equatable {
 }
 
 extension TaskModel {
+    /// Kept per prayer day until a session is saved (SessionMemo): Your azkar asks for every goal's streak on each
+    /// redraw, and working one out finds the prayer day of each of the task's sessions.
     func streak(now: Date = Date()) -> TaskStreak {
+        let key = "streak|\(id)|\(PrayerDay.key(for: now))|\(sessions.count)|\(isCountMode)|\(goal)|\(Excused.ranges.hashValue)"
+        return SessionMemo.value(key) { workOutStreak(now: now) }
+    }
+
+    private func workOutStreak(now: Date) -> TaskStreak {
         // Each prayer day (Fajr to Fajr, like "today's progress"): did its sessions meet the goal?
         var byDay: [Date: [SessionDataModel]] = [:]
         for s in sessions { byDay[PrayerDay.start(for: s.startTime), default: []].append(s) }

@@ -773,6 +773,31 @@ extension SessionDataModel {
 /// prayer mark) and at every launch, walking all of a zikr's sessions — ~42 ms in the launch's first frame on his 13 Pro
 /// Max (perf-recheck). Now: kept per zikr / task (by its id) in UserDefaults, and forgotten only when a save touched a
 /// session. The wheel reads one per task on every redraw, and redraws on every frame of a page swipe.
+/// What's worked out from a zikr's or a task's sessions for a list row (a task's streak, a zikr's time and last
+/// session), kept in memory until a session is saved (PaceCache's watcher) — rows redraw on every search keystroke and
+/// scroll, and these walk every session (thousands for Alhamdulillah). Keys carry the session count too, so a session
+/// added but not yet saved is never missed.
+enum SessionMemo {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var values: [String: Any] = [:]
+    static func value<T>(_ key: String, _ make: () -> T) -> T {
+        if let kept = lock.withLock({ values[key] }) as? T { return kept }
+        let made = make()
+        lock.withLock { values[key] = made }
+        return made
+    }
+    static func clear() { lock.withLock { values.removeAll() } }
+}
+
+extension MantraModel {
+    /// All the time spent on it and its newest session (Your azkar's rows).
+    var sessionTotals: (seconds: Double, last: Date?) {
+        SessionMemo.value("zikr|\(id)|\(sessions.count)") {
+            (sessions.reduce(0) { $0 + $1.secondsPassed }, sessions.map(\.startTime).max())
+        }
+    }
+}
+
 enum PaceCache {
     private static let lock = NSLock()
     private static let key = "paceCache.v1"
@@ -785,7 +810,7 @@ enum PaceCache {
             guard let info = note.userInfo else { forget(); return }
             let ids = [ModelContext.NotificationKey.insertedIdentifiers, .updatedIdentifiers, .deletedIdentifiers]
                 .flatMap { info[$0.rawValue] as? [PersistentIdentifier] ?? [] }
-            if ids.contains(where: { $0.entityName == "SessionDataModel" }) { forget() }
+            if ids.contains(where: { $0.entityName == "SessionDataModel" }) { forget(); SessionMemo.clear() }
         }
     }()
 

@@ -35,7 +35,8 @@ enum PrayerDay {
         if let hit = fajrCache[key] { return hit }
         let fajr = try? PrayerUtils.getPrayerTimes(for: dayStart, coordinates: coordinates,
                                                    params: PrayerUtils.getCalculationParameters()).fajr
-        if fajrCache.count > 16 { fajrCache.removeAll() }
+        // Room for a few years of days: a streak or a history asks for the day of every session (16 thrashed).
+        if fajrCache.count > 2000 { fajrCache.removeAll() }
         fajrCache[key] = fajr
         return fajr
     }

@@ -505,9 +505,8 @@ private struct GoalRow: View {
 private struct ZikrRow: View {
     let zikr: MantraModel
     var body: some View {
-        let last = zikr.sessions.map(\.startTime).max()
         // The time spent on it in all, not the pace (owner: "we don't need to see how many seconds each").
-        let spent = zikr.sessions.reduce(0) { $0 + $1.secondsPassed }
+        let (spent, last) = zikr.sessionTotals
         let parts = [zikr.totalCount > 0 ? "\(ZikrFmt.count(zikr.totalCount)) counted" : nil,
                      spent >= 1 ? ZikrFmt.spent(spent) : nil,
                      last.map { "last \(ZikrFmt.ago($0))" }].compactMap { $0 }
