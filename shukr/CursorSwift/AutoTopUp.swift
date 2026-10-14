@@ -164,45 +164,33 @@ enum TopUpBanner {
     }
 }
 
-/// The banner: a glass card at the top for a few seconds; a tap opens the sheet (what's set, each row → its page).
+/// The banner: a glass card at the top; a tap opens the sheet (what's set, each row → its page). It goes the post-salah
+/// pill's ways (owner): flicked away (`flickAway`), its ✕ badge, or by itself — a sage ring round the check empties over
+/// `lifetime`, paused while it's held.
 struct TopUpBannerHost: ViewModifier {
     @State private var summary: TopUpBanner.Summary?
     @State private var sheet: TopUpBanner.Summary?
-    @State private var hide: Task<Void, Never>?
+    @State private var shownAt = 0
     func body(content: Content) -> some View {
         content.overlay(alignment: .top) {
             if let summary {
-                Button {
-                    sheet = summary
-                    withAnimation(.easeOut(duration: 0.25)) { self.summary = nil }
-                } label: {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "checkmark.circle.fill").font(.system(size: 20)).foregroundStyle(.green)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("All reminders topped up").font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                .foregroundStyle(.primary)
-                            Text(summary.line).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary)
-                                .multilineTextAlignment(.leading)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
-                            .padding(.top, 4)
-                    }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    .frame(maxWidth: 360, alignment: .leading)
-                    .mapGlass(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 16).padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                TopUpBannerView(summary: summary,
+                                onOpen: { sheet = summary; close() },
+                                onDismiss: close)
+                    .id(shownAt)
+                    .padding(.top, 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .sheet(item: Binding(get: { sheet.map(SummaryBox.init) }, set: { sheet = $0?.summary })) { box in
             TopUpSheet(summary: box.summary)
         }
         #if DEBUG
-        .task {   // `-demoTopUpSheet`: the sheet with sample numbers (screenshots)
+        .task {   // `-demoTopUpBanner`: the banner; `-demoTopUpSheet`: the sheet with sample numbers (screenshots)
+            if ProcessInfo.processInfo.arguments.contains("-demoTopUpBanner") {
+                try? await Task.sleep(for: .seconds(3))
+                await TopUpBanner.show()
+            }
             guard ProcessInfo.processInfo.arguments.contains("-demoTopUpSheet") else { return }
             try? await Task.sleep(for: .seconds(2))
             sheet = TopUpBanner.Summary(cards: 5, cardsThrough: "tonight's Maghrib", notifications: 60, notificationDays: 7, alarmDays: 60)
@@ -210,16 +198,97 @@ struct TopUpBannerHost: ViewModifier {
         #endif
         .onReceive(NotificationCenter.default.publisher(for: TopUpBanner.shown)) { note in
             guard let s = note.object as? TopUpBanner.Summary else { return }
+            shownAt += 1
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { summary = s }
-            hide?.cancel()
-            hide = Task { @MainActor in
-                try? await Task.sleep(for: .seconds(6))
+        }
+    }
+    private func close() { withAnimation(.easeOut(duration: 0.3)) { summary = nil } }
+    private struct SummaryBox: Identifiable { let summary: TopUpBanner.Summary; var id: Int { 0 } }
+}
+
+private struct TopUpBannerView: View {
+    let summary: TopUpBanner.Summary
+    let onOpen: () -> Void
+    let onDismiss: () -> Void
+    static let lifetime: Double = 8
+    @State private var holding = false
+    @State private var spent: Double = 0
+    @State private var runningSince: TimeInterval?
+    @Environment(\.scenePhase) private var scenePhase
+    private var running: Bool { !holding && scenePhase == .active }
+    private func left(at now: TimeInterval) -> Double {
+        max(0, 1 - (spent + (runningSince.map { now - $0 } ?? 0)) / Self.lifetime)
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(.green)
+                .frame(width: 32, height: 32)
+                .overlay {
+                    // Time left, as the post-salah pill shows it: full at the start, emptying back to 12 o'clock.
+                    TimelineView(.periodic(from: .now, by: 1.0 / 30)) { _ in
+                        ZStack {
+                            Circle().stroke(Color.sage.opacity(0.18), lineWidth: 2)
+                            Circle().trim(from: 0, to: left(at: Uptime.now))
+                                .stroke(Color.sage, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                        }
+                    }
+                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("All reminders topped up").font(.system(.subheadline, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(summary.line).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: 360, alignment: .leading)
+        .mapGlass(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(alignment: .topTrailing) {
+            // The post-salah pill's ✕ badge.
+            Button {
+                triggerSomeVibration(type: .light)
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color(.systemBackground)))
+                    .overlay(Circle().stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                    .padding(10)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .offset(x: 16, y: -16)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 20).padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            triggerSomeVibration(type: .light)
+            onOpen()
+        }
+        .flickAway(onHold: { holding = $0 }, onDismiss: onDismiss)
+        .accessibilityElement(children: .contain)
+        .task(id: running) {
+            if running {
+                runningSince = Uptime.now
+                try? await Task.sleep(for: .seconds(max(Self.lifetime - spent, 0)))
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.3)) { summary = nil }
+                onDismiss()
+            } else if let since = runningSince {
+                spent += Uptime.now - since
+                runningSince = nil
             }
         }
     }
-    private struct SummaryBox: Identifiable { let summary: TopUpBanner.Summary; var id: Int { 0 } }
 }
 
 /// What the top-up set, in ReminderHealthCard's look (owner: "the no location or no notifications sheet … we can copy

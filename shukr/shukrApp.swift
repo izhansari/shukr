@@ -255,10 +255,6 @@ struct shukrApp: App {
                 content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: n, repeats: false)))
             TopUpLog.add("wake test: a notification set for \(Int(n)) s from now")
         }
-        // `-demoTopUpBanner`: the "All reminders topped up" banner 5 s in (tap it for the sheet).
-        if ProcessInfo.processInfo.arguments.contains("-demoTopUpBanner") {
-            Task { @MainActor in try? await Task.sleep(for: .seconds(5)); await TopUpBanner.show() }
-        }
         // `-autoTopUpTest`: one top-up 4 s in, then one asked inside the 3 h (logged as skipped) — topups.log.
         if ProcessInfo.processInfo.arguments.contains("-autoTopUpTest") {
             Task { @MainActor in
