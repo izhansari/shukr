@@ -1515,7 +1515,17 @@ struct PrayerTimesView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { WhatsNewPerf.opened = 0; demoWhatsNew = true }
         }
         #endif
-        .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
+        // DEBUG `-demoScheduledNotifications [-demoReminderPage la|alarm]`: Your Notifications / Live Activities / Fajr Alarms.
+        .sheet(isPresented: $demoScheduled) {
+            NavigationStack {
+                switch UserDefaults.standard.string(forKey: "demoReminderPage") {
+                case "la": ScheduledLiveActivitiesPage()
+                case "alarm": FajrAlarmCheckView()
+                default: YourRemindersView()
+                }
+            }
+            .infoModalHost()   // its ⓘ cards over the sheet (the app's host is under it)
+        }
         // DEBUG `-demoSadaqah`: full screen, as Settings pushes it (a sheet put its own sheets on a sheet in the shots).
         .fullScreenCover(isPresented: $demoSadaqah) { NavigationStack { SadaqahPage() } }
         .sheet(isPresented: $demoExplore) {

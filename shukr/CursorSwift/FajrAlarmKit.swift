@@ -446,7 +446,7 @@ struct FajrAlarmOpenIntent: LiveActivityIntent {
     }
 }
 
-/// Settings → Fajr alarm → Alarm check (beta installs; owner, 2026-10-10: "it doesn't tell us how many it schedules and
+/// Settings → Fajr alarm → Your Fajr Alarms (was Alarm check; beta installs; owner, 2026-10-10: "it doesn't tell us how many it schedules and
 /// how reliable it'll be"): every alarm AlarmKit holds for shukr, checked against the rule — the wrong time for its
 /// day, two on one day, a day missing — and the log (FajrAlarmLog), newest first, to copy or share.
 struct FajrAlarmCheckView: View {
@@ -479,8 +479,34 @@ struct FajrAlarmCheckView: View {
         return wanted.map(\.alarm).filter { $0 <= last && !have.contains(Int($0.timeIntervalSince1970 / 60)) }
     }
 
+    @State private var why: Why?
+    enum Why { case limit, topsUp }
+    @State private var fajrStatus = FajrAlarmStatus.shared
+    @ObservedObject private var health = NotificationHealth.shared
+    private var group: UserDefaults? { UserDefaults(suiteName: SharedStore.appGroup) }
+    private var green: Color { Color(.systemGreen) }
+
     var body: some View {
         List {
+            // Your Notifications' shape (owner, 2026-10-14): on / off and how far, the days set as a bar, why that many
+            // and how it tops itself up, then the next alarms; the checks and the log stay below.
+            Section {
+                statusRow
+                slotsBar
+                ReminderWhyLink(symbol: "questionmark.circle", title: "Why \(FajrAlarms.daysAhead) days?") { why = .limit }
+                ReminderWhyLink(symbol: "arrow.triangle.2.circlepath", title: "Tops itself up",
+                                needsLook: health.backgroundRefresh != .available) { why = .topsUp }
+            }
+            Section {
+                if alarms.isEmpty {
+                    Text("No alarms set right now").foregroundStyle(.secondary)
+                }
+                ForEach(Array(alarms.prefix(14).enumerated()), id: \.offset) { _, a in alarmRow(a) }
+                if alarms.count > 14 {
+                    Text("and \(alarms.count - 14) more, through \(ours.compactMap(\.date).max().map(FajrAlarmLog.day) ?? "—")")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            } header: { Text("Coming up") }
             Section {
                 if mornings.isEmpty {
                     Text("No alarm has rung yet").foregroundStyle(.secondary)
@@ -499,17 +525,14 @@ struct FajrAlarmCheckView: View {
             } footer: {
                 Text("From the log: the alarm's time, every Snooze and Stop (shukr hears those), and when Fajr was marked. When it started ringing shows only if shukr happened to be running.")
             }
-            Section {
-                row("AlarmKit permission", permission)
-                row("shukr sets the alarms", FajrAlarms.isActive ? "yes" : "no (the Shortcut)")
-                row("Alarms set", "\(ours.count)" + (alarms.count > ours.count ? " + \(alarms.count - ours.count) test" : ""))
-                row("Through", ours.compactMap(\.date).max().map(FajrAlarmLog.day) ?? "—")
-            }
             Section("Check") {
                 check(wrong.isEmpty, wrong.isEmpty ? "Every alarm is the rule's time for its day"
                                                   : "\(wrong.count) not the rule's time: " + wrong.prefix(4).map { $0.date.map(FajrAlarmLog.day) ?? "no date" }.joined(separator: ", "))
                 check(doubles == 0, doubles == 0 ? "One alarm a day" : "\(doubles) day(s) with two alarms")
                 check(missing.isEmpty, missing.isEmpty ? "No day missing" : "\(missing.count) day(s) missing: " + missing.prefix(3).map(FajrAlarmLog.day).joined(separator: ", "))
+                row("AlarmKit permission", permission)
+                row("shukr sets the alarms", FajrAlarms.isActive ? "yes" : "no (the Shortcut)")
+                row("Alarms set", "\(ours.count)" + (alarms.count > ours.count ? " + \(alarms.count - ours.count) test" : ""))
                 Button("Ring a test alarm in 1 minute") {
                     Task { _ = await FajrAlarms.scheduleTest(at: Date().addingTimeInterval(60)); load() }
                 }
@@ -518,16 +541,6 @@ struct FajrAlarmCheckView: View {
                     Task { await FajrAlarms.plan(reason: "Alarm check"); load(); planning = false }
                 }
                 .disabled(planning)
-            }
-            Section("Next alarms") {
-                ForEach(Array(alarms.prefix(14).enumerated()), id: \.offset) { _, a in
-                    HStack {
-                        Text(a.date.map(FajrAlarmLog.day) ?? "no date").monospacedDigit()
-                        Spacer()
-                        Text(a.test ? "test" : a.state).font(.caption).foregroundStyle(.secondary)
-                    }
-                    .foregroundStyle(wrong.contains { $0.id == a.id } ? Color.red : Color.primary)
-                }
             }
             Section {
                 ForEach(Array(log.prefix(300).enumerated()), id: \.offset) { _, line in
@@ -543,10 +556,79 @@ struct FajrAlarmCheckView: View {
                 .textCase(nil)
             }
         }
-        .navigationTitle("Alarm check")
-        .navigationBarTitleDisplayMode(.inline)
+        .reminderPageTitle("Your Fajr Alarms")
         .onAppear(perform: load)
         .refreshable { load() }
+        .task { await health.refresh() }
+        .infoModal(isPresented: Binding(get: { why == .limit }, set: { if !$0 { why = nil } }),
+                   title: "Why \(FajrAlarms.daysAhead) days?", symbol: "questionmark.circle") {
+            ReminderExplainer(head: "shukr sets a real alarm for each morning, up to \(FajrAlarms.daysAhead) days ahead.", points: [
+                .init(big: "One alarm a day", small: "Each one is worked out for that day's Fajr, so it moves as Fajr does through the year.", symbol: "alarm", warn: false),
+                .init(big: "Far enough ahead", small: "Your alarm keeps ringing for about two months, even if you don't open shukr.", symbol: "calendar", warn: false),
+                .init(big: "Kept in step", small: "Change your location, calculation method or alarm time, and shukr re-sets them to match.", symbol: "arrow.triangle.2.circlepath", warn: false),
+            ])
+        }
+        .infoModal(isPresented: Binding(get: { why == .topsUp }, set: { if !$0 { why = nil } }),
+                   title: "Tops itself up", symbol: "arrow.triangle.2.circlepath") {
+            let bgOn = health.backgroundRefresh == .available
+            ReminderExplainer(head: "Your alarms keep topping themselves up.", points: [
+                .init(big: "Opening shukr", small: "Any time you open the app, the days ahead fill back up to \(FajrAlarms.daysAhead).", symbol: "iphone", warn: false),
+                bgOn ? .init(big: "Background App Refresh is on", small: "iOS wakes shukr now and then, and the alarms are topped up with your reminders.", symbol: "arrow.triangle.2.circlepath", warn: false)
+                     : .init(big: "Background App Refresh is off", small: "Turn it on in Settings, or open shukr every few weeks.", symbol: "arrow.triangle.2.circlepath", warn: true),
+                .init(big: "Your reminders' buttons", small: "Tapping one on a prayer reminder, like I already prayed, tops them up too.", symbol: "bell", warn: false),
+            ], fix: bgOn ? nil : ("Fix in Settings", { SettingsLinks.app() }))
+        }
+    }
+
+    /// On (the rule, how far), off, or not allowed in iOS Settings (orange, the way back).
+    private var statusRow: some View {
+        let on = group?.bool(forKey: "alarmEnabled") == true
+        if fajrStatus.needsYou {
+            return ReminderPageStatus(good: false, title: "Alarms are off", subtitle: "Off for shukr in iOS Settings",
+                                      note: "Needs a look", action: SettingsLinks.app)
+        }
+        guard on else {
+            return ReminderPageStatus(good: false, title: "The Fajr alarm is off", subtitle: "Turn it on in Settings → Reminders → Fajr Alarm")
+        }
+        let offset = group?.integer(forKey: "alarmOffsetMinutes") ?? 0
+        let before = group?.object(forKey: "alarmIsBefore") as? Bool ?? true
+        let isFajr = group?.object(forKey: "alarmIsFajr") as? Bool ?? true
+        let edge = isFajr ? "starts" : "ends"
+        let rule = offset == 0 ? "Rings when Fajr \(edge)" : "Rings \(offset) min \(before ? "before" : "after") Fajr \(edge)"
+        let through = ours.compactMap(\.date).max().map { " · set through " + $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? ""
+        return ReminderPageStatus(good: true, title: "The Fajr alarm is on", subtitle: rule + through)
+    }
+
+    /// The days ahead as a bar: alarms set (green), test alarms, and the days still to set.
+    private var slotsBar: some View {
+        let limit = FajrAlarms.daysAhead
+        let set = min(ours.filter { ($0.date ?? .distantPast) > Date() }.count, limit)
+        let tests = alarms.count - ours.count
+        return ReminderSlotsBar(caption: "\(set) of \(limit) days set" + (limit - set > 0 ? " · \(limit - set) to add" : ""),
+                                limit: limit,
+                                parts: [.init(count: set, color: green, label: "Alarms"),
+                                        .init(count: tests, color: Color(.systemIndigo), label: "Test")])
+    }
+
+    /// One alarm: the alarm symbol in grey, its day, the Fajr time it's for; its time on the right (red if it isn't the
+    /// rule's time for its day).
+    private func alarmRow(_ a: (id: String, date: Date?, state: String, test: Bool)) -> some View {
+        let reference = a.date.flatMap { d in wanted.first { Int($0.alarm.timeIntervalSince1970 / 60) == Int(d.timeIntervalSince1970 / 60) }?.reference }
+        let isFajr = group?.object(forKey: "alarmIsFajr") as? Bool ?? true
+        let bad = wrong.contains { $0.id == a.id }
+        return HStack(spacing: 12) {
+            Image(systemName: a.test ? "alarm.waves.left.and.right" : "alarm").foregroundStyle(.secondary).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(a.date.map { $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? "No date")
+                Text(a.test ? "Test alarm" : reference.map { "Fajr \(isFajr ? "starts" : "ends") " + $0.formatted(date: .omitted, time: .shortened) }
+                     ?? (bad ? "Not the rule's time for this day" : a.state))
+                    .font(.footnote).foregroundStyle(bad ? Color.red : .secondary)
+            }
+            Spacer(minLength: 8)
+            Text(a.date.map { $0.formatted(date: .omitted, time: .shortened) } ?? "—")
+                .monospacedDigit()
+                .foregroundStyle(bad ? Color.red : .secondary)
+        }
     }
 
     private var permission: String {

@@ -284,41 +284,9 @@ struct ReminderWhyInfo: View {
 
     var body: some View {
         let c = kind.content(health, pendingCount: pendingCount)
-        VStack(alignment: .leading, spacing: 14) {
-            Text(c.head)
-                .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            ForEach(c.points.indices, id: \.self) { row(c.points[$0]) }
-            if c.fix {
-                Button("Fix in Settings") {
-                    kind == .topsUp ? SettingsLinks.app() : SettingsLinks.notifications()
-                }
-                .font(.system(.subheadline, design: .rounded, weight: .medium))
-                .foregroundStyle(Color.sage)
-            }
-            if let head = c.explainHead {
-                Text(head.uppercased())
-                    .font(.system(.caption, design: .rounded, weight: .semibold)).tracking(0.6)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-                ForEach(c.explain.indices, id: \.self) { row(c.explain[$0]) }
-            }
-        }
-        .task { await health.refresh() }
-    }
-
-    private func row(_ p: ReminderWhy.Point) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: p.symbol)
-                .font(.system(size: 17))
-                .foregroundStyle(p.neutral ? Color.secondary : p.warn ? Color.orange : Color(.systemGreen))
-                .frame(width: 28, height: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(p.big).font(.system(.subheadline, design: .rounded, weight: .semibold))
-                    .foregroundStyle(p.warn && !p.neutral ? Color.orange : .primary)
-                Text(p.small).font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        ReminderExplainer(head: c.head, points: c.points,
+                          fix: c.fix ? ("Fix in Settings", { kind == .topsUp ? SettingsLinks.app() : SettingsLinks.notifications() }) : nil,
+                          explainHead: c.explainHead, explain: c.explain)
+            .task { await health.refresh() }
     }
 }

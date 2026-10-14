@@ -2387,47 +2387,109 @@ struct LiveActivityInfo: View {
     }
 }
 
-/// Settings → Reminders → Live Activities → the card's last line (owner: "build its page to display the scheduled
-/// ones"): every prayer card iOS holds for shukr, by day — its window, and whether it's on now or still to come.
+/// Settings → Reminders → Live Activities → the card's last line: Your Live Activities, in Your Notifications' shape
+/// (owner, 2026-10-14): on / off and what's waiting, iOS's five as a bar, why only five and how it tops itself up, then
+/// every prayer card iOS holds for shukr, by day — its window, and whether it's on now or still to come.
 struct ScheduledLiveActivitiesPage: View {
     struct Card: Identifiable {
         let id: String
         let name: String
-        let symbol: String
         let start: Date
         let end: Date
         let marked: Bool
+        func state(_ now: Date) -> State {
+            marked ? .marked : now >= start && now < end ? .onNow : now >= end ? .ended : .waiting
+        }
     }
+    enum State { case onNow, waiting, marked, ended }
+    /// iOS's room for one app's Live Activities.
+    static let limit = 5
+
     @State private var cards: [Card] = []
     @State private var loaded = false
+    @State private var enabled = ActivityAuthorizationInfo().areActivitiesEnabled
+    @State private var why: Why?
+    enum Why { case limit, topsUp }
+
+    private var green: Color { Color(.systemGreen) }
 
     var body: some View {
         List {
-            // At the top, where it's read (owner: the same words as setup's tiles).
             Section {
-            } footer: {
-                Text(LASetupCopy.fiveAtATime)
+                statusRow
+                slotsBar
+                ReminderWhyLink(symbol: "questionmark.circle", title: "Why only \(Self.limit)?") { why = .limit }
+                ReminderWhyLink(symbol: "arrow.triangle.2.circlepath", title: "Tops itself up") { why = .topsUp }
             }
-            if loaded && cards.isEmpty {
-                Section {
-                    Text("None waiting right now. Opening shukr sets up the next ones.")
-                        .foregroundStyle(.secondary)
+            Section {
+                if loaded && cards.isEmpty {
+                    Text("None waiting right now. Opening shukr sets up the next ones.").foregroundStyle(.secondary)
                 }
-            }
-            ForEach(days, id: \.self) { day in
-                Section(Self.dayTitle(day)) {
-                    ForEach(cards.filter { Calendar.current.isDate($0.start, inSameDayAs: day) }) { row($0) }
+                ForEach(days, id: \.self) { day in
+                    let list = cards.filter { Calendar.current.isDate($0.start, inSameDayAs: day) }
+                    ReminderDayHeading(title: Self.dayTitle(day), count: "\(list.count) card\(list.count == 1 ? "" : "s")")
+                    ForEach(list) { row($0) }
                 }
-            }
+            } header: { Text("Coming up") }
         }
-        .listStyle(.insetGrouped)
-        .fontDesign(.rounded)
-        .navigationTitle("Live Activities")
-        .navigationBarTitleDisplayMode(.inline)
+        .reminderPageTitle("Your Live Activities")
         .task { load(); LiveActivityStatus.shared.refresh() }
         .refreshable { load() }
         // Back in Settings, its line counts what this page showed (a card can end in between).
         .onDisappear { LiveActivityStatus.shared.refresh() }
+        .infoModal(isPresented: Binding(get: { why == .limit }, set: { if !$0 { why = nil } }),
+                   title: "Why only \(Self.limit)?", symbol: "questionmark.circle") {
+            ReminderExplainer(head: "iOS lets each app hold \(Self.limit) Live Activities at a time. shukr fills them with your next prayers.", points: [
+                .init(big: "Your next prayers", small: "Each prayer you've turned on gets a card, set up ahead to start by itself when its time comes.", symbol: "calendar", warn: false),
+                .init(big: "One card per prayer", small: "It runs from the prayer's start to its end, and Isha's until 11:59 PM.", symbol: "platter.filled.bottom.iphone", warn: false),
+                .init(big: "Marked cards make room", small: "Once you mark a prayer, its card ends a few seconds later and the next one can take its place.", symbol: "checkmark.circle", warn: false),
+                .init(big: "Prayers you've turned off", small: "They don't use a card, so the \(Self.limit) reach further ahead.", symbol: "bell.slash", warn: false),
+            ])
+        }
+        .infoModal(isPresented: Binding(get: { why == .topsUp }, set: { if !$0 { why = nil } }),
+                   title: "Tops itself up", symbol: "arrow.triangle.2.circlepath") {
+            ReminderExplainer(head: "Your prayer cards keep coming.", points: [
+                .init(big: "Opening shukr", small: "Any time you open the app, the free spots fill with your next prayers.", symbol: "iphone", warn: false),
+                .init(big: "Marking a prayer", small: "From the card, a widget or the app: its card steps aside and the next one is added.", symbol: "checkmark.circle", warn: false),
+                .init(big: "Kept on time", small: "As each card starts, iOS wakes shukr, so the cards still to come keep the right times.", symbol: "arrow.triangle.2.circlepath", warn: false),
+                .init(big: "The last card tells you", small: "When it's the last one waiting, it says \u{201C}open shukr to keep prayer cards coming.\u{201D}", symbol: "exclamationmark.bubble", warn: false),
+            ])
+        }
+    }
+
+    /// On (what's waiting, the next, how far) or off in iOS Settings (orange, the way back).
+    private var statusRow: some View {
+        guard enabled else {
+            return ReminderPageStatus(good: false, title: "Live Activities are off", subtitle: "Off for shukr in iOS Settings",
+                                      note: "Needs a look", action: SettingsLinks.app)
+        }
+        let now = Date()
+        let next = cards.map(\.start).filter { $0 > now }.min()
+        let through = cards.map(\.start).max()
+        let onNow = cards.filter { $0.state(now) == .onNow }.count
+        let waiting = cards.filter { $0.state(now) == .waiting }.count
+        var parts: [String] = []
+        if onNow > 0 { parts.append("\(onNow) on now") }
+        if waiting > 0 { parts.append("\(waiting) waiting") }
+        if let next { parts.append("next " + Self.when(next)) }
+        if let through { parts.append("through " + through.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())) }
+        let none = LiveActivityPrefs.prayers.contains(where: LiveActivityPrefs.isOn) ? "None waiting right now" : "No prayers turned on"
+        return ReminderPageStatus(good: true, title: "Live Activities are on",
+                                  subtitle: cards.isEmpty ? none : parts.joined(separator: " · "))
+    }
+
+    /// The five, in parts: on now, still to come, marked (ending), and what's free.
+    private var slotsBar: some View {
+        let now = Date()
+        func n(_ s: State) -> Int { cards.filter { $0.state(now) == s }.count }
+        let onNow = n(.onNow), waiting = n(.waiting), marked = n(.marked) + n(.ended)
+        let used = min(cards.count, Self.limit)
+        let free = max(Self.limit - used, 0)
+        return ReminderSlotsBar(caption: "\(used) of \(Self.limit) in use" + (free > 0 ? " · \(free) free" : ""),
+                                limit: Self.limit,
+                                parts: [.init(count: onNow, color: green, label: "On now"),
+                                        .init(count: waiting, color: Color(.systemTeal), label: "Coming up"),
+                                        .init(count: marked, color: Color(.systemGray3), label: "Marked")])
     }
 
     private var days: [Date] {
@@ -2439,20 +2501,21 @@ struct ScheduledLiveActivitiesPage: View {
         return seen
     }
 
+    /// Your Notifications' prayer row: the Salah list's grey symbol, the name, its window; the state on the right.
     private func row(_ c: Card) -> some View {
-        let now = Date()
-        let state = c.marked ? "Marked" : now >= c.start && now < c.end ? "On now" : now >= c.end ? "Ended" : "Waiting"
+        let state = c.state(Date())
+        let word = switch state { case .onNow: "On now"; case .waiting: "Waiting"; case .marked: "Marked"; case .ended: "Ended" }
         return HStack(spacing: 12) {
-            Image(systemName: c.symbol).frame(width: 26).foregroundStyle(.primary)
+            Image(systemName: prayerSymbol(c.name)).foregroundStyle(.secondary).frame(width: 26)
             VStack(alignment: .leading, spacing: 2) {
                 Text(c.name)
                 Text("\(c.start.formatted(date: .omitted, time: .shortened)) – \(c.end.formatted(date: .omitted, time: .shortened))")
-                    .font(.subheadline).foregroundStyle(.secondary).monospacedDigit()
+                    .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
             }
             Spacer(minLength: 8)
-            Text(state)
-                .font(.subheadline.weight(state == "On now" ? .semibold : .regular))
-                .foregroundStyle(state == "On now" ? Color.green : .secondary)
+            Text(word)
+                .font(.subheadline.weight(state == .onNow ? .semibold : .regular))
+                .foregroundStyle(state == .onNow ? green : .secondary)
         }
         .accessibilityElement(children: .combine)
     }
@@ -2463,11 +2526,18 @@ struct ScheduledLiveActivitiesPage: View {
                 .filter { $0.activityState == .pending || $0.activityState == .active || $0.activityState == .stale }
                 .map { a in
                     let st = a.content.state
-                    return Card(id: a.id, name: st.label, symbol: st.symbol, start: st.start, end: st.end, marked: st.markedAt != nil)
+                    return Card(id: a.id, name: st.label, start: st.start, end: st.end, marked: st.markedAt != nil)
                 }
                 .sorted { $0.start < $1.start }
         }
+        enabled = ActivityAuthorizationInfo().areActivitiesEnabled
         loaded = true
+    }
+
+    /// "4:50 PM" today, else "Thu 5:41 AM".
+    private static func when(_ d: Date) -> String {
+        Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened)
+            : d.formatted(.dateTime.weekday(.abbreviated).hour().minute())
     }
 
     /// "Today", "Tomorrow", else "Wed, Oct 14".

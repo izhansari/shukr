@@ -454,15 +454,7 @@ struct YourRemindersView: View {
             } header: { Text("Days ahead") }
 
         }
-        .listStyle(.insetGrouped)
-        .fontDesign(.rounded)
-        .navigationTitle("Your Notifications")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("Your Notifications").font(.system(.headline, design: .rounded, weight: .regular))
-            }
-        }
+        .reminderPageTitle("Your Notifications")
         .refreshable { await load() }
         // A bell changed: the plan is redone (prayerCol re-fetches), then the page reads it again.
         .onChange(of: settingsKey) { _, _ in
@@ -520,24 +512,8 @@ struct YourRemindersView: View {
                 return full + " · scheduled through " + d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " (\(days) days)"
             } ?? "")
             : "Tap to see what's in the way"
-        return Button { whySheet = .onTime } label: {
-            HStack(spacing: 14) {
-                Image(systemName: bad ? "exclamationmark.shield" : "checkmark.shield")
-                    .font(.system(size: 26, weight: .light))
-                    .foregroundStyle(bad || !fine ? Color.orange : green)
-                    .frame(width: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).foregroundStyle(Color(.label))
-                    Text(subtitle).font(.footnote).foregroundStyle(Color(.secondaryLabel))
-                }
-                Spacer(minLength: 8)
-                if bad {
-                    Text("Needs a look").font(.subheadline).foregroundStyle(.orange)
-                }
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
-            }
-            .padding(.vertical, 4)
-        }
+        return ReminderPageStatus(good: !(bad || !fine), title: title, subtitle: subtitle,
+                                  note: bad ? "Needs a look" : nil) { whySheet = .onTime }
     }
 
     /// One colour: used in green, free in grey; the numbers in words.
@@ -548,24 +524,10 @@ struct YourRemindersView: View {
     }
 
     private func whyRow(_ kind: ReminderWhy) -> some View {
-        Button { open(kind) } label: {
-            // Explicit colours: inside a Button's label the hierarchical styles took the tint (blue rows).
-            HStack(spacing: 12) {
-                let bad = kind.needsHand(health)
-                Image(systemName: kind.symbol(health))
-                    .foregroundStyle(kind == .onTime ? (bad ? Color.orange : green) : Color(.secondaryLabel))
-                    .frame(width: 26)
-                Text(kind.title).foregroundStyle(Color(.label))
-                Spacer()
-                if bad {
-                    Text("Needs a look").font(.subheadline).foregroundStyle(.orange)
-                    Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
-                } else if kind == .onTime {
-                    Text("All set").font(.subheadline).foregroundStyle(Color(.secondaryLabel))
-                }
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
-            }
-        }
+        let bad = kind.needsHand(health)
+        return ReminderWhyLink(symbol: kind.symbol(health), title: kind.title, needsLook: bad,
+                               tint: kind == .onTime ? green : Color(.secondaryLabel),
+                               trailing: kind == .onTime ? "All set" : nil) { open(kind) }
     }
 
     /// The 64 in parts (owner: show "that we have set aside some of that space"): prayer reminders, zikr reminders,
@@ -580,41 +542,15 @@ struct YourRemindersView: View {
         let used = min(prayers + zikr + open + other, limit)
         let kept = min(NotificationScheduler.spare, limit - used)
         let free = max(limit - used - kept, 0)
-        let parts: [(Int, Color, String)] = [
-            (prayers, green, "Prayers"), (zikr, Color(.systemTeal), "Zikr"), (open, Color(.systemOrange), "Open shukr"),
-            (other, Color(.systemIndigo), "Other"), (kept, Color(.systemGray3), "Kept for snoozes"),
-        ]
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("\(used) of \(limit) in use · \(kept) kept for snoozes" + (free > 0 ? " · \(free) free" : ""))
-                .font(.footnote).foregroundStyle(.secondary)
-            GeometryReader { geo in
-                HStack(spacing: 1.5) {
-                    ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-                        if part.0 > 0 {
-                            Rectangle().fill(part.1).frame(width: max(geo.size.width * CGFloat(part.0) / CGFloat(limit) - 1.5, 2))
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-                .background(Color(.systemGray5))
-                .clipShape(Capsule())
-            }
-            .frame(height: 6)
-            // The key, only for the parts there are.
-            HStack(spacing: 10) {
-                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
-                    if part.0 > 0 {
-                        HStack(spacing: 4) {
-                            Circle().fill(part.1).frame(width: 7, height: 7)
-                            Text("\(part.2) \(part.0)")
-                        }
-                    }
-                }
-            }
-            .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
-            .lineLimit(1).minimumScaleFactor(0.8)
-        }
-        .padding(.vertical, 4)
+        return ReminderSlotsBar(
+            caption: "\(used) of \(limit) in use · \(kept) kept for snoozes" + (free > 0 ? " · \(free) free" : ""),
+            limit: limit,
+            parts: [
+                .init(count: prayers, color: green, label: "Prayers"), .init(count: zikr, color: Color(.systemTeal), label: "Zikr"),
+                .init(count: open, color: Color(.systemOrange), label: "Open shukr"),
+                .init(count: other, color: Color(.systemIndigo), label: "Other"),
+                .init(count: kept, color: Color(.systemGray3), label: "Kept for snoozes"),
+            ])
     }
 
     /// The Calendar's week: the picked day filled green, today's number green; a grey dot under days with nudges.
