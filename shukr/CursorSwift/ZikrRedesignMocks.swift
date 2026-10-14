@@ -10,9 +10,22 @@
 //  itself for a recording.
 //
 
-#if DEBUG
 import SwiftUI
 import SwiftData
+
+/// Where the redesign mockups take over from the real Zikr tab's pages (`-zikrMockApp`: the real wheel, with its History
+/// door, Azkar door and "N of M tasks done ›" leading to the mockups — owner: "feel how the navigation is").
+enum ZikrMockStart { case azkar, history }
+
+@MainActor @ViewBuilder func zikrRedesign<Real: View>(_ start: ZikrMockStart, @ViewBuilder real: () -> Real) -> some View {
+    #if DEBUG
+    if ProcessInfo.processInfo.arguments.contains("-zikrMockApp") { ZikrMockPage(start: start) } else { real() }
+    #else
+    real()
+    #endif
+}
+
+#if DEBUG
 
 /// Pretend state (pausing isn't real yet) and the tour's script.
 @MainActor @Observable final class ZikrMockState {
@@ -36,6 +49,29 @@ struct ZikrMockHost: ViewModifier {
 
 extension View {
     func zikrMockHost() -> some View { modifier(ZikrMockHost()) }
+}
+
+/// A mockup page pushed onto the real app's stack, with the mockups' own routes.
+struct ZikrMockPage: View {
+    let start: ZikrMockStart
+    @Query private var zikrs: [MantraModel]
+    var body: some View {
+        Group {
+            switch start {
+            case .azkar: MockAzkarPage()
+            case .history: MockHistoryPage(filter: nil)
+            }
+        }
+        .fontDesign(.rounded)
+        .navigationDestination(for: MockRoute.self) { route in
+            switch route {
+            case .zikr(let id):
+                if let z = zikrs.first(where: { $0.persistentModelID == id }) { MockZikrPage(zikr: z) }
+            case .history(let id):
+                MockHistoryPage(filter: id)
+            }
+        }
+    }
 }
 
 private enum MockRoute: Hashable {

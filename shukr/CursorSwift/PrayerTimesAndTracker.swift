@@ -1538,10 +1538,10 @@ struct PrayerTimesView: View {
             LocationMapContentView()
         }
         .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
-        .navigationDestination(isPresented: $showMantrasPage) { AzkarPage() }
+        .navigationDestination(isPresented: $showMantrasPage) { zikrRedesign(.azkar) { AzkarPage() } }
         .navigationDestination(isPresented: $showSalahHistoryV1) { SimpleDailyScoreView() }
         .navigationDestination(isPresented: $showSalahHistoryV2) { PrayerEditorView() }
-        .navigationDestination(isPresented: $showZikrHistory) { ZikrHistoryPage() }
+        .navigationDestination(isPresented: $showZikrHistory) { zikrRedesign(.history) { ZikrHistoryPage() } }
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
         .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }

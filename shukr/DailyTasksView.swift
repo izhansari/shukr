@@ -196,7 +196,7 @@ struct ZikrCircleWheel: View {
             // Edit task: the task's review, the page that made it (task-edit-review-page).
             .sheet(item: $tasksSheetOn) { NewTaskFlow(editing: $0) }
             .navigationDestination(isPresented: $showTasksPage) {
-                YourTasksPage()
+                zikrRedesign(.azkar) { YourTasksPage() }   // `-zikrMockApp`: the redesign's Your azkar
                     // The Zikr Tour's "Hold and drag to change their order" (ZikrTour.swift), then back.
                     .overlay { ZikrTourInline(place: .yourTasks) }
                     .onChange(of: ZikrTour.shared.popPage) { _, _ in showTasksPage = false }
