@@ -145,7 +145,7 @@ enum TourCopy {
         /// A line over each to-do in the panel: what it is.
         static var todoLeads: [String] { TourFlow.v2 ? [
             "Prayers you’ve marked fold away to keep the list short.",
-            "Coming prayers show when they start.",
+            "Upcoming prayers show when they start.",
             "Every marked prayer keeps its score.",
             "Prayed Fajr on time but marked it late? Fix it.",
         ] : [
@@ -244,7 +244,7 @@ enum TourCopy {
         ] }
         /// A line over each to-do in the panel: what the thing it names is.
         static var todoLeads: [String] { (TourFlow.v2 ? ["Notifications first: each prayer’s bell says what it sends."] : []) + [
-            "Live Activities put a prayer's countdown on your Lock Screen.",
+            "Live Activities put a prayer's countdown on your lock screen.",
             "The Fajr alarm is a real alarm that moves with Fajr.",
             "Every ⓘ explains its section in plain words.",
         ] }
