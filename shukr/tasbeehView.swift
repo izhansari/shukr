@@ -728,20 +728,6 @@ struct tasbeehView: View {
                 
                 // The Bottom Inactivity Alert During Session
                 VStack{
-                    if !sharedState.isDoingPostNamazZikr, sharedState.selectedMode != 0, let task = sharedState.selectedTask {
-                        // Which goal this is (owner, item counter-goal-name / NJUZ: the counter never said):
-                        // "Morning Durood · 12 of 50", quiet, where the post-salah strip sits.
-                        Text(task.isCountMode ? "\(task.title) · \(tasbeeh) of \(task.goal)" : "\(task.title) · \(task.goal) min goal")
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .padding(.horizontal, 40)
-                            .padding(.top, 120)
-                            .allowsHitTesting(false)
-                            .opacity(paused || savedSession != nil || !countIn ? 0 : 1)
-                            .animation(.easeInOut, value: paused || savedSession != nil)
-                    }
                     if sharedState.isDoingPostNamazZikr {
                         PostSalahPhaseStrip(count: tasbeeh)
                             .padding(.top, 120)
