@@ -561,7 +561,8 @@ enum PrayerLiveActivities {
                 let start = Date().addingTimeInterval(-ago * 60), end = start.addingTimeInterval((arg("-laLength") ?? 90) * 60)
                 _ = try? Activity.request(attributes: PrayerWindowAttributes(n: 99),
                                           content: .init(state: .init(label: "Asr", start: start, end: end, symbol: prayerIcon(for: "Asr"),
-                                                                      last: args.contains("-laLast") ? true : nil), staleDate: end),
+                                                                      last: args.contains("-laLast") ? true : nil,
+                                                                      toppedUp: args.contains("-laToppedUp") ? "4" : nil), staleDate: end),
                                           pushType: nil)
                 if args.contains("-laMarkNow") { try? await Task.sleep(for: .seconds(1)); await mark(99) }
                 return

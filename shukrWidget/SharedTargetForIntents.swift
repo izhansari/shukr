@@ -2947,8 +2947,8 @@ struct PrayerWindowAttributes: ActivityAttributes {
         /// Optional, so cards already held decode.
         var last: Bool? = nil
         /// After the last card's ↻ added more (owner: "you're all good"): how many cards it added, said on the card that
-        /// was tapped ("4" → "All reminders topped up · 4 more cards" — owner: a count, and that notifications and the
-        /// Fajr alarm were topped up too). Optional, so cards already held decode.
+        /// was tapped; the card says "Live Activity cards topped up" (owner, 2026-10-14: no count — it only worried
+        /// people). Optional, so cards already held decode.
         var toppedUp: String? = nil
     }
     /// The window's id: its start in whole minutes since 1970 (so a window is never scheduled twice).
@@ -3284,6 +3284,7 @@ struct LALockCardBody: View {
 struct LALastNote: View {
     static let room: CGFloat = 22
     static let text = "Last card · tap to add more"
+    static let toppedUpText = "Live Activity cards topped up"
     static func shows(_ s: PrayerWindowAttributes.ContentState) -> Bool {
         s.markedAt == nil && (s.last == true || s.toppedUp != nil)
     }
@@ -3292,11 +3293,12 @@ struct LALastNote: View {
     /// The real card's button (drawn once, in LALockCard's overlay); elsewhere the same pill as a picture.
     var live = false
     var body: some View {
-        if let added = state.toppedUp.flatMap(Int.init), state.last != true {
-            // After a tap added more: a plain line with a green check, not a pill (owner) — it isn't a button.
+        if state.toppedUp != nil, state.last != true {
+            // After a tap added more: a plain line with a green check, not a pill (owner) — it isn't a button. No count
+            // (owner: "not worth worrying them, esp if they're non-power users").
             HStack(spacing: 4) {
                 Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.green)
-                Text("All reminders topped up · \(added) more card\(added == 1 ? "" : "s")")
+                Text(Self.toppedUpText)
             }
             .font(.system(.caption2, design: .rounded))
             .foregroundStyle(.secondary)

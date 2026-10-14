@@ -593,6 +593,9 @@ private struct DeleteSessionAlert: ViewModifier {
 /// quiet text you can tap to feel (only the text pulses).
 private struct DayRows: View {
     let days: [(key: String, date: Date, items: [SessionDataModel])]
+    /// A day's totals from all its sessions when only some are shown (a zikr's last 3 — the cold test caught "10 counted"
+    /// there against History's 60 for the same day).
+    var fullDays: [String: [SessionDataModel]]? = nil
     var showsName = true
     var tappable = true
     var selection: Binding<Set<PersistentIdentifier>>? = nil
@@ -654,7 +657,7 @@ private struct DayRows: View {
             }
             .padding(.horizontal, 16).padding(.top, 8)
         } else {
-            SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(day.items))
+            SoftLabel(title: MockFmt.day(day.date), trailing: dayTotals(fullDays?[day.key] ?? day.items))
         }
     }
 }
@@ -963,7 +966,8 @@ private struct ZikrSheet: View {
             }.bareRow(top: 18) }
             // Its last 3 sessions as flat rows (Sami: its own recent data, so you never leave just to glance) — a tap
             // opens nothing here (a sheet never opens over a sheet); the pace and swipe-to-delete still work.
-            DayRows(days: byDay(Array(sessions.prefix(3))), showsName: false,
+            DayRows(days: byDay(Array(sessions.prefix(3))), fullDays: Dictionary(grouping: sessions) { PrayerDay.key(for: $0.startTime) },
+                    showsName: false,
                     onOpen: { _ in }, onDelete: { sessionToDelete = $0 })
             Section {
                 if sessions.count > 3 || onHistory != nil, !sessions.isEmpty {
