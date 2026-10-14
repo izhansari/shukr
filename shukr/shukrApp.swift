@@ -240,6 +240,21 @@ struct shukrApp: App {
         let container = sharedModelContainer
         ShortcutTopUp.run = { AutoTopUp.request("shortcut") }   // AutoTopUp: notifications + alarms + cards, logged
         #if DEBUG
+        // `-notifIn N`: the notification wake test — one prayer notification (the real buttons) N s out, no top-up limit
+        // for 10 min. Quit shukr; leave it, or press a button on it; topups.log says whether shukr woke.
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-notifIn"), i + 1 < ProcessInfo.processInfo.arguments.count,
+           let n = Double(ProcessInfo.processInfo.arguments[i + 1]) {
+            UserDefaults.standard.set(Date().timeIntervalSince1970 + 600, forKey: "autoTopUp.noLimitUntil")
+            let content = UNMutableNotificationContent()
+            content.title = "Asr 🟡"
+            content.subtitle = "Pray by 7:40 PM"
+            content.body = "Halfway through Asr (wake test)"
+            content.categoryIdentifier = "Round1_Snooze"
+            content.sound = .default
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "waketest.\(Int(Date().timeIntervalSince1970))",
+                content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: n, repeats: false)))
+            TopUpLog.add("wake test: a notification set for \(Int(n)) s from now")
+        }
         // `-autoTopUpTest`: one top-up 4 s in, then one asked inside the 3 h (logged as skipped) — topups.log.
         if ProcessInfo.processInfo.arguments.contains("-autoTopUpTest") {
             Task { @MainActor in
