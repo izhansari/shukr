@@ -416,9 +416,7 @@ struct SadaqahPage: View {
                 .listRowSeparator(.hidden)
             }
             Section {
-                ForEach(SadaqahCharities.all.filter { c in
-                    c.kind == kind && (category.map { c.categories.contains($0) } ?? true)
-                }) { charity in
+                ForEach(shownCharities) { charity in
                     HStack(spacing: 4) {
                         Button { give(to: charity) } label: { CharityRow(charity: charity) }
                             .buttonStyle(.plain)
@@ -436,7 +434,8 @@ struct SadaqahPage: View {
                 }
             } header: {
                 HStack {
-                    Text("Organizations")
+                    // How many are shown, so a filter visibly works (owner).
+                    Text("Organizations · \(shownCharities.count)")
                     Spacer()
                     CategoryFilter(kind: kind, selection: $category).textCase(nil)
                 }
@@ -465,22 +464,6 @@ struct SadaqahPage: View {
                 Text("Your donations")
             } footer: {
                 Text("Private: kept on this phone only. Gave somewhere else? Log it with +.")
-            }
-            Section {
-                Button { showGuide = true } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "book.fill").foregroundStyle(Color.sage).frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Sadaqah, zakat and more")
-                            Text("What each one is, in a few lines").font(.footnote).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .listRowBackground(Self.card)
             }
         }
         // The new-task flow's page: white, soft grey cards, no gap under the bar.
@@ -534,6 +517,11 @@ struct SadaqahPage: View {
         } message: { d in
             Text("\(d.amount.money(d.currency)) to \(d.to)")
         }
+    }
+
+    /// The organizations on the side shown, through the filter.
+    private var shownCharities: [SadaqahCharity] {
+        SadaqahCharities.all.filter { c in c.kind == kind && (category.map { c.categories.contains($0) } ?? true) }
     }
 
     /// The charity's own page; closing it always asks (owner).
@@ -1367,20 +1355,13 @@ struct GivingGuideSheet: View {
              text: "Islam forbids earning interest. If interest still lands in your account, many scholars say to give it to people in need, without counting it as your zakat or sadaqah."),
     ]
 
+    /// The page's title has scrolled under the bar: the bar shows it (owner).
+    @State private var titleInBar = false
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(Color.primary.opacity(0.06)))
-                }
-                .buttonStyle(.plain)
-                Spacer()
-            }
-            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
+        // In its own NavigationStack: the ✕ is the bar's own button (Liquid Glass on iOS 26 — owner), and the title goes
+        // up into the bar as it scrolls.
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
                     VStack(spacing: 6) {
@@ -1417,8 +1398,25 @@ struct GivingGuideSheet: View {
                         .padding(.horizontal, 28).padding(.top, 6).padding(.bottom, 24)
                 }
             }
+            .background(Color(.systemBackground).ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("Close")
+                }
+                ToolbarItem(placement: .principal) {
+                    Text("Kinds of giving").font(.headline).fontDesign(.rounded)
+                        .opacity(titleInBar ? 1 : 0)
+                        .animation(.easeOut(duration: 0.2), value: titleInBar)
+                }
+            }
+            .onScrollGeometryChange(for: Bool.self) { geo in
+                geo.contentOffset.y + geo.contentInsets.top > 50
+            } action: { _, under in
+                titleInBar = under
+            }
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
         .fontDesign(.rounded)
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
