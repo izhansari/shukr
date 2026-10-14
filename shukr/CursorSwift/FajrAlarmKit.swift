@@ -55,6 +55,10 @@ enum FajrAlarms {
     static let configKey = "alarmKitConfig"
 
     static var supported: Bool {
+        #if DEBUG
+        // `-demoBeforeAlarmKit YES`: the app as before iOS 26.1 (the Shortcut path), for screenshots.
+        if UserDefaults.standard.bool(forKey: "demoBeforeAlarmKit") { return false }
+        #endif
         if #available(iOS 26.1, *) { return true }
         return false
     }
