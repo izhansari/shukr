@@ -403,8 +403,8 @@ struct FajrAlarmStopIntent: LiveActivityIntent {
     @MainActor func perform() async throws -> some IntentResult {
         FajrAlarmLog.add("Stop: \(FajrAlarms.describe(alarmID))")
         if let id = UUID(uuidString: alarmID) { try? AlarmManager.shared.stop(id: id) }
-        // Cards first, inside this run (a LiveActivityIntent's run is when iOS lets a backgrounded app add them —
-        // the card's ✓ can; whether the alarm's Stop can is being tested, 2026-10-14).
+        // Cards first, inside this run — tested on his phone 2026-10-14: iOS refuses ("visibility") even here, unlike the
+        // card's / widget's ✓. Kept: harmless, and it would catch an iOS that starts allowing it.
         PrayerLiveActivities.plan(reason: "alarm Stop (in its run)")
         await FajrAlarms.plan(reason: "alarm stopped")
         AutoTopUp.request("alarm Stop")   // the morning's moment: notifications and cards too
