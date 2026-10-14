@@ -33,6 +33,12 @@ enum SalahSheetDrag {
         withTransaction(quiet) { state.navPosition = .main }
     }
     @MainActor private static var quietNext = false
+    /// The ☰ menu: open now, or when it last closed. A swipe that only closes the menu (its touch-down dismisses the
+    /// popover, the drag then reaches the pager) must not move the sheet (owner, 2026-10-14).
+    @MainActor static var menuOpen = false
+    @MainActor static var menuClosedAt = Date.distantPast
+    @MainActor static var menuJustClosed: Bool { menuOpen || Date().timeIntervalSince(menuClosedAt) < 0.6 }
+
     /// Whether the move the sheet is about to make was asked for quietly (once).
     @MainActor static func takeQuiet() -> Bool {
         defer { quietNext = false }
@@ -54,8 +60,9 @@ struct SheetRests: Equatable {
 final class SheetSpring: NSObject {
     /// List points per finger point (sandbox 1.13; on the real page "a little fast" — owner, 2026-10-14: with the finger).
     static let ratio = 1.0
-    /// The landing: a 0.2 s spring with no bounce.
-    static let response = 0.20
+    /// The landing: a 0.3 s spring with no bounce (the sandbox's 0.2 came in "really fast" on the real page — owner,
+    /// 2026-10-14).
+    static let response = 0.30
     static let damping = 1.0
     /// How far a slow let-go's speed carries before deciding where it lands (seconds of travel).
     static let throwTime = 0.03
@@ -65,6 +72,8 @@ final class SheetSpring: NSObject {
     static let openStretchPoints = 10.0
     /// A flick faster than this (pt/s) opens or closes by its direction, whatever the distance.
     static let flick: CGFloat = 500
+    /// The most of a flick's speed the landing carries (runs per second): a hard flick still lands calmly.
+    static let maxCarry = 3.0
 
     weak var live: PagerLiveState?
     /// Landed: true = open. The page sets navPosition from it.
@@ -116,7 +125,7 @@ final class SheetSpring: NSObject {
         dragging = false
         let speed = -Double(vy) * Self.ratio / run
         let open: Bool = abs(vy) > Self.flick ? vy < 0 : progress + speed * Self.throwTime > 0.5
-        go(open: open, velocity: speed)
+        go(open: open, velocity: min(max(speed, -Self.maxCarry), Self.maxCarry))
         return open
     }
 

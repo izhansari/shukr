@@ -50,7 +50,11 @@ struct PrayerTimesView: View {
     /// The axis of the current pager drag, in a plain box: as @State, setting it at a drag's first move rebuilt this
     /// whole view — a dropped frame at the start of nearly every vertical drag (the sandbox's log, 2026-10-14).
     @State private var dragAxis = DragAxis()
-    final class DragAxis { var vertical: Bool? }
+    final class DragAxis {
+        var vertical: Bool?
+        /// This drag only closed the ☰ menu: it moves nothing (`SalahSheetDrag.menuJustClosed`).
+        var swallowed = false
+    }
     @GestureState private var pagerDragActive = false      // a finger on the pager's drag (resets on cancel too)
     /// The Salah sheet follows the finger (SalahSheetDrag): the sheet is its own ScrollView, and this gesture only locks the axis.
     @AppStorage(SalahSheetDrag.key) private var sheetFollows = SalahSheetDrag.defaultOn
@@ -583,6 +587,7 @@ struct PrayerTimesView: View {
                     guard abs(t.width) > decideAt || abs(t.height) > decideAt else { return }
                     dismissKeyboard()
                     dragAxis.vertical = abs(t.height) > abs(t.width)
+                    dragAxis.swallowed = SalahSheetDrag.menuJustClosed
                     if dragAxis.vertical == true {
                         live.pagerLocked = true
                     } else {
@@ -596,7 +601,7 @@ struct PrayerTimesView: View {
                     }
                 }
                 if dragAxis.vertical == true {
-                    guard sharedState.horizontalPage == .main else { return }
+                    guard sharedState.horizontalPage == .main, !dragAxis.swallowed else { return }
                     if sheetFollows {
                         // Vertical live dragging (round 5): the list and ring follow the finger.
                         guard CircleStage.shared.lost == nil, !TourRuntime.shared.holdsSheet else { return }
@@ -614,8 +619,9 @@ struct PrayerTimesView: View {
                 }
             }
             .onEnded { value in
-                let vertical = dragAxis.vertical == true
+                let vertical = dragAxis.vertical == true && !dragAxis.swallowed
                 dragAxis.vertical = nil
+                dragAxis.swallowed = false
                 live.pagerLocked = false
                 // Vertical live dragging: the let-go lands it with the finger's speed; a pull-down past the line on the
                 // closed page opens ☰ (as the pop does).
@@ -663,6 +669,7 @@ struct PrayerTimesView: View {
     /// onEnded has done this already (nothing changes); after a cancelled one, nothing else would.
     private func pagerDragReleased() {
         dragAxis.vertical = nil
+        dragAxis.swallowed = false
         if live.sheetSpring.dragging { live.sheetSpring.release(velocityY: 0) }   // a cancelled drag lands where it was
         if live.pagerLocked { live.pagerLocked = false }
         if live.pull != 0 { withAnimation(CircleMotion.page) { live.pull = 0 } }
@@ -2070,6 +2077,8 @@ struct PrayerTimesView: View {
                             showMenu = true
                         }
                         .onChange(of: showMenu) { _, open in
+                            SalahSheetDrag.menuOpen = open
+                            if !open { SalahSheetDrag.menuClosedAt = Date() }
                             // The chosen row runs once the popover has faded (its push isn't attempted while the
                             // presentation is still going). Not at its onDisappear: that comes ~0.4 s after it's gone
                             // from the screen, and the row felt slow (sim, tr-pager).
