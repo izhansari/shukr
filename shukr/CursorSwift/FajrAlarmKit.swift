@@ -403,6 +403,9 @@ struct FajrAlarmStopIntent: LiveActivityIntent {
     @MainActor func perform() async throws -> some IntentResult {
         FajrAlarmLog.add("Stop: \(FajrAlarms.describe(alarmID))")
         if let id = UUID(uuidString: alarmID) { try? AlarmManager.shared.stop(id: id) }
+        // Cards first, inside this run (a LiveActivityIntent's run is when iOS lets a backgrounded app add them —
+        // the card's ✓ can; whether the alarm's Stop can is being tested, 2026-10-14).
+        PrayerLiveActivities.plan(reason: "alarm Stop (in its run)")
         await FajrAlarms.plan(reason: "alarm stopped")
         AutoTopUp.request("alarm Stop")   // the morning's moment: notifications and cards too
         return .result()
@@ -484,6 +487,8 @@ struct FajrAlarmCheckView: View {
     enum Why { case limit, topsUp }
     /// The testing sections (Mornings, Check, Log), closed until tapped.
     @State private var showTesting = false
+    @State private var showMornings = false
+    @State private var showLog = false
     @State private var fajrStatus = FajrAlarmStatus.shared
     @ObservedObject private var health = NotificationHealth.shared
     private var group: UserDefaults? { UserDefaults(suiteName: SharedStore.appGroup) }
@@ -529,24 +534,6 @@ struct FajrAlarmCheckView: View {
                 Text("Beta builds only — not part of what everyone sees.")
             }
             if showTesting {
-            Section {
-                if mornings.isEmpty {
-                    Text("No alarm has rung yet").foregroundStyle(.secondary)
-                }
-                ForEach(mornings) { m in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(m.title).font(.subheadline.weight(.semibold))
-                        Text(m.line(fajrMarked: m.test ? nil : fajrMarked(for: m)))
-                            .font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.vertical, 2)
-                }
-            } header: {
-                Text("Mornings")
-            } footer: {
-                Text("From the log: the alarm's time, every Snooze and Stop (shukr hears those), and when Fajr was marked. When it started ringing shows only if shukr happened to be running.")
-            }
             Section("Check") {
                 check(wrong.isEmpty, wrong.isEmpty ? "Every alarm is the rule's time for its day"
                                                   : "\(wrong.count) not the rule's time: " + wrong.prefix(4).map { $0.date.map(FajrAlarmLog.day) ?? "no date" }.joined(separator: ", "))
@@ -581,13 +568,37 @@ struct FajrAlarmCheckView: View {
                 }
                 .disabled(planning)
             }
+            // Mornings and the log fold (owner: so the buttons are found without scrolling past them).
             Section {
-                ForEach(Array(log.prefix(300).enumerated()), id: \.offset) { _, line in
-                    Text(line).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                DisclosureGroup(isExpanded: $showMornings) {
+                    if mornings.isEmpty {
+                        Text("No alarm has rung yet").foregroundStyle(.secondary)
+                    }
+                    ForEach(mornings) { m in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(m.title).font(.subheadline.weight(.semibold))
+                            Text(m.line(fajrMarked: m.test ? nil : fajrMarked(for: m)))
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                } label: {
+                    HStack { Text("Mornings"); Spacer(); Text("\(mornings.count)").foregroundStyle(.secondary).monospacedDigit() }
+                }
+            } footer: {
+                Text("From the log: the alarm's time, every Snooze and Stop (shukr hears those), and when Fajr was marked. When it started ringing shows only if shukr happened to be running.")
+            }
+            Section {
+                DisclosureGroup(isExpanded: $showLog) {
+                    ForEach(Array(log.prefix(300).enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                    }
+                } label: {
+                    HStack { Text("Log"); Spacer(); Text("\(log.count) lines").foregroundStyle(.secondary).monospacedDigit() }
                 }
             } header: {
                 HStack {
-                    Text("Log")
                     Spacer()
                     Button(copied ? "Copied" : "Copy") { UIPasteboard.general.string = FajrAlarmLog.text; copied = true }
                     ShareLink(item: FajrAlarmLog.text) { Image(systemName: "square.and.arrow.up") }
