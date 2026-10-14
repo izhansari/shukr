@@ -269,6 +269,41 @@ extension EnvironmentValues {
     var softFooterCount: Int? = nil
 }
 
+/// "Memories ›" on the day's page, in "N done"'s spot above the bottom bar (decision memories-link-place B: under the
+/// day's line the list rode up over it). Once there's a photo (PrayerMemories.swift); today's photos once developed
+/// (and before they're looked at): "Today's photos have developed ›"; while they develop, "… after Isha".
+struct MemoriesFooterLink: View {
+    private var day = DayPageState.shared
+    private var photos = PrayerPhotoRevision.shared
+
+    var body: some View {
+        let _ = photos.value
+        if day.up && photos.hasPhotos {
+            let ready = PhotoDevelop.todayReady()
+            let developing = PhotoDevelop.todayDeveloping()
+            Button {
+                triggerSomeVibration(type: .light)
+                MemoriesPresenter.shared.open = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: ready ? "sparkles" : developing ? "hourglass" : "photo.stack").font(.system(size: 13))
+                    Text(ready ? "Today's photos have developed" : developing ? "Memories · today's develop after Isha" : "Memories")
+                        .font(.system(size: 14, weight: .regular, design: .rounded))
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Capsule().fill(Color.primary.opacity(0.06)))
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 12)   // the same air above the bar as "N done"
+            .transition(.opacity)
+        }
+    }
+}
+
 /// The soft looks' "N done", above the bottom bar (PagerChromeView). The chevron points to where the rows
 /// appear: up while folded, down once they're shown (owner: "switch chevron directions for done and hide").
 struct SoftDoneFooter: View {

@@ -955,32 +955,6 @@ struct summaryCircle: View, Equatable {
         showingYesterday ? (history.first ?? []) : viewModel.todaysPrayers.map(DayPrayer.init)
     }
 
-    /// "Memories ›" under the day's line, once there's a photo (PrayerMemories.swift).
-    /// Today's photos once they've developed (and before they're looked at): "Today's photos have developed ›"; while
-    /// they develop, "Developing · after Isha" (decision photo-develop-*).
-    @ViewBuilder private var memoriesLink: some View {
-        let _ = PrayerPhotoRevision.shared.value
-        if PrayerPhotoRevision.shared.hasPhotos {
-            let ready = PhotoDevelop.todayReady()
-            let developing = PhotoDevelop.todayDeveloping()
-            Button {
-                triggerSomeVibration(type: .light)
-                MemoriesPresenter.shared.open = true
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: ready ? "sparkles" : developing ? "hourglass" : "photo.stack").font(.system(size: 13))
-                    Text(ready ? "Today's photos have developed" : developing ? "Memories · today's develop after Isha" : "Memories")
-                        .font(.system(size: 14, weight: .regular, design: .rounded))
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
-                }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Capsule().fill(Color.primary.opacity(0.06)))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
     @ViewBuilder private var dayLine: some View {
         if let i = picked, DayRing.order.indices.contains(i), let p = shownDay.first(where: { $0.name == DayRing.order[i] }) {
             Text("\(p.name)'s window: \(p.start.formatted(date: .omitted, time: .shortened)) – \(p.end.formatted(date: .omitted, time: .shortened))")
@@ -1071,11 +1045,10 @@ struct summaryCircle: View, Equatable {
                     .opacity(glow ? 1 : 0).allowsHitTesting(false)
             }
             .overlay(alignment: .top) {
-                VStack(spacing: 14) {
-                    dayLine
-                    memoriesLink
-                }
-                .frame(width: 310).offset(y: 222)
+                // Memories' link sits at the bottom, in "N done"'s spot above the bar (MemoriesFooterLink; decision
+                // memories-link-place B — the list dragged up over it here).
+                dayLine
+                    .frame(width: 310).offset(y: 222)
             }
             .modifier(CircleWordsAway(away: away || !showsScore))
             .allowsHitTesting(showsScore && !away)

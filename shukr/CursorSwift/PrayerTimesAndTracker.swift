@@ -1432,6 +1432,17 @@ struct PrayerTimesView: View {
                 withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
                 if !ProcessInfo.processInfo.arguments.contains("-demoPrayerStart") { return }
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoMarkAll") {
+                // Every one of today's started prayers marked, the list up: the day's page (all five once Isha is on —
+                // pair with circle-check's fake clock late in the evening).
+                try? await Task.sleep(for: .seconds(1.5))
+                withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
+                for prayer in viewModel.todaysPrayers where !prayer.isCompleted && prayer.startTime <= Date() {
+                    try? await Task.sleep(for: .seconds(0.6))
+                    viewModel.togglePrayerCompletion(for: prayer)
+                }
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoDayMilestones") {
                 // Streak (fake 12) + on-time streak (fake 5) in the top bar, perfect day in the list.
                 try? await Task.sleep(for: .seconds(1.5))
@@ -2127,8 +2138,12 @@ struct PrayerTimesView: View {
                     // Bottom bar: Salah with the sheet up, and always on Zikr. Above it, the soft looks' "N done"
                     // (SoftDoneFooter): a fixed spot, fading with the bar on Salah, not moving with the card.
                     VStack(spacing: 0) {
-                        SoftDoneFooter()
-                            .modifier(follow(.doneFooter(sheetOpen: showBottom)))
+                        ZStack(alignment: .bottom) {
+                            SoftDoneFooter()
+                            MemoriesFooterLink()   // the day's page: all five marked, so no "N done" there
+                        }
+                        .animation(.easeOut(duration: CircleMotion.quick), value: DayPageState.shared.up)
+                        .modifier(follow(.doneFooter(sheetOpen: showBottom)))
                         CustomBottomBar()
                             .modifier(follow(.bottomBar(sheetOpen: showBottom)))
                     }
