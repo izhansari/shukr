@@ -266,6 +266,7 @@ struct shukrApp: App {
         #endif
         // A location fix while in the background (Always: iOS wakes shukr for a big move) — a moment to top up.
         EnvLocationManager.inBackground = { UIApplication.shared.applicationState == .background }
+        PaceCache.watch()   // kept zikr paces forgotten when a session is saved (AllModels.swift)
         EnvLocationManager.onFix = {
             Task { @MainActor in
                 if UIApplication.shared.applicationState == .background { AutoTopUp.request("location update") }

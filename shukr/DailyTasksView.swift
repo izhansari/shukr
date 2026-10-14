@@ -86,6 +86,10 @@ struct ZikrCircleWheel: View {
     /// "i love the pick a zikr thing in the watch. but its not in the ios app"). Kept until changed, like the watch's.
     @AppStorage("freestylePick") private var freestylePick = ""
     @State private var showFreestylePicker = false
+    /// The summary's time left needs your pace, worked out from every past session (faulted in from the store): ~42 ms on
+    /// the main thread in the first frame, for a page that isn't on screen at launch (perf-recheck, 2026-10-14). It's
+    /// worked out once the launch has settled — or at once when the Zikr page is the one showing.
+    @State private var summaryReady = false
     @State private var importing: ImportedTask?
     @State private var pickedMantra: MantraModel?
     @Query(sort: \TaskModel.sortOrder) private var storedTasks: [TaskModel]
@@ -294,8 +298,9 @@ struct ZikrCircleWheel: View {
     @ViewBuilder private var tasksSummary: some View {
         if !tasks.isEmpty {
             let done = tasks.filter { isDone($0) }.count
-            // Everything left at your pace (tasks with no history yet are left out).
-            let left = tasks.filter { !isDone($0) }.compactMap { $0.secondsLeft(progress($0)) }.reduce(0, +)
+            // Everything left at your pace (tasks with no history yet are left out) — once the launch has settled.
+            let ready = summaryReady || sharedState.horizontalPage == .zikr
+            let left = ready ? tasks.filter { !isDone($0) }.compactMap { $0.secondsLeft(progress($0)) }.reduce(0, +) : 0
             HStack(spacing: 5) {
                 if done == tasks.count { Image(systemName: "checkmark") }
                 Text(summaryText(done: done, secondsLeft: left))
@@ -309,6 +314,11 @@ struct ZikrCircleWheel: View {
             .fontDesign(.rounded)
             .foregroundStyle(done == tasks.count ? Color.sage : .secondary)
             .animation(.snappy, value: done)
+            .task {
+                guard !summaryReady else { return }
+                try? await Task.sleep(for: .seconds(2.5))   // after the welcome
+                summaryReady = true
+            }
         }
     }
 
@@ -629,7 +639,9 @@ struct ZikrCircleWheel: View {
     }
 
     private func estimateNote(_ task: TaskModel, _ p: TaskProgress) -> String? {
-        task.estimateNote(p)
+        // Needs the pace (every past session): not in the launch's first frame — see `summaryReady`.
+        guard summaryReady || sharedState.horizontalPage == .zikr else { return nil }
+        return task.estimateNote(p)
     }
 
     private func progressText(_ task: TaskModel, _ p: TaskProgress) -> String {

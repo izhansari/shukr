@@ -614,7 +614,7 @@ extension MantraModel {
     /// your usual pace *before* it).
     func secondsPerCount(excluding session: SessionDataModel?) -> TimeInterval? {
         if session == nil, modelContext != nil {
-            return PaceCache.value(persistentModelID) { secondsPerCount(excludingUncached: nil) }
+            return PaceCache.value("m-" + id.uuidString) { secondsPerCount(excludingUncached: nil) }
         }
         return secondsPerCount(excludingUncached: session)
     }
@@ -652,7 +652,7 @@ extension TaskModel {
     var secondsPerCount: TimeInterval? {
         if let rate = mantra?.secondsPerCount { return rate }
         guard modelContext != nil else { return ownSecondsPerCount }
-        return PaceCache.value(persistentModelID) { ownSecondsPerCount }
+        return PaceCache.value("t-" + id.uuidString) { ownSecondsPerCount }
     }
 
     private var ownSecondsPerCount: TimeInterval? {
@@ -764,23 +764,47 @@ extension SessionDataModel {
     }
 }
 
-/// Paces (seconds per count over every session), worked out once and kept until the store saves: the Zikr wheel's rings
-/// read one per task on every redraw — each a walk through all of a zikr's sessions — and the wheel redraws on every
-/// frame of a page swipe (paging lag, Release trace 2026-10-09).
+/// Paces (seconds per count over every session), worked out when they can have changed and kept — on disk too (owner,
+/// 2026-10-14: "compute it when it matters and we store it"). A zikr's pace changes only when one of its sessions is
+/// saved, deleted or relinked, a few times a day at most; it was worked out again after every save of any kind (each
+/// prayer mark) and at every launch, walking all of a zikr's sessions — ~42 ms in the launch's first frame on his 13 Pro
+/// Max (perf-recheck). Now: kept per zikr / task (by its id) in UserDefaults, and forgotten only when a save touched a
+/// session. The wheel reads one per task on every redraw, and redraws on every frame of a page swipe.
 enum PaceCache {
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var values: [PersistentIdentifier: TimeInterval?] = [:]
+    private static let key = "paceCache.v1"
+    /// −1 = worked out, nothing counted yet (nil).
+    nonisolated(unsafe) private static var values: [String: Double] =
+        (UserDefaults.standard.dictionary(forKey: key) as? [String: Double]) ?? [:]
     private static let watching: Void = {
-        NotificationCenter.default.addObserver(forName: ModelContext.didSave, object: nil, queue: nil) { _ in forget() }
+        NotificationCenter.default.addObserver(forName: ModelContext.didSave, object: nil, queue: nil) { note in
+            // Only a save that touched a session can change a pace (a prayer mark, a task's name or order can't).
+            guard let info = note.userInfo else { forget(); return }
+            let ids = [ModelContext.NotificationKey.insertedIdentifiers, .updatedIdentifiers, .deletedIdentifiers]
+                .flatMap { info[$0.rawValue] as? [PersistentIdentifier] ?? [] }
+            if ids.contains(where: { $0.entityName == "SessionDataModel" }) { forget() }
+        }
     }()
 
-    static func value(_ id: PersistentIdentifier, _ make: () -> TimeInterval?) -> TimeInterval? {
+    /// Listening from launch (App.init): kept paces must be forgotten by a session saved before any pace is asked for.
+    static func watch() { _ = watching }
+
+    static func value(_ id: String, _ make: () -> TimeInterval?) -> TimeInterval? {
         _ = watching
-        if let kept = lock.withLock({ values[id] }) { return kept }
+        if let kept = lock.withLock({ values[id] }) { return kept < 0 ? nil : kept }
         let made = make()
-        lock.withLock { values[id] = .some(made) }
+        lock.withLock {
+            values[id] = made ?? -1
+            UserDefaults.standard.set(values, forKey: key)
+        }
         return made
     }
 
-    static func forget() { lock.withLock { values.removeAll() } }
+    static func forget() {
+        lock.withLock {
+            guard !values.isEmpty else { return }
+            values.removeAll()
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
 }

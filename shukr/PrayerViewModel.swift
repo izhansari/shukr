@@ -1544,6 +1544,11 @@ extension PrayerViewModel {
     /// (nothing marked is ever removed) and, when none is completed, the first unmarked one.
     /// Cheap when there's nothing to do; backs the store up first when there is.
     static func removeDuplicatePrayerRows(in container: ModelContainer) {
+        // Once a day: it reads every prayer row ever kept (~48 ms in the first frame on his 13 Pro Max and growing with
+        // history — perf-recheck, 2026-10-14), and the 5-row lookup that made the duplicates is long gone.
+        let today = PrayerDay.key()
+        guard UserDefaults.standard.string(forKey: "prayerRows.dedupedDay") != today else { return }
+        UserDefaults.standard.set(today, forKey: "prayerRows.dedupedDay")
         let context = ModelContext(container)
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>(sortBy: [SortDescriptor(\.startTime)])) else { return }
         var groups: [String: [PrayerModel]] = [:]
