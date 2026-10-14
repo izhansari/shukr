@@ -270,6 +270,7 @@ struct TopUpSheet: View {
                     .padding(.bottom, 12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .containerBackground(.clear, for: .navigation)   // the sheet's own glass shows through (owner)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Page.self) { page in
                 switch page {
@@ -281,6 +282,7 @@ struct TopUpSheet: View {
         }
         .fontDesign(.rounded)
         .infoModalHost()   // the pages' ⓘ cards over the sheet
+        .modifier(TopUpSheetGlass())
         .presentationDetents([.height(Self.height), .large], selection: $detent)
         .presentationDragIndicator(.visible)
         // A page needs the room: full height while one is open, back when it closes.
@@ -304,6 +306,13 @@ struct TopUpSheet: View {
         }
         .buttonStyle(.plain)
         .disabled(page == nil)
+    }
+}
+
+/// iOS 26 gives a partial-height sheet Liquid Glass by itself (with nothing painted over it); before 26, the material.
+private struct TopUpSheetGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) { content } else { content.presentationBackground(.regularMaterial) }
     }
 }
 
