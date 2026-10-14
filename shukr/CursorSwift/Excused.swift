@@ -189,10 +189,12 @@ extension Excused {
     }
 
     #if DEBUG
-    /// `-demoExcused N`: excused since N days ago (estimate 7), for screenshots; `-demoExcusedOff`: clears it.
+    /// `-demoExcused N`: excused since N days ago (estimate 7), for screenshots; `-demoExcusedOff`: clears it;
+    /// `-demoExcusedAsk`: the once-a-day question may come again today.
     @MainActor static func applyDebugArgs() {
         let args = ProcessInfo.processInfo.arguments
         if args.contains("-demoExcusedOff") { save([]) }
+        if args.contains("-demoExcusedAsk") { UserDefaults.standard.removeObject(forKey: askedDayKey) }   // ask again today
         if let i = args.firstIndex(of: "-demoExcused"), i + 1 < args.count, let n = Int(args[i + 1]), !isActive {
             let from = Calendar.current.date(byAdding: .day, value: -n, to: Date()) ?? Date()
             start(kind: .haid, fromDay: from, days: 7, pauseZikr: false)
@@ -265,7 +267,6 @@ struct ExcusedSheet: View {
     @State private var current: ExcusedRange? = Excused.current
     @State private var startDay = Date()
     @State private var days = 7
-    @State private var daysText = "7"
     @FocusState private var typing: Bool
     @State private var keepZikr = true
     /// Just ended: the welcome back.
@@ -301,8 +302,6 @@ struct ExcusedSheet: View {
         .onTapGesture { typing = false }   // the keypad has no return key
         .fontDesign(.rounded)
         .presentationDetents([.large])
-        .onChange(of: days) { _, d in if !typing || Int(daysText) != d { daysText = "\(d)" } }
-        .onChange(of: typing) { _, on in daysText = on ? "" : "\(days)" }
     }
 
     // MARK: The three states
@@ -343,7 +342,6 @@ struct ExcusedSheet: View {
             keepZikr = !r.pauseZikr
             let cal = Calendar.current
             days = max(cal.dateComponents([.day], from: cal.startOfDay(for: r.start), to: cal.startOfDay(for: r.expectedEnd)).day ?? 7, 1)
-            daysText = "\(days)"
         }
         .onChange(of: keepZikr) { _, keep in if keep == r.pauseZikr { Excused.update(pauseZikr: !keep); refresh() } }
         // A new estimate is saved as the sheet goes (− / + can be held: one save, one re-plan).
@@ -375,36 +373,8 @@ struct ExcusedSheet: View {
 
     // MARK: Pieces
 
-    /// The estimate: the number inside the Excused ring's dashes, − and + either side (held, they keep going), a tap on
-    /// the number types one (NewTaskFlow's goal page).
     private func daysRing(min low: Int, caption: String) -> some View {
-        HStack(spacing: 18) {
-            RepeatRoundButton(symbol: "minus") { step in days = max(low, days - step) }
-            ZStack {
-                Circle().stroke(Color.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [3, 4.5]))
-                Circle().stroke(Color.sage.opacity(typing ? 0.9 : 0), lineWidth: 2).padding(6)
-                VStack(spacing: 2) {
-                    TextField("\(days)", text: $daysText)
-                        .keyboardType(.numberPad)
-                        .focused($typing)
-                        .multilineTextAlignment(.center)
-                        .font(.system(size: 60, weight: .light, design: .rounded))
-                        .monospacedDigit()
-                        .frame(width: 150)
-                        .onChange(of: daysText) { _, t in
-                            let digits = String(t.filter(\.isNumber).prefix(2))
-                            if digits != t { daysText = digits }
-                            if let n = Int(digits), n > 0 { days = min(Swift.max(n, low), Self.maxDays) }
-                        }
-                    Text(caption).font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 190, height: 190)
-            .contentShape(Circle())
-            .onTapGesture { typing = true }
-            RepeatRoundButton(symbol: "plus") { step in days = min(Self.maxDays, days + step) }
-        }
-        .padding(.vertical, 4)
+        ExcusedDaysRing(days: $days, range: low...Self.maxDays, caption: caption, typing: $typing)
     }
 
     private var primaryButton: some View {
@@ -477,53 +447,96 @@ struct ExcusedMenuBadge: View {
     }
 }
 
-/// "Not yet" past her estimate (owner: ask for another estimate): about how much longer, then the check-ins move with it.
+/// A number of days inside the Excused ring's dashes, − and + either side (held, they keep going), a tap on the number
+/// types one (NewTaskFlow's goal page; owner: "stay on brand"). `plus` shows it as "+3" — days added (owner).
+struct ExcusedDaysRing: View {
+    @Binding var days: Int
+    let range: ClosedRange<Int>
+    var plus = false
+    let caption: String
+    var typing: FocusState<Bool>.Binding
+    @State private var text = ""
+
+    var body: some View {
+        HStack(spacing: 18) {
+            RepeatRoundButton(symbol: "minus") { step in days = max(range.lowerBound, days - step) }
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1.5, dash: [3, 4.5]))
+                Circle().stroke(Color.sage.opacity(typing.wrappedValue ? 0.9 : 0), lineWidth: 2).padding(6)
+                VStack(spacing: 2) {
+                    ZStack {
+                        // Typing: an empty field, the number faint behind it; otherwise the number (with its "+").
+                        TextField(plus ? "+\(days)" : "\(days)", text: $text)
+                            .keyboardType(.numberPad)
+                            .focused(typing)
+                            .multilineTextAlignment(.center)
+                            .opacity(typing.wrappedValue ? 1 : 0)
+                            .onChange(of: text) { _, t in
+                                let digits = String(t.filter(\.isNumber).prefix(2))
+                                if digits != t { text = digits }
+                                if let n = Int(digits), n > 0 { days = min(max(n, range.lowerBound), range.upperBound) }
+                            }
+                        if !typing.wrappedValue {
+                            Text(plus ? "+\(days)" : "\(days)").contentTransition(.numericText())
+                        }
+                    }
+                    .font(.system(size: 60, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                    .frame(width: 150)
+                    Text(caption).font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 190, height: 190)
+            .contentShape(Circle())
+            .onTapGesture { typing.wrappedValue = true }
+            RepeatRoundButton(symbol: "plus") { step in days = min(range.upperBound, days + step) }
+        }
+        .animation(.snappy(duration: 0.15), value: days)
+        .onChange(of: typing.wrappedValue) { _, on in if on { text = "" } }
+        .padding(.vertical, 4)
+    }
+}
+
+/// "Not yet" past her estimate (owner: "a number input with a plus and a minus … matching the initial page", and clear
+/// that it's days added): "+2 more days" in the Excused ring; the check-ins move with it.
 struct ExcusedExtendSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var days = 2
-    private static let options = [1, 2, 3, 4, 5, 7, 10, 14]
+    @FocusState private var typing: Bool
 
     var body: some View {
         VStack(spacing: 18) {
             VStack(spacing: 6) {
                 Text("Not yet?").font(.system(size: 30, weight: .light, design: .rounded))
-                Text("About how much longer?").font(.subheadline).foregroundStyle(.secondary)
+                Text("Add a few more days to your estimate.").font(.subheadline).foregroundStyle(.secondary)
             }
             .padding(.top, 28)
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
-                ForEach(Self.options, id: \.self) { n in
-                    let on = days == n
-                    Button { withAnimation(.snappy(duration: 0.2)) { days = n } } label: {
-                        Text(n == 1 ? "1 day" : "\(n) days")
-                            .font(.subheadline.weight(.medium))
-                            .frame(maxWidth: .infinity).frame(height: 40)
-                            .background(Capsule().fill(on ? Color.sage : Color.primary.opacity(0.06)))
-                            .foregroundStyle(on ? Color.white : Color.primary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 20)
+            ExcusedDaysRing(days: $days, range: 1...30, plus: true, caption: days == 1 ? "more day" : "more days", typing: $typing)
             Text("We'll check in again once a day after that.")
                 .font(.footnote).foregroundStyle(.secondary)
             Spacer(minLength: 0)
-            Button {
-                Excused.extend(days: days)
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                dismiss()
-            } label: {
-                Text("Set new estimate")
-                    .font(.system(size: 17, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.sage)
-                    .frame(width: 240, height: 52)
-                    .background(Capsule().fill(Color.sage.opacity(0.08)))
-                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+            if !typing {
+                Button {
+                    Excused.extend(days: days)
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                } label: {
+                    Text("Add \(days) \(days == 1 ? "day" : "days")")
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.sage)
+                        .frame(width: 240, height: 52)
+                        .background(Capsule().fill(Color.sage.opacity(0.08)))
+                        .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 16)
             }
-            .buttonStyle(.plain)
-            .padding(.bottom, 16)
         }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture { typing = false }   // the keypad has no return key
         .fontDesign(.rounded)
-        .presentationDetents([.height(380)])
+        .presentationDetents([.height(470)])
         .presentationDragIndicator(.visible)
     }
 }
