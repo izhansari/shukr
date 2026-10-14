@@ -277,8 +277,13 @@ enum WatchZikrSync {
         // here since: each mark has its own id.
         let markID = info["id"] as? String
         if let markID, receivedMarks[markID] != nil { scheduleSend(); return }
-        let context = ModelContext(container)
         let startDate = Date(timeIntervalSince1970: start), endDate = Date(timeIntervalSince1970: end)
+        // Excused (Excused.swift): never marked; the watch hears back that it wasn't applied.
+        if Excused.covers(start: startDate, end: endDate) {
+            if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, -1] }
+            scheduleSend(); return
+        }
+        let context = ModelContext(container)
         let tapped = Date(timeIntervalSince1970: at)
         let rows = prayerRows(named: name, on: startDate, in: context)
         let prayer = rows.first ?? {

@@ -185,6 +185,8 @@ struct DayCentre: View {
 enum DayHistory {
     /// Earlier days don't change within a day: one fetch per prayer day (Ben's audit — it ran on every appearance).
     @MainActor private static var cache: (key: String, days: [[DayPrayer]])?
+    /// Excused changed (Excused.swift): earlier days count differently now.
+    @MainActor static func invalidate() { cache = nil }
 
     @MainActor static func load(_ context: ModelContext, days: Int = 35) -> [[DayPrayer]] {
         let today = PrayerDay.date()
@@ -206,8 +208,11 @@ enum DayHistory {
             if let kept = byDay[key]?[row.name], kept.isCompleted, !row.isCompleted { continue }
             byDay[key, default: [:]][row.name] = row
         }
-        return (1...days).map { back in
+        // Excused days (Excused.swift) are left out, so a run of good days or a "missed" pattern steps over them.
+        let excused = Excused.ranges
+        return (1...days).compactMap { back in
             let date = Calendar.current.date(byAdding: .day, value: -back, to: today) ?? today
+            guard Excused.counts(day: Calendar.current.startOfDay(for: date), in: excused) else { return nil }
             return (byDay[PrayerNotificationID.dayKey(date)] ?? [:]).values.map(DayPrayer.init)
         }
     }

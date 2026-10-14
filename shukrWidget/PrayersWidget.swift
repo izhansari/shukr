@@ -516,7 +516,8 @@ struct PrayersWidgetView: View {
         /// unmarks). Upcoming prayers and Sunrise never are.
         @ViewBuilder private func row(_ name: String, _ start: Date, _ end: Date) -> some View {
             let content = rowContent(name, start, end)
-            if name != "Sunrise", start <= entry.date {
+            // Excused from prayer (Excused.swift): the times show, nothing is marked from here.
+            if name != "Sunrise", start <= entry.date, !Excused.isActive {
                 if entry.completedScores[name] != nil {
                     Button(intent: AskUnmarkPrayerIntent(prayerName: name, prayerStart: start)) { content }
                         .buttonStyle(.plain)
@@ -808,7 +809,10 @@ struct PrayersWidgetView: View {
         /// to the next one); otherwise it marks the shown prayer, once it has started.
         @ViewBuilder private var checkButton: some View {
             let shown = relevantPrayer
-            if let current = prayerInWindow, entry.completedToday.contains(current) {
+            if Excused.isActive {
+                // Excused from prayer (owner): the windows still show; the check goes.
+                Color.clear.frame(width: 30, height: 30)
+            } else if let current = prayerInWindow, entry.completedToday.contains(current) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 15))
                     .foregroundColor(.primary)

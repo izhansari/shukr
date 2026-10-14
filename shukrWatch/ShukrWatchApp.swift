@@ -519,7 +519,19 @@ struct WatchPrayerRing: View {
     var body: some View {
         ZStack {
             // The look is WatchRingFace (shukrWatchShared: the iPhone's Explore draws the same ring); here, the taps.
-            WatchRingFace(prayer: prayer, current: current, now: now, k: k, showLeft: showLeft, holdFill: holdFill)
+            if let excused = WatchStore.excused {
+                // Excused from prayer on the phone: the same calm face, nothing to mark (Excused.swift).
+                Circle()
+                    .stroke(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [4, 4]))
+                    .frame(width: 118 * k, height: 118 * k)
+                VStack(spacing: 2) {
+                    Text("Excused").font(.system(size: 20 * k, weight: .light, design: .rounded))
+                    if !compact { Text(excused).font(.system(size: 11 * k, design: .rounded)).foregroundStyle(.secondary) }
+                }
+                .lineLimit(1).minimumScaleFactor(0.7)
+            } else {
+                WatchRingFace(prayer: prayer, current: current, now: now, k: k, showLeft: showLeft, holdFill: holdFill)
+            }
             if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k, onOpenMap: onQibla) }
         }
         .contentShape(Circle())
@@ -553,7 +565,7 @@ struct WatchPrayerRing: View {
             if let start = pressY, abs(y - start) > 2 { cancelHold() }
         }
         .onLongPressGesture(minimumDuration: 0.8, maximumDistance: 4, perform: {
-            guard current, !compact, !holdCancelled else { return }
+            guard current, !compact, !holdCancelled, WatchStore.excused == nil else { return }
             holdToken += 1
             pressY = nil
             holdFill = 0

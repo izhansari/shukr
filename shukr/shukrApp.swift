@@ -570,7 +570,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         )
         
         // Register the category with the notification center
-        UNUserNotificationCenter.current().setNotificationCategories([round1Actions, round2Actions, round2Confirmation,
+        UNUserNotificationCenter.current().setNotificationCategories([round1Actions, round2Actions, round2Confirmation, Excused.category,
                                                                       ZikrReminders.registerCategory()])
         print("✅ Notification categories registered")
         
@@ -610,6 +610,14 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                     ZikrReminders.open(taskID: taskID)
                     completionHandler()
                 }
+            }
+            return
+        }
+        // Excused's check-in (Excused.swift): "I'm ready" ends it from the lock screen; a tap opens shukr as usual.
+        if original.categoryIdentifier == Excused.checkInCategory {
+            DispatchQueue.main.async {
+                if response.actionIdentifier == Excused.readyAction { Excused.end() }
+                completionHandler()
             }
             return
         }

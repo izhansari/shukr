@@ -405,6 +405,8 @@ struct SettingsView: View {
                                               in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
                                               step: 0.5)
                         }
+                        // Excused from prayer (Excused.swift; decision excused-where B: Settings only).
+                        ExcusedSettingsRow()
                     } header: {
                         headerWithInfoButton(title: "Prayer Times", isPopupVisible: $isTimesInfoVisible).id("settingsTop")
                     }

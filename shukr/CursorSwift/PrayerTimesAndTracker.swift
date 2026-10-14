@@ -80,6 +80,8 @@ struct PrayerTimesView: View {
     @State private var widgetUnmark: WidgetUnmarkRequest?
     /// Bumped per request, so an older retry loop stops.
     @State private var widgetUnmarkToken = 0
+    /// Excused from prayer's sheet, from a tap on the circle (Excused.swift).
+    @State private var showExcused = false
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoNewZikr = false
@@ -909,6 +911,14 @@ struct PrayerTimesView: View {
         // "I already prayed" on a banner while the app is in front (audit B7): the mark lands in the shared store now
         // and the page used to show it unmarked until the next activation (a re-tap then rescored it).
         .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in openFromWidgetFlags() }
+        // Excused from prayer turned on / off / changed (Excused.swift): the touched days' scores and the streaks.
+        .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in
+            CircleStage.shared.excused = Excused.current
+            viewModel.excusedChanged()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Excused.openSheet)) { _ in showExcused = true }
+        .sheet(isPresented: $showExcused) { ExcusedSheet() }
+        .onAppear { CircleStage.shared.excused = Excused.current }
         .onReceive(NotificationCenter.default.publisher(for: TaskModel.didDelete)) { note in
             guard let gone = note.object as? Set<PersistentIdentifier>,
                   let selected = sharedState.selectedTask, gone.contains(selected.persistentModelID) else { return }
@@ -1172,6 +1182,7 @@ struct PrayerTimesView: View {
                 if let m = MantraModel.find(named: name, in: context) { demoMantra = m; return }
             }
             if ProcessInfo.processInfo.arguments.contains("-demoExplore") { demoExplore = true }
+            Excused.applyDebugArgs()   // -demoExcused N / -demoExcusedOff
             if ProcessInfo.processInfo.arguments.contains("-demoSadaqah") { demoSadaqah = true }
             if ProcessInfo.processInfo.arguments.contains("-demoScheduledNotifications") {
                 try? await Task.sleep(for: .seconds(1.5))

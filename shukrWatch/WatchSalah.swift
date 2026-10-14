@@ -22,6 +22,8 @@ enum WatchPrayerMarker {
     /// Marks it prayed: shown at once, the completion moment (with Undo) plays, and the phone is
     /// told (queued + direct when in reach).
     static func mark(_ prayer: WatchPrayer, at date: Date = Date()) {
+        // Excused from prayer on the phone (Excused.swift): nothing to mark.
+        guard WatchStore.excused == nil else { WKInterfaceDevice.current().play(.click); return }
         // The prayer's own day (its Fajr), not whatever day it is at the tap.
         guard let day = WatchPrayers.day(at: prayer.start) else { return }
         // A Friday Dhuhr at one of your masajid is Jumu'ah (full marks), as the phone will score it.

@@ -532,8 +532,8 @@ extension SharedStore {
     /// the prayer hasn't started, is already complete, or the store can't be opened.
     @discardableResult
     static func markPrayerComplete(named name: String, start: Date, end: Date) -> Bool {
-        // Same rule as the app: a prayer that hasn't started can't be completed.
-        guard start <= Date(), let container = widgetContainer else { return false }
+        // Same rule as the app: a prayer that hasn't started can't be completed; nor one she's excused from.
+        guard start <= Date(), !Excused.covers(start: start, end: end), let container = widgetContainer else { return false }
         let context = ModelContext(container)
 
         // The app creates today's rows when it opens; if it hasn't opened today, make this one.
@@ -2248,12 +2248,16 @@ enum FajrAlarmHooks {
 /// What a mark from Shortcuts marks: the prayer whose time it is, else today's last one still unmarked (a late Isha).
 enum PrayerMarkNow {
     static func target(now: Date = Date()) -> PrayerWindows.Window? {
+        // Excused: nothing to mark, and every answer stays neutral ("No prayer is on right now"), so a question asked
+        // out loud never says why (owner).
+        if Excused.isActive { return nil }
         if let c = PrayerWindows.pick(.current, now: now) { return c }
         let done = SharedStore.completedPrayerNamesToday()
         return PrayerWindows.pick(.previous, now: now).flatMap { p in
             PrayerWindows.today(now).contains { $0.start == p.start } && !done.contains(p.name) ? p : nil }
     }
     static func mark(_ c: PrayerWindows.Window) async -> Bool {
+        if Excused.covers(start: c.start, end: c.end) { return false }
         if let hook = PrayerWindowHooks.widgetMark { return await hook(c.name, c.start, c.end) }
         return SharedStore.markPrayerComplete(named: c.name, start: c.start, end: c.end)
     }
@@ -3810,3 +3814,50 @@ struct LAGate: View {
     }
 }
 
+
+// MARK: - Excused from prayer (haid / after childbirth; owner, 2026-10-13, plan board/mocks/excused-days)
+
+/// One stretch she was (or is) excused from prayer. A prayer whose window touches it can't be marked and isn't asked of
+/// her; the app's "counted days" leave its prayer days out of streaks and stats (Excused.swift).
+struct ExcusedRange: Codable, Hashable, Identifiable {
+    enum Kind: String, Codable, CaseIterable { case haid, nifas }
+    var id = UUID()
+    var kind: Kind
+    var start: Date
+    /// Her estimate: the check-ins are planned from it. Nothing ends by itself.
+    var expectedEnd: Date
+    /// Set when she ends it; nil while it runs.
+    var end: Date?
+    /// Zikr reminders pause too (her choice; zikr streaks never break on excused days either way).
+    var pauseZikr: Bool
+
+    /// A prayer window [from, to) she's excused from: it overlaps this stretch, and she was still excused when it ended.
+    /// Ending it during a prayer's time makes that prayer due (it can be marked), as the fiqh has it.
+    func covers(from: Date, to: Date) -> Bool { to > start && from < (end ?? .distantFuture) && (end.map { $0 >= to } ?? true) }
+}
+
+/// The one record (app group, JSON): every range, the running one last. Only the app writes it; the widget and the
+/// intents read it. Read it once per loop (`ranges`) — each read decodes.
+enum Excused {
+    static let key = "excused.ranges"
+    static let changed = Notification.Name("ExcusedChanged")
+
+    static var ranges: [ExcusedRange] {
+        guard let data = UserDefaults(suiteName: SharedStore.appGroup)?.data(forKey: key),
+              let list = try? JSONDecoder().decode([ExcusedRange].self, from: data) else { return [] }
+        return list
+    }
+    static var current: ExcusedRange? { ranges.last(where: { $0.end == nil }) }
+    static var isActive: Bool { current != nil }
+
+    /// A prayer window she's excused from (marking it does nothing).
+    static func covers(start: Date, end: Date, in list: [ExcusedRange] = ranges) -> Bool {
+        list.contains { $0.covers(from: start, to: end) }
+    }
+
+    /// Written only when it changed: every app-group write invalidates bound @AppStorage (CLAUDE.md).
+    static func save(_ list: [ExcusedRange]) {
+        guard list != ranges, let data = try? JSONEncoder().encode(list) else { return }
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(data, forKey: key)
+    }
+}

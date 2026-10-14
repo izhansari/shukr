@@ -81,6 +81,7 @@ struct MainCircleView: View {
     private var derivedFace: CircleFace {
         if let lost = CircleStage.shared.lost, !lost.landed { return .lost }
         if let session = CircleStage.shared.morning { return .morning(session) }
+        if let range = CircleStage.shared.excused { return .excused(range) }
         return prayersFace
     }
     /// The prayer on the circle, or the day's summary (none; or the next prayer is tomorrow's Fajr).
@@ -106,6 +107,11 @@ struct MainCircleView: View {
     }
     /// The opening's mark keeps the circle's words out (the lost page's hand-off keeps its symbol in).
     private var openingHidesWords: Bool { openingHides && (CircleStage.shared.opening?.hidesWords ?? true) }
+    /// Excused from prayer, while the circle shows it.
+    private var excusedShown: ExcusedRange? {
+        if case .excused(let range) = displayedFace ?? derivedFace { return range }
+        return nil
+    }
     /// The morning card's session, while the circle shows it.
     private var morningShown: SessionDataModel? {
         if case .morning(let session) = displayedFace ?? derivedFace { return session }
@@ -187,6 +193,11 @@ struct MainCircleView: View {
                 if let lost = lostShown {
                     // Location lost (step 3b): the crossed-out symbol in the ring; its words round it (LostWords).
                     LostFace(stage: lost)
+                        .transition(.opacity)
+                }
+                else if let range = excusedShown {
+                    // Excused from prayer: what it is and the day, nothing to mark (Excused.swift).
+                    ExcusedFace(range: range)
                         .transition(.opacity)
                 }
                 else if let session = morningShown {
@@ -598,6 +609,7 @@ struct MainCircleView: View {
         case .summary: return summaryShowsScore ?? summaryWantsScore   // the side shown: score solid, next Fajr dashed
         case .prayer(_, let status, _): return status != .upcoming
         case .morning, .lost: return true
+        case .excused: return false   // a calm dashed ring: nothing is due
         }
     }
 
@@ -843,6 +855,7 @@ struct MainCircleView: View {
     
     private func handleTap() {
         TourRuntime.shared.event(.circleTapped)   // the tour's first step ends on this tap
+        if excusedShown != nil { NotificationCenter.default.post(name: Excused.openSheet, object: nil); return }
         guard morningShown == nil, lostShown == nil else { return }
         // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
         // there felt like a broken button); the prayer's "ends / at" text is an

@@ -1,0 +1,399 @@
+//
+//  Excused.swift
+//  shukr
+//
+//  Excused from prayer (owner, 2026-10-13; plan board/mocks/excused-days, decisions excused-where B · excused-name A ·
+//  excused-zikr A). A woman says once that she's excused (haid, or after childbirth) and roughly for how long. While
+//  she is:
+//  - no prayer of hers can be marked (the three mark paths check `Excused.covers`),
+//  - her streaks and stats skip those prayer days (`Excused.counts(day:)`: a day touched by an excused range is left
+//    out, never counted as missed),
+//  - prayer notifications, Live Activities and the Fajr alarm are not planned; zikr reminders keep coming unless she
+//    pauses them,
+//  - on her estimated day, then 2 and 4 days later, one gentle check-in ("Ready to start again?").
+//  Nothing ends by itself. The record is one JSON list in the app group (`Excused` in SharedTargetForIntents.swift),
+//  so no schema change. Anything new that counts prayers must read its days through `Excused.counts(day:)`.
+//
+
+import SwiftUI
+import UserNotifications
+import WidgetKit
+
+extension Excused {
+
+    // MARK: Days that count
+
+    /// A prayer day (a `PrayerDay.start` date) that an excused range touches: left out of streaks and stats.
+    static func excludesDay(_ dayStart: Date, in list: [ExcusedRange]) -> Bool {
+        list.contains { r in
+            guard PrayerDay.start(for: r.start) <= dayStart else { return false }
+            guard let end = r.end else { return true }
+            return dayStart <= PrayerDay.start(for: end)
+        }
+    }
+    /// Whether a prayer day counts towards streaks and stats. Read `ranges` once and pass it in loops.
+    static func counts(day dayStart: Date, in list: [ExcusedRange] = ranges) -> Bool { !excludesDay(dayStart, in: list) }
+
+    // MARK: Changes (the app only)
+
+    /// Starts a range. `fromDay` today = now; an earlier day = that prayer day's Fajr, so the days she forgot are excused too.
+    @MainActor static func start(kind: ExcusedRange.Kind, fromDay: Date, days: Int, pauseZikr: Bool) {
+        let now = Date()
+        let start: Date
+        if Calendar.current.isDate(fromDay, inSameDayAs: PrayerDay.date(for: now)) || fromDay > now {
+            start = now
+        } else {
+            start = PrayerDay.fajr(onCalendarDayOf: fromDay) ?? Calendar.current.startOfDay(for: fromDay).addingTimeInterval(3 * 3600)
+        }
+        let expected = Calendar.current.date(byAdding: .day, value: max(days, 1), to: start) ?? start
+        var list = ranges.filter { $0.end != nil }   // only one runs at a time
+        list.append(ExcusedRange(kind: kind, start: start, expectedEnd: expected, end: nil, pauseZikr: pauseZikr))
+        apply(list, reason: "excused on")
+    }
+
+    /// While it runs: a new estimate or the zikr switch.
+    @MainActor static func update(expectedEnd: Date? = nil, pauseZikr: Bool? = nil) {
+        var list = ranges
+        guard let i = list.lastIndex(where: { $0.end == nil }) else { return }
+        if let expectedEnd { list[i].expectedEnd = expectedEnd }
+        if let pauseZikr { list[i].pauseZikr = pauseZikr }
+        apply(list, reason: "excused changed")
+    }
+
+    /// She's back: everything is planned again from now.
+    @MainActor static func end(at date: Date = Date()) {
+        var list = ranges
+        guard let i = list.lastIndex(where: { $0.end == nil }) else { return }
+        list[i].end = max(date, list[i].start)
+        apply(list, reason: "excused off")
+    }
+
+    /// Saves, then tells everything that plans or counts.
+    @MainActor private static func apply(_ list: [ExcusedRange], reason: String) {
+        save(list)
+        NotificationCenter.default.post(name: changed, object: nil)   // the Salah page recounts streaks and scores
+        NotificationScheduler.topUp(reason: reason)                   // notifications, then the Fajr alarm
+        PrayerLiveActivities.plan(reason: reason)
+        WidgetCenter.shared.reloadAllTimelines()
+        if #available(iOS 18.0, *) { ControlCenter.shared.reloadAllControls() }
+        WatchSync.shared.send()
+    }
+
+    // MARK: The check-in (planned with the notifications)
+
+    static let checkInPrefix = "excused.checkin."
+    static let checkInCategory = "EXCUSED_CHECKIN"
+    static let readyAction = "EXCUSED_READY"
+    static let notYetAction = "EXCUSED_NOT_YET"
+    static func owns(_ id: String) -> Bool { id.hasPrefix(checkInPrefix) }
+
+    /// On her estimated day, then 2 and 4 days later, at 10 AM; never one in the past. Worded so a glance at her lock
+    /// screen says nothing (owner).
+    static func checkIns(now: Date = Date()) -> [(id: String, date: Date, content: UNNotificationContent)] {
+        guard let r = current else { return [] }
+        let cal = Calendar.current
+        let first = cal.date(bySettingHour: 10, minute: 0, second: 0, of: r.expectedEnd) ?? r.expectedEnd
+        return [0, 2, 4].enumerated().compactMap { i, offset in
+            guard let date = cal.date(byAdding: .day, value: offset, to: first), date > now else { return nil }
+            let content = UNMutableNotificationContent()
+            content.title = "Ready to start again?"
+            content.body = i == 0 ? "You said about \(r.kind == .nifas ? "40 days" : "a week"). Turn your reminders back on whenever you're ready."
+                                  : "Turn your reminders back on whenever you're ready."
+            content.categoryIdentifier = checkInCategory
+            return ("\(checkInPrefix)\(i)", date, content)
+        }
+    }
+
+    /// The check-in's buttons: "I'm ready" ends it from the lock screen; "Not yet" leaves it.
+    static var category: UNNotificationCategory {
+        UNNotificationCategory(identifier: checkInCategory,
+                               actions: [UNNotificationAction(identifier: readyAction, title: "I'm ready", options: []),
+                                         UNNotificationAction(identifier: notYetAction, title: "Not yet", options: [])],
+                               intentIdentifiers: [], options: [])
+    }
+
+    // MARK: Words
+
+    /// Which day of it this is (the start's day is 1).
+    static func dayNumber(_ r: ExcusedRange, now: Date = Date()) -> Int {
+        let cal = Calendar.current
+        return (cal.dateComponents([.day], from: cal.startOfDay(for: r.start), to: cal.startOfDay(for: now)).day ?? 0) + 1
+    }
+
+    /// "Day 3 of about 7" (the circle, the sheet, the watch).
+    static func dayLine(_ r: ExcusedRange, now: Date = Date()) -> String {
+        let cal = Calendar.current
+        let day = dayNumber(r, now: now)
+        let total = max(cal.dateComponents([.day], from: cal.startOfDay(for: r.start), to: cal.startOfDay(for: r.expectedEnd)).day ?? 0, 1)
+        return day <= total ? "Day \(day) of about \(total)" : "Day \(day)"
+    }
+
+    #if DEBUG
+    /// `-demoExcused N`: excused since N days ago (estimate 7), for screenshots; `-demoExcusedOff`: clears it.
+    @MainActor static func applyDebugArgs() {
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-demoExcusedOff") { save([]) }
+        if let i = args.firstIndex(of: "-demoExcused"), i + 1 < args.count, let n = Int(args[i + 1]), !isActive {
+            let from = Calendar.current.date(byAdding: .day, value: -n, to: Date()) ?? Date()
+            start(kind: .haid, fromDay: from, days: 7, pauseZikr: false)
+        }
+    }
+    #endif
+}
+
+extension Excused {
+    /// A tap on the Salah circle while excused: PrayerTimesView opens the sheet.
+    static let openSheet = Notification.Name("ExcusedOpenSheet")
+}
+
+/// The Salah circle while excused: the word, the day, and how to end it — no countdown, no colour, nothing due.
+struct ExcusedFace: View {
+    let range: ExcusedRange
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("Excused")
+                .font(.system(size: 30, weight: .light, design: .rounded))
+            Text(Excused.dayLine(range))
+                .font(.system(.subheadline, design: .rounded, weight: .light))
+                .foregroundStyle(.secondary)
+            Text("Tap to end")
+                .font(.system(.caption2, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 2)
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .frame(maxWidth: 140)
+    }
+}
+
+// MARK: - Settings → Excused from prayer
+
+/// The Settings row (decision excused-where B: Settings only): "Off", or how far in she is; a tap opens the sheet.
+struct ExcusedSettingsRow: View {
+    @State private var current: ExcusedRange? = Excused.current
+    @State private var showing = false
+    var body: some View {
+        Button { showing = true } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "pause.circle").frame(width: 24)
+                Text("Excused from prayer").lineLimit(1)
+                Spacer(minLength: 8)
+                Text(current.map { "Day \(Excused.dayNumber($0))" } ?? "Off").foregroundStyle(.secondary).lineLimit(1)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showing) { ExcusedSheet() }
+        .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in current = Excused.current }
+        .onAppear { current = Excused.current }
+    }
+}
+
+/// Turning it on, changing it, ending it, and coming back — one sheet in the new-task flow's look (owner: the log
+/// sheet's vibe), so it reads like the rest of shukr.
+struct ExcusedSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var current: ExcusedRange? = Excused.current
+    @State private var kind: ExcusedRange.Kind = .haid
+    @State private var startDay = Date()
+    @State private var days = 7
+    @State private var keepZikr = true
+    /// Just ended: the welcome back.
+    @State private var welcomeBack = false
+
+    private static let dayChoices = [3, 4, 5, 6, 7, 8, 9, 10, 15, 40]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                Spacer()
+            }
+            .padding(.horizontal, 20).padding(.top, 18).padding(.bottom, 6)
+            ScrollView {
+                VStack(spacing: 20) {
+                    if welcomeBack { back } else if let current { running(current) } else { starting }
+                }
+                .padding(.bottom, 20)
+            }
+            primaryButton
+        }
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .fontDesign(.rounded)
+        .presentationDetents([.large])
+        .onChange(of: kind) { _, k in days = k == .nifas ? 40 : 7 }
+    }
+
+    // MARK: The three states
+
+    private var starting: some View {
+        VStack(spacing: 20) {
+            heading("Excused from prayer", "Your streaks and scores pause. Nothing counts as missed.")
+            kindSwitch
+            Text("Haid is your monthly period. After childbirth (nifas) is the bleeding after giving birth, up to about 40 days.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+            card {
+                row("calendar", "Started") {
+                    DatePicker("", selection: $startDay, in: Calendar.current.date(byAdding: .day, value: -40, to: .now)!...Date.now,
+                               displayedComponents: .date).labelsHidden()
+                }
+                Divider().padding(.leading, 52)
+                daysRow
+                Divider().padding(.leading, 52)
+                row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
+            }
+            Text("Started a few days ago? Pick that day and those prayers count as excused too.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+        }
+    }
+
+    private func running(_ r: ExcusedRange) -> some View {
+        VStack(spacing: 20) {
+            heading("Excused from prayer", "Since \(r.start.formatted(.dateTime.month(.abbreviated).day())) · \(r.kind == .haid ? "Haid" : "After childbirth")")
+            Text(Excused.dayLine(r))
+                .font(.system(size: 40, weight: .light, design: .rounded))
+                .padding(.vertical, 6)
+            card {
+                daysRow
+                Divider().padding(.leading, 52)
+                row("hands.and.sparkles", "Keep zikr reminders") { Toggle("", isOn: $keepZikr).labelsHidden().tint(.sage) }
+            }
+            Text("Your reminders, the Fajr alarm and prayer cards are paused. We'll check in on your estimated day.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+        }
+        .onAppear {
+            keepZikr = !r.pauseZikr
+            let cal = Calendar.current
+            days = max(cal.dateComponents([.day], from: cal.startOfDay(for: r.start), to: cal.startOfDay(for: r.expectedEnd)).day ?? 7, 1)
+        }
+        .onChange(of: keepZikr) { _, keep in if keep == r.pauseZikr { Excused.update(pauseZikr: !keep); refresh() } }
+        .onChange(of: days) { _, n in
+            let end = Calendar.current.date(byAdding: .day, value: n, to: r.start) ?? r.expectedEnd
+            if !Calendar.current.isDate(end, inSameDayAs: r.expectedEnd) { Excused.update(expectedEnd: end); refresh() }
+        }
+    }
+
+    /// After ending: ghusl, then the prayer that's on (owner: a note, never an automatic mark).
+    private var back: some View {
+        VStack(spacing: 20) {
+            heading("Welcome back", "Make ghusl, then pray.")
+            card {
+                if let now = PrayerWindows.pick(.current) {
+                    row("clock", "\(now.name) is on now") { Text("until \(shortTimePM(now.end))").foregroundStyle(.secondary) }
+                } else if let next = PrayerWindows.pick(.next) {
+                    row("clock", "Next: \(next.name)") { Text(shortTimePM(next.start)).foregroundStyle(.secondary) }
+                }
+                Divider().padding(.leading, 52)
+                row("flame", "Your streaks") { Text("Kept").foregroundStyle(.secondary) }
+            }
+            Text("If it ended during a prayer's time, that prayer is due. Some schools also count the prayer before it. Ask the imam at your masjid if you're unsure.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+        }
+    }
+
+    // MARK: Pieces
+
+    private var primaryButton: some View {
+        let title = welcomeBack ? "Done" : current == nil ? "Start" : "I'm back: end it"
+        return Button {
+            if welcomeBack { dismiss() }
+            else if current == nil {
+                Excused.start(kind: kind, fromDay: startDay, days: days, pauseZikr: !keepZikr)
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
+            } else {
+                Excused.end()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.snappy(duration: 0.3)) { welcomeBack = true; current = nil }
+            }
+        } label: {
+            Text(title)
+                .font(.system(size: 17, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.sage)
+                .frame(width: 240, height: 52)
+                .background(Capsule().fill(Color.sage.opacity(0.08)))
+                .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 8).padding(.bottom, 16)
+    }
+
+    private func refresh() { current = Excused.current }
+
+    private var daysRow: some View {
+        Menu {
+            Picker("About how long", selection: $days) {
+                ForEach(Self.dayChoices, id: \.self) { Text("\($0) days").tag($0) }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "hourglass").foregroundStyle(Color.sage).frame(width: 24)
+                Text("About how long").foregroundStyle(.primary)
+                Spacer()
+                Text("\(days) days").foregroundStyle(.secondary)
+                Image(systemName: "chevron.up.chevron.down").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).frame(minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Haid | After childbirth, in the goal page's capsule switch (NewTaskFlow's Count | Minutes).
+    private var kindSwitch: some View {
+        HStack(spacing: 0) {
+            ForEach(ExcusedRange.Kind.allCases, id: \.self) { k in
+                let on = kind == k
+                Button { withAnimation(.snappy(duration: 0.25)) { kind = k } } label: {
+                    Text(k == .haid ? "Haid" : "After childbirth")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(on ? Color.primary : Color.secondary)
+                        .frame(width: 140, height: 34)
+                        .background(Capsule().fill(on ? Color(.systemBackground) : .clear)
+                            .shadow(color: .black.opacity(on ? 0.08 : 0), radius: 4, y: 1))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Capsule().fill(Color.primary.opacity(0.06)))
+    }
+
+    private func heading(_ title: String, _ subtitle: String) -> some View {
+        VStack(spacing: 6) {
+            Text(title).font(.system(size: 30, weight: .light, design: .rounded)).multilineTextAlignment(.center)
+            Text(subtitle).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 28).padding(.top, 14)
+    }
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0, content: content)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
+            .padding(.horizontal, 20)
+    }
+
+    private func row<Value: View>(_ icon: String, _ label: String, @ViewBuilder value: () -> Value) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(Color.sage).frame(width: 24)
+            Text(label).foregroundStyle(.primary)
+            Spacer(minLength: 12)
+            value()
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 52)
+    }
+}

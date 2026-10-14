@@ -26,6 +26,9 @@ enum CircleFace: Equatable {
     case morning(SessionDataModel)
     /// "shukr lost your location" (step 3b): the crossed-out symbol in the ring (`LostFace`), its words round it.
     case lost
+    /// Excused from prayer (Excused.swift): "Excused · Day 3 of about 7" in a dashed ring (`ExcusedFace`); a tap opens
+    /// its sheet. A state from the data, like the morning and lost faces.
+    case excused(ExcusedRange)
 }
 
 /// What the Salah page asks its circle to show beyond the prayers (step 3). Set by PrayerTimesView, read by the circle.
@@ -43,6 +46,8 @@ enum CircleFace: Equatable {
     }
     /// Location lost (step 3b), until the ring has landed back on the Salah track (LostPageLayer runs it).
     var lost: LostStage?
+    /// Excused from prayer (Excused.swift), kept by PrayerTimesView from the app group record.
+    var excused: ExcusedRange?
     /// The page round the circle — the chrome, the list — is hidden (the opening, the lost page); the pager stays put.
     var pageHidden: Bool { openingHidesPage || (lost.map { !$0.landed } ?? false) }
 

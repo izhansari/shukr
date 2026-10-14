@@ -530,9 +530,12 @@ struct InsightsStats {
     let perPrayer: [PrayerStat]
     let grades: [(grade: InsightsGrade, count: Int)]
 
-    init(prayers: [PrayerModel], range: InsightsRange, now: Date = Date()) {
+    init(prayers allPrayers: [PrayerModel], range: InsightsRange, now: Date = Date()) {
         let cal = Calendar.current
         let today = PrayerDay.start(for: now)
+        // Excused days (Excused.swift) are left out of every number here: never missed, never low.
+        let excused = Excused.ranges
+        let prayers = allPrayers.filter { Excused.counts(day: $0.dayStart, in: excused) }
         var byDay: [Date: [PrayerModel]] = [:]
         for p in prayers { byDay[p.dayStart, default: []].append(p) }   // 2.8.0: by prayer day
 
@@ -685,7 +688,8 @@ private struct PrayerTrendsGrid: View {
         let days = (0..<Self.dayCount).map { cal.date(byAdding: .day, value: $0 - (Self.dayCount - 1), to: today) ?? today }
         var rows: [Date: [String: PrayerModel]] = [:]
         let first = days.first ?? today
-        for p in prayers where p.startTime >= first {
+        let excused = Excused.ranges   // excused days stay blank (Excused.swift)
+        for p in prayers where p.startTime >= first && Excused.counts(day: p.dayStart, in: excused) {
             rows[p.dayStart, default: [:]][p.name] = p   // 2.8.0
         }
         let selectedPrayer = selected.flatMap { rows[days[$0.day]]?[$0.name] }

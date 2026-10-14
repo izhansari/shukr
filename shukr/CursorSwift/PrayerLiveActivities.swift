@@ -228,7 +228,10 @@ enum PrayerLiveActivities {
                     Window(name: "Asr", start: t.asr, end: t.maghrib), Window(name: "Maghrib", start: t.maghrib, end: t.isha),
                     Window(name: "Isha", start: t.isha, end: ishaEnd)]
         }
-        return out.filter { $0.end > now && LiveActivityPrefs.isOn($0.name) }.sorted { $0.start < $1.start }
+        // Excused (Excused.swift): no card for a prayer she's excused from; a held one ends like one turned off.
+        let excused = Excused.ranges
+        return out.filter { $0.end > now && LiveActivityPrefs.isOn($0.name) && !Excused.covers(start: $0.start, end: $0.end, in: excused) }
+            .sorted { $0.start < $1.start }
     }
 
     /// The card's look: its own setting (`LiveActivityLook`, Settings → Live Activities → Card look), apart from the app's.

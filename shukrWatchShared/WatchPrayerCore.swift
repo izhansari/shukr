@@ -33,11 +33,19 @@ enum WatchStore {
         static let masajid = "watch.masajid"
         /// The phone's light / dark / auto (0 / 1 / 2; WatchLook).
         static let appearance = "watch.appearance"
+        /// Excused from prayer on the phone (Excused.swift): its day line ("Day 3 of about 7"), "" when off.
+        static let excused = "watch.excused"
         /// Prayers unmarked on the watch, shown undone until the phone stops listing them:
         /// name → prayer-day start.
         static let localUnmarks = "watch.localUnmarks"
         /// The id sent to the phone for each local unmark (name → id).
         static let localUnmarkIDs = "watch.localUnmarkIDs"
+    }
+
+    /// Excused from prayer on the phone: the day line while it runs (the ring shows it; nothing is marked here).
+    static var excused: String? {
+        guard let line = defaults.string(forKey: Key.excused), !line.isEmpty else { return nil }
+        return line
     }
 
     /// Saves what the phone sent. Returns true if anything changed.
@@ -60,6 +68,7 @@ enum WatchStore {
         set(context["qiblaSensitivity"], Key.qiblaSensitivity)
         set(context["masajid"], Key.masajid)
         set(context["appearance"], Key.appearance)
+        set(context["excused"], Key.excused)
         // Marks / unmarks the phone has handled (by id) are settled: whatever it decided — applied,
         // or ignored because it arrived out of order — is what it now reports, so the watch drops
         // its own pending copy and both show the same thing. A mark is handled once it's under

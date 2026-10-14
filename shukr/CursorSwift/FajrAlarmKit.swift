@@ -74,9 +74,11 @@ enum FajrAlarms {
         let params = PrayerUtils.getCalculationParameters()
         let cal = Calendar.current
         var out: [(Date, Date)] = []
+        let excused = Excused.ranges   // no alarm on a morning she's excused (Excused.swift)
         for d in 0...days {
             guard let day = cal.date(byAdding: .day, value: d, to: cal.startOfDay(for: now)),
-                  let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params) else { continue }
+                  let t = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coords, params: params),
+                  !Excused.covers(start: t.fajr, end: t.sunrise, in: excused) else { continue }
             let ref = isFajr ? t.fajr : t.sunrise
             let fire = ref.addingTimeInterval(Double(offset * 60) * (before ? -1 : 1))
             if fire > now.addingTimeInterval(60) { out.append((fire, ref)) }

@@ -64,7 +64,7 @@ enum NotificationScheduler {
 
     /// Does the scheduler own this id (so a reschedule may replace / remove it)?
     static func owns(_ id: String) -> Bool {
-        PrayerNotificationID.parse(id) != nil || ZikrReminders.owns(id) || id.hasPrefix(keepAlivePrefix)
+        PrayerNotificationID.parse(id) != nil || ZikrReminders.owns(id) || id.hasPrefix(keepAlivePrefix) || Excused.owns(id)
     }
 
     /// The last-resort reminder (owner, 2026-09-28): one notification just after the last start that
@@ -350,7 +350,10 @@ enum NotificationScheduler {
                  priority: PrayerNotificationID.dayKey(PrayerDay.date(for: item.date)) == todayKey ? Tier.now : Tier.zikrTomorrow,
                  content: item.content)
         }
-        return prayerItems(context: context, todayOverride: todayOverride) + zikr
+        // Excused (Excused.swift): her zikr reminders only if she kept them; the check-ins first in line.
+        let excused = Excused.current
+        let checkIns = Excused.checkIns(now: now).map { Item(id: $0.id, date: $0.date, priority: Tier.now, content: $0.content) }
+        return prayerItems(context: context, todayOverride: todayOverride) + (excused?.pauseZikr == true ? [] : zikr) + checkIns
     }
 
     /// The plan's order (lower first). Within a tier, sooner first — so full days and the runway grow without gaps.
@@ -407,6 +410,7 @@ enum NotificationScheduler {
         let descriptor = FetchDescriptor<PrayerModel>(
             predicate: #Predicate { $0.isCompleted && $0.startTime >= rangeStart && $0.startTime < rangeEnd })
         let done = Set(((try? context.fetch(descriptor)) ?? []).map { $0.dayKey + $0.name })   // by prayer day
+        let excused = Excused.ranges   // a prayer she's excused from is never asked of her (Excused.swift)
 
         var items: [Item] = []
         var index = 0   // prayer days still ahead, counted: 0 = the current one
@@ -420,7 +424,8 @@ enum NotificationScheduler {
             index += 1
             let full = i < nudgeDaysAhead
             for name in PrayerNotificationID.prayers {
-                guard let window = dayWindows[name], !done.contains(PrayerNotificationID.dayKey(day) + name) else { continue }
+                guard let window = dayWindows[name], !done.contains(PrayerNotificationID.dayKey(day) + name),
+                      !Excused.covers(start: window.start, end: window.end, in: excused) else { continue }
                 let s = settings(name)
                 guard s.notify else { continue }
                 // Nudges only on days whose starts the runway is sure of (a nudge without its start would be odd).
