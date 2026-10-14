@@ -2993,16 +2993,15 @@ struct PrayerButton: View {
             else { NeuRaised(shape: shape) }
         case .quiet:
             if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
-        case .now:
-            // C · the prayer on now is the one raised block in the well (PrayerListLooks.swift).
+        case .now, .dayNow, .nowLeads, .prayedAt:
+            // Sami's C–F · the prayer on now is the one raised block in the well (PrayerListLooks.swift).
             if isCurrentPrayer { NeuRaised(shape: shape, radius: 8, offset: 4) } else { Color.clear }
-        case .card, .well, .rings, .timeline:
+        case .card, .well, .timeline:
             Color.clear
         }
     }
 
-    /// The row's status mark for the look: the trial looks' ring (A), the dot with a soft halo while on now (B), or the
-    /// chosen dot style.
+    /// The row's status mark: the chosen dot style, with a soft halo while on now in B (the others raise the row instead).
     @ViewBuilder private var statusGlyph: some View {
         let excused = Excused.covers(start: prayerObject.startTime, end: prayerObject.endTime)
         let dot = PrayerStatusDot(style: PrayerDotStyle(rawValue: dotStyleRaw) ?? .muted,
@@ -3012,13 +3011,6 @@ struct PrayerButton: View {
                                   pulse: completionPulse,
                                   excused: excused)
         switch look {
-        case .rings:
-            PrayerRingGlyph(kind: excused && !prayerObject.isCompleted && !isFuturePrayer ? .excused
-                            : isFuturePrayer ? .future
-                            : prayerObject.isCompleted ? .done(prayerObject.getColorForPrayerScore())
-                            : isCurrentPrayer ? .current(start: prayerObject.startTime, end: prayerObject.endTime)
-                            : .missed,
-                            pulse: completionPulse)
         case .timeline:
             dot.background {
                 if isCurrentPrayer { Circle().fill(Color.sage.opacity(0.18)).frame(width: 26, height: 26) }
@@ -3027,6 +3019,17 @@ struct PrayerButton: View {
             dot
         }
     }
+
+    /// The name's size for the look (Sami's looks; the others keep .callout).
+    private var nameFont: Font {
+        switch look {
+        case .dayNow: .body                                          // D · a size up, with more air
+        case .nowLeads: isCurrentPrayer ? .title3 : .subheadline     // E · the one on now leads
+        default: .callout
+        }
+    }
+    /// F · a prayer still to say reads in regular; the rest light (as everywhere).
+    private var nameWeight: Font.Weight { look == .prayedAt && !prayerObject.isCompleted ? .regular : .light }
 
     private var isFuturePrayer: Bool {
 //        withAnimation(.spring(duration: 0.5)) {
@@ -3069,7 +3072,7 @@ struct PrayerButton: View {
     // Text Properties
     private var statusBasedOpacity: Double {
         if isFuturePrayer { return 0.6 }
-        if look == .now && prayerObject.isCompleted { return 0.55 }   // C · prayed ones step back
+        if [.now, .dayNow, .nowLeads].contains(look) && prayerObject.isCompleted { return 0.55 }   // prayed ones step back
         return prayerObject.isCompleted ? 1 : 1
     }
     
@@ -3214,15 +3217,21 @@ struct PrayerButton: View {
                     .frame(width: 24, height: 24, alignment: .leading)
 
                 // Prayer Name Label
+                VStack(alignment: .leading, spacing: 1) {
                 Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
                     // Never squeezed by a long time column (it broke a letter a line and the row grew tall).
                     .fixedSize()
                     .layoutPriority(1)
-                    .font(.callout) //.callout
+                    .font(nameFont)   // Sami's looks try type sizes (nameFont); the others .callout
                     // Today's look: exactly the old Color.secondary (the hierarchical .secondary differed a hair).
                     .foregroundStyle(theme.emphasisesCurrentRow && isCurrentPrayer ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
                     .fontDesign(.rounded)
-                    .fontWeight(.light)
+                    .fontWeight(nameWeight)
+                    // E · the prayer on now: its time left right under its name.
+                    if look == .nowLeads && isCurrentPrayer {
+                        NowTimeLeft(start: prayerObject.startTime, end: prayerObject.endTime)
+                    }
+                }
                 // Prayed at a masjid: a small mosque mark by the name.
                 if prayerObject.atMasjid {
                     Image(systemName: "building.columns")
@@ -3235,8 +3244,14 @@ struct PrayerButton: View {
                 if let line = TourHints.shared.markLine, isCurrentPrayer {
                     // The tour's mark hint in the current row's time place (Tour.swift).
                     Text(line).font(.footnote).fontDesign(.rounded).fontWeight(.light).foregroundStyle(.secondary)
-                } else if look == .now && isCurrentPrayer {
-                    NowTimeLeft(start: prayerObject.startTime, end: prayerObject.endTime)   // C · in place of its start
+                } else if look.raisesNow && isCurrentPrayer {
+                    if look == .nowLeads {
+                        // E · the time left sits under the name; here, when it ends.
+                        Text("ends \(shortTimePM(prayerObject.endTime))")
+                            .font(timeFontSize).fontDesign(.rounded).fontWeight(.light).foregroundStyle(.secondary)
+                    } else {
+                        NowTimeLeft(start: prayerObject.startTime, end: prayerObject.endTime)   // in place of its start
+                    }
                 } else {
                     timeColumn
                         // The tour rings exactly this time when a tap flips it (owner: not a fixed box). Only while the
@@ -3275,14 +3290,8 @@ struct PrayerButton: View {
             #endif
             .padding(.horizontal)
             .padding(.vertical, theme.rowVerticalPadding)   // the well's rows a bit shorter (owner, 2026-10-01)
-            // C · the prayer on now: a slim line under it, filling with its window.
-            .padding(.bottom, look == .now && isCurrentPrayer ? 9 : 0)
-            .overlay(alignment: .bottom) {
-                if look == .now && isCurrentPrayer {
-                    NowProgressLine(start: prayerObject.startTime, end: prayerObject.endTime)
-                        .padding(.horizontal, 18).padding(.bottom, 9)
-                }
-            }
+            // E · the raised one gets its own room (the rest are compact).
+            .padding(.vertical, look == .nowLeads && isCurrentPrayer ? 6 : 0)
             .contentShape(Rectangle())
             .coordinateSpace(.named(PrayerButton.rowSpace))
             .gesture(rowGesture)
@@ -3291,8 +3300,8 @@ struct PrayerButton: View {
             // Background Effects Container
             .background { rowBackground }
             .background(alignment: .topLeading) {
-                if look == .timeline {
-                    // B · the day's line through the dots (PrayerListLooks.swift).
+                if look.drawsDayLine {
+                    // B / D · the day's line through the dots, behind a raised row (PrayerListLooks.swift).
                     let names = viewModel.orderedPrayerNames
                     TimelineSpine(dot: dotCenter, gapBelow: theme.rowSpacing,
                                   showsAbove: names.first != name, showsBelow: names.last != name,
@@ -3369,9 +3378,10 @@ struct PrayerButton: View {
                         .fontWeight(.light)
                 } else if prayerObject.isCompleted {
                     // Completed Prayer: Show Completion Time
-                    if prayerObject.timeAtComplete != nil {
+                    if let prayedAt = prayerObject.timeAtComplete {
                         ExternalToggleText(
-                            originalText: shortTimePM(shownStart),
+                            // F · when you prayed it, not when it started (the flip still shows the score).
+                            originalText: look == .prayedAt ? "prayed \(shortTimePM(prayedAt))" : shortTimePM(shownStart),
                             toggledText: completedTimeAndScore,
                             externalTrigger: $toggledText,
                             font: timeFontSize,

@@ -63,7 +63,15 @@ struct CircleTheme: Equatable {
     /// Space between prayer rows: pills stand apart.
     var rowSpacing: CGFloat { list == .pills ? 12 : 6 }
     /// A row's vertical padding: the well's rows a bit shorter (owner, 2026-10-01).
-    var rowVerticalPadding: CGFloat { list == .well || list == .now ? 8 : list == .rings || list == .timeline ? 10 : 12 }
+    var rowVerticalPadding: CGFloat {
+        switch list {
+        case .well, .now: 8
+        case .timeline, .prayedAt: 10
+        case .dayNow: 12        // D · more air
+        case .nowLeads: 6       // E · the rest compact (the raised one gets its own room)
+        default: 12
+        }
+    }
     /// The current prayer's name in full primary (the soft list looks); Today's look keeps it secondary.
     var emphasisesCurrentRow: Bool { list != .today }
     /// The tasbeeh ring's material: the picked palette under the soft look (the same material as the rings it opens

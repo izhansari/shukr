@@ -21,12 +21,18 @@ enum SalahLook: String, CaseIterable, Identifiable {
     case well
     /// No card, pills or lines; only the current prayer pressed in.
     case quiet
-    /// Trial looks (PrayerListLooks.swift, owner 2026-10-14), in the well: A · each status a small ring.
-    case rings
+    // Sami's trial looks (PrayerListLooks.swift, owner 2026-10-14), all in the public well, under "Sami list" in the
+    // palette menu. (A · Rings went: the main ring already shows the window — owner.)
     /// B · the day as one thin line through the dots.
     case timeline
-    /// C · the prayer on now raised, with its time left and a slim line.
+    /// C · the prayer on now raised, with its time left (no line under it — owner: we never show progress as a line).
     case now
+    /// D · B's line through the dots + C's raised now; bigger names, more air.
+    case dayNow
+    /// E · the prayer on now leads: a taller raised block, its name a size up, its time left under it; the rest compact.
+    case nowLeads
+    /// F · each row says what matters for it: when you prayed, the time left, when it starts.
+    case prayedAt
 
     var id: String { rawValue }
     var title: String {
@@ -36,11 +42,23 @@ enum SalahLook: String, CaseIterable, Identifiable {
         case .card: "Raised card"
         case .well: "Sunken well"
         case .quiet: "Quiet"
-        case .rings: "New A · Rings"
-        case .timeline: "New B · Timeline"
-        case .now: "New C · Now"
+        case .timeline: "B · Timeline"
+        case .now: "C · Now"
+        case .dayNow: "D · Line + Now"
+        case .nowLeads: "E · Now leads"
+        case .prayedAt: "F · What happened"
         }
     }
+
+    /// The looks before Sami's (the palette's List picker).
+    static let originals: [SalahLook] = [.today, .pills, .card, .well, .quiet]
+    /// Sami's trial looks (the palette's "Sami list").
+    static let sami: [SalahLook] = [.timeline, .now, .dayNow, .nowLeads, .prayedAt]
+    var isSami: Bool { Self.sami.contains(self) }
+    /// The prayer on now is the one raised block, with its time left (C, D, E, F).
+    var raisesNow: Bool { [.now, .dayNow, .nowLeads, .prayedAt].contains(self) }
+    /// The day's line through the dots (B, D).
+    var drawsDayLine: Bool { self == .timeline || self == .dayNow }
 
     static let key = "salahLook.list"
     static let softRingKey = "salahLook.softRing"
@@ -368,7 +386,7 @@ struct SalahLookListFrame: ViewModifier {
         case .today:
             // Exactly as before the look prototype: not clipped (Sami's audit — the clip cut Today's slide-in rows).
             content.frame(width: 260).background(FlatBorder())
-        case .card, .well, .pills, .quiet, .rings, .timeline, .now:
+        case .card, .well, .pills, .quiet, .timeline, .now, .dayNow, .nowLeads, .prayedAt:
             content.frame(width: 290)   // the card goes round the rows only (SalahLookCard), "N done" under it
         }
     }
@@ -386,7 +404,7 @@ struct SalahLookCard: ViewModifier {
         switch theme.list {
         case .card:
             content.clipShape(card).background(NeuRaised(shape: card, radius: 14, offset: 7))
-        case .well, .rings, .timeline, .now:   // the trial looks sit in the public look's well
+        case .well, .timeline, .now, .dayNow, .nowLeads, .prayedAt:   // Sami's looks sit in the public look's well
             content.clipShape(card)
                 .background(NeuLiftCard(shape: card, lift: raised ? 1 : 0))
                 .scaleEffect(raised && !reduceMotion ? 1.012 : 1)
@@ -411,7 +429,14 @@ struct SalahLookSwitcher: View {
     var body: some View {
         Menu {
             Picker("List", selection: $lookRaw) {
-                ForEach(SalahLook.allCases) { Text($0.title).tag($0.rawValue) }
+                ForEach(SalahLook.originals) { Text($0.title).tag($0.rawValue) }
+            }
+            // Sami's trial looks for the prayer list, together (owner, 2026-10-14: "fold all of your stuff together").
+            Menu("Sami list") {
+                Picker("Sami list", selection: $lookRaw) {
+                    ForEach(SalahLook.sami) { Text($0.title).tag($0.rawValue) }
+                }
+                .pickerStyle(.inline)
             }
             Toggle("Lines between prayers", isOn: $lines)
             Toggle("Soft ring", isOn: $softRing)
