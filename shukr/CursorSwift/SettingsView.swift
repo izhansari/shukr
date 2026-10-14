@@ -794,6 +794,8 @@ struct SettingsView: View {
 
                         Section {
                             Button("Ring playground…") { showRingPlayground = true }
+                            // Today's soft ring beside the app icon's lifted one, everywhere it shows (owner, 2026-10-14).
+                            NavigationLink("Ring depth mock-ups") { RingDepthMockPage() }
                             // The setup's Live Activity page on its own, its words editable from its ⚙ (owner).
                             Button("Live Activity setup page…") { showLiveActivitySetup = true }
                             Button("NEXT label playground…") { showNextPlayground = true }
