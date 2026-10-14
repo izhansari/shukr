@@ -11,6 +11,7 @@
 //
 
 import SwiftUI
+import UIKit.UIGestureRecognizerSubclass
 
 extension TourPage {
     /// The step being done now: the first unfinished one with to-dos (else the first unfinished one).
@@ -499,4 +500,68 @@ private struct TourCoverPanelRoot: View {
         .ignoresSafeArea()
         .circleThemeRoot()
     }
+}
+
+// MARK: - The hold ghost's press
+
+/// Watches touches on the app's window without taking part — it never recognizes, cancels or delays anything (a press
+/// state on the row's own gesture broke its tap) — so the tour's hold ghost can fill its ring with a real press on what
+/// it points at: the circle (the mark) or Fajr's row (the editor). Up only while a hold ghost is (TouchHint).
+@MainActor final class TourPressWatcher: UIGestureRecognizer, UIGestureRecognizerDelegate {
+    private static var installed: TourPressWatcher?
+    private var start: CGPoint?
+
+    static func install() {
+        // The app's own window (level normal) — not the key window, which can be the map panel's for a moment.
+        guard installed == nil,
+              let window = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first?
+                .windows.first(where: { $0.windowLevel == .normal && !$0.isHidden })
+        else { return }
+        let w = TourPressWatcher(target: nil, action: nil)
+        w.cancelsTouchesInView = false
+        w.delaysTouchesBegan = false
+        w.delaysTouchesEnded = false
+        w.delegate = w
+        window.addGestureRecognizer(w)
+        installed = w
+    }
+
+    static func remove() {
+        guard let w = installed else { return }
+        w.view?.removeGestureRecognizer(w)
+        installed = nil
+        TourRuntime.shared.holdPress(false, force: true)
+    }
+
+    /// The holds the ghost points at, in the window's (= SwiftUI's global) space.
+    private var targets: [CGRect] {
+        ["circle", "prayerRow.Fajr"].compactMap { TourTargets.shared.frame($0) }
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard start == nil, let touch = touches.first, let view else { return }
+        let p = touch.location(in: view)
+        guard targets.contains(where: { $0.contains(p) }) else { return }
+        start = p
+        TourRuntime.shared.holdPress(true)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        // Moved off like a long press would (its 10 pt): no longer a hold.
+        guard let start, let touch = touches.first, let view else { return }
+        let p = touch.location(in: view)
+        if hypot(p.x - start.x, p.y - start.y) > 10 { lift() }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { lift(); state = .failed }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { lift(); state = .failed }
+    override func reset() { lift() }
+
+    private func lift() {
+        guard start != nil else { return }
+        start = nil
+        TourRuntime.shared.holdPress(false)
+    }
+
+    func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 }

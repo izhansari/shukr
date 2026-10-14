@@ -2264,6 +2264,22 @@ struct BubbleShape: Shape {
         return pendingAck != nil || page.primary != nil
     }
 
+    /// A hold the tour asks for, as it happens (the circle's mark, a row's editor): the ghost's ring fills with it and,
+    /// let go early, starts its loop again (owner: a tester thought it already did).
+    private(set) var holdPressedAt: Date?
+    private(set) var holdReleasedAt: Date?
+    func holdPress(_ pressing: Bool, force: Bool = false) {
+        guard active || force else { return }
+        if pressing { holdPressedAt = Date(); return }
+        guard let at = holdPressedAt else { return }
+        // A hold that went the distance stays full until its ghost goes (the mark / the editor takes over).
+        if !force, Date().timeIntervalSince(at) >= Self.holdLength { return }
+        holdPressedAt = nil
+        holdReleasedAt = Date()
+    }
+    /// The app's holds (LongPressGesture's minimum): the ghost's ring is full when the hold has done it.
+    static let holdLength = 0.5
+
     /// A tap on the screen while → is up: on, once the line has had its beat.
     @discardableResult
     func screenTap() -> Bool {
@@ -3438,11 +3454,15 @@ struct TouchHint: View {
     let spec: TouchHintSpec
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     static let size: CGFloat = 46
+    private var isHold: Bool { if case .hold = spec.kind { true } else { false } }
 
     var body: some View {
         TimelineView(.animation(paused: reduceMotion)) { context in
             content(reduceMotion ? nil : context.date.timeIntervalSinceReferenceDate)
         }
+        // A hold ghost follows a real press (TourPressWatcher).
+        .onChange(of: isHold, initial: true) { _, hold in hold ? TourPressWatcher.install() : TourPressWatcher.remove() }
+        .onDisappear { TourPressWatcher.remove() }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -3476,14 +3496,18 @@ struct TouchHint: View {
             }
             .position(spec.at)
         case .hold:
-            // 2.6 s: pressed down, a ring filling round it while held, let go, a rest.
-            let p = phase(t, 2.6, still: 0.5)
-            let down = p < 0.1 ? p / 0.1 : (p < 0.72 ? 1 : (p < 0.8 ? 1 - (p - 0.72) / 0.08 : 0))
-            let fill = p < 0.1 ? 0 : min((p - 0.1) / 0.55, 1) * (p < 0.8 ? 1 : 0)
+            // 2.6 s: pressed down, a ring filling round it while held, let go, a rest. While a hold is really down the
+            // ring fills with it (full when the hold has done it); let go early, the loop starts again from then.
+            let runtime = TourRuntime.shared
+            let pressed = runtime.holdPressedAt.map { at in min(Date().timeIntervalSince(at) / TourRuntime.holdLength, 1) }
+            let since = t.map { $0 - (runtime.holdReleasedAt?.timeIntervalSinceReferenceDate ?? 0) }
+            let p = phase(since, 2.6, still: 0.5)
+            let down = pressed != nil ? 1 : (p < 0.1 ? p / 0.1 : (p < 0.72 ? 1 : (p < 0.8 ? 1 - (p - 0.72) / 0.08 : 0)))
+            let fill = pressed ?? (p < 0.1 ? 0 : min((p - 0.1) / 0.55, 1) * (p < 0.8 ? 1 : 0))
             ZStack {
                 Circle().stroke(Color.primary.opacity(0.1), lineWidth: 2.5)
                     .frame(width: size + 14, height: size + 14)
-                Circle().trim(from: 0, to: t == nil ? 0.75 : fill)
+                Circle().trim(from: 0, to: t == nil && pressed == nil ? 0.75 : fill)
                     .stroke(Color.primary.opacity(0.35), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .frame(width: size + 14, height: size + 14)
