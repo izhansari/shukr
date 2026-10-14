@@ -1642,6 +1642,16 @@ struct AlarmSettingsView: View {
 
     var body: some View {
         Group {
+            #if DEBUG
+            if let mock = UserDefaults.standard.string(forKey: "demoFajrMock") { FajrTabMock(variant: mock) } else { realBody }
+            #else
+            realBody
+            #endif
+        }
+    }
+
+    @ViewBuilder private var realBody: some View {
+        Group {
             if FajrAlarms.supported && status.allowed != true {
                 // Not allowed yet (asks, and turns the alarm on) or refused in iOS Settings (the way back there): as the
                 // notifications side says each.
