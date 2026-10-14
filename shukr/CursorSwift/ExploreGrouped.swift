@@ -332,7 +332,7 @@ private struct GroupCard: View {
     let group: ExploreGroup
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ShowcasePicture(id: group.id.picture, scale: 1.25)
+            ExploreSectionPicture(group: group.id, scale: 1.25, phone: 0.4)
                 .frame(height: 180).frame(maxWidth: .infinity).clipped()
             HStack(alignment: .bottom, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -374,7 +374,7 @@ struct ExploreGroupPage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                ShowcasePicture(id: group.id.picture, big: true)
+                ExploreSectionPicture(group: group.id, big: true, phone: 0.5)
                     .frame(height: 240).frame(maxWidth: .infinity)
                     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
                     .accessibilityHidden(true)

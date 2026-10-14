@@ -949,7 +949,7 @@ struct ShowcasePicture: View {
 
 /// A medium control in Control Center: a glass capsule, the icon in its own round badge on the left (lit white when a
 /// toggle is on), then the title and its value.
-private struct CCPill: View {
+struct CCPill: View {
     let symbol: String
     let title: String
     let value: String?
@@ -979,7 +979,7 @@ private struct CCPill: View {
 }
 
 /// A small control in Control Center: a glass circle with the icon (filled white when a toggle is on).
-private struct CCCircle: View {
+struct CCCircle: View {
     let symbol: String
     var on = false
     var body: some View {
@@ -1207,7 +1207,7 @@ private struct RealNotification: View {
 }
 
 /// A watch at its real size (46 mm: a 208 × 248 pt screen in its case), the screen whatever's given.
-private struct RealWatch<Screen: View>: View {
+struct RealWatch<Screen: View>: View {
     @ViewBuilder let screen: () -> Screen
     var body: some View {
         screen()

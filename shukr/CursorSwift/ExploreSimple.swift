@@ -78,7 +78,7 @@ private struct SimpleGroupCard: View {
     let group: ExploreGroup
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ShowcasePicture(id: group.id.picture, scale: 1.15)
+            ExploreSectionPicture(group: group.id, scale: 1.15, phone: 0.4)
                 .frame(height: 170).frame(maxWidth: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .accessibilityHidden(true)
