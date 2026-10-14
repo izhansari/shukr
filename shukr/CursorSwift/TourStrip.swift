@@ -466,7 +466,8 @@ struct TourEditorPanel: View {
     /// Takes a touch only on the panel; the rest falls to the map under it (SwiftUI draws no subviews to test against).
     private final class PassThroughWindow: UIWindow {
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            guard TourCoverPanelWindow.panelFrame.insetBy(dx: -6, dy: -6).contains(point) else { return nil }
+            guard TourRuntime.shared.tapAdvances
+                    || TourCoverPanelWindow.panelFrame.insetBy(dx: -6, dy: -6).contains(point) else { return nil }
             return super.hitTest(point, with: event)
         }
     }
@@ -476,6 +477,10 @@ private struct TourCoverPanelRoot: View {
     private var runtime: TourRuntime { .shared }
     var body: some View {
         GeometryReader { geo in
+            // → is up: a tap anywhere on the map moves on (as on the page).
+            if runtime.tapAdvances {
+                Color.clear.contentShape(Rectangle()).onTapGesture { runtime.screenTap() }
+            }
             if runtime.active, let step = runtime.step {
                 let page = runtime.page
                 TourTopPanel(page: page, mode: TourGuideMode.of(page, key: page.guideKey(step.rawValue)),

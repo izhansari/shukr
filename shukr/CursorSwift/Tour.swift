@@ -730,6 +730,9 @@ struct TourTopPanel: View {
         } message: {
             Text(TourCopyStore.shared.t(TourCopy.Skip.alertLine))
         }
+        // A tap on the panel (not its buttons) moves on too while → is up, as one anywhere on the screen does.
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onTapGesture { TourRuntime.shared.screenTap() }
         // Where the panel ends on this screen: Settings starts its page under it (SettingsView.tourRoom). Not the
         // tuner's pictures of it.
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
@@ -1721,6 +1724,7 @@ struct BubbleShape: Shape {
 
     private(set) var step: TourStep? {
         didSet {
+            if step != oldValue { shownAt = Date() }
             #if DEBUG
             if step != oldValue { print("TOUR step \(step.map(\.rawValue) ?? "-")") }   // the sim walk waits on these
             #endif
@@ -1729,6 +1733,7 @@ struct BubbleShape: Shape {
     /// Where the card is (learn / try / go / last).
     private(set) var phase: TourPhase = .learn {
         didSet {
+            if phase != oldValue { shownAt = Date() }
             #if DEBUG
             if phase != oldValue { print("TOUR phase \(phase)") }
             #endif
@@ -2244,7 +2249,28 @@ struct BubbleShape: Shape {
 
     /// A to-do done and held for its teaching line (owner: "hold each completion … then bring in the continue
     /// button"): → lets it go.
-    private(set) var pendingAck: Int?
+    private(set) var pendingAck: Int? {
+        didSet { if pendingAck != nil, pendingAck != oldValue { shownAt = Date() } }
+    }
+    /// When what the panel waits on (a held line, a page with its button) came up: a tap on the screen moves on only
+    /// after a beat, so the tap that did the to-do (or a double tap) never skips the line it brings.
+    @ObservationIgnored private var shownAt = Date.distantPast
+
+    /// The panel shows its → (a held to-do, or a page with its button): a tap anywhere moves the tour on (owner: testers
+    /// tapped the screen instead of reaching up for →).
+    var tapAdvances: Bool {
+        guard active, let step, [.intro, .circle, .list, .zikr, .settings].contains(step), phase != .deep,
+              celebrating == nil, folding == nil else { return false }
+        return pendingAck != nil || page.primary != nil
+    }
+
+    /// A tap on the screen while → is up: on, once the line has had its beat.
+    @discardableResult
+    func screenTap() -> Bool {
+        guard tapAdvances else { return false }
+        if Date().timeIntervalSince(shownAt) >= 0.6 { event(.next) }
+        return true
+    }
 
     private func acknowledge() {
         guard let i = pendingAck else { return }
@@ -2360,6 +2386,7 @@ struct BubbleShape: Shape {
     static var sInfo: Int { sLive + 2 }
 
     func nudge() {
+        if screenTap() { return }   // → is up: the tap moves on (no pulse)
         nudges += 1
         countQiblaTap()
     }
@@ -3322,7 +3349,7 @@ extension TourLayer {
     /// (owner: "those actions should be allowed over and over again, as long as they are in that step"); the ones that
     /// change something are refused by `TourRuntime.allows` / `allowsEditing` (a pulse, no buzz).
     private func openings(_ step: TourStep?) -> [CGRect] {
-        guard let step, onItsPage(step) else { return [] }
+        guard let step, onItsPage(step), !runtime.tapAdvances else { return [] }
         let t = TourTargets.shared
         func f(_ key: String) -> [CGRect] { t.frame(key).map { [$0] } ?? [] }
         /// The page between `top` and the tab bar: where a swipe starts.
