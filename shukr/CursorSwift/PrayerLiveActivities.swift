@@ -426,6 +426,31 @@ enum PrayerLiveActivities {
         let args = ProcessInfo.processInfo.arguments
         func arg(_ k: String) -> Double? { args.firstIndex(of: k).flatMap { $0 + 1 < args.count ? Double(args[$0 + 1]) : nil } }
         if let g = arg("-laGate") { UserDefaults(suiteName: SharedStore.appGroup)?.set(Int(g), forKey: LAGate.styleKey) }   // 0 wipe · 1 flip · 2 soft
+        // `-laStartIn N`: the wake test (AutoTopUp) — every card ended, plans held 10 min, the 3 h top-up limit cleared,
+        // then one card scheduled the real way (`start:`) N s out. Background or quit shukr; live-activities.log and
+        // topups.log say whether its start woke shukr and topped up.
+        if let n = arg("-laStartIn") {
+            holdPlans = true
+            UserDefaults(suiteName: SharedStore.appGroup)?.set(0, forKey: AutoTopUp.key)
+            UserDefaults.standard.set(Date().timeIntervalSince1970 + 600, forKey: "autoTopUp.noLimitUntil")
+            Task { @MainActor in
+                for a in Activity<PrayerWindowAttributes>.activities { await a.end(nil, dismissalPolicy: .immediate) }
+                let start = Date().addingTimeInterval(n), end = start.addingTimeInterval(3600)
+                let state = PrayerWindowAttributes.ContentState(label: "Asr", start: start, end: end, symbol: prayerIcon(for: "Asr"))
+                do {
+                    if #available(iOS 26.0, *) {
+                        _ = try Activity.request(attributes: PrayerWindowAttributes(n: 98), content: .init(state: state, staleDate: end),
+                                                 pushType: nil, style: .standard,
+                                                 alertConfiguration: AlertConfiguration(title: "Asr has started", body: "wake test", sound: .default),
+                                                 start: start)
+                    }
+                    PrayerWindowLog.add("wake test: a card set to start \(start.formatted(date: .omitted, time: .standard))")
+                } catch {
+                    PrayerWindowLog.add("wake test: couldn't schedule — \(error)")
+                }
+            }
+            return true
+        }
         guard args.contains("-laEndAll") || args.contains("-laNowAgo") || args.contains("-laMarkLive") else { return false }
         if args.contains("-laNowAgo") || args.contains("-laEndAll") { holdPlans = args.contains("-laNowAgo") }   // at once: a plan from the first foreground beat it
         Task { @MainActor in

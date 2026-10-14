@@ -27,6 +27,11 @@ enum AutoTopUp {
         let now = Date().timeIntervalSince1970
         let last = g?.double(forKey: key) ?? 0
         let state = stateWord
+        var force = force
+        #if DEBUG
+        // The wake test (`-laStartIn`): no 3 h limit for 10 min, across iOS's own relaunches (they come without args).
+        if now < UserDefaults.standard.double(forKey: "autoTopUp.noLimitUntil") { force = true }
+        #endif
         guard force || now - last > every else {
             TopUpLog.add("\(trigger) · \(state) · skipped, topped up \(ago(now - last)) ago")
             return
