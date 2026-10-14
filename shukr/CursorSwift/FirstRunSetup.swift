@@ -3112,7 +3112,6 @@ private struct FajrStep: View {
     @AppStorage("alarmIsFajr", store: UserDefaults(suiteName: SharedStore.appGroup)) private var isFajr = true
     @AppStorage("alarmTimeSetFor", store: UserDefaults(suiteName: SharedStore.appGroup)) private var timeSetFor = ""
     @AppStorage("alarmDescription", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmDescription = ""
-    @AppStorage("didShowAlarmSetupAlert") private var didShowShortcut = false
     @Environment(\.scenePhase) private var scenePhase
     /// iOS's answer on alarms: nil not asked, true allowed, false refused (AlarmKit; iOS 26.1+).
     @State private var answer: Bool? = nil
@@ -3122,13 +3121,12 @@ private struct FajrStep: View {
     @State private var declined = UserDefaults.standard.bool(forKey: FajrStep.declinedKey)
     static let declinedKey = "fajrAlarm.setupDeclined"
 
-    private static let shortcutURL = URL(string: "https://www.icloud.com/shortcuts/6ebcfeb12813483992687461d027fd14")
-
-    /// The alarm is on: allowed and switched on (before iOS 26.1, the Shortcut's switch alone).
-    private var on: Bool { enabled && (!FajrAlarms.supported || answer == true) }
+    /// The alarm is on: allowed and switched on (iOS 26.1+; before it, setup only says it needs the update — owner).
+    private var on: Bool { enabled && FajrAlarms.supported && answer == true }
     private var refused: Bool { FajrAlarms.supported && answer == false }
-    /// Frosted: iOS refused alarms, or they said no here.
-    private var off: Bool { !on && (refused || declined) }
+    private var needsUpdate: Bool { !FajrAlarms.supported }
+    /// Frosted: older than iOS 26.1, iOS refused alarms, or they said no here.
+    private var off: Bool { !on && (needsUpdate || refused || declined) }
 
     private func decline(_ no: Bool) {
         UserDefaults.standard.set(no, forKey: Self.declinedKey)
@@ -3146,8 +3144,9 @@ private struct FajrStep: View {
                                   subtitle: "Set it once. It moves with Fajr every day, so there’s nothing to do before bed.")
                             .padding(.bottom, 18)
                         if !on { Spacer(minLength: 0) }
-                        AlarmDemo(days: upcoming, isFajr: isFajr, rule: ruleWords, off: off ? (refused ? .refused : .declined) : nil,
-                                  turnOn: refused ? SettingsLinks.app : { decline(false); turnOn() })
+                        AlarmDemo(days: upcoming, isFajr: isFajr, rule: ruleWords,
+                                  off: off ? (needsUpdate ? .needsUpdate : refused ? .refused : .declined) : nil,
+                                  turnOn: needsUpdate ? {} : refused ? SettingsLinks.app : { decline(false); turnOn() })
                             .padding(.horizontal, 24)
                         if on {
                             VStack(spacing: 0) {
@@ -3172,6 +3171,9 @@ private struct FajrStep: View {
             VStack(spacing: 0) {
                 if on {
                     PrimaryButton(title: "Continue") { saveDescription(); next() }
+                } else if needsUpdate {
+                    // Nothing to set before iOS 26.1 (Settings → Fajr Alarm has the Shortcut, for whoever looks there).
+                    PrimaryButton(title: "Continue", outlined: true) { enabled = false; next() }
                 } else if off {
                     // Off (their no, or iOS's): the alarm says it, frosted over; the way on is outlined (Fajr keeps its own
                     // words — owner, decision setup-off-button B); a change of mind turns it on after a no here, opens
@@ -3228,7 +3230,7 @@ private struct FajrStep: View {
         }
     }
 
-    /// The rule: the same wheels as Settings, then (before iOS 26.1) the Shortcut that sets it.
+    /// The rule: the same wheels as Settings.
     private var tuner: some View {
         VStack(spacing: 4) {
             Text("When should it ring?")
@@ -3251,19 +3253,6 @@ private struct FajrStep: View {
             .frame(height: 100)
             .clipped()
             .padding(.horizontal, 24)
-            if !FajrAlarms.supported {
-                VStack(spacing: 6) {
-                    Text("shukr sets it through a Shortcut you add once.")
-                        .font(.system(.footnote, design: .rounded, weight: .light))
-                        .foregroundStyle(.secondary)
-                    Button("Get the Shortcut") {
-                        didShowShortcut = true
-                        if let url = Self.shortcutURL { UIApplication.shared.open(url) }
-                    }
-                    .font(.system(.subheadline, design: .rounded, weight: .medium))
-                    .foregroundStyle(Color.sage)
-                }
-            }
         }
     }
 
@@ -3331,8 +3320,9 @@ struct AlarmDemo: View {
     let isFajr: Bool
     /// The rule in words, for the card's label ("20 min before it starts").
     let rule: String
-    /// Frosted over: iOS refused alarms, or they said no on the page.
-    enum Off { case refused, declined }
+    /// Frosted over: iOS refused alarms, they said no on the page, or the phone is older than iOS 26.1 (no AlarmKit —
+    /// owner: setup just says it needs the update; Settings has the Shortcut).
+    enum Off { case refused, declined, needsUpdate }
     var off: Off? = nil
     /// A tap on the frost: Settings after iOS's no, turning it on after a no on the page.
     var turnOn: () -> Void = {}
@@ -3395,8 +3385,18 @@ struct AlarmDemo: View {
     }
 
     private func offLine(_ off: Off) -> String {
-        off == .refused ? "shukr can’t ring at Fajr. Turn alarms on in Settings any time."
-            : "shukr won’t ring at Fajr. Turn it on in shukr’s Settings any time."
+        switch off {
+        case .refused: "shukr can’t ring at Fajr. Turn alarms on in Settings any time."
+        case .declined: "shukr won’t ring at Fajr. Turn it on in shukr’s Settings any time."
+        case .needsUpdate: "A real Fajr alarm needs iOS 26.1 or later. Update in Settings → General → Software Update."
+        }
+    }
+    private func offTitle(_ off: Off) -> String {
+        switch off {
+        case .refused: "Alarms are off"
+        case .declined: "The Fajr alarm is off"
+        case .needsUpdate: "Needs iOS 26.1"
+        }
     }
 
     var body: some View {
@@ -3466,7 +3466,7 @@ struct AlarmDemo: View {
                                 .font(.system(size: 26))
                                 .foregroundStyle(.secondary)
                                 .padding(.bottom, 4)
-                            Text(off == .refused ? "Alarms are off" : "The Fajr alarm is off")
+                            Text(offTitle(off))
                                 .font(.system(.headline, design: .rounded))
                             Text(offLine(off))
                                 .font(.system(.subheadline, design: .rounded))
@@ -3482,8 +3482,8 @@ struct AlarmDemo: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(off != nil ? "\(off == .refused ? "Alarms are off" : "The Fajr alarm is off"). \(offLine(off ?? .declined))"
-                                : "Fajr alarm, \(clockTime(first.alarm)) \(firstCaption.lowercased()), set once and moving with Fajr through the year.")
+            .accessibilityLabel(off.map { "\(offTitle($0)). \(offLine($0))" } ?? 
+                                "Fajr alarm, \(clockTime(first.alarm)) \(firstCaption.lowercased()), set once and moving with Fajr through the year.")
         }
     }
 }

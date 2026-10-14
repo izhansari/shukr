@@ -454,7 +454,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `.scheduled` alarms (a plan while snoozing would cancel it as past). `plan()` is a diff, run after every `NotificationScheduler` run and on Stop (`FajrAlarmStopIntent`).
   **Alarm check → Mornings** (`FajrMorning`, read from the log): alarm time, snoozes, Stop and how long after, when Fajr was marked (owner: the wake line, here until it has a home).
   `alarmKitActive` (app group) marks the mode; the old Shortcut's `SetFajrAlarmIntent` then throws `SetByShukrError`, so
-  there's never a second alarm. iOS 18–26.0: the Shortcut path, unchanged.
+  there's never a second alarm. iOS 18–26.0 (owner, 2026-10-14): setup's Fajr page only says it needs the update (the alarm frosted, `AlarmDemo.Off.needsUpdate` "Needs iOS 26.1", one outlined Continue); Settings → Fajr Alarm keeps the Shortcut path — the first switch-on alert, then `shortcutSteps` (why, three numbered steps: get it, Automation → +, Time of Day 10:00 PM Daily Run Immediately → "Shukr - Auto Fajr Alarm", and Get the Shortcut — the original app's flow). The shared iCloud Shortcut is SetFajrAlarmIntent → Clock's Create Alarm → a notification; on 26.1+ that action stops it and says to turn the automation off.
 - AlarmKit alarms are NOT in the Clock app's list (Lock Screen, Dynamic Island, StandBy, a paired Watch); a `.fixed` alarm
   shows nothing until it rings. Settings' status / result are `Color.green`; **Test alarm** (default +1 min) schedules one
   real alarm (`FajrAlarms.scheduleTest`; ids in `alarmKitTestIDs`, left alone by `plan()` until past).

@@ -1415,7 +1415,7 @@ struct AlarmSettingsView: View {
                 alarmEnabled = false
             }
             } message: {
-            Text("This only works if you set up a shortcut automation. Tap “Get Shortcut” to install it, then tap the info button above for setup steps.")
+            Text("Your iPhone needs iOS 26.1 for shukr to set this alarm itself. Until then, a Shortcut sets it each night: tap “Get Shortcut”, then follow the steps under the alarm.")
             }
             // The wheels stopped: the row's words and the alarms ahead follow (no Save any more).
             .onChange(of: ruleKey) { _, _ in
@@ -1608,6 +1608,38 @@ struct AlarmSettingsView: View {
     }
     private var ruleKey: [Int] { [alarmOffsetMinutes, alarmIsBefore ? 1 : 0, alarmIsFajr ? 1 : 0] }
 
+    /// Before iOS 26.1 shukr can't set an alarm itself: a Shortcut does, each night (the owner's flow from the original
+    /// app — the alert on first switch-on, three steps, the link; setup only says it needs the update).
+    private var shortcutSteps: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Your iPhone needs iOS 26.1 for shukr to set this alarm itself. Until you update, a Shortcut sets it each night:")
+                .font(.system(.footnote, design: .rounded))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            shortcutStep(1, "Get the Shortcut below and add it")
+            shortcutStep(2, "In Shortcuts, open Automation and tap +")
+            shortcutStep(3, "Choose Time of Day: 10:00 PM, Daily, Run Immediately, then pick “Shukr - Auto Fajr Alarm”")
+            Button {
+                didShowAlarmSetupAlert = true
+                if let shortcutURL { UIApplication.shared.open(shortcutURL) }
+            } label: {
+                Label("Get the Shortcut", systemImage: "square.and.arrow.down")
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .foregroundStyle(Color.sage)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
+        }
+        .padding(.vertical, 4)
+    }
+    private func shortcutStep(_ n: Int, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text("\(n)").font(.system(.caption, design: .rounded, weight: .bold)).foregroundStyle(Color.sage)
+                .frame(width: 20, height: 20).background(Circle().fill(Color.sage.opacity(0.15)))
+            Text(text).font(.system(.subheadline, design: .rounded)).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     var body: some View {
         Group {
             if FajrAlarms.supported && status.allowed != true {
@@ -1646,18 +1678,7 @@ struct AlarmSettingsView: View {
                 if alarmEnabled {
                     ruleRow
                     if isEditingAlarm { wheels }
-                    if !FajrAlarms.supported {
-                        // Before iOS 26.1 the Shortcut sets it (setup's words).
-                        Button {
-                            didShowAlarmSetupAlert = true
-                            if let shortcutURL { UIApplication.shared.open(shortcutURL) }
-                        } label: {
-                            Label("Get the Shortcut", systemImage: "square.and.arrow.down")
-                                .font(.system(.subheadline, design: .rounded, weight: .medium))
-                                .foregroundStyle(Color.sage)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    if !FajrAlarms.supported { shortcutSteps }
                     // (No "Let shukr set it" row — owner: only someone who set it up on the Shortcut before iOS 26.1 ever saw
                     // it, and switching the alarm off and on does the same.)
                     // (Alarm check is the card's last line now — "Next …" and its chevron, as on the notifications side.)
