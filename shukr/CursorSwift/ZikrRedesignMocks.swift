@@ -773,7 +773,8 @@ private struct MockAzkarPage: View {
         let done = parts.filter { $0 >= 1 }.count
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Soft.title("Your azkar", "\(zikrs.filter { !$0.isBuiltIn }.count) azkar · \(live.count) daily goals")
+                Soft.title("Your azkar", "\(zikrs.filter { !$0.isBuiltIn }.count) azkar · \(live.count) daily goals"
+                           + (tasks.count > live.count ? " · \(tasks.count - live.count) paused" : ""))
                 if !live.isEmpty && !searching { hero(parts: parts, done: done) }
                 Soft.addRow("A new zikr") { newZikr = true }
                 if !liveShown.isEmpty {
@@ -1155,7 +1156,7 @@ private struct ZikrSheet: View {
                     .multilineTextAlignment(.center)
                 // The 14 rings already say how many days (Sami): only the best streak, when the sentence isn't about one.
                 if s.best > 1, !line.contains("streak") {
-                    Text("best streak \(s.best) days").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
+                    Text("this goal's best streak: \(s.best) days").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
                 }
             }
             HStack(spacing: 0) {
@@ -1627,7 +1628,7 @@ private struct MockHistoryPage: View {
                         .fixedSize(horizontal: false, vertical: true)
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(s.activeDays) day\(s.activeDays == 1 ? "" : "s") this month")
-                        if s.bestStreak > 1 { Text("Longest streak \(s.bestStreak) days") }
+                        if s.bestStreak > 1 { Text(streakLabel(s.bestStreak)).fixedSize(horizontal: false, vertical: true) }
                         Text("\(MockFmt.hours(s.allTimeSeconds)) of zikr, all time")
                     }
                     .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
@@ -1651,6 +1652,15 @@ private struct MockHistoryPage: View {
         }
         .padding(18)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
+    }
+
+    /// Whose streak (the cold test met four unlabelled ones): any zikr, or the zikr / goal History is filtered to.
+    private func streakLabel(_ n: Int) -> String {
+        switch active {
+        case .zikr(_, let name)?: return "Longest \(name) streak: \(n) days"
+        case .goal(_, let name)?: return "Longest \(name) streak: \(n) days"
+        default: return "Longest streak, any zikr: \(n) days"
+        }
     }
 
     /// Give to Causes' filter beside the search: a plain filter glyph, a sage pill with its name while one is on.

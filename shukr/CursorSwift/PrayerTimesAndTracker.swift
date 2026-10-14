@@ -2449,10 +2449,12 @@ struct PrayerTimesView: View {
                     Image(systemName: streak.keptToday && streak.current > 0 ? "flame.fill" : "flame")
                         .foregroundColor(streak.keptToday && streak.current > 0 ? Color.sage : .secondary)
                     Group {
+                        // The mockups name whose streak it is (the cold test met four unlabelled streaks).
                         if showBest {
-                            Text("Best \(streak.best) Days").transition(.blurReplace)
+                            Text(ZikrMockFlag.on ? "Best goal streak: \(streak.best) days" : "Best \(streak.best) Days").transition(.blurReplace)
                         } else {
-                            Text("\(streak.current) Day Streak").transition(.blurReplace)
+                            Text(ZikrMockFlag.on ? "Goal streak: \(streak.current) day\(streak.current == 1 ? "" : "s")" : "\(streak.current) Day Streak")
+                                .transition(.blurReplace)
                         }
                     }
                     .fixedSize()

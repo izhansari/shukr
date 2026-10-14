@@ -243,9 +243,15 @@ struct ZikrCircleWheel: View {
     }
 
     /// "1 of 3 tasks done · about 14 min to go" / "all 3 tasks done today".
+    /// The tasks the summary counts: all of them, less any paused in the redesign mockups (DEBUG `-zikrMockApp`), so the
+    /// wheel and Your azkar agree.
+    private var countedTasks: [TaskModel] { tasks.filter { !ZikrMockFlag.paused($0) } }
     private func summaryText(done: Int, secondsLeft: TimeInterval) -> String {
-        if done == tasks.count { return "all \(tasks.count) tasks done today" }
-        let base = "\(done) of \(tasks.count) tasks done"
+        // The mockups say "daily goals" (decision zikr-goal-word A; the cold test caught "tasks" here vs "goals" there).
+        let word = ZikrMockFlag.on ? "daily goals" : "tasks"
+        let n = countedTasks.count
+        if done == n { return "all \(n) \(word) done today" }
+        let base = "\(done) of \(n) \(word) done"
         guard secondsLeft > 0 else { return base }
         let estimate = zikrEstimateString(secondsLeft).replacingOccurrences(of: "~", with: "")
         return base + " · about " + estimate + " to go"
@@ -301,6 +307,7 @@ struct ZikrCircleWheel: View {
     /// "1 of 3 tasks done" under the wheel (the old strip's "1 of 3 Completed"); all done → sage.
     @ViewBuilder private var tasksSummary: some View {
         if !tasks.isEmpty {
+            let tasks = countedTasks
             let done = tasks.filter { isDone($0) }.count
             // Everything left at your pace (tasks with no history yet are left out) — once the launch has settled.
             let ready = summaryReady || sharedState.horizontalPage == .zikr
@@ -615,7 +622,8 @@ struct ZikrCircleWheel: View {
                 // circle (owner: glass broke under the wheel's shrink and tilt; "Frosted always, on the circle").
                 .overlay(alignment: .bottom) { freestyleChip.offset(y: 16) }
         case .add:
-            ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
+            ZikrCircleFace(title: ZikrMockFlag.on ? "New goal" : "New task", icon: "plus",
+                           subtitle: ZikrMockFlag.on ? "for any zikr" : "a daily goal", ring: .dashed)
         case .task(let task):
             // Hold = the task's options, like every task row in the tab (tap still starts it).
             let example = TourExamples.shared.isExample(task)
