@@ -4189,7 +4189,7 @@ private struct BismillahCapsule: View {
     }
 
     /// The word. DEBUG `-demoBismillahType 1…4` (owner, 2026-10-14: other typefaces to compare): 1 New York light,
-    /// 2 the Arabic in the Quran's face, 3 SF Pro ultralight spaced capitals, 4 Continue's (rounded medium).
+    /// 2 the Arabic in the Quran's face, 3 SF Pro ultralight spaced capitals, 4 Continue's (rounded medium), 5 today's thin at Continue's size.
     @ViewBuilder private var word: some View {
         #if DEBUG
         switch UserDefaults.standard.integer(forKey: "demoBismillahType") {
@@ -4197,6 +4197,7 @@ private struct BismillahCapsule: View {
         case 2: Text("بِسْمِ ٱللَّٰهِ").font(.custom("KFGQPCUthmanTahaNaskh", size: 32))
         case 3: Text("BISMILLAH").font(.system(.title3, weight: .ultraLight)).fontDesign(.default).tracking(6)
         case 4: Text("bismillah").font(.system(.body, weight: .medium)).fontDesign(.rounded)
+        case 5: Text("bismillah").font(.system(.body, weight: .thin)).fontDesign(.rounded)   // today's, at Continue's size
         default: standard
         }
         #else
