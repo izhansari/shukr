@@ -214,7 +214,7 @@ struct ZikrCircleWheel: View {
                 CircleCover.set("yourTasks", open, close: { showTasksPage = false })
             }
             .sheet(item: $wheelOpenZikr) { MantraEditorView(mantra: $0).stageCover("wheelZikrPage") }
-            .sheet(item: $mockZikr) { zikrMockZikrPage($0) }   // a zikr is a sheet in the mockups (zikr-flow-shape A)
+            .zikrMockSheet($mockZikr)   // a zikr is a sheet in the mockups (zikr-flow-shape A)
             .alert(wheelDelete.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
                    isPresented: Binding(get: { wheelDelete != nil }, set: { if !$0 { wheelDelete = nil } }),
                    presenting: wheelDelete) { task in
