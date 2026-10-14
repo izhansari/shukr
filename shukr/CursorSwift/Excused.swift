@@ -302,7 +302,7 @@ struct ExcusedSheet: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 36, height: 36)
-                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                        .barGlass(Circle())
                 }
                 .buttonStyle(.plain)
                 Spacer()
@@ -312,7 +312,7 @@ struct ExcusedSheet: View {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 36, height: 36)
-                            .background(Circle().fill(Color.primary.opacity(0.06)))
+                            .barGlass(Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("How Excused works")
@@ -581,7 +581,54 @@ enum ExcusedPicture {
     case ring, paused, quiet, checkIn, privacy, elsewhere
 
     @ViewBuilder func view(big: Bool) -> some View {
-        let k: CGFloat = big ? 1 : 0.42
+        if big { bigView } else { smallView }
+    }
+
+    /// Drawn at the row's own size (owner: the shrunk big pictures didn't fit): a 58 × 46 glass tile.
+    @ViewBuilder private var smallView: some View {
+        let line = { (w: CGFloat) in Capsule().fill(Color.primary.opacity(0.18)).frame(width: w, height: 2.5) }
+        switch self {
+        case .ring:
+            ZStack {
+                Circle().stroke(Color.secondary.opacity(0.55), style: StrokeStyle(lineWidth: 1, dash: [2, 2.5]))
+                VStack(spacing: 3) { line(14); line(9) }
+            }
+            .frame(width: 32, height: 32)
+        case .paused:
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(0..<2, id: \.self) { _ in
+                    HStack(spacing: 5) {
+                        PrayerStatusDot(style: .muted, done: false, future: false, scoreColor: .secondary, pulse: 0, excused: true)
+                            .scaleEffect(0.85)
+                        line(18)
+                    }
+                }
+            }
+        case .quiet:
+            Image(systemName: "bell.slash").font(.system(size: 19, weight: .regular)).foregroundStyle(.secondary)
+        case .checkIn:
+            HStack(spacing: 4) {
+                RoundedRectangle(cornerRadius: 2.5, style: .continuous).fill(Color.sage).frame(width: 9, height: 9)
+                VStack(alignment: .leading, spacing: 3) { line(18); line(12) }
+            }
+            .padding(.horizontal, 5).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Color.primary.opacity(0.07)))
+        case .privacy:
+            Image(systemName: "lock.iphone").font(.system(size: 21, weight: .regular)).foregroundStyle(Color.sage)
+        case .elsewhere:
+            HStack(spacing: 4) {
+                Image(systemName: "square.grid.2x2")
+                Image(systemName: "switch.2")
+                Image(systemName: "applewatch")
+            }
+            .font(.system(size: 11, weight: .regular))
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var bigView: some View {
+        let k: CGFloat = 1
+        let big = true
         switch self {
         case .ring:
             ZStack {
@@ -595,18 +642,16 @@ enum ExcusedPicture {
             }
             .frame(width: big ? 170 : 34, height: big ? 170 : 34)
         case .paused:
-            VStack(alignment: .leading, spacing: big ? 10 : 4) {
-                ForEach(big ? ["Fajr", "Dhuhr", "Asr"] : ["Fajr", "Dhuhr"], id: \.self) { name in
-                    HStack(spacing: 10) {
+            // The glass square is the card: just the rows, list-sized (owner: graphics, cleaner).
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(["Fajr", "Dhuhr", "Asr"], id: \.self) { name in
+                    HStack(spacing: 14) {
                         PrayerStatusDot(style: .muted, done: false, future: false, scoreColor: .secondary, pulse: 0, excused: true)
-                        if big { Text(name).font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(.secondary) }
-                        else { Capsule().fill(Color.primary.opacity(0.12)).frame(width: 18, height: 3) }
+                            .scaleEffect(1.35)
+                        Text(name).font(.system(size: 22, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
                 }
             }
-            .padding(big ? 22 : 0)
-            .background(RoundedRectangle(cornerRadius: big ? 22 : 8, style: .continuous).fill(Color.primary.opacity(big ? 0.045 : 0)))
-            .scaleEffect(big ? 1 : 0.85)
         case .quiet:
             Image(systemName: "bell.slash").font(.system(size: 64 * k, weight: .light)).foregroundStyle(.secondary)
         case .checkIn:
@@ -668,7 +713,7 @@ struct ExcusedIntroStory: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 36, height: 36)
-                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                        .barGlass(Circle())
                 }
                 .buttonStyle(.plain)
                 Spacer()
@@ -680,7 +725,9 @@ struct ExcusedIntroStory: View {
                     let p = Self.pages[i]
                     VStack(spacing: 22) {
                         Spacer(minLength: 0)
-                        p.picture.view(big: true).frame(height: 190)
+                        p.picture.view(big: true)
+                            .frame(width: 230, height: 230)
+                            .barGlass(RoundedRectangle(cornerRadius: 40, style: .continuous))   // Liquid Glass (owner)
                         Text(p.title).font(.system(size: 30, weight: .light, design: .rounded))
                         Text(p.text).font(.subheadline).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center).padding(.horizontal, 36)
@@ -736,7 +783,7 @@ struct ExcusedInfoSheet: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 36, height: 36)
-                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                        .barGlass(Circle())
                 }
                 .buttonStyle(.plain)
                 Spacer()
@@ -756,8 +803,7 @@ struct ExcusedInfoSheet: View {
                             HStack(alignment: .center, spacing: 14) {
                                 r.0.view(big: false)
                                     .frame(width: 58, height: 46)
-                                    .clipped()
-                                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(.systemBackground)))
+                                    .barGlass(RoundedRectangle(cornerRadius: 12, style: .continuous))   // Liquid Glass (owner)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(r.1).font(.subheadline.weight(.semibold))
                                     Text(r.2).font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
