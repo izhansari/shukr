@@ -3247,12 +3247,14 @@ struct LALockCardBody: View {
 }
 
 /// The last card shukr has queued says so (owner: "the last one … open the app if you want to keep receiving them"): one
-/// quiet line at the card's foot, centred. Not once marked (the card is going), never on the island.
+/// quiet line at the card's foot, centred. Not once marked (the card is going), never on the island. Marking from the
+/// card also adds the next ones (iOS lets a card's ✓ add cards; the alarm's Stop can't) — decision last-card-note B.
 struct LALastNote: View {
     static let room: CGFloat = 20
+    static let text = "Last card · mark here or open shukr for more"
     static func shows(_ s: PrayerWindowAttributes.ContentState) -> Bool { s.last == true && s.markedAt == nil }
     var body: some View {
-        Text("Last card · open shukr to keep prayer cards coming")
+        Text(Self.text)
             .font(.system(.caption2, design: .rounded))
             .foregroundStyle(.secondary)
             .lineLimit(1)

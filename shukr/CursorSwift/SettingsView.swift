@@ -2458,7 +2458,7 @@ struct ScheduledLiveActivitiesPage: View {
                 .init(big: "Opening shukr", small: "Any time you open the app, the free spots fill with your next prayers.", symbol: "iphone", warn: false),
                 .init(big: "Marking a prayer", small: "From the card, a widget or the app: its card steps aside and the next one is added.", symbol: "checkmark.circle", warn: false),
                 .wakes,
-                .init(big: "The last card tells you", small: "When it's the last one waiting, it says \u{201C}open shukr to keep prayer cards coming.\u{201D}", symbol: "exclamationmark.bubble", warn: false),
+                .init(big: "The last card tells you", small: "When it's the last one waiting, it says \u{201C}mark here or open shukr for more.\u{201D} Marking from a card or the widget adds the next ones too.", symbol: "exclamationmark.bubble", warn: false),
             ])
         }
     }
