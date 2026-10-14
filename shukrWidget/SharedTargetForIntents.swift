@@ -1842,6 +1842,18 @@ struct FajrAlarmTimeIntent: AppIntent {
                                                resultValueName: "Fajr Alarm Time")
 
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog & ShowsSnippetView {
+        let (time, on) = try Self.next()
+        // Setup's alarm picture (the app's view, through ShortcutCards), frosted when the alarm is off.
+        let scheme = await ShortcutLook.scheme()
+        let view = await MainActor.run { ShortcutCards.fajrAlarm?(!on, time) } ?? AnyView(EmptyView())
+        return .result(value: time, dialog: IntentDialog(stringLiteral: Self.spoken(time, on: on)),
+                       view: AnyView(view.environment(\.colorScheme, scheme)))
+    }
+    static func spoken(_ time: Date, on: Bool) -> String {
+        on ? "Your Fajr alarm is at \(shortTimePM(time))." : "Your Fajr alarm is off. When it’s on, it rings at \(shortTimePM(time))."
+    }
+    /// When the rule next rings, and whether the alarm is on.
+    static func next() throws -> (time: Date, on: Bool) {
         ShortcutTopUp.request()
         // The rule on today's Fajr (or sunrise); tomorrow's only once that has passed (review: worked out from the
         // alarm's own time, an offset across midnight or an "after sunrise" rule landed on the wrong day).
@@ -1861,12 +1873,7 @@ struct FajrAlarmTimeIntent: AppIntent {
         // Say when it's off: the time is the rule's either way (an automation can still use it).
         // Excused (Excused.swift): it won't ring, so it reads as off.
         let on = UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: "alarmEnabled") == true && !Excused.isActive
-        // Setup's alarm picture (the app's view, through ShortcutCards), frosted when the alarm is off.
-        let scheme = await ShortcutLook.scheme()
-        let view = await MainActor.run { ShortcutCards.fajrAlarm?(!on, time) } ?? AnyView(EmptyView())
-        return .result(value: time, dialog: on ? "Your Fajr alarm is at \(shortTimePM(time))."
-                                               : "Your Fajr alarm is off. When it’s on, it rings at \(shortTimePM(time)).",
-                       view: AnyView(view.environment(\.colorScheme, scheme)))
+        return (time, on)
     }
 }
 
@@ -2189,10 +2196,14 @@ struct ZikrTasksNowIntent: AppIntent {
         "Today's zikr tasks and how far along each one is. Tap a task to start it in shukr.",
         categoryName: "Zikr", searchKeywords: ["zikr", "dhikr", "tasbeeh", "tasks", "to do"], resultValueName: "Zikr Tasks")
     func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog & ShowsSnippetIntent {
+        let a = try await Self.answer()
+        return .result(value: a.value, dialog: a.dialog, snippetIntent: a.card)
+    }
+    static func answer() async throws -> ShortcutAnswer<[String]> {
         guard let tasks = ZikrTaskSnapshot.today() else { throw PrayerTimeUnavailable() }
-        return .result(value: tasks.filter { !$0.done }.map(\.name),
-                       dialog: IntentDialog(stringLiteral: ZikrTasksSnippet.spoken(tasks)),
-                       snippetIntent: ZikrTasksCardIntent())
+        return .init(value: tasks.filter { !$0.done }.map(\.name),
+                     dialog: IntentDialog(stringLiteral: ZikrTasksSnippet.spoken(tasks)),
+                     card: ZikrTasksCardIntent())
     }
 }
 
@@ -2341,6 +2352,15 @@ struct TimeLeftCardIntent: SnippetIntent {
     }
 }
 
+/// A Shortcuts answer: what's said, its card, and the value it passes on. Each action builds its own, and shukr's grouped
+/// tiles (Ask shukr, ShukrAppShortcuts.swift) give the same one (iOS 27 hides an app's tiles outside a section).
+@available(iOS 26.0, *)
+struct ShortcutAnswer<Value> {
+    let value: Value
+    let dialog: IntentDialog
+    let card: any SnippetIntent
+}
+
 /// "Get Time Left" on iOS 26: the same answer, its card with a ✓.
 @available(iOS 26.0, *)
 struct TimeLeftNowIntent: AppIntent {
@@ -2349,17 +2369,21 @@ struct TimeLeftNowIntent: AppIntent {
         "Minutes left in the prayer whose time it is now — whether or not you've prayed it. Between Sunrise and Dhuhr, minutes until Dhuhr. Passes the minutes on; its card can mark the prayer.",
         categoryName: "Prayer Times", searchKeywords: ["salah", "how long", "remaining", "ends"], resultValueName: "Minutes Left")
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog & ShowsSnippetIntent {
+        let a = try await Self.answer()
+        return .result(value: a.value, dialog: a.dialog, snippetIntent: a.card)
+    }
+    static func answer() async throws -> ShortcutAnswer<Int> {
         ShortcutTopUp.request()
         let now = Date()
         if let c = PrayerWindows.pick(.current) {
             let mins = max(1, Int((c.end.timeIntervalSince(now) / 60).rounded(.down)))
-            return .result(value: mins, dialog: "\(PrayerWindows.span(c.end.timeIntervalSince(now))) left for \(c.name). It ends at \(shortTimePM(c.end)).",
-                           snippetIntent: TimeLeftCardIntent(c))
+            return .init(value: mins, dialog: "\(PrayerWindows.span(c.end.timeIntervalSince(now))) left for \(c.name). It ends at \(shortTimePM(c.end)).",
+                         card: TimeLeftCardIntent(c))
         }
         guard let n = PrayerWindows.pick(.next) else { throw PrayerTimeUnavailable() }
         let mins = max(1, Int((n.start.timeIntervalSince(now) / 60).rounded(.down)))
-        return .result(value: mins, dialog: "\(noPrayerOnLine) \(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))).",
-                       snippetIntent: TimeLeftCardIntent())
+        return .init(value: mins, dialog: "\(noPrayerOnLine) \(n.name) starts in \(PrayerWindows.span(n.start.timeIntervalSince(now))).",
+                     card: TimeLeftCardIntent())
     }
 }
 
@@ -2384,13 +2408,17 @@ struct TodaysTimesNowIntent: AppIntent {
         "Today's five prayer times with your method and madhab, as a list: what's passed (✓ when you marked it), what's on now (tap to mark it), what's to come.",
         categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "schedule", "timetable", "today"], resultValueName: "Prayer Times")
     func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog & ShowsSnippetIntent {
+        let a = try await Self.answer()
+        return .result(value: a.value, dialog: a.dialog, snippetIntent: a.card)
+    }
+    static func answer() async throws -> ShortcutAnswer<[String]> {
         ShortcutTopUp.request()
         let now = Date()
         let five = PrayerWindows.today(now)
         guard !five.isEmpty else { throw PrayerTimeUnavailable() }
         let spoken = TodaysTimesSnippet.spoken(now: now)
-        return .result(value: five.map { "\($0.name) \(shortTimePM($0.start))" }, dialog: IntentDialog(stringLiteral: spoken),
-                       snippetIntent: TodaysTimesCardIntent())
+        return .init(value: five.map { "\($0.name) \(shortTimePM($0.start))" }, dialog: IntentDialog(stringLiteral: spoken),
+                     card: TodaysTimesCardIntent())
     }
 }
 
@@ -2419,16 +2447,20 @@ struct MarkPrayedNowIntent: LiveActivityIntent {
                                                resultValueName: "Grade")
     static var openAppWhenRun: Bool = false
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetIntent {
+        let a = try await Self.answer()
+        return .result(value: a.value, dialog: a.dialog, snippetIntent: a.card)
+    }
+    static func answer() async throws -> ShortcutAnswer<String> {
         ShortcutTopUp.request()
         guard let c = PrayerMarkNow.target() else {
             if let n = PrayerWindows.pick(.next) {
-                return .result(value: "", dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).", snippetIntent: TimeLeftCardIntent())
+                return .init(value: "", dialog: "\(noPrayerOnLine) \(n.name) starts at \(shortTimePM(n.start)).", card: TimeLeftCardIntent())
             }
             throw PrayerTimeUnavailable()
         }
         if SharedStore.completedPrayerNamesToday().contains(c.name) {
             let at = SharedStore.markedTime(of: c.name, start: c.start) ?? Date()
-            return .result(value: PrayerMarkNow.grade(c, at: at), dialog: "\(c.name) is already marked as prayed.", snippetIntent: PrayedCardIntent(c))
+            return .init(value: PrayerMarkNow.grade(c, at: at), dialog: "\(c.name) is already marked as prayed.", card: PrayedCardIntent(c))
         }
         let now = Date()
         let marked = await PrayerMarkNow.mark(c)
@@ -2436,11 +2468,11 @@ struct MarkPrayedNowIntent: LiveActivityIntent {
         let grade = PrayerMarkNow.grade(c, at: at)
         guard marked else {   // review: it said "marked" even when nothing was
             if SharedStore.markedTime(of: c.name, start: c.start) != nil {
-                return .result(value: grade, dialog: "\(c.name) is already marked as prayed.", snippetIntent: PrayedCardIntent(c))
+                return .init(value: grade, dialog: "\(c.name) is already marked as prayed.", card: PrayedCardIntent(c))
             }
             throw PrayerTimeUnavailable()
         }
-        return .result(value: grade, dialog: "\(c.name) marked as prayed. \(grade).", snippetIntent: PrayedCardIntent(c))
+        return .init(value: grade, dialog: "\(c.name) marked as prayed. \(grade).", card: PrayedCardIntent(c))
     }
 }
 
@@ -2491,7 +2523,7 @@ struct OpenSalahIntent: AppIntent {
 /// The pages "Open shukr" goes to (owner: one tile, pick the page; the Control Center buttons stay separate). Each
 /// sets the flag its own control / widget sets, so the app opens it the same way (PrayerTimesView).
 enum ShukrPage: String, AppEnum, CaseIterable {
-    case salah, qibla, zikr, dailyAyah, names, memories
+    case salah, qibla, zikr, dailyAyah, names, memories, tasbihFatimah
     static var typeDisplayRepresentation: TypeDisplayRepresentation = "Page"
     static var caseDisplayRepresentations: [ShukrPage: DisplayRepresentation] = [
         .salah: DisplayRepresentation(title: "Salah", subtitle: "Today's prayers", image: .init(systemName: "sun.horizon"),
@@ -2506,6 +2538,9 @@ enum ShukrPage: String, AppEnum, CaseIterable {
                                       synonyms: ["names", "names of Allah", "Asma ul Husna"]),
         .memories: DisplayRepresentation(title: "Memories", subtitle: "Your prayer photos", image: .init(systemName: "photo.stack"),
                                          synonyms: ["photos", "prayer photos"]),
+        // Its own tile until iOS 27 hid every tile outside a section (2026-10-14): a page here, so it stays on the page.
+        .tasbihFatimah: DisplayRepresentation(title: "Tasbih Fatimah", subtitle: "33 · 33 · 34", image: .init(systemName: "circle.hexagonpath"),
+                                              synonyms: ["Tasbih Fatimah", "tasbeeh Fatimah", "33 33 34"]),
     ]
     /// The app group flag its control / widget sets.
     var flag: String {
@@ -2516,6 +2551,7 @@ enum ShukrPage: String, AppEnum, CaseIterable {
         case .dailyAyah: "widgetDailyAyah"
         case .names: "widgetNames"
         case .memories: "widgetMemories"
+        case .tasbihFatimah: "liveActivity.openTasbih"
         }
     }
 }

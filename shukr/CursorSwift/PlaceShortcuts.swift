@@ -283,11 +283,15 @@ struct NearbyMosquesNowIntent: AppIntent {
         categoryName: "Places", searchKeywords: ["masjid", "mosque", "near me", "nearest", "jumuah", "directions"],
         resultValueName: "Mosques")
     func perform() async throws -> some IntentResult & ReturnsValue<[String]> & ProvidesDialog & ShowsSnippetIntent {
+        let a = await Self.answer()
+        return .result(value: a.value, dialog: a.dialog, snippetIntent: a.card)
+    }
+    static func answer() async -> ShortcutAnswer<[String]> {
         let outcome = await NearbyMosquesSearch.run()
         var names: [String] = []
         if case .found(_, let list) = outcome { names = list.map(\.name) }
-        return .result(value: names, dialog: IntentDialog(stringLiteral: NearbyMosquesSearch.spoken(outcome)),
-                       snippetIntent: NearbyMosquesCardIntent())
+        return .init(value: names, dialog: IntentDialog(stringLiteral: NearbyMosquesSearch.spoken(outcome)),
+                     card: NearbyMosquesCardIntent())
     }
 }
 
@@ -481,9 +485,13 @@ struct PrayedHereIntent: AppIntent {
         categoryName: "Places", searchKeywords: ["prayed here", "how many times", "last time", "masjid", "location"],
         resultValueName: "Prayers Here")
     func perform() async throws -> some IntentResult & ReturnsValue<Int> & ProvidesDialog & ShowsSnippetIntent {
+        let a = await Self.answer()
+        return .result(value: a.value, dialog: a.dialog, snippetIntent: a.card)
+    }
+    static func answer() async -> ShortcutAnswer<Int> {
         let s = await PrayedHereLookup.run()
         let line = s?.spoken ?? "I couldn’t tell where you are right now. Try again in a moment."
-        return .result(value: s?.count ?? 0, dialog: IntentDialog(stringLiteral: line), snippetIntent: PrayedHereCardIntent())
+        return .init(value: s?.count ?? 0, dialog: IntentDialog(stringLiteral: line), card: PrayedHereCardIntent())
     }
 }
 

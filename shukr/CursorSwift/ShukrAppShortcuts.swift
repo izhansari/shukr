@@ -15,11 +15,41 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
     /// The tiles in the Shortcuts app, in shukr's sage (owner: "add color to match our branding").
     static var shortcutTileColor: ShortcutTileColor = .grayGreen
 
-    /// Eight tiles, one per job (owner, 2026-10-12: "if made well enough, we dont need the redundant ones"). Fajr Time,
-    /// Next Prayer, Chosen Prayer and Offset are Get Prayer Time now; Qibla is a page of Open shukr. Their old actions
-    /// still run in saved shortcuts (hidden). Symbols: outline, the app's own where it has one.
+    /// Three tiles, each in sections (owner, 2026-10-12: one per job; 2026-10-14: iOS 27 hides any tile outside a section
+    /// once an app has sections, so everything is in one): Prayer Time (Find the Current or Next Prayer · Look Up a Prayer's
+    /// Time), Open shukr (Open a Page in shukr, Tasbih Fatimah too) and, on iOS 26, Ask shukr (Check on Your Day · See What's
+    /// Around You: the cards). Fajr Time, Next Prayer, Chosen Prayer and Offset are Get Prayer Time; Qibla is a page of Open
+    /// shukr; each card's own action still runs in saved shortcuts. Symbols: outline, the app's own where it has one.
     @AppShortcutsBuilder
     static var appShortcuts: [AppShortcut] {
+        // Every tile sits in a section (iOS 27 hides an app's tiles outside one once any tile has sections — Apple's
+        // FB24520413; his phone, 2026-10-14): the cards are Ask shukr's options, Tasbih Fatimah a page of Open shukr.
+        // Their own actions stay (saved shortcuts, the editor), without tiles of their own.
+        // FIRST (owner: the page in this order — See What's Around You, Check on Your Day, Find the Current or Next Prayer,
+        // Look Up a Prayer's Time, Open a Page in shukr). Xcode marks every tile after an `if #available` block 26-only too,
+        // so before iOS 26 shukr has no tiles (the actions stay); an AppShortcutsBuilder can't drop a tile on 26.
+        if #available(iOS 26.0, *) {
+            AppShortcut(
+                intent: AskShukrIntent(),
+                phrases: [
+                    // Each option's synonyms are the old tiles' phrases: "How long is left in shukr", "I prayed in shukr",
+                    // "Nearby mosques in shukr", "Have I prayed here in shukr", "My zikr tasks in shukr" …
+                    "\(\.$answer) in \(.applicationName)",
+                    "Ask \(.applicationName) \(\.$answer)"
+                ],
+                shortTitle: "Ask shukr",
+                systemImageName: "text.bubble",
+                parameterPresentation: ParameterPresentation(
+                    for: \.$answer,
+                    summary: Summary("\(\.$answer)"),
+                    optionsCollections: {
+                        OptionsCollection(AskShukrAroundOptions(), title: "See What’s Around You", systemImageName: "location")
+                        OptionsCollection(AskShukrTodayOptions(), title: "Check on Your Day", systemImageName: "sun.max")
+                    }
+                )
+            )
+        }
+
         AppShortcut(
             intent: GetPrayerTimeIntent(),
             phrases: [
@@ -46,21 +76,12 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         )
 
         AppShortcut(
-            intent: FajrAlarmTimeIntent(),
-            phrases: [
-                "When is my Fajr alarm in \(.applicationName)",
-                "Fajr alarm time in \(.applicationName)"
-            ],
-            shortTitle: "Fajr Alarm Time",
-            systemImageName: "alarm"
-        )
-
-        AppShortcut(
             intent: OpenShukrIntent(),
             phrases: [
                 "Open \(\.$page) in \(.applicationName)",
                 "Show \(\.$page) in \(.applicationName)",
-                "Go to \(\.$page) in \(.applicationName)"
+                "Go to \(\.$page) in \(.applicationName)",
+                "Start \(\.$page) in \(.applicationName)"   // "Start Tasbih Fatimah in shukr" (it was its own tile)
             ],
             shortTitle: "Open shukr",
             systemImageName: "arrow.up.forward.app",
@@ -73,96 +94,78 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
             )
         )
 
-        AppShortcut(
-            intent: StartTasbihFatimahIntent(),
-            phrases: [
-                "Open Tasbih Fatimah in \(.applicationName)",
-                "Start Tasbih Fatimah in \(.applicationName)",
-                "Tasbih Fatimah in \(.applicationName)"
-            ],
-            shortTitle: "Open Tasbih Fatimah",
-            systemImageName: "circle.hexagonpath"
-        )
+    }
+}
 
-        // Time Left, Today's Times and I Prayed with buttons in their cards: iOS 26 only (decision shortcut-buttons-ios26 A).
-        // LAST in the list: Xcode marks every tile after an `if #available` block as 26-only too (it did).
-        // An AppShortcutsBuilder can't drop a tile on 26 ("#unavailable" isn't allowed), so before 26 these three have no tile.
-        if #available(iOS 26.0, *) {
-            AppShortcut(
-                intent: TimeLeftNowIntent(),
-                phrases: [
-                    // Not "Time left in …": Siri asked "shukr or Home?" on his phone.
-                    "How long is left in \(.applicationName)",
-                    "How much time is left in \(.applicationName)",
-                    "How long is left to pray in \(.applicationName)",
-                    "Prayer time left in \(.applicationName)"
-                ],
-                shortTitle: "Time Left",
-                systemImageName: "hourglass"
-            )
+/// What a tile in Ask shukr's sections answers: each was its own tile until iOS 27 hid tiles outside a section.
+enum ShukrAnswer: String, AppEnum {
+    case timeLeft, todaysTimes, prayed, zikrTasks, fajrAlarm, mosques, prayedHere
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Answer"
+    static var caseDisplayRepresentations: [ShukrAnswer: DisplayRepresentation] = [
+        .timeLeft: DisplayRepresentation(title: "Time Left", subtitle: "Time left for the prayer that's on", image: .init(systemName: "hourglass"),
+                                         synonyms: ["how long is left", "how much time is left", "how long is left to pray", "prayer time left"]),
+        .todaysTimes: DisplayRepresentation(title: "Today’s Times", subtitle: "All five of today's times", image: .init(systemName: "list.bullet"),
+                                            synonyms: ["prayer times today", "today's prayer times", "today's times", "all prayer times today", "show today's prayers"]),
+        .prayed: DisplayRepresentation(title: "I Prayed", subtitle: "Marks the prayer that's on", image: .init(systemName: "checkmark.circle"),
+                                       synonyms: ["I prayed", "mark my prayer", "mark prayer as prayed"]),
+        .zikrTasks: DisplayRepresentation(title: "Zikr Tasks", subtitle: "Today's zikr tasks", image: .init(systemName: "checklist"),
+                                          synonyms: ["my zikr tasks", "show my zikr tasks", "what zikr is left"]),
+        .fajrAlarm: DisplayRepresentation(title: "Fajr Alarm Time", subtitle: "When your Fajr alarm rings", image: .init(systemName: "alarm"),
+                                          synonyms: ["when is my Fajr alarm", "Fajr alarm time"]),
+        .mosques: DisplayRepresentation(title: "Nearby Mosques", subtitle: "The nearest mosques on a map", image: .init(systemName: "building.columns"),
+                                        synonyms: ["nearby mosques", "find nearby mosques", "find a mosque", "mosques near me", "find a masjid", "nearest mosque"]),
+        .prayedHere: DisplayRepresentation(title: "Prayed Here", subtitle: "Your prayers where you are", image: .init(systemName: "mappin.and.ellipse"),
+                                           synonyms: ["how many times have I prayed here", "have I prayed here", "when did I last pray here", "my prayers here"]),
+    ]
+}
 
-            AppShortcut(
-                intent: TodaysTimesNowIntent(),
-                phrases: [
-                    "Prayer times today in \(.applicationName)",
-                    "Today's prayer times in \(.applicationName)",
-                    "Today's times in \(.applicationName)",
-                    "All prayer times today in \(.applicationName)",
-                    "Show today's prayers in \(.applicationName)"
-                ],
-                shortTitle: "Today’s Times",
-                systemImageName: "list.bullet"
-            )
+struct AskShukrTodayOptions: DynamicOptionsProvider {
+    func results() async throws -> [ShukrAnswer] { [.timeLeft, .todaysTimes, .prayed, .zikrTasks, .fajrAlarm] }
+}
+struct AskShukrAroundOptions: DynamicOptionsProvider {
+    func results() async throws -> [ShukrAnswer] { [.mosques, .prayedHere] }
+}
 
-            AppShortcut(
-                intent: ZikrTasksNowIntent(),
-                phrases: [
-                    "My zikr tasks in \(.applicationName)",
-                    "Show my zikr tasks in \(.applicationName)",
-                    "What zikr is left in \(.applicationName)",
-                    "My \(.applicationName) tasks"
-                ],
-                shortTitle: "Zikr Tasks",
-                systemImageName: "checklist"
-            )
+/// The tiles of Ask shukr's sections: the same answer and card as each one's own action.
+@available(iOS 26.0, *)
+struct AskShukrIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Ask shukr"
+    static var description = IntentDescription("Time left, today's times, I prayed, your zikr tasks, your Fajr alarm, mosques near you, or your prayers where you are, each with its card.",
+                                               categoryName: "Prayer Times")
+    static var openAppWhenRun: Bool = false
+    @Parameter(title: "Answer", default: .timeLeft) var answer: ShukrAnswer
+    static var parameterSummary: some ParameterSummary { Summary("Ask shukr: \(\.$answer)") }
+    init() {}
 
-            AppShortcut(
-                intent: NearbyMosquesNowIntent(),
-                phrases: [
-                    "Nearby mosques in \(.applicationName)",
-                    "Find nearby mosques in \(.applicationName)",
-                    "Find a mosque in \(.applicationName)",
-                    "Mosques near me in \(.applicationName)",
-                    "Find a masjid in \(.applicationName)",
-                    "Nearest mosque in \(.applicationName)"
-                ],
-                shortTitle: "Nearby Mosques",
-                systemImageName: "building.columns"
-            )
-
-            AppShortcut(
-                intent: PrayedHereIntent(),
-                phrases: [
-                    "How many times have I prayed here in \(.applicationName)",
-                    "Have I prayed here in \(.applicationName)",
-                    "When did I last pray here in \(.applicationName)",
-                    "My prayers here in \(.applicationName)"
-                ],
-                shortTitle: "Prayed Here",
-                systemImageName: "mappin.and.ellipse"
-            )
-
-            AppShortcut(
-                intent: MarkPrayedNowIntent(),
-                phrases: [
-                    "I prayed in \(.applicationName)",
-                    "Mark my prayer in \(.applicationName)",
-                    "Mark prayer as prayed in \(.applicationName)"
-                ],
-                shortTitle: "I Prayed",
-                systemImageName: "checkmark.circle"
-            )
+    func perform() async throws -> some IntentResult & ProvidesDialog & ShowsSnippetIntent {
+        switch answer {
+        case .timeLeft: let a = try await TimeLeftNowIntent.answer(); return .result(dialog: a.dialog, snippetIntent: a.card)
+        case .todaysTimes: let a = try await TodaysTimesNowIntent.answer(); return .result(dialog: a.dialog, snippetIntent: a.card)
+        case .prayed: let a = try await MarkPrayedNowIntent.answer(); return .result(dialog: a.dialog, snippetIntent: a.card)
+        case .zikrTasks: let a = try await ZikrTasksNowIntent.answer(); return .result(dialog: a.dialog, snippetIntent: a.card)
+        case .mosques: let a = await NearbyMosquesNowIntent.answer(); return .result(dialog: a.dialog, snippetIntent: a.card)
+        case .prayedHere: let a = await PrayedHereIntent.answer(); return .result(dialog: a.dialog, snippetIntent: a.card)
+        case .fajrAlarm:
+            let (time, on) = try FajrAlarmTimeIntent.next()
+            return .result(dialog: IntentDialog(stringLiteral: FajrAlarmTimeIntent.spoken(time, on: on)),
+                           snippetIntent: FajrAlarmCardIntent(time: time, on: on))
         }
+    }
+}
+
+/// Get Fajr Alarm Time's card (setup's alarm picture) as a card intent, for Ask shukr's tile.
+@available(iOS 26.0, *)
+struct FajrAlarmCardIntent: SnippetIntent {
+    static var title: LocalizedStringResource = "Fajr Alarm Card"
+    static var isDiscoverable: Bool = false
+    @Parameter(title: "Time") var time: Date
+    @Parameter(title: "On") var on: Bool
+    init() {}
+    init(time: Date, on: Bool) { self.time = time; self.on = on }
+    func perform() async throws -> some IntentResult & ShowsSnippetView {
+        let scheme = await ShortcutLook.scheme()
+        let view = await MainActor.run { ShortcutCards.fajrAlarm?(!on, time) } ?? AnyView(EmptyView())
+        return .result(view: AnyView(view.environment(\.colorScheme, scheme)))
     }
 }
 

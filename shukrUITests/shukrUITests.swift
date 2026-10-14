@@ -248,6 +248,9 @@ final class ShortcutsOnDeviceTests: XCTestCase {
         shortcuts.terminate()
         shortcuts.launch()
         sleep(3)
+        // A fresh Shortcuts (a new iOS) opens on its What's New first.
+        let next = shortcuts.buttons["Continue"].firstMatch
+        if next.exists { next.tap(); sleep(2) }
         let library = shortcuts.buttons["Library"].firstMatch
         if library.exists { library.tap(); sleep(1) }
         // Back to the top of the Library.
@@ -272,6 +275,7 @@ final class ShortcutsOnDeviceTests: XCTestCase {
             XCUIDevice.shared.press(.home); sleep(1)
         }
         openShukrPage()
+        shot("page")
         for _ in 0..<3 { shortcuts.swipeDown() }   // the tiles sit above the grouped choices
         let tile = shortcuts.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", String(title.prefix(12)))).firstMatch
         for _ in 0..<5 where !(tile.exists && tile.isHittable) { shortcuts.swipeUp() }
