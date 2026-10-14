@@ -89,7 +89,7 @@ enum TourCopy {
         /// A line over each to-do in the panel: what it is (owner: "text above it that helps educate them").
         /// The line teaches what the thing is; the to-do under it says what to do — never the same words (owner).
         static var todoLeads: [String] { TourFlow.v2 ? [
-            "This circle is the prayer that’s on now: Asr.",
+            "This circle shows the current prayer: Asr.",
             "The small arrow on the ring points to the Kaaba.",
             "The green line is the true way to the Kaaba, worked out from where you are.",
             "Prayed? Mark it right here.",
@@ -103,7 +103,7 @@ enum TourCopy {
             "Tap again to see when it ends. In its last hour it shows the time left by itself.",
             "You’re facing the qibla. Compasses can be off, so let’s check it on a map.",
             "That’s the qibla, whatever your compass says. Your prayers are pinned on this map too, and it finds mosques near you.",
-            "Perfect, prayed in the first 30 minutes. See how it moved on to Maghrib? It always shows the prayer that matters now.",
+            "Perfect, prayed in the first 30 minutes. See how it moved on to Maghrib? Once you’ve prayed, it moves on to the next one.",
         ] : [
             "Tap it any time. In a prayer's last hour it shows the time left on its own.",
             "Straight up means you're facing the qibla. How strict that is lives in Settings.",
@@ -156,9 +156,9 @@ enum TourCopy {
         ] }
         static var todoAfters: [String] { TourFlow.v2 ? [
             "Your full day: what you’ve prayed, and what you haven’t yet.",
-            "It counts down to the start. Tap again for the time.",
+            "That’s a countdown to when it starts. Tap again for the time.",
             "“Qaza · 40” means it was prayed after its time. Its dot’s color shows it too.",
-            "Saved. Fajr counts as on time now, and your day’s score moves with it.",   // Save's own moment; → ends the chapter
+            "Saved. Fajr counts as on time now, and your day’s score is updated.",   // Save's own moment; → ends the chapter
         ] : [
             "The times follow your location and calculation method, both in Settings.",
             "Tap “done” again to tuck them back away.",
