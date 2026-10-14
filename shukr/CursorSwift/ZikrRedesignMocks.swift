@@ -1560,7 +1560,9 @@ private struct MonthHero: View {
                     HStack {
                         Text("MOST SAID").font(.caption.weight(.medium)).tracking(1.2)
                         Spacer()
-                        Text(counting ? "by count" : "by time").font(.caption).contentTransition(.opacity)
+                        // MOST SAID's type (small caps, medium, tracked), a size down (owner).
+                        Text(counting ? "BY COUNT" : "BY TIME").font(.caption2.weight(.medium)).tracking(1.2)
+                            .contentTransition(.opacity)
                     }
                     .foregroundStyle(.secondary)
                     ForEach(Array(s.top.enumerated()), id: \.offset) { _, t in
