@@ -944,6 +944,8 @@ private struct ZikrSheet: View {
     @State private var sessionToDelete: SessionDataModel?
     /// The goal whose reminder is being set: just the Remind me sheet (owner: not the whole edit, then the reminder).
     @State private var reminding: TaskModel?
+    /// Start on a goal already part-done today: Continue / Start over.
+    @State private var askingResume: TaskModel?
 
     private var sessions: [SessionDataModel] { zikr.sessions.sorted { $0.startTime > $1.startTime } }
     private var goals: [TaskModel] { zikr.tasks.sorted { $0.sortOrder < $1.sortOrder } }
@@ -1009,6 +1011,19 @@ private struct ZikrSheet: View {
         .sheet(isPresented: $addingGoal) { NewTaskFlow(locked: zikr) }
         .modifier(DeleteGoalAlert(task: $toDelete))
         .modifier(DeleteSessionAlert(session: $sessionToDelete))
+        .alert(askingResume.map { "Start \($0.title)?" } ?? "",
+               isPresented: Binding(get: { askingResume != nil }, set: { if !$0 { askingResume = nil } }),
+               presenting: askingResume) { g in
+            let p = g.progress(in: today)
+            Button(g.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))") {
+                askingResume = nil; start(g, resume: true)
+            }
+            Button("Start over") { askingResume = nil; start(g, resume: false) }
+            Button("Cancel", role: .cancel) { askingResume = nil }
+        } message: { g in
+            let p = g.progress(in: today)
+            Text(g.isCountMode ? "\(p.count) of \(g.goal) today." : "\(Int(p.seconds / 60)) of \(g.goal) min today.")
+        }
         .sheet(item: $reminding) { t in
             // The real Remind me sheet on its own; Save writes the goal's reminder and replans the notifications.
             TaskReminderSheet(draft: ReminderDraft(t), onCancel: { reminding = nil }) { picked in
@@ -1225,10 +1240,12 @@ private struct ZikrSheet: View {
                 if g.pausedAt != nil {
                     PrimaryButton(title: "Resume this goal") { withAnimation(.snappy) { setGoalPaused(g, false) } }
                 } else {
-                    PrimaryButton(title: partDone(g, today)
-                                  ? (g.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))")
-                                  : (fraction(g, today) >= 1 ? "Start another session"
-                                     : "Start" + (g.estimateNote(p).map { " · \($0)" } ?? ""))) { start(g) }
+                    // Always "Start"; part-done today, a tap asks Continue / Start over (owner: he often starts over —
+                    // the wheel asks too).
+                    PrimaryButton(title: fraction(g, today) >= 1 ? "Start another session"
+                                  : "Start" + (g.estimateNote(p).map { " · \($0)" } ?? "")) {
+                        if partDone(g, today) { askingResume = g } else { start(g, resume: false) }
+                    }
                 }
                 Button("Edit goal") { editing = g }.font(.subheadline).foregroundStyle(.secondary)
             } else {
@@ -1242,8 +1259,7 @@ private struct ZikrSheet: View {
                                    startPoint: .top, endPoint: .bottom).ignoresSafeArea())
     }
 
-    private func start(_ g: TaskModel) {
-        let resume = partDone(g, today)
+    private func start(_ g: TaskModel, resume: Bool) {
         dismiss()
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(0.4))   // after the sheet has gone
