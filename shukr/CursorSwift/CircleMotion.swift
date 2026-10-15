@@ -75,7 +75,8 @@ enum CircleMotion {
     /// it): it rises from the page as the fifths draw in, and settles back as they fade (out, then in — the words are
     /// already away).
     static let dayDiscRise = Animation.easeInOut(duration: 0.9)
-    static let dayDiscSink = Animation.easeOut(duration: CircleMomentTiming.out + 0.15)
+    /// Back to the band: as long as the rise's feel, eased both ways (owner: the quick fade read choppy).
+    static let dayDiscSink = Animation.easeInOut(duration: 0.6)
     /// Wider than the ring (200), so the fifths sit inside its edge.
     static let dayDiscDiameter: CGFloat = 222
     /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
