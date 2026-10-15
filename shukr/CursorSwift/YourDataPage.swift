@@ -52,11 +52,9 @@ struct YourDataPage: View {
         }
     }
 
-    /// The 99 Names, donations and Excused Mode only once used.
+    /// The 99 Names and Excused Mode only once used; donations always (owner: people export them for their records).
     private var kinds: [DataKind] {
-        DataKind.allCases.filter {
-            ($0 != .names || counts.names > 0) && ($0 != .donations || counts.donations > 0) && ($0 != .excused || counts.excused > 0)
-        }
+        DataKind.allCases.filter { ($0 != .names || counts.names > 0) && ($0 != .excused || counts.excused > 0) }
     }
     private var picked: [DataKind] { kinds.filter(chosen.contains) }
 
@@ -70,7 +68,17 @@ struct YourDataPage: View {
             Section {
                 ForEach(kinds, id: \.self) { pickRow($0) }
             } header: {
-                Text("What to export")
+                HStack {
+                    Text("What to export")
+                    Spacer()
+                    // Select All / Deselect All, top right of the list (owner).
+                    Button(picked.count == kinds.count ? "Deselect All" : "Select All") {
+                        if picked.count == kinds.count { chosen.subtract(kinds) } else { chosen.formUnion(kinds) }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(Color.sage)
+                    .textCase(nil)
+                }
             } footer: {
                 Text("A .zip with a spreadsheet for each, your photos and voice memos, and a file shukr can restore from.")
             }
@@ -221,11 +229,12 @@ struct YourDataPage: View {
         case .azkar: s(counts.azkar, "of yours", "of yours") + " · " + s(counts.goals, "goal", "goals") + " · media"
         case .photos: counts.photos == 0 ? "None yet" : s(counts.photos, "photo", "photos") + " and notes"
         case .names: "\(counts.names) of 99"
-        case .donations: s(counts.donations, "logged", "logged")
+        case .donations: counts.donations == 0 ? "None logged yet" : s(counts.donations, "donation", "donations") + " from Give to Causes"
         case .excused: s(counts.excused, "time", "times")
         case .settings: "Location, reminders, masajid"
         }
-        return sizes.known ? Self.size(sizes.of(kind)) + " · " + what : what
+        // Nothing there yet: no size to give.
+        return sizes.known && !what.hasPrefix("None") ? Self.size(sizes.of(kind)) + " · " + what : what
     }
 
     private var exportTitle: String {

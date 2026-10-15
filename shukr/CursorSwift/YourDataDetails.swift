@@ -6,7 +6,7 @@ import SwiftData
 // what to include, Export, Restore. The pages that opened each kind (stats, then "what's kept", a photo grid) are gone.
 
 enum DataKind: String, CaseIterable, Hashable {
-    case prayers, zikr, azkar, photos, names, donations, excused, settings
+    case prayers, zikr, azkar, photos, donations, names, excused, settings
 
     var title: String {
         switch self {

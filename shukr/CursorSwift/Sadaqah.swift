@@ -360,16 +360,22 @@ final class SadaqahLog {
         .reduce(0) { $0 + $1.amount }
     }
 
-    /// The log as a spreadsheet (date, to, for, amount, currency, note).
+    /// The log as a spreadsheet (date, to, the organization's EIN when it's a listed US nonprofit, for, amount, currency,
+    /// note), oldest first — what someone keeping their records needs. The EIN is a fact, never a deductibility claim.
     func csv() -> String {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withFullDate]
         func cell(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
-        let rows = donations.map { d in
-            [f.string(from: d.date), cell(d.to), d.purpose == .unspecified ? "" : d.purpose.title, String(format: "%.2f", d.amount), d.currency, cell(d.note)]
+        func ein(_ d: SadaqahDonation) -> String {
+            guard let id = d.charityID, let c = SadaqahCharities.all.first(where: { $0.id == id }) else { return "" }
+            return c.facts.lazy.compactMap { fact in fact.text.range(of: "EIN ").map { String(fact.text[$0.upperBound...]) } }.first ?? ""
+        }
+        let rows = donations.sorted { $0.date < $1.date }.map { d in
+            [f.string(from: d.date), cell(d.to), ein(d), d.purpose == .unspecified ? "" : d.purpose.title,
+             String(format: "%.2f", d.amount), d.currency, cell(d.note)]
                 .joined(separator: ",")
         }
-        return (["Date,To,For,Amount,Currency,Note"] + rows).joined(separator: "\n")
+        return (["Date,To,EIN,For,Amount,Currency,Note"] + rows).joined(separator: "\n")
     }
 }
 
