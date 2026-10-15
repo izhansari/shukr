@@ -337,31 +337,46 @@ extension EnvironmentValues {
 struct MemoriesFooterLink: View {
     private var day = DayPageState.shared
     private var photos = PrayerPhotoRevision.shared
+    private var reveals = PhotoRevealState.shared
+
+    /// Developed photos still to be tapped (PhotoDevelop.needsReveal), any day.
+    private var waiting: Int { PrayerPhotos.all().filter { PhotoDevelop.needsReveal(key: $0.key) }.count }
 
     var body: some View {
         let _ = photos.value
+        let _ = reveals.value
         if day.up && photos.hasPhotos {
-            let ready = PhotoDevelop.todayReady()
+            let toDevelop = waiting
             let developing = PhotoDevelop.todayDeveloping()
             Button {
                 triggerSomeVibration(type: .light)
                 MemoriesPresenter.shared.open = true
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: ready ? "sparkles" : developing ? "hourglass" : "photo.stack").font(.system(size: 13))
-                    Text(ready ? "Today's photos have developed" : developing ? "Memories · today's develop after Isha" : "Memories")
+                HStack(spacing: 6) {
+                    Image(systemName: developing && toDevelop == 0 ? "hourglass" : "photo.stack")
+                        .font(.system(size: 13))
+                        // A photo waiting for its tap: the same thin sage ring the fifths will wear (owner).
+                        .overlay(alignment: .topTrailing) {
+                            if toDevelop > 0 {
+                                Circle().strokeBorder(Color.sage, lineWidth: 1.5).frame(width: 8, height: 8).offset(x: 4, y: -3)
+                            }
+                        }
+                    Text(toDevelop > 0 ? "\(toDevelop) photo\(toDevelop == 1 ? "" : "s") to develop"
+                         : developing ? "Memories · today's develop after Isha" : "Memories")
                         .font(.system(size: 14, weight: .regular, design: .rounded))
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 12).padding(.vertical, 6)
-                .background(Capsule().fill(Color.primary.opacity(0.06)))
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                // Soft, raised off the page like the list's card (owner), not a flat grey capsule.
+                .background(NeuRaised(shape: Capsule(), radius: 5, offset: 2.5))
                 .padding(.vertical, 2)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .padding(.bottom, 12)   // the same air above the bar as "N done"
             .transition(.opacity)
+            .animation(.easeOut(duration: CircleMotion.quick), value: toDevelop)
         }
     }
 }
