@@ -78,31 +78,37 @@ struct NowTimeLeft: View {
     static let openTasbih = Notification.Name("PrayerRowActions.openTasbih")
 }
 
-/// The three buttons, where the row's time sits: neutral and flat — grey symbols on a faint circle (owner: not green),
-/// in the pill's order (Tasbih, then the camera).
+/// The buttons where the row's time sits, in the pill's order (Tasbih, then the camera); the pencil sits right after the
+/// name (owner's drawing). Neutral: grey symbols (the name's grey) in a thin grey ring, no fill (owner).
 struct PrayerRowActionButtons: View {
     let showsCamera: Bool
-    let onEdit: () -> Void
     let onCamera: () -> Void
     let onTasbih: () -> Void
     var body: some View {
         HStack(spacing: 8) {
-            button("pencil", label: "Edit time or place", onEdit)
-            button("circle.hexagonpath", label: "Post-salah tasbih", onTasbih)   // the pill's beads
-            if showsCamera { button("camera", label: "Add a photo", onCamera) }
+            PrayerRowActionButton(symbol: "circle.hexagonpath", label: "Post-salah tasbih", action: onTasbih)   // the pill's beads
+            if showsCamera { PrayerRowActionButton(symbol: "camera", label: "Add a photo", action: onCamera) }
         }
         .transition(.opacity.combined(with: .scale(scale: 0.9)))
     }
-    private func button(_ symbol: String, label: String, _ action: @escaping () -> Void) -> some View {
+}
+
+/// One of the marked row's buttons: a grey symbol in a thin grey ring.
+struct PrayerRowActionButton: View {
+    let symbol: String
+    let label: String
+    var size: CGFloat = 30
+    let action: () -> Void
+    var body: some View {
         Button {
             triggerSomeVibration(type: .light)
             action()
         } label: {
             Image(systemName: symbol)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: size * 0.43, weight: .medium))
                 .foregroundStyle(.secondary)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(Color.primary.opacity(0.06)))
+                .frame(width: size, height: size)
+                .overlay(Circle().strokeBorder(Color.secondary.opacity(0.35), lineWidth: 1))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
