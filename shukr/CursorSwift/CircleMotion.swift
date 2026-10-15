@@ -214,6 +214,10 @@ enum RowMotion: String, CaseIterable, Identifiable {
     /// top of it; folding is the reverse. The card and the circle follow in the same motion. `room` faded rows in at their
     /// final place 0.15 s in, while the others were still moving: names overlapped for a few frames.
     case unfold
+    /// A different style (owner, 2026-10-14: "maybe we try a whole different style"): a row rises out from behind the row
+    /// below it, as a card fanned up from a stack — its slot opens upward and it slides up into it, sliding back down
+    /// behind when folding; its words follow the motion, no late fade.
+    case fan
     /// The others move first, then the new row fades in; a leaving row fades out quickly before they close
     /// up. With a plain fade a row came in at its final place while its neighbours were still sliding, so
     /// two names sat on top of each other for a few frames (owner's recording, 2026-10-01: "still no good").
@@ -233,6 +237,7 @@ enum RowMotion: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .unfold: "Unfold"
+        case .fan: "Fan up from below"
         case .room: "Make room, then fade"
         case .today: "Today's motion"
         case .fade: "Fade"
@@ -250,6 +255,8 @@ enum RowMotion: String, CaseIterable, Identifiable {
         switch self {
         case .unfold:
             .modifier(active: RowUnfold(fraction: 0), identity: RowUnfold(fraction: 1))
+        case .fan:
+            .modifier(active: RowUnfold(fraction: 0, fromBelow: true), identity: RowUnfold(fraction: 1, fromBelow: true))
         case .room:
             // Sami's audit timings: in after 0.15 s (0.24 read as a lag, the empty well growing first), out over
             // 0.12 s (0.08 read as a blink).
@@ -270,7 +277,7 @@ enum RowMotion: String, CaseIterable, Identifiable {
         switch self {
         case .today: springy
         // One calm ease, no spring (owner: the 0.38 s spring was "sporadic … springs heavily"; "sleek but well done").
-        case .unfold: RowMotion.unfoldEase
+        case .unfold, .fan: RowMotion.unfoldEase
         case .room, .fade, .drop, .blur: .easeInOut(duration: 0.3)
         case .none: nil
         }
@@ -279,7 +286,7 @@ enum RowMotion: String, CaseIterable, Identifiable {
 
 extension RowMotion {
     /// The public look's: the accordion (owner, 2026-10-14; was `room`, decision public-style-lock A).
-    static let standard: RowMotion = .unfold
+    static let standard: RowMotion = .fan   // the different style to try (owner); Unfold stays in the palette
     /// A stored pick in DEBUG builds; public builds are locked to `standard`.
     static func resolved(_ raw: String?) -> RowMotion {
         #if DEBUG
@@ -295,6 +302,8 @@ extension RowMotion {
 /// half, once the slot has room (and fade first when folding) — no half-drawn rows mid-move (owner: calmer).
 struct RowUnfold: ViewModifier, Animatable {
     var fraction: CGFloat
+    /// Fan: the row sits at its slot's bottom and slides up out of the row below (else it's revealed from the top).
+    var fromBelow = false
     var animatableData: CGFloat {
         get { fraction }
         set { fraction = newValue }
@@ -305,15 +314,16 @@ struct RowUnfold: ViewModifier, Animatable {
         return Double(t * t * (3 - 2 * t))
     }
     func body(content: Content) -> some View {
-        UnfoldLayout(fraction: fraction) { content }
+        UnfoldLayout(fraction: fraction, fromBelow: fromBelow) { content }
             .clipped()
-            .opacity(Self.fade(fraction))
+            .opacity(fromBelow ? Double(fraction) : Self.fade(fraction))
     }
 }
 
 /// Reports its one subview's height times `fraction` (its width as is) and draws it from the top at full height.
 struct UnfoldLayout: Layout {
     var fraction: CGFloat
+    var fromBelow = false
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         guard let s = subviews.first else { return .zero }
         let full = s.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
@@ -322,6 +332,8 @@ struct UnfoldLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard let s = subviews.first else { return }
         let full = s.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
-        s.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: full.height))
+        // Fan: anchored to the slot's bottom, so it rises into view; else to the top, revealed downward.
+        let origin = fromBelow ? CGPoint(x: bounds.minX, y: bounds.maxY - full.height) : bounds.origin
+        s.place(at: origin, anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: full.height))
     }
 }

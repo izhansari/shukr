@@ -1741,6 +1741,9 @@ struct PrayerTimesView: View {
         }
 
         /// The pop (the switch off): the Spacer layout, the sheet inserted and removed with `navPosition`.
+        /// The open page's gap between the list's bottom and "N done": fixed, so the list grows upward only.
+        static let listBottomGap: CGFloat = 16
+
         private var poppingBody: some View {
             let lost = CircleStage.shared.lost
             return VStack {
@@ -1777,7 +1780,9 @@ struct PrayerTimesView: View {
                     // fades — farther than the circle moves, so the ring and the rows never ghost over each other (Izhan).
                     // Reduce Motion: a fade in place.
                     .transition(reduceMotion ? .opacity : theme.listEntrance)
-                    Spacer()
+                    // A fixed gap under the list, not a Spacer: its bottom stays put and it grows upward only, never
+                    // down into "N done" (owner, 2026-10-14; a sixth of every growth went downward).
+                    Color.clear.frame(height: Self.listBottomGap)
                 }
 
                 // Soft looks: room for "N done" above the bottom bar (SoftDoneFooter, in the chrome).
@@ -1833,7 +1838,7 @@ struct PrayerTimesView: View {
                     Spacer(); Spacer()
                     Color.clear.frame(width: listSize.width, height: listSize.height)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openListTop, true))
-                    Spacer()
+                    Color.clear.frame(height: Self.listBottomGap)   // as the page: the list's bottom pinned
                     Color.clear.frame(height: bottomChromeHeight + theme.listFooterRoom)
                 }
             }

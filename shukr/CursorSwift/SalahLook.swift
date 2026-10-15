@@ -97,6 +97,11 @@ extension SalahLook {
             d.set(true, forKey: "salahLook.seeded.v3")
             d.set(RowMotion.unfold.rawValue, forKey: RowMotion.key)
         }
+        // The fan, the different style to try (owner, 2026-10-14): once, onto it.
+        if !d.bool(forKey: "salahLook.seeded.v4") {
+            d.set(true, forKey: "salahLook.seeded.v4")
+            d.set(RowMotion.fan.rawValue, forKey: RowMotion.key)
+        }
         // The raised list became the look (owner, 2026-10-14): once, onto it, whatever was picked before.
         if !d.bool(forKey: "salahLook.seeded.v2") {
             d.set(true, forKey: "salahLook.seeded.v2")
