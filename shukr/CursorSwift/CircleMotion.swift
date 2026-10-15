@@ -68,6 +68,8 @@ enum CircleMotion {
     static let dayRingFirstDrawDuration: Double = 2.0
     static let dayRingFirstDraw = Animation.easeInOut(duration: dayRingFirstDrawDuration)
     static let dayScoreCount = Animation.easeOut(duration: 0.7)
+    /// A waiting photo's dot starts breathing once the ring has drawn in (DevelopBreath).
+    static let dayRingBreathDelay: Double = 1.6
     static let dayCardLift = Animation.easeInOut(duration: 0.9)
     /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
     /// release is the scroll view's own coast.

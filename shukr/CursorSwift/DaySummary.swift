@@ -106,6 +106,8 @@ struct DayRing: View, Animatable {
                             Circle().fill(color)
                                 .frame(width: picked == i ? 13 : 9, height: picked == i ? 13 : 9)
                                 .overlay(Circle().stroke(theme.backdrop, lineWidth: 2.5))
+                                // Its photo waiting for its tap: the dot breathes (DevelopBreath, its own small view).
+                                .background { if let key = p.photoKey { DevelopBreath(key: key, color: color) } }
                                 .offset(x: 100)
                                 .rotationEffect(.degrees(angle))
                                 .opacity(max(0, (share - 0.85) / 0.15))   // as its fifth completes
@@ -244,4 +246,55 @@ struct CountingScore: View, Animatable {
         set { value = newValue }
     }
     var body: some View { Text("\(Int((value * 100).rounded()))") }
+}
+
+/// A fifth whose photo has developed but waits for its tap (Tap to develop): a soft halo in its grade colour swells out
+/// and fades behind the dot — three ~2.5 s breaths once the ring has drawn in, then still; again the next time the day
+/// page opens; never once the photo is developed. Every waiting dot starts on the same beat, so several breathe in sync.
+/// Reduce Motion: a still, soft halo instead. The animation lives here only — never the ring's or the circle's body.
+struct DevelopBreath: View {
+    let key: String
+    let color: Color
+    @State private var breaths = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var reveals = PhotoRevealState.shared
+
+    init(key: String, color: Color) {
+        self.key = key
+        self.color = color
+    }
+
+    var body: some View {
+        let _ = reveals.value   // stops once this photo is developed
+        if PhotoDevelop.needsReveal(key: key) {
+            if reduceMotion {
+                Circle().fill(color.opacity(0.35)).frame(width: 18, height: 18).blur(radius: 3)
+            } else {
+                Circle().fill(color)
+                    .frame(width: 9, height: 9)
+                    .keyframeAnimator(initialValue: Breath(), trigger: breaths) { halo, b in
+                        halo.scaleEffect(b.scale).opacity(b.opacity)
+                    } keyframes: { _ in
+                        KeyframeTrack(\.scale) {   // three breaths
+                            LinearKeyframe(1, duration: 0.01); LinearKeyframe(2.6, duration: 2.5, timingCurve: .easeOut)
+                            LinearKeyframe(1, duration: 0.01); LinearKeyframe(2.6, duration: 2.5, timingCurve: .easeOut)
+                            LinearKeyframe(1, duration: 0.01); LinearKeyframe(2.6, duration: 2.5, timingCurve: .easeOut)
+                        }
+                        KeyframeTrack(\.opacity) {
+                            LinearKeyframe(0.45, duration: 0.01); LinearKeyframe(0, duration: 2.5, timingCurve: .easeOut)
+                            LinearKeyframe(0.45, duration: 0.01); LinearKeyframe(0, duration: 2.5, timingCurve: .easeOut)
+                            LinearKeyframe(0.45, duration: 0.01); LinearKeyframe(0, duration: 2.5, timingCurve: .easeOut)
+                        }
+                    }
+                    .allowsHitTesting(false)
+                    // After the ring's draw-in, every waiting dot on the same beat.
+                    .task {
+                        try? await Task.sleep(for: .seconds(CircleMotion.dayRingBreathDelay))
+                        breaths += 1
+                    }
+            }
+        }
+    }
+
+    struct Breath { var scale: CGFloat = 1; var opacity: Double = 0 }
 }
