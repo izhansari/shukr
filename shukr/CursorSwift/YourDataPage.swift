@@ -83,22 +83,30 @@ struct YourDataPage: View {
                     .foregroundStyle(Color.sage)
                     .textCase(nil)
                 }
-            }
-            Section {
-                Button(action: export) {
-                    HStack(spacing: 8) {
-                        Spacer()
-                        if making { ProgressView() }
-                        Text(making ? "Making your copy…" : exportTitle)
-                            .font(.system(.body, design: .rounded, weight: .semibold))
-                        Spacer()
-                    }
-                    .foregroundStyle(Color.sage)
-                }
-                .disabled(picked.isEmpty || making)
             } footer: {
-                // (No "your last copy" line: with iCloud Backup on it read as if nothing was backed up — owner.)
-                Text("A .zip with a spreadsheet for each, your photos and voice memos, and a file shukr can restore from.")
+                // Export right under the list it exports, as a clear outlined button (owner: no gap, its own section
+                // left one), the .zip line as its caption.
+                VStack(spacing: 10) {
+                    Button(action: export) {
+                        HStack(spacing: 8) {
+                            if making { ProgressView().controlSize(.small) }
+                            Text(making ? "Making your copy…" : exportTitle)
+                                .font(.system(.body, design: .rounded, weight: .semibold))
+                        }
+                        .foregroundStyle(picked.isEmpty ? Color(.tertiaryLabel) : Color.sage)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .overlay(Capsule().strokeBorder(picked.isEmpty ? Color(.tertiaryLabel) : Color.sage, lineWidth: 1.5))
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(picked.isEmpty || making)
+                    .padding(.horizontal, -4)
+                    Text("A .zip with a spreadsheet for each, your photos and voice memos, and a file shukr can restore from.")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.top, 10)
+                .textCase(nil)
             }
             iCloudSection
             Section {
@@ -113,7 +121,13 @@ struct YourDataPage: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 // The backup's state at a glance; its card says it in words (owner: one place for it, not two).
-                Button { info = .backup } label: { Image(systemName: backup.symbol).contentTransition(.symbolEffect(.replace)) }
+                // Orange when it needs attention, as Settings' "Check backup" (owner); no badge on top — the
+                // exclamation cloud already says it.
+                Button { info = .backup } label: {
+                    Image(systemName: backup.symbol)
+                        .foregroundStyle(backup.isProblem ? Color.orange : Color.primary)
+                        .contentTransition(.symbolEffect(.replace))
+                }
                     .accessibilityLabel("iCloud Backup: " + backup.word)
             }
         }
@@ -285,16 +299,8 @@ struct YourDataPage: View {
             }
             .tint(.sage)
             .disabled(cloud.availability == .off && !iCloudOn)
-            if iCloudOn && cloud.availability == .available {
-                if let newest = cloud.copies.first { lastBackupRow(newest) }
-                Button(action: backUpNow) {
-                    HStack(spacing: 8) {
-                        if cloud.working { ProgressView() }
-                        Text(cloud.working ? "Backing up…" : "Back Up Now")
-                    }
-                    .foregroundStyle(Color.sage)
-                }
-                .disabled(cloud.working)
+            if showsBackupRow {
+                lastBackupRow(shownCopy)
             }
         } header: {
             Text("iCloud Backup")
@@ -303,22 +309,69 @@ struct YourDataPage: View {
         }
     }
 
-    private func lastBackupRow(_ c: ICloudCopy.Copy) -> some View {
-        let (symbol, word, tint): (String, String, Color) = switch c.upload {
-        case .inICloud: ("checkmark.icloud", "In iCloud", .sage)
-        case .uploading: ("icloud.and.arrow.up", "Uploading", Color(.secondaryLabel))
-        case .waiting: ("icloud", "Waiting to upload", Color(.secondaryLabel))
-        case .failed: ("exclamationmark.icloud", "Not uploaded", .orange)
+    private var showsBackupRow: Bool {
+        #if DEBUG
+        if UserDefaults.standard.string(forKey: "demoBackupRow") != nil { return true }
+        #endif
+        return iCloudOn && cloud.availability == .available
+    }
+    /// The newest backup (DEBUG `-demoBackupRow inICloud|uploading|failed|none`: a stand-in, the simulator has no iCloud).
+    private var shownCopy: ICloudCopy.Copy? {
+        #if DEBUG
+        if let demo = UserDefaults.standard.string(forKey: "demoBackupRow") {
+            let upload: ICloudCopy.Upload = switch demo { case "uploading": .uploading; case "failed": .failed("full"); default: .inICloud }
+            return demo == "none" ? nil : ICloudCopy.Copy(url: URL(fileURLWithPath: "/demo.zip"), made: .now.addingTimeInterval(-600), bytes: 2_787_884, upload: upload)
+        }
+        #endif
+        return cloud.copies.first
+    }
+
+    /// One row (owner: not two under the switch): the last backup and iCloud's state on the left, Back Up Now as a
+    /// round outlined button on the right (a spinner while it runs). Plain Image + Text, no Label: a list lines its
+    /// separators up with a row's first Label, which sat on the right ("In iCloud") and cut the line short.
+    private func lastBackupRow(_ c: ICloudCopy.Copy?) -> some View {
+        let state: (symbol: String, word: String, tint: Color)? = c.map {
+            switch $0.upload {
+            case .inICloud: ("checkmark.icloud", "In iCloud", .sage)
+            case .uploading: ("icloud.and.arrow.up", "Uploading", Color(.secondaryLabel))
+            case .waiting: ("icloud", "Waiting to upload", Color(.secondaryLabel))
+            case .failed: ("exclamationmark.icloud", "Not uploaded", .orange)
+            }
         }
         return HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Last backup").foregroundStyle(Color(.label))
-                Text(Self.when(c.made) + " · " + Self.size(c.bytes)).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+            // The state's cloud in the icon slot, as the switch's row has one: the texts and the separator line up.
+            Label {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(c == nil ? "No backup yet" : "Last backup").foregroundStyle(Color(.label))
+                    if let c, let state {
+                        (Text(Self.when(c.made) + " · " + Self.size(c.bytes) + " · ").foregroundStyle(Color(.secondaryLabel))
+                         + Text(state.word).foregroundStyle(state.tint))
+                            .font(.footnote)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+                }
+            } icon: {
+                Image(systemName: state?.symbol ?? "icloud").foregroundStyle(state?.tint ?? Color(.secondaryLabel))
             }
             Spacer(minLength: 8)
-            Label(word, systemImage: symbol)
-                .font(.footnote)
-                .foregroundStyle(tint)
+            Button(action: backUpNow) {
+                ZStack {
+                    Circle().strokeBorder(Color.sage, lineWidth: 1.2)
+                    if cloud.working {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "icloud.and.arrow.up")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(Color.sage)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(cloud.working)
+            .accessibilityLabel(cloud.working ? "Backing up" : "Back Up Now")
         }
         .padding(.vertical, 2)
     }
