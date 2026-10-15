@@ -166,7 +166,7 @@ enum BackupState {
     @MainActor static func now(on: Bool, _ cloud: ICloudCopy) -> BackupState {
         #if DEBUG
         // `-demoBackupState off|noICloud|none|backingUp|backedUp|stale|failed`: each state with stand-in values.
-        if let demo = UserDefaults.standard.string(forKey: "demoBackupState") {
+        if let demo = UserDefaults.standard.string(forKey: "demoBackupState"), on || demo == "off" {   // the switch still rules
             let copy = ICloudCopy.Copy(url: URL(fileURLWithPath: "/demo.zip"), made: .now.addingTimeInterval(-25 * 60), bytes: 2_787_884, upload: .inICloud)
             let old = ICloudCopy.Copy(url: URL(fileURLWithPath: "/demo.zip"), made: .now.addingTimeInterval(-4 * 86400), bytes: 2_787_884, upload: .inICloud)
             switch demo {

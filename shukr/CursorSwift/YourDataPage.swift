@@ -294,11 +294,10 @@ struct YourDataPage: View {
     /// The switch, the latest backup and Back Up Now (owner: one line for the latest, not a list of every one).
     private var iCloudSection: some View {
         Section {
-            Toggle(isOn: $iCloudOn) {
-                Label("Back up to iCloud Drive", systemImage: "icloud").foregroundStyle(Color(.label))
-            }
+            // No clouds in this section (owner: four on one page): the top right's cloud is the state.
+            Toggle("Back up to iCloud Drive", isOn: $iCloudOn)
             .tint(.sage)
-            .disabled(cloud.availability == .off && !iCloudOn)
+            .disabled(cloud.availability == .off && !iCloudOn && !Self.demoState)
             if showsBackupRow {
                 lastBackupRow
             }
@@ -310,6 +309,15 @@ struct YourDataPage: View {
     }
 
     /// The row shows while backups can run (on, iCloud Drive there); DEBUG `-demoBackupState` shows it for its state.
+    /// DEBUG `-demoBackupState`: the switch works in the simulator (no iCloud there) so its state can be tried by tapping.
+    private static var demoState: Bool {
+        #if DEBUG
+        UserDefaults.standard.string(forKey: "demoBackupState") != nil
+        #else
+        false
+        #endif
+    }
+
     private var showsBackupRow: Bool {
         switch backup {
         case .off, .noICloud: false
@@ -331,33 +339,29 @@ struct YourDataPage: View {
         }
     }
 
-    /// One row (owner: not two under the switch): the state's cloud in the Label's icon slot (a list lines its
-    /// separators up with a row's first Label — on the right it cut the line short), the last backup and the state's
-    /// word under it, Back Up Now as a round outlined button (a spinner while it runs). Everything here reads
+    /// One row (owner: not two under the switch): the last backup and the state's word under it, Back Up Now as a round
+    /// outlined ↻ (a spinner while it runs). No Label on the right (a list lines its separators up with a row's first
+    /// Label: 'In iCloud' there cut the line short); no clouds here — the top right's is the state. Everything here reads
     /// `backup`, as the top right and the card do, so they never disagree (owner: a green check under an orange cloud).
     private var lastBackupRow: some View {
-        let (symbol, word, tint): (String, String?, Color) = switch backup {
-        case .backedUp: ("checkmark.icloud", "In iCloud", .sage)
-        case .backingUp: ("icloud.and.arrow.up", "Uploading", Color(.secondaryLabel))
-        case .stale: ("exclamationmark.icloud", "Out of date", .orange)
-        case .failed: ("exclamationmark.icloud", "Last try didn't finish", .orange)
-        case .none, .off, .noICloud: ("icloud", nil, Color(.secondaryLabel))
+        let (word, tint): (String?, Color) = switch backup {
+        case .backedUp: ("In iCloud", .sage)
+        case .backingUp: ("Uploading", Color(.secondaryLabel))
+        case .stale: ("Out of date", .orange)
+        case .failed: ("Last try didn't finish", .orange)
+        case .none, .off, .noICloud: (nil, Color(.secondaryLabel))
         }
         let c = rowCopy
         return HStack(spacing: 12) {
-            Label {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(c == nil ? "No backup yet" : "Last backup").foregroundStyle(Color(.label))
-                    if let c {
-                        (Text(Self.when(c.made) + " · " + Self.size(c.bytes) + (word == nil ? "" : " · ")).foregroundStyle(Color(.secondaryLabel))
-                         + Text(word ?? "").foregroundStyle(tint))
-                            .font(.footnote)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.85)
-                    }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(c == nil ? "No backup yet" : "Last backup").foregroundStyle(Color(.label))
+                if let c {
+                    (Text(Self.when(c.made) + " · " + Self.size(c.bytes) + (word == nil ? "" : " · ")).foregroundStyle(Color(.secondaryLabel))
+                     + Text(word ?? "").foregroundStyle(tint))
+                        .font(.footnote)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
                 }
-            } icon: {
-                Image(systemName: symbol).foregroundStyle(tint)
             }
             Spacer(minLength: 8)
             Button(action: backUpNow) {
@@ -366,8 +370,8 @@ struct YourDataPage: View {
                     if cloud.working {
                         ProgressView().controlSize(.small)
                     } else {
-                        Image(systemName: "icloud.and.arrow.up")
-                            .font(.system(size: 15, weight: .medium))
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(Color.sage)
                     }
                 }
