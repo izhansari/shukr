@@ -48,7 +48,7 @@ struct NowTimeLeft: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             Text(Self.left(until: end, from: context.date))
-                .font(font).fontDesign(.rounded).fontWeight(.regular)
+                .font(font).fontDesign(.rounded).fontWeight(.light)   // light, as the list's other times (owner)
                 // Red only once it reads "30 min left" — the Live Activity card's rule (owner), not the score's late band.
                 .foregroundStyle(end.timeIntervalSince(context.date) < 31 * 60
                                  ? AnyShapeStyle(Color.red.opacity(0.85)) : AnyShapeStyle(Color.secondary))

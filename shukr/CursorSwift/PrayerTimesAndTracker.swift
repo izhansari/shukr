@@ -3082,10 +3082,9 @@ struct PrayerButton: View {
         default: .callout
         }
     }
-    /// F / G · a prayer still to say reads in regular; the rest light (as everywhere).
-    private var nameWeight: Font.Weight {
-        (look == .prayedAt || look.behavesLikeG) && !prayerObject.isCompleted ? .regular : .light
-    }
+    /// F · a prayer still to say reads in regular; the rest light (as everywhere). G and the raised list stay light like the
+    /// original list (owner: the bolder names changed its type).
+    private var nameWeight: Font.Weight { look == .prayedAt && !prayerObject.isCompleted ? .regular : .light }
 
     private var isFuturePrayer: Bool {
 //        withAnimation(.spring(duration: 0.5)) {
