@@ -2826,11 +2826,9 @@ struct TodaysPrayerListView: View {
                 VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
                 ForEach(Array(visible.enumerated()), id: \.element) { index, prayerName in
                     VStack(spacing: 0) {
-                        PrayerButton(
-                            name: prayerName,
-                            viewModel: viewModel
-                        )
-                        .padding(.bottom, index == visible.count - 1 ? 0 : spacing)
+                        if let row = PrayerButton(name: prayerName, viewModel: viewModel) {
+                            row.padding(.bottom, index == visible.count - 1 ? 0 : spacing)
+                        }
 
                         if index < visible.count - 1 && showsDividers {
                             Divider()
@@ -3019,16 +3017,19 @@ struct PrayerButton: View {
     let prayerObject: PrayerModel
     let name: String
         
-    init(name: String, viewModel: PrayerViewModel) {
+    /// Nil when today's rows don't hold that prayer (the day turning over mid-render, no times yet): the list skips the
+    /// row instead of crashing (App Store crash safety — was a fatalError).
+    init?(name: String, viewModel: PrayerViewModel) {
         guard let foundPrayer = viewModel.todaysPrayers.first(where: { $0.name == name }) else {
-            fatalError("PrayerModel not found for name: \(name)")
+            print("⚠️ PrayerButton: no row for \(name) today — row skipped")
+            return nil
         }
         self.prayerObject = foundPrayer
         self.name = name
     }
   
     // added this so we can get the prayerList for another date other than today.
-    init(forDate: Date, name: String, viewModel: PrayerViewModel) {
+    init?(forDate: Date, name: String, viewModel: PrayerViewModel) {
         let updatingToday = Calendar.current.isDate(forDate, inSameDayAs: Date())
         let objectsToCheck: [PrayerModel] = updatingToday ? viewModel.todaysPrayers : viewModel.loadPrayerObjects(for: forDate)
         self.name = name
@@ -3036,9 +3037,10 @@ struct PrayerButton: View {
         // if so, make it. use some viewmodel function.
         if let foundPrayer = objectsToCheck.first(where: { $0.name == name }){
             self.prayerObject = foundPrayer
-        } else{
-            let newPrayer = viewModel.createPrayerModel(name: name, at: forDate)
+        } else if let newPrayer = viewModel.createPrayerModel(name: name, at: forDate) {
             self.prayerObject = newPrayer
+        } else {
+            return nil
         }
     }
         

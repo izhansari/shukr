@@ -1374,8 +1374,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             var prayers = Self.onePerPrayer(try context.fetch(fetchDescriptor))
             for name in orderedPrayerNames {
                 let searchForThisName = prayers.first(where: { $0.name == name })
-                if searchForThisName == nil{
-                    let newPrayer = createPrayerModel(name: name, at: targetDate)
+                if searchForThisName == nil, let newPrayer = createPrayerModel(name: name, at: targetDate) {
                     prayers.append(newPrayer)
                 }
             }
@@ -1511,9 +1510,12 @@ extension PrayerViewModel {
 
 extension PrayerViewModel {
     
-    func createPrayerModel(name prayerName: String, at date: Date) -> PrayerModel {
+    /// A new row for that prayer and day, or nil when its times can't be worked out yet (no location, no times):
+    /// the caller skips it and the next fetch fills it in (App Store crash safety — was a fatalError).
+    func createPrayerModel(name prayerName: String, at date: Date) -> PrayerModel? {
         guard let times = getPrayerTime(for: prayerName, on: date) else {
-            fatalError("Failed to get prayer times for \(prayerName) on \(date)")
+            print("⚠️ createPrayerModel: no times for \(prayerName) on \(date) — skipped")
+            return nil
         }
         
         let newPrayer = PrayerModel(
