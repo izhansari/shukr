@@ -449,8 +449,9 @@ struct SalahLookCard: ViewModifier {
     }
 }
 
-/// Top right on the Salah page while the owner tries the looks: the list look, the soft ring, the colours and
-/// how rows come and go.
+/// Top right on the Salah page (DEBUG): the main build's look first — ticked while it's what's showing, one tap back to it
+/// — and the old looks tucked under Explore, grouped, for inspiration (owner, 2026-10-14: "whatever we use as defaults in
+/// our main build, make that the default and put them tucked away … organize them nicer … I just keep it for inspo").
 struct SalahLookSwitcher: View {
     @AppStorage(SalahLook.key) private var lookRaw = CircleTheme.standard.list.rawValue
     @AppStorage(SalahLook.softRingKey) private var softRing = CircleTheme.standard.softRing
@@ -460,38 +461,68 @@ struct SalahLookSwitcher: View {
     @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.sink.rawValue
     @AppStorage(SalahSheetDrag.key) private var sheetFollows = SalahSheetDrag.defaultOn
 
+    /// Everything as the main build (TestFlight / App Store) has it.
+    private var isMainLook: Bool {
+        lookRaw == CircleTheme.standard.list.rawValue && softRing == CircleTheme.standard.softRing
+            && paletteRaw == CircleTheme.standard.palette.rawValue && lines == CircleTheme.standard.lines
+            && motionRaw == RowMotion.standard.rawValue && openingRaw == SessionOpening.sink.rawValue
+            && sheetFollows == SalahSheetDrag.defaultOn
+    }
+    private func useMainLook() {
+        lookRaw = CircleTheme.standard.list.rawValue
+        softRing = CircleTheme.standard.softRing
+        paletteRaw = CircleTheme.standard.palette.rawValue
+        lines = CircleTheme.standard.lines
+        motionRaw = RowMotion.standard.rawValue
+        openingRaw = SessionOpening.sink.rawValue
+        sheetFollows = SalahSheetDrag.defaultOn
+    }
+
     var body: some View {
         Menu {
-            Picker("List", selection: $lookRaw) {
-                ForEach(SalahLook.originals) { Text($0.title).tag($0.rawValue) }
+            Button { useMainLook() } label: {
+                Label("Main build's look", systemImage: isMainLook ? "checkmark" : "arrow.uturn.backward")
             }
-            // Sami's trial looks for the prayer list, together (owner, 2026-10-14: "fold all of your stuff together").
-            Menu("Sami list") {
-                Picker("Sami list", selection: $lookRaw) {
-                    ForEach(SalahLook.sami) { Text($0.title).tag($0.rawValue) }
+            Menu {
+                Section("List") {
+                    Menu("Prayer list") {
+                        Picker("Main and Sami's", selection: $lookRaw) {
+                            ForEach(SalahLook.sami) { Text($0.title).tag($0.rawValue) }
+                        }
+                        .pickerStyle(.inline)
+                        Picker("Earlier looks", selection: $lookRaw) {
+                            ForEach(SalahLook.originals) { Text($0.title).tag($0.rawValue) }
+                        }
+                        .pickerStyle(.inline)
+                    }
+                    Toggle("Lines between prayers", isOn: $lines)
                 }
-                .pickerStyle(.inline)
+                Section("Ring & colours") {
+                    Toggle("Soft ring", isOn: $softRing)
+                    Picker("Colours", selection: $paletteRaw) {
+                        ForEach(SalahPalette.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.menu)
+                }
+                Section("Motion") {
+                    Picker("Rows come and go", selection: $motionRaw) {
+                        ForEach(RowMotion.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.menu)
+                    Picker("Zikr ring opens", selection: $openingRaw) {
+                        ForEach(SessionOpening.allCases) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .pickerStyle(.menu)
+                    // The Salah list's drag (owner's names): it follows the finger, or the swipe finishes and it pops.
+                    Picker("Salah list drag", selection: $sheetFollows) {
+                        Text("Vertical live dragging").tag(true)
+                        Text("Gesture completion drag").tag(false)
+                    }
+                    .pickerStyle(.menu)
+                }
+            } label: {
+                Label("Explore", systemImage: "sparkles")
             }
-            Toggle("Lines between prayers", isOn: $lines)
-            Toggle("Soft ring", isOn: $softRing)
-            Picker("Colours", selection: $paletteRaw) {
-                ForEach(SalahPalette.allCases) { Text($0.title).tag($0.rawValue) }
-            }
-            .pickerStyle(.menu)
-            Picker("Rows come and go", selection: $motionRaw) {
-                ForEach(RowMotion.allCases) { Text($0.title).tag($0.rawValue) }
-            }
-            .pickerStyle(.menu)
-            Picker("Zikr ring opens", selection: $openingRaw) {
-                ForEach(SessionOpening.allCases) { Text($0.title).tag($0.rawValue) }
-            }
-            .pickerStyle(.menu)
-            // The Salah list's drag (owner's names): it follows the finger, or the swipe finishes and it pops.
-            Picker("Salah list drag", selection: $sheetFollows) {
-                Text("Vertical live dragging").tag(true)
-                Text("Gesture completion drag").tag(false)
-            }
-            .pickerStyle(.menu)
         } label: {
             ChromeIcon(systemName: "paintpalette")
         }
