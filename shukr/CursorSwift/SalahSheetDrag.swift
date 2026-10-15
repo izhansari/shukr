@@ -79,6 +79,8 @@ struct SheetRests: Equatable {
     var closedCircleY: CGFloat = 0
     var openCircleY: CGFloat = 0
     var openListTop: CGFloat = 0
+    /// The open list's bottom (its gap to "N done" flexes 16–44 pt): the live list is anchored here.
+    var openListBottom: CGFloat = 0
 }
 
 /// The sheet's position and its spring. Writes `live.sheetOffset` (points the list has come up, 0 … `sheetRun`); the

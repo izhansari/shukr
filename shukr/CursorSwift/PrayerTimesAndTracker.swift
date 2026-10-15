@@ -1741,8 +1741,12 @@ struct PrayerTimesView: View {
         }
 
         /// The pop (the switch off): the Spacer layout, the sheet inserted and removed with `navPosition`.
-        /// The open page's gap between the list's bottom and "N done": fixed, so the list grows upward only.
-        static let listBottomGap: CGFloat = 16
+        /// The open page's gap between the list's bottom and "N done": it flexes like the other spacers but only within
+        /// these bounds (owner, the middle ground: folded it rests where it used to, opening "N done" lets the whole list
+        /// drift down a little as it mostly grows upward, and it never comes closer than 16 pt).
+        static let listBottomGap: ClosedRange<CGFloat> = 16...44
+        /// Between the ring and the open list, at least this much (12 pt on each of the two spacers between them).
+        static let ringListMin: CGFloat = 12
 
         private var poppingBody: some View {
             let lost = CircleStage.shared.lost
@@ -1768,10 +1772,10 @@ struct PrayerTimesView: View {
                 .animation(lost.map { $0.risen ? CircleMotion.Lost.rise : CircleMotion.Lost.down }, value: lost?.risen)
                 .zIndex(3)
 
-                Spacer(minLength: 0)
+                Spacer(minLength: showBottom ? Self.ringListMin : 0)
 
                 if showBottom {
-                    Spacer(minLength: 0)
+                    Spacer(minLength: Self.ringListMin)   // the ring never closer than 24 pt to the list
                     BottomSharedView(showDailyAyahView: $showDailyAyahView)
                     .modifier(PullFade(live: live))
                     // The opening on the Salah circle (circle step 4): the list waits, then fades in as the ring lands.
@@ -1782,9 +1786,8 @@ struct PrayerTimesView: View {
                     // fades — farther than the circle moves, so the ring and the rows never ghost over each other (Izhan).
                     // Reduce Motion: a fade in place.
                     .transition(reduceMotion ? .opacity : theme.listEntrance)
-                    // A fixed gap under the list, not a Spacer: its bottom stays put and it grows upward only, never
-                    // down into "N done" (owner, 2026-10-14; a sixth of every growth went downward).
-                    Color.clear.frame(height: Self.listBottomGap)
+                    // The gap under the list flexes only within `listBottomGap` (never into "N done").
+                    Spacer(minLength: Self.listBottomGap.lowerBound).frame(maxHeight: Self.listBottomGap.upperBound)
                 }
 
                 // Soft looks: room for "N done" above the bottom bar (SoftDoneFooter, in the chrome).
@@ -1837,10 +1840,13 @@ struct PrayerTimesView: View {
                     Spacer(minLength: 0); Spacer(minLength: 0); Spacer(minLength: 0)
                     Color.clear.frame(width: circleSize.width, height: circleSize.height)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openCircleY, false))
-                    Spacer(minLength: 0); Spacer(minLength: 0)
+                    Spacer(minLength: Self.ringListMin); Spacer(minLength: Self.ringListMin)
                     Color.clear.frame(width: listSize.width, height: listSize.height)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openListTop, true))
-                    Color.clear.frame(height: Self.listBottomGap)   // as the page: the list's bottom pinned
+                        .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .named(SalahSheetDrag.space)).maxY }) { v in
+                            if abs(rests.openListBottom - v) > 0.25 { rests.openListBottom = v }
+                        }
+                    Spacer(minLength: Self.listBottomGap.lowerBound).frame(maxHeight: Self.listBottomGap.upperBound)   // as the page
                     Color.clear.frame(height: bottomChromeHeight + theme.listFooterRoom)
                 }
             }
@@ -1871,9 +1877,12 @@ struct PrayerTimesView: View {
                             // Anchored at its bottom (the open rest's bottom, as `poppingBody` pins it), slid down by how
                             // closed the sheet is: rows growing or folding move only its top, never its bottom (owner: it
                             // dipped into "N done" while the measured top jumped ahead of the rows' animation).
-                            .padding(.bottom, bottomChromeHeight + theme.listFooterRoom + Self.listBottomGap)
+                            .padding(.bottom, rests.openListBottom > 0 ? height - rests.openListBottom
+                                                                       : bottomChromeHeight + theme.listFooterRoom + Self.listBottomGap.upperBound)
                             .frame(width: geo.size.width, height: height, alignment: .bottom)
                             .modifier(SheetListRide(live: live))
+                            // Its bottom glides to the new rest with the rows' own curve (it moves only within the gap's range).
+                            .animation(restMotion, value: rests.openListBottom)
                     }
                     closedPage(lost: lost)
                         .frame(width: geo.size.width, height: height)
