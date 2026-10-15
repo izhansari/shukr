@@ -195,6 +195,9 @@ import Network
             && left.contains(names[3]) && left.contains(names[4]) && left.contains(names[5])
             && left.contains(names[6]) && left.contains(names[7]) && left.contains(names[8])
         print(ok ? "☁️ prune self-test PASS" : "☁️ prune self-test FAIL")
+        let placeholder = "." + names[2] + ".icloud"
+        print(logicalName(placeholder) == names[2] && logicalName(names[6]) == names[6]
+              ? "☁️ placeholder self-test PASS" : "☁️ placeholder self-test FAIL")
         try? fm.removeItem(at: dir)
         // Moving out of Files: backups and first-builds backups go; an Export and other files stay.
         let base = fm.temporaryDirectory.appending(path: "MoveSelfTest", directoryHint: .isDirectory)
@@ -229,7 +232,10 @@ import Network
     nonisolated static func moveOutOfFiles(from docs: URL, to hidden: URL) {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: docs.path) else { return }
-        for name in names where name.wholeMatch(of: backupName) != nil || name.wholeMatch(of: firstBuildsName) != nil {
+        for raw in names {
+            let name = logicalName(raw)
+            guard name.wholeMatch(of: backupName) != nil || name.wholeMatch(of: firstBuildsName) != nil else { continue }
+            // The logical URLs, also for one not downloaded here (iCloud's ".<name>.icloud" placeholder).
             let from = docs.appending(path: name), to = hidden.appending(path: name)
             guard !fm.fileExists(atPath: to.path) else { continue }
             var error: NSError?
@@ -287,6 +293,11 @@ import Network
         return f.date(from: String(s))
     }
 
+    /// ".shukr backup ….zip.icloud" (iCloud's placeholder for an item not downloaded here) → "shukr backup ….zip".
+    nonisolated static func logicalName(_ name: String) -> String {
+        name.hasPrefix(".") && name.hasSuffix(".icloud") ? String(name.dropFirst().dropLast(".icloud".count)) : name
+    }
+
     /// shukr's backups in the folder, newest first, with iCloud's own state for each.
     nonisolated private static func list(_ docs: URL) -> [Copy] {
         let keys: [URLResourceKey] = [.creationDateKey, .fileSizeKey, .ubiquitousItemIsUploadedKey,
@@ -294,8 +305,11 @@ import Network
         var found: [Copy] = []
         NSFileCoordinator().coordinate(readingItemAt: docs, options: .immediatelyAvailableMetadataOnly, error: nil) { dir in
             let urls = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys)) ?? []
-            for url in urls {
-                let name = url.lastPathComponent
+            for raw in urls {
+                // A backup not downloaded on this iPhone (one from the old phone, on a new one) is listed as
+                // ".<name>.icloud": its real name and URL are used (Bradley's review of 00268b6).
+                let name = logicalName(raw.lastPathComponent)
+                let url = raw.deletingLastPathComponent().appending(path: name)
                 var counts: Counts?
                 let when: Substring
                 if let m = name.wholeMatch(of: backupName) {
