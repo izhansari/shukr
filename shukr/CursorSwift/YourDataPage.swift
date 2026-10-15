@@ -114,7 +114,7 @@ struct YourDataPage: View {
             ToolbarItem(placement: .topBarTrailing) {
                 // The backup's state at a glance; its card says it in words (owner: one place for it, not two).
                 Button { info = .backup } label: { Image(systemName: backup.symbol).contentTransition(.symbolEffect(.replace)) }
-                    .accessibilityLabel(backup.title)
+                    .accessibilityLabel("iCloud Backup: " + backup.word)
             }
         }
         .task {
@@ -122,6 +122,11 @@ struct YourDataPage: View {
             await cloud.refresh()
             #if DEBUG
             // `-demoRestoreFrom <path>`: the restore sheet for a copy at that path (the simulator's Files picker is slow).
+            // `-demoBackupState <state>` opens the top right's card on that state.
+            if UserDefaults.standard.string(forKey: "demoBackupState") != nil {
+                try? await Task.sleep(for: .milliseconds(600))
+                info = .backup
+            }
             if let path = UserDefaults.standard.string(forKey: "demoRestoreFrom") {
                 restore = try? BackupSource.open(URL(fileURLWithPath: path))
             }
@@ -174,8 +179,8 @@ struct YourDataPage: View {
             ])
         }
         .infoModal(isPresented: Binding(get: { info == .backup }, set: { if !$0 { info = nil } }),
-                   title: backup.title, symbol: backup.symbol) {
-            backupCard
+                   title: "iCloud Backup", symbol: backup.symbol) {
+            BackupCard(context: context)
         }
     }
 
@@ -252,46 +257,7 @@ struct YourDataPage: View {
 
     // MARK: iCloud backup
 
-    /// Where the backup stands, from the switch, iCloud Drive, the last try and iCloud's own state of the newest copy.
-    enum Backup {
-        case off, noICloud, none, backingUp, backedUp(ICloudCopy.Copy), stale(ICloudCopy.Copy), failed(String)
-        var symbol: String {
-            switch self {
-            case .off: "icloud.slash"
-            case .backedUp: "checkmark.icloud"
-            case .backingUp: "arrow.up.icloud"
-            case .none: "icloud"
-            case .noICloud, .stale, .failed: "exclamationmark.icloud"
-            }
-        }
-        var title: String {
-            switch self {
-            case .off: "Not backed up"
-            case .noICloud: "iCloud Drive is off"
-            case .none: "No backup yet"
-            case .backingUp: "Backing up"
-            case .backedUp: "Backed up"
-            case .stale: "Backup is out of date"
-            case .failed: "Backup didn't finish"
-            }
-        }
-    }
-
-    private var backup: Backup {
-        guard iCloudOn else { return .off }
-        if cloud.availability == .off { return .noICloud }
-        if cloud.working { return .backingUp }
-        let newest = cloud.copies.first
-        if let failed = cloud.lastFailure, failed.at > (newest?.made ?? .distantPast) { return .failed(failed.why ?? "Something went wrong.") }
-        guard let newest else { return .none }
-        switch newest.upload {
-        case .failed(let why): return .failed(why)
-        case .uploading, .waiting: return .backingUp
-        case .inICloud:
-            // Two days without a new one: it isn't keeping up (shukr only backs up when it's opened).
-            return Date().timeIntervalSince(newest.made) > 2 * 86400 ? .stale(newest) : .backedUp(newest)
-        }
-    }
+    private var backup: BackupState { BackupState.now(on: iCloudOn, cloud) }
 
     private func backUpNow() { Task { await cloud.make(context, trigger: "back up now") } }
 
@@ -349,53 +315,6 @@ struct YourDataPage: View {
         var line = "Once a day, when you open shukr, everything is backed up to iCloud Drive → shukr. The newest \(ICloudCopy.keep) backups are kept."
         if case .failed(let why) = backup { line = "The last backup didn't finish: \(why) " + line }
         return line
-    }
-
-    /// The top right's card: where the backup stands, in plain words, and the one thing to do about it; then the
-    /// iPhone's own backup, which iOS doesn't let shukr see.
-    @ViewBuilder private var backupCard: some View {
-        let restore = ReminderWhy.Point(big: "Getting it back", small: "On a new iPhone, install shukr, then Your Data → Restore from a copy → iCloud Drive → shukr.", symbol: "arrow.counterclockwise", warn: false)
-        let daily = ReminderWhy.Point(big: "Every day", small: "shukr backs up when you open it, once a day, and keeps the newest \(ICloudCopy.keep).", symbol: "calendar", warn: false)
-        let iPhone: [ReminderWhy.Point] = [
-            .init(big: "Check iCloud Backup", small: "Settings → your name → iCloud → iCloud Backup. When it's on, shukr is in it, photos too. iOS doesn't let apps see whether it's on.", symbol: "iphone", warn: false, neutral: true),
-            .init(big: "Deleting shukr deletes it", small: "Removing the app removes its data from this iPhone. Your backups keep it.", symbol: "trash", warn: false, neutral: true),
-        ]
-        let backUp = (title: "Back Up Now", action: backUpNow)
-        switch backup {
-        case .off:
-            ReminderExplainer(head: "shukr isn't backing up to your iCloud Drive. Turn it on and everything is backed up there each day.", points: [
-                .init(big: "Only on this iPhone", small: "Your data is on this iPhone, and in the iPhone's own backup if that's on.", symbol: "icloud.slash", warn: true),
-                daily,
-            ], fix: (title: "Turn On iCloud Backup", action: { iCloudOn = true }), explainHead: "Your iPhone's backup", explain: iPhone)
-        case .noICloud:
-            ReminderExplainer(head: "Backup to iCloud Drive is on, but iCloud Drive is off on this iPhone, so nothing can be backed up there.", points: [
-                .init(big: "Turn on iCloud Drive", small: "Settings → your name → iCloud → iCloud Drive. shukr backs up the next time you open it.", symbol: "exclamationmark.icloud", warn: true),
-            ], explainHead: "Your iPhone's backup", explain: iPhone)
-        case .none:
-            ReminderExplainer(head: "Backup to iCloud Drive is on. The first backup hasn't been made yet.", points: [daily, restore],
-                              fix: backUp, explainHead: "Your iPhone's backup", explain: iPhone)
-        case .backingUp:
-            ReminderExplainer(head: "Backing up to your iCloud Drive now. It's usually there within a minute.", points: [
-                .init(big: "Uploading", small: cloud.copies.first.map { Self.when($0.made) + " · " + Self.size($0.bytes) } ?? "Making the backup…", symbol: "arrow.up.icloud", warn: false),
-                daily, restore,
-            ], explainHead: "Your iPhone's backup", explain: iPhone)
-        case .backedUp(let c):
-            ReminderExplainer(head: "Your data is backed up to your iCloud Drive.", points: [
-                .init(big: "Last backup", small: Self.when(c.made) + " · " + Self.size(c.bytes) + " · in iCloud", symbol: "checkmark.icloud", warn: false),
-                daily, restore,
-            ], fix: backUp, explainHead: "Your iPhone's backup", explain: iPhone)
-        case .stale(let c):
-            ReminderExplainer(head: "Your last backup was \(Self.when(c.made)). shukr backs up when you open it, so back up now to bring it up to date.", points: [
-                .init(big: "Last backup", small: Self.when(c.made) + " · " + Self.size(c.bytes), symbol: "exclamationmark.icloud", warn: true),
-                daily, restore,
-            ], fix: backUp, explainHead: "Your iPhone's backup", explain: iPhone)
-        case .failed(let why):
-            ReminderExplainer(head: "Your last backup didn't reach iCloud.", points: [
-                .init(big: "What happened", small: why, symbol: "exclamationmark.icloud", warn: true),
-                .init(big: "What to check", small: "That you're online and iCloud has room: Settings → your name → iCloud.", symbol: "wifi", warn: false),
-                restore,
-            ], fix: backUp, explainHead: "Your iPhone's backup", explain: iPhone)
-        }
     }
 
     /// "Today, 3:12 PM" / "Yesterday, 9:40 PM" / "Oct 12, 9:40 PM".

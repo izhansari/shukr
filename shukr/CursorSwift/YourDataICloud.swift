@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import UIKit
+import SwiftUI
 
 // shukr's own copy in iCloud Drive (owner, 2026-10-14, decision icloud-copy-go A; container set up by Bradley):
 // Your Data → "Copy to iCloud Drive" saves the full copy (the same .zip Export makes) to iCloud Drive → shukr once a day,
@@ -152,5 +153,200 @@ import UIKit
         log = Array(log.suffix(60))
         if let data = try? JSONEncoder().encode(log) { try? data.write(to: Self.logURL, options: .atomic) }
         print("☁️ iCloud copy (\(trigger)): \(ok ? "saved \(bytes ?? 0) bytes" : "failed — \(why ?? "")")")
+    }
+}
+
+// MARK: - The state, and its card
+
+/// Where the iCloud backup stands, from the switch, iCloud Drive, the last try and iCloud's own state of the newest copy.
+/// Your Data's top-right cloud wears its symbol; its card (`BackupCard`) says it in words.
+enum BackupState {
+    case off, noICloud, none, backingUp, backedUp(ICloudCopy.Copy), stale(ICloudCopy.Copy), failed(String)
+
+    @MainActor static func now(on: Bool, _ cloud: ICloudCopy) -> BackupState {
+        #if DEBUG
+        // `-demoBackupState off|noICloud|none|backingUp|backedUp|stale|failed`: each state with stand-in values.
+        if let demo = UserDefaults.standard.string(forKey: "demoBackupState") {
+            let copy = ICloudCopy.Copy(url: URL(fileURLWithPath: "/demo.zip"), made: .now.addingTimeInterval(-25 * 60), bytes: 2_787_884, upload: .inICloud)
+            let old = ICloudCopy.Copy(url: URL(fileURLWithPath: "/demo.zip"), made: .now.addingTimeInterval(-4 * 86400), bytes: 2_787_884, upload: .inICloud)
+            switch demo {
+            case "off": return .off
+            case "noICloud": return .noICloud
+            case "none": return .none
+            case "backingUp": return .backingUp
+            case "stale": return .stale(old)
+            case "failed": return .failed("The iCloud storage is full.")
+            default: return .backedUp(copy)
+            }
+        }
+        #endif
+        guard on else { return .off }
+        if cloud.availability == .off { return .noICloud }
+        if cloud.working { return .backingUp }
+        let newest = cloud.copies.first
+        if let failed = cloud.lastFailure, failed.at > (newest?.made ?? .distantPast) { return .failed(failed.why ?? "Something went wrong.") }
+        guard let newest else { return .none }
+        switch newest.upload {
+        case .failed(let why): return .failed(why)
+        case .uploading, .waiting: return .backingUp
+        case .inICloud:
+            // Two days without a new one: it isn't keeping up (shukr only backs up when it's opened).
+            return Date().timeIntervalSince(newest.made) > 2 * 86400 ? .stale(newest) : .backedUp(newest)
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .off: "icloud.slash"
+        case .backedUp: "checkmark.icloud"
+        case .backingUp: "arrow.up.icloud"
+        case .none: "icloud"
+        case .noICloud, .stale, .failed: "exclamationmark.icloud"
+        }
+    }
+    /// The state in a word or two: the card's status line, the button's VoiceOver label.
+    var word: String {
+        switch self {
+        case .off: "Off"
+        case .noICloud: "iCloud Drive is off"
+        case .none: "No backup yet"
+        case .backingUp: "Backing up…"
+        case .backedUp: "Backed up"
+        case .stale: "Out of date"
+        case .failed: "Didn't finish"
+        }
+    }
+    var isProblem: Bool {
+        switch self { case .noICloud, .stale, .failed: true; default: false }
+    }
+}
+
+/// The top right's card: the state up top (symbol, word, one line), what it means, the iPhone's own backup, and the
+/// one thing to do about it as a sage button at the bottom (owner). Its own view, so it follows the backup live (the
+/// info card keeps the view it was opened with).
+struct BackupCard: View {
+    let context: ModelContext
+    @AppStorage(ICloudCopy.enabledKey) private var on = false
+    @State private var cloud = ICloudCopy.shared
+
+    private var state: BackupState { BackupState.now(on: on, cloud) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            status
+            ReminderExplainer(head: sentence, points: points, explainHead: "Your iPhone's backup", explain: [
+                .init(big: "Check iCloud Backup", small: "Settings → your name → iCloud → iCloud Backup. When it's on, shukr is in it, photos too. iOS doesn't let apps see whether it's on.", symbol: "iphone", warn: false, neutral: true),
+                .init(big: "Deleting shukr deletes it", small: "Removing the app removes its data from this iPhone. Your backups keep it.", symbol: "trash", warn: false, neutral: true),
+            ])
+            if let action {
+                Button(action: action.run) {
+                    Text(action.title)
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(Color.sage)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 42)
+                        .overlay(Capsule().stroke(Color.sage, lineWidth: 1.5))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
+        }
+    }
+
+    /// The state, big enough to read at a glance: its cloud, the word, then when / why.
+    private var status: some View {
+        HStack(spacing: 14) {
+            Image(systemName: state.symbol)
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(state.isProblem ? Color.orange : Color.sage)
+                .frame(width: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.word).font(.system(.title3, design: .rounded, weight: .medium))
+                Text(detail).font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var detail: String {
+        switch state {
+        case .off: "Your data is only on this iPhone."
+        case .noICloud: "Nothing can be backed up until it's on."
+        case .none: "The first backup hasn't been made."
+        case .backingUp: "Uploading to your iCloud Drive."
+        case .backedUp(let c): "Last backup " + YourDataPage.when(c.made).lowercasedFirstWord + " · " + YourDataPage.size(c.bytes)
+        case .stale(let c): "Last backup " + YourDataPage.when(c.made).lowercasedFirstWord
+        case .failed(let why): why
+        }
+    }
+
+    /// What it means, in one or two sentences.
+    private var sentence: String {
+        switch state {
+        case .off: "Turn it on and shukr backs up everything to your own iCloud Drive once a day. Only you can see it."
+        case .noICloud: "Backup is on, but iCloud Drive is off on this iPhone. Turn it on in Settings → your name → iCloud → iCloud Drive, and shukr backs up the next time you open it."
+        case .none: "shukr backs up when you open it. You can make the first one now."
+        case .backingUp: "It's usually there within a minute. You can leave this page."
+        case .backedUp: "Everything in shukr is in your own iCloud Drive, and only you can see it."
+        case .stale: "shukr backs up once a day when it's opened, and the last one is a few days old. Back up now to bring it up to date."
+        case .failed: "Your last backup didn't reach iCloud. Check that you're online and iCloud has room (Settings → your name → iCloud), then try again."
+        }
+    }
+
+    private var points: [ReminderWhy.Point] {
+        let daily = ReminderWhy.Point(big: "Every day", small: "When you open shukr, once a day. The newest \(ICloudCopy.keep) backups are kept.", symbol: "calendar", warn: false)
+        let restore = ReminderWhy.Point(big: "Getting it back", small: "On a new iPhone, install shukr, then Your Data → Restore from a copy → iCloud Drive → shukr.", symbol: "arrow.counterclockwise", warn: false)
+        switch state {
+        case .off, .none, .backedUp, .stale: return [daily, restore]
+        case .backingUp, .noICloud, .failed: return []
+        }
+    }
+
+    private var action: (title: String, run: () -> Void)? {
+        let backUp = { Task { await ICloudCopy.shared.make(context, trigger: "back up now") }; return () }
+        switch state {
+        case .off: return ("Turn On iCloud Backup", { on = true })
+        case .none, .backedUp, .stale: return ("Back Up Now", { _ = backUp() })
+        case .failed: return ("Try Again", { _ = backUp() })
+        case .backingUp, .noICloud: return nil
+        }
+    }
+}
+
+private extension String {
+    /// "Today, 3:12 PM" → "today, 3:12 PM" inside a sentence; "Oct 12, …" stays.
+    var lowercasedFirstWord: String {
+        hasPrefix("Today") || hasPrefix("Yesterday") ? prefix(1).lowercased() + dropFirst() : self
+    }
+}
+
+/// Settings' Your Data row, trailing (owner): nothing while iCloud Backup is off or has no backup yet; a quiet
+/// "Backed up today" while it's fine; the orange cloud + "Check backup" when something's wrong.
+struct YourDataBackupTag: View {
+    @AppStorage(ICloudCopy.enabledKey) private var on = false
+    @State private var cloud = ICloudCopy.shared
+
+    var body: some View {
+        let state = BackupState.now(on: on, cloud)
+        Group {
+            switch state {
+            case .off, .none: EmptyView()
+            case .backingUp: Text("Backing up…").foregroundStyle(.secondary)
+            case .backedUp(let c): Text("Backed up " + Self.day(c.made)).foregroundStyle(.secondary)
+            case .noICloud, .stale, .failed:
+                Label("Check backup", systemImage: "exclamationmark.icloud").foregroundStyle(.orange)
+            }
+        }
+        .font(.subheadline)
+        .task { if on { await cloud.refresh() } }
+    }
+
+    /// "today" / "yesterday" / "Oct 12".
+    static func day(_ d: Date) -> String {
+        if Calendar.current.isDateInToday(d) { return "today" }
+        if Calendar.current.isDateInYesterday(d) { return "yesterday" }
+        return d.formatted(.dateTime.month(.abbreviated).day())
     }
 }

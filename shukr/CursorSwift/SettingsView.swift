@@ -706,6 +706,8 @@ struct SettingsView: View {
                             HStack(spacing: 12) {
                                 Image(systemName: "lock.shield").frame(width: 24)
                                 Text("Your Data")
+                                Spacer(minLength: 8)
+                                YourDataBackupTag()
                             }
                         }
                     } footer: {
