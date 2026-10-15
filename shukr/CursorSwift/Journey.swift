@@ -767,9 +767,13 @@ private struct JourneyGrid: View {
                             Text(words.title).font(.system(size: 14, weight: .regular, design: .rounded))
                             Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                         }
-                        Text(words.detail).font(.system(size: 12, weight: .light, design: .rounded))
-                            .foregroundStyle(words.color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
-                            .lineLimit(1).minimumScaleFactor(0.8)
+                        // Grey words, the grade's colour only as a dot before them (owner: coloured text was hard to read).
+                        HStack(spacing: 5) {
+                            if let color = words.color { Circle().fill(color).frame(width: 7, height: 7) }
+                            Text(words.detail).font(.system(size: 12, weight: .light, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1).minimumScaleFactor(0.8)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -834,11 +838,12 @@ private struct JourneyGrid: View {
             }
         }
         .overlay {
-            shape.strokeBorder(picked ? Color.primary.opacity(0.6)
-                               : mark == .missed ? Color.primary.opacity(0.3)
+            // The picked one has no border (owner: the black outline was too heavy): its colour, size and glow are enough.
+            shape.strokeBorder(picked && mark.done ? Color.clear
+                               : mark == .missed ? Color.primary.opacity(picked ? 0.5 : 0.3)
                                : mark.done || mark == .excused ? Color.clear
                                : Color.primary.opacity(date > today ? 0.06 : 0.12),
-                               lineWidth: picked ? 1.5 : 1)
+                               lineWidth: 1)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 22)
