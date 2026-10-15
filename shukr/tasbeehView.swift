@@ -1167,7 +1167,7 @@ struct tasbeehView: View {
         timerbb = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
         
             withAnimation {
-                if !paused && (sharedState.selectedMode == 1){
+                if !paused && (sharedState.selectedMode == 1) && totalTime > 0 {
                     progressFraction = CGFloat(Int(secsPassed + timeOffset))/TimeInterval(totalTime)
                 }
             }
@@ -1298,7 +1298,8 @@ struct tasbeehView: View {
             let numerator = tasbeeh != 0 && tasbeeh % 100 == 0 ? 0 : tasbeeh % 100
             progressFraction = CGFloat(numerator) / 100
         } else if sharedState.selectedMode == 2 {
-            progressFraction = CGFloat(tasbeeh) / CGFloat(Int(sharedState.targetCount) ?? 0)
+            let target = Int(sharedState.targetCount) ?? 0   // a goal of 0 (or none) gave an infinite ring
+            progressFraction = target > 0 ? CGFloat(tasbeeh) / CGFloat(target) : 0
         }
     }
 

@@ -275,7 +275,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     /// Settings' Refresh Location: the place and the times again, and when it's done (or why not) — the button
     /// says so (owner, settings-cleanup-1).
-    func refreshLocationNow() async -> Result<String, RefreshFailure> {
+    /// On the main actor: the class isn't, so after the city's await this ran on a background thread and set the times
+    /// (and SwiftData) from there — SwiftData stopped the app (his phone, 2026-10-12).
+    @MainActor func refreshLocationNow() async -> Result<String, RefreshFailure> {
         guard let location = ENV_LocationManager.effectiveLocation else {
             return .failure(RefreshFailure(message: "No location yet"))
         }

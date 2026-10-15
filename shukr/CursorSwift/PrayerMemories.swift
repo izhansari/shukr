@@ -1696,7 +1696,8 @@ struct MemoriesDeck: View {
         // together from the right, the ones it takes off slide away together (owner: "pulling the whole removed part of
         // the pile off or added part of pile on"). Built only near the top, a jump made up to three cards mid-move:
         // 40–50 ms, 5–6 frames lost on his phone (the frame log).
-        let shown = Array(range)
+        // Only indices that exist: a range left over from a moment before crashed reading `photos[i]` (his phone, 2026-10-07).
+        let shown = Array(range).filter { photos.indices.contains($0) }
         return ZStack {
             ForEach(shown, id: \.self) { i in
                 card(i, width: width, screen: screen, atStart: atStart, atEnd: atEnd)
@@ -1708,7 +1709,8 @@ struct MemoriesDeck: View {
     /// A neighbouring day's pile as it will be once it's the current one: `top` straight on top, the earlier ones under
     /// it at their lies — drawn the same, so landing on it changes nothing on screen.
     private func restingPile(_ range: ClosedRange<Int>, top: Int, width: CGFloat, screen: CGFloat) -> some View {
-        let cards = Array(max(range.lowerBound, top - Self.pileDepth)...top)
+        let low = max(range.lowerBound, top - Self.pileDepth)
+        let cards = low <= top ? Array(low...top).filter { photos.indices.contains($0) } : []
         return ZStack {
             ForEach(cards, id: \.self) { i in
                 let l = lie[photos[i].key] ?? Lie(dx: 0, dy: 0, tilt: 0)

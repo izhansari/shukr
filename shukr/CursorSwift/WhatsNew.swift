@@ -349,8 +349,10 @@ enum WhatsNew {
 
     // MARK: Decisions (ask wn-decisions)
 
-    /// Every decision, newest first (DEBUG `-demoWhatsNewDecisions` adds two samples).
-    static var decisions: [WhatsNewDecision] {
+    /// Every decision, newest first (DEBUG `-demoWhatsNewDecisions` adds two samples). Built once, as `file` is:
+    /// rebuilt on every call, feedback.md's write (one `decision(_:)` per note) held the main thread past iOS's 10 s
+    /// as shukr went to the background — killed three times on his phone (2026-10-14).
+    static let decisions: [WhatsNewDecision] = {
         // As revised (each revise line's fields over the original, in order) and withdrawn — unless a
         // revision came after the withdrawal, which asks it again.
         var all = file.decisions.map { original -> WhatsNewDecision in
@@ -373,8 +375,9 @@ enum WhatsNew {
         if ProcessInfo.processInfo.arguments.contains("-demoWhatsNewDecisions") { all += demoDecisions }
         #endif
         return all.sorted { $0.createdDate > $1.createdDate }
-    }
-    static func decision(_ id: String) -> WhatsNewDecision? { decisions.first { $0.id == id } }
+    }()
+    private static let decisionsByID = Dictionary(decisions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    static func decision(_ id: String) -> WhatsNewDecision? { decisionsByID[id] }
 
     /// His answer: the newest of the phone's (`FeedbackItem.Kind.decision`) and the file's (chat / board),
     /// since the last revision. The newest being an un-pick (no option) means none — back to waiting.
