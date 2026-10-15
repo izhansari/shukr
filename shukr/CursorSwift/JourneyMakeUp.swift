@@ -30,6 +30,11 @@ struct JourneyMakeUpPage: View {
     @State private var cleared = 0
     /// The month under the finger on the scrubber (its name shows beside it).
     @State private var scrubbing: Date?
+    /// Where each month's heading sits in the list (its pinned one stays at the top); the top one is the scrubber's big dot.
+    @State private var headingY: [Date: CGFloat] = [:]
+    private var topMonth: Date? {
+        headingY.filter { $0.value <= 80 }.max { $0.value < $1.value }?.key
+    }
 
     struct Entry: Identifiable {
         let row: PrayerModel
@@ -75,6 +80,7 @@ struct JourneyMakeUpPage: View {
                             }
                         } header: {
                             monthHeader(m).id(m)
+                                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("makeUp")).minY } action: { headingY[m] = $0 }
                         }
                     }
                     if !shownLeft.isEmpty {
@@ -87,11 +93,12 @@ struct JourneyMakeUpPage: View {
                     }
                 }
                 .padding(.leading, 20)
-                .padding(.trailing, scrubber ? 40 : 20)
+                .padding(.trailing, scrubber ? 34 : 20)
                 .padding(.bottom, 30)
             }
+            .coordinateSpace(.named("makeUp"))
             .overlay(alignment: .trailing) {
-                if scrubber { monthScrubber(months, proxy: proxy).padding(.trailing, 6) }
+                if scrubber { monthScrubber(months, proxy: proxy).padding(.trailing, 4) }
             }
         }
         .background(theme.surface.ignoresSafeArea())
@@ -160,6 +167,10 @@ struct JourneyMakeUpPage: View {
                 .animation(.snappy, value: made)
                 .accessibilityLabel(showMade ? "Hide the \(made) made up" : "Show the \(made) made up")
             }
+            JourneySwitch(options: [(monthName(month), "month"), ("All months", "all")],
+                          selection: Binding(get: { showAll ? "all" : "month" }, set: { showAll = $0 == "all" }))
+                .frame(maxWidth: .infinity)
+                .padding(.top, 16)
             if counts.count > 1 || only != nil {
                 // Each prayer's count; a tap shows only that prayer ("work through my Fajrs").
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -189,12 +200,8 @@ struct JourneyMakeUpPage: View {
                     }
                 }
                 .scrollClipDisabled()
-                .padding(.top, 8)
+                .padding(.top, 12)
             }
-            JourneySwitch(options: [(monthName(month), "month"), ("All months", "all")],
-                          selection: Binding(get: { showAll ? "all" : "month" }, set: { showAll = $0 == "all" }))
-                .frame(maxWidth: .infinity)
-                .padding(.top, 16)
         }
         .padding(.bottom, 6)
     }
@@ -325,47 +332,56 @@ struct JourneyMakeUpPage: View {
 
     // MARK: The scrubber
 
-    /// The months down the right edge, as Contacts' letters: a drag jumps month by month (a tick each), the month's name
-    /// beside the finger.
+    private let dotSlot: CGFloat = 14
+    private let scrubberPad: CGFloat = 10
+
+    /// The Zikr wheel's scrubber (owner: copy it, not the soft look): one dot per month down the right edge, the month at
+    /// the top of the list bigger, a month with nothing left sage; a finger on them drags through the months (a tick
+    /// each), a pill beside it naming the month.
     private func monthScrubber(_ months: [Date], proxy: ScrollViewProxy) -> some View {
-        let step: CGFloat = months.count > 30 ? 11 : 16
+        let current = scrubbing ?? topMonth ?? months.first
         return VStack(spacing: 0) {
             ForEach(months, id: \.self) { m in
-                Text(months.count > 30 ? "•" : m.formatted(.dateTime.month(.abbreviated)))
-                    .font(.system(size: 10, weight: scrubbing == m ? .bold : .medium, design: .rounded))
-                    .foregroundStyle(scrubbing == m ? .primary : .secondary)
-                    .frame(width: 30, height: step)
+                let here = m == current
+                let done = !shownOpen.contains { $0.month == m && !isSettling($0) }
+                Circle()
+                    .fill(done ? Color.sage : Color.primary.opacity(here ? 0.55 : 0.18))
+                    .frame(width: here ? 7 : 5, height: here ? 7 : 5)
+                    .frame(width: 24, height: dotSlot)
             }
         }
-        .padding(.vertical, 6)
-        .background(Capsule().fill(Color.primary.opacity(scrubbing == nil ? 0.03 : 0.07)))
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    let i = min(max(Int((value.location.y - 6) / step), 0), months.count - 1)
-                    let m = months[i]
-                    guard m != scrubbing else { return }
-                    triggerSomeVibration(type: .light)
-                    scrubbing = m
-                    proxy.scrollTo(m, anchor: .top)
-                }
-                .onEnded { _ in withAnimation(.easeOut(duration: 0.2)) { scrubbing = nil } }
-        )
-        .overlay(alignment: .topLeading) {
-            // Beside the finger: the month in full, with its year.
-            if let scrubbing, let i = months.firstIndex(of: scrubbing) {
+        .padding(.vertical, scrubberPad)
+        .background(Capsule().fill(Color.primary.opacity(scrubbing != nil ? 0.07 : 0)))
+        .scaleEffect(scrubbing != nil ? 1.15 : 1, anchor: .trailing)
+        .overlay(alignment: .topTrailing) {
+            if let scrubbing, let index = months.firstIndex(of: scrubbing) {
                 Text(scrubbing.formatted(.dateTime.month(.wide).year()))
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                    .font(.subheadline)
+                    .fontDesign(.rounded)
+                    .lineLimit(1)
                     .padding(.horizontal, 12)
-                    .frame(height: 30)
+                    .padding(.vertical, 6)
                     .background(Capsule().fill(.regularMaterial))
+                    .shadow(color: .black.opacity(0.1), radius: 6, y: 3)
                     .fixedSize()
-                    .alignmentGuide(.leading) { $0[.trailing] + 10 }
-                    .alignmentGuide(.top) { _ in -(6 + step * (CGFloat(i) + 0.5) - 15) }
+                    .offset(x: -40, y: scrubberPad + dotSlot * CGFloat(index) - 8)
+                    .transition(.opacity)
                     .allowsHitTesting(false)
             }
         }
+        .contentShape(Rectangle().inset(by: -12))
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    let index = min(max(Int((value.location.y - scrubberPad) / dotSlot), 0), months.count - 1)
+                    guard months[index] != scrubbing else { return }
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.snappy(duration: CircleMotion.quick)) { scrubbing = months[index] }
+                    proxy.scrollTo(months[index], anchor: .top)
+                }
+                .onEnded { _ in withAnimation(.snappy(duration: CircleMotion.quick)) { scrubbing = nil } }
+        )
+        .animation(.snappy(duration: CircleMotion.quick), value: current)
         .accessibilityHidden(true)
     }
 

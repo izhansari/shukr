@@ -560,9 +560,10 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `unmarkFromJourney`; edits through `editPrayerTime` / `movePrayer` (recorded time / spot kept). `.journeyChanged` reloads
   the pages.
 - To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused; Made up = Qaza now. Top: the
-  count + each prayer's count (a tap shows only it), "<month> | All months" (`journey.makeUpAll`); months newest first as
-  pinned headings with "N left · N made up"; a month scrubber on the right edge (> 3 months; the month's name beside the
-  finger, a tick each). Made up keeps the row in place as "✓ Made up · Undo" for 3 s (`settling`; Undo = unmark; decision
+  count, "<month> | All months" (`journey.makeUpAll`), then each prayer's count (a tap shows only it — owner: under the
+  switch); months newest first as pinned headings with "N left · N made up"; the month scrubber on the right edge is the
+  Zikr wheel's dots (owner: not the soft look; > 3 months; the top month's dot bigger, a cleared month sage, a pill naming
+  the month while dragging, a tick each). Made up keeps the row in place as "✓ Made up · Undo" for 3 s (`settling`; Undo = unmark; decision
   makeup-made-feedback A), then it leaves the list (made up = marked on a later prayer day); a month with nothing left drops
   out; "✓ N made up · Show" under the total (`journey.showMadeUp`, Reminders' Show Completed — owner: not folded under each
   month) puts them back in their months, greyed, by date; an empty side shows "All caught up" (a check drawn in + a
