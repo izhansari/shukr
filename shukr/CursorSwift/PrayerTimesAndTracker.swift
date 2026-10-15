@@ -1745,6 +1745,13 @@ struct PrayerTimesView: View {
         /// these bounds (owner, the middle ground: folded it rests where it used to, opening "N done" lets the whole list
         /// drift down a little as it mostly grows upward, and it never comes closer than 16 pt).
         static let listBottomGap: ClosedRange<CGFloat> = 16...44
+        /// The gap under the open list for the list's height: 44 pt with two rows, giving up a quarter of every point the
+        /// list grows (so opening "N done" moves the whole list down a little as it mostly grows upward — owner: anchored
+        /// it "can't even tell"), never below 16 pt.
+        private var listGap: CGFloat {
+            let grown = max(listSize.height - 2 * SalahLook.raisedRowHeight, 0)
+            return min(max(Self.listBottomGap.upperBound - grown * 0.25, Self.listBottomGap.lowerBound), Self.listBottomGap.upperBound)
+        }
         /// Between the ring and the open list, at least this much (12 pt on each of the two spacers between them).
         static let ringListMin: CGFloat = 12
 
@@ -1846,7 +1853,7 @@ struct PrayerTimesView: View {
                         .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .named(SalahSheetDrag.space)).maxY }) { v in
                             if abs(rests.openListBottom - v) > 0.25 { rests.openListBottom = v }
                         }
-                    Spacer(minLength: Self.listBottomGap.lowerBound).frame(maxHeight: Self.listBottomGap.upperBound)   // as the page
+                    Color.clear.frame(height: listGap)   // the gap gives as the list grows (`listGap`)
                     Color.clear.frame(height: bottomChromeHeight + theme.listFooterRoom)
                 }
             }
