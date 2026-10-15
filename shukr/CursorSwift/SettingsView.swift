@@ -631,6 +631,16 @@ struct SettingsView: View {
                                 }
                             }
                         }
+                        // Your Data (YourDataPage.swift; owner, 2026-10-15): the export and iCloud Backup, last in More
+                        // with no footer of its own; the trailing tag says how the backup stands.
+                        NavigationLink { YourDataPage() } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "lock.shield").frame(width: 24)
+                                Text("Your Data")
+                                Spacer(minLength: 8)
+                                YourDataBackupTag()
+                            }
+                        }
                     } header: {
                         Text("More")
                     }
@@ -697,21 +707,6 @@ struct SettingsView: View {
                         } footer: {
                             Text("Beta builds: what the watch's pinch did in your last sessions, for the team.")
                         }
-                    }
-
-                    // Your Data (YourDataPage.swift; owner, 2026-10-14): what's kept, that it's private and on this iPhone,
-                    // whether it's backed up, and an export. At the bottom, above Sneak Peek (owner).
-                    Section {
-                        NavigationLink { YourDataPage() } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "lock.shield").frame(width: 24)
-                                Text("Your Data")
-                                Spacer(minLength: 8)
-                                YourDataBackupTag()
-                            }
-                        }
-                    } footer: {
-                        Text("Everything in shukr stays private, on this iPhone.")
                     }
 
                     //MARK: - Suggestions / Up and Coming
