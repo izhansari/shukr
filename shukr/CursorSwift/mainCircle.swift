@@ -184,6 +184,9 @@ struct MainCircleView: View {
                 if discShown {
                     NeuLiftCard(shape: Circle(), lift: discLift)
                         .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
+                        // In the ring's own 200 pt box, drawing past it: at its own size the circle's layout grew while
+                        // it showed and jumped back when it went.
+                        .frame(width: 200, height: 200)
                         .opacity(openingHides ? 0 : 1)
                         .allowsHitTesting(false)
                 }
