@@ -341,8 +341,11 @@ struct RowUnfold: ViewModifier, Animatable {
         return Double(t * t * (3 - 2 * t))
     }
     func body(content: Content) -> some View {
+        // Clipped only mid-unfold: a transition's identity modifier stays on the row for good, and a clip at full height cut
+        // the prayer-on-now band's shadow at the row's edge — its bottom looked tucked under the next row (owner,
+        // 2026-10-16). Open, the clip lets the shadow out (one shape throughout, so nothing rebuilds).
         UnfoldLayout(fraction: fraction, fromBelow: fromBelow) { content }
-            .clipped()
+            .clipShape(Rectangle().inset(by: fraction >= 1 ? -24 : 0))
             .opacity(wordsLate ? Self.fade(fraction, from: 0.85) : fromBelow ? Double(fraction) : Self.fade(fraction))
     }
 }
