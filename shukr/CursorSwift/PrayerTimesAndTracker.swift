@@ -2803,8 +2803,8 @@ struct TodaysPrayerListView: View {
                         perfectLine(perfect: perfect)
                     }
                 }
-                .padding(.horizontal)
-                .padding(.vertical, 12)
+                .padding(.horizontal, theme.list == .raised ? 0 : 16)   // the raised list's band reaches the card's edges
+                .padding(.vertical, theme.list == .raised ? 0 : 12)
                 .modifier(SalahLookCard(raised: allDone && DayPageState.shared.lifted && !TourRuntime.shared.active))
                 // The tour's list steps put their bubble above this, never over the rows (audit J).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("prayerList", $0) }
@@ -2956,7 +2956,7 @@ struct PrayerButton: View {
             if !prayerObject.isCompleted {
                 // G · the prayer on now marked from the list: its row takes the post-salah moment (PrayerRowActions),
                 // unless it's the day's last prayer (the day page comes) or the tour runs.
-                if look == .prayedOnTap, isCurrentPrayer, !TourRuntime.shared.active,
+                if look.behavesLikeG, isCurrentPrayer, !TourRuntime.shared.active,
                    viewModel.todaysPrayers.filter({ !$0.isCompleted }).count > 1 {
                     PrayerRowActions.shared.name = prayerObject.name
                 }
@@ -3037,6 +3037,9 @@ struct PrayerButton: View {
             else { NeuRaised(shape: shape) }
         case .quiet:
             if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
+        case .raised:
+            // The raised list: the prayer on now a capsule band of the card, a subtle step more (the mock's Subtle).
+            if isCurrentPrayer || showsActions { NeuRaised(shape: Capsule(), radius: 3, offset: 1.5) } else { Color.clear }
         case .prayedOnTap:
             // G · the raised row with fully round ends (owner: "round the edge of the list item when it's punched out"), its
             // lift soft (half the shadow): close to the well's pressed edge, a full lift fought it (owner).
@@ -3071,6 +3074,7 @@ struct PrayerButton: View {
     /// The name's size for the look (Sami's looks; the others keep .callout).
     private var nameFont: Font {
         switch look {
+        case .raised: .subheadline                                   // the raised list: 15 pt (owner)
         case .dayNow: .body                                          // D · a size up, with more air
         case .nowLeads: isCurrentPrayer ? .title3 : .subheadline     // E · the one on now leads
         // G · one size for every row (owner: stepping sizes on mark / unmark "looks tacky"); the lift alone sets the one on
@@ -3080,7 +3084,7 @@ struct PrayerButton: View {
     }
     /// F / G · a prayer still to say reads in regular; the rest light (as everywhere).
     private var nameWeight: Font.Weight {
-        (look == .prayedAt || look == .prayedOnTap) && !prayerObject.isCompleted ? .regular : .light
+        (look == .prayedAt || look.behavesLikeG) && !prayerObject.isCompleted ? .regular : .light
     }
 
     private var isFuturePrayer: Bool {
@@ -3188,7 +3192,7 @@ struct PrayerButton: View {
             return
         }
         withAnimation { toggledText.toggle() }   // ExternalToggleText flips (and flips back after 3 s)
-        if look == .prayedOnTap && prayerObject.isCompleted { flipScore() }
+        if look.behavesLikeG && prayerObject.isCompleted { flipScore() }
     }
 
     /// G · the name and the score swap with the time's flip, on the same 3 s (ExternalToggleText's own timer).
@@ -3229,7 +3233,7 @@ struct PrayerButton: View {
 
     /// G · this row shows the post-mark buttons.
     private var showsActions: Bool {
-        look == .prayedOnTap && prayerObject.isCompleted && PrayerRowActions.shared.name == prayerObject.name
+        look.behavesLikeG && prayerObject.isCompleted && PrayerRowActions.shared.name == prayerObject.name
     }
 
 
@@ -3292,7 +3296,7 @@ struct PrayerButton: View {
                 // Prayer Name Label
                 VStack(alignment: .leading, spacing: 1) {
                 // G · a tapped prayed row shows its score where its name sits (the time shows when it was prayed).
-                Text(look == .prayedOnTap && scoreShown && prayerObject.isCompleted ? completedTimeAndScore
+                Text(look.behavesLikeG && scoreShown && prayerObject.isCompleted ? completedTimeAndScore
                      : prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
                     .id(scoreShown)
                     .transition(.blurReplace)
@@ -3378,6 +3382,7 @@ struct PrayerButton: View {
             #endif
             .padding(.horizontal)
             .padding(.vertical, theme.rowVerticalPadding)   // the well's rows a bit shorter (owner, 2026-10-01)
+            .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 42 pt rows
             // E · the raised one gets its own room (the rest are compact).
             .padding(.vertical, look == .nowLeads && isCurrentPrayer ? 6 : 0)
             .contentShape(Rectangle())
@@ -3475,7 +3480,7 @@ struct PrayerButton: View {
                             // F · when you prayed it, not when it started (the flip still shows the score).
                             originalText: look == .prayedAt ? "prayed \(shortTimePM(prayedAt))" : shortTimePM(shownStart),
                             // G · the tap shows when you prayed (the score takes the name's place).
-                            toggledText: look == .prayedOnTap ? "@ \(shortTimePM(prayedAt))" : completedTimeAndScore,
+                            toggledText: look.behavesLikeG ? "@ \(shortTimePM(prayedAt))" : completedTimeAndScore,
                             externalTrigger: $toggledText,
                             font: timeFontSize,
                             fontDesign: .rounded,

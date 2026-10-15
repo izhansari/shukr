@@ -28,7 +28,8 @@ struct CircleTheme: Equatable {
     /// The public look (decision public-style-lock A, owner: "sunken well · soft ring · no lines between prayers ·
     /// light mode in grey-blue style but dark mode in charcoal"; rows make room then fade — RowMotion.standard —
     /// and a zikr ring opens in sink and rise — SessionOpening).
-    static let publicLook = CircleTheme(list: .well, softRing: true, palette: .greyBlue, lines: false)
+    static let publicLook = CircleTheme(list: .raised, softRing: true, palette: .greyBlue, lines: false)   // the raised list
+                                                                                                    // (owner, 2026-10-14; was .well)
     /// **The look that ships.** Public builds (TestFlight, App Store) are locked to it: they read none of the palette
     /// menu's keys, so an old pick can't linger. DEBUG builds start from it and the palette menu overrides it.
     static let standard: CircleTheme = .publicLook
@@ -61,13 +62,14 @@ struct CircleTheme: Equatable {
     var listFooterOutside: Bool { list != .today }
     var showsRowDividers: Bool { list == .today || ((list == .card || list == .well) && lines) }
     /// Space between prayer rows: pills stand apart.
-    var rowSpacing: CGFloat { list == .pills ? 12 : 6 }
+    var rowSpacing: CGFloat { list == .pills ? 12 : list == .raised ? 0 : 6 }   // the raised list's rows touch (its band shares the card's edges)
     /// A row's vertical padding: the well's rows a bit shorter (owner, 2026-10-01).
     var rowVerticalPadding: CGFloat {
         switch list {
         case .well, .now: 8
         case .timeline, .prayedAt: 10
         case .prayedOnTap: 6    // G · compact (owner: less space between the prayers)
+        case .raised: 0         // rows set their own height (SalahLook.raisedRowHeight)
         case .dayNow: 12        // D · more air
         case .nowLeads: 6       // E · the rest compact (the raised one gets its own room)
         default: 12

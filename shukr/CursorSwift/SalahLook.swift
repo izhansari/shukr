@@ -33,6 +33,10 @@ enum SalahLook: String, CaseIterable, Identifiable {
     case nowLeads
     /// F · each row says what matters for it: when you prayed, the time left, when it starts.
     case prayedAt
+    /// The raised list (owner, 2026-10-14: "make it the real thing"; PrayerListRaisedMock.swift was the mock): the whole
+    /// list one raised card with capsule-round corners, the prayer on now a capsule band of it raised a step more; G's
+    /// behaviour (the score / "@ time" on a tap, the marked row's buttons). The public look.
+    case raised
     /// G · F's shape, quieter (owner: not the word "prayed"): prayed rows keep their start time; a tap puts the score
     /// where the name sits ("On time · 88") and when you prayed where the time sits.
     case prayedOnTap
@@ -51,16 +55,22 @@ enum SalahLook: String, CaseIterable, Identifiable {
         case .nowLeads: "E · Now leads"
         case .prayedAt: "F · What happened"
         case .prayedOnTap: "G · F, prayed time on tap"
+        case .raised: "Raised list"
         }
     }
 
     /// The looks before Sami's (the palette's List picker).
     static let originals: [SalahLook] = [.today, .pills, .card, .well, .quiet]
     /// Sami's trial looks (the palette's "Sami list").
-    static let sami: [SalahLook] = [.timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap]
+    static let sami: [SalahLook] = [.raised, .timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap]
     var isSami: Bool { Self.sami.contains(self) }
     /// The prayer on now is the one raised block, with its time left (C, D, E, F).
-    var raisesNow: Bool { [.now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap].contains(self) }
+    var raisesNow: Bool { [.now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap, .raised].contains(self) }
+    /// G's behaviour: the score / "@ time" on a prayed row's tap, unprayed names regular, the marked row's buttons (G and
+    /// the raised list).
+    var behavesLikeG: Bool { self == .prayedOnTap || self == .raised }
+    /// The raised list's row height: its band is a capsule of it, the card's corners its half (the mock's 42 pt).
+    static let raisedRowHeight: CGFloat = 42
     /// The day's line through the dots (B, D).
     var drawsDayLine: Bool { self == .timeline || self == .dayNow }
 
@@ -81,6 +91,11 @@ extension SalahLook {
     /// builds are locked to `CircleTheme.standard` (the public look) and never read these keys.
     static func seedExploringDefaults() {
         let d = UserDefaults.standard
+        // The raised list became the look (owner, 2026-10-14): once, onto it, whatever was picked before.
+        if !d.bool(forKey: "salahLook.seeded.v2") {
+            d.set(true, forKey: "salahLook.seeded.v2")
+            d.set(SalahLook.raised.rawValue, forKey: key)
+        }
         guard !d.bool(forKey: "salahLook.seeded.v1") else { return }
         d.set(true, forKey: "salahLook.seeded.v1")
         d.set(SalahLook.well.rawValue, forKey: key)
@@ -390,7 +405,7 @@ struct SalahLookListFrame: ViewModifier {
         case .today:
             // Exactly as before the look prototype: not clipped (Sami's audit — the clip cut Today's slide-in rows).
             content.frame(width: 260).background(FlatBorder())
-        case .card, .well, .pills, .quiet, .timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap:
+        case .card, .well, .pills, .quiet, .timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap, .raised:
             content.frame(width: 290)   // the card goes round the rows only (SalahLookCard), "N done" under it
         }
     }
@@ -408,6 +423,10 @@ struct SalahLookCard: ViewModifier {
         switch theme.list {
         case .card:
             content.clipShape(card).background(NeuRaised(shape: card, radius: 14, offset: 7))
+        case .raised:
+            // One raised card, its corners as round as the band (half a row), the rows edge to edge inside it.
+            let round = RoundedRectangle(cornerRadius: SalahLook.raisedRowHeight / 2, style: .circular)
+            content.clipShape(round).background(NeuRaised(shape: round))
         case .well, .timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap:   // Sami's looks sit in the public look's well
             content.clipShape(card)
                 .background(NeuLiftCard(shape: card, lift: raised ? 1 : 0))
