@@ -381,39 +381,6 @@ struct NeuRingTrack: View {
     }
 }
 
-/// The soft track and the day's raised disc as ONE shape (owner, 2026-10-15: a fade from the disc to the band read as two
-/// objects): `fill` 0 = exactly `NeuRingTrack` (the raised band on the 200 pt ring), 1 = the whole circle raised
-/// (`CircleMotion.dayDiscDiameter`); between, the band widens inward and outward and its lift deepens, all at once.
-struct TrackDisc: View, Animatable {
-    var fill: CGFloat
-    var animatableData: CGFloat {
-        get { fill }
-        set { fill = newValue }
-    }
-    @Environment(\.circleTheme) private var theme
-
-    var body: some View {
-        let t = min(max(fill, 0), 1)
-        let band = AliveRingTuning.fine.band
-        // The band's edges: at 0 exactly NeuRingTrack's (a `band`-wide stroke on the 200 pt circle); at 1 the inner edge
-        // has reached the centre and the outer the disc's edge — the same stroked circle, wider, so at rest it draws
-        // just as the band always did.
-        let outer = 100 + band / 2 + (CircleMotion.dayDiscDiameter / 2 - 100 - band / 2) * t
-        let inner = (100 - band / 2) * (1 - t)
-        let mid = (outer + inner) / 2
-        Circle()
-            .stroke(lineWidth: max(outer - inner, 0.5))
-            .frame(width: mid * 2, height: mid * 2)
-            .foregroundStyle(theme.surface)
-            // NeuRingTrack's shadows at 0, NeuLiftCard's raised ones at 1.
-            .shadow(color: theme.shade, radius: 4 + 8 * t, x: 2 + 4 * t, y: 2 + 4 * t)
-            .shadow(color: theme.light, radius: 6 + 6 * t, x: -2 - 4 * t, y: -2 - 4 * t)
-            // The ring's own 200 pt box, as NeuRingTrack's — the disc draws past it, so the circle's layout never changes.
-            .frame(width: 200, height: 200)
-            .allowsHitTesting(false)
-    }
-}
-
 /// The line between the page and the bottom bar: a groove pressed into the soft surface, else the plain divider.
 /// `plain`: the plain one regardless (the Settings page keeps the system look).
 struct ThemedBarDivider: View {
