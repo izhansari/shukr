@@ -40,8 +40,7 @@ struct TimelineSpine: View {
     }
 }
 
-/// C / D / E / F — the prayer on now, as the one raised block inside the well, with its time left (red in its last half
-/// hour, as the Live Activity card).
+/// The prayer on now's time left (the raised list, C–G): grey, red from "30 min left" on, as the Live Activity card.
 struct NowTimeLeft: View {
     let start: Date
     let end: Date
@@ -50,7 +49,8 @@ struct NowTimeLeft: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             Text(Self.left(until: end, from: context.date))
                 .font(font).fontDesign(.rounded).fontWeight(.regular)
-                .foregroundStyle(PrayerScoring.color(for: PrayerScoring.score(start: start, end: end, markedAt: context.date)) == .red
+                // Red only once it reads "30 min left" — the Live Activity card's rule (owner), not the score's late band.
+                .foregroundStyle(end.timeIntervalSince(context.date) < 31 * 60
                                  ? AnyShapeStyle(Color.red.opacity(0.85)) : AnyShapeStyle(Color.secondary))
                 .monospacedDigit()
         }
