@@ -1971,6 +1971,22 @@ struct PrayerTimesView: View {
             return PrayerPhotoTarget.forMarked(row)
         }
 
+        /// The post-salah Tasbih Fatimah, from the pill or a marked row's button (G).
+        private func openPostSalahTasbih() {
+            sharedState.isDoingPostNamazZikr = true
+            // In place (decision post-salah-entry A): the cover with no animation of its own, the session
+            // fading in over the Salah page — list open or closed, nothing measured. The sheet is left as it is.
+            // Refused (another session's cover still closing — Frank's review): the usual sheet, never a cover
+            // with neither a slide nor a fade.
+            if SessionHandoff.shared.openInPlace() {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { showTasbeehPage = true }
+            } else {
+                showTasbeehPage = true
+            }
+        }
+
         /// One row of the hamburger popover; closes it and runs `action` after it's gone.
         /// `dot`: a badge on the row's symbol, the one ☰ carries for it (owner: say what ☰'s dot is for).
         private func menuRow(_ title: String, _ symbol: String, dot: Color? = nil, action: @escaping () -> Void) -> some View {
@@ -2197,22 +2213,28 @@ struct PrayerTimesView: View {
                         // ✕ closes it.
                         guard !TourRuntime.shared.active else { return }
                         live.postSalahNudge = nil
-                        sharedState.isDoingPostNamazZikr = true
-                        // In place (decision post-salah-entry A): the cover with no animation of its own, the session
-                        // fading in over the Salah page — list open or closed, nothing measured. The sheet is left as it is.
-                        // Refused (another session's cover still closing — Frank's review): the usual sheet, never a cover
-                        // with neither a slide nor a fade.
-                        if SessionHandoff.shared.openInPlace() {
-                            var quiet = Transaction()
-                            quiet.disablesAnimations = true
-                            withTransaction(quiet) { showTasbeehPage = true }
-                        } else {
-                            showTasbeehPage = true
-                        }
+                        openPostSalahTasbih()
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     .id(live.postSalahNudge)   // a new mark: a new pill, its 15 s from the start (audit A)
                 }
+            }
+            // G · the marked row's buttons (PrayerRowActions): its camera and Tasbih open as the pill's would; the list
+            // closing with the buttons up hands the moment to the pill.
+            .onReceive(NotificationCenter.default.publisher(for: PrayerRowActions.openTasbih)) { _ in
+                PrayerRowActions.shared.name = nil
+                openPostSalahTasbih()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: PrayerRowActions.openCamera)) { note in
+                guard let name = note.object as? String,
+                      let row = viewModel.todaysPrayers.first(where: { $0.name == name && $0.isCompleted }) else { return }
+                PrayerRowActions.shared.name = nil
+                prayerPhoto = PrayerPhotoTarget.forMarked(row)
+            }
+            .onChange(of: sharedState.navPosition) { _, position in
+                guard position == .main, let name = PrayerRowActions.shared.name else { return }
+                PrayerRowActions.shared.name = nil
+                if !TourRuntime.shared.active { live.postSalahNudge = name }
             }
             // A Live Activity's Photo: the same camera as the pill's, for that prayer.
             .onReceive(NotificationCenter.default.publisher(for: PrayerLiveActivities.openPhoto)) { note in
@@ -2647,6 +2669,7 @@ struct TodaysPrayerListView: View {
         if let pill = pagerLive?.postSalahNudge, viewModel.todaysPrayers.contains(where: { !$0.isCompleted }) {
             rows.insert(pill)
         }
+        if let row = PrayerRowActions.shared.name { rows.insert(row) }   // G · its buttons are up
         return rows
     }
     /// "3 done" row tapped: show the done ones too (to check a score or unmark one).
@@ -2925,6 +2948,12 @@ struct PrayerButton: View {
                 return
             }
             if !prayerObject.isCompleted {
+                // G · the prayer on now marked from the list: its row takes the post-salah moment (PrayerRowActions),
+                // unless it's the day's last prayer (the day page comes) or the tour runs.
+                if look == .prayedOnTap, isCurrentPrayer, !TourRuntime.shared.active,
+                   viewModel.todaysPrayers.filter({ !$0.isCompleted }).count > 1 {
+                    PrayerRowActions.shared.name = prayerObject.name
+                }
                 viewModel.togglePrayerCompletion(for: prayerObject)   // the post-salah pill follows (.prayerCompleted)
                 TourRuntime.shared.event(.marked(prayerObject, viewModel))   // the tour's Mark step / a first mark
             }
@@ -3004,7 +3033,7 @@ struct PrayerButton: View {
             if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
         case .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap:
             // Sami's C–F · the prayer on now is the one raised block in the well (PrayerListLooks.swift).
-            if isCurrentPrayer { NeuRaised(shape: shape, radius: 8, offset: 4) } else { Color.clear }
+            if isCurrentPrayer || showsActions { NeuRaised(shape: shape, radius: 8, offset: 4) } else { Color.clear }
         case .card, .well, .timeline:
             Color.clear
         }
@@ -3036,7 +3065,7 @@ struct PrayerButton: View {
         case .nowLeads: isCurrentPrayer ? .title3 : .subheadline     // E · the one on now leads
         // G · the raised one a step up, the rows pressed back into the well a step down (owner: so the raised one reads
         // as raised — but never E's big name: .body, not .title3).
-        case .prayedOnTap: isCurrentPrayer ? .body : .subheadline
+        case .prayedOnTap: isCurrentPrayer ? .body : .subheadline   // (drawn by GNameSize, animated)
         default: .callout
         }
     }
@@ -3140,6 +3169,7 @@ struct PrayerButton: View {
 
     /// A tap on the time: flip its text (a started prayer's time doesn't flip). A Jumu'ah shows its masjid instead.
     private func timeTap() {
+        putActionsAway()
         guard isFuturePrayer || prayerObject.isCompleted else { return }
         TourTargets.shared.lastTappedRow = prayerObject.name   // its change glows (the tour)
         TourRuntime.shared.event(prayerObject.isCompleted ? .markedRowTapped : .comingRowTapped)   // the tour's list card
@@ -3184,7 +3214,18 @@ struct PrayerButton: View {
 
     /// A tap round the dot: mark / unmark (a prayer that hasn't started can't be marked).
     private func markTap() {
+        if PrayerRowActions.shared.name != prayerObject.name { putActionsAway() }
         if !isFuturePrayer { handlePrayerButtonPress() }
+    }
+
+    /// G · this row shows the post-mark buttons.
+    private var showsActions: Bool {
+        look == .prayedOnTap && prayerObject.isCompleted && PrayerRowActions.shared.name == prayerObject.name
+    }
+    /// A tap on a row (not a button): the buttons go, quietly (no pill — they were dismissed, not left).
+    private func putActionsAway() {
+        guard PrayerRowActions.shared.name != nil else { return }
+        withAnimation(.smooth(duration: 0.3)) { PrayerRowActions.shared.name = nil }
     }
 
     /// Radius of the circle round the dot where a tap marks (a 44 pt circle; the dot is 14 pt).
@@ -3253,7 +3294,9 @@ struct PrayerButton: View {
                     // Never squeezed by a long time column (it broke a letter a line and the row grew tall).
                     .fixedSize()
                     .layoutPriority(1)
-                    .font(nameFont)   // Sami's looks try type sizes (nameFont); the others .callout
+                    .font(look == .prayedOnTap ? nil : nameFont)   // Sami's looks try type sizes (nameFont); the others .callout
+                    // G · the size animates as a row is raised or put back (AnimatableRoundedFont).
+                    .modifier(GNameSize(on: look == .prayedOnTap, raised: isCurrentPrayer || showsActions, weight: nameWeight))
                     // Today's look: exactly the old Color.secondary (the hierarchical .secondary differed a hair).
                     .foregroundStyle(theme.emphasisesCurrentRow && isCurrentPrayer ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
                     .fontDesign(.rounded)
@@ -3275,6 +3318,12 @@ struct PrayerButton: View {
                 if let line = TourHints.shared.markLine, isCurrentPrayer {
                     // The tour's mark hint in the current row's time place (Tour.swift).
                     Text(line).font(.footnote).fontDesign(.rounded).fontWeight(.light).foregroundStyle(.secondary)
+                } else if showsActions {
+                    PrayerRowActionButtons(
+                        showsCamera: prayerObject.endTime > Date() && !PrayerPhotos.exists(for: prayerObject),
+                        onEdit: { openTimeEditor() },
+                        onCamera: { NotificationCenter.default.post(name: PrayerRowActions.openCamera, object: prayerObject.name) },
+                        onTasbih: { NotificationCenter.default.post(name: PrayerRowActions.openTasbih, object: prayerObject.name) })
                 } else if look.raisesNow && isCurrentPrayer {
                     if look == .nowLeads {
                         // E · the time left sits under the name; here, when it ends.
@@ -3341,6 +3390,10 @@ struct PrayerButton: View {
                 }
             }
             .animation(Self.dotPress, value: prayerObject.isCompleted)
+            .animation(.smooth(duration: 0.45), value: isCurrentPrayer || showsActions)   // G · the size and the lift
+            .onChange(of: prayerObject.isCompleted) { _, done in
+                if !done, PrayerRowActions.shared.name == prayerObject.name { PrayerRowActions.shared.name = nil }   // unmarked
+            }
             .onChange(of: prayerObject.isCompleted) { _, done in
                 if done { completionPulse += 1 }
             }
@@ -3415,7 +3468,7 @@ struct PrayerButton: View {
                             // F · when you prayed it, not when it started (the flip still shows the score).
                             originalText: look == .prayedAt ? "prayed \(shortTimePM(prayedAt))" : shortTimePM(shownStart),
                             // G · the tap shows when you prayed (the score takes the name's place).
-                            toggledText: look == .prayedOnTap ? shortTimePM(prayedAt) : completedTimeAndScore,
+                            toggledText: look == .prayedOnTap ? "@ \(shortTimePM(prayedAt))" : completedTimeAndScore,
                             externalTrigger: $toggledText,
                             font: timeFontSize,
                             fontDesign: .rounded,

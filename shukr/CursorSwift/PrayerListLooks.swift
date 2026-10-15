@@ -64,3 +64,77 @@ struct NowTimeLeft: View {
         return h > 0 ? (m > 0 ? "\(h) hr \(m) min left" : "\(h) hr left") : "\(m) min left"
     }
 }
+
+/// G · the moment after marking the prayer on now from the list (owner, 2026-10-14): its row stays raised and its time
+/// becomes three buttons — edit, camera (while its window is open), Tasbih — in place of the post-salah pill. Closing the
+/// list hands the moment to the pill (PagerChromeView); a tap on another row puts the buttons away; unmarking clears them;
+/// the day's last prayer keeps the pill (the day page comes). Marks from anywhere else: the pill, as always.
+@MainActor @Observable final class PrayerRowActions {
+    static let shared = PrayerRowActions()
+    /// The prayer whose row shows the buttons.
+    var name: String?
+    /// The row's camera / Tasbih (PagerChromeView opens them as the pill would; object: the prayer's name).
+    static let openCamera = Notification.Name("PrayerRowActions.openCamera")
+    static let openTasbih = Notification.Name("PrayerRowActions.openTasbih")
+}
+
+/// The three buttons, where the row's time sits: soft sage circles (sage = tap).
+struct PrayerRowActionButtons: View {
+    let showsCamera: Bool
+    let onEdit: () -> Void
+    let onCamera: () -> Void
+    let onTasbih: () -> Void
+    var body: some View {
+        HStack(spacing: 8) {
+            button("pencil", label: "Edit time or place", onEdit)
+            if showsCamera { button("camera", label: "Add a photo", onCamera) }
+            button("circle.hexagonpath", label: "Post-salah tasbih", onTasbih)   // the pill's beads
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+    }
+    private func button(_ symbol: String, label: String, _ action: @escaping () -> Void) -> some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            action()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.sage)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(Color.sage.opacity(0.14)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// A rounded system font whose size animates (Font itself doesn't interpolate): G's names grow and settle as a row is
+/// raised or put back (owner: "animate the text size up and down").
+struct AnimatableRoundedFont: ViewModifier, Animatable {
+    var size: CGFloat
+    let weight: Font.Weight
+    var animatableData: CGFloat {
+        get { size }
+        set { size = newValue }
+    }
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: weight, design: .rounded))
+    }
+    /// A text style's size at the phone's text size setting.
+    static func size(_ style: UIFont.TextStyle) -> CGFloat { UIFont.preferredFont(forTextStyle: style).pointSize }
+}
+
+/// G's name: .body raised, .subheadline put back, animating between them; elsewhere nothing (the row's own font).
+struct GNameSize: ViewModifier {
+    let on: Bool
+    let raised: Bool
+    let weight: Font.Weight
+    func body(content: Content) -> some View {
+        if on {
+            content.modifier(AnimatableRoundedFont(size: AnimatableRoundedFont.size(raised ? .body : .subheadline), weight: weight))
+        } else {
+            content
+        }
+    }
+}
