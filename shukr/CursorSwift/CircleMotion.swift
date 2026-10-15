@@ -60,6 +60,15 @@ enum CircleMotion {
     /// The day's page: the list's card lifts once its rows have unfolded, not while (Izhan: "let it expand first then
     /// raise the card"); the rows' make-room-then-fade takes ~0.3–0.6 s.
     static let dayCardLiftDelay: Double = 0.7
+    /// The day ring's fifths drawing in, clockwise from the top one after another, on every flip to the day's page
+    /// (owner, 2026-10-14: drawn, not faded); closing runs it back, quicker. One animatable value, so a quick flick back
+    /// turns it round from where it is — never a timed run to wait on.
+    static let dayRingDraw = Animation.easeInOut(duration: 0.5)
+    static let dayRingRetract = Animation.easeIn(duration: 0.3)
+    /// The first showing each day: slower, then the score counts up from 0 once the ring is whole.
+    static let dayRingFirstDrawDuration: Double = 1.2
+    static let dayRingFirstDraw = Animation.easeInOut(duration: dayRingFirstDrawDuration)
+    static let dayScoreCount = Animation.easeOut(duration: 0.7)
     static let dayCardLift = Animation.easeInOut(duration: 0.9)
     /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
     /// release is the scroll view's own coast.

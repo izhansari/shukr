@@ -940,6 +940,11 @@ struct summaryCircle: View, Equatable {
     @State private var pickedAt = Date.distantPast
     @State private var line: DayInsight.Line?
     @State private var glow = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The fifths drawn (DayRing's `drawn`): toward 1 on the score side, 0 otherwise, animated (CircleMotion.dayRing…).
+    @State private var drawn: CGFloat = 0
+    /// The first showing today: the score counts up from 0 once the ring is whole (nil = show the score as it is).
+    @State private var countedScore: Double?
     /// A stored day score, `daysBack` prayer days before today (1 = yesterday).
     private func storedScore(daysBack: Int) -> Double {
         let day = Calendar.current.date(byAdding: .day, value: -daysBack, to: PrayerDay.date()) ?? PrayerDay.date()
@@ -1016,6 +1021,41 @@ struct summaryCircle: View, Equatable {
         }
     }
 
+    /// The score side shown with its words in: the fifths drawn; otherwise not.
+    private var drawTarget: CGFloat { showsScore && !away ? 1 : 0 }
+
+    /// Draw the fifths to `target`: in on every flip (the first time today slower, then the score counts up); out, quicker.
+    private func drawTo(_ target: CGFloat) {
+        guard drawn != target else { return }
+        if reduceMotion { drawn = target; countedScore = nil; return }
+        guard target == 1 else {
+            countedScore = nil
+            withAnimation(CircleMotion.dayRingRetract) { drawn = 0 }
+            return
+        }
+        let today = PrayerNotificationID.dayKey(PrayerDay.date())
+        let first = UserDefaults.standard.string(forKey: Self.firstDrawKey) != today && !TourRuntime.shared.active
+        guard first else {
+            withAnimation(CircleMotion.dayRingDraw) { drawn = 1 }
+            return
+        }
+        UserDefaults.standard.set(today, forKey: Self.firstDrawKey)
+        // To 0 at once: set inside the face's own animated swap, it counted down from the old value first.
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { countedScore = 0 }
+        withAnimation(CircleMotion.dayRingFirstDraw) { drawn = 1 }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(CircleMotion.dayRingFirstDrawDuration))
+            guard countedScore != nil else { return }
+            withAnimation(CircleMotion.dayScoreCount) { countedScore = shownScore }
+            try? await Task.sleep(for: .seconds(0.8))
+            countedScore = nil
+        }
+    }
+    /// The day the slow first draw played (once a day).
+    static let firstDrawKey = "daySummary.firstDrawn"
+
     func getTheNextFajrTime() {
         if let todaysFajr = viewModel.getPrayerTime(for: "Fajr", on: Date()){
             if todaysFajr.start > Date(){
@@ -1036,10 +1076,10 @@ struct summaryCircle: View, Equatable {
         ZStack{
             // The day (decision day-score-end): the ring holds the day's five prayers round the score; a fifth tapped
             // tells that prayer; one line under the circle.
-            DayCentre(day: shownDay, score: shownScore, picked: picked, yesterday: showingYesterday)
+            DayCentre(day: shownDay, score: countedScore ?? shownScore, picked: picked, yesterday: showingYesterday)
                 .animation(.easeOut(duration: CircleMotion.quick), value: picked)
                 .modifier(CircleWordsAway(away: away || !showsScore))
-            DayRing(day: shownDay, picked: picked) { i in
+            DayRing(day: shownDay, picked: picked, drawn: drawn) { i in
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == i ? nil : i }
                 pickedAt = Date()
                 triggerSomeVibration(type: .light)
@@ -1054,9 +1094,12 @@ struct summaryCircle: View, Equatable {
                 // memories-link-place B — the list dragged up over it here).
                 dayLine
                     .frame(width: 310).offset(y: 222)
+                    .modifier(CircleWordsAway(away: away || !showsScore))
             }
-            .modifier(CircleWordsAway(away: away || !showsScore))
+            // The ring itself is drawn in and out (`drawn`), not faded.
             .allowsHitTesting(showsScore && !away)
+            .onAppear { drawTo(drawTarget) }
+            .onChange(of: drawTarget) { _, target in drawTo(target) }
 
             // Fajr Icon, Title, Time — a prayer that hasn't started, so the future look (NEXT over
             // a dimmed name, the dashed track), keeping its own time text: "in 4 hr" ⇄ its window.

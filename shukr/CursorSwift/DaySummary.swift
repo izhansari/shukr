@@ -62,11 +62,20 @@ extension DayPrayer {
     static let notifications = "notificationsSide"
 }
 
-/// The day's five prayers round the circle (Fajr at the top, clockwise), on the ring's own band.
-struct DayRing: View {
+/// The day's five prayers round the circle (Fajr at the top, clockwise), on the ring's own band. `drawn` (0…1, animatable)
+/// draws the fifths in one after another, clockwise from the top; each one's dot shows as it completes; at 0 nothing.
+struct DayRing: View, Animatable {
     let day: [DayPrayer]
     let picked: Int?
+    var drawn: CGFloat = 1
     let onPick: (Int) -> Void
+    var animatableData: CGFloat {
+        get { drawn }
+        set { drawn = newValue }
+    }
+
+    /// Fifth `i`'s share drawn: they overlap — each starts 0.15 after the one before and takes 0.4.
+    private func part(_ i: Int) -> Double { min(max((Double(drawn) - Double(i) * 0.15) / 0.4, 0), 1) }
     @Environment(\.circleTheme) private var theme
 
     static let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
@@ -76,7 +85,9 @@ struct DayRing: View {
         let style = StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap)
         ZStack {
             ForEach(0..<5, id: \.self) { i in
-                let from = Double(i) / 5 + Self.gap, to = Double(i + 1) / 5 - Self.gap
+                let from = Double(i) / 5 + Self.gap, full = Double(i + 1) / 5 - Self.gap
+                let share = part(i)
+                let to = from + (full - from) * share
                 let p = Self.order.indices.contains(i) ? day.first { $0.name == Self.order[i] } : nil
                 let on = picked == nil || picked == i
                 ZStack {
@@ -84,8 +95,8 @@ struct DayRing: View {
                         let color = PrayerScoring.color(for: p.score)
                         Circle().trim(from: from, to: to)
                             .stroke(color.opacity(picked == i ? 1 : 0.72), style: style)
-                        if let share = p.share {
-                            let angle = 360 * (from + (to - from) * share)
+                        if let at = p.share {
+                            let angle = 360 * (from + (full - from) * at)
                             // When in its window it was prayed — a dot, photo or not (owner: the photos on the ring went
                             // back to dots; tapping the fifth still shows its photo in the centre).
                             Circle().fill(color)
@@ -93,6 +104,7 @@ struct DayRing: View {
                                 .overlay(Circle().stroke(theme.backdrop, lineWidth: 2.5))
                                 .offset(x: 100)
                                 .rotationEffect(.degrees(angle))
+                                .opacity(max(0, (share - 0.85) / 0.15))   // as its fifth completes
                         }
                     } else {
                         // Not marked: the fifth stays a faint track.
@@ -100,7 +112,7 @@ struct DayRing: View {
                             .stroke(Color.secondary.opacity(0.18), style: StrokeStyle(lineWidth: theme.arc.width, lineCap: .round, dash: [1, 7]))
                     }
                 }
-                .opacity(on ? 1 : 0.25)
+                .opacity(share < 0.001 ? 0 : (on ? 1 : 0.25))   // undrawn: nothing (a zero trim still drew a cap)
             }
         }
         .rotationEffect(.degrees(-90))
@@ -161,9 +173,9 @@ struct DayCentre: View {
             .transition(.opacity)
         } else {
             VStack(spacing: 3) {
-                Text("\(Int((score * 100).rounded()))")
+                CountingScore(value: score)   // counts up when animated (the day's first showing)
                     .font(.system(size: 48, weight: .light, design: .rounded))
-                    .contentTransition(.numericText(value: score))
+                    .monospacedDigit()
                 Text(caption)
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
@@ -218,4 +230,14 @@ enum DayHistory {
             return rows.values.map(DayPrayer.init)
         }
     }
+}
+
+/// The day's score as a whole number that counts through every value when it's animated (the first showing each day).
+struct CountingScore: View, Animatable {
+    var value: Double
+    var animatableData: Double {
+        get { value }
+        set { value = newValue }
+    }
+    var body: some View { Text("\(Int((value * 100).rounded()))") }
 }

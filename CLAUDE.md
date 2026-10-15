@@ -280,7 +280,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   score + "4 of 5 in time" / "all five in time" / "all five early". One line under the circle from `DayInsight`: act-on
   (missed → Qaza → late, "hardest this week" + "Set a Fajr alarm ›" when off; the same fix three nights running gives
   way), milestones (7, 14, 21, 30… days all in time), noticed (rotated, none repeated within 3 days), Thursday →
-  Jumu'ah; kept per prayer day (`daySummary.shownLines`); none in the tour. A full day glows once (`daySummary.glowed`).
+  Jumu'ah; kept per prayer day (`daySummary.shownLines`); none in the tour. A full day glows once (`daySummary.glowed`). The fifths are drawn, not faded (owner, 2026-10-14): `DayRing.drawn` (animatable) draws them clockwise from the top one after another, each dot as its fifth completes; every flip to the score side `CircleMotion.dayRingDraw` (0.5 s), closing `dayRingRetract` (0.3 s, counter-clockwise) — one value, so a quick flick back turns it round; the first showing each day (`daySummary.firstDrawn`) draws slower (`dayRingFirstDraw` 1.2 s) and then counts the score up from 0 (`CountingScore`); Reduce Motion: at once.
   The list's well rises into a raised card with the day's page (all five marked and `DayPageState.lifted`, set `CircleMotion.dayCardLiftDelay` after summaryCircle mounts so the rows unfold first; kept in DayPageState because the list rebuilds its card at the swap) (`SalahLookCard(raised:)`, `NeuLiftCard`: one
   animatable `lift`, inner shadows shrink to nothing, then outer ones grow — never a crossfade; decision list-raised-card).
 
