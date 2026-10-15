@@ -290,7 +290,7 @@ struct YourDataPage: View {
     private func lastBackupRow(_ c: ICloudCopy.Copy) -> some View {
         let (symbol, word, tint): (String, String, Color) = switch c.upload {
         case .inICloud: ("checkmark.icloud", "In iCloud", .sage)
-        case .uploading: ("arrow.up.icloud", "Uploading", Color(.secondaryLabel))
+        case .uploading: ("icloud.and.arrow.up", "Uploading", Color(.secondaryLabel))
         case .waiting: ("icloud", "Waiting to upload", Color(.secondaryLabel))
         case .failed: ("exclamationmark.icloud", "Not uploaded", .orange)
         }

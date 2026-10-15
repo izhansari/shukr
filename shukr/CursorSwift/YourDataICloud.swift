@@ -199,7 +199,7 @@ enum BackupState {
         switch self {
         case .off: "icloud.slash"
         case .backedUp: "checkmark.icloud"
-        case .backingUp: "arrow.up.icloud"
+        case .backingUp: "icloud.and.arrow.up"   // (arrow.up.icloud isn't a symbol: it drew nothing)
         case .none: "icloud"
         case .noICloud, .stale, .failed: "exclamationmark.icloud"
         }
@@ -207,7 +207,7 @@ enum BackupState {
     /// The state in a word or two: the card's status line, the button's VoiceOver label.
     var word: String {
         switch self {
-        case .off: "Off"
+        case .off: "Not backed up"
         case .noICloud: "iCloud Drive is off"
         case .none: "No backup yet"
         case .backingUp: "Backing up…"
@@ -234,10 +234,15 @@ struct BackupCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             status
-            ReminderExplainer(head: sentence, points: points, explainHead: "Your iPhone's backup", explain: [
-                .init(big: "Check iCloud Backup", small: "Settings → your name → iCloud → iCloud Backup. When it's on, shukr is in it, photos too. iOS doesn't let apps see whether it's on.", symbol: "iphone", warn: false, neutral: true),
-                .init(big: "Deleting shukr deletes it", small: "Removing the app removes its data from this iPhone. Your backups keep it.", symbol: "trash", warn: false, neutral: true),
-            ])
+            // The iPhone's own backup only where it matters: while shukr's is off, it's the only one (owner: not on every state).
+            if case .off = state {
+                ReminderExplainer(head: sentence, points: points, explainHead: "Your iPhone's backup", explain: [
+                    .init(big: "Check iCloud Backup", small: "Settings → your name → iCloud → iCloud Backup. When it's on, shukr is in it, photos too. iOS doesn't let apps see whether it's on.", symbol: "iphone", warn: false, neutral: true),
+                    .init(big: "Deleting shukr deletes it", small: "Removing the app removes its data from this iPhone. Your backups keep it.", symbol: "trash", warn: false, neutral: true),
+                ])
+            } else {
+                ReminderExplainer(head: sentence, points: points)
+            }
             if let action {
                 Button(action: action.run) {
                     Text(action.title)
@@ -254,20 +259,19 @@ struct BackupCard: View {
         }
     }
 
-    /// The state, big enough to read at a glance: its cloud, the word, then when / why.
+    /// The state as the card's one big thing: a light word (orange when something's wrong), one grey line under it.
+    /// No symbol of its own: the card's title row already wears the state's cloud (owner: not twice).
     private var status: some View {
-        HStack(spacing: 14) {
-            Image(systemName: state.symbol)
-                .font(.system(size: 26, weight: .light))
-                .foregroundStyle(state.isProblem ? Color.orange : Color.sage)
-                .frame(width: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(state.word).font(.system(.title3, design: .rounded, weight: .medium))
-                Text(detail).font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(state.word)
+                .font(.system(size: 30, weight: .light, design: .rounded))
+                .foregroundStyle(state.isProblem ? Color.orange : Color.primary)
+            Text(detail)
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var detail: String {
@@ -278,7 +282,7 @@ struct BackupCard: View {
         case .backingUp: "Uploading to your iCloud Drive."
         case .backedUp(let c): "Last backup " + YourDataPage.when(c.made).lowercasedFirstWord + " · " + YourDataPage.size(c.bytes)
         case .stale(let c): "Last backup " + YourDataPage.when(c.made).lowercasedFirstWord
-        case .failed(let why): why
+        case .failed(let why): "Your last backup didn't reach iCloud. " + why
         }
     }
 
@@ -286,12 +290,12 @@ struct BackupCard: View {
     private var sentence: String {
         switch state {
         case .off: "Turn it on and shukr backs up everything to your own iCloud Drive once a day. Only you can see it."
-        case .noICloud: "Backup is on, but iCloud Drive is off on this iPhone. Turn it on in Settings → your name → iCloud → iCloud Drive, and shukr backs up the next time you open it."
+        case .noICloud: "Turn it on in Settings → your name → iCloud → iCloud Drive, and shukr backs up the next time you open it."
         case .none: "shukr backs up when you open it. You can make the first one now."
         case .backingUp: "It's usually there within a minute. You can leave this page."
         case .backedUp: "Everything in shukr is in your own iCloud Drive, and only you can see it."
         case .stale: "shukr backs up once a day when it's opened, and the last one is a few days old. Back up now to bring it up to date."
-        case .failed: "Your last backup didn't reach iCloud. Check that you're online and iCloud has room (Settings → your name → iCloud), then try again."
+        case .failed: "Check that you're online and iCloud has room (Settings → your name → iCloud), then try again."
         }
     }
 
