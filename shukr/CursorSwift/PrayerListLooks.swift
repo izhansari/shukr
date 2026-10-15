@@ -45,10 +45,12 @@ struct TimelineSpine: View {
 struct NowTimeLeft: View {
     let start: Date
     let end: Date
+    /// G steps the raised row up a size (its name and its time left together).
+    var font: Font = .footnote
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             Text(Self.left(until: end, from: context.date))
-                .font(.footnote).fontDesign(.rounded).fontWeight(.regular)
+                .font(font).fontDesign(.rounded).fontWeight(.regular)
                 .foregroundStyle(PrayerScoring.color(for: PrayerScoring.score(start: start, end: end, markedAt: context.date)) == .red
                                  ? AnyShapeStyle(Color.red.opacity(0.85)) : AnyShapeStyle(Color.secondary))
                 .monospacedDigit()

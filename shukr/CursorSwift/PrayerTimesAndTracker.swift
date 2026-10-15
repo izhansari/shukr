@@ -3034,6 +3034,9 @@ struct PrayerButton: View {
         switch look {
         case .dayNow: .body                                          // D · a size up, with more air
         case .nowLeads: isCurrentPrayer ? .title3 : .subheadline     // E · the one on now leads
+        // G · the raised one a step up, the rows pressed back into the well a step down (owner: so the raised one reads
+        // as raised — but never E's big name: .body, not .title3).
+        case .prayedOnTap: isCurrentPrayer ? .body : .subheadline
         default: .callout
         }
     }
@@ -3107,7 +3110,7 @@ struct PrayerButton: View {
 //    }
     
     private var timeFontSize: Font {
-        return .footnote
+        look == .prayedOnTap && !isCurrentPrayer ? .caption : .footnote   // G · the pressed-back rows a step down
     }
     
     private var calcStartTime: Date{
@@ -3278,7 +3281,8 @@ struct PrayerButton: View {
                         Text("ends \(shortTimePM(prayerObject.endTime))")
                             .font(timeFontSize).fontDesign(.rounded).fontWeight(.light).foregroundStyle(.secondary)
                     } else {
-                        NowTimeLeft(start: prayerObject.startTime, end: prayerObject.endTime)   // in place of its start
+                        NowTimeLeft(start: prayerObject.startTime, end: prayerObject.endTime,
+                                    font: look == .prayedOnTap ? .subheadline : .footnote)   // in place of its start
                     }
                 } else {
                     timeColumn
