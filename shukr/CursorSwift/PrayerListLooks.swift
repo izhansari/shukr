@@ -45,7 +45,6 @@ struct TimelineSpine: View {
 struct NowTimeLeft: View {
     let start: Date
     let end: Date
-    /// G steps the raised row up a size (its name and its time left together).
     var font: Font = .footnote
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
@@ -118,32 +117,3 @@ struct PrayerRowActionButton: View {
     }
 }
 
-/// A rounded system font whose size animates (Font itself doesn't interpolate): G's names grow and settle as a row is
-/// raised or put back (owner: "animate the text size up and down").
-struct AnimatableRoundedFont: ViewModifier, Animatable {
-    var size: CGFloat
-    let weight: Font.Weight
-    var animatableData: CGFloat {
-        get { size }
-        set { size = newValue }
-    }
-    func body(content: Content) -> some View {
-        content.font(.system(size: size, weight: weight, design: .rounded))
-    }
-    /// A text style's size at the phone's text size setting.
-    static func size(_ style: UIFont.TextStyle) -> CGFloat { UIFont.preferredFont(forTextStyle: style).pointSize }
-}
-
-/// G's name: .body raised, .subheadline put back, animating between them; elsewhere nothing (the row's own font).
-struct GNameSize: ViewModifier {
-    let on: Bool
-    let raised: Bool
-    let weight: Font.Weight
-    func body(content: Content) -> some View {
-        if on {
-            content.modifier(AnimatableRoundedFont(size: AnimatableRoundedFont.size(raised ? .body : .subheadline), weight: weight))
-        } else {
-            content
-        }
-    }
-}

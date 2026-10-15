@@ -3063,9 +3063,8 @@ struct PrayerButton: View {
         switch look {
         case .dayNow: .body                                          // D · a size up, with more air
         case .nowLeads: isCurrentPrayer ? .title3 : .subheadline     // E · the one on now leads
-        // G · the raised one a step up, the rows pressed back into the well a step down (owner: so the raised one reads
-        // as raised — but never E's big name: .body, not .title3).
-        case .prayedOnTap: isCurrentPrayer ? .body : .subheadline   // (drawn by GNameSize, animated)
+        // G · one size for every row (owner: stepping sizes on mark / unmark "looks tacky"); the lift alone sets the one on
+        // now apart.
         default: .callout
         }
     }
@@ -3139,7 +3138,7 @@ struct PrayerButton: View {
 //    }
     
     private var timeFontSize: Font {
-        look == .prayedOnTap && !isCurrentPrayer ? .caption : .footnote   // G · the pressed-back rows a step down
+        .footnote
     }
     
     private var calcStartTime: Date{
@@ -3169,6 +3168,8 @@ struct PrayerButton: View {
 
     /// A tap on the time: flip its text (a started prayer's time doesn't flip). A Jumu'ah shows its masjid instead.
     private func timeTap() {
+        // G · while this row's buttons are up, a tap on it (the name) does nothing — it used to flip and clear them (owner).
+        if showsActions { return }
         putActionsAway()
         guard isFuturePrayer || prayerObject.isCompleted else { return }
         TourTargets.shared.lastTappedRow = prayerObject.name   // its change glows (the tour)
@@ -3294,9 +3295,7 @@ struct PrayerButton: View {
                     // Never squeezed by a long time column (it broke a letter a line and the row grew tall).
                     .fixedSize()
                     .layoutPriority(1)
-                    .font(look == .prayedOnTap ? nil : nameFont)   // Sami's looks try type sizes (nameFont); the others .callout
-                    // G · the size animates as a row is raised or put back (AnimatableRoundedFont).
-                    .modifier(GNameSize(on: look == .prayedOnTap, raised: isCurrentPrayer || showsActions, weight: nameWeight))
+                    .font(nameFont)   // Sami's looks try type sizes (nameFont); the others .callout
                     // Today's look: exactly the old Color.secondary (the hierarchical .secondary differed a hair).
                     .foregroundStyle(theme.emphasisesCurrentRow && isCurrentPrayer ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
                     .fontDesign(.rounded)
@@ -3309,6 +3308,7 @@ struct PrayerButton: View {
                 // G · the marked row's pencil, right after its name (owner's drawing): the time / place editor.
                 if showsActions {
                     PrayerRowActionButton(symbol: "pencil", label: "Edit time or place", size: 26, ringed: false) { openTimeEditor() }
+                        .padding(.leading, -6)   // close to the name (owner); the tap area stays 26 pt
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
                 // Prayed at a masjid: a small mosque mark by the name.
@@ -3334,8 +3334,7 @@ struct PrayerButton: View {
                         Text("ends \(shortTimePM(prayerObject.endTime))")
                             .font(timeFontSize).fontDesign(.rounded).fontWeight(.light).foregroundStyle(.secondary)
                     } else {
-                        NowTimeLeft(start: prayerObject.startTime, end: prayerObject.endTime,
-                                    font: look == .prayedOnTap ? .subheadline : .footnote)   // in place of its start
+                        NowTimeLeft(start: prayerObject.startTime, end: prayerObject.endTime)   // in place of its start
                     }
                 } else {
                     timeColumn
@@ -3394,7 +3393,7 @@ struct PrayerButton: View {
                 }
             }
             .animation(Self.dotPress, value: prayerObject.isCompleted)
-            .animation(.smooth(duration: 0.45), value: isCurrentPrayer || showsActions)   // G · the size and the lift
+            .animation(.smooth(duration: 0.45), value: isCurrentPrayer || showsActions)   // G · the lift
             .onChange(of: prayerObject.isCompleted) { _, done in
                 if !done, PrayerRowActions.shared.name == prayerObject.name { PrayerRowActions.shared.name = nil }   // unmarked
             }
