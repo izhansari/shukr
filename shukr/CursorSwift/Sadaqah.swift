@@ -365,9 +365,13 @@ final class SadaqahLog {
     func csv() -> String {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withFullDate]
+        f.timeZone = .current   // the day it was given here (UTC put an evening gift on the next day)
         func cell(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         func ein(_ d: SadaqahDonation) -> String {
-            guard let id = d.charityID, let c = SadaqahCharities.all.first(where: { $0.id == id }) else { return "" }
+            // The listed charity it came from, or one typed by its name ("+" logs aren't linked to the list).
+            let typed = d.to.trimmingCharacters(in: .whitespaces)
+            guard let c = SadaqahCharities.all.first(where: { $0.id == d.charityID })
+                    ?? SadaqahCharities.all.first(where: { $0.name.caseInsensitiveCompare(typed) == .orderedSame }) else { return "" }
             return c.facts.lazy.compactMap { fact in fact.text.range(of: "EIN ").map { String(fact.text[$0.upperBound...]) } }.first ?? ""
         }
         let rows = donations.sorted { $0.date < $1.date }.map { d in
