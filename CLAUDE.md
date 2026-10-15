@@ -30,7 +30,7 @@ restore agreed behaviour, review fix-ups that don't change what he sees, and int
    engineer until Izhan names it; once named, it's briefed as that engineer's next.
 2. Every item is in `board/queue.jsonl` before it's briefed (`queue.sh add`); each engineer holds a current and a next, on
    the board's Queue tab; starting next needs no go: `queue.sh start <id>`.
-3. Build → a What's new entry (`whatsnew.py add … --ask <slug>`) → commit → push to the team line.
+3. Build → commit → push to the team line (small steps); a What's new entry per item, not per commit (rule below).
 4. Install on his phone only right after pulling the team line, so every build has everyone's work.
 5. Done = `queue.sh done <id> <hash>` right after the push (the What's new entry carries what was and wasn't checked);
    no done message. Message Bradley only when blocked (`queue.sh block`).
@@ -141,11 +141,23 @@ state.json `decisions`; `import-verdicts` / `add` turn pulled ones into `decisio
 **The data:** `shukr/WhatsNew.jsonl`, JSON Lines, written only by `scripts/whatsnew.py` (never by hand):
 topics (features), **asks** (his requests, verbatim), changes, chat verdicts. `.gitattributes` merges it with
 `merge=union`, so branches appending lines don't conflict; `whatsnew.py check` flags a line a merge kept twice.
-Screenshots: `shukr/WhatsNewShots/wn-*.jpg` (the folder is a synchronized group; ships in TestFlight builds,
-left out of App Store ones by `SHUKR_APPSTORE=1`).
+Screenshots: `shukr/WhatsNewShots/wn-*.jpg` (a synchronized group: in the repo and dev builds, the team's picture
+record; `testflight.sh` leaves them and the log out of every upload, TestFlight and App Store — owner 2026-10-15).
 
-**Every commit that changes something he can see or feel adds a change in the same commit:**
-1. Screenshot in the sim → `scripts/whatsnew.py shot <png> <name>` (≤ 600 px, 20–40 KB). One per change, fresh.
+**One entry per item, not per commit** (owner 2026-10-15, agreed by Frank, Sami, Bradley). He doesn't use the page;
+it's the team's record, with pictures, of what changed and why, so anyone can look up another's change without the sim.
+- One entry per thing he'd recognise: a feature sprint or a one-off fix. Never for a state he threw away; none for
+  invisible changes.
+- During a sprint: small commits + pushes, no entries. Each commit message = what changed + his words for that step,
+  and "tried X, dropped because Y" when something goes.
+- Written when the first build of it goes to his phone (or at the sprint's end if none did). Each later install round
+  replaces it: `add` a fresh one with the same `--ask`, then `status --entry <old> --set replaced` (committed entries
+  can't be edited). The new one carries the old one's "Tried and dropped:" line and any words he added since.
+- It holds: a fresh shot of the latest state; how it works in 2–3 lines (`--title`); a `--try`; the ask slug + the words
+  that started it; one "Tried and dropped:" line and what was / wasn't checked (`--notes`).
+- Wrapping up an item = the entry matches what's on his phone → commit → push → `queue.sh done`.
+How:
+1. Screenshot in the sim → `scripts/whatsnew.py shot <png> <name>` (≤ 600 px, 20–40 KB), fresh.
 2. `scripts/whatsnew.py add --topic <id> --headline "<≤ 40 chars>" --title "<one line>" --try "…" [--try "…"]
    --shot wn-<name>.jpg [--ask <slug> [--ask-words "<his words>"] | --ask-note <feedback id>] [--notes "#17"]`
    - **--ask**: the ask this answers. Bradley's brief gives the slug and, for a new chat ask, his exact words
@@ -153,7 +165,6 @@ left out of App Store ones by `SHUKR_APPSTORE=1`).
      ask use the same slug; only the newest waits for his answer (a new attempt reopens it).
    - A new feature: add `--area Zikr --topic-title "<≤ 60 chars>" [--topic-summary "…"] [--topic-link salah|zikr|…]`.
      Change a feature's title / summary / steps / link: `whatsnew.py topic --id …`.
-   - Invisible changes (haptics, background): `--no-try`, no shot.
 3. Commit. **No resolve step**: `add` stamps the time; ids get a random suffix, so branches can't clash.
 - Not committed yet and wrong: `whatsnew.py edit --entry <id> …` / `drop --entry <id>`. Committed and undone later:
   `whatsnew.py status --entry <id> --set replaced|dropped` (greyed in history).
