@@ -198,7 +198,8 @@ private struct LockScreenScene: View {
             .foregroundStyle(.white)
             .padding(.top, 72)
         }
-        .playsLockStates()   // the widgets' states in turn, the clock with them
+        // The widgets' states in turn, the clock with them — only with a prayer widget on it (the Name's alone: still).
+        .playsLockStates(show.contains(.lockTime) || show.contains(.lockCountdown))
     }
 }
 

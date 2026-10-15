@@ -1514,7 +1514,10 @@ struct LockDemoPlayer: ViewModifier {
 }
 extension View {
     /// Explore's Lock Screen pictures: the widget's states in turn (LockDemoPlayer).
-    func playsLockStates() -> some View { modifier(LockDemoPlayer()) }
+    /// Only where the prayer widgets show (owner: the Name above the clock stays still).
+    @ViewBuilder func playsLockStates(_ on: Bool = true) -> some View {
+        if on { modifier(LockDemoPlayer()) } else { self }
+    }
 }
 
 /// The clock on Explore's Lock Screen pictures, at the state playing.
@@ -1755,7 +1758,7 @@ private struct LockClock<Accessory: View>: View {
             if !top { accessory() }
         }
         .foregroundStyle(.white)
-        .playsLockStates()
+        .playsLockStates(!top)   // the Name's line (top) stays still
     }
 }
 
