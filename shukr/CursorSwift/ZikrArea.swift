@@ -391,13 +391,24 @@ private struct SegmentRing<Center: View>: View {
     let p = t.progress(in: sessions)
     return t.isCountMode ? Double(p.count) / Double(max(t.goal, 1)) : p.seconds / Double(max(t.goal, 1) * 60)
 }
-/// "12 of 50 today" / "done today" / "0 of 50 · last 3 days ago".
+/// "12 of 50 today · 71% in 2 weeks" / "done today · 71% in 2 weeks" / "0 of 50 · not started yet": the last two weeks'
+/// consistency in place of "last 4 days ago" (owner, 2026-10-15: how good you are at it lately, at a glance).
 @MainActor private func goalLine(_ t: TaskModel, _ today: [SessionDataModel]) -> String {
     let p = t.progress(in: today)
-    if t.isCompleted(with: p) { return "done today" }
     let of = t.isCountMode ? "\(p.count) of \(ZikrFmt.count(t.goal))" : "\(Int(p.seconds / 60)) of \(t.goal) min"
-    if p.count > 0 || p.seconds >= 1 { return of + " today" }
-    return of + " · " + (t.sessions.map(\.startTime).max().map { "last \(ZikrFmt.ago($0))" } ?? "not started yet")
+    let head = t.isCompleted(with: p) ? "done today" : (p.count > 0 || p.seconds >= 1 ? of + " today" : of)
+    guard !t.sessions.isEmpty else { return head + " · not started yet" }
+    return head + " · \(goalConsistency(t))% in 2 weeks"
+}
+/// The last 14 prayer days (today included), each day's share of the goal (capped at 1), averaged — the goal card's
+/// "N% consistent" and the row's line.
+@MainActor func goalConsistency(_ t: TaskModel) -> Int {
+    let cal = Calendar.current, todayStart = PrayerDay.start()
+    guard let from = cal.date(byAdding: .day, value: -13, to: todayStart) else { return 0 }
+    var byDay: [String: [SessionDataModel]] = [:]
+    for s in t.sessions where s.startTime >= from { byDay[PrayerDay.key(for: s.startTime), default: []].append(s) }
+    let total = byDay.values.reduce(0.0) { $0 + min(fraction(t, $1), 1) }
+    return Int((total / 14 * 100).rounded())
 }
 /// "3 min": the time a goal still needs today at your pace (a minutes goal: what's left of it), as Your azkar's header.
 @MainActor private func timeLeft(_ t: TaskModel, _ p: TaskProgress) -> String? {
@@ -506,6 +517,8 @@ private struct GoalRow: View {
 /// A zikr without a goal: a ring with the beads, its name, its count, pace and when last said.
 private struct ZikrRow: View {
     let zikr: MantraModel
+    /// The new task's "Which zikr?": the one picked shows a sage ✓ instead of ›.
+    var picked = false
     var body: some View {
         // The time spent on it in all, not the pace (owner: "we don't need to see how many seconds each").
         let (spent, last) = zikr.sessionTotals
@@ -521,10 +534,39 @@ private struct ZikrRow: View {
             }
             Spacer(minLength: 4)
             if !zikr.notes.isEmpty { Image(systemName: "note.text").font(.caption).foregroundStyle(.tertiary) }
-            Soft.chevron()
+            if picked {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 18, weight: .semibold)).foregroundStyle(Color.sage)
+            } else {
+                Soft.chevron()
+            }
         }
         .contentShape(Rectangle())
     }
+}
+
+/// New task's "Which zikr?" (NewTaskFlow): Your azkar's own label, card and rows, so the two read alike (owner).
+struct ZikrPickSection: View {
+    let title: String
+    let zikrs: [MantraModel]
+    let picked: MantraModel?
+    let onPick: (MantraModel) -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SoftLabel(title: title)
+            SoftCard {
+                ForEach(zikrs) { z in
+                    Button { onPick(z) } label: { ZikrRow(zikr: z, picked: picked == z).cardRow() }
+                        .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+/// Your azkar's glass search capsule, for the new task's list.
+struct ZikrPickSearch: View {
+    @Binding var text: String
+    var prompt = "Search azkar"
+    var body: some View { Soft.search(prompt, $text) }
 }
 
 /// A daily goal's hold menu, the same everywhere: Start (without opening its page) · Edit goal · Open zikr · Pause ·
@@ -1433,7 +1475,7 @@ private struct ZikrGoalCard: View {
     var body: some View {
         let days = days
         let met = days.filter { $0.fraction >= 1 }.count
-        let consistency = Int((days.map { min($0.fraction, 1) }.reduce(0, +) / Double(max(days.count, 1)) * 100).rounded())
+        let consistency = goalConsistency(goal)
         let s = goal.streak()
         let paused = goal.pausedAt != nil
         VStack(alignment: .leading, spacing: 16) {

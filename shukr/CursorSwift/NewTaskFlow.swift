@@ -23,6 +23,7 @@ import SwiftData
 struct NewTaskFlow: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    @Environment(\.circleTheme) private var theme
     @Query private var azkar: [MantraModel]
     @Query(sort: \TaskModel.sortOrder) private var existingTasks: [TaskModel]
     /// Where the new task goes among the existing ones (0 = first); nil = at the end (the default).
@@ -123,7 +124,8 @@ struct NewTaskFlow: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        // The Zikr pages' soft surface (owner: the flow and Your azkar alike).
+        .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         // Never swiped away (owner): step one is a scrolling list, so a swipe meant for it closed the sheet. ✕ on
         // step one closes; ‹ walks back.
@@ -229,34 +231,29 @@ struct NewTaskFlow: View {
 
     // MARK: step 1 — which zikr
 
+    /// Your azkar's look (owner, 2026-10-15: "make it consistent with … the refreshed Your azkar page"): its rows in one
+    /// soft card per group, the dashed new-zikr row, the glass search at the bottom.
     private var pickZikr: some View {
         ScrollView {
             VStack(spacing: 18) {
                 heading("Which zikr?", "Pick one you'd like to say every day")
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search", text: $search)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 11)
-                .background(Capsule().fill(Color.primary.opacity(0.06)))
-                .padding(.horizontal, 20)
-
                 Button { creatingZikr = true } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "plus").font(.system(size: 15, weight: .semibold))
+                        Image(systemName: "plus").font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(Color.sage)
-                            .frame(width: 34, height: 34)
+                            .frame(width: 30, height: 30)
                             .background(Circle().fill(Color.sage.opacity(0.14)))
                         Text(search.isEmpty ? "A new zikr" : "New zikr \u{201C}\(search)\u{201D}")
                             .foregroundStyle(Color.sage)
                         Spacer()
                     }
-                    .padding(14)
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .padding(.horizontal, 14).padding(.vertical, 11)
+                    .background(RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .strokeBorder(Color.sage.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [5, 5])))
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
                 .disabled(ZikrTour.shared.guardsNewTask)
                 .opacity(ZikrTour.shared.guardsNewTask ? 0.4 : 1)
 
@@ -266,44 +263,19 @@ struct NewTaskFlow: View {
             .padding(.bottom, 30)
         }
         .scrollDismissesKeyboard(.immediately)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ZikrPickSearch(text: $search).padding(.horizontal, 16).padding(.bottom, 6)
+        }
     }
 
     private func group(_ title: String, _ list: [MantraModel]) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
-                .font(.caption.weight(.medium)).tracking(1.2)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 34)
-            VStack(spacing: 0) {
-                ForEach(Array(list.enumerated()), id: \.element.id) { i, m in
-                    Button {
-                        // The Zikr Tour's task: Astaghfirullah only (ZikrTour.swift; decision zikr-tour-task-guard A).
-                        guard ZikrTour.shared.allowsPick(m.name) else { return }
-                        mantra = m
-                        if returnToReview { backToReview() } else { go(2) }
-                    } label: {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(m.name).foregroundStyle(.primary).lineLimit(1)
-                                if !m.fullText.isEmpty {
-                                    Text(m.fullText).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                                }
-                            }
-                            Spacer()
-                            Image(systemName: mantra == m ? "checkmark.circle.fill" : "chevron.right")
-                                .foregroundStyle(mantra == m ? Color.sage : Color.secondary.opacity(0.5))
-                                .font(.system(size: mantra == m ? 18 : 13, weight: .semibold))
-                        }
-                        .padding(.horizontal, 16).padding(.vertical, 13)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if i < list.count - 1 { Divider().padding(.leading, 16) }
-                }
-            }
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
-            .padding(.horizontal, 20)
+        ZikrPickSection(title: title, zikrs: list, picked: mantra) { m in
+            // The Zikr Tour's task: Astaghfirullah only (ZikrTour.swift; decision zikr-tour-task-guard A).
+            guard ZikrTour.shared.allowsPick(m.name) else { return }
+            mantra = m
+            if returnToReview { backToReview() } else { go(2) }
         }
+        .padding(.horizontal, 16)
     }
 
     // MARK: step 2 — the goal, in the app's circle
