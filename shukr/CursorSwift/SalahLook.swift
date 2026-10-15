@@ -358,7 +358,8 @@ struct MemoriesFooterLink: View {
                         // A photo waiting for its tap: the same thin sage ring the fifths will wear (owner).
                         .overlay(alignment: .topTrailing) {
                             if toDevelop > 0 {
-                                Circle().strokeBorder(Color.sage, lineWidth: 1.5).frame(width: 8, height: 8).offset(x: 4, y: -3)
+                                // Grey, not sage: no sage on the Salah page (owner, 2026-10-15).
+                                Circle().strokeBorder(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8).offset(x: 4, y: -3)
                             }
                         }
                     Text(toDevelop > 0 ? "\(toDevelop) photo\(toDevelop == 1 ? "" : "s") to develop"

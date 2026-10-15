@@ -981,16 +981,8 @@ struct summaryCircle: View, Equatable {
                     .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.85)
                     .fixedSize(horizontal: false, vertical: true)
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                if line.offersFajrAlarm && !fajrAlarmOn {
-                    Button {
-                        // Settings, then its alarm row once the page has come to rest (scrolling mid-swipe stalls it).
-                        Task { if await sharedState.navigate(to: .settings) { SettingsJump.shared.request(SettingsJump.fajrAlarm) } }
-                    } label: {
-                        Text("Set a Fajr alarm ›").font(.system(size: 14, weight: .regular, design: .rounded))
-                            .foregroundStyle(Color.sage)
-                    }
-                    .buttonStyle(.plain)
-                }
+                // No "Set a Fajr alarm ›" nudge here any more (owner, 2026-10-15: don't push people to make one; the alarm
+                // shows on the next-Fajr side only once it's set up).
             }
             .dynamicTypeSize(...DynamicTypeSize.xLarge)
         }
@@ -1061,7 +1053,9 @@ struct summaryCircle: View, Equatable {
     /// When the Fajr alarm rings for this Fajr — the rule from Settings (before / after Fajr or sunrise, by the offset);
     /// nil when it's off or excused (it won't ring).
     private func alarmTime(for fajr: (start: Date, end: Date)) -> Date? {
-        guard fajrAlarmOn, !Excused.isActive, let g = UserDefaults(suiteName: SharedStore.appGroup) else { return nil }
+        // Only once it's set up: on, iOS's alarm permission given (AlarmKit), not excused — never a nudge (owner).
+        guard fajrAlarmOn, FajrAlarms.allowed != false, !Excused.isActive,
+              let g = UserDefaults(suiteName: SharedStore.appGroup) else { return nil }
         let isFajr = g.object(forKey: "alarmIsFajr") as? Bool ?? true
         let before = g.object(forKey: "alarmIsBefore") as? Bool ?? true
         let shift = TimeInterval(g.integer(forKey: "alarmOffsetMinutes") * 60) * (before ? -1 : 1)
