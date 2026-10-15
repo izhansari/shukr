@@ -264,7 +264,7 @@ import SwiftData
     func next() {
         switch step {
         case .yourTasks: popPage += 1; go(.history)
-        case .historyPage: popPage += 1; go(.azkar)
+        case .historyPage: popPage += 1; go(.done)   // the Azkar door went (owner, 2026-10-15): the line under the wheel opens it
         case .azkarPage: popPage += 1; go(.done)
         case .done: finish()
         default: break
@@ -400,13 +400,13 @@ import SwiftData
             // tour shows those instead); otherwise it ends at the results (owner, 2026-10-08).
             skippedCount ? section("zt.time", C.timeStep, from: .timeLeft, to: .yourTasks, lead: timeLead,
                                    todo: step == .timeLeft ? C.timeTodo : nil) : nil,
-            skippedCount ? section("zt.where", C.whereStep, from: .history, to: .azkarPage, lead: whereLead, todo: whereTodo) : nil,
+            skippedCount ? section("zt.where", C.whereStep, from: .history, to: .historyPage, lead: whereLead, todo: whereTodo) : nil,
         ].compactMap { $0 }
         // Reused task: the kinds line shows straight away, as done.
         if reused, step >= .start, let i = sections.firstIndex(where: { $0.id == "zt.kinds" }) { sections[i].done = true }
         if step == .done { sections.append(TourSection(id: "zt.done", note: C.doneLine(met: outcome?.met ?? true, counted: outcome?.counted ?? 0, goal: outcome?.goal ?? 0))) }
         let units = 6.0
-        let finished = Double([Step.kinds, .review, .keepGoing, .results, .yourTasks, .azkarPage].filter { $0 < step }.count)
+        let finished = Double([Step.kinds, .review, .keepGoing, .results, .yourTasks, .historyPage].filter { $0 < step }.count)
         let primary: String? = switch step {
             case .yourTasks, .historyPage, .azkarPage: TourCopy.continueButton
             case .done: inAppTour ? TourCopy.continueButton : C.doneButton

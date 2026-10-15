@@ -2202,15 +2202,9 @@ struct PrayerTimesView: View {
                         .modifier(follow(.salah(push: 0)))
                         }
                         Spacer()
-                        ZStack(alignment: .trailing) {   // the Azkar door keeps its place beside the Play / palette pair
-                        // Zikr page, top right: Azkar (Your tasks is "N of M tasks done" under the wheel).
-                        // Skip tour takes this corner while the tour runs (Tour.swift's TourSkipButton).
-                        ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("azkarDoor", $0) }
-                            .modifier(follow(.zikr(push: 0)))
-                            .opacity(TourRuntime.shared.active && !TourRuntime.showsAzkarDoor ? 0 : ZikrLock.shared.locked ? 0 : 1)
-                            // The Zikr Tour's Azkar step opens it (its guard lets only that through); shut while locked.
-                            .allowsHitTesting((!TourRuntime.shared.active || ZikrTour.shared.step == .azkar) && !ZikrLock.shared.locked)
+                        ZStack(alignment: .trailing) {
+                        // Zikr page, top right: nothing (owner, 2026-10-15: the books door went — "N of M daily goals
+                        // done" under the wheel opens Your azkar).
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
                         if access.available && !TourRuntime.shared.active {
                             HStack(spacing: 0) {

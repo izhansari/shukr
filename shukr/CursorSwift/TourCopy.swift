@@ -201,8 +201,8 @@ enum TourCopy {
         static let pageLead = "These three are examples, so the wheel isn’t empty."
         static let page = [
             "your tasks on the wheel, freestyle first",
-            "History top left, Azkar top right",
-            "under it: tasks done and time left",
+            "History top left",
+            "under it: tasks done and time left — a tap opens Your azkar",
         ]
 
         static let todos = [

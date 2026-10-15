@@ -1781,8 +1781,6 @@ struct BubbleShape: Shape {
     /// right, from before Zikr left the tour).
     var locksPager: Bool { active && !((step == .zikr || step == .settings) && phase == .go) }
     /// The list stays as the card needs it (TourLayer.sheetPosition); free only where the card is about other pages.
-    /// The Zikr card's learn page names Azkar, top right: its door shows then (not tappable — the tour's guard).
-    static var showsAzkarDoor: Bool { shared.step == .zikr && shared.phase != .go }
     /// Card 1 lets go once Asr is marked: its last to-do is the swipe up.
     var holdsSheet: Bool {
         active && !(step == .zikr && phase == .go) && step != .settings && !(step == .circle && ticked.contains(Self.cMark))
@@ -3054,10 +3052,9 @@ struct TourLayer: View {
 
     @ViewBuilder private var skipLayer: some View {
         // The way out, for the whole tour, in one place (owner: "just keep it in the top right"): two taps, like
-        // Finish early. Where the page has its own top-right button it slides left beside it, in the same row: Zikr's
-        // Azkar (shown while its card names it), Settings' light / dark (a row lower sat on the location's refresh).
-        let besideCorner = (TourRuntime.showsAzkarDoor && sharedState.horizontalPage == .zikr)
-            || sharedState.horizontalPage == .settings
+        // Finish early. Where the page has its own top-right button it slides left beside it, in the same row:
+        // Settings' light / dark (a row lower sat on the location's refresh).
+        let besideCorner = sharedState.horizontalPage == .settings
         // Not while a chapter is up: its panel has the ✕ (a flag the map's own panel could clear — so by step).
         if runtime.active, !covered, !TourTopPanel.chapters.contains(runtime.step ?? .intro) {
             TourSkipButton {

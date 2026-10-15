@@ -180,11 +180,11 @@ struct ZikrCircleWheel: View {
     var body: some View {
         wheel
             .overlay(alignment: .bottom) {
-                // "2 of 9 daily goals done · about 14 min to go": information only (owner, 2026-10-14 — the books
-                // door is the one way to Your azkar). The Zikr Tour's step that opens it still does.
+                // "2 of 9 daily goals done · about 14 min to go": the way to Your azkar (owner, 2026-10-15 — the books
+                // door top right went). During a tour only its own step opens it.
                 Button {
-                    guard ZikrTour.shared.step == .timeLeft else {
-                        if TourRuntime.shared.active || ZikrTour.shared.active { TourRuntime.shared.nudge() }
+                    if (TourRuntime.shared.active || ZikrTour.shared.active) && ZikrTour.shared.step != .timeLeft {
+                        TourRuntime.shared.nudge()
                         return
                     }
                     ZikrTour.shared.summaryTapped()
@@ -316,6 +316,7 @@ struct ZikrCircleWheel: View {
                 if done == tasks.count { Image(systemName: "checkmark") }
                 Text(summaryText(done: done, secondsLeft: left))
                     .contentTransition(.numericText())
+                Image(systemName: "chevron.right").font(.caption2.weight(.light))   // a link to Your azkar
             }
             .font(.footnote)
             .fontWeight(.light)
@@ -327,6 +328,13 @@ struct ZikrCircleWheel: View {
                 try? await Task.sleep(for: .seconds(2.5))   // after the welcome
                 summaryReady = true
             }
+        } else {
+            // No daily goals yet: the line is still the way to Your azkar (the books door went).
+            HStack(spacing: 5) {
+                Text("Your azkar")
+                Image(systemName: "chevron.right").font(.caption2.weight(.light))
+            }
+            .font(.footnote).fontWeight(.light).fontDesign(.rounded).foregroundStyle(.secondary)
         }
     }
 
