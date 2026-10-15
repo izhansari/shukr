@@ -318,14 +318,15 @@ struct JourneyPage: View {
             HStack(spacing: 3) {
                 ForEach([1.0, 0.9, 0.7], id: \.self) { score in
                     Circle().fill(grades ? PrayerScoring.color(for: score) : Color.secondary.opacity(0.45))
-                        .frame(width: 5, height: 5)
+                        .frame(width: 4, height: 4)
                 }
             }
-            .frame(width: 34, height: 34)
+            .frame(width: 28, height: 28)   // the month arrows' size (owner)
             .background {
                 if grades { NeuPressed(shape: Circle(), radius: 3, offset: 2) } else { NeuRaised(shape: Circle(), radius: 2.5, offset: 1.2) }
             }
             .animation(.easeInOut(duration: 0.3), value: grades)
+            .frame(width: 34, height: 34)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -597,8 +598,9 @@ private struct JourneyCalendar: View {
                 ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: compact ? 34 : 40) }
                 ForEach(days, id: \.self) { date in
                     let day = log.day(date)
-                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, grades: grades,
-                                   usesExcused: log.usesExcused)
+                    // A day the card lights up shows its grade colours whatever the switch (owner, as Insights did).
+                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay,
+                                   grades: grades || highlight?.matches(day) == true, usesExcused: log.usesExcused)
                         .opacity(highlight.map { $0.matches(day) ? 1 : 0.22 } ?? 1)
                         .frame(height: compact ? 34 : 40)
                         .contentShape(Rectangle())
@@ -731,7 +733,8 @@ private struct JourneyGrid: View {
                 ForEach(0..<5, id: \.self) { p in
                     row(JourneyLog.names[p], count: "\(numbers.perPrayer[p].prayed)/\(numbers.perPrayer[p].due)") {
                         ForEach(days, id: \.self) { date in
-                            cell(log.day(date).marks[p], date: date, picked: pick == JourneyPick(prayer: p, date: date))
+                            cell(log.day(date).marks[p], date: date, picked: pick == JourneyPick(prayer: p, date: date),
+                                 lit: highlight?.matches(log.day(date)) == true)
                                 .opacity(dim(date))
                         }
                     }
@@ -739,7 +742,7 @@ private struct JourneyGrid: View {
                 row("All five", count: "\(numbers.allInTimeDays)", muted: true) {
                     ForEach(days, id: \.self) { date in
                         let d = log.day(date)
-                        Circle().fill(d.allInTime ? (grades ? Color.green : Color.primary.opacity(0.7))
+                        Circle().fill(d.allInTime ? (grades || highlight?.matches(d) == true ? Color.green : Color.primary.opacity(0.7))
                                       : d.allFive ? Color.secondary.opacity(0.5) : .clear)
                             .frame(width: 6, height: 6)
                             .frame(maxWidth: .infinity)
@@ -872,12 +875,13 @@ private struct JourneyGrid: View {
 
     /// Insights' squares: with colours off a prayed one is a soft grey, an unprayed one only an outline; the picked one
     /// always shows its grade colour, a little larger, glowing (owner: "the same way as it does in Insights").
-    @ViewBuilder private func cell(_ mark: JourneyLog.Mark, date: Date, picked: Bool) -> some View {
+    /// `lit`: a day the card lights up — its colours show whatever the switch (owner, as Insights did).
+    @ViewBuilder private func cell(_ mark: JourneyLog.Mark, date: Date, picked: Bool, lit: Bool = false) -> some View {
         let shape = RoundedRectangle(cornerRadius: 2.5, style: .continuous)
         let color: Color? = mark.score.map { PrayerScoring.color(for: $0) }
         Group {
             switch mark {
-            case .done: shape.fill(grades || picked ? color ?? .gray : Color.primary.opacity(0.28))
+            case .done: shape.fill(grades || picked || lit ? color ?? .gray : Color.primary.opacity(0.28))
             case .missed: shape.fill(Color.clear)
             case .excused: shape.fill(Color(.systemGray4))
             case .toCome, .none: shape.fill(Color.clear)

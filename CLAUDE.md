@@ -525,7 +525,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   link "journey" ("insights" too). InsightsView is kept in code, unreached. One screen, no scroll on a 6.1" iPhone (owner;
   `ViewThatFits` falls back to compact, then a scroll): title + "Day N · since …"; the raised card: the month's ring =
   prayed of due (a tap → in time of due, back after 4 s), beside it the month, "% in time" and "Streak N days · N in time"
-  (grey), under it days all in time · days with all five (a tap lights those days up, dims the rest — `JourneyHighlight`)
+  (grey), under it days all in time · days with all five (a tap lights those days up in their grade colors whatever the switch, dims the rest — `JourneyHighlight`)
   · average score (of the prayers due; a tap lights up the month's best day — `JourneyHighlight.bestDay`, the mean of its five, the latest of a tie — and shows its score and date); ‹ month › on small raised discs (owner: not sage; the month name a fixed 88 pt so › stays put) + the grades button (three dots:
   grey raised = off, grade colours pressed = on, `journey.grades`, both views; owner: no palette symbol) + Calendar | Grid
   (`journey.view`); the calendar = five dots a day, green disc = all five in time, grey = all five with a Qaza, a tap opens
