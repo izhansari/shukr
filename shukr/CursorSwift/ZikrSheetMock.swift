@@ -1,13 +1,15 @@
 #if DEBUG
 import SwiftUI
 
-// A zikr's sheet as three tabs, mocked (owner, 2026-10-15): "make these three separate tabs … each one of these things gets
-// the full attention rather than fighting for attention" — Zikr · Daily goals · History, in that order. The goal card is
-// its own (owner: not History's month card — "don't want someone to get confused if it looks too familiar"): today's
-// count, the last two weeks as quiet dots (owner: keep seeing consistency at a glance, but not a row of rings), and the
-// facts — streak, average time a day, last done. Fake data only; the look, not the wiring.
-// The ⋯ menu holds the mock's switches (goal card A / B, light / dark, a zikr without a goal).
-// My Dev Stuff → Zikr sheet mock-up; DEBUG `-demoZikrSheetMock`.
+// A zikr's page as three tabs, mocked (owner, 2026-10-15): "make these three separate tabs … each one of these things gets
+// the full attention rather than fighting for attention" — Zikr · Daily goals · History, in that order, switched from a
+// thin Liquid Glass bar at the bottom (Memories' bar). Pushed from Your azkar: back ‹, then + (another daily goal, on its
+// tab), share and ⋯ (the zikr's own things) on a see-through bar; the title over a hairline. The goal card is its own
+// (owner: not History's month card): B (owner's favourite, the default) leads with the streak — or the days since, with
+// none going — the best streak always under it; the last two weeks as small progress rings; the reminder inside it; the
+// goal's edit / pause / delete behind its Edit menu (owner: the card is the page). Fake data only; the look, not the wiring.
+// ⋯ → Mock-up holds the switches (card A / B, light / dark, a zikr without a goal).
+// My Dev Stuff → Zikr page mock-up; DEBUG `-demoZikrSheetMock`.
 
 struct ZikrSheetMockPage: View {
     enum Tab: String, CaseIterable, Identifiable {
@@ -21,9 +23,10 @@ struct ZikrSheetMockPage: View {
 
     @Environment(\.circleTheme) private var theme
     @Environment(\.colorScheme) private var phoneScheme
-    // Launch arguments for screenshots: `-zikrMockTab zikr|goals|history -zikrMockCard B -zikrMockLook dark -zikrMockNoGoal YES`.
+    @Namespace private var bar
+    // Launch arguments for screenshots: `-zikrMockTab zikr|daily|history -zikrMockCard A -zikrMockLook dark -zikrMockNoGoal YES`.
     @State private var tab: Tab = Tab.allCases.first { $0.rawValue.lowercased().hasPrefix(UserDefaults.standard.string(forKey: "zikrMockTab") ?? "daily") } ?? .goals
-    @State private var style: CardStyle = UserDefaults.standard.string(forKey: "zikrMockCard") == "B" ? .streak : .today
+    @State private var style: CardStyle = UserDefaults.standard.string(forKey: "zikrMockCard") == "A" ? .today : .streak
     @State private var dark: Bool? = UserDefaults.standard.string(forKey: "zikrMockLook").map { $0 == "dark" }
     @State private var hasGoals = !UserDefaults.standard.bool(forKey: "zikrMockNoGoal")
     @State private var goal: Int
@@ -32,10 +35,9 @@ struct ZikrSheetMockPage: View {
     private var isDark: Bool { dark ?? (phoneScheme == .dark) }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            tabSwitch.padding(.top, 14).padding(.bottom, 18)
-            ScrollView {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                header
                 Group {
                     switch tab {
                     case .zikr: zikrTab
@@ -46,25 +48,35 @@ struct ZikrSheetMockPage: View {
                 .id(tab)
                 .transition(.opacity)
                 .padding(.horizontal, 20)
-                .padding(.bottom, 140)
+                .padding(.top, 18)
+                .padding(.bottom, 40)
             }
-            .scrollIndicators(.hidden)
         }
-        .overlay(alignment: .bottom) {
-            // Only a goal can be started (the other tabs would leave "start what?").
-            if tab == .goals && hasGoals { startPill.transition(.opacity) }
+        .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 12) {
+                // Only a goal can be started (the other tabs would leave "start what?").
+                if tab == .goals && hasGoals { startPill.transition(.opacity) }
+                tabBar
+            }
+            .padding(.bottom, 4)
         }
         .background(theme.surface.ignoresSafeArea())
-        // Pushed from Your azkar (owner): the system back top left, then share and ⋯ top right.
+        // Pushed from Your azkar (owner): the system back top left; the bar see-through (owner).
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                // Share leads (owner: "promotes people to share their zikrs … the act of zikr in our Muslim community").
+                // Another daily goal, from its tab (owner: a glass + top right).
+                if tab == .goals {
+                    Button {} label: { Image(systemName: "plus") }
+                }
+                // Share leads the zikr's things (owner: "promotes people to share their zikrs").
                 ShareLink(item: "Sallallahu ta'ala ala habibihi Muhammadin wa ala alihi wa sahabihi wa sallam — durood, from shukr") {
                     Image(systemName: "square.and.arrow.up")
                 }
                 Menu {
-                    // Only the zikr's own things; the goal's live on its tab.
+                    // Only the zikr's own things; a goal's are on its card.
                     Button {} label: { Label("Edit the zikr", systemImage: "text.book.closed") }
                     Button(role: .destructive) {} label: { Label("Delete the zikr…", systemImage: "trash") }
                     Section("Mock-up") {
@@ -84,21 +96,39 @@ struct ZikrSheetMockPage: View {
 
     // MARK: Header and tabs
 
+    /// The title, then a hairline between it and the page (owner).
     private var header: some View {
-        Text("durood").font(.system(size: 34, weight: .light, design: .rounded))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 20)
-            .padding(.top, 4)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("durood").font(.system(size: 34, weight: .light, design: .rounded))
+                .padding(.horizontal, 20)
+            Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
+        }
+        .padding(.top, 2)
     }
 
-    /// The system's segmented control — Liquid Glass on iOS 26 (owner, 2026-10-15: not our soft one).
-    private var tabSwitch: some View {
-        Picker("Section", selection: $tab) {
-            ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
+    /// Memories' bottom bar: a thin Liquid Glass capsule, the picked one on a sliding pill (owner: "traditional iOS liquid
+    /// glass", not thick).
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.allCases) { t in
+                Button { withAnimation(.snappy(duration: 0.3)) { tab = t } } label: {
+                    Text(t.rawValue)
+                        .font(.system(size: 15, weight: tab == t ? .semibold : .medium))
+                        .foregroundStyle(tab == t ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 14)
+                        .frame(height: 40)
+                        .background {
+                            if tab == t {
+                                Capsule().fill(Color.primary.opacity(0.12)).matchedGeometryEffect(id: "pill", in: bar)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .pickerStyle(.segmented)
-        .controlSize(.large)
-        .padding(.horizontal, 20)
+        .padding(4)
+        .barGlass(Capsule())
         .sensoryFeedback(.selection, trigger: tab)
     }
 
@@ -130,7 +160,7 @@ struct ZikrSheetMockPage: View {
 
     private var goalsTab: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // The goals as chips (one fewer word than the old "2 daily goals" line: the chips are the count).
+            // The goals as chips (the chips are the count).
             HStack(spacing: 8) {
                 ForEach(Array(GoalMock.all.enumerated()), id: \.offset) { i, g in
                     let on = goal == i
@@ -143,6 +173,7 @@ struct ZikrSheetMockPage: View {
                     .buttonStyle(.plain)
                 }
             }
+            // The card is the page (owner): nothing under it.
             Group {
                 switch style {
                 case .today: GoalCardToday(g: GoalMock.all[goal])
@@ -151,36 +182,7 @@ struct ZikrSheetMockPage: View {
             }
             .id(goal)
             .transition(.opacity)
-            goalActions.padding(.top, 6)
         }
-    }
-
-    /// The goal's own things, on its tab (owner: not in ⋯): reminder, edit, pause; then another goal; delete last.
-    private var goalActions: some View {
-        let g = GoalMock.all[goal]
-        return VStack(spacing: 14) {
-            VStack(spacing: 0) {
-                actionRow("bell", "Reminder", value: g.reminder ?? "Add", sage: g.reminder != nil)
-                Divider().padding(.leading, 50).opacity(0.5)
-                actionRow("pencil", "Edit goal", value: "\(g.goal) a day")
-                Divider().padding(.leading, 50).opacity(0.5)
-                actionRow("pause", "Pause this goal", value: nil)
-            }
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.primary.opacity(0.045)))
-            Label("Add another daily goal", systemImage: "plus").font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
-            Text("Delete this goal").font(.subheadline).foregroundStyle(.red.opacity(0.8))
-        }
-    }
-
-    private func actionRow(_ symbol: String, _ title: String, value: String?, sage: Bool = false) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: symbol).font(.system(size: 16, weight: .light)).foregroundStyle(.secondary).frame(width: 22)
-            Text(title).font(.body)
-            Spacer()
-            if let value { Text(value).font(.subheadline).foregroundStyle(sage ? AnyShapeStyle(Color.sage) : AnyShapeStyle(.secondary)) }
-            Image(systemName: "chevron.right").font(.caption.weight(.medium)).foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 16).frame(height: 50)
     }
 
     private var noGoalTab: some View {
@@ -200,20 +202,13 @@ struct ZikrSheetMockPage: View {
     }
 
     private var startPill: some View {
-        VStack(spacing: 10) {
-            // Edit goal is a row on the tab now (not under Start).
-            Text("Start \(GoalMock.all[goal].name) · ~3 min")
-                .font(.headline.weight(.medium)).foregroundStyle(Color.sage)
-                .frame(maxWidth: .infinity).frame(height: 54)
-                .background(Capsule().fill(Color.sage.opacity(0.16)))
-                .background(Capsule().fill(theme.surface))
-                .overlay(Capsule().strokeBorder(Color.sage.opacity(0.35), lineWidth: 1))
-        }
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
-        .padding(.top, 16)
-        .background(LinearGradient(colors: [theme.surface.opacity(0), theme.surface, theme.surface],
-                                   startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+        Text("Start \(GoalMock.all[goal].name) · ~3 min")
+            .font(.headline.weight(.medium)).foregroundStyle(Color.sage)
+            .frame(maxWidth: .infinity).frame(height: 50)
+            .background(Capsule().fill(Color.sage.opacity(0.16)))
+            .background(Capsule().fill(theme.surface))
+            .overlay(Capsule().strokeBorder(Color.sage.opacity(0.35), lineWidth: 1))
+            .padding(.horizontal, 20)
     }
 
     // MARK: History
@@ -285,6 +280,8 @@ struct GoalMock {
     let average: String
     let lastDone: String
     let reminder: String?
+    /// Prayer days since it was last done (with no streak going).
+    var daysSince: Int { (days.lastIndex { $0 >= goal }).map { days.count - 1 - $0 } ?? 14 }
 
     static let all = [
         GoalMock(name: "Morning Durood", goal: 50, today: 20, days: [50, 50, 50, 30, 50, 50, 50, 0, 50, 50, 50, 0, 0, 20],
@@ -309,14 +306,15 @@ struct SessionMock {
     ]
 }
 
-// MARK: - Two weeks as dots
+// MARK: - Two weeks as rings
 
-/// The last two weeks, one quiet dot a day (owner: consistency at a glance, not a row of rings): full sage = met, a
-/// lighter sage by how far = part done, faint = none; today a ring filling with today's count. A tap reads a day.
+/// The last two weeks, a small progress ring a day (owner: "just clearer to tell how far I got on the task that day"):
+/// filled by that day's count against the goal, ✓-full in sage when met, an empty track when missed; today a touch
+/// bolder. A tap reads a day.
 struct GoalDaysMock: View {
     let g: GoalMock
     @Binding var picked: Int?
-    var dot: CGFloat = 14
+    var size: CGFloat = 18
     var rows = 2
 
     var body: some View {
@@ -327,10 +325,9 @@ struct GoalDaysMock: View {
                     ForEach(0..<perRow, id: \.self) { c in
                         let i = r * perRow + c
                         VStack(spacing: 5) {
-                            if r == 0 || rows == 1 {
+                            if r == 0 {
                                 Text(GoalMock.date(i).formatted(.dateTime.weekday(.narrow)))
-                                    .font(.caption2).foregroundStyle(.tertiary)
-                                    .opacity(rows == 1 ? 1 : (r == 0 ? 1 : 0))
+                                    .font(.caption2).foregroundStyle(i == g.days.count - 1 ? .primary : .tertiary)
                             }
                             day(i)
                         }
@@ -346,30 +343,25 @@ struct GoalDaysMock: View {
         }
     }
 
-    @ViewBuilder private func day(_ i: Int) -> some View {
+    private func day(_ i: Int) -> some View {
         let isToday = i == g.days.count - 1
-        let f = Double(g.days[i]) / Double(max(g.goal, 1))
-        let on = picked == i
-        ZStack {
-            if isToday {
-                Circle().stroke(Color.primary.opacity(0.18), lineWidth: 1.5)
-                Circle().trim(from: 0, to: min(f, 1))
-                    .stroke(Color.sage, style: StrokeStyle(lineWidth: 1.5, lineCap: .round)).rotationEffect(.degrees(-90))
-            } else if f >= 1 {
-                Circle().fill(Color.sage)
-            } else if f > 0 {
-                Circle().fill(Color.sage.opacity(0.2 + 0.4 * f))
-            } else {
-                Circle().fill(Color.primary.opacity(0.08)).padding(dot * 0.22)
+        let f = min(Double(g.days[i]) / Double(max(g.goal, 1)), 1)
+        let width: CGFloat = isToday ? 2.6 : 2.2
+        return ZStack {
+            Circle().stroke(Color.primary.opacity(isToday ? 0.2 : 0.1), lineWidth: width)
+            if f > 0 {
+                Circle().trim(from: 0, to: f)
+                    .stroke(Color.sage.opacity(f >= 1 ? 1 : 0.8), style: StrokeStyle(lineWidth: width, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
             }
         }
-        .frame(width: dot, height: dot)
-        .padding(3)
-        .overlay { if on { Circle().strokeBorder(Color.primary.opacity(0.5), lineWidth: 1) } }
+        .frame(width: size, height: size)
+        .padding(4)
+        .background { if picked == i { Circle().fill(Color.primary.opacity(0.1)) } }
     }
 }
 
-/// "Sat, Oct 10 · 50 of 50 · 1m 42s", or the hint.
+/// "Sat, Oct 10 · 50 of 50 · 2m 50s", or the hint.
 private func dayLine(_ g: GoalMock, _ i: Int?) -> String {
     guard let i else { return "Tap a day" }
     let d = GoalMock.date(i).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
@@ -379,51 +371,75 @@ private func dayLine(_ g: GoalMock, _ i: Int?) -> String {
     return "\(d) · \(n) of \(g.goal) · \(secs / 60)m \(String(format: "%02d", secs % 60))s"
 }
 
+/// The goal's reminder and its Edit menu, inside the card (owner: edit / pause / delete behind a button, the card is
+/// the page; the reminder can sit in the card).
+private struct GoalCardFoot: View {
+    let g: GoalMock
+    var body: some View {
+        HStack {
+            Label(g.reminder.map { "Reminder · \($0)" } ?? "No reminder", systemImage: g.reminder != nil ? "bell.fill" : "bell.slash")
+                .font(.subheadline)
+                .foregroundStyle(g.reminder != nil ? AnyShapeStyle(Color.sage) : AnyShapeStyle(.secondary))
+            Spacer()
+            Menu {
+                Button {} label: { Label("Edit goal", systemImage: "pencil") }
+                Button {} label: { Label(g.reminder == nil ? "Add a reminder" : "Change reminder", systemImage: "bell") }
+                Button {} label: { Label("Pause this goal", systemImage: "pause") }
+                Button(role: .destructive) {} label: { Label("Delete goal…", systemImage: "trash") }
+            } label: {
+                Text("Edit").font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                    .padding(.horizontal, 14).frame(height: 32)
+                    .background(NeuRaised(shape: Capsule(), radius: 3, offset: 1.5))
+            }
+            .tint(.primary)
+        }
+    }
+}
+
 // MARK: - Goal card A · Today first
 
-/// Today big and plain at the top (the number, not a ring — History's card leads with a ring), the two weeks as a
-/// little calendar, then three facts side by side in pressed wells.
+/// Today big and plain at the top, the two weeks as a little calendar of rings, then the streak (or days since), the
+/// average a day and the best streak in wells.
 struct GoalCardToday: View {
     let g: GoalMock
     @State private var picked: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(g.today)").font(.system(size: 52, weight: .light, design: .rounded)).monospacedDigit()
-                        Text("of \(g.goal)").font(.system(size: 20, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    }
-                    Text(g.today >= g.goal ? "done today" : "today · about \(g.today > 0 ? "2" : "3") min to go")
-                        .font(.footnote).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("\(g.today)").font(.system(size: 52, weight: .light, design: .rounded)).monospacedDigit()
+                    Text("of \(g.goal)").font(.system(size: 20, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                 }
-                Spacer()
+                Text(g.today >= g.goal ? "done today" : "today · about \(g.today > 0 ? "2" : "3") min to go")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             VStack(spacing: 10) {
                 GoalDaysMock(g: g, picked: $picked)
                 Text(dayLine(g, picked)).font(.caption).foregroundStyle(picked == nil ? .tertiary : .secondary)
-                    .monospacedDigit().contentTransition(.opacity)
+                    .monospacedDigit()
             }
             .padding(.vertical, 14).padding(.horizontal, 8)
             .background(NeuPressed(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), radius: 4, offset: 2))
             HStack(spacing: 10) {
-                fact("flame", g.streak > 0 ? "\(g.streak)" : "0", "day streak", "best \(g.best)")
-                fact("clock", g.average, "a day", "on average")
-                fact("calendar", g.lastDone, "last done", nil)
+                // A streak going shows; else how long since (owner: "last done" says nothing with a streak).
+                if g.streak > 0 { fact("flame.fill", "\(g.streak)", "day streak") }
+                else { fact("calendar", "\(g.daysSince)", g.daysSince == 1 ? "day since" : "days since") }
+                fact("clock", g.average, "a day, usually")
+                fact("trophy", "\(g.best)", "best streak")   // always somewhere (owner)
             }
+            GoalCardFoot(g: g)
         }
         .padding(18)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
     }
 
-    private func fact(_ symbol: String, _ value: String, _ label: String, _ sub: String?) -> some View {
+    private func fact(_ symbol: String, _ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Image(systemName: symbol).font(.caption).foregroundStyle(.secondary)
             Text(value).font(.system(size: 19, weight: .light, design: .rounded)).monospacedDigit()
                 .lineLimit(1).minimumScaleFactor(0.7)
             Text(label).font(.caption).foregroundStyle(.secondary)
-            Text(sub ?? " ").font(.caption2).foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -433,8 +449,8 @@ struct GoalCardToday: View {
 
 // MARK: - Goal card B · Streak first
 
-/// The streak leads (what a daily goal is for), today a small ring beside it, the two weeks in one row of dots, the
-/// facts as two plain lines.
+/// The streak leads — or how long since, with none going — the best streak always under it; today a small ring beside
+/// it; the two weeks in one row of rings; the average a day; the reminder and Edit at its foot.
 struct GoalCardStreak: View {
     let g: GoalMock
     @State private var picked: Int?
@@ -444,12 +460,14 @@ struct GoalCardStreak: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Image(systemName: g.streak > 0 ? "flame.fill" : "flame")
+                        Image(systemName: g.streak > 0 ? "flame.fill" : "calendar")
                             .font(.system(size: 22, weight: .light))
                             .foregroundStyle(g.streak > 0 ? Color.sage : .secondary)
-                        Text("\(g.streak) day streak").font(.system(size: 28, weight: .light, design: .rounded))
+                        Text(g.streak > 0 ? "\(g.streak) day streak"
+                             : "\(g.daysSince) day\(g.daysSince == 1 ? "" : "s")")
+                            .font(.system(size: 28, weight: .light, design: .rounded))
                     }
-                    Text(g.streak > 0 ? "best \(g.best) · keep it today" : "best \(g.best) · start a new one today")
+                    Text(g.streak > 0 ? "keep it today · best streak \(g.best)" : "since you last did it · best streak \(g.best)")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -465,23 +483,16 @@ struct GoalCardStreak: View {
                 .frame(width: 62, height: 62)
             }
             VStack(spacing: 8) {
-                GoalDaysMock(g: g, picked: $picked, dot: 11, rows: 1)
+                GoalDaysMock(g: g, picked: $picked, size: 14, rows: 1)
                 Text(dayLine(g, picked)).font(.caption).foregroundStyle(picked == nil ? .tertiary : .secondary)
                     .monospacedDigit()
             }
+            Label("About \(g.average) a day, usually", systemImage: "clock").font(.subheadline).foregroundStyle(.secondary)
             Divider().opacity(0.5)
-            VStack(alignment: .leading, spacing: 8) {
-                line("clock", "About \(g.average) a day, on average")
-                line("calendar", "Last done \(g.lastDone)")
-            }
+            GoalCardFoot(g: g)
         }
         .padding(18)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
-    }
-
-    private func line(_ symbol: String, _ text: String, sage: Bool = false) -> some View {
-        Label(text, systemImage: symbol).font(.subheadline)
-            .foregroundStyle(sage ? AnyShapeStyle(Color.sage) : AnyShapeStyle(.secondary))
     }
 }
 
