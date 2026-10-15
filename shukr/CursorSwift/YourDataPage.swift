@@ -431,6 +431,14 @@ private struct RestoreSheet: View {
 enum DataExport {
     static let lastExportKey = "yourData.lastExport"
 
+    /// One spreadsheet on its own (a details page's export), in tmp/YourData/one, ready to share.
+    static func oneFile(_ name: String, _ text: String) -> URL? {
+        let dir = FileManager.default.temporaryDirectory.appending(path: "YourData/one", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appending(path: name)
+        return (try? Data(text.utf8).write(to: url, options: .atomic)) == nil ? nil : url
+    }
+
     /// The whole copy: the spreadsheets and the backup from the store here (SwiftData's objects stay on the main actor),
     /// the files and the zip off it. In tmp/YourData.
     @MainActor static func makeCopy(_ context: ModelContext, media: Bool) async -> URL? {
@@ -442,9 +450,8 @@ enum DataExport {
         }.value
     }
 
-    static func photoCount() -> Int {
-        PrayerPhotos.files().filter { $0.contains("-back.") }.count
-    }
+    /// Photos by prayer (a prayer saved as both .heic and .jpg is one photo), as the photos page and Memories count them.
+    static func photoCount() -> Int { PrayerPhotos.all().count }
 
     /// How much of the store is prayers and how much zikr: the size of each one's records written out as the copy writes
     /// them (main actor: SwiftData's objects).
