@@ -31,9 +31,11 @@ struct YourDataPage: View {
         var firstMarked: Date?
         var zikrSeconds: Double = 0
     }
+    /// Prayers and zikr share one store file, so the file is split between them by how much each holds (their records'
+    /// size in the copy's JSON); azkar photos and voice memos are files of their own and count to zikr exactly.
     struct Sizes {
-        var records: Int64 = 0, photos: Int64 = 0, other: Int64 = 0
-        var total: Int64 { records + photos + other }
+        var prayers: Int64 = 0, zikr: Int64 = 0, photos: Int64 = 0, other: Int64 = 0
+        var total: Int64 { prayers + zikr + photos + other }
         var known = false
     }
 
@@ -49,14 +51,14 @@ struct YourDataPage: View {
                 ReminderWhyLink(symbol: "lock", title: "What stays private") { info = .privacy }
             }
             Section {
-                row("checkmark.circle", "Prayers", prayersLine)
-                row("circle.hexagonpath", "Zikr sessions", sessionsLine)
-                row("books.vertical", "Azkar and daily goals", "\(counts.azkar) of yours · \(counts.goals) daily goal\(counts.goals == 1 ? "" : "s")")
-                row("camera", "Prayer photos", counts.photos == 0 ? "None yet"
+                row(.prayers, "checkmark.circle", "Prayers", prayersLine)
+                row(.zikr, "circle.hexagonpath", "Zikr sessions", sessionsLine)
+                row(.azkar, "books.vertical", "Azkar and daily goals", "\(counts.azkar) of yours · \(counts.goals) daily goal\(counts.goals == 1 ? "" : "s")")
+                row(.photos, "camera", "Prayer photos", counts.photos == 0 ? "None yet"
                     : "\(counts.photos) photo\(counts.photos == 1 ? "" : "s")" + (sizes.known ? " · \(Self.size(sizes.photos))" : ""))
-                if counts.donations > 0 { row("gift", "Donations you logged", "\(counts.donations)") }
-                if counts.excused > 0 { row("pause.circle", "Excused Mode", "\(counts.excused) time\(counts.excused == 1 ? "" : "s")") }
-                row("gearshape", "Your settings", "Location, prayer times, reminders and looks")
+                if counts.donations > 0 { row(.donations, "gift", "Donations you logged", "\(counts.donations)") }
+                if counts.excused > 0 { row(.excused, "pause.circle", "Excused Mode", "\(counts.excused) time\(counts.excused == 1 ? "" : "s")") }
+                row(.settings, "gearshape", "Your settings", "Location, prayer times, reminders and looks")
             } header: { Text("On this iPhone") }
             Section {
                 Button { exportSheet = true } label: {
@@ -148,15 +150,18 @@ struct YourDataPage: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func row(_ symbol: String, _ title: String, _ line: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol).foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(line).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+    /// A kind of data, and a tap into its page (owner: "click into any of the sections").
+    private func row(_ kind: DataKind, _ symbol: String, _ title: String, _ line: String) -> some View {
+        NavigationLink { DataDetailPage(kind: kind, sizes: sizes) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: symbol).foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    Text(line).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+                }
             }
+            .padding(.vertical, 2)
         }
-        .padding(.vertical, 2)
     }
 
     private var prayersLine: String {
@@ -175,11 +180,12 @@ struct YourDataPage: View {
 
     /// The space it takes, in parts — as the "Your …" pages show their room.
     private var sizeBar: some View {
-        // In KB so a small part still shows; the key says each part's size.
+        // In KB so a small part still shows; the key says each part's size. Prayers / zikr are an estimate (one file).
         let kb = { (b: Int64) in Int(b / 1000) }
         return ReminderSlotsBar(caption: sizes.known ? "\(Self.size(sizes.total)) on this iPhone" : "Measuring…",
                                 limit: max(kb(sizes.total), 1),
-                                parts: [.init(count: kb(sizes.records), color: Color.sage, label: "Records", value: Self.size(sizes.records)),
+                                parts: [.init(count: kb(sizes.prayers), color: Color.sage, label: "Prayers", value: Self.size(sizes.prayers)),
+                                        .init(count: kb(sizes.zikr), color: Color(.systemIndigo), label: "Zikr", value: Self.size(sizes.zikr)),
                                         .init(count: kb(sizes.photos), color: Color(.systemTeal), label: "Photos", value: Self.size(sizes.photos)),
                                         .init(count: kb(sizes.other), color: Color(.systemGray3), label: "Other", value: Self.size(sizes.other))])
     }
@@ -216,8 +222,9 @@ struct YourDataPage: View {
         c.donations = SadaqahLog.shared.donations.count
         c.excused = Excused.ranges.count
         counts = c
+        let weights = DataExport.weights(context)
         Task.detached(priority: .utility) {
-            let s = DataExport.measure()
+            let s = DataExport.measure(weights)
             await MainActor.run { sizes = s }
         }
     }
@@ -439,15 +446,30 @@ enum DataExport {
         PrayerPhotos.files().filter { $0.contains("-back.") }.count
     }
 
-    /// The store (with its external files — azkar photos and memos), prayer photos, everything else shukr keeps.
-    static func measure() -> YourDataPage.Sizes {
+    /// How much of the store is prayers and how much zikr: the size of each one's records written out as the copy writes
+    /// them (main actor: SwiftData's objects).
+    @MainActor static func weights(_ context: ModelContext) -> (prayers: Double, zikr: Double) {
+        let (b, _) = backup(context, media: false)
+        let e = JSONEncoder()
+        func bytes<T: Encodable>(_ v: T) -> Double { Double((try? e.encode(v))?.count ?? 0) }
+        return (bytes(b.prayers) + bytes(b.dayScores), bytes(b.sessions) + bytes(b.azkar) + bytes(b.goals))
+    }
+
+    /// The store split by `weights` (its external files — azkar photos and memos — to zikr), prayer photos, everything
+    /// else shukr keeps.
+    static func measure(_ weights: (prayers: Double, zikr: Double) = (1, 1)) -> YourDataPage.Sizes {
         var s = YourDataPage.Sizes()
         let fm = FileManager.default
         let store = SharedStore.url
         let dir = store.deletingLastPathComponent()
-        for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] where name.hasPrefix(store.lastPathComponent) || name.hasPrefix(".shukr_SUPPORT") {
-            s.records += size(of: dir.appending(path: name))
+        var file: Int64 = 0, media: Int64 = 0
+        for name in (try? fm.contentsOfDirectory(atPath: dir.path)) ?? [] {
+            if name.hasPrefix(store.lastPathComponent) { file += size(of: dir.appending(path: name)) }
+            else if name.hasPrefix(".shukr_SUPPORT") { media += size(of: dir.appending(path: name)) }
         }
+        let share = weights.prayers + weights.zikr > 0 ? weights.prayers / (weights.prayers + weights.zikr) : 0.5
+        s.prayers = Int64(Double(file) * share)
+        s.zikr = file - s.prayers + media
         s.photos = size(of: PrayerPhotos.directory)
         let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         s.other = max(size(of: support) - s.photos, 0)
@@ -476,7 +498,7 @@ enum DataExport {
         out["prayers.csv"] = table(["Prayer day", "Prayer", "Starts", "Ends", "Prayed", "Marked at", "Score", "Grade",
                                     "Masjid", "Latitude", "Longitude"], prayers.map { p in
             [p.dayKey, p.displayName, stamp(p.startTime), stamp(p.endTime), p.isCompleted ? "yes" : "no",
-             p.timeAtComplete.map(stamp) ?? "", p.numberScore.map { String(Int($0.rounded())) } ?? "", p.gradeWord ?? "",
+             p.timeAtComplete.map(stamp) ?? "", p.numberScore.map { String(Int(($0 * 100).rounded())) } ?? "", p.gradeWord ?? "",
              p.mosqueName ?? "", p.latPrayedAt.map { String(format: "%.5f", $0) } ?? "",
              p.longPrayedAt.map { String(format: "%.5f", $0) } ?? ""]
         })
