@@ -553,7 +553,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 
 **Start here, still pending:** horizontal paging and the b4071db items on the phone; compass arrow freezes while moving (leads: `handleLocationChange`, `storeLastCoordinate`, the 0.5° guard); three `.ips` UIKit `NSAssertionHandler` aborts on backgrounding (2026-09-24). Backlog: Infinity button → user step; `progressFraction` divides by a zero target; `toggleInactivityTimer` reset; stale finish estimate; dead code (`CommentedOutHistoryPageView.swift`); "How scoring works" card; Umrah companion and personalised 99 Names duas (plan first; the owner has the prompt, don't invent one); post-salah "points" (a separate layer, never in the prayer score).
 
-**Share card, on release:** `AyahShareCard.footer` says "join the beta on TestFlight" (link https://testflight.apple.com/join/GW5j85jk); when live on the App Store change it to "download on the App Store" and ask whether to add the link.
+**Share card:** `AyahShareCard.footer` says "download on the App Store" (owner 2026-10-15, no link).
+
+**Privacy manifests** (shukr/ and shukrWatch/ PrivacyInfo.xcprivacy; the widget's has UserDefaults only): UserDefaults, FileTimestamp (C617.1), SystemBootTime (35F9.1). A new required-reason API (disk space, keyboards, …) gets its reason there first.
 
 **App Store:** `fatalError` on `ModelContainer` failure (`shukrApp.swift`) still to replace. In App Store Connect: privacy policy URL, support URL, App Privacy label (precise location, on-device), screenshots 6.9" / 6.5", description / keywords / category / age rating, content-rights docs for `quran.sqlite`, `english_hilali.sqlite` (KFGQPC) and `KFGQPCUthmanTahaNaskh.ttf`.
 

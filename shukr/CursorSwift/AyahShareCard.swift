@@ -32,8 +32,8 @@ struct AyahShareCard: View {
     /// for later.
     var darkBase: Bool = false
 
-    /// The line under the mark. "join the beta on TestFlight" until the App Store release.
-    static let footer = "join the beta on TestFlight"
+    /// The line under the mark (owner, 2026-10-15: the App Store release; no link).
+    static let footer = "download on the App Store"
 
     /// 9:16 — Instagram / WhatsApp Stories. 3× → 1080 × 1920 px.
     static let size = CGSize(width: 360, height: 640)
@@ -102,8 +102,6 @@ struct AyahShareCard: View {
                 Spacer(minLength: 16)
 
                 mark
-                // Beta wording while shukr is only on TestFlight (owner, 2026-09-26). Switch back to
-                // "download on the App Store" when the App Store version is live (CLAUDE.md, Share card).
                 Text(AyahShareCard.footer)
                     .font(.system(size: 8, weight: .light, design: .rounded))
                     .tracking(0.8)
