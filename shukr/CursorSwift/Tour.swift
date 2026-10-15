@@ -12,7 +12,7 @@ enum TourStep: String, CaseIterable, Identifiable {
     case circle, list, zikr, settings
     // Before them: a welcome, and how the tour goes (owner: "something Muslim and friendly").
     case intro
-    // After the tour: the first real mark's celebration, the post-salah pill's card, the map hint.
+    // After the tour: the first real mark's celebration (its pill card and the map hint are off since 2026-10-14 — owner).
     case celebrate, firstPill, map, hintMark
     var id: String { rawValue }
 
@@ -2421,7 +2421,7 @@ struct BubbleShape: Shape {
 
     // MARK: The steps
 
-    /// The first real mark gets a celebration (and then the map), once — armed by the first-run setup only.
+    /// The first real mark gets a celebration, once — armed by the first-run setup only.
     static let celebrateArmedKey = "tour.firstMark.armed"
     /// The first real mark's post-salah pill waits for the celebration's Continue (owner: "hold the post salah tasbih
     /// pill until after they have marked and they press continue"); then the pill comes, with its own card.
@@ -2630,13 +2630,12 @@ struct BubbleShape: Shape {
         switch (step, phase, e) {
         // After the tour (before the cards' cases): the held pill comes, with its card (or the map hint at once).
         case (.celebrate, _, .next):
+            // The celebration is the whole moment now (owner, 2026-10-14: "wipe that whole thing after the
+            // celebration"): the held pill comes as usual, with no card, and no map hint after. The .firstPill / .map
+            // cards stay below for when he revisits them.
             firstMarkPending = false
-            if heldPillName != nil {
-                pillRelease += 1
-                post(.firstPill)
-            } else {
-                post(.map)
-            }
+            if heldPillName != nil { pillRelease += 1 }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { self.step = nil }
         case (.firstPill, _, .pillOpened): insight = true
         case (.firstPill, _, .pillClosed) where !insight: post(.map)
         case (.firstPill, _, .next): post(.map)
