@@ -250,7 +250,7 @@ struct BackupCard: View {
                         .foregroundStyle(Color.sage)
                         .frame(maxWidth: .infinity)
                         .frame(height: 42)
-                        .overlay(Capsule().stroke(Color.sage, lineWidth: 1.5))
+                        .overlay(Capsule().strokeBorder(Color.sage, lineWidth: 1.5))   // inside the frame: a centred stroke was cut off by the card
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
