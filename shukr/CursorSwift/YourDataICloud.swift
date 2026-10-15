@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import UIKit
 import SwiftUI
+import Network
 
 // shukr's own copy in iCloud Drive (owner, 2026-10-14, decision icloud-copy-go A; container set up by Bradley):
 // Your Data → "Copy to iCloud Drive" saves the full copy (the same .zip Export makes) to iCloud Drive → shukr once a day,
@@ -13,16 +14,26 @@ import SwiftUI
     static let shared = ICloudCopy()
     nonisolated static let containerID = "iCloud.com.betternorms.shukr"
     static let enabledKey = "yourData.icloud.on"
-    /// Copies kept in iCloud Drive (each one is whole, so only the newest few are worth their space).
+    /// Backups kept in iCloud Drive: the newest few, plus always the fullest (see `prune`).
     nonisolated static let keep = 3
     /// "Once a day": 20 h, so a copy made at 9 PM is due again the next evening.
     static let every: TimeInterval = 20 * 3600
-    nonisolated private static let prefix = "shukr data "
 
     enum Availability: Equatable { case checking, available, off }
     enum Upload: Equatable { case inICloud, uploading, waiting, failed(String) }
+
+    /// What a backup holds, written into its name so prune and the guard can compare backups without opening them
+    /// (owner, icloud-backup-prune: near-empty copies from a new phone pushed every real one out).
+    struct Counts: Equatable {
+        var prayers = 0, sessions = 0, photos = 0
+        var score: Int { prayers + sessions + photos }
+        var nameSuffix: String { "(\(prayers) prayers, \(sessions) sessions, \(photos) photos)" }
+    }
+
     struct Copy: Identifiable, Equatable {
         let url: URL, made: Date, bytes: Int64, upload: Upload
+        /// From the name; nil for the first builds' "shukr data <date> <time>" backups (never pruned).
+        var counts: Counts? = nil
         var id: URL { url }
     }
     struct LogLine: Codable, Equatable {
@@ -33,6 +44,8 @@ import SwiftUI
     private(set) var copies: [Copy] = []
     private(set) var working = false
     private(set) var log: [LogLine] = []
+    /// What this iPhone holds now (`measure`), for the near-empty guard.
+    private(set) var here: Counts?
     private var documents: URL?
 
     var isOn: Bool {
@@ -42,15 +55,46 @@ import SwiftUI
     var lastSuccess: Date? { log.last(where: \.ok)?.at }
     var lastFailure: LogLine? { log.last.flatMap { $0.ok ? nil : $0 } }
 
-    private init() { log = Self.readLog() }
+    /// The backup holding the most (only those whose name says).
+    var fullest: Copy? { copies.filter { $0.counts != nil }.max { $0.counts!.score < $1.counts!.score } }
+
+    /// This iPhone holds much less than a backup already in iCloud (a new phone, a reinstall): backing up now would
+    /// only add a near-empty copy, so shukr offers Restore instead. Half, and at least 20 records fewer.
+    var hereIsEmptier: Copy? {
+        guard let here, let fullest, let theirs = fullest.counts,
+              fullest.url.lastPathComponent != UserDefaults.standard.string(forKey: Self.startedOverKey) else { return nil }
+        return here.score * 2 < theirs.score && theirs.score - here.score >= 20 ? fullest : nil
+    }
+
+    /// "Back Up Anyway": the fuller backup they chose to back up past (by name) — no longer asks about it.
+    static let startedOverKey = "yourData.icloud.startedOver"
+
+    private init() {
+        log = Self.readLog()
+        Self.path.start(queue: .global(qos: .utility))
+    }
+
+    /// Wi-Fi or not, for the automatic run (a manual Back Up Now goes anyway).
+    nonisolated private static let path = NWPathMonitor()
+
+    /// What this iPhone holds: prayers marked, zikr sessions, prayer photos.
+    func measure(_ context: ModelContext) {
+        let now = Date()
+        var c = Counts()
+        c.prayers = (try? context.fetchCount(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted && $0.startTime <= now }))) ?? 0
+        c.sessions = (try? context.fetchCount(FetchDescriptor<SessionDataModel>())) ?? 0
+        c.photos = DataExport.photoCount()
+        here = c
+    }
 
     /// iCloud Drive's folder for shukr (`url(forUbiquityContainerIdentifier:)` can block: off the main thread), then the
-    /// copies in it.
+    /// backups in it. While the switch is off nothing is touched (no folder made in their iCloud Drive).
     func refresh() async {
         guard FileManager.default.ubiquityIdentityToken != nil else {
             availability = .off; copies = []; documents = nil
             return
         }
+        guard isOn else { availability = .available; copies = []; return }
         let docs = await Task.detached(priority: .utility) { () -> URL? in
             guard let root = FileManager.default.url(forUbiquityContainerIdentifier: ICloudCopy.containerID) else { return nil }
             let docs = root.appending(path: "Documents", directoryHint: .isDirectory)
@@ -63,33 +107,48 @@ import SwiftUI
         copies = await Task.detached(priority: .utility) { ICloudCopy.list(docs) }.value
     }
 
-    /// A copy if one's due: on, iCloud there, none made in the last `every`. From the app's activation, after a beat.
+    /// A backup if one's due: on, iCloud there, none in the last `every`; not on cellular or in Low Power Mode, not
+    /// again soon after a failed try (1 h, doubling to a day), and never over a fuller backup from a near-empty phone.
     func runIfDue(_ context: ModelContext, trigger: String) async {
         guard isOn, !working else { return }
         if let last = lastSuccess, Date().timeIntervalSince(last) < Self.every { return }
+        if ProcessInfo.processInfo.isLowPowerModeEnabled || Self.path.currentPath.isExpensive || Self.path.currentPath.isConstrained { return }
+        let failures = log.reversed().prefix { !$0.ok }
+        if let latest = failures.first {
+            let wait = min(3600 * pow(2, Double(failures.count - 1)), 86400)
+            if Date().timeIntervalSince(latest.at) < wait { return }
+        }
         await make(context, trigger: trigger)
     }
 
-    /// Makes the full copy and puts it in iCloud Drive → shukr; the oldest past `keep` go.
-    func make(_ context: ModelContext, trigger: String) async {
+    /// Makes the full copy and puts it in iCloud Drive → shukr, named with what it holds; then prunes. Unless `anyway`,
+    /// it doesn't back up a near-empty phone over a fuller backup (`hereIsEmptier`): the page offers Restore.
+    func make(_ context: ModelContext, trigger: String, anyway: Bool = false) async {
         guard !working else { return }
         working = true
         defer { working = false }
-        let task = UIApplication.shared.beginBackgroundTask(withName: "iCloud copy")
-        defer { if task != .invalid { UIApplication.shared.endBackgroundTask(task) } }
+        // Ended by iOS's expiration too, so running out of background time never gets shukr killed.
+        let box = TaskBox()
+        box.id = UIApplication.shared.beginBackgroundTask(withName: "iCloud backup") { box.end() }
+        defer { box.end() }
         await refresh()
         guard let docs = documents else {
             note(ok: false, bytes: nil, why: "iCloud Drive is off", trigger: trigger)
             return
         }
-        guard let zip = await DataExport.makeCopy(context) else {
-            note(ok: false, bytes: nil, why: "Couldn't make the copy", trigger: trigger)
+        measure(context)
+        if anyway, let fuller = hereIsEmptier { UserDefaults.standard.set(fuller.url.lastPathComponent, forKey: Self.startedOverKey) }
+        if !anyway, hereIsEmptier != nil {
+            print("☁️ iCloud backup (\(trigger)): skipped — this iPhone holds much less than the backup in iCloud")
+            return
+        }
+        guard let zip = await DataExport.makeCopy(context, work: "YourDataBackup"), let counts = here else {
+            note(ok: false, bytes: nil, why: "Couldn't make the backup", trigger: trigger)
             return
         }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; f.dateFormat = "yyyy-MM-dd HHmm"
-        let stamp = f.string(from: .now)
-        let target = docs.appending(path: Self.prefix + stamp + ".zip")
+        let target = docs.appending(path: Self.backupPrefix + f.string(from: .now) + " " + counts.nameSuffix + ".zip")
         let result = await Task.detached(priority: .utility) { () -> (Int64?, String?) in
             let fm = FileManager.default
             let bytes = (try? zip.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init)
@@ -107,30 +166,92 @@ import SwiftUI
         copies = await Task.detached(priority: .utility) { ICloudCopy.list(docs) }.value
     }
 
+    #if DEBUG
+    /// `-pruneSelfTest`: the brief's scenario on real files in a temp folder — three real backups, then three
+    /// near-empty ones from a "new phone", an Export and a first-builds backup; prints what prune keeps.
+    nonisolated static func pruneSelfTest() {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appending(path: "PruneSelfTest", directoryHint: .isDirectory)
+        try? fm.removeItem(at: dir)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let names = ["shukr backup 2026-10-12 2100 (2206 prayers, 140 sessions, 82 photos).zip",
+                     "shukr backup 2026-10-13 2100 (2210 prayers, 141 sessions, 82 photos).zip",
+                     "shukr backup 2026-10-14 2100 (2215 prayers, 142 sessions, 83 photos).zip",
+                     "shukr backup 2026-10-15 0900 (3 prayers, 0 sessions, 0 photos).zip",
+                     "shukr backup 2026-10-15 0910 (3 prayers, 0 sessions, 0 photos).zip",
+                     "shukr backup 2026-10-16 0900 (8 prayers, 1 sessions, 0 photos).zip",
+                     "shukr data 2026-10-15.zip",
+                     "shukr data 2026-10-14 2331.zip",
+                     "notes.txt"]
+        for n in names { fm.createFile(atPath: dir.appending(path: n).path, contents: Data("x".utf8)) }
+        prune(dir)
+        let left = ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).sorted()
+        print("☁️ prune self-test kept:\n  " + left.joined(separator: "\n  "))
+        let ok = left.contains(names[2]) && !left.contains(names[0]) && !left.contains(names[1])
+            && left.contains(names[3]) && left.contains(names[4]) && left.contains(names[5])
+            && left.contains(names[6]) && left.contains(names[7]) && left.contains(names[8])
+        print(ok ? "☁️ prune self-test PASS" : "☁️ prune self-test FAIL")
+        try? fm.removeItem(at: dir)
+    }
+    #endif
+
+    private final class TaskBox: @unchecked Sendable {
+        var id = UIBackgroundTaskIdentifier.invalid
+        @MainActor func end() {
+            guard id != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(id); id = .invalid
+        }
+    }
+
     // MARK: Files
 
-    /// shukr's copies in the folder, newest first, with iCloud's own state for each.
+    /// Backups are "shukr backup <date> <time> (N prayers, N sessions, N photos).zip" — their own name, so a manual
+    /// Export ("shukr data <date>.zip") saved into the same folder is never listed or pruned.
+    nonisolated private static let backupPrefix = "shukr backup "
+    nonisolated private static let backupName = /^shukr backup (\d{4}-\d{2}-\d{2} \d{4}) \((\d+) prayers, (\d+) sessions, (\d+) photos\)\.zip$/
+    /// The first builds' backups (2026-10-14/15): listed, never pruned.
+    nonisolated private static let firstBuildsName = /^shukr data (\d{4}-\d{2}-\d{2} \d{4})\.zip$/
+    nonisolated private static func stamp(_ s: Substring) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current; f.dateFormat = "yyyy-MM-dd HHmm"
+        return f.date(from: String(s))
+    }
+
+    /// shukr's backups in the folder, newest first, with iCloud's own state for each.
     nonisolated private static func list(_ docs: URL) -> [Copy] {
         let keys: [URLResourceKey] = [.creationDateKey, .fileSizeKey, .ubiquitousItemIsUploadedKey,
                                       .ubiquitousItemIsUploadingKey, .ubiquitousItemUploadingErrorKey]
         var found: [Copy] = []
         NSFileCoordinator().coordinate(readingItemAt: docs, options: .immediatelyAvailableMetadataOnly, error: nil) { dir in
             let urls = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys)) ?? []
-            for url in urls where url.lastPathComponent.hasPrefix(prefix) && url.pathExtension == "zip" {
+            for url in urls {
+                let name = url.lastPathComponent
+                var counts: Counts?
+                let when: Substring
+                if let m = name.wholeMatch(of: backupName) {
+                    when = m.1
+                    counts = Counts(prayers: Int(m.2) ?? 0, sessions: Int(m.3) ?? 0, photos: Int(m.4) ?? 0)
+                } else if let m = name.wholeMatch(of: firstBuildsName) {
+                    when = m.1
+                } else { continue }
                 let v = try? url.resourceValues(forKeys: Set(keys))
                 let upload: Upload = if let e = v?.ubiquitousItemUploadingError { .failed(e.localizedDescription) }
                     else if v?.ubiquitousItemIsUploaded == true { .inICloud }
                     else if v?.ubiquitousItemIsUploading == true { .uploading }
                     else { .waiting }
-                found.append(Copy(url: url, made: v?.creationDate ?? .distantPast, bytes: Int64(v?.fileSize ?? 0), upload: upload))
+                found.append(Copy(url: url, made: stamp(when) ?? v?.creationDate ?? .distantPast, bytes: Int64(v?.fileSize ?? 0),
+                                  upload: upload, counts: counts))
             }
         }
         return found.sorted { $0.made > $1.made }
     }
 
-    /// Only shukr's own copies (by name), past the newest `keep`: never anything else in the folder.
+    /// Keeps the newest `keep` backups and, always, the fullest (by what its name says it holds); deletes only other
+    /// backups this app named — never an Export, never the first builds' backups, never anything else in the folder.
     nonisolated private static func prune(_ docs: URL) {
-        for old in list(docs).dropFirst(keep) {
+        let named = list(docs).filter { $0.counts != nil }
+        let fullest = named.max { $0.counts!.score < $1.counts!.score }
+        for old in named.dropFirst(keep) where old.url != fullest?.url {
             NSFileCoordinator().coordinate(writingItemAt: old.url, options: .forDeleting, error: nil) { url in
                 try? FileManager.default.removeItem(at: url)
             }
@@ -162,6 +283,8 @@ import SwiftUI
 /// Your Data's top-right cloud wears its symbol; its card (`BackupCard`) says it in words.
 enum BackupState {
     case off, noICloud, none, backingUp, backedUp(ICloudCopy.Copy), stale(ICloudCopy.Copy), failed(String)
+    /// This iPhone holds much less than a backup in iCloud (new phone, reinstall): paused, Restore offered.
+    case emptier(fuller: ICloudCopy.Copy, here: ICloudCopy.Counts)
 
     @MainActor static func now(on: Bool, _ cloud: ICloudCopy) -> BackupState {
         #if DEBUG
@@ -176,6 +299,7 @@ enum BackupState {
             case "backingUp": return .backingUp
             case "stale": return .stale(old)
             case "failed": return .failed("The iCloud storage is full.")
+            case "emptier": return .emptier(fuller: ICloudCopy.Copy(url: URL(fileURLWithPath: "/demo.zip"), made: .now.addingTimeInterval(-2 * 86400), bytes: 2_787_884, upload: .inICloud, counts: .init(prayers: 2206, sessions: 140, photos: 82)), here: .init(prayers: 3, sessions: 0, photos: 0))
             default: return .backedUp(copy)
             }
         }
@@ -183,6 +307,7 @@ enum BackupState {
         guard on else { return .off }
         if cloud.availability == .off { return .noICloud }
         if cloud.working { return .backingUp }
+        if let fuller = cloud.hereIsEmptier, let here = cloud.here { return .emptier(fuller: fuller, here: here) }
         let newest = cloud.copies.first
         if let failed = cloud.lastFailure, failed.at > (newest?.made ?? .distantPast) { return .failed(failed.why ?? "Something went wrong.") }
         guard let newest else { return .none }
@@ -201,7 +326,7 @@ enum BackupState {
         case .backedUp: "checkmark.icloud"
         case .backingUp: "icloud.and.arrow.up"   // (arrow.up.icloud isn't a symbol: it drew nothing)
         case .none: "icloud"
-        case .noICloud, .stale, .failed: "exclamationmark.icloud"
+        case .noICloud, .stale, .failed, .emptier: "exclamationmark.icloud"
         }
     }
     /// The state in a word or two: the card's status line, the button's VoiceOver label.
@@ -213,11 +338,12 @@ enum BackupState {
         case .backingUp: "Backing up…"
         case .backedUp: "Backed up"
         case .stale: "Out of date"
+        case .emptier: "Backup paused"
         case .failed: "Didn't finish"
         }
     }
     var isProblem: Bool {
-        switch self { case .noICloud, .stale, .failed: true; default: false }
+        switch self { case .noICloud, .stale, .failed, .emptier: true; default: false }
     }
 }
 
@@ -226,6 +352,8 @@ enum BackupState {
 /// info card keeps the view it was opened with).
 struct BackupCard: View {
     let context: ModelContext
+    /// Opens Restore from a copy (the page's Files picker), for a phone emptier than its backup.
+    var restore: () -> Void = {}
     @AppStorage(ICloudCopy.enabledKey) private var on = false
     @State private var cloud = ICloudCopy.shared
 
@@ -256,6 +384,12 @@ struct BackupCard: View {
                 .buttonStyle(.plain)
                 .padding(.top, 4)
             }
+            if let anyway {
+                Button("Back Up Anyway", action: anyway)
+                    .font(.system(.footnote, design: .rounded, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -283,6 +417,8 @@ struct BackupCard: View {
         case .backedUp(let c): "Last backup " + YourDataPage.when(c.made).lowercasedFirstWord + " · " + YourDataPage.size(c.bytes)
         case .stale(let c): "Last backup " + YourDataPage.when(c.made).lowercasedFirstWord
         case .failed(let why): "Your last backup didn't reach iCloud. " + why
+        case .emptier(let fuller, let here):
+            "Your backup from \(YourDataPage.when(fuller.made).lowercasedFirstWord) has \(fuller.counts?.prayers.formatted() ?? "more") prayers. This iPhone has \(here.prayers.formatted())."
         }
     }
 
@@ -296,15 +432,16 @@ struct BackupCard: View {
         case .backedUp: "Everything in shukr is in your own iCloud Drive, and only you can see it."
         case .stale: "shukr backs up once a day when it's opened, and the last one is a few days old. Back up now to bring it up to date."
         case .failed: "Check that you're online and iCloud has room (Settings → your name → iCloud), then try again."
+        case .emptier: "A new iPhone or a fresh install? shukr won't back up over your fuller backup, so it stays safe. Restore from it: it's in iCloud Drive → shukr."
         }
     }
 
     private var points: [ReminderWhy.Point] {
-        let daily = ReminderWhy.Point(big: "Every day", small: "When you open shukr, once a day. The newest \(ICloudCopy.keep) backups are kept.", symbol: "calendar", warn: false)
+        let daily = ReminderWhy.Point(big: "Every day", small: "When you open shukr, once a day. The newest \(ICloudCopy.keep) are kept, and your fullest backup is never deleted.", symbol: "calendar", warn: false)
         let restore = ReminderWhy.Point(big: "Getting it back", small: "On a new iPhone, install shukr, then Your Data → Restore from a copy → iCloud Drive → shukr.", symbol: "arrow.counterclockwise", warn: false)
         switch state {
         case .off, .none, .backedUp, .stale: return [daily, restore]
-        case .backingUp, .noICloud, .failed: return []
+        case .backingUp, .noICloud, .failed, .emptier: return []
         }
     }
 
@@ -314,8 +451,15 @@ struct BackupCard: View {
         case .off: return ("Turn On iCloud Backup", { on = true })
         case .none, .backedUp, .stale: return ("Back Up Now", { _ = backUp() })
         case .failed: return ("Try Again", { _ = backUp() })
+        case .emptier: return ("Restore From Your Backup", restore)
         case .backingUp, .noICloud: return nil
         }
+    }
+
+    /// Starting over on purpose: back up anyway (the fuller backup is still never pruned).
+    private var anyway: (() -> Void)? {
+        guard case .emptier = state else { return nil }
+        return { Task { await ICloudCopy.shared.make(context, trigger: "back up anyway", anyway: true) } }
     }
 }
 
@@ -339,7 +483,7 @@ struct YourDataBackupTag: View {
             case .off, .none: EmptyView()
             case .backingUp: Text("Backing up…").foregroundStyle(.secondary)
             case .backedUp(let c): Text("Backed up " + Self.day(c.made)).foregroundStyle(.secondary)
-            case .noICloud, .stale, .failed:
+            case .noICloud, .stale, .failed, .emptier:
                 Label("Check backup", systemImage: "exclamationmark.icloud").foregroundStyle(.orange)
             }
         }

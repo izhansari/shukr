@@ -133,6 +133,7 @@ struct YourDataPage: View {
         }
         .task {
             load()
+            cloud.measure(context)
             await cloud.refresh()
             #if DEBUG
             // `-demoRestoreFrom <path>`: the restore sheet for a copy at that path (the simulator's Files picker is slow).
@@ -200,7 +201,8 @@ struct YourDataPage: View {
         }
         .infoModal(isPresented: Binding(get: { info == .backup }, set: { if !$0 { info = nil } }),
                    title: "iCloud Backup", symbol: backup.symbol) {
-            BackupCard(context: context)
+            // Restore: the card closes first, then Files opens on the page.
+            BackupCard(context: context, restore: { info = nil; picking = true })
         }
     }
 
@@ -349,6 +351,7 @@ struct YourDataPage: View {
         case .backingUp: ("Uploading", Color(.secondaryLabel))
         case .stale: ("Out of date", .orange)
         case .failed: ("Last try didn't finish", .orange)
+        case .emptier: ("Paused", .orange)
         case .none, .off, .noICloud: (nil, Color(.secondaryLabel))
         }
         let c = rowCopy
@@ -364,7 +367,8 @@ struct YourDataPage: View {
                 }
             }
             Spacer(minLength: 8)
-            Button(action: backUpNow) {
+            // Paused (this iPhone holds much less than the backup): the card explains and offers Restore instead.
+            Button(action: { if case .emptier = backup { info = .backup } else { backUpNow() } }) {
                 ZStack {
                     Circle().strokeBorder(Color.sage, lineWidth: 1.2)
                     if cloud.working {
@@ -389,7 +393,7 @@ struct YourDataPage: View {
         switch backup {
         case .off: return "Backs up everything to your own iCloud Drive once a day. Only you can see it."
         case .noICloud: return "iCloud Drive is off on this iPhone. Turn it on in Settings → your name → iCloud → iCloud Drive."
-        default: return "Once a day, when you open shukr, everything is backed up to iCloud Drive → shukr. The newest \(ICloudCopy.keep) backups are kept."
+        default: return "Once a day, when you open shukr, everything is backed up to iCloud Drive → shukr. The newest \(ICloudCopy.keep) are kept, and your fullest backup is never deleted."
         }
     }
 
@@ -611,7 +615,9 @@ enum DataExport {
     /// The copy of what's chosen: the spreadsheets and the backup from the store here (SwiftData's objects stay on the
     /// main actor), the files and the zip off it. In tmp/YourData. Zikr sessions keep their azkar's records in the backup
     /// (so a restore links them), not their media.
-    @MainActor static func makeCopy(_ context: ModelContext, include: Set<DataKind> = Set(DataKind.allCases)) async -> URL? {
+    /// `work`: its own temp folder (the backup uses "YourDataBackup"), so an Export and a backup at once can't clear
+    /// each other's files.
+    @MainActor static func makeCopy(_ context: ModelContext, include: Set<DataKind> = Set(DataKind.allCases), work: String = "YourData") async -> URL? {
         var all = sheets(context)
         all["settings.csv"] = DataSettings.csv()
         let names = Set(include.flatMap(\.sheets) + ["README.txt"])
@@ -630,7 +636,7 @@ enum DataExport {
         let json = (try? ShukrBackup.encoder.encode(b)) ?? Data()
         let photos = include.contains(.photos)
         return await Task.detached(priority: .userInitiated) {
-            try? zip(sheets: sheets, json: json, azkarMedia: files, photos: photos)
+            try? zip(sheets: sheets, json: json, azkarMedia: files, photos: photos, work: work)
         }.value
     }
 
@@ -769,10 +775,11 @@ enum DataExport {
     }
 
     /// Writes the folder and zips it (the system's own zip: a folder read "for uploading"). Off the main thread.
-    static func zip(sheets: [String: String], json: Data, azkarMedia: [(name: String, data: Data)], photos: Bool) throws -> URL {
+    static func zip(sheets: [String: String], json: Data, azkarMedia: [(name: String, data: Data)], photos: Bool,
+                    work workName: String = "YourData") throws -> URL {
         let fm = FileManager.default
         let day = Date().formatted(.iso8601.year().month().day())
-        let work = fm.temporaryDirectory.appending(path: "YourData", directoryHint: .isDirectory)
+        let work = fm.temporaryDirectory.appending(path: workName, directoryHint: .isDirectory)
         try? fm.removeItem(at: work)
         let folder = work.appending(path: "shukr data \(day)", directoryHint: .isDirectory)
         try fm.createDirectory(at: folder, withIntermediateDirectories: true)

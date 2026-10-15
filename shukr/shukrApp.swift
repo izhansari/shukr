@@ -422,6 +422,7 @@ struct shukrApp: App {
                     #if DEBUG
                     // `-iCloudCopyNow`: turn it on, copy now, then print what iCloud says about each copy (run on a phone
                     // with `devicectl … process launch --console`; the simulator isn't signed in to iCloud).
+                    if ProcessInfo.processInfo.arguments.contains("-pruneSelfTest") { ICloudCopy.pruneSelfTest() }
                     if ProcessInfo.processInfo.arguments.contains("-iCloudCopyNow") {
                         ICloudCopy.shared.isOn = true
                         await ICloudCopy.shared.make(sharedModelContainer.mainContext, trigger: "debug")
