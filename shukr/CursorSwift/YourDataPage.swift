@@ -31,11 +31,16 @@ struct YourDataPage: View {
         var firstMarked: Date?
         var zikrSeconds: Double = 0
     }
-    /// Prayers and zikr share one store file, so the file is split between them by how much each holds (their records'
-    /// size in the copy's JSON); azkar photos and voice memos are files of their own and count to zikr exactly.
+    /// What each kind takes. Prayers, zikr sessions and azkar share one store file, so the file is split between them
+    /// by how much each holds (their records' size in the copy's JSON); azkar photos and voice memos are files of their
+    /// own and count to azkar exactly; donations, Excused Mode and settings are their own files / entries.
     struct Sizes {
-        var prayers: Int64 = 0, zikr: Int64 = 0, photos: Int64 = 0, other: Int64 = 0
-        var total: Int64 { prayers + zikr + photos + other }
+        var prayers: Int64 = 0, sessions: Int64 = 0, azkar: Int64 = 0, photos: Int64 = 0
+        var donations: Int64 = 0, excused: Int64 = 0, settings: Int64 = 0, other: Int64 = 0
+        /// The bar's parts: zikr = sessions + azkar; other = everything outside the four big ones.
+        var zikr: Int64 { sessions + azkar }
+        var rest: Int64 { donations + excused + settings + other }
+        var total: Int64 { prayers + zikr + photos + rest }
         var known = false
     }
 
@@ -53,14 +58,18 @@ struct YourDataPage: View {
                 ReminderWhyLink(symbol: "icloud", title: "In your iPhone's backup") { info = .backup }
             }
             Section {
-                row(.prayers, "checkmark.circle", "Prayers", prayersLine)
-                row(.zikr, "circle.hexagonpath", "Zikr sessions", sessionsLine)
-                row(.azkar, "books.vertical", "Azkar and daily goals", "\(counts.azkar) of yours · \(counts.goals) daily goal\(counts.goals == 1 ? "" : "s")")
-                row(.photos, "camera", "Prayer photos", counts.photos == 0 ? "None yet"
-                    : "\(counts.photos) photo\(counts.photos == 1 ? "" : "s")" + (sizes.known ? " · \(Self.size(sizes.photos))" : ""))
-                if counts.donations > 0 { row(.donations, "gift", "Donations you logged", "\(counts.donations)") }
-                if counts.excused > 0 { row(.excused, "pause.circle", "Excused Mode", "\(counts.excused) time\(counts.excused == 1 ? "" : "s")") }
-                row(.settings, "gearshape", "Your settings", "Location, prayer times, reminders and looks")
+                // Each line starts with what that kind takes (owner: "how much data it's taking up … the very first item").
+                row(.prayers, "checkmark.circle", "Prayers", sized(sizes.prayers, prayersLine))
+                row(.zikr, "circle.hexagonpath", "Zikr sessions", sized(sizes.sessions, sessionsLine))
+                row(.azkar, "books.vertical", "Azkar and daily goals",
+                    sized(sizes.azkar, "\(counts.azkar) of yours · \(counts.goals) daily goal\(counts.goals == 1 ? "" : "s")"))
+                row(.photos, "camera", "Prayer photos",
+                    sized(sizes.photos, counts.photos == 0 ? "None yet" : "\(counts.photos) photo\(counts.photos == 1 ? "" : "s")"))
+                if counts.donations > 0 { row(.donations, "gift", "Donations you logged", sized(sizes.donations, "\(counts.donations) logged")) }
+                if counts.excused > 0 {
+                    row(.excused, "pause.circle", "Excused Mode", sized(sizes.excused, "\(counts.excused) time\(counts.excused == 1 ? "" : "s")"))
+                }
+                row(.settings, "gearshape", "Your settings", sized(sizes.settings, "Location, prayer times, alarm, masajid"))
             } header: { Text("On this iPhone") }
             Section {
                 Button { exportSheet = true } label: {
@@ -190,7 +199,12 @@ struct YourDataPage: View {
                                 parts: [.init(count: kb(sizes.prayers), color: Color.sage, label: "Prayers", value: Self.size(sizes.prayers)),
                                         .init(count: kb(sizes.zikr), color: Color(.systemIndigo), label: "Zikr", value: Self.size(sizes.zikr)),
                                         .init(count: kb(sizes.photos), color: Color(.systemTeal), label: "Photos", value: Self.size(sizes.photos)),
-                                        .init(count: kb(sizes.other), color: Color(.systemGray3), label: "Other", value: Self.size(sizes.other))])
+                                        .init(count: kb(sizes.rest), color: Color(.systemGray3), label: "Other", value: Self.size(sizes.rest))])
+    }
+
+    /// A row's grey line, its size first once measured.
+    private func sized(_ bytes: Int64, _ rest: String) -> String {
+        sizes.known ? Self.size(bytes) + " · " + rest : rest
     }
 
     /// When the last copy was made, and a gentle word when it's been a while (decision your-data-icloud C).
@@ -460,16 +474,16 @@ enum DataExport {
 
     /// How much of the store is prayers and how much zikr: the size of each one's records written out as the copy writes
     /// them (main actor: SwiftData's objects).
-    @MainActor static func weights(_ context: ModelContext) -> (prayers: Double, zikr: Double) {
+    @MainActor static func weights(_ context: ModelContext) -> (prayers: Double, sessions: Double, azkar: Double) {
         let (b, _) = backup(context, media: false)
         let e = JSONEncoder()
         func bytes<T: Encodable>(_ v: T) -> Double { Double((try? e.encode(v))?.count ?? 0) }
-        return (bytes(b.prayers) + bytes(b.dayScores), bytes(b.sessions) + bytes(b.azkar) + bytes(b.goals))
+        return (bytes(b.prayers) + bytes(b.dayScores), bytes(b.sessions), bytes(b.azkar) + bytes(b.goals))
     }
 
-    /// The store split by `weights` (its external files — azkar photos and memos — to zikr), prayer photos, everything
-    /// else shukr keeps.
-    static func measure(_ weights: (prayers: Double, zikr: Double) = (1, 1)) -> YourDataPage.Sizes {
+    /// The store split by `weights` (its external files — azkar photos and memos — to azkar), prayer photos, the
+    /// donations log, Excused Mode's record, the settings files, everything else shukr keeps.
+    static func measure(_ weights: (prayers: Double, sessions: Double, azkar: Double) = (1, 1, 1)) -> YourDataPage.Sizes {
         var s = YourDataPage.Sizes()
         let fm = FileManager.default
         let store = SharedStore.url
@@ -479,14 +493,29 @@ enum DataExport {
             if name.hasPrefix(store.lastPathComponent) { file += size(of: dir.appending(path: name)) }
             else if name.hasPrefix(".shukr_SUPPORT") { media += size(of: dir.appending(path: name)) }
         }
-        let share = weights.prayers + weights.zikr > 0 ? weights.prayers / (weights.prayers + weights.zikr) : 0.5
-        s.prayers = Int64(Double(file) * share)
-        s.zikr = file - s.prayers + media
+        let all = max(weights.prayers + weights.sessions + weights.azkar, 1)
+        s.prayers = Int64(Double(file) * weights.prayers / all)
+        s.sessions = Int64(Double(file) * weights.sessions / all)
+        s.azkar = file - s.prayers - s.sessions + media
         s.photos = size(of: PrayerPhotos.directory)
         let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        s.other = max(size(of: support) - s.photos, 0)
+        s.donations = size(of: support.appending(path: "Sadaqah"))
+        s.other = max(size(of: support) - s.photos - s.donations, 0)
+        // Settings: the app's and the app group's preferences (Excused Mode's record lives in the group's, apart).
+        let library = fm.urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        var prefs = exactSize(library.appending(path: "Preferences/com.betternorms.shukr.plist"))
+        if let group = fm.containerURL(forSecurityApplicationGroupIdentifier: SharedStore.appGroup) {
+            prefs += exactSize(group.appending(path: "Library/Preferences/\(SharedStore.appGroup).plist"))
+        }
+        s.excused = Int64(UserDefaults(suiteName: SharedStore.appGroup)?.data(forKey: Excused.key)?.count ?? 0)
+        s.settings = max(prefs - s.excused, 0)
         s.known = true
         return s
+    }
+
+    /// A small file's own size (allocated sizes round a 2 KB file up to 4 KB).
+    private static func exactSize(_ url: URL) -> Int64 {
+        Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
     }
 
     private static func size(of url: URL) -> Int64 {

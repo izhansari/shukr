@@ -188,7 +188,7 @@ struct DataDetailPage: View {
                        Row(title: "Counted", value: n(sessions.reduce(0) { $0 + $1.totalCount })),
                        Row(title: "Time", value: time(seconds))]
         if let first = sessions.first { summary.append(Row(title: "Since", value: day(first.startTime))) }
-        if sizes.known { summary.append(Row(title: "Space", value: about(sizes.zikr), line: "With your azkar's photos and voice memos")) }
+        if sizes.known { summary.append(Row(title: "Space", value: about(sizes.sessions))) }
         let kept = [Row(title: "When, how long and how many", value: n(sessions.count)),
                     Row(title: "The zikr it was for", value: n(sessions.filter { $0.mantra != nil }.count)),
                     Row(title: "The daily goal it counted toward", value: n(sessions.filter { $0.task != nil }.count)),
