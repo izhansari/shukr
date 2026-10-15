@@ -354,7 +354,7 @@ struct MemoriesFooterLink: View {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: developing && toDevelop == 0 ? "hourglass" : "photo.stack")
-                        .font(.system(size: 13))
+                        .font(.system(size: 12, weight: .light))
                         // A photo waiting for its tap: the same thin sage ring the fifths will wear (owner).
                         .overlay(alignment: .topTrailing) {
                             if toDevelop > 0 {
@@ -364,13 +364,13 @@ struct MemoriesFooterLink: View {
                         }
                     Text(toDevelop > 0 ? "\(toDevelop) photo\(toDevelop == 1 ? "" : "s") to develop"
                          : developing ? "Memories · today's develop after Isha" : "Memories")
-                        .font(.system(size: 14, weight: .regular, design: .rounded))
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 13, weight: .light, design: .rounded))
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
                 }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                // Soft, raised off the page like the list's card (owner), not a flat grey capsule.
-                .background(NeuRaised(shape: Capsule(), radius: 5, offset: 2.5))
+                // In the background, never competing with the list (owner): tertiary type, light, a faint lift.
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(NeuRaised(shape: Capsule(), radius: 2.5, offset: 1.2).opacity(0.6))
                 .padding(.vertical, 2)
                 .contentShape(Rectangle())
             }
