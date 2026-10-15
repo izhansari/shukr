@@ -523,18 +523,24 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - ☰ → Journey (`JourneyPresenter.open`, pushed on the root stack) replaces Insights and the Moments row; the day page's pill
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
   link "journey" ("insights" too). InsightsView is kept in code, unreached. One screen, no scroll on a 6.1" iPhone (owner;
-  `ViewThatFits` falls back to compact, then a scroll): title + "Day N · since …"; the raised card (the month's ring = prayed
-  of due, % in time, streak · in-time streak (the AppStorage values) · days all in time); ‹ month › + Calendar | Grid
-  (`journey.view`); the calendar = five dots a day, monochrome unless ⚙ "Color the dots by grade" (`journey.grades`), green
-  disc = all five in time, grey = all five with a Qaza; the grid = a row per prayer (always grade colours, missed hollow) +
-  All five, a tap on a column opens that day; tiles Prayers / To make up (grey, phases 3 / 2) · Moments (opens MemoriesPage).
+  `ViewThatFits` falls back to compact, then a scroll): title + "Day N · since …"; the raised card: the month's ring =
+  prayed of due (a tap → in time of due, back after 4 s), beside it the month, "% in time" and "Streak N days · N in time"
+  (grey), under it days all in time · days with all five (a tap lights those days up, dims the rest — `JourneyHighlight`)
+  · average score (of the prayers due); ‹ month › on small raised discs (owner: not sage) + the grades button (three dots:
+  grey raised = off, grade colours pressed = on, `journey.grades`, both views; owner: no palette symbol) + Calendar | Grid
+  (`journey.view`); the calendar = five dots a day, green disc = all five in time, grey = all five with a Qaza, a tap opens
+  the day; the grid = a row per prayer (missed hollow) + All five, a tap picks a square (`JourneyPick`, outlined) and its
+  line shows under the grid ("Fajr · Wed, Oct 7 ›" / "Late · 75 · prayed … · window …"), a tap on the line opens the day
+  (owner: a square shouldn't leave the page; no legend); tiles Prayers / To make up (grey, phases 3 / 2) · Moments (three
+  tilted squares: the newest photos, else Explore's stand-ins; opens MemoriesPage). No ⚙. iOS 26's back button shows no
+  page name (idea back-button-names, parked).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.
 - The day page (`JourneyDayPage`): `DayRing` + `DayCentre` on a raised 222 pt disc (tap a fifth), rows time · place (masjid,
   else `PrayerPlaceNames`) · grade (Jumu'ah = 100) + `PrayerPhotoCard`, notes, "Zikr · N min" → `ZikrAreaPage(start: .day)`
   (History's `.day` filter); ‹ › walk days at once, no fade (a fade overlapped two days' words). Next: phase 2 (the prayer
-  sheet, past-day marking, To make up). DEBUG `-demoJourney [-demoJourneySeed] [-demoJourneyView grid] [-demoJourneyDay N]`
+  sheet, past-day marking, To make up). DEBUG `-demoJourney [-demoJourneySeed] [-demoJourneyView grid] [-demoJourneyGrades] [-demoJourneyHighlight] [-demoJourneyDay N]`
   (`-demoJourneySeed` adds ~100 earlier days of rows where none; the demo opens only every other launch — ☰ always works).
 
 **Explore shukr** (ExploreSimple.swift = the default; ExploreGrouped.swift; ExploreShowcase.swift; ExploreLean.swift; Frank's ExploreShukr.swift) — My Dev Stuff → "Explore page" (`explore.variant2` — a new key so a phone that had picked another starts on simple: simple · grouped · showcase · lean · original)

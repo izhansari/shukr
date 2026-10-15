@@ -35,6 +35,8 @@ struct JourneyLog {
         let date: Date
         /// Fajr … Isha.
         var marks: [Mark] = Array(repeating: .none, count: 5)
+        /// Each prayer's window and when it was marked (the grid's one line).
+        var slots: [Slot?] = Array(repeating: nil, count: 5)
 
         var prayed: Int { marks.filter(\.done).count }
         /// A day counts once anything was marked (spec: active day).
@@ -46,6 +48,13 @@ struct JourneyLog {
         var allInTime: Bool { inTime == 5 }
         /// Every prayer not prayed was excused (the pause badge instead of dots).
         var excusedDay: Bool { marks.contains(.excused) && marks.allSatisfy { $0 == .excused || $0.done } && !allFive }
+    }
+
+    struct Slot {
+        let start: Date
+        let end: Date
+        let markedAt: Date?
+        let jumuah: Bool
     }
 
     static let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
@@ -85,6 +94,8 @@ struct JourneyLog {
             } else {
                 day.marks[slot] = row.endTime > now ? .toCome : .missed
             }
+            day.slots[slot] = Slot(start: row.startTime, end: row.endTime,
+                                   markedAt: row.isCompleted ? row.timeAtComplete : nil, jumuah: row.isJumuah)
             log.days[key] = day
         }
         log.firstDay = log.days.values.filter(\.active).map(\.date).min()
@@ -93,7 +104,11 @@ struct JourneyLog {
 
     /// The month's numbers over its active days (spec: rates over active days only).
     struct Month {
-        var prayed = 0, due = 0, inTime = 0, allInTimeDays = 0, toMakeUp = 0, activeDays = 0
+        var prayed = 0, due = 0, inTime = 0, allInTimeDays = 0, allFiveDays = 0, toMakeUp = 0, activeDays = 0
+        /// The scores of the prayers due (a missed one adds 0).
+        var scoreSum = 0.0
+        /// The average score of the prayers due, 0…100 (nil before anything's due).
+        var averageScore: Int? { due == 0 ? nil : Int((scoreSum / Double(due) * 100).rounded()) }
         /// Per prayer (Fajr … Isha): prayed and due.
         var perPrayer = Array(repeating: (prayed: 0, due: 0), count: 5)
     }
@@ -108,7 +123,9 @@ struct JourneyLog {
             m.due += d.due
             m.inTime += d.inTime
             if d.allInTime { m.allInTimeDays += 1 }
+            if d.allFive { m.allFiveDays += 1 }
             for (i, mark) in d.marks.enumerated() {
+                m.scoreSum += mark.score ?? 0
                 if mark.done { m.perPrayer[i].prayed += 1 }
                 if mark.done || mark == .missed { m.perPrayer[i].due += 1 }
                 if mark == .missed { m.toMakeUp += 1 }
@@ -130,18 +147,34 @@ struct JourneyLog {
 
 // MARK: - The page
 
+/// The card's two day counts light their days up and dim the rest (as Insights did — owner: it helps most in the grid).
+enum JourneyHighlight: Equatable {
+    case allInTime, allFive
+    func matches(_ d: JourneyLog.Day) -> Bool { self == .allInTime ? d.allInTime : d.allFive }
+}
+
+/// A square picked in the grid: its one line shows under the grid; a tap on the line opens the day (owner: a tap on a square
+/// shouldn't leave the page).
+struct JourneyPick: Equatable {
+    let prayer: Int
+    let date: Date
+}
+
 struct JourneyPage: View {
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @AppStorage("prayerStreak") private var streak = 0
     @AppStorage("onTimeStreak") private var inTimeStreak = 0
-    /// The grades switch (Journey's ⚙): the calendar's dots in grade colours. Off by default (decision journey-day-look B).
+    /// Grade colours on the calendar's dots and the grid's squares (the palette button beside Calendar | Grid). Off by
+    /// default (decision journey-day-look B).
     @AppStorage("journey.grades") private var grades = false
     @AppStorage("journey.view") private var view = "calendar"
     @State private var log = JourneyLog()
     @State private var month = JourneyLog.monthStart(PrayerDay.start())
     @State private var openDay: JourneyDayRoute?
     @State private var showMoments = false
+    @State private var highlight: JourneyHighlight?
+    @State private var pick: JourneyPick?
 
     private var today: Date { PrayerDay.start() }
 
@@ -155,27 +188,24 @@ struct JourneyPage: View {
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Toggle("Color the dots by grade", isOn: $grades)
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-                .accessibilityLabel("Journey settings")
-            }
-        }
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .task { reload() }
         .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in reload() }
+        .onChange(of: month) { pick = nil }
+        .onChange(of: view) { pick = nil }
         #if DEBUG
         .task {
             guard !Self.demoDone else { return }   // once per launch, not on every return to the page
             Self.demoDone = true
             let args = ProcessInfo.processInfo.arguments
             if let i = args.firstIndex(of: "-demoJourneyView"), args.indices.contains(i + 1) { view = args[i + 1] }
+            if args.contains("-demoJourneyGrades") { grades = true }
+            if args.contains("-demoJourneyHighlight") { highlight = .allInTime }
+            if args.contains("-demoJourneyPick") {
+                pick = JourneyPick(prayer: 0, date: Calendar.current.date(byAdding: .day, value: -3, to: today) ?? today)
+            }
             if let i = args.firstIndex(of: "-demoJourneyDay"), args.indices.contains(i + 1), let back = Int(args[i + 1]) {
                 try? await Task.sleep(for: .seconds(0.6))
                 openDay = JourneyDayRoute(date: Calendar.current.date(byAdding: .day, value: -back, to: today) ?? today)
@@ -193,14 +223,17 @@ struct JourneyPage: View {
         let m = log.month(month)
         return VStack(alignment: .leading, spacing: 0) {
             header
-            JourneyCard(month: month, numbers: m, streak: streak, inTimeStreak: inTimeStreak, compact: compact)
+            JourneyCard(month: month, numbers: m, streak: streak, inTimeStreak: inTimeStreak, compact: compact,
+                        highlight: $highlight)
                 .padding(.top, compact ? 10 : 14)
             monthRow.padding(.top, compact ? 12 : 18)
             Group {
                 if view == "grid" {
-                    JourneyGrid(log: log, month: month, today: today, numbers: m) { open($0) }
+                    JourneyGrid(log: log, month: month, today: today, numbers: m, grades: grades, highlight: highlight,
+                                pick: $pick) { open($0) }
                 } else {
-                    JourneyCalendar(log: log, month: month, today: today, grades: grades, compact: compact) { open($0) }
+                    JourneyCalendar(log: log, month: month, today: today, grades: grades, highlight: highlight,
+                                    compact: compact) { open($0) }
                 }
             }
             .padding(.top, compact ? 6 : 10)
@@ -239,29 +272,58 @@ struct JourneyPage: View {
     private var thisMonth: Date { JourneyLog.monthStart(today) }
 
     private var monthRow: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 6) {
             stepButton("chevron.left", enabled: month > firstMonth, label: "Previous month") { step(-1) }
             Text(month.formatted(.dateTime.month(.wide).year(Calendar.current.isDate(month, equalTo: thisMonth, toGranularity: .year) ? .omitted : .defaultDigits)))
-                .font(.system(size: 18, weight: .light, design: .rounded))
-                .contentTransition(.opacity)
+                .font(.system(size: 17, weight: .light, design: .rounded))
+                .lineLimit(1)
+                .fixedSize()
             stepButton("chevron.right", enabled: month < thisMonth, label: "Next month") { step(1) }
-            Spacer(minLength: 8)
+            Spacer(minLength: 6)
+            gradesButton
             JourneyViewSwitch(view: $view)
         }
         .frame(height: 34)
     }
 
+    /// Grade colours on / off, for the calendar and the grid (owner: a toggle beside the switch, not in a menu; the palette
+    /// symbol was "not on brand"): the calendar's own dots — grey on a raised disc while off, the grade colours pressed in
+    /// while on.
+    private var gradesButton: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeOut(duration: 0.2)) { grades.toggle() }
+        } label: {
+            HStack(spacing: 3) {
+                ForEach([1.0, 0.9, 0.7], id: \.self) { score in
+                    Circle().fill(grades ? PrayerScoring.color(for: score) : Color.secondary.opacity(0.45))
+                        .frame(width: 5, height: 5)
+                }
+            }
+            .frame(width: 34, height: 34)
+            .background {
+                if grades { NeuPressed(shape: Circle(), radius: 3, offset: 2) } else { NeuRaised(shape: Circle(), radius: 2.5, offset: 1.2) }
+            }
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(grades ? "Hide grade colors" : "Show grade colors")
+    }
+
     private func step(_ by: Int) {
         guard let next = Calendar.current.date(byAdding: .month, value: by, to: month) else { return }
         triggerSomeVibration(type: .light)
-        withAnimation(.easeOut(duration: 0.2)) { month = next }
+        month = next
     }
 
+    /// A small raised disc with a plain chevron (owner: not the sage arrows); flat and faint when there's no month that way.
     private func stepButton(_ symbol: String, enabled: Bool, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(enabled ? Color.sage : Color.secondary.opacity(0.35))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(enabled ? Color.primary.opacity(0.75) : Color.secondary.opacity(0.3))
+                .frame(width: 28, height: 28)
+                .background { if enabled { NeuRaised(shape: Circle(), radius: 2.5, offset: 1.2) } }
                 .frame(width: 30, height: 34)
                 .contentShape(Rectangle())
         }
@@ -290,7 +352,7 @@ struct JourneyPage: View {
                 Text("\(m.toMakeUp)").font(.system(size: 26, weight: .thin, design: .rounded)).frame(height: 28)
             } action: {}
             JourneyTile(title: momentsTitle, ready: true, compact: compact) {
-                MomentsTileStack().frame(height: 28)
+                MomentsTileStack().frame(height: 30)
             } action: {
                 triggerSomeVibration(type: .light)
                 showMoments = true
@@ -333,7 +395,7 @@ private struct JourneyViewSwitch: View {
             Text(title)
                 .font(.system(size: 13, weight: view == id ? .regular : .light, design: .rounded))
                 .foregroundStyle(view == id ? .primary : .secondary)
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 12)
                 .frame(maxHeight: .infinity)
                 .background {
                     if view == id { NeuRaised(shape: Capsule(), radius: 2.5, offset: 1.2).matchedGeometryEffect(id: "pill", in: pill) }
@@ -346,49 +408,61 @@ private struct JourneyViewSwitch: View {
 
 // MARK: - The card
 
-/// The raised card: the month's ring (prayed of due), the month in words, then the streaks and the days all in time.
+/// The raised card: the month's ring (prayed of due; a tap shows in time of due), the month in words with the streaks as
+/// grey lines, then days all in time · days with all five (a tap lights those days up) · the average score.
 private struct JourneyCard: View {
     let month: Date
     let numbers: JourneyLog.Month
     let streak: Int
     let inTimeStreak: Int
     let compact: Bool
+    @Binding var highlight: JourneyHighlight?
+    @State private var showInTime = false
+    @State private var flipToken = 0
 
     var body: some View {
         let ring: CGFloat = compact ? 78 : 92
+        let shown = showInTime ? numbers.inTime : numbers.prayed
         VStack(spacing: compact ? 10 : 12) {
             HStack(spacing: 16) {
                 ZStack {
                     NeuPressed(shape: Circle(), radius: 4, offset: 3)
-                    Circle().trim(from: 0, to: numbers.due == 0 ? 0 : CGFloat(numbers.prayed) / CGFloat(numbers.due))
-                        .stroke(Color.primary.opacity(0.72), style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
+                    Circle().trim(from: 0, to: numbers.due == 0 ? 0 : CGFloat(shown) / CGFloat(numbers.due))
+                        .stroke(showInTime ? Color.green.opacity(0.8) : Color.primary.opacity(0.72),
+                                style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .padding(7)
                     VStack(spacing: 0) {
-                        Text("\(numbers.prayed)").font(.system(size: compact ? 23 : 26, weight: .thin, design: .rounded)).monospacedDigit()
-                        Text("of \(numbers.due)").font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        Text("\(shown)").font(.system(size: compact ? 23 : 26, weight: .thin, design: .rounded)).monospacedDigit()
+                            .contentTransition(.numericText())
+                        Text(showInTime ? "in time" : "of \(numbers.due)")
+                            .font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
                 }
                 .frame(width: ring, height: ring)
+                .contentShape(Circle())
+                .onTapGesture { flip() }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(numbers.prayed) of \(numbers.due) prayers prayed")
+                .accessibilityLabel(showInTime ? "\(numbers.inTime) of \(numbers.due) prayers in time" : "\(numbers.prayed) of \(numbers.due) prayers prayed")
+                .accessibilityAddTraits(.isButton)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(monthWords)
                         .font(.system(size: 15, weight: .light, design: .rounded))
                         .foregroundStyle(.primary.opacity(0.85))
                     if numbers.due > 0 {
-                        Text("\(Int((Double(numbers.inTime) / Double(numbers.due) * 100).rounded()))% in time")
-                            .font(.system(size: 14, weight: .light, design: .rounded))
-                            .foregroundStyle(.secondary)
+                        grey("\(Int((Double(numbers.inTime) / Double(numbers.due) * 100).rounded()))% in time")
                     }
+                    grey("Streak \(days(streak)) · \(inTimeStreak) in time")
                 }
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
                 Spacer(minLength: 0)
             }
             Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
-            HStack(spacing: 0) {
-                figure(days(streak), "streak")
-                figure(days(inTimeStreak), "in-time streak")
-                figure("\(numbers.allInTimeDays)", "days all in time")
+            HStack(spacing: 4) {
+                figure("\(numbers.allInTimeDays)", "days all in time", .allInTime)
+                figure("\(numbers.allFiveDays)", "days with all five", .allFive)
+                figure(numbers.averageScore.map { "\($0)" } ?? "–", "average score", nil)
             }
         }
         .padding(.horizontal, 16)
@@ -397,32 +471,63 @@ private struct JourneyCard: View {
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
     }
 
+    /// Prayed ⇄ in time, back by itself after 4 s (the Salah ring's flip).
+    private func flip() {
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeOut(duration: 0.3)) { showInTime.toggle() }
+        flipToken += 1
+        let mine = flipToken
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            if flipToken == mine && showInTime { withAnimation(.easeOut(duration: 0.3)) { showInTime = false } }
+        }
+    }
+
     private var monthWords: String {
         guard numbers.activeDays > 0 else { return "Nothing marked in \(month.formatted(.dateTime.month(.wide))) yet." }
         let n = numbers.prayed
         return "\(n) prayer\(n == 1 ? "" : "s") in \(month.formatted(.dateTime.month(.wide)))"
     }
 
+    private func grey(_ text: String) -> some View {
+        Text(text).font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+    }
+
     private func days(_ n: Int) -> String { n == 1 ? "1 day" : "\(n) days" }
 
-    private func figure(_ value: String, _ caption: String) -> some View {
-        VStack(spacing: 1) {
+    @ViewBuilder private func figure(_ value: String, _ caption: String, _ kind: JourneyHighlight?) -> some View {
+        let on = kind != nil && highlight == kind
+        let content = VStack(spacing: 1) {
             Text(value).font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
             Text(caption).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.85)
         }
+        .padding(.vertical, 4)
         .frame(maxWidth: .infinity)
+        .background { if on { NeuPressed(shape: RoundedRectangle(cornerRadius: 12, style: .continuous), radius: 3, offset: 2) } }
+        if let kind {
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(.easeOut(duration: 0.2)) { highlight = on ? nil : kind }
+            } label: { content.contentShape(Rectangle()) }
+            .buttonStyle(.plain)
+            .accessibilityHint(on ? "Shows every day again" : "Lights up those days")
+        } else {
+            content
+        }
     }
 }
 
 // MARK: - The calendar
 
-/// The month as a calendar: each day five dots (Fajr … Isha), monochrome unless the grades switch is on; a soft green disc
+/// The month as a calendar: each day five dots (Fajr … Isha), monochrome unless grade colours are on; a soft green disc
 /// behind a day with all five in time, a grey one behind all five with a Qaza (decision journey-day-look B).
 private struct JourneyCalendar: View {
     let log: JourneyLog
     let month: Date
     let today: Date
     let grades: Bool
+    let highlight: JourneyHighlight?
     let compact: Bool
     let onDay: (Date) -> Void
 
@@ -442,8 +547,10 @@ private struct JourneyCalendar: View {
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: compact ? 34 : 40) }
                 ForEach(days, id: \.self) { date in
-                    JourneyDayCell(day: log.day(date), date: date, today: today, first: log.firstDay, grades: grades,
+                    let day = log.day(date)
+                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, grades: grades,
                                    usesExcused: log.usesExcused)
+                        .opacity(highlight.map { $0.matches(day) ? 1 : 0.22 } ?? 1)
                         .frame(height: compact ? 34 : 40)
                         .contentShape(Rectangle())
                         .onTapGesture { onDay(date) }
@@ -548,30 +655,49 @@ struct ExcusedDayBadge: View {
 
 // MARK: - The grid
 
-/// The month as a grid of grades (always in colour): a row per prayer, a column per day, then "All five".
+/// The month as a grid: a row per prayer, a column per day, then "All five". A tap on a square picks it: its one line shows
+/// under the grid (owner: like Insights' grid), and a tap on that line opens the day. Grade colours follow the palette
+/// button; off, a prayed square is filled and a missed one hollow.
 private struct JourneyGrid: View {
     let log: JourneyLog
     let month: Date
     let today: Date
     let numbers: JourneyLog.Month
+    let grades: Bool
+    let highlight: JourneyHighlight?
+    @Binding var pick: JourneyPick?
     let onDay: (Date) -> Void
+
+    @State private var width: CGFloat = 0
+    @State private var height: CGFloat = 0
+    private static let label: CGFloat = 54, countWidth: CGFloat = 40, gap: CGFloat = 6, rowHeight: CGFloat = 24, rowGap: CGFloat = 6
 
     var body: some View {
         let days = JourneyLog.daysOf(month: month)
         VStack(spacing: 6) {
-            ForEach(0..<5, id: \.self) { p in
-                row(JourneyLog.names[p], count: "\(numbers.perPrayer[p].prayed)/\(numbers.perPrayer[p].due)") {
-                    ForEach(days, id: \.self) { cell(log.day($0).marks[p], date: $0) }
+            VStack(spacing: Self.rowGap) {
+                ForEach(0..<5, id: \.self) { p in
+                    row(JourneyLog.names[p], count: "\(numbers.perPrayer[p].prayed)/\(numbers.perPrayer[p].due)") {
+                        ForEach(days, id: \.self) { date in
+                            cell(log.day(date).marks[p], date: date, picked: pick == JourneyPick(prayer: p, date: date))
+                                .opacity(dim(date))
+                        }
+                    }
+                }
+                row("All five", count: "\(numbers.allInTimeDays)", muted: true) {
+                    ForEach(days, id: \.self) { date in
+                        let d = log.day(date)
+                        Circle().fill(d.allInTime ? (grades ? Color.green : Color.primary.opacity(0.7))
+                                      : d.allFive ? Color.secondary.opacity(0.5) : .clear)
+                            .frame(width: 6, height: 6)
+                            .frame(maxWidth: .infinity)
+                            .opacity(dim(date))
+                    }
                 }
             }
-            row("All five", count: "\(numbers.allInTimeDays)", muted: true) {
-                ForEach(days, id: \.self) { date in
-                    let d = log.day(date)
-                    Circle().fill(d.allInTime ? Color.green : d.allFive ? Color.secondary.opacity(0.6) : .clear)
-                        .frame(width: 6, height: 6)
-                        .frame(maxWidth: .infinity)
-                }
-            }
+            .contentShape(Rectangle())
+            .gesture(SpatialTapGesture().onEnded { tap in select(tap.location, days: days) })
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { width = $0.width; height = $0.height }
             row("", count: "", muted: true) {
                 ForEach(days, id: \.self) { date in
                     let n = Calendar.current.component(.day, from: date)
@@ -583,22 +709,77 @@ private struct JourneyGrid: View {
                 }
             }
             .frame(height: 12)
-            legend.padding(.top, 4)
+            pickLine.padding(.top, 4)
         }
-        .contentShape(Rectangle())
-        .gesture(SpatialTapGesture().onEnded { tap in pick(tap.location.x, days: days) })
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
-    @State private var width: CGFloat = 0
-    private static let label: CGFloat = 54, countWidth: CGFloat = 40, gap: CGFloat = 6
+    private func dim(_ date: Date) -> Double {
+        guard let highlight else { return 1 }
+        return highlight.matches(log.day(date)) ? 1 : 0.18
+    }
 
-    /// The tapped column → its day (the whole grid takes the tap: its cells are 7 pt wide).
-    private func pick(_ x: CGFloat, days: [Date]) {
+    /// The tapped square → its prayer and day (the cells are 7 pt wide: the whole grid takes the tap).
+    private func select(_ point: CGPoint, days: [Date]) {
         let left = Self.label + Self.gap, cells = width - left - Self.gap - Self.countWidth
-        guard cells > 0, x >= left, x <= left + cells else { return }
-        let i = min(Int((x - left) / cells * CGFloat(days.count)), days.count - 1)
-        onDay(days[i])
+        guard cells > 0, point.x >= left, point.x <= left + cells else { return }
+        let i = min(Int((point.x - left) / cells * CGFloat(days.count)), days.count - 1)
+        let p = min(Int(point.y / (Self.rowHeight + Self.rowGap)), 5)
+        let date = days[i]
+        guard p < 5, date <= today, let first = log.firstDay, date >= first else { return }
+        triggerSomeVibration(type: .light)
+        let new = JourneyPick(prayer: p, date: date)
+        withAnimation(.easeOut(duration: 0.15)) { pick = pick == new ? nil : new }
+    }
+
+    /// "Fajr · Wed, Oct 7 ›" over "Perfect · 100 · prayed 6:35 AM · window 6:05 – 7:15 AM"; before a pick, a quiet hint.
+    @ViewBuilder private var pickLine: some View {
+        Group {
+            if let pick, let words = describe(pick) {
+                Button {
+                    onDay(pick.date)
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Text(words.title).font(.system(size: 14, weight: .regular, design: .rounded))
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+                        }
+                        Text(words.detail).font(.system(size: 12, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens that day")
+            } else {
+                Text("Tap a square to see that prayer")
+                    .font(.system(size: 12, weight: .light, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(height: 36)
+    }
+
+    private func describe(_ pick: JourneyPick) -> (title: String, detail: String)? {
+        let day = log.day(pick.date)
+        let time = { (d: Date) in d.formatted(date: .omitted, time: .shortened) }
+        let slot = day.slots[pick.prayer]
+        let name = slot?.jumuah == true ? "Jumu'ah" : JourneyLog.names[pick.prayer]
+        let title = "\(name) · \(pick.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))"
+        let window = slot.map { "window \(time($0.start)) – \(time($0.end))" }
+        var parts: [String] = []
+        switch day.marks[pick.prayer] {
+        case .done(let s):
+            parts.append(slot?.jumuah == true ? "Jumu'ah · 100" : PrayerScoring.grade(for: s) == .perfect ? "Perfect · 100" : PrayerScoring.summary(for: s))
+            if let at = slot?.markedAt { parts.append("prayed \(time(at))") }
+        case .missed: parts.append("Not marked")
+        case .toCome: parts.append("Still to come")
+        case .excused: parts.append("Excused")
+        case .none: parts.append("No prayer times that day")
+        }
+        if let window { parts.append(window) }
+        return (title, parts.joined(separator: " · "))
     }
 
     private func row<Cells: View>(_ name: String, count: String, muted: Bool = false, @ViewBuilder cells: () -> Cells) -> some View {
@@ -611,14 +792,14 @@ private struct JourneyGrid: View {
                 .foregroundStyle(.secondary)
                 .frame(width: Self.countWidth, alignment: .trailing)
         }
-        .frame(height: 24)
+        .frame(height: Self.rowHeight)
     }
 
-    @ViewBuilder private func cell(_ mark: JourneyLog.Mark, date: Date) -> some View {
+    @ViewBuilder private func cell(_ mark: JourneyLog.Mark, date: Date, picked: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
         Group {
             switch mark {
-            case .done(let s): shape.fill(PrayerScoring.color(for: s))
+            case .done(let s): shape.fill(grades ? PrayerScoring.color(for: s) : Color.primary.opacity(0.55))
             case .missed: shape.strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.1)
             case .excused: shape.fill(Color(.systemGray4))
             case .toCome: shape.fill(Color.primary.opacity(0.1))
@@ -627,28 +808,14 @@ private struct JourneyGrid: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: 22)
-    }
-
-    private var legend: some View {
-        let hasExcused = log.usesExcused && JourneyLog.daysOf(month: month).contains { log.day($0).marks.contains(.excused) }
-        return HStack(spacing: 10) {
-            swatch(PrayerScoring.color(for: 1), "Perfect")
-            swatch(PrayerScoring.color(for: 0.9), "On time")
-            swatch(PrayerScoring.color(for: 0.7), "Late")
-            swatch(PrayerScoring.color(for: PrayerScoring.qaza), "Qaza")
-            HStack(spacing: 4) {
-                RoundedRectangle(cornerRadius: 2).strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.1).frame(width: 8, height: 8)
-                Text("Missed")
+        .overlay {
+            if picked {
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .strokeBorder(Color.primary, lineWidth: 1.5)
+                    .padding(-2.5)
             }
-            if hasExcused { swatch(Color(.systemGray4), "Excused") }
         }
-        .font(.system(size: 11, weight: .light, design: .rounded))
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity)
-    }
-
-    private func swatch(_ color: Color, _ title: String) -> some View {
-        HStack(spacing: 4) { RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 8, height: 8); Text(title) }
+        .zIndex(picked ? 1 : 0)
     }
 }
 
@@ -683,29 +850,45 @@ private struct JourneyTile<Top: View>: View {
     }
 }
 
-/// The two newest photos, one tilted over the other (Moments' pile in small).
+/// Moments' pile in small (owner: as the mock-up and Explore's picture): three tilted squares — the newest photos, or
+/// Explore's coloured stand-ins before there are any.
 private struct MomentsTileStack: View {
     @State private var images: [UIImage] = []
+    private static let standIns: [[Color]] = [
+        [Color(red: 0.79, green: 0.64, blue: 0.42), Color(red: 0.42, green: 0.31, blue: 0.18)],
+        [Color(red: 0.50, green: 0.66, blue: 0.79), Color(red: 0.18, green: 0.31, blue: 0.42)],
+        [Color(red: 0.62, green: 0.78, blue: 0.66), Color(red: 0.24, green: 0.42, blue: 0.30)]
+    ]
+    private static let lies: [(angle: Double, x: CGFloat, y: CGFloat)] = [(-9, 0, 2), (6, 12, -1), (-2, 22, 1)]
+
     var body: some View {
         ZStack(alignment: .leading) {
-            ForEach(Array(images.enumerated().reversed()), id: \.offset) { i, image in
-                Image(uiImage: image).resizable().scaledToFill()
+            ForEach(0..<3, id: \.self) { i in
+                square(i)
                     .frame(width: 26, height: 26)
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    .shadow(color: .black.opacity(i == 0 ? 0.2 : 0), radius: 2.5, y: 2)
-                    .rotationEffect(.degrees(i == 0 ? -6 : 8))
-                    .offset(x: i == 0 ? 0 : 10)
-            }
-            if images.isEmpty {
-                Image(systemName: "photo.stack").font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(.white.opacity(0.7), lineWidth: 1.2))
+                    .shadow(color: .black.opacity(0.18), radius: 2, y: 1.5)
+                    .rotationEffect(.degrees(Self.lies[i].angle))
+                    .offset(x: Self.lies[i].x, y: Self.lies[i].y)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .task {
-            let keys = PrayerPhotos.all().suffix(2).reversed().map(\.key)
+            let keys = PrayerPhotos.all().suffix(3).map(\.key)
             var loaded: [UIImage] = []
             for key in keys { if let image = await PrayerPhotos.thumbnail(key) { loaded.append(image) } }
             images = loaded
+        }
+    }
+
+    /// The newest photo on top (the last square drawn).
+    @ViewBuilder private func square(_ i: Int) -> some View {
+        let shift = 3 - images.count
+        if i >= shift, images.indices.contains(i - shift) {
+            Image(uiImage: images[i - shift]).resizable().scaledToFill()
+        } else {
+            LinearGradient(colors: Self.standIns[i], startPoint: .topLeading, endPoint: .bottomTrailing)
         }
     }
 }
