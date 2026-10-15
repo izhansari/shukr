@@ -3,15 +3,19 @@ import SwiftUI
 
 // The raised list, mocked (owner, 2026-10-14): "what if we make the whole list raised, but raising the current prayer just
 // a little bit more off of it … completely rounded on all the edges and corners, and the current prayer sharing the same
-// borders". The whole list is one raised card; the prayer on now is a full-width band of that same card, raised a step
-// more — at the top or bottom it takes the card's round corners, alone it is the whole card. Sample data, every case:
+// borders". The whole list is one raised card with capsule-round corners; the prayer on now is a full-width capsule band
+// of it, raised a step more, rounded all round (owner) — at the top or bottom it traces the card's corner, alone it is the
+// whole card. A Light / Dark switch (owner). Sample data, every case:
 // Fajr / Asr / Isha on now, the done rows folded or shown, one prayer left, just marked with its buttons.
 // My Dev Stuff → Raised list mock-up; DEBUG `-demoRaisedListMock`.
 
 struct RaisedListMockPage: View {
     @Environment(\.circleTheme) private var theme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var phoneScheme
     @State private var lift: Lift = .subtle
+    /// Light or dark, to see both (owner); starts on the phone's.
+    @State private var dark: Bool?
 
     /// How much more the band is raised than the card.
     enum Lift: String, CaseIterable, Identifiable {
@@ -30,6 +34,12 @@ struct RaisedListMockPage: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 290)
+                Picker("Look", selection: Binding(get: { dark ?? (phoneScheme == .dark) }, set: { dark = $0 })) {
+                    Text("Light").tag(false)
+                    Text("Dark").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 290)
                 ForEach(RaisedListMock.scenarios) { s in
                     VStack(alignment: .leading, spacing: 12) {
                         Text(s.title).font(.footnote).fontDesign(.rounded).foregroundStyle(.secondary).padding(.leading, 8)
@@ -42,6 +52,8 @@ struct RaisedListMockPage: View {
             .frame(maxWidth: .infinity)
         }
         .background(theme.surface.ignoresSafeArea())
+        .environment(\.colorScheme, (dark ?? (phoneScheme == .dark)) ? .dark : .light)
+        .toolbarColorScheme((dark ?? (phoneScheme == .dark)) ? .dark : .light, for: .navigationBar)   // the title follows too
         .navigationTitle("Raised list")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarLeading) { Button("Done") { dismiss() } } }
@@ -94,7 +106,10 @@ enum RaisedListMock {
 struct RaisedListMockCard: View {
     let rows: [RaisedListMock.Row]
     let lift: RaisedListMockPage.Lift
-    private static let radius: CGFloat = 24
+    /// A row's height: the band is a capsule of it, and the card's corners are its half (owner: "round it out more so that
+    /// it matches" the raised row), so a top / bottom band traces the card's own corner exactly.
+    static let rowHeight: CGFloat = 44
+    private static let radius: CGFloat = rowHeight / 2
 
     var body: some View {
         VStack(spacing: 0) {
@@ -102,25 +117,19 @@ struct RaisedListMockCard: View {
                 RaisedListMockRow(row: r)
                     .background {
                         if isBand(r) {
-                            NeuRaised(shape: band(first: i == 0, last: i == rows.count - 1),
-                                      radius: lift.radius, offset: lift.offset)
+                            // Rounded all round (owner: the inner corners too), sharing the card's edges.
+                            NeuRaised(shape: Capsule(), radius: lift.radius, offset: lift.offset)
                         }
                     }
                     .zIndex(isBand(r) ? 1 : 0)   // its shadow falls on the rows round it
             }
         }
         .frame(width: 290)
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: Self.radius, style: .continuous)))
+        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: Self.radius, style: .circular)))
     }
 
     private func isBand(_ r: RaisedListMock.Row) -> Bool {
         switch r.state { case .now, .marked: true; default: false }
-    }
-    /// The card's own edges: round corners where the band meets the card's top / bottom.
-    private func band(first: Bool, last: Bool) -> UnevenRoundedRectangle {
-        UnevenRoundedRectangle(cornerRadii: .init(topLeading: first ? Self.radius : 0, bottomLeading: last ? Self.radius : 0,
-                                                  bottomTrailing: last ? Self.radius : 0, topTrailing: first ? Self.radius : 0),
-                               style: .continuous)
     }
 }
 
@@ -139,7 +148,7 @@ struct RaisedListMockRow: View {
             trailing
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 11)
+        .frame(height: RaisedListMockCard.rowHeight)
     }
 
     @ViewBuilder private var dot: some View {
