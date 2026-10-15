@@ -529,7 +529,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   · average score (of the prayers due); ‹ month › on small raised discs (owner: not sage) + the grades button (three dots:
   grey raised = off, grade colours pressed = on, `journey.grades`, both views; owner: no palette symbol) + Calendar | Grid
   (`journey.view`); the calendar = five dots a day, green disc = all five in time, grey = all five with a Qaza, a tap opens
-  the day; the grid = a row per prayer (missed hollow) + All five, a tap picks a square (`JourneyPick`, outlined) and its
+  the day; the grid = Insights' squares (colors off: prayed soft grey, the rest outlines; the picked one in its grade color, 1.18×, glowing; colors fade 0.3 s) + All five, a touch or slide picks a square (`JourneyPick`) and its
   line shows under the grid ("Fajr · Wed, Oct 7 ›" / "Late · 75 · prayed … · window …"), a tap on the line opens the day
   (owner: a square shouldn't leave the page; no legend); tiles Prayers / To make up (grey, phases 3 / 2) · Moments (three
   tilted squares: the newest photos, else Explore's stand-ins; opens MemoriesPage). No ⚙. iOS 26's back button shows no

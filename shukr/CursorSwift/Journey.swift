@@ -237,6 +237,8 @@ struct JourneyPage: View {
                 }
             }
             .padding(.top, compact ? 6 : 10)
+            // The colours fade in and out as Insights' do (owner): the stored switch alone carried no animation.
+            .animation(.easeInOut(duration: 0.3), value: grades)
             tiles(m, compact: compact).padding(.top, compact ? 10 : 16)
         }
         .padding(.horizontal, 20)
@@ -292,7 +294,7 @@ struct JourneyPage: View {
     private var gradesButton: some View {
         Button {
             triggerSomeVibration(type: .light)
-            withAnimation(.easeOut(duration: 0.2)) { grades.toggle() }
+            grades.toggle()
         } label: {
             HStack(spacing: 3) {
                 ForEach([1.0, 0.9, 0.7], id: \.self) { score in
@@ -304,6 +306,7 @@ struct JourneyPage: View {
             .background {
                 if grades { NeuPressed(shape: Circle(), radius: 3, offset: 2) } else { NeuRaised(shape: Circle(), radius: 2.5, offset: 1.2) }
             }
+            .animation(.easeInOut(duration: 0.3), value: grades)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
@@ -670,6 +673,9 @@ private struct JourneyGrid: View {
 
     @State private var width: CGFloat = 0
     @State private var height: CGFloat = 0
+    /// What was picked when the finger went down (lifting on that same square without sliding puts it away).
+    @State private var pickAtTouch: JourneyPick??
+    @State private var movedToOther = false
     private static let label: CGFloat = 54, countWidth: CGFloat = 40, gap: CGFloat = 6, rowHeight: CGFloat = 24, rowGap: CGFloat = 6
 
     var body: some View {
@@ -696,7 +702,7 @@ private struct JourneyGrid: View {
                 }
             }
             .contentShape(Rectangle())
-            .gesture(SpatialTapGesture().onEnded { tap in select(tap.location, days: days) })
+            .gesture(scrub(days))
             .onGeometryChange(for: CGSize.self) { $0.size } action: { width = $0.width; height = $0.height }
             row("", count: "", muted: true) {
                 ForEach(days, id: \.self) { date in
@@ -719,16 +725,34 @@ private struct JourneyGrid: View {
     }
 
     /// The tapped square → its prayer and day (the cells are 7 pt wide: the whole grid takes the tap).
-    private func select(_ point: CGPoint, days: [Date]) {
+    /// The square under a point in the grid's own space (the cells are 7 pt wide: the whole grid takes the touch).
+    private func square(at point: CGPoint, days: [Date]) -> JourneyPick? {
         let left = Self.label + Self.gap, cells = width - left - Self.gap - Self.countWidth
-        guard cells > 0, point.x >= left, point.x <= left + cells else { return }
+        guard cells > 0, point.x >= left, point.x <= left + cells, point.y >= 0 else { return nil }
         let i = min(Int((point.x - left) / cells * CGFloat(days.count)), days.count - 1)
-        let p = min(Int(point.y / (Self.rowHeight + Self.rowGap)), 5)
+        let p = Int(point.y / (Self.rowHeight + Self.rowGap))
         let date = days[i]
-        guard p < 5, date <= today, let first = log.firstDay, date >= first else { return }
-        triggerSomeVibration(type: .light)
-        let new = JourneyPick(prayer: p, date: date)
-        withAnimation(.easeOut(duration: 0.15)) { pick = pick == new ? nil : new }
+        guard p < 5, date <= today, let first = log.firstDay, date >= first else { return nil }
+        return JourneyPick(prayer: p, date: date)
+    }
+
+    /// As Insights' grid: touch down and slide — the square under the finger is picked, a light tick on each new one; a tap
+    /// is the same without the slide, and lifting on the square that was already picked (without moving) puts it away.
+    private func scrub(_ days: [Date]) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if pickAtTouch == nil { pickAtTouch = .some(pick); movedToOther = false }
+                guard let hit = square(at: value.location, days: days), hit != pick else { return }
+                if pickAtTouch != .some(hit) { movedToOther = true }
+                triggerSomeVibration(type: .light)
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) { pick = hit }
+            }
+            .onEnded { value in
+                if !movedToOther, let atTouch = pickAtTouch, let was = atTouch, square(at: value.location, days: days) == was {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { pick = nil }
+                }
+                pickAtTouch = nil
+            }
     }
 
     /// "Fajr · Wed, Oct 7 ›" over "Perfect · 100 · prayed 6:35 AM · window 6:05 – 7:15 AM"; before a pick, a quiet hint.
@@ -743,7 +767,8 @@ private struct JourneyGrid: View {
                             Text(words.title).font(.system(size: 14, weight: .regular, design: .rounded))
                             Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
                         }
-                        Text(words.detail).font(.system(size: 12, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        Text(words.detail).font(.system(size: 12, weight: .light, design: .rounded))
+                            .foregroundStyle(words.color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.secondary))
                             .lineLimit(1).minimumScaleFactor(0.8)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -761,7 +786,7 @@ private struct JourneyGrid: View {
         .frame(height: 36)
     }
 
-    private func describe(_ pick: JourneyPick) -> (title: String, detail: String)? {
+    private func describe(_ pick: JourneyPick) -> (title: String, detail: String, color: Color?)? {
         let day = log.day(pick.date)
         let time = { (d: Date) in d.formatted(date: .omitted, time: .shortened) }
         let slot = day.slots[pick.prayer]
@@ -779,7 +804,7 @@ private struct JourneyGrid: View {
         case .none: parts.append("No prayer times that day")
         }
         if let window { parts.append(window) }
-        return (title, parts.joined(separator: " · "))
+        return (title, parts.joined(separator: " · "), day.marks[pick.prayer].score.map { PrayerScoring.color(for: $0) })
     }
 
     private func row<Cells: View>(_ name: String, count: String, muted: Bool = false, @ViewBuilder cells: () -> Cells) -> some View {
@@ -795,26 +820,30 @@ private struct JourneyGrid: View {
         .frame(height: Self.rowHeight)
     }
 
+    /// Insights' squares: with colours off a prayed one is a soft grey, an unprayed one only an outline; the picked one
+    /// always shows its grade colour, a little larger, glowing (owner: "the same way as it does in Insights").
     @ViewBuilder private func cell(_ mark: JourneyLog.Mark, date: Date, picked: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
+        let color: Color? = mark.score.map { PrayerScoring.color(for: $0) }
         Group {
             switch mark {
-            case .done(let s): shape.fill(grades ? PrayerScoring.color(for: s) : Color.primary.opacity(0.55))
-            case .missed: shape.strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.1)
+            case .done: shape.fill(grades || picked ? color ?? .gray : Color.primary.opacity(0.28))
+            case .missed: shape.fill(Color.clear)
             case .excused: shape.fill(Color(.systemGray4))
-            case .toCome: shape.fill(Color.primary.opacity(0.1))
-            case .none: shape.fill(Color.primary.opacity(date > today ? 0.04 : 0.06))
+            case .toCome, .none: shape.fill(Color.clear)
             }
+        }
+        .overlay {
+            shape.strokeBorder(picked ? Color.primary.opacity(0.6)
+                               : mark == .missed ? Color.primary.opacity(0.3)
+                               : mark.done || mark == .excused ? Color.clear
+                               : Color.primary.opacity(date > today ? 0.06 : 0.12),
+                               lineWidth: picked ? 1.5 : 1)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 22)
-        .overlay {
-            if picked {
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .strokeBorder(Color.primary, lineWidth: 1.5)
-                    .padding(-2.5)
-            }
-        }
+        .scaleEffect(picked ? 1.18 : 1)
+        .shadow(color: picked ? (color ?? .clear).opacity(0.5) : .clear, radius: 4)
         .zIndex(picked ? 1 : 0)
     }
 }
