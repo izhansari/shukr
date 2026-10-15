@@ -391,7 +391,11 @@ struct FirstRunSetupView: View {
             // Not while editing from the review: back and Continue / Done already go there (owner). Not on the welcome
             // either: it only leads in (setup-welcome-ring).
             if step != .review && step != .welcome && mode == .full && editing == nil {
-                Button("Skip") { backToReview() }
+                // The next step only (owner, 2026-10-15: it used to jump to the review).
+                Button("Skip") {
+                    let all = SetupStep.allCases
+                    if let i = all.firstIndex(of: step), i + 1 < all.count { go(all[i + 1]) }
+                }
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
