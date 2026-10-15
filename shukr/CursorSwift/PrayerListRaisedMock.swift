@@ -108,7 +108,7 @@ struct RaisedListMockCard: View {
     let lift: RaisedListMockPage.Lift
     /// A row's height: the band is a capsule of it, and the card's corners are its half (owner: "round it out more so that
     /// it matches" the raised row), so a top / bottom band traces the card's own corner exactly.
-    static let rowHeight: CGFloat = 44
+    static let rowHeight: CGFloat = 38   // tighter (owner: "kill some of the spacing"; was 44)
     private static let radius: CGFloat = rowHeight / 2
 
     var body: some View {
@@ -140,7 +140,7 @@ struct RaisedListMockRow: View {
     var body: some View {
         HStack(spacing: 10) {
             dot.frame(width: 24, height: 24, alignment: .leading)
-            Text(row.name).font(.callout).fontDesign(.rounded).fontWeight(nameWeight).foregroundStyle(nameStyle)
+            Text(row.name).font(.system(size: 15)).fontDesign(.rounded).fontWeight(nameWeight).foregroundStyle(nameStyle)   // 15 pt (owner; was 16)
             if case .marked = row.state {
                 PrayerRowActionButton(symbol: "pencil", label: "Edit", size: 26, style: .bare) {}.padding(.leading, -6)
             }
