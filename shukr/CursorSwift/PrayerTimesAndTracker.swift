@@ -2890,6 +2890,9 @@ struct PrayerButton: View {
 
     
     @State private var toggledText: Bool = false
+    /// G · a prayed row's tap: its score where the name sits, in step with the time's flip (3 s, a second tap undoes).
+    @State private var scoreShown = false
+    @State private var scoreShownTask: Task<Void, Never>?
     /// A Jumu'ah row's tap: "at <masjid>" in a line under the name for a few seconds (decision jumuah-name-render B).
     @State private var masjidLine = false
     @State private var masjidLineTask: Task<Void, Never>?
@@ -3142,6 +3145,19 @@ struct PrayerButton: View {
             return
         }
         withAnimation { toggledText.toggle() }   // ExternalToggleText flips (and flips back after 3 s)
+        if look == .prayedOnTap && prayerObject.isCompleted { flipScore() }
+    }
+
+    /// G · the name and the score swap with the time's flip, on the same 3 s (ExternalToggleText's own timer).
+    private func flipScore() {
+        scoreShownTask?.cancel()
+        withAnimation { scoreShown.toggle() }
+        guard scoreShown else { return }
+        scoreShownTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { return }
+            withAnimation { scoreShown = false }
+        }
     }
 
     /// The masjid's line under a Jumu'ah row, then back after `masjidLineDuration` (as the time's flip comes back). It
@@ -3226,7 +3242,11 @@ struct PrayerButton: View {
 
                 // Prayer Name Label
                 VStack(alignment: .leading, spacing: 1) {
-                Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
+                // G · a tapped prayed row shows its score where its name sits (the time shows when it was prayed).
+                Text(look == .prayedOnTap && scoreShown && prayerObject.isCompleted ? completedTimeAndScore
+                     : prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
+                    .id(scoreShown)
+                    .transition(.blurReplace)
                     // Never squeezed by a long time column (it broke a letter a line and the row grew tall).
                     .fixedSize()
                     .layoutPriority(1)
@@ -3390,8 +3410,8 @@ struct PrayerButton: View {
                         ExternalToggleText(
                             // F · when you prayed it, not when it started (the flip still shows the score).
                             originalText: look == .prayedAt ? "prayed \(shortTimePM(prayedAt))" : shortTimePM(shownStart),
-                            // G · the tap shows when you prayed, with the score.
-                            toggledText: look == .prayedOnTap ? "\(shortTimePM(prayedAt)) · \(completedTimeAndScore)" : completedTimeAndScore,
+                            // G · the tap shows when you prayed (the score takes the name's place).
+                            toggledText: look == .prayedOnTap ? shortTimePM(prayedAt) : completedTimeAndScore,
                             externalTrigger: $toggledText,
                             font: timeFontSize,
                             fontDesign: .rounded,

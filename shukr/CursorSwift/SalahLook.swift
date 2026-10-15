@@ -33,8 +33,8 @@ enum SalahLook: String, CaseIterable, Identifiable {
     case nowLeads
     /// F · each row says what matters for it: when you prayed, the time left, when it starts.
     case prayedAt
-    /// G · F's shape, quieter (owner: not the word "prayed"): prayed rows keep their start time and a tap shows when you
-    /// prayed with the score ("1:12 PM · On time · 88").
+    /// G · F's shape, quieter (owner: not the word "prayed"): prayed rows keep their start time; a tap puts the score
+    /// where the name sits ("On time · 88") and when you prayed where the time sits.
     case prayedOnTap
 
     var id: String { rawValue }
