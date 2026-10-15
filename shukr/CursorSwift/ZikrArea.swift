@@ -48,7 +48,7 @@ enum ZikrAreaStart { case azkar, history }
 }
 
 extension View {
-    /// The wheel's "Open zikr": a zikr is a sheet (decision zikr-flow-shape A).
+    /// The wheel's "Open zikr": a zikr's page, pushed (owner, 2026-10-15).
     @MainActor @ViewBuilder func zikrSheet(_ item: Binding<MantraModel?>) -> some View {
         modifier(WheelZikrSheet(item: item))
     }
@@ -118,8 +118,8 @@ private struct ZikrScreenshotRoot: View {
                     case .history(let f): ZikrHistoryHome(initial: f)
                     }
                 }
+                .navigationDestination(item: $sheet) { ZikrPage(zikr: $0.zikr, focus: $0.focus) }
         }
-        .sheet(item: $sheet) { ZikrSheet(zikr: $0.zikr, focus: $0.focus, onHistory: { path = [.history($0)] }) }
         .fontDesign(.rounded)
         .task {
             guard !started else { return }
@@ -399,6 +399,11 @@ private struct SegmentRing<Center: View>: View {
     if p.count > 0 || p.seconds >= 1 { return of + " today" }
     return of + " · " + (t.sessions.map(\.startTime).max().map { "last \(ZikrFmt.ago($0))" } ?? "not started yet")
 }
+/// "3 min": the time a goal still needs today at your pace (a minutes goal: what's left of it), as Your azkar's header.
+@MainActor private func timeLeft(_ t: TaskModel, _ p: TaskProgress) -> String? {
+    guard let s = t.secondsLeft(p), s >= 1 else { return nil }
+    return zikrEstimateString(s).replacingOccurrences(of: "~", with: "")
+}
 /// Sessions grouped by prayer day, newest first; `limit` days at most.
 @MainActor private func byDay(_ sessions: [SessionDataModel], limit: Int = .max) -> [(key: String, date: Date, items: [SessionDataModel])] {
     var order: [String] = [], groups: [String: [SessionDataModel]] = [:], dates: [String: Date] = [:]
@@ -441,27 +446,21 @@ private struct ZikrSheets: ViewModifier {
     @Binding var item: Dest?
     let zoom: Namespace.ID
     let onHistory: ((ZikrHistoryHome.Filter) -> Void)?
-    @State private var history: ZikrHistoryHome.Filter?
     func body(content: Content) -> some View {
+        // Pushed (owner, 2026-10-15: a back chevron, not ✕), zooming out of the row tapped.
         content
-            .sheet(item: $item) { dest in
-                ZikrSheet(zikr: dest.zikr, focus: dest.focus, onHistory: { f in
-                    if let onHistory { onHistory(f) } else { history = f }
-                })
-                .navigationTransition(.zoom(sourceID: dest.source, in: zoom))
+            .navigationDestination(item: $item) { dest in
+                ZikrPage(zikr: dest.zikr, focus: dest.focus, onHistory: onHistory)
+                    .navigationTransition(.zoom(sourceID: dest.source, in: zoom))
             }
-            .navigationDestination(item: $history) { ZikrHistoryHome(initial: $0) }
     }
 }
 
-/// The wheel's hold menu → "Open zikr": the same sheet, History pushed on the Zikr tab's stack.
+/// The wheel's hold menu → "Open zikr": the same page, pushed on the Zikr tab's stack.
 private struct WheelZikrSheet: ViewModifier {
     @Binding var item: MantraModel?
-    @State private var history: ZikrHistoryHome.Filter?
     func body(content: Content) -> some View {
-        content
-            .sheet(item: $item) { ZikrSheet(zikr: $0, onHistory: { history = $0 }) }
-            .navigationDestination(item: $history) { ZikrHistoryHome(initial: $0).fontDesign(.rounded) }
+        content.navigationDestination(item: $item) { ZikrPage(zikr: $0) }
     }
 }
 
@@ -963,101 +962,108 @@ private struct YourAzkarPage: View {
     }
 }
 
-// MARK: - A zikr, as a sheet (decision zikr-flow-shape A: one page per zikr, its goal on it; owner: "use a sheet for
-// something that's not too deep … that pulls a page in if need be")
+// MARK: - A zikr's page (owner, 2026-10-15: pushed, three tabs — "each one of these things gets the full attention rather
+// than fighting for attention"; built from the mock-up he tuned over several rounds)
 
-/// Places are pages (Your azkar, History: pushed, a back button); things are sheets (a zikr, a session: they rise over the
-/// place you're in, swipe down to go back). A zikr's sheet: its goal's ring as the hero (today, the streak, 14 days) —
-/// a switch when it has more than one goal — the card as the modal shows it, one History row that pushes History in
-/// the sheet, filtered to it, and ONE Start pill with its quiet line. ⋯ = the card, the goal, its reminder, Pause,
-/// Share, Delete.
-private struct ZikrSheet: View {
+/// A zikr's page, pushed from wherever it's tapped (back ‹ top left): its name pinned over a hairline, the page scrolling
+/// under it; share and ⋯ top right; three tabs in a thin Liquid Glass bar at the bottom — Details (the zikr: its card and
+/// its numbers as the results screen shows them) · Daily goals (its goals' chips + a +, the picked goal's card shaped like
+/// its row in Your azkar, the reminder and Edit under it) · History (its last 20 sessions, "All N in History ›"). Opens on
+/// Daily goals when the zikr has any, else Details.
+private struct ZikrPage: View {
     let zikr: MantraModel
     var focus: TaskModel? = nil
-    /// "All N sessions in History ›": the sheet closes and whoever opened it shows History, filtered to this zikr — History
-    /// is only ever a page (owner: not a sheet and a page; Sami's review).
+    /// Opened from History: "All N in History" goes back there with its filter set instead of pushing another History.
     var onHistory: ((ZikrHistoryHome.Filter) -> Void)? = nil
+
+    enum Tab: String, CaseIterable, Identifiable {
+        // "Details", not "Zikr" (owner: the whole page is the zikr's).
+        case details = "Details", goals = "Daily goals", history = "History"
+        var id: String { rawValue }
+    }
+    /// History's goal filter (a zikr with more than one goal).
+    enum HistoryPick: Hashable { case all, goal(UUID), noGoal }
+
     @Environment(\.circleTheme) private var theme
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
-    @State private var state = ZikrAreaState.shared
+    @Namespace private var bar
+    @State private var tab: Tab
     @State private var card: ZikrCardRequest?
     @State private var today: [SessionDataModel] = []
     @State private var picked: TaskModel?
     @State private var editing: TaskModel?
     @State private var toDelete: TaskModel?
     @State private var addingGoal = false
-    @State private var sessionToDelete: SessionDataModel?
-    /// The goal whose reminder is being set: just the Remind me sheet (owner: not the whole edit, then the reminder).
     @State private var reminding: TaskModel?
-    /// Start on a goal already part-done today: Continue / Start over.
+    /// Start on a goal part-done today: Continue / Start over (ResumeAsk); else a plain "Start …?".
     @State private var askingResume: TaskModel?
+    @State private var askingStart: TaskModel?
+    @State private var sessionToDelete: SessionDataModel?
+    @State private var sessionToOpen: SessionDataModel?
+    @State private var historyPick: HistoryPick = .all
+    @State private var pushedHistory: ZikrHistoryHome.Filter?
+    @State private var showingPerTasbeeh = false
+
+    init(zikr: MantraModel, focus: TaskModel? = nil, onHistory: ((ZikrHistoryHome.Filter) -> Void)? = nil) {
+        self.zikr = zikr
+        self.focus = focus
+        self.onHistory = onHistory
+        _tab = State(initialValue: focus != nil || !zikr.tasks.isEmpty ? .goals : .details)
+    }
 
     private var sessions: [SessionDataModel] { zikr.sessions.sorted { $0.startTime > $1.startTime } }
     private var goals: [TaskModel] { zikr.tasks.sorted { $0.sortOrder < $1.sortOrder } }
-    /// The hero's goal: the one tapped, else the first still to do today, else the first.
+    /// The card's goal: the chip picked, else the one opened, else the first still to do today, else the first.
     private var goal: TaskModel? {
-        if let picked { return picked }
+        if let picked, goals.contains(picked) { return picked }
         if let focus, goals.contains(focus) { return focus }
         return goals.first { !$0.isCompleted(with: $0.progress(in: today)) } ?? goals.first
     }
 
     var body: some View {
-        List {
-            Section { VStack(alignment: .leading, spacing: 16) {
-                header
-                if let g = goal { hero(g) }
-                ModalLookCard(zikr: zikr) { card = ZikrCardRequest(mantra: zikr, pane: $0) }
-                if zikr.totalCount > 0 { record }
-                if goals.isEmpty { Soft.addRow("Make it a daily goal") { addingGoal = true } }
-            }.bareRow(top: 18) }
-            // Its last 3 sessions as flat rows (Sami: its own recent data, so you never leave just to glance) — a tap
-            // opens nothing here (a sheet never opens over a sheet); the pace and swipe-to-delete still work.
-            // Its 5 most recent sessions in ONE flat card, the day inside each row, then "See all history" (owner: the
-            // day-by-day cards looked disconnected and made the sheet long).
-            if !sessions.isEmpty {
-                let recent = Array(sessions.prefix(5))
-                Section {
-                    SoftLabel(title: "Recent").bareRow(top: 16, bottom: 6)
-                    ForEach(Array(recent.enumerated()), id: \.element.id) { i, s in
-                        SessionRow(session: s, showsMantraName: false, onOpen: {}, onDelete: { sessionToDelete = s },
-                                   rowBackground: AnyView(DayPiece(first: i == 0, last: false)), quiet: true, showsDay: true)
-                            .listRowInsets(EdgeInsets(top: i == 0 ? 14 : 10, leading: 32, bottom: 10, trailing: 32))
-                            .listRowSeparator(.hidden)
-                    }
-                    Button { goToHistory() } label: {
-                        HStack {
-                            Text("See all history").foregroundStyle(Color.sage)
-                            Spacer()
-                            Soft.chevron()
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .listRowInsets(EdgeInsets(top: 12, leading: 32, bottom: 14, trailing: 32))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(DayPiece(first: false, last: true))
+        ScrollView {
+            Group {
+                switch tab {
+                case .details: detailsTab
+                case .goals: goalsTab
+                case .history: historyTab
                 }
-                .listSectionSeparator(.hidden)
             }
-            Section { Color.clear.frame(height: 96).bareRow() }
-                .listSectionSeparator(.hidden)
+            .id(tab)
+            .transition(.opacity)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 32)
         }
-        .softList()
-        .modifier(SoftBottomEdge())
-        .modifier(BottomBar { startBar })
-        .fontDesign(.rounded)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.hidden)
-        .interactiveDismissDisabled()   // owner: swiping it away by accident was annoying — the ✕ closes it
-        .presentationBackground(theme.surface)
-        .presentationCornerRadius(34)
+        .scrollIndicators(.hidden)
+        .modifier(PinnedTitle { header })
+        .safeAreaInset(edge: .bottom, spacing: 0) { tabBar.padding(.horizontal, 16).padding(.bottom, 4) }
+        .softPage()
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                // Share leads (owner: "promotes people to share their zikrs … the act of zikr in our Muslim community"):
+                // on Daily goals the goal (it opens in their shukr), elsewhere the zikr's words.
+                if tab == .goals, let g = goal {
+                    Button { TaskSharing.share(g) } label: { Image(systemName: "square.and.arrow.up") }
+                        .accessibilityLabel("Share goal")
+                } else {
+                    ShareLink(item: shareText) { Image(systemName: "square.and.arrow.up") }
+                        .accessibilityLabel("Share zikr")
+                }
+                Menu {
+                    Button { card = ZikrCardRequest(mantra: zikr) } label: { Label("Edit the zikr", systemImage: "text.book.closed") }
+                    Button { addingGoal = true } label: { Label(goals.isEmpty ? "Make it a daily goal" : "Another daily goal", systemImage: "plus") }
+                } label: { Image(systemName: "ellipsis") }
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: tab)
         .zikrCardEditor($card, allowDelete: false)
         .sheet(item: $editing) { NewTaskFlow(editing: $0) }
         .sheet(isPresented: $addingGoal) { NewTaskFlow(locked: zikr) }
-        .modifier(DeleteGoalAlert(task: $toDelete))
-        .modifier(DeleteSessionAlert(session: $sessionToDelete))
-        .modifier(ResumeAsk(task: $askingResume, today: today) { g, resume in start(g, resume: resume) })
+        .sheet(item: $sessionToOpen) { SessionPage(session: $0) }
         .sheet(item: $reminding) { t in
             // The real Remind me sheet on its own; Save writes the goal's reminder and replans the notifications.
             TaskReminderSheet(draft: ReminderDraft(t), onCancel: { reminding = nil }) { picked in
@@ -1067,237 +1073,568 @@ private struct ZikrSheet: View {
                 reminding = nil
             }
         }
+        .navigationDestination(item: $pushedHistory) { ZikrHistoryHome(initial: $0) }
+        .modifier(DeleteGoalAlert(task: $toDelete))
+        .modifier(DeleteSessionAlert(session: $sessionToDelete))
+        .modifier(ResumeAsk(task: $askingResume, today: today) { g, resume in start(g, resume: resume) })
+        .alert(askingStart.map { "Start \($0.title)?" } ?? "",
+               isPresented: Binding(get: { askingStart != nil }, set: { if !$0 { askingStart = nil } }),
+               presenting: askingStart) { g in
+            Button("Start") { askingStart = nil; start(g, resume: false) }
+            Button("Cancel", role: .cancel) { askingStart = nil }
+        } message: { g in
+            let done = g.isCompleted(with: g.progress(in: today))
+            Text(done ? "Done today. Another session adds to it." : (timeLeft(g, g.progress(in: today)).map { "About \($0)." } ?? ""))
+        }
         .onAppear { today = ZikrReminders.todaysSessions(context) }
         .onChange(of: editing) { _, _ in today = ZikrReminders.todaysSessions(context) }
-        .task {   // `-zikrMock zikr-card`: the real card modal over the sheet
+        .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
+        .task {   // `-zikrMock zikr-card`: the real card modal over the page
             guard ProcessInfo.processInfo.arguments.contains("zikr-card") else { return }
             try? await Task.sleep(for: .seconds(1.2))
             card = ZikrCardRequest(mantra: zikr)
         }
     }
 
-    /// The zikr's name, what its goal is, and ⋯.
+    private var shareText: String {
+        let words = zikr.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (words.isEmpty ? zikr.name : "\(words)\n\n— \(zikr.name)") + "\n\nCounted with shukr"
+    }
+
+    // MARK: Title and tabs
+
+    /// The name, then a hairline between it and the page (owner).
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(zikr.name).font(.system(size: 28, weight: .light, design: .rounded)).lineLimit(2)
-                if goals.isEmpty {
-                    Text("No daily goal yet").font(.subheadline).foregroundStyle(.secondary)
-                } else if goals.count > 1 {
-                    // How many goals this zikr has (owner: no hint before; one needs no saying — its card says it).
-                    Text("\(goals.count) daily goals").font(.subheadline).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(zikr.name).font(.system(size: 30, weight: .light, design: .rounded)).lineLimit(2)
+                .padding(.horizontal, 20)
+            Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
+        }
+        .padding(.top, 2)
+    }
+
+    /// Memories' bottom bar, the page's width: a thin Liquid Glass capsule, the picked tab on a sliding pill.
+    private var tabBar: some View {
+        HStack(spacing: 0) {
+            ForEach(Tab.allCases) { t in
+                Button { withAnimation(.snappy(duration: 0.3)) { tab = t } } label: {
+                    Text(t.rawValue)
+                        .font(.system(size: 15, weight: tab == t ? .semibold : .medium))
+                        .foregroundStyle(tab == t ? Color.primary : Color.secondary)
+                        .frame(maxWidth: .infinity).frame(height: 40)
+                        .background {
+                            if tab == t { Capsule().fill(Color.primary.opacity(0.12)).matchedGeometryEffect(id: "pill", in: bar) }
+                        }
+                        .contentShape(Capsule())
                 }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(tab == t ? .isSelected : [])
             }
-            Spacer(minLength: 8)
-            if let g = goal, let r = ZikrReminders.summary(g) { reminderBell(g, r) }
-            Menu {
-                Button { card = ZikrCardRequest(mantra: zikr) } label: { Label("Edit the zikr", systemImage: "text.book.closed") }
-                if let g = goal {
-                    let paused = g.pausedAt != nil
-                    Button { editing = g } label: { Label("Edit goal", systemImage: "pencil") }
-                    if g.reminderKind == nil {
-                        Button { reminding = g } label: { Label("Add a reminder", systemImage: "bell") }
-                    }
-                    Button {
-                        withAnimation(.snappy) { setGoalPaused(g, !paused) }
-                    } label: { Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.circle" : "pause.circle") }
-                    Button {
-                        Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); TaskSharing.share(g) }
-                    } label: { Label("Share goal…", systemImage: "square.and.arrow.up") }
-                    Button { addingGoal = true } label: { Label("Another daily goal", systemImage: "plus") }
-                    Divider()
-                    Button(role: .destructive) { toDelete = g } label: { Label("Delete goal…", systemImage: "trash") }
-                }
+        }
+        .padding(4)
+        .barGlass(Capsule())
+        .sensoryFeedback(.selection, trigger: tab)
+    }
+
+    // MARK: Details
+
+    private var detailsTab: some View {
+        VStack(spacing: 18) {
+            ModalLookCard(zikr: zikr) { card = ZikrCardRequest(mantra: zikr, pane: $0) }
+            if zikr.totalCount > 0 { record } else {
+                Text("Not said yet").font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    /// The results screen's bento (owner: "copy the confirmation page … the count, the time, and the rate"): all the time
+    /// spent and everything counted, small with their symbols; the rate tall beside them, a tap flips per count ⇄ per
+    /// tasbeeh (100 counts).
+    private var record: some View {
+        let spent = zikr.sessionTotals.seconds
+        let each = zikr.secondsPerCount
+        return HStack(spacing: 10) {
+            VStack(spacing: 10) {
+                statTile("gauge.with.needle", ZikrFmt.spent(spent), "time spent, all time")
+                statTile("circle.hexagonpath", ZikrFmt.count(zikr.totalCount), "counted, all time")
+            }
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(CircleMotion.label) { showingPerTasbeeh.toggle() }
             } label: {
-                Image(systemName: "ellipsis").font(.system(size: 16, weight: .semibold)).foregroundStyle(.primary)
-                    .frame(width: 40, height: 40).barGlass(Circle())
-            }
-            .tint(.primary)
-            Button { dismiss() } label: {
-                Image(systemName: "xmark").font(.system(size: 15, weight: .semibold)).foregroundStyle(.primary)
-                    .frame(width: 40, height: 40).barGlass(Circle())
+                VStack(spacing: 2) {
+                    Text("rate").font(.caption).foregroundStyle(.secondary)
+                    Text(each.map { showingPerTasbeeh ? zikrDurationString($0 * 100) : String(format: "%.1fs", $0) } ?? "—")
+                        .font(.system(size: 30, weight: .light, design: .rounded)).monospacedDigit()
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                        .contentTransition(.numericText())
+                    Text(showingPerTasbeeh ? "per tasbeeh (100)" : "per count").font(.caption2).foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
+                }
+                .padding(.horizontal, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(ThemedRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), radius: 6, offset: 3))
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: "arrow.left.arrow.right").font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary).padding(11)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Close")
+            .disabled(each == nil)
         }
-        .padding(.horizontal, 4)
+        .frame(height: 52 * 2 + 10)
     }
 
-    /// The reminder, top right beside ⋯ (owner): a sage-tinted bell in glass, only while the goal shown has one — it
-    /// comes and goes as the chips switch goals. A tap opens just the Remind me sheet.
-    private func reminderBell(_ g: TaskModel, _ when: String) -> some View {
-        Button { reminding = g } label: {
-            Image(systemName: "bell.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.sage)
-                .frame(width: 40, height: 40)
-                .background(Circle().fill(Color.sage.opacity(0.14)))
-                .barGlass(Circle())
+    private func statTile(_ icon: String, _ value: String, _ caption: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 18, weight: .light)).foregroundStyle(.secondary).frame(width: 24)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(value).font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.55)
+                Text(caption).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
-        .transition(.scale.combined(with: .opacity))
-        .accessibilityLabel("Reminder: \(when)")
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity).frame(height: 52)
+        .background(ThemedRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), radius: 6, offset: 3))
     }
 
-    /// More than one goal on this zikr: a row of chips, the picked one in sage, scrolling sideways when there are many
-    /// (owner: he liked this over a capsule switch — "what if they have 10 for one azkar"). The hero follows.
-    private var goalSwitch: some View {
+    // MARK: Daily goals
+
+    @ViewBuilder private var goalsTab: some View {
+        if let g = goal {
+            VStack(alignment: .leading, spacing: 10) {
+                // How many there are (owner: nowhere said it), in History's MOST SAID type.
+                Text("\(goals.count) DAILY GOAL\(goals.count == 1 ? "" : "S")")
+                    .font(.caption.weight(.medium)).tracking(1.2).foregroundStyle(.secondary).padding(.leading, 4)
+                goalChips
+                Color.clear.frame(height: 2)
+                ZikrGoalCard(goal: g, today: today) { ask(g) }
+                    .id(g.id)
+                    .transition(.opacity)
+                goalFoot(g).padding(.horizontal, 6).padding(.top, 4)
+            }
+        } else {
+            VStack(spacing: 12) {
+                Image(systemName: "target").font(.system(size: 30, weight: .light)).foregroundStyle(.secondary)
+                Text("No daily goal yet").font(.system(size: 20, weight: .light, design: .rounded))
+                Text("A daily goal puts \(zikr.name) on your wheel each day, with a streak to keep.")
+                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Button { addingGoal = true } label: {
+                    Text("Add a daily goal").font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
+                        .padding(.horizontal, 18).frame(height: 40)
+                        .overlay(Capsule().strokeBorder(Color.sage.opacity(0.6), lineWidth: 1))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+            }
+            .padding(.vertical, 36).padding(.horizontal, 24)
+            .frame(maxWidth: .infinity)
+            .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
+        }
+    }
+
+    /// The goals as chips (the picked one in sage, scrolling sideways when there are many — owner: "what if they have 10"),
+    /// then a + (owner: add another right where the goals are).
+    private var goalChips: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 8) {
                 ForEach(goals) { g in
                     let on = g.id == goal?.id
-                    Button { withAnimation(.snappy) { picked = g } } label: {
-                        Text(g.customName ?? ZikrFmt.goal(g)).font(.footnote.weight(on ? .semibold : .regular))
+                    Button { withAnimation(.snappy(duration: 0.25)) { picked = g } } label: {
+                        Text(g.title).font(.subheadline.weight(on ? .medium : .regular)).lineLimit(1)
                             .foregroundStyle(on ? Color.sage : .secondary)
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Capsule().fill(on ? Color.sage.opacity(0.14) : Color.primary.opacity(0.05)))
+                            .padding(.horizontal, 14).frame(height: 34)
+                            .background(Capsule().fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.05)))
                     }
                     .buttonStyle(.plain)
                 }
+                Button { addingGoal = true } label: {
+                    Image(systemName: "plus").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                        .frame(width: 34, height: 34).background(Circle().fill(Color.primary.opacity(0.05)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Another daily goal")
+            }
+            .padding(.horizontal, 2)
+        }
+        .scrollIndicators(.hidden)
+        .scrollClipDisabled()
+        .sensoryFeedback(.selection, trigger: picked?.id)
+    }
+
+    /// Under the card (owner: outside it): the reminder — sage, a tap opens it — and Edit (edit · reminder · pause ·
+    /// share · delete; owner: the card is the page, these behind a button).
+    private func goalFoot(_ g: TaskModel) -> some View {
+        let paused = g.pausedAt != nil
+        let when = ZikrReminders.summary(g)
+        return HStack {
+            Button { reminding = g } label: {
+                HStack(spacing: 6) {
+                    Label(when.map { "Reminder · \($0)" } ?? "Add a reminder", systemImage: when != nil ? "bell.fill" : "bell")
+                    Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                }
+                .font(.subheadline).foregroundStyle(Color.sage).lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 8)
+            Menu {
+                Button { editing = g } label: { Label("Edit goal", systemImage: "pencil") }
+                Button { reminding = g } label: { Label(when == nil ? "Add a reminder" : "Change reminder", systemImage: "bell") }
+                Button { withAnimation(.snappy) { setGoalPaused(g, !paused) } } label: {
+                    Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.circle" : "pause.circle")
+                }
+                Button {
+                    Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); TaskSharing.share(g) }
+                } label: { Label("Share goal…", systemImage: "square.and.arrow.up") }
+                Divider()
+                Button(role: .destructive) { toDelete = g } label: { Label("Delete goal…", systemImage: "trash") }
+            } label: {
+                Text("Edit").font(.subheadline.weight(.medium)).foregroundStyle(.primary)
+                    .padding(.horizontal, 14).frame(height: 32)
+                    .background(NeuRaised(shape: Capsule(), radius: 3, offset: 1.5))
+            }
+            .tint(.primary)
+        }
+    }
+
+    /// The card's TODAY ring: part done → Continue / Start over; else "Start …?" (owner: a tap asks).
+    private func ask(_ g: TaskModel) {
+        if g.pausedAt != nil { withAnimation(.snappy) { setGoalPaused(g, false) }; return }
+        if partDone(g, today) { askingResume = g } else { askingStart = g }
+    }
+
+    /// The page goes, then the wheel starts it.
+    private func start(_ g: TaskModel, resume: Bool) {
+        dismiss()
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.45))
+            startGoal(g, resume: resume)
+        }
+    }
+
+    // MARK: History
+
+    private var historyShown: [SessionDataModel] {
+        switch historyPick {
+        case .all: sessions
+        case .goal(let id): sessions.filter { $0.task?.id == id }
+        case .noGoal: sessions.filter { $0.task == nil }
+        }
+    }
+
+    @ViewBuilder private var historyTab: some View {
+        if sessions.isEmpty {
+            Text("No sessions yet").font(.subheadline).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 30)
+        } else {
+            VStack(alignment: .leading, spacing: 14) {
+                // Several goals: which one each session was for (owner) — chips to narrow it, and each row names its goal.
+                if goals.count > 1 { historyChips }
+                let shown = Array(historyShown.prefix(20))
+                VStack(spacing: 0) {
+                    ForEach(Array(shown.enumerated()), id: \.element.id) { i, s in
+                        if i > 0 { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5) }
+                        SessionRow(session: s, showsMantraName: false, onOpen: { sessionToOpen = s },
+                                   onDelete: { sessionToDelete = s }, rowBackground: AnyView(Color.clear), quiet: true,
+                                   showsDay: true,
+                                   goalName: goals.count > 1 && historyPick == .all ? (s.task?.title ?? "no goal") : nil)
+                            .padding(.vertical, 10)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.systemBackground).opacity(0.55)))
+                // A preview of History, not a second one (owner): the rest is the History page.
+                Button { goToHistory() } label: {
+                    HStack(spacing: 4) {
+                        Text("All \(sessions.count) session\(sessions.count == 1 ? "" : "s") in History")
+                        Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                    }
+                    .font(.subheadline).foregroundStyle(Color.sage)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
             }
         }
-        .contentMargins(.horizontal, 16, for: .scrollContent)
+    }
+
+    private var historyChips: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                chip("All", .all)
+                ForEach(goals) { chip($0.title, .goal($0.id)) }
+                if sessions.contains(where: { $0.task == nil }) { chip("No goal", .noGoal) }
+            }
+            .padding(.horizontal, 2)
+        }
         .scrollIndicators(.hidden)
-        .sensoryFeedback(.selection, trigger: picked?.id)
+        .scrollClipDisabled()
+        .sensoryFeedback(.selection, trigger: historyPick)
+    }
+
+    private func chip(_ title: String, _ pick: HistoryPick) -> some View {
+        let on = historyPick == pick
+        return Button { withAnimation(.snappy(duration: 0.25)) { historyPick = pick } } label: {
+            Text(title).font(.subheadline.weight(on ? .medium : .regular)).lineLimit(1)
+                .foregroundStyle(on ? Color.sage : .secondary)
+                .padding(.horizontal, 14).frame(height: 34)
+                .background(Capsule().fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.05)))
+        }
+        .buttonStyle(.plain)
     }
 
     private func goToHistory() {
         let f = ZikrHistoryHome.Filter.zikr(zikr.persistentModelID, zikr.name)
-        dismiss()
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.4))   // after the sheet has gone
-            onHistory?(f)
+        if let onHistory {
+            dismiss()
+            Task { @MainActor in try? await Task.sleep(for: .seconds(0.4)); onHistory(f) }
+        } else {
+            pushedHistory = f
         }
     }
+}
 
-    /// The hero: the goal's ring today, its streak, its last 14 days as small rings.
-    private func hero(_ g: TaskModel) -> some View {
-        let p = g.progress(in: today)
-        let f = fraction(g, today)
-        let paused = g.pausedAt != nil
-        let s = g.streak()
+/// A goal's card, shaped like its row in Your azkar so the page reads as that row opened up (owner): its ring on the left
+/// (today, soft — a tap asks to start), its name and today's line beside it; then how the last two weeks went — "9 of 14
+/// days", a tap flips to how consistent that is and back after 3 s (the Salah ring's rule) — the 14 days as small rings
+/// (a finger picks one and slides along; its numbers under the row, gone 3 s after lifting); then streak · best, last
+/// done, the usual time a day.
+private struct ZikrGoalCard: View {
+    let goal: TaskModel
+    let today: [SessionDataModel]
+    let onRing: () -> Void
+    @State private var picked: Int?
+    @State private var touching = false
+    @State private var showConsistency = false
+    @State private var revert: Task<Void, Never>?
+    @State private var dayRevert: Task<Void, Never>?
+    @State private var rowBox: CGSize = .zero
+    /// The Salah ring's flip (mainCircle `flipSeconds`).
+    private static let flipSeconds: Double = 3
+
+    struct Day { let date: Date; let count: Int; let seconds: TimeInterval; let fraction: Double }
+
+    private var days: [Day] {
         let cal = Calendar.current, todayStart = PrayerDay.start()
-        let days: [(date: Date, fraction: Double)] = (0..<14).reversed().compactMap { back in
+        let mine = goal.sessions
+        return (0..<14).reversed().compactMap { back in
             guard let start = cal.date(byAdding: .day, value: -back, to: todayStart),
                   let end = cal.date(byAdding: .day, value: 1, to: start) else { return nil }
-            return (start, fraction(g, g.sessions.filter { $0.startTime >= start && $0.startTime < end }))
+            let those = mine.filter { $0.startTime >= start && $0.startTime < end }
+            return Day(date: start, count: those.reduce(0) { $0 + $1.totalCount },
+                       seconds: those.reduce(0) { $0 + $1.secondsPassed }, fraction: fraction(goal, those))
         }
-        // Everything about this goal lives in its card (owner): its chips along the top edge (clipped by the card, scrolling
-        // sideways), what it asks ("50 a day") under them, then the ring, the sentence and its days.
-        let card = RoundedRectangle(cornerRadius: 24, style: .continuous)
-        return VStack(spacing: 0) {
-            if goals.count > 1 { goalSwitch.padding(.top, 14) }
-            Text(goals.count > 1 ? ZikrFmt.goal(g) : (g.customName.map { "\($0) · \(ZikrFmt.goal(g))" } ?? ZikrFmt.goal(g)))
-                .font(.subheadline).foregroundStyle(.secondary)
-                .padding(.top, goals.count > 1 ? 10 : 18)
-            heroBody(g, p: p, f: f, paused: paused, s: s, days: days)
-                .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 18)
-        }
-        .frame(maxWidth: .infinity)
-        .clipShape(card)
-        .background(NeuRaised(shape: card, radius: 8, offset: 4))
     }
 
-    private func heroBody(_ g: TaskModel, p: TaskProgress, f: Double, paused: Bool, s: TaskStreak,
-                          days: [(date: Date, fraction: Double)]) -> some View {
-        VStack(spacing: 14) {
-            SegmentRing(parts: [f], size: 140) {
-                VStack(spacing: 0) {
-                    if paused {
-                        Image(systemName: "pause.fill").font(.system(size: 26, weight: .light)).foregroundStyle(.secondary)
-                        Text("paused").font(.caption).foregroundStyle(.secondary)
-                    } else if f >= 1 {
-                        Image(systemName: "checkmark").font(.system(size: 30, weight: .light)).foregroundStyle(Color.sage)
-                        Text("done today").font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text(g.isCountMode ? ZikrFmt.count(p.count) : "\(Int(p.seconds / 60))")
-                            .font(.system(size: 38, weight: .light, design: .rounded)).monospacedDigit()
-                        Text(g.isCountMode ? "of \(ZikrFmt.count(g.goal)) today" : "of \(g.goal) min today")
-                            .font(.caption).foregroundStyle(.secondary)
+    var body: some View {
+        let days = days
+        let met = days.filter { $0.fraction >= 1 }.count
+        let consistency = Int((days.map { min($0.fraction, 1) }.reduce(0, +) / Double(max(days.count, 1)) * 100).rounded())
+        let s = goal.streak()
+        let paused = goal.pausedAt != nil
+        VStack(alignment: .leading, spacing: 16) {
+            top(paused: paused)
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5)
+            // How the last two weeks went; a tap flips to the consistency.
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(showConsistency ? "\(consistency)%" : "\(met) of \(days.count)")
+                        .font(.system(size: 28, weight: .light, design: .rounded)).monospacedDigit()
+                    Text(showConsistency ? "consistent" : "days")
+                        .font(.system(size: 19, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                }
+                Text(showConsistency ? "of each day's goal, last two weeks" : "goal met, last two weeks")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+            .contentTransition(.opacity)
+            .contentShape(Rectangle())
+            .onTapGesture { flip() }
+            VStack(spacing: 8) {
+                dayRow(days)
+                if let picked, days.indices.contains(picked) {
+                    Text(dayLine(days[picked])).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        .transition(.opacity)
+                }
+            }
+            VStack(alignment: .leading, spacing: 9) {
+                line(s.current > 0 ? "flame.fill" : "flame",
+                     s.current > 0 ? "\(s.current) day streak · best \(max(s.best, s.current))"
+                                   : (s.best > 0 ? "No streak going · best \(s.best)" : "No streak yet"),
+                     sage: s.current > 0)
+                line("calendar", goal.sessions.map(\.startTime).max().map { "Last done \(ZikrFmt.ago($0))" } ?? "Not started yet")
+                if let usual { line("clock", "Usually \(ZikrFmt.spent(usual)) a day") }
+            }
+        }
+        .padding(16)
+        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
+        .onChange(of: touching) { _, on in
+            dayRevert?.cancel()
+            guard !on, picked != nil else { return }
+            dayRevert = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(Self.flipSeconds))
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.25)) { picked = nil }
+            }
+        }
+    }
+
+    /// The row's shape: the ring, the name, today's line.
+    private func top(paused: Bool) -> some View {
+        let p = goal.progress(in: today)
+        let f = fraction(goal, today)
+        let done = f >= 1
+        return HStack(spacing: 14) {
+            Button(action: { triggerSomeVibration(type: .light); onRing() }) {
+                GoalTodayRing(progress: paused ? 0 : f, size: 70) {
+                    VStack(spacing: 0) {
+                        Text("TODAY").font(.system(size: 7.5, weight: .semibold)).tracking(0.9).foregroundStyle(.secondary)
+                        if paused {
+                            Image(systemName: "pause.fill").font(.system(size: 16, weight: .light)).foregroundStyle(.secondary)
+                        } else if done {
+                            Image(systemName: "checkmark").font(.system(size: 18, weight: .light)).foregroundStyle(Color.sage)
+                        } else {
+                            Text(goal.isCountMode ? ZikrFmt.count(p.count) : "\(Int(p.seconds / 60))")
+                                .font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                            Text(goal.isCountMode ? "of \(ZikrFmt.count(goal.goal))" : "of \(goal.goal) min")
+                                .font(.system(size: 9)).foregroundStyle(.secondary)
+                        }
                     }
+                    .padding(.horizontal, 6)
                 }
+                .contentShape(Circle())
             }
-            // One sentence, the truest thing right now (owner: say more, keep the vibe), then one quiet line.
-            VStack(spacing: 4) {
-                let line = headline(g, done: f >= 1, paused: paused, streak: s)
-                Text(line)
-                    .font(.system(size: 17, weight: .light, design: .rounded))
-                    .multilineTextAlignment(.center)
-                // The 14 rings already say how many days (Sami): only the best streak, when the sentence isn't about one.
-                if s.best > 1, !line.contains("streak") {
-                    Text("this goal's best streak: \(s.best) days").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-                }
+            .buttonStyle(.plain)
+            .accessibilityLabel(paused ? "Paused. Resume" : "Today. Start")
+            VStack(alignment: .leading, spacing: 3) {
+                Text(goal.title).font(.system(size: 20, weight: .light, design: .rounded)).lineLimit(2)
+                Text(paused ? "Paused · your history is kept" : todayLine(p, done: done))
+                    .font(.footnote).foregroundStyle(.secondary)
             }
-            HStack(spacing: 0) {
-                ForEach(Array(days.enumerated()), id: \.offset) { i, d in
-                    VStack(spacing: 5) {
-                        SoftRing(progress: d.fraction, size: 15)
-                        Text(d.date.formatted(.dateTime.weekday(.narrow)))
-                            .font(.system(size: 9, weight: i == 13 ? .semibold : .regular))
-                            .foregroundStyle(i == 13 ? .primary : .tertiary)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func todayLine(_ p: TaskProgress, done: Bool) -> String {
+        if done { return "Done today · \(ZikrFmt.goal(goal))" }
+        if let left = timeLeft(goal, p) { return "\(ZikrFmt.goal(goal)) · about \(left) left" }
+        return ZikrFmt.goal(goal)
+    }
+
+    /// The 14 days as small rings; one drag over the row: touch picks a day, sliding moves it (owner), a tick per day.
+    private func dayRow(_ days: [Day]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(Array(days.enumerated()), id: \.offset) { i, d in
+                let isToday = i == days.count - 1
+                VStack(spacing: 5) {
+                    Text(d.date.formatted(.dateTime.weekday(.narrow)))
+                        .font(.system(size: 9, weight: isToday || picked == i ? .semibold : .regular))
+                        .foregroundStyle(isToday || picked == i ? .primary : .tertiary)
+                    ZStack {
+                        Circle().stroke(Color.primary.opacity(isToday ? 0.24 : 0.17), lineWidth: isToday ? 2.6 : 2.2)
+                        if d.fraction > 0 {
+                            Circle().trim(from: 0, to: min(d.fraction, 1))
+                                .stroke(Color.sage.opacity(d.fraction >= 1 ? 1 : 0.55),
+                                        style: StrokeStyle(lineWidth: isToday ? 2.6 : 2.2, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                        }
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(width: 14, height: 14)
+                    .padding(4)
+                    .background { if picked == i { Circle().fill(Color.primary.opacity(0.1)) } }
+                    .scaleEffect(picked == i ? 1.12 : 1)
                 }
+                .frame(maxWidth: .infinity)
             }
         }
-    }
-
-    /// "11 days since you last did this" · "4-day streak · keep it today" · "Done today · 5-day streak".
-    private func headline(_ g: TaskModel, done: Bool, paused: Bool, streak s: TaskStreak) -> String {
-        if paused { return "Paused · your history is kept" }
-        if done { return s.current > 1 ? "Done today · \(s.current)-day streak" : "Done today" }
-        // Started today but not done yet: what's left, not when it was last done.
-        let p = g.progress(in: today)
-        if p.count > 0 || p.seconds >= 1 {
-            let left = g.isCountMode ? "\(max(g.goal - p.count, 0)) to go today" : "\(max(g.goal - Int(p.seconds / 60), 0)) min to go today"
-            return s.current >= 1 ? "\(s.current)-day streak · \(left)" : left
-        }
-        if s.current >= 1 { return "\(s.current)-day streak · keep it today" }
-        guard let last = g.sessions.map(\.startTime).max() else { return "Not started yet · today's a good day" }
-        let n = Calendar.current.dateComponents([.day], from: PrayerDay.start(for: last), to: PrayerDay.start()).day ?? 0
-        return n <= 1 ? "Last done yesterday" : "\(n) days since you last did this"
-    }
-
-    /// The zikr's record, one quiet line under the card.
-    private var record: some View {
-        let monthStart = Calendar.current.dateInterval(of: .month, for: Date())?.start ?? Date()
-        let month = sessions.filter { $0.startTime >= monthStart }.reduce(0) { $0 + $1.totalCount }
-        return Text([ "\(ZikrFmt.count(zikr.totalCount)) counted all time", "\(ZikrFmt.count(month)) this month",
-                      zikr.secondsPerCount.map { String(format: "%.1fs each", $0) } ].compactMap { $0 }.joined(separator: " · "))
-            .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-            .frame(maxWidth: .infinity)
-    }
-
-    /// ONE soft pill and its quiet line (README 6); the sheet goes, then the wheel starts it.
-    @ViewBuilder private var startBar: some View {
-        VStack(spacing: 6) {
-            if let g = goal {
-                let p = g.progress(in: today)
-                if g.pausedAt != nil {
-                    PrimaryButton(title: "Resume this goal") { withAnimation(.snappy) { setGoalPaused(g, false) } }
-                } else {
-                    // Always "Start"; part-done today, a tap asks Continue / Start over (owner: he often starts over —
-                    // the wheel asks too).
-                    PrimaryButton(title: fraction(g, today) >= 1 ? "Start another session"
-                                  : "Start" + (g.estimateNote(p).map { " · \($0)" } ?? "")) {
-                        if partDone(g, today) { askingResume = g } else { start(g, resume: false) }
-                    }
-                }
-                Button("Edit goal") { editing = g }.font(.subheadline).foregroundStyle(.secondary)
-            } else {
-                PrimaryButton(title: "Make it a daily goal") { addingGoal = true }
-                Button("Not now") { dismiss() }.font(.subheadline).foregroundStyle(.secondary)
+        .contentShape(Rectangle())
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { rowBox = $0 }
+        .gesture(DragGesture(minimumDistance: 0)
+            .onChanged { v in
+                touching = true
+                guard rowBox.width > 0, !days.isEmpty else { return }
+                let i = min(max(Int(v.location.x / (rowBox.width / CGFloat(days.count))), 0), days.count - 1)
+                if picked != i { withAnimation(.snappy(duration: 0.15)) { picked = i } }
             }
-        }
-        .padding(.top, 24).padding(.bottom, 4)
-        .background(LinearGradient(stops: [.init(color: theme.surface.opacity(0), location: 0),
-                                           .init(color: theme.surface, location: 0.35)],
-                                   startPoint: .top, endPoint: .bottom).ignoresSafeArea())
+            .onEnded { _ in touching = false })
+        .sensoryFeedback(.selection, trigger: picked)
     }
 
-    private func start(_ g: TaskModel, resume: Bool) {
-        dismiss()
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.4))   // after the sheet has gone
-            startGoal(g, resume: resume)
+    /// "Mon, Oct 5 · 30 of 50 · 1m 42s".
+    private func dayLine(_ d: Day) -> String {
+        let day = ZikrFmt.day(d.date)
+        guard d.count > 0 || d.seconds >= 1 else { return "\(day) · not done" }
+        let amount = goal.isCountMode ? "\(ZikrFmt.count(d.count)) of \(ZikrFmt.count(goal.goal))"
+                                      : "\(Int(d.seconds / 60)) of \(goal.goal) min"
+        return "\(day) · \(amount) · \(zikrDurationString(d.seconds))"
+    }
+
+    /// The usual time on a day you did this goal, over all its days.
+    private var usual: TimeInterval? {
+        var byDay: [String: TimeInterval] = [:]
+        for s in goal.sessions { byDay[PrayerDay.key(for: s.startTime), default: 0] += s.secondsPassed }
+        let total = byDay.values.reduce(0, +)
+        return byDay.isEmpty || total < 1 ? nil : total / Double(byDay.count)
+    }
+
+    /// The Salah ring's rule: a tap flips, back after 3 s; a tap while flipped goes back at once.
+    private func flip() {
+        triggerSomeVibration(type: .light)
+        revert?.cancel()
+        if showConsistency { withAnimation(.snappy) { showConsistency = false }; return }
+        withAnimation(.snappy) { showConsistency = true }
+        revert = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.flipSeconds))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy) { showConsistency = false }
+        }
+    }
+
+    private func line(_ symbol: String, _ text: String, sage: Bool = false) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).font(.subheadline).frame(width: 20)
+                .foregroundStyle(sage ? AnyShapeStyle(Color.sage) : AnyShapeStyle(.secondary))
+            Text(text).font(.subheadline).foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// `SoftRing` at the card's size: a raised band in the surface, today's progress in sage on it.
+private struct GoalTodayRing<Center: View>: View {
+    let progress: Double
+    var size: CGFloat = 70
+    @ViewBuilder var center: () -> Center
+    @Environment(\.circleTheme) private var theme
+    var body: some View {
+        let band = size * 0.09
+        ZStack {
+            Circle().stroke(theme.surface, lineWidth: band)
+                .shadow(color: theme.shade, radius: 2.5, x: 1.5, y: 1.5)
+                .shadow(color: theme.light, radius: 3, x: -1.5, y: -1.5)
+            Circle().trim(from: 0, to: min(max(progress, 0), 1))
+                .stroke(Color.sage, style: StrokeStyle(lineWidth: band * 0.6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            center()
+        }
+        .frame(width: size, height: size)
+        .padding(band / 2)
+    }
+}
+
+/// The page's name, pinned: iOS 26's `safeAreaBar` (the page scrolls under it, softened at the edge), the page's surface
+/// before.
+private struct PinnedTitle<Bar: View>: ViewModifier {
+    @ViewBuilder let bar: () -> Bar
+    @Environment(\.circleTheme) private var theme
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.safeAreaBar(edge: .top) { bar() }
+        } else {
+            content.safeAreaInset(edge: .top, spacing: 0) { bar().background(theme.surface) }
         }
     }
 }

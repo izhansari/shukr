@@ -366,6 +366,9 @@ struct SessionRow: View {
     var quiet = false
     /// With `showsMantraName` off: "Tue, Sep 29 · 7:10 AM" as the headline instead of just the time.
     var showsDay = false
+    /// A zikr's page, History tab, when the zikr has more than one goal: which goal the session was for, after its time
+    /// (owner: "be clear which list item pertains to which task").
+    var goalName: String? = nil
     private var quietTarget: String? {
         switch session.sessionMode {
         case 1: return "\(session.targetMin) min goal"
@@ -482,8 +485,10 @@ struct SessionRow: View {
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     if quiet && showsDay {
-                        // Everything on the sheet is this goal's: no "50 goal" (owner), just the time.
+                        // Everything on the sheet is this goal's: no "50 goal" (owner), just the time — and the goal's name
+                        // when the zikr has several.
                         Text(session.startTime, style: .time)
+                        if let goalName { Text("· \(goalName)") }
                     } else if quiet {
                         if showsMantraName { Text(session.startTime, style: .time) }
                         if showsMantraName && quietTarget != nil { Text("·") }

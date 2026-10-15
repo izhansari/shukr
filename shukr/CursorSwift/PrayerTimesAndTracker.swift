@@ -1993,7 +1993,6 @@ struct PrayerTimesView: View {
         @State private var demoAlarmCheck = false
         @State private var demoRingDepth = false
         @State private var demoRaisedList = false
-        @State private var demoZikrSheetMock = false
         @State private var demoListSandbox = false
         @State private var demoLATuner = false
         @State private var demoPileMock: String?
@@ -2314,10 +2313,6 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(2))
                     demoListSandbox = true
                 }
-                if ProcessInfo.processInfo.arguments.contains("-demoZikrSheetMock") {   // ZikrSheetMock.swift
-                    try? await Task.sleep(for: .seconds(2))
-                    demoZikrSheetMock = true
-                }
                 if ProcessInfo.processInfo.arguments.contains("-demoRaisedListMock") {   // PrayerListRaisedMock.swift
                     try? await Task.sleep(for: .seconds(2))
                     demoRaisedList = true
@@ -2356,7 +2351,6 @@ struct PrayerTimesView: View {
             .sheet(isPresented: $demoAlarmCheck) { NavigationStack { FajrAlarmCheckView() } }
             .sheet(isPresented: $demoRingDepth) { NavigationStack { RingDepthMockPage() } }
             .sheet(isPresented: $demoRaisedList) { NavigationStack { RaisedListMockPage() } }
-            .sheet(isPresented: $demoZikrSheetMock) { NavigationStack { ZikrSheetMockLauncher() } }
             .fullScreenCover(isPresented: $demoListSandbox) { ListDragSandbox() }
             // `-laTuner`: Settings → Live Activities → Tune the card's look.
             .sheet(isPresented: $demoLATuner) { LATunerView() }

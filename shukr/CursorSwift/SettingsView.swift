@@ -811,7 +811,6 @@ struct SettingsView: View {
                             NavigationLink("Ring depth mock-ups") { RingDepthMockPage() }
                             // The whole prayer list raised, the one on now a step more (owner, 2026-10-14).
                             NavigationLink("Raised list mock-up") { RaisedListMockPage() }
-                            NavigationLink("Zikr page mock-up") { ZikrSheetMockPage() }
                             // The setup's Live Activity page on its own, its words editable from its ⚙ (owner).
                             Button("Live Activity setup page…") { showLiveActivitySetup = true }
                             Button("NEXT label playground…") { showNextPlayground = true }
