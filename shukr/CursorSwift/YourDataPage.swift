@@ -3,19 +3,19 @@ import SwiftData
 import UniformTypeIdentifiers
 
 // Settings → Your Data (owner, 2026-10-14): what shukr keeps, that it's private and on this iPhone only, whether it's
-// backed up, a copy of it all, and a restore from one. Its own page in shukr's soft look (owner: "way too similar" to the
-// "Your …" reminder pages) — Sami's design language (board/mocks/design-library): one ring holding the state in the
-// middle, light type, a raised card for the figures, sage only on what you can tap, one pill and a quiet line; the ⓘ in
-// the bar's Liquid Glass. The export and the restore are glass sheets in the "topped up" sheet's template.
+// backed up, a copy of it all, and a restore from one. A plain grouped list (owner, round 3: no soft look, no big buttons —
+// "I liked how you had the thing before with all the different aspects of our app that have data"): the privacy line and
+// the room it takes, each kind of data with what's in it, then Export / Restore as rows. Top right, in the bar's Liquid
+// Glass, a cloud (`link.icloud`, the default color) for "Is it backed up?". The export and the restore are glass sheets.
 //
 // The facts it states (checked 2026-10-14): no network code in shukr (no account, no server, no analytics); Apple Maps is
 // asked for mosques and place names; nothing is excluded from the iPhone's backup and nothing syncs (no CloudKit);
 // prayer photos live in Application Support, not the Photos library. iOS doesn't tell an app whether iCloud Backup is on
-// (decision your-data-icloud C: say where to check + when you last made a copy; shukr's own iCloud Drive copy later).
+// or when it last ran, so the cloud never shows a state shukr can't know (decision your-data-icloud C: say where to check
+// + when you last made a copy; shukr's own iCloud Drive copy later — then the cloud can show its real state).
 
 struct YourDataPage: View {
     @Environment(\.modelContext) private var context
-    @Environment(\.circleTheme) private var theme
     @State private var counts = Counts()
     @State private var sizes = Sizes()
     @State private var info: Info?
@@ -23,7 +23,6 @@ struct YourDataPage: View {
     @State private var picking = false
     @State private var restore: BackupSource?
     @State private var notACopy = false
-    @State private var titleShown = false
     @AppStorage(DataExport.lastExportKey) private var lastExport: Double = 0
     enum Info { case privacy, backup }
 
@@ -39,32 +38,45 @@ struct YourDataPage: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
+        List {
+            Section {
                 hero
-                figures.padding(.top, 30)
-                backupCard.padding(.top, 16)
-                VStack(spacing: 0) {
-                    PrimaryButton(title: "Export my data") { exportSheet = true }
-                    SecondaryButton(title: "Restore from a copy") { picking = true }
-                }
-                .padding(.top, 28)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
             }
-            .padding(.horizontal, 16).padding(.bottom, 40)
+            Section {
+                sizeBar
+                ReminderWhyLink(symbol: "lock", title: "What stays private") { info = .privacy }
+            }
+            Section {
+                row("checkmark.circle", "Prayers", prayersLine)
+                row("circle.hexagonpath", "Zikr sessions", sessionsLine)
+                row("books.vertical", "Azkar and daily goals", "\(counts.azkar) of yours · \(counts.goals) daily goal\(counts.goals == 1 ? "" : "s")")
+                row("camera", "Prayer photos", counts.photos == 0 ? "None yet"
+                    : "\(counts.photos) photo\(counts.photos == 1 ? "" : "s")" + (sizes.known ? " · \(Self.size(sizes.photos))" : ""))
+                if counts.donations > 0 { row("gift", "Donations you logged", "\(counts.donations)") }
+                if counts.excused > 0 { row("pause.circle", "Excused Mode", "\(counts.excused) time\(counts.excused == 1 ? "" : "s")") }
+                row("gearshape", "Your settings", "Location, prayer times, reminders and looks")
+            } header: { Text("On this iPhone") }
+            Section {
+                Button { exportSheet = true } label: {
+                    Label("Export my data", systemImage: "square.and.arrow.up").foregroundStyle(Color.sage)
+                }
+                Button { picking = true } label: {
+                    Label("Restore from a copy", systemImage: "arrow.counterclockwise").foregroundStyle(Color.sage)
+                }
+            } header: {
+                Text("Your copy")
+            } footer: {
+                Text(exportLine)
+            }
         }
-        .background(theme.surface.ignoresSafeArea())
-        .fontDesign(.rounded)
-        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 150 } action: { _, under in
-            withAnimation(.easeOut(duration: 0.15)) { titleShown = under }
-        }
-        .navigationTitle(titleShown ? "Your Data" : "")
-        .navigationBarTitleDisplayMode(.inline)
-        // Top right: the bar's own button, so iOS 26 draws it in Liquid Glass.
+        .reminderPageTitle("Your Data")
+        // Top right: the bar's own button, so iOS 26 draws it in Liquid Glass; the default color (owner).
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                // The ⓘ as everywhere else in shukr: info.circle in the default color (owner: never sage).
-                Button { info = .privacy } label: { Image(systemName: "info.circle") }
-                    .accessibilityLabel("What stays private")
+                Button { info = .backup } label: { Image(systemName: "link.icloud") }
+                    .accessibilityLabel("Is it backed up?")
             }
         }
         .task {
@@ -99,7 +111,7 @@ struct YourDataPage: View {
             ])
         }
         .infoModal(isPresented: Binding(get: { info == .backup }, set: { if !$0 { info = nil } }),
-                   title: "Is it backed up?", symbol: "icloud") {
+                   title: "Is it backed up?", symbol: "link.icloud") {
             ReminderExplainer(head: "shukr is part of your iPhone's own backup. iOS doesn't let apps see whether that backup is on, so here's how to check.", points: [
                 .init(big: "Check iCloud Backup", small: "Settings → your name → iCloud → iCloud Backup. When it's on, shukr is in it, photos too.", symbol: "icloud", warn: false),
                 .init(big: "On a new iPhone", small: "Set it up from that backup and shukr comes back with your history, photos and goals.", symbol: "iphone", warn: false),
@@ -109,140 +121,74 @@ struct YourDataPage: View {
         }
     }
 
-    // MARK: The parts
-
-    /// The one thing in the middle (README 1–2): a soft ring holding the state — sage all round, a lock inside.
+    /// The page's one focal thing (owner: "the hero is beautiful and informative"): a ring holding the state — sage all
+    /// round, a lock inside — over a light title and one grey line. Flat (owner: no soft look on this page).
     private var hero: some View {
         VStack(spacing: 0) {
             ZStack {
-                Circle().stroke(theme.surface, lineWidth: 14)
-                    .shadow(color: theme.shade, radius: 4, x: 3, y: 3)
-                    .shadow(color: theme.light, radius: 4, x: -3, y: -3)
-                Circle().stroke(Color.sage.opacity(0.75), lineWidth: 2.5)
+                Circle().stroke(Color.primary.opacity(0.06), lineWidth: 12)
+                Circle().stroke(Color.sage.opacity(0.85), lineWidth: 2.5)
                 Image(systemName: "lock")
-                    .font(.system(size: 34, weight: .ultraLight))
+                    .font(.system(size: 32, weight: .ultraLight))
                     .foregroundStyle(Color.sage)
             }
-            .frame(width: 124, height: 124)
-            .padding(.top, 18)
+            .frame(width: 112, height: 112)
+            .padding(.top, 8)
             Text("Your data stays with you")
                 .font(.system(size: 28, weight: .light, design: .rounded))
                 .multilineTextAlignment(.center)
-                .padding(.top, 26)
+                .padding(.top, 22)
             Text("Private, and only on this iPhone. No account and no server: nothing you do in shukr is sent to us or anyone.")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20).padding(.top, 8)
+                .padding(.horizontal, 12).padding(.top, 8)
         }
         .frame(maxWidth: .infinity)
     }
 
-    /// What's on this iPhone, as figures (README: a summary, then quiet density), and the room it takes.
-    private var figures: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("ON THIS IPHONE").font(.caption.weight(.medium)).tracking(1.2).foregroundStyle(.secondary)
-            Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 18) {
-                GridRow {
-                    figure(counts.marked, "prayers marked", counts.firstMarked.map { "since " + $0.formatted(.dateTime.month(.abbreviated).year()) })
-                    figure(counts.sessions, "zikr sessions", counts.sessions > 0 ? zikrTime : nil)
-                }
-                GridRow {
-                    figure(counts.photos, "prayer photos", sizes.known && counts.photos > 0 ? Self.size(sizes.photos) : nil)
-                    figure(counts.azkar, counts.azkar == 1 ? "zikr of yours" : "azkar of yours", "\(counts.goals) daily goal\(counts.goals == 1 ? "" : "s")")
-                }
+    private func row(_ symbol: String, _ title: String, _ line: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(line).font(.footnote).foregroundStyle(Color(.secondaryLabel))
             }
-            if counts.donations > 0 || counts.excused > 0 {
-                Text([counts.donations > 0 ? "\(counts.donations) donation\(counts.donations == 1 ? "" : "s") logged" : nil,
-                      counts.excused > 0 ? "Excused Mode \(counts.excused) time\(counts.excused == 1 ? "" : "s")" : nil]
-                    .compactMap { $0 }.joined(separator: " · "))
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
-            sizeBar
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 22, style: .continuous), radius: 8, offset: 4))
+        .padding(.vertical, 2)
     }
 
-    private func figure(_ n: Int, _ label: String, _ line: String?) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(n.formatted()).font(.system(size: 30, weight: .light, design: .rounded)).monospacedDigit()
-            Text(label).font(.subheadline)
-            Text(line ?? " ").font(.caption).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    private var prayersLine: String {
+        guard counts.marked > 0 else { return "None marked yet" }
+        let since = counts.firstMarked.map { " since " + $0.formatted(.dateTime.month(.abbreviated).year()) } ?? ""
+        return "\(counts.marked.formatted()) marked\(since)"
     }
 
-    private var zikrTime: String {
+    private var sessionsLine: String {
+        guard counts.sessions > 0 else { return "None yet" }
         let s = counts.zikrSeconds
-        if s < 60 { return "under a minute" }
-        if s < 3600 { return "\(Int((s / 60).rounded())) min in all" }
         let h = Int((s / 3600).rounded())
-        return "\(h.formatted()) hour\(h == 1 ? "" : "s") in all"
+        let time = s < 60 ? "under a minute" : s < 3600 ? "\(Int((s / 60).rounded())) min" : "\(h.formatted()) hour\(h == 1 ? "" : "s")"
+        return "\(counts.sessions.formatted()) sessions · \(time)"
     }
 
-    /// The room it takes in parts (the "Your …" pages' bar, thinner and without a key's counts).
+    /// The space it takes, in parts — as the "Your …" pages show their room.
     private var sizeBar: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text(sizes.known ? "\(Self.size(sizes.total)) in all" : "Measuring…")
-                Spacer()
-                if sizes.known {
-                    HStack(spacing: 10) {
-                        key(Color.sage, "Records")
-                        if sizes.photos > 0 { key(Color(.systemTeal), "Photos") }
-                    }
-                }
-            }
-            .font(.caption).foregroundStyle(.secondary)
-            GeometryReader { geo in
-                HStack(spacing: 1.5) {
-                    let total = max(Double(sizes.total), 1)
-                    ForEach([(sizes.records, Color.sage), (sizes.photos, Color(.systemTeal)), (sizes.other, Color(.systemGray3))],
-                            id: \.1) { part in
-                        if part.0 > 0 {
-                            Capsule().fill(part.1).frame(width: max(geo.size.width * Double(part.0) / total - 1.5, 3))
-                        }
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(height: 4)
-        }
-    }
-
-    private func key(_ color: Color, _ label: String) -> some View {
-        HStack(spacing: 4) { Circle().fill(color).frame(width: 6, height: 6); Text(label) }
-    }
-
-    /// Backed up? What shukr can say: it's in the iPhone's backup, where to check, and when you last made a copy.
-    private var backupCard: some View {
-        Button { info = .backup } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "icloud")
-                    .font(.system(size: 20, weight: .light))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("In your iPhone's backup").foregroundStyle(.primary)
-                    Text(exportLine).font(.footnote).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 18).padding(.vertical, 16)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 22, style: .continuous), radius: 8, offset: 4))
+        // In KB so a small part still shows; the key says each part's size.
+        let kb = { (b: Int64) in Int(b / 1000) }
+        return ReminderSlotsBar(caption: sizes.known ? "\(Self.size(sizes.total)) on this iPhone" : "Measuring…",
+                                limit: max(kb(sizes.total), 1),
+                                parts: [.init(count: kb(sizes.records), color: Color.sage, label: "Records", value: Self.size(sizes.records)),
+                                        .init(count: kb(sizes.photos), color: Color(.systemTeal), label: "Photos", value: Self.size(sizes.photos)),
+                                        .init(count: kb(sizes.other), color: Color(.systemGray3), label: "Other", value: Self.size(sizes.other))])
     }
 
     /// When the last copy was made, and a gentle word when it's been a while (decision your-data-icloud C).
     private var exportLine: String {
-        guard lastExport > 0 else { return "When iCloud Backup is on, shukr is in it. You haven't made a copy of your own yet." }
+        guard lastExport > 0 else {
+            return "A .zip of spreadsheets, your photos and memos, and everything shukr needs to bring it back. You haven't made one yet."
+        }
         let when = Date(timeIntervalSince1970: lastExport)
         let days = Calendar.current.dateComponents([.day], from: when, to: .now).day ?? 0
         let said = "Your last copy: " + when.formatted(.dateTime.month(.abbreviated).day().year())
