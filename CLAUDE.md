@@ -293,7 +293,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `key(fromFile:)`, never a fixed extension); private, never synced, in the phone's backup; Memories' ⚙ → Space used
   (`PrayerPhotoStorageRow`). Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
   and marked; seen any time. **Unmarking deletes the photo** (`PrayerPhotos.discard(for:)` on every unmark path — the app's
-  list, the widget's alert, the watch's unmark and undo; both prompts add "Its photo will be deleted too." when there is one). `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
+  list, the widget's alert, the watch's unmark and undo). The list's and the widget's unmark ask with one card, `UnmarkPrompt` (PrayerPhotos.swift, in `OverlayAlert`'s window — owner 2026-10-15): "Unmark Asr?" · Unmark / Cancel; with a photo the photo itself sits in it (veiled while developing) and the button reads "Unmark and delete photo"; the system alert only if another overlay is already up. `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
   over the blurred page (a clear `fullScreenCover`, no system slide; zooms out of the small photo and back — the card is
   scaled / moved from the small photo's global frame, the small photo hidden while it's out, the tag fading in; it
   follows a drag in any direction (shrinking a little) and zooms home past 120 pt; Share fades the share options up at

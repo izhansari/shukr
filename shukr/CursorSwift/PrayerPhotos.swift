@@ -1560,3 +1560,94 @@ struct PrayerPhotoStorageRow: View {
         .task(id: PrayerPhotoRevision.shared.value) { usage = await PrayerPhotos.usage() }
     }
 }
+
+// MARK: - Unmarking a prayer
+
+/// "Unmark Asr?" — every unmark from the list's row or the widget (owner, 2026-10-15: unmarking took his photo with it
+/// and the alert's one line didn't land; then "the same unmarking UI … even without a photo"). With a photo, the photo
+/// itself is in the prompt — still developing, it shows as it does everywhere else (veiled, the Developing tag) — so a
+/// glance says the picture goes too. Shown over everything in its own window (`OverlayAlert.show(prompt:)`).
+struct UnmarkPrompt: View {
+    let name: String
+    /// The prayer's photo, if it has one.
+    let photoKey: String?
+    var onCancel: () -> Void = {}
+    let onUnmark: () -> Void
+    @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
+    @State private var shown = false
+
+    /// Shows it; false only when another overlay is already up (the caller falls back to a system alert).
+    @MainActor static func ask(for row: PrayerModel, title: String? = nil, photoFrom photoRow: PrayerModel? = nil,
+                               onCancel: @escaping () -> Void = {}, onUnmark: @escaping () -> Void) -> Bool {
+        guard OverlayAlert.canShow else { return false }
+        let withPhoto = photoRow ?? row
+        let photoKey = PrayerPhotos.exists(for: withPhoto) ? PrayerPhotos.key(dayKey: withPhoto.dayKey, name: withPhoto.name) : nil
+        OverlayAlert.show(prompt: UnmarkPrompt(name: title ?? row.displayName, photoKey: photoKey,
+                                               onCancel: onCancel, onUnmark: onUnmark))
+        return true
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(shown ? 0.3 : 0)
+                .ignoresSafeArea()
+                .onTapGesture { close(unmark: false) }
+            VStack(spacing: 0) {
+                if let photoKey {
+                    PrayerPhotoFace(back: images.back, front: images.front, width: 150)
+                        .developReveal(photoKey, width: 150, interactive: false)
+                        .developingTag(photoKey, width: 150)
+                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                        .padding(.top, 26)
+                        .padding(.bottom, 18)
+                        .accessibilityLabel("Your \(PrayerPhotos.caption(photoKey)) photo")
+                }
+                Text("Unmark \(name)?")
+                    .font(.headline)
+                    .padding(.top, photoKey == nil ? 24 : 0)
+                Text(photoKey == nil ? "It goes back to not prayed." : "This photo will be deleted too.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.top, 4)
+                    .padding(.horizontal, 20)
+                VStack(spacing: 8) {
+                    Button { close(unmark: true) } label: {
+                        Text(photoKey == nil ? "Unmark" : "Unmark and delete photo")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Capsule().fill(Color.red.opacity(0.12)))
+                            .contentShape(Capsule())
+                    }
+                    Button { close(unmark: false) } label: {
+                        Text("Cancel")
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Capsule().fill(Color.primary.opacity(0.07)))
+                            .contentShape(Capsule())
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 22)
+                .padding([.horizontal, .bottom], 16)
+            }
+            .frame(width: 300)
+            .background(RoundedRectangle(cornerRadius: 32, style: .continuous).fill(.regularMaterial))
+            .scaleEffect(shown ? 1 : 1.08)
+            .opacity(shown ? 1 : 0)
+        }
+        .task(id: photoKey) { if let photoKey { images = await PrayerPhotos.load(photoKey) } }
+        .onAppear { withAnimation(.smooth(duration: 0.28)) { shown = true } }
+    }
+
+    private func close(unmark: Bool) {
+        guard shown else { return }
+        if unmark { triggerSomeVibration(type: .light) }
+        withAnimation(.easeOut(duration: 0.2)) { shown = false } completion: {
+            OverlayAlert.finish()
+            if unmark { onUnmark() } else { onCancel() }
+        }
+    }
+}

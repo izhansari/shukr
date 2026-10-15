@@ -428,10 +428,15 @@ struct PrayerTimesView: View {
         var shown = request
         shown.displayName = rows.contains(where: \.isJumuah) ? "Jumu'ah" : request.name
         widgetUnmark = shown
-        let photo = rows.contains(where: PrayerPhotos.exists(for:))
+        // The app's unmark card (UnmarkPrompt; with the photo when one goes with the mark).
+        if UnmarkPrompt.ask(for: rows[0], title: shown.displayName,
+                            photoFrom: rows.first(where: PrayerPhotos.exists(for:)),
+                            onCancel: { widgetUnmark = nil },
+                            onUnmark: { widgetUnmark = nil; unmarkFromWidget(shown) }) {
+            return
+        }
         let alert = UIAlertController(title: "Unmark \(shown.displayName)?",
-                                      message: "Are you sure you want to mark this prayer as incomplete?"
-                                        + (photo ? " Its photo will be deleted too." : ""),
+                                      message: "Are you sure you want to mark this prayer as incomplete?",
                                       preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
             widgetUnmark = nil
@@ -3010,8 +3015,11 @@ struct PrayerButton: View {
                 viewModel.togglePrayerCompletion(for: prayerObject)   // the post-salah pill follows (.prayerCompleted)
                 TourRuntime.shared.event(.marked(prayerObject, viewModel))   // the tour's Mark step / a first mark
             }
-            else {
-                showMarkIncompleteAlert = true
+            else if !UnmarkPrompt.ask(for: prayerObject, onUnmark: {
+                isMarkingIncomplete = true
+                withAnimation(Self.unmarkFade) { viewModel.togglePrayerCompletion(for: prayerObject) }
+            }) {
+                showMarkIncompleteAlert = true   // another overlay up: the system alert
             }
         }
     }
@@ -3765,6 +3773,20 @@ struct WidgetUnmarkRequest: Identifiable {
         w.makeKeyAndVisible()
         window = w
         root.present(alert, animated: true)
+    }
+
+    /// A SwiftUI prompt in the same window (it draws its own dim and card, and calls `finish()` when it's done).
+    static func show(prompt: some View) {
+        guard window == nil, let scene else { return }
+        let appWindow = scene.windows.first { $0.isKeyWindow }
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .alert + 1
+        w.overrideUserInterfaceStyle = appWindow?.rootViewController?.traitCollection.userInterfaceStyle ?? .unspecified
+        let root = UIHostingController(rootView: AnyView(prompt))
+        root.view.backgroundColor = .clear
+        w.rootViewController = root
+        w.makeKeyAndVisible()
+        window = w
     }
 
     /// After an action: hand the keyboard / focus back to the app's window.
