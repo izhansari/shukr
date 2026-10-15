@@ -25,6 +25,7 @@ struct YourDataPage: View {
     @State private var picking = false
     @State private var restore: BackupSource?
     @State private var notACopy = false
+    @State private var about: DataKind?
     @AppStorage(DataExport.lastExportKey) private var lastExport: Double = 0
     @AppStorage(ICloudCopy.enabledKey) private var iCloudOn = false
     @State private var cloud = ICloudCopy.shared
@@ -82,8 +83,6 @@ struct YourDataPage: View {
                     .foregroundStyle(Color.sage)
                     .textCase(nil)
                 }
-            } footer: {
-                Text("A .zip with a spreadsheet for each, your photos and voice memos, and a file shukr can restore from.")
             }
             Section {
                 Button(action: export) {
@@ -98,7 +97,8 @@ struct YourDataPage: View {
                 }
                 .disabled(picked.isEmpty || making)
             } footer: {
-                Text(exportLine)
+                // (No "your last copy" line: with iCloud Backup on it read as if nothing was backed up — owner.)
+                Text("A .zip with a spreadsheet for each, your photos and voice memos, and a file shukr can restore from.")
             }
             iCloudSection
             Section {
@@ -122,6 +122,11 @@ struct YourDataPage: View {
             await cloud.refresh()
             #if DEBUG
             // `-demoRestoreFrom <path>`: the restore sheet for a copy at that path (the simulator's Files picker is slow).
+            // `-demoDataKind <kind>` opens that kind's ⓘ sheet.
+            if let k = UserDefaults.standard.string(forKey: "demoDataKind").flatMap(DataKind.init(rawValue:)) {
+                try? await Task.sleep(for: .milliseconds(600))
+                about = k
+            }
             // `-demoBackupState <state>` opens the top right's card on that state.
             if UserDefaults.standard.string(forKey: "demoBackupState") != nil {
                 try? await Task.sleep(for: .milliseconds(600))
@@ -157,6 +162,7 @@ struct YourDataPage: View {
         } message: {
             Text("Your data is safe. Try again in a moment, or without photos if space is short.")
         }
+        .sheet(item: $about) { DataKindSheet(kind: $0) }
         .sheet(item: Binding(get: { restore.map(RestoreBox.init) }, set: { if $0 == nil { restore = nil } })) {
             RestoreSheet(source: $0.source) { load() }
         }
@@ -213,28 +219,38 @@ struct YourDataPage: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// A kind to include: its size first, what's in it, a check that goes on and off.
+    /// A kind to include: the check on the left (owner), what it is and its size, and an ⓘ that says what's in it.
     private func pickRow(_ kind: DataKind) -> some View {
         let on = chosen.contains(kind)
-        return Button {
-            if on { chosen.remove(kind) } else { chosen.insert(kind) }
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: kind.symbol).foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(kind.title).foregroundStyle(Color(.label))
-                    Text(line(kind)).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+        return HStack(spacing: 12) {
+            Button {
+                if on { chosen.remove(kind) } else { chosen.insert(kind) }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(on ? Color.sage : Color(.tertiaryLabel))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(kind.title).foregroundStyle(Color(.label))
+                        Text(line(kind)).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+                    }
+                    Spacer(minLength: 8)
                 }
-                Spacer(minLength: 8)
-                Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(on ? Color.sage : Color(.tertiaryLabel))
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 2)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(on ? .isSelected : [])
+            Button { about = kind } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 19, weight: .light))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("About " + kind.title)
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     /// What's in a kind, its size first once measured.
@@ -328,15 +344,6 @@ struct YourDataPage: View {
     private var exportTitle: String {
         guard sizes.known, !picked.isEmpty else { return "Export" }
         return "Export · about " + Self.size(picked.reduce(0) { $0 + sizes.of($1) })
-    }
-
-    /// When the last copy was made, and a gentle word when it's been a while (decision your-data-icloud C).
-    private var exportLine: String {
-        guard lastExport > 0 else { return "You haven't made a copy yet." }
-        let when = Date(timeIntervalSince1970: lastExport)
-        let days = Calendar.current.dateComponents([.day], from: when, to: .now).day ?? 0
-        let said = "Your last copy: " + when.formatted(.dateTime.month(.abbreviated).day().year())
-        return days >= 30 ? said + ". A fresh one takes a moment." : said + "."
     }
 
     private func export() {
@@ -434,6 +441,25 @@ private struct GlassSheet: ViewModifier {
             .presentationDetents([.height(height)])
             .presentationDragIndicator(.visible)
         if #available(iOS 26.0, *) { sized } else { sized.presentationBackground(.regularMaterial) }
+    }
+}
+
+/// A kind's ⓘ: what's in it, where it comes from, where it lands in the copy — a sheet as tall as its words.
+private struct DataKindSheet: View {
+    let kind: DataKind
+    @State private var height: CGFloat = 340
+    var body: some View {
+        VStack(spacing: 0) {
+            SheetHead(symbol: kind.symbol, title: kind.title, line: kind.about)
+            VStack(alignment: .leading, spacing: 2) {
+                SheetLine(symbol: "hand.tap", text: kind.source)
+                SheetLine(symbol: "doc.text", text: "In your copy: " + kind.files)
+            }
+            .padding(.horizontal, 32).padding(.top, 18).padding(.bottom, 30)
+        }
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .modifier(GlassSheet(height: height))
     }
 }
 

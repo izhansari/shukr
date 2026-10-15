@@ -5,7 +5,8 @@ import SwiftData
 // data" page (owner, 2026-10-14: "whatever someone would expect to see in a page like this in any other app"): choose
 // what to include, Export, Restore. The pages that opened each kind (stats, then "what's kept", a photo grid) are gone.
 
-enum DataKind: String, CaseIterable, Hashable {
+enum DataKind: String, CaseIterable, Hashable, Identifiable {
+    var id: String { rawValue }
     case prayers, zikr, azkar, photos, donations, names, excused, settings
 
     var title: String {
@@ -31,6 +32,43 @@ enum DataKind: String, CaseIterable, Hashable {
         case .donations: "gift"
         case .excused: "pause.circle"
         case .settings: "gearshape"
+        }
+    }
+
+    /// The ⓘ's paragraph: what's in it (owner, 2026-10-15: "they see donations and they're like, whoa, what's that?").
+    var about: String {
+        switch self {
+        case .prayers: "Each prayer's day and times, whether you prayed it and when you marked it, its score and grade, and the masjid or spot where you prayed (when location was on). Your best streaks come with it."
+        case .zikr: "Each counting session: when it started, which zikr, the goal it ran with, how many and for how long, and whether it ended in sleep mode."
+        case .azkar: "The azkar you've written, with their full text, notes, photos and voice memos, and your daily goals: what each asks of you each day, whether it's paused, and its reminder."
+        case .photos: "The photos you took after a prayer, front and back, the notes you wrote on them, and the ones you hearted."
+        case .donations: "Each donation you logged: the day, who it went to (with the EIN for a listed US nonprofit), what it was for, the amount and your note. It's your own record; the charity's receipt is the official one."
+        case .names: "The Names of Allah you've marked as known, each with its Arabic and meaning."
+        case .excused: "When each Excused Mode stretch started, the end you estimated, and when it ended. It's in your copy only while this is checked."
+        case .settings: "Your location (city and coordinates), how prayer times are worked out, the Fajr alarm, each prayer's notifications and Live Activity, your looks, and the masajid you starred or hid."
+        }
+    }
+
+    /// Where it comes from in shukr.
+    var source: String {
+        switch self {
+        case .prayers: "Marking prayers in shukr, its widgets, Live Activities, Siri and your Apple Watch"
+        case .zikr: "The counter on the Zikr page, Tasbih Fatimah after a prayer, and your Apple Watch"
+        case .azkar: "Your azkar and their daily goals, on the Zikr page"
+        case .photos: "The camera after you mark a prayer, and Memories"
+        case .donations: "Give to Causes: a log after you give through a listed charity, or one you add with +"
+        case .names: "99 Names: the list and the flashcards"
+        case .excused: "Excused Mode, in Settings → Prayer Times"
+        case .settings: "Settings, and the masajid on the map"
+        }
+    }
+
+    /// Where it lands in the copy.
+    var files: String {
+        switch self {
+        case .photos: "The photos folder"
+        case .azkar: (sheets + ["the azkar-media folder"]).joined(separator: ", ")
+        default: sheets.joined(separator: ", ")
         }
     }
 
