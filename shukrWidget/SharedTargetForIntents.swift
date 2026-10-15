@@ -56,7 +56,9 @@ enum SharedStore {
            FileManager.default.fileExists(atPath: url.path), !storeIsCurrentVersion(at: url) {
             PrayerScoring.backUpStore(label: "before-\(currentVersionIdentifier)")
         }
-        let config = ModelConfiguration(schema: schema, url: url)
+        // `.none`: with the app's iCloud entitlement (Your Data's iCloud Drive copy) SwiftData's default `.automatic`
+        // turns on CloudKit sync, which our models can't do — the store refused to open (2026-10-14).
+        let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }
 
@@ -210,7 +212,7 @@ enum SharedStore {
             return nil
         }
         do {
-            let config = ModelConfiguration(schema: schema, url: url)
+            let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
             let container = try ModelContainer(for: schema, configurations: [config])
             WidgetPerf.log("store opened \(WidgetPerf.ms(since: t0)) ms")
             cachedWidgetContainer = container
@@ -337,7 +339,7 @@ enum SharedStore {
             }
             // The copy is at whatever version the old app wrote; opening it with the current
             // schema lightweight-migrates the copy (never the original).
-            let legacyConfig = ModelConfiguration("legacy", schema: schema, url: tmpStore)
+            let legacyConfig = ModelConfiguration("legacy", schema: schema, url: tmpStore, cloudKitDatabase: .none)
             let legacy = try ModelContainer(for: schema, configurations: [legacyConfig])
             let summary = try merge(from: ModelContext(legacy), into: ModelContext(container))
             defaults?.set(true, forKey: legacyImportedKey)

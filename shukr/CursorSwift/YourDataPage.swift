@@ -8,9 +8,10 @@ import UniformTypeIdentifiers
 // Top right, in the bar's Liquid Glass, a cloud (`link.icloud`, the default color) for "Is it backed up?".
 //
 // The facts it states (checked 2026-10-14): no network code in shukr (no account, no server, no analytics); Apple Maps is
-// asked for mosques and place names; nothing is excluded from the iPhone's backup and nothing syncs (no CloudKit);
-// prayer photos live in Application Support, not the Photos library. iOS doesn't tell an app whether iCloud Backup is on
-// or when it last ran (decision your-data-icloud C: say where to check + when you last made a copy).
+// asked for mosques and place names; nothing is excluded from the iPhone's backup and nothing syncs; prayer photos live
+// in Application Support, not the Photos library. iOS doesn't tell an app whether iCloud Backup is on or when it last ran
+// (decision your-data-icloud C: say where to check + when you last made a copy). shukr's own copy in the user's iCloud
+// Drive (icloud-copy-go A, `ICloudCopy`) is the one backup it can see: its section lists each copy and iCloud's state.
 
 struct YourDataPage: View {
     @Environment(\.modelContext) private var context
@@ -25,6 +26,8 @@ struct YourDataPage: View {
     @State private var restore: BackupSource?
     @State private var notACopy = false
     @AppStorage(DataExport.lastExportKey) private var lastExport: Double = 0
+    @AppStorage(ICloudCopy.enabledKey) private var iCloudOn = false
+    @State private var cloud = ICloudCopy.shared
     enum Info { case privacy, backup }
 
     struct Counts {
@@ -97,6 +100,7 @@ struct YourDataPage: View {
             } footer: {
                 Text(exportLine)
             }
+            iCloudSection
             Section {
                 Button { picking = true } label: {
                     Label("Restore from a copy", systemImage: "arrow.counterclockwise").foregroundStyle(Color(.label))
@@ -115,12 +119,24 @@ struct YourDataPage: View {
         }
         .task {
             load()
+            await cloud.refresh()
             #if DEBUG
             // `-demoRestoreFrom <path>`: the restore sheet for a copy at that path (the simulator's Files picker is slow).
             if let path = UserDefaults.standard.string(forKey: "demoRestoreFrom") {
                 restore = try? BackupSource.open(URL(fileURLWithPath: path))
             }
             #endif
+        }
+        // While a copy is on its way up, iCloud's state is read again every few seconds.
+        .task(id: cloud.copies.contains { $0.upload == .uploading || $0.upload == .waiting }) {
+            guard cloud.copies.contains(where: { $0.upload == .uploading || $0.upload == .waiting }) else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                await cloud.refresh()
+            }
+        }
+        .onChange(of: iCloudOn) { _, on in
+            if on { Task { await cloud.make(context, trigger: "turned on") } }
         }
         .sheet(isPresented: Binding(get: { made != nil }, set: { if !$0 { made = nil } })) {
             if let made {
@@ -153,8 +169,8 @@ struct YourDataPage: View {
             ReminderExplainer(head: "Everything you do in shukr stays on this iPhone.", points: [
                 .init(big: "No account, no server", small: "shukr has nowhere to send your data. Your prayers, zikr, photos and notes are never sent to us or anyone else.", symbol: "lock.shield", warn: false),
                 .init(big: "Your location", small: "Used on your phone for prayer times, the qibla and where you prayed. Looking for mosques or a place's name asks Apple Maps, as the Maps app does.", symbol: "location", warn: false),
-                .init(big: "Your photos", small: "Prayer photos stay inside shukr, not in your Photos library, and they're never synced.", symbol: "photo.on.rectangle", warn: false),
-                .init(big: "Only when you ask", small: "A copy is made only when you tap Export, and it goes only where you send it.", symbol: "square.and.arrow.up", warn: false),
+                .init(big: "Your photos", small: "Prayer photos stay inside shukr, not in your Photos library. They leave this iPhone only in a copy you make.", symbol: "photo.on.rectangle", warn: false),
+                .init(big: "Only when you ask", small: "A copy is made when you tap Export, and goes only where you send it. Copy to iCloud Drive puts one in your own iCloud Drive each day, where only you can see it.", symbol: "square.and.arrow.up", warn: false),
             ])
         }
         .infoModal(isPresented: Binding(get: { info == .backup }, set: { if !$0 { info = nil } }),
@@ -163,7 +179,8 @@ struct YourDataPage: View {
                 .init(big: "Check iCloud Backup", small: "Settings → your name → iCloud → iCloud Backup. When it's on, shukr is in it, photos too.", symbol: "icloud", warn: false),
                 .init(big: "On a new iPhone", small: "Set it up from that backup and shukr comes back with your history, photos and goals.", symbol: "iphone", warn: false),
                 .init(big: "Deleting shukr deletes it", small: "Removing the app removes its data from this iPhone too. Backups made before still have it.", symbol: "trash", warn: false, neutral: true),
-                .init(big: "Your own copy", small: "Export makes a copy you can keep anywhere, and Restore from a copy brings it back.", symbol: "square.and.arrow.up", warn: false),
+                .init(big: "shukr's copy in iCloud Drive", small: "Turn on Copy to iCloud Drive and a full copy goes to iCloud Drive → shukr every day. Each one is listed on this page, so you can see it's there.", symbol: "checkmark.icloud", warn: false),
+                .init(big: "Your own copy", small: "Export makes a copy you can keep anywhere, and Restore from a copy brings any of them back.", symbol: "square.and.arrow.up", warn: false),
             ])
         }
     }
@@ -185,7 +202,9 @@ struct YourDataPage: View {
                 .font(.system(size: 28, weight: .light, design: .rounded))
                 .multilineTextAlignment(.center)
                 .padding(.top, 22)
-            Text("Private, and only on this iPhone. No account and no server: nothing you do in shukr is sent to us or anyone.")
+            Text(iCloudOn && cloud.availability == .available
+                 ? "Private: on this iPhone, with a daily copy in your own iCloud Drive. No account and no server: nothing you do in shukr is sent to us or anyone."
+                 : "Private, and only on this iPhone. No account and no server: nothing you do in shukr is sent to us or anyone.")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -235,6 +254,75 @@ struct YourDataPage: View {
         }
         // Nothing there yet: no size to give.
         return sizes.known && !what.hasPrefix("None") ? Self.size(sizes.of(kind)) + " · " + what : what
+    }
+
+    // MARK: iCloud Drive
+
+    /// The switch, then (on) each copy in iCloud Drive with iCloud's own state, and Copy now.
+    private var iCloudSection: some View {
+        Section {
+            Toggle(isOn: $iCloudOn) {
+                Label("Copy to iCloud Drive", systemImage: "icloud").foregroundStyle(Color(.label))
+            }
+            .tint(.sage)
+            .disabled(cloud.availability == .off && !iCloudOn)
+            if iCloudOn && cloud.availability == .available {
+                ForEach(cloud.copies.prefix(ICloudCopy.keep)) { copyRow($0) }
+                Button { Task { await cloud.make(context, trigger: "copy now") } } label: {
+                    HStack(spacing: 8) {
+                        if cloud.working { ProgressView() }
+                        Text(cloud.working ? "Copying…" : "Copy now")
+                    }
+                    .foregroundStyle(Color.sage)
+                }
+                .disabled(cloud.working)
+            }
+        } header: {
+            Text("iCloud Drive")
+        } footer: {
+            Text(iCloudLine)
+        }
+    }
+
+    private func copyRow(_ c: ICloudCopy.Copy) -> some View {
+        let (symbol, word, tint): (String, String, Color) = switch c.upload {
+        case .inICloud: ("checkmark.icloud", "In iCloud", .sage)
+        case .uploading: ("arrow.up.icloud", "Uploading", Color(.secondaryLabel))
+        case .waiting: ("icloud", "Waiting to upload", Color(.secondaryLabel))
+        case .failed: ("exclamationmark.icloud", "Not uploaded", .orange)
+        }
+        return HStack(spacing: 12) {
+            Image(systemName: "doc.zipper").foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Self.when(c.made)).foregroundStyle(Color(.label))
+                Text(Self.size(c.bytes)).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+            }
+            Spacer(minLength: 8)
+            Label(word, systemImage: symbol)
+                .font(.footnote)
+                .foregroundStyle(tint)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private var iCloudLine: String {
+        if cloud.availability == .off {
+            return "iCloud Drive is off on this iPhone. Turn it on in Settings → your name → iCloud → iCloud Drive."
+        }
+        guard iCloudOn else { return "Saves a full copy to iCloud Drive → shukr once a day. Only you can see it." }
+        var line = "A full copy goes to iCloud Drive → shukr once a day when you open shukr. The newest \(ICloudCopy.keep) are kept; Restore from a copy finds them in Files."
+        if let failed = cloud.lastFailure {
+            line = "The last copy didn't save (\(Self.when(failed.at))): \(failed.why ?? "unknown"). " + line
+        }
+        return line
+    }
+
+    /// "Today, 3:12 PM" / "Yesterday, 9:40 PM" / "Oct 12, 9:40 PM".
+    static func when(_ d: Date) -> String {
+        let time = d.formatted(date: .omitted, time: .shortened)
+        if Calendar.current.isDateInToday(d) { return "Today, " + time }
+        if Calendar.current.isDateInYesterday(d) { return "Yesterday, " + time }
+        return d.formatted(.dateTime.month(.abbreviated).day()) + ", " + time
     }
 
     private var exportTitle: String {

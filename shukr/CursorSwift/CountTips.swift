@@ -174,7 +174,7 @@ import SwiftData
     func holdPractice(_ session: SessionDataModel) {
         if practiceStore == nil {
             practiceStore = try? ModelContainer(for: Schema(ShukrSchemaV2.models),
-                                                configurations: ModelConfiguration("countTipsPractice", isStoredInMemoryOnly: true))
+                                                configurations: ModelConfiguration("countTipsPractice", isStoredInMemoryOnly: true, cloudKitDatabase: .none))
         }
         practiceStore?.mainContext.insert(session)
         practiceSession = session

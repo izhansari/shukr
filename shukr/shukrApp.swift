@@ -122,10 +122,10 @@ struct shukrApp: App {
             // set-aside copy stay untouched on disk; an alert says so once the app is up.
             print("❌ store: couldn't open or recover the shared store (\(error)); running in memory, nothing is saved")
             StoreFallback.active = true
-            let memory = ModelConfiguration(schema: SharedStore.schema, isStoredInMemoryOnly: true)
+            let memory = ModelConfiguration(schema: SharedStore.schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             if let container = try? ModelContainer(for: SharedStore.schema, configurations: [memory]) { return container }
             print("❌ store: the in-memory store failed too")
-            return try! ModelContainer(for: Schema([]), configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+            return try! ModelContainer(for: Schema([]), configurations: [ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)])
         }
     }()
     
@@ -416,6 +416,25 @@ struct shukrApp: App {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 NotificationScheduler.noteOpen()   // how often shukr is opened sets the reminders' runway
+                // Your Data's daily copy to iCloud Drive, when it's on and due — after the opening has settled.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(8))
+                    #if DEBUG
+                    // `-iCloudCopyNow`: turn it on, copy now, then print what iCloud says about each copy (run on a phone
+                    // with `devicectl … process launch --console`; the simulator isn't signed in to iCloud).
+                    if ProcessInfo.processInfo.arguments.contains("-iCloudCopyNow") {
+                        ICloudCopy.shared.isOn = true
+                        await ICloudCopy.shared.make(sharedModelContainer.mainContext, trigger: "debug")
+                        for wait in [0, 20, 40] {
+                            try? await Task.sleep(for: .seconds(wait == 0 ? 0 : 20))
+                            await ICloudCopy.shared.refresh()
+                            print("☁️ after \(wait) s:", ICloudCopy.shared.availability, ICloudCopy.shared.copies.map { "\($0.url.lastPathComponent) \($0.bytes) \($0.upload)" })
+                        }
+                        return
+                    }
+                    #endif
+                    await ICloudCopy.shared.runIfDue(sharedModelContainer.mainContext, trigger: "open")
+                }
                 AppIconChoice.applyPendingAtLaunch()   // an icon picked, then the app closed from its page
                 Task {
                     await notificationStatus.refresh()

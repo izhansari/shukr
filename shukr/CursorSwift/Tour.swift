@@ -3853,7 +3853,7 @@ struct TourMenuRow: View {
     func show() {
         guard tasks == nil else { return }
         guard let made = try? ModelContainer(for: Schema(ShukrSchemaV2.models),
-                                             configurations: ModelConfiguration("tourExamples", isStoredInMemoryOnly: true))
+                                             configurations: ModelConfiguration("tourExamples", isStoredInMemoryOnly: true, cloudKitDatabase: .none))
         else { return }
         let context = made.mainContext
         context.autosaveEnabled = false
