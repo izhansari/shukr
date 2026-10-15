@@ -1143,6 +1143,10 @@ struct MemoriesDeck: View {
 
     /// How many seen cards show under the top one.
     private static let pileDepth = 4
+    /// Before `shown`, the cards under the top one and the chrome are drawn all but invisible, not left out: drawn for
+    /// the first time when they came in (220 ms into the zoom), the screen held the zoom at ~90 % for 40–90 ms (the
+    /// simulator's recording; worse with veiled cards on the phone — owner: "freezes part-way").
+    private static let warm = 0.02
 
     init(photos: [MemoryPhoto], start: MemoryPhoto, shown: Bool, hideTop: Bool, folded: Bool, neighboursShown: Bool = true,
          onTopFrame: @escaping (CGRect) -> Void,
@@ -1186,7 +1190,7 @@ struct MemoriesDeck: View {
                 // ✕, the day as the title, ··· (owner, decision memories-pile-v2: the date was only in the strip at the
                 // bottom; ✕ was among the buttons under the photo).
                 titleRow(current)
-                    .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
+                    .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : Self.warm)
                     .allowsHitTesting(shown && !noteEditing)
                 Spacer(minLength: 0)
                 // The neighbouring days wait off the edges for a swipe; a drag down shrinks and moves the pile, which
@@ -1222,8 +1226,8 @@ struct MemoriesDeck: View {
                 // Gone quickly once the pile is dragged down over it (it showed on the dragged card — owner).
                 if current != nil {
                     captions(shownIndex).padding(.top, 24)
-                        .opacity(shown && emptyDay == nil ? 1 - min(max(down, 0) / 40, 1) : 0)
-                        .allowsHitTesting(emptyDay == nil)
+                        .opacity(!shown ? Self.warm : emptyDay == nil ? 1 - min(max(down, 0) / 40, 1) : 0)
+                        .allowsHitTesting(shown && emptyDay == nil)
                 }
                 // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
                 // never redrawn per photo: the share page makes the picture.
@@ -1247,15 +1251,15 @@ struct MemoriesDeck: View {
                     .accessibilityLabel(favorite ? "Remove from favorites" : "Favorite")
                 }
                 .buttonStyle(.plain)
-                .opacity(down > 10 || !shown || emptyDay != nil ? 0 : 1)
-                .allowsHitTesting(emptyDay == nil && !noteEditing)
+                .opacity(!shown ? Self.warm : down > 10 || emptyDay != nil ? 0 : 1)
+                .allowsHitTesting(shown && emptyDay == nil && !noteEditing)
                 .padding(.top, 22)
                 // Why Share is faded (owner: it greyed out with no word why). Room kept, so nothing moves.
                 Text(photos.indices.contains(index) && !PhotoDevelop.isDeveloped(key: photos[index].key)
                      ? "You can share it once it develops" : " ")
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
-                    .opacity(down > 10 || !shown || emptyDay != nil ? 0 : 1)
+                    .opacity(!shown ? Self.warm : down > 10 || emptyDay != nil ? 0 : 1)
                     .padding(.top, 6)
                 Spacer(minLength: 0)
                 VStack(spacing: 8) {
@@ -1272,8 +1276,8 @@ struct MemoriesDeck: View {
                             .equatable()
                     }
                 }
-                .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
-                .allowsHitTesting(!noteEditing)
+                .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : Self.warm)
+                .allowsHitTesting(shown && !noteEditing)
                 .padding(.bottom, 22)
             }
             .frame(width: geo.size.width)
@@ -1876,8 +1880,9 @@ struct MemoriesDeck: View {
         let l = lie[key] ?? Lie(dx: 0, dy: 0, tilt: 0)
         let (x, y, angle): (CGFloat, CGFloat, Double) = {
             if i > index {
-                // The day's next one, waiting off to the right; a swipe left pulls it in.
-                let x = screen + (atEnd ? 0 : min(drag, 0))
+                // The day's next one, waiting off to the right; a swipe left pulls it in. Only that one: the ones after
+                // it stay out there (all following the finger, the whole rest of the day slid in, the last on top — owner).
+                let x = screen + (atEnd || i > index + 1 ? 0 : min(drag, 0))
                 return (x, 0, Double(x) / 40)
             } else if i == index {
                 // On top: centred and straight (so the photo flies onto it and off it without a twist); a swipe right
@@ -1902,7 +1907,7 @@ struct MemoriesDeck: View {
             // day's next one, waiting off to the right for a swipe, is out while the pile is dragged down.
             .opacity(i == index ? (hideTop ? 0 : 1)
                      : i > index ? (shown && down == 0 && vertical != true ? 1 : 0)
-                     : (shown || folded ? 1 : 0))
+                     : (shown || folded ? 1 : Self.warm))
             .rotationEffect(.degrees(angle))
             .offset(x: x, y: y)
             .zIndex(Double(i))
@@ -2466,6 +2471,8 @@ struct DeckZoomFrame<Content: View>: View {
     var body: some View {
         let z = driver.transform
         content.scaleEffect(z.scale).offset(z.offset).opacity(driver.pileOpacity)
+            // A fading close takes no touches: a tap meant for the page under it hit the pile's ♡ (the simulator).
+            .allowsHitTesting(!driver.fading)
     }
 }
 

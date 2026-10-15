@@ -513,6 +513,10 @@ struct DevelopReveal: ViewModifier {
     var interactive = true
     @State private var veil: UIImage?
     @State private var shown: Double = 0     // the veil over the photo: 1 = veiled, 0 = clear
+    /// Veils already made (a pile opened again, or a square's photo in the pile): made again on every open, they landed
+    /// mid-zoom.
+    private static let veils: NSCache<NSString, UIImage> = { let c = NSCache<NSString, UIImage>(); c.countLimit = 60; return c }()
+    private var veilKey: NSString { "\(key)-\(PrayerPhotos.edition(of: key))" as NSString }
     @State private var pending = false
 
     // The veil is the developing look's own 10 px copy, softened — laid over the photo and cut to its shape, then faded
@@ -532,13 +536,17 @@ struct DevelopReveal: ViewModifier {
             }
             .overlay {
                 if pending && interactive {
-                    // On top: the first tap is the reveal's alone (no open, no zoom, no swap).
+                    // On top: the first tap is the reveal's alone (no open, no zoom, no swap). Gone at once with the tap
+                    // (`.identity`): fading out with the hint it still took the next tap — a quick second tap to open did
+                    // nothing.
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture { reveal() }
-                        .overlay { if width >= 40 { hint } }
-                        .transition(.opacity)
+                        .transition(.identity)
                 }
+            }
+            .overlay {
+                if pending && interactive && width >= 40 { hint.transition(.opacity) }
             }
             .onAppear { check() }
             .onChange(of: PrayerPhotoRevision.shared.value) { _, _ in check() }
@@ -565,11 +573,15 @@ struct DevelopReveal: ViewModifier {
             guard !pending else { return }
             pending = true
             shown = 1
+            if veil == nil, let made = Self.veils.object(forKey: veilKey) { veil = made }
             if veil == nil {
-                let url = PrayerPhotos.url(key, front: false)
+                let url = PrayerPhotos.url(key, front: false), cacheKey = veilKey
                 Task.detached(priority: .userInitiated) {
                     let image = PhotoDevelop.veil(url: url)
-                    await MainActor.run { veil = image }
+                    await MainActor.run {
+                        if let image { Self.veils.setObject(image, forKey: cacheKey) }
+                        veil = image
+                    }
                 }
             }
         } else if pending {
