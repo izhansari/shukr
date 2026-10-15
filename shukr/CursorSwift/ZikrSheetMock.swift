@@ -37,7 +37,6 @@ struct ZikrSheetMockPage: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                header
                 Group {
                     switch tab {
                     case .zikr: zikrTab
@@ -53,24 +52,16 @@ struct ZikrSheetMockPage: View {
             }
         }
         .scrollIndicators(.hidden)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 12) {
-                // Only a goal can be started (the other tabs would leave "start what?").
-                if tab == .goals && hasGoals { startPill.transition(.opacity) }
-                tabBar
-            }
-            .padding(.bottom, 4)
-        }
+        // The title stays; the page scrolls on under it (owner), softened at the edge.
+        .modifier(ScrollsUnder(edge: .top) { header })
+        // The tabs, the width of the page (owner); no Start pill (owner: "it just looks strange").
+        .modifier(ScrollsUnder(edge: .bottom) { tabBar.padding(.horizontal, 16).padding(.bottom, 4) })
         .background(theme.surface.ignoresSafeArea())
         // Pushed from Your azkar (owner): the system back top left; the bar see-through (owner).
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                // Another daily goal, from its tab (owner: a glass + top right).
-                if tab == .goals {
-                    Button {} label: { Image(systemName: "plus") }
-                }
                 // Share leads the zikr's things (owner: "promotes people to share their zikrs").
                 ShareLink(item: "Sallallahu ta'ala ala habibihi Muhammadin wa ala alihi wa sahabihi wa sallam — durood, from shukr") {
                     Image(systemName: "square.and.arrow.up")
@@ -115,7 +106,7 @@ struct ZikrSheetMockPage: View {
                     Text(t.rawValue)
                         .font(.system(size: 15, weight: tab == t ? .semibold : .medium))
                         .foregroundStyle(tab == t ? Color.primary : Color.secondary)
-                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity)
                         .frame(height: 40)
                         .background {
                             if tab == t {
@@ -172,6 +163,14 @@ struct ZikrSheetMockPage: View {
                     }
                     .buttonStyle(.plain)
                 }
+                // Another daily goal, right where the goals are (owner: a + after the chips, not top right).
+                Button {} label: {
+                    Image(systemName: "plus").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.primary.opacity(0.05)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Add another daily goal")
             }
             // The card is the page (owner): nothing under it.
             Group {
@@ -199,16 +198,6 @@ struct ZikrSheetMockPage: View {
         .padding(.vertical, 36).padding(.horizontal, 24)
         .frame(maxWidth: .infinity)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
-    }
-
-    private var startPill: some View {
-        Text("Start \(GoalMock.all[goal].name) · ~3 min")
-            .font(.headline.weight(.medium)).foregroundStyle(Color.sage)
-            .frame(maxWidth: .infinity).frame(height: 50)
-            .background(Capsule().fill(Color.sage.opacity(0.16)))
-            .background(Capsule().fill(theme.surface))
-            .overlay(Capsule().strokeBorder(Color.sage.opacity(0.35), lineWidth: 1))
-            .padding(.horizontal, 20)
     }
 
     // MARK: History
@@ -264,6 +253,20 @@ struct ZikrSheetMockLauncher: View {
         }
         .navigationTitle("Your azkar")
         .navigationDestination(item: $pushed) { ZikrSheetMockPage(startGoal: $0) }
+    }
+}
+
+/// A bar the page scrolls under: iOS 26's `safeAreaBar` (the scroll edge effect softens what passes beneath), the bar
+/// material before (Settings' `OverListHeader`).
+private struct ScrollsUnder<Bar: View>: ViewModifier {
+    let edge: VerticalEdge
+    @ViewBuilder let bar: () -> Bar
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.safeAreaBar(edge: edge) { bar() }
+        } else {
+            content.safeAreaInset(edge: edge, spacing: 0) { bar().background(.bar) }
+        }
     }
 }
 
