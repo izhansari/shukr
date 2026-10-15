@@ -794,8 +794,10 @@ struct MainCircleView: View {
             // The post-salah pill under the top bar (it animates its own arrival). The original event's name even after
             // a Jumu'ah correction ("Dhuhr"), as the row's (Sami's review of 98eeedf).
             // The first real mark's pill waits for the celebration's Continue (Tour.swift `holdPill`).
-            // G · a mark the list's row took (PrayerRowActions) has its buttons there instead of the pill.
-            if !TourRuntime.shared.holdPill(event.name), PrayerRowActions.shared.name != (event.prayerName ?? event.name) {
+            // G · a mark the list's row took (PrayerRowActions) has its buttons there instead of the pill. A prayer marked
+            // after its window (Qaza: progress at 1) gets no pill at all (owner, 2026-10-14).
+            if event.progress < 1, !TourRuntime.shared.holdPill(event.name),
+               PrayerRowActions.shared.name != (event.prayerName ?? event.name) {
                 live?.postSalahNudge = event.name
             }
             guard await CircleGate.pause(0.5) else { return }

@@ -92,6 +92,11 @@ extension SalahLook {
     /// builds are locked to `CircleTheme.standard` (the public look) and never read these keys.
     static func seedExploringDefaults() {
         let d = UserDefaults.standard
+        // The accordion became the rows' motion (owner, 2026-10-14): once, onto it.
+        if !d.bool(forKey: "salahLook.seeded.v3") {
+            d.set(true, forKey: "salahLook.seeded.v3")
+            d.set(RowMotion.unfold.rawValue, forKey: RowMotion.key)
+        }
         // The raised list became the look (owner, 2026-10-14): once, onto it, whatever was picked before.
         if !d.bool(forKey: "salahLook.seeded.v2") {
             d.set(true, forKey: "salahLook.seeded.v2")

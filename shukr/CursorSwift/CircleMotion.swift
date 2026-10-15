@@ -209,6 +209,11 @@ enum CircleMomentTiming {
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
 /// from the same palette menu (owner, 2026-10-01: "fix the transitions of show hiding the prayer items").
 enum RowMotion: String, CaseIterable, Identifiable {
+    /// An accordion (owner, 2026-10-14: "figure out the opening and the closing … cleaner and nicer"): a row unfolds into
+    /// its slot — its height grows from nothing, clipped, as it fades in — so its neighbours slide with it and never sit on
+    /// top of it; folding is the reverse. The card and the circle follow in the same motion. `room` faded rows in at their
+    /// final place 0.15 s in, while the others were still moving: names overlapped for a few frames.
+    case unfold
     /// The others move first, then the new row fades in; a leaving row fades out quickly before they close
     /// up. With a plain fade a row came in at its final place while its neighbours were still sliding, so
     /// two names sat on top of each other for a few frames (owner's recording, 2026-10-01: "still no good").
@@ -227,6 +232,7 @@ enum RowMotion: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .unfold: "Unfold"
         case .room: "Make room, then fade"
         case .today: "Today's motion"
         case .fade: "Fade"
@@ -240,6 +246,8 @@ enum RowMotion: String, CaseIterable, Identifiable {
 
     var transition: AnyTransition {
         switch self {
+        case .unfold:
+            .modifier(active: RowUnfold(fraction: 0), identity: RowUnfold(fraction: 1))
         case .room:
             // Sami's audit timings: in after 0.15 s (0.24 read as a lag, the empty well growing first), out over
             // 0.12 s (0.08 read as a blink).
@@ -259,6 +267,7 @@ enum RowMotion: String, CaseIterable, Identifiable {
     func animation(springy: Animation) -> Animation? {
         switch self {
         case .today: springy
+        case .unfold: .smooth(duration: 0.38)
         case .room, .fade, .drop, .blur: .easeInOut(duration: 0.3)
         case .none: nil
         }
@@ -266,8 +275,8 @@ enum RowMotion: String, CaseIterable, Identifiable {
 }
 
 extension RowMotion {
-    /// The public look's (decision public-style-lock A, owner: "rows come and go in make room then fade").
-    static let standard: RowMotion = .room
+    /// The public look's: the accordion (owner, 2026-10-14; was `room`, decision public-style-lock A).
+    static let standard: RowMotion = .unfold
     /// A stored pick in DEBUG builds; public builds are locked to `standard`.
     static func resolved(_ raw: String?) -> RowMotion {
         #if DEBUG
@@ -277,4 +286,34 @@ extension RowMotion {
         #endif
     }
     static var current: RowMotion { resolved(UserDefaults.standard.string(forKey: key)) }
+}
+
+/// A row's unfold (RowMotion.unfold): its height at `fraction` of its own, clipped, fading in as it opens (the fade a little
+/// behind the height, so a row reads once it has room).
+struct RowUnfold: ViewModifier, Animatable {
+    var fraction: CGFloat
+    var animatableData: CGFloat {
+        get { fraction }
+        set { fraction = newValue }
+    }
+    func body(content: Content) -> some View {
+        UnfoldLayout(fraction: fraction) { content }
+            .clipped()
+            .opacity(Double(fraction * fraction))
+    }
+}
+
+/// Reports its one subview's height times `fraction` (its width as is) and draws it from the top at full height.
+struct UnfoldLayout: Layout {
+    var fraction: CGFloat
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let s = subviews.first else { return .zero }
+        let full = s.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: full.width, height: full.height * min(max(fraction, 0), 1))
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let s = subviews.first else { return }
+        let full = s.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+        s.place(at: bounds.origin, anchor: .topLeading, proposal: ProposedViewSize(width: bounds.width, height: full.height))
+    }
 }
