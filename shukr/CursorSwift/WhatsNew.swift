@@ -523,11 +523,11 @@ enum WhatsNew {
     // MARK: Open in shukr
 
     /// Pages "Open in shukr" pushes inside the sheet (‹ Back returns).
-    static let pushable: Set<String> = ["history", "azkar", "names", "ayah", "insights"]
+    static let pushable: Set<String> = ["history", "azkar", "names", "ayah", "insights", "journey"]
     /// "Open in shukr": What's new closes and PrayerTimesView takes the user to `link`.
     static let go = Notification.Name("whatsNewGo")
     /// The pages "Open in shukr" can go to; any other link shows no button.
-    static let links: Set<String> = ["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights"]
+    static let links: Set<String> = ["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights", "journey"]
 
     // MARK: Helpers
 

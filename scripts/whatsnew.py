@@ -71,7 +71,7 @@ DECISION_QUEUE = TEAM / "board" / "decisions.jsonl"
 
 TITLE_MAX = 60
 HEADLINE_MAX = 40
-LINKS = ["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights"]
+LINKS = ["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights", "journey"]
 # The page groups by these, in this order (WhatsNew.areaOrder in the app keeps the same list).
 AREAS = ["Salah", "Zikr", "Apple Watch", "Widgets", "Map & Mosques", "Insights", "Daily Ayah", "99 Names",
          "Reminders", "Setup & Settings"]

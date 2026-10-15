@@ -509,7 +509,7 @@ struct PrayerTimesView: View {
     // (CircleCover's closers: the stage, CircleMoments.swift.)
     private var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
-            || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights
+            || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights || JourneyPresenter.shared.open
             || showNamesPage || showMantraSheetFromHomePage || settingsViewNavBool
             || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
@@ -517,7 +517,7 @@ struct PrayerTimesView: View {
     private func dismissCovers() {
         showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
         showSalahHistoryV1 = false; showSalahHistoryV2 = false; showZikrHistory = false
-        showInsightsPage = false; showOldInsights = false; showNamesPage = false
+        showInsightsPage = false; showOldInsights = false; showNamesPage = false; JourneyPresenter.shared.open = false
         showMantraSheetFromHomePage = false; settingsViewNavBool = false
         healthCard = nil
     }
@@ -968,7 +968,7 @@ struct PrayerTimesView: View {
                 case "map": sharedState.horizontalPage = .main; showQiblaMap = true
                 case "names": showNamesPage = true
                 case "ayah": showDailyAyahPage = true
-                case "insights": showInsightsPage = true
+                case "insights", "journey": JourneyPresenter.shared.open = true
                 default: break
                 }
             }
@@ -1455,9 +1455,13 @@ struct PrayerTimesView: View {
                 showNamesPage = true
                 return
             }
-            if ProcessInfo.processInfo.arguments.contains("-demoInsights") {
+            if ProcessInfo.processInfo.arguments.contains("-demoInsights") || ProcessInfo.processInfo.arguments.contains("-demoJourney") {
+                // Journey (`-demoJourneySeed` fills ~100 earlier days first; `-demoJourneyView grid`, `-demoJourneyDay N`).
+                #if DEBUG
+                JourneySeed.seedIfAsked(context)
+                #endif
                 try? await Task.sleep(for: .seconds(1))
-                showInsightsPage = true
+                JourneyPresenter.shared.open = true
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoPrayerListOpen") {
@@ -1579,6 +1583,9 @@ struct PrayerTimesView: View {
         // swipe-back-pages A).
         .navigationDestination(isPresented: Binding(get: { MemoriesPresenter.shared.open },
                                                     set: { MemoriesPresenter.shared.open = $0 })) { MemoriesPage() }
+        // Journey (Journey.swift), from ☰ or the day page's "Journey ›".
+        .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.open },
+                                                    set: { JourneyPresenter.shared.open = $0 })) { JourneyPage() }
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
@@ -2129,8 +2136,9 @@ struct PrayerTimesView: View {
                                     .padding(.top, 18)
                                     .padding(.bottom, 10)
                                 Divider()
-                                menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
-                                menuRow("Moments", "photo.stack") { MemoriesPresenter.shared.open = true }
+                                // Journey (Journey.swift): Insights and Moments in one place (owner, 2026-10-15); Moments is
+                                // its tile.
+                                menuRow("Journey", "point.bottomleft.forward.to.point.topright.scurvepath") { JourneyPresenter.shared.open = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 // While excused only (owner): quick to manage or end (Excused.swift).

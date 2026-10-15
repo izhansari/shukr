@@ -55,11 +55,12 @@ keywords, "What's New" and screenshot captions.
 - Every prayer you've marked, pinned where you prayed it, coloured by score; tap a pin or a
   cluster for the prayers there; filter by prayer and date range.
 
-**Insights**
-- "Am I getting better?" — each prayer ranked by its recent score with an 8-week trend.
-- "How am I scoring?" — average score ring with the grade makeup, per-prayer rings, week /
-  month / all time.
-- "How consistent am I?" — streaks and a 14-day prayer grid you can scrub.
+**Journey — your prayer log**
+- Every prayer you've marked on one calendar: five dots a day, the days you prayed all five in
+  time lit up, or the month as a grid of grades.
+- The month's ring, your streak and your in-time streak, and the days all in time.
+- A page for any day: its ring, each prayer's time, place, grade and photo, your notes, and that
+  day's zikr. Your prayer photos (Moments) are one tap away.
 
 **Zikr (tasbeeh)**
 - A tap-anywhere tasbeeh counter with haptics (light / medium / strong), bead animation,

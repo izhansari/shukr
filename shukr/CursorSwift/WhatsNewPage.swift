@@ -489,7 +489,7 @@ struct WhatsNewView: View {
         case "azkar": ZikrAreaPage(start: .azkar)
         case "names": NamesOfAllahView()
         case "ayah": DailyAyahView()
-        case "insights": InsightsView()
+        case "insights", "journey": JourneyPage()
         default: EmptyView()
         }
     }

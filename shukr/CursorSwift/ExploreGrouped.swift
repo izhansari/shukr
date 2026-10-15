@@ -28,7 +28,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .answer: "Answer from notifications"
         case .mapMasjid: "The shukr map"   // owner: broader than the masjid
         case .memories: "Moments"
-        case .insights: "Insights"
+        case .insights: "Journey"
         case .zikrExtras: "Zikr extras"
         }
     }
@@ -43,7 +43,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .answer: "Mark it prayed right from the reminder"
         case .mapMasjid: "Prayer pins and the mosque finder"
         case .memories: "A photo with each prayer, kept day by day"
-        case .insights: "See which prayer needs you most"
+        case .insights: "Every prayer, day by day"
         case .zikrExtras: "Count in bed, after salah, or toward a daily task"
         }
     }
@@ -58,7 +58,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .answer: "Answer the reminder, right where it is"
         case .mapMasjid: "Where you've prayed, and every masjid near you"
         case .memories: "Remember where you prayed"
-        case .insights: "See which prayer needs you most"
+        case .insights: "Every prayer, day by day"
         case .zikrExtras: "Little things that make counting easier"
         }
     }
@@ -74,7 +74,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .answer: "When a prayer's reminder comes in, hold it: tell shukr you already prayed and it's marked and scored, or ask to be nudged again in 5 or 10 minutes."
         case .mapMasjid: "One map for both: each prayer you mark is pinned where you prayed it, colored by how you did, and the mosque finder lists the nearest masajid with walk and drive times. A Friday Dhuhr at one counts as Jumu'ah."
         case .memories: "After you mark a prayer, take a photo with both cameras at once, and keep it with that prayer, day by day, private on your phone."
-        case .insights: "Your score for each prayer, how consistent you've been, and whether you're improving week by week."
+        case .insights: "Your prayers on one calendar, your streaks, and each day's prayers, photos and zikr."
         case .zikrExtras: "Fall asleep counting and your session's saved. Tasbih Fatimah is a tap away after you pray. Set a daily task and keep a streak."
         }
     }
@@ -143,7 +143,7 @@ extension ShowcaseCardID {
         case .mosques: "The nearest first, with directions"
         case .jumuah: "Friday at a masjid counts as Jumu'ah"
         case .memories: "A photo after each prayer"
-        case .insights: "Which prayer needs you most"
+        case .insights: "Every prayer, day by day"
         case .sleep: "Saves your count if you drift off"
         case .tasbihFatimah: "33 · 33 · 34, offered after each prayer"
         case .goals: "A daily task, and a streak for keeping it"
@@ -192,7 +192,7 @@ extension ShowcaseCardID {
         case .mosques: "Mosques near you"
         case .jumuah: "Jumu'ah at the masjid"
         case .memories: "Moments"
-        case .insights: "Insights"
+        case .insights: "Journey"
         case .sleep: "Sleep mode"
         case .tasbihFatimah: "Tasbih Fatimah after prayer"
         case .goals: "Daily tasks with streaks"

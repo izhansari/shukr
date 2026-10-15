@@ -605,12 +605,12 @@ struct ShowcaseStory {
                      p("magnifyingglass", "Find any", "By prayer, place, note or date"),
                      p("calendar", "On this day", "What you saw a year ago")],
             action: "Open Moments", memories: true)
-        case .insights: ShowcaseStory(title: "Insights", hook: "See which prayer needs you most",
-            lead: "Your score for each prayer, how consistent you've been, and whether you're improving week by week, so you know where to focus.",
-            points: [p("chart.bar", "Each prayer ranked", "By its recent score"),
-                     p("chart.line.uptrend.xyaxis", "An 8-week trend", "Are you getting better?"),
-                     p("flame", "Streaks", "And a 14-day grid")],
-            action: "Open Insights", link: "insights")
+        case .insights: ShowcaseStory(title: "Journey", hook: "Every prayer you've marked, day by day",
+            lead: "Your prayers on one calendar: five dots a day, the days you prayed all five in time lit up, and your streaks. Tap a day to see its prayers, photos and zikr.",
+            points: [p("calendar", "The month", "Five dots a day, or a grid of grades"),
+                     p("flame", "Streaks", "And the days all in time"),
+                     p("photo.stack", "Moments", "Your prayer photos, one tap away")],
+            action: "Open Journey", link: "journey")
         // Your zikr
         case .sleep: ShowcaseStory(title: "Sleep mode", hook: "Fall asleep counting, and lose nothing",
             lead: "Counting in bed? Turn on sleep mode: if you drift off, shukr saves your session at your last count and lets your phone lock.",

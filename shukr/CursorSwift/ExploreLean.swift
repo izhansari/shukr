@@ -140,8 +140,8 @@ enum ExploreLean {
                             + (MasjidArrival.parked ? [] : [("A dua on arrival", d.bool(forKey: MasjidArrival.enabledKey))])),
             ExploreStory(id: .map, title: "The map", line: "Where you prayed, and the qibla", symbol: "map",
                          parts: [("The map", opened(.map))]),
-            ExploreStory(id: .journey, title: "How you're doing", line: "Insights and your day's ring", symbol: "chart.pie",
-                         parts: [("Insights", opened(.journey))]),
+            ExploreStory(id: .journey, title: "How you're doing", line: "Journey and your day's ring", symbol: "chart.pie",
+                         parts: [("Journey", opened(.journey))]),
             ExploreStory(id: .memories, title: "Moments", line: "A photo with each prayer", symbol: "photo.stack",
                          parts: [("A prayer photo", !PrayerPhotos.all().isEmpty)]),
             ExploreStory(id: .goals, title: "Daily zikr tasks", line: "Tasks with streaks", symbol: "target",
@@ -511,7 +511,7 @@ struct ExploreStoryPage: View {
             ExploreCard(title: "How you're doing", why: "Which prayer needs you most, how you're scoring, and how consistent you are.",
                         features: [("chart.line.uptrend.xyaxis", "Getting better?", "Each prayer ranked by its recent score, with an 8-week trend."),
                                    ("circle.circle", "Your day in one ring", "After your last prayer, each prayer's fifth in its colour.")],
-                        action: ("Open Insights", { go("insights") })) { ExploreStoryPicture(id: .journey) }
+                        action: ("Open Journey", { go("journey") })) { ExploreStoryPicture(id: .journey) }
         case .goals:
             ExploreCard(title: "Daily zikr tasks", why: "Pick a zikr and a daily task; shukr keeps your streak.",
                         features: [("target", "A count or minutes", "33 a day, or 5 minutes, your choice."),

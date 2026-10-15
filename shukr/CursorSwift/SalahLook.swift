@@ -331,9 +331,9 @@ extension EnvironmentValues {
     var softFooterCount: Int? = nil
 }
 
-/// "Moments ›" on the day's page, in "N done"'s spot above the bottom bar (decision memories-link-place B: under the
-/// day's line the list rode up over it). Once there's a photo (PrayerMemories.swift); today's photos once developed
-/// (and before they're looked at): "Today's photos have developed ›"; while they develop, "… after Isha".
+/// "Journey ›" on the day's page, in "N done"'s spot above the bottom bar (decision memories-link-place B: under the
+/// day's line the list rode up over it) — Journey (Journey.swift) holds the day, the month and Moments (owner, 2026-10-15).
+/// While a developed photo waits for its tap it reads "N photos to develop ›" and opens Moments, where they develop.
 struct MemoriesFooterLink: View {
     private var day = DayPageState.shared
     private var photos = PrayerPhotoRevision.shared
@@ -345,15 +345,14 @@ struct MemoriesFooterLink: View {
     var body: some View {
         let _ = photos.value
         let _ = reveals.value
-        if day.up && photos.hasPhotos {
-            let toDevelop = waiting
-            let developing = PhotoDevelop.todayDeveloping()
+        if day.up {
+            let toDevelop = photos.hasPhotos ? waiting : 0
             Button {
                 triggerSomeVibration(type: .light)
-                MemoriesPresenter.shared.open = true
+                if toDevelop > 0 { MemoriesPresenter.shared.open = true } else { JourneyPresenter.shared.open = true }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: developing && toDevelop == 0 ? "hourglass" : "photo.stack")
+                    Image(systemName: toDevelop > 0 ? "photo.stack" : "point.bottomleft.forward.to.point.topright.scurvepath")
                         .font(.system(size: 12, weight: .light))
                         // A photo waiting for its tap: the same thin sage ring the fifths will wear (owner).
                         .overlay(alignment: .topTrailing) {
@@ -362,8 +361,7 @@ struct MemoriesFooterLink: View {
                                 Circle().strokeBorder(Color.secondary, lineWidth: 1.5).frame(width: 8, height: 8).offset(x: 4, y: -3)
                             }
                         }
-                    Text(toDevelop > 0 ? "\(toDevelop) photo\(toDevelop == 1 ? "" : "s") to develop"
-                         : developing ? "Moments · today's develop after Isha" : "Moments")
+                    Text(toDevelop > 0 ? "\(toDevelop) photo\(toDevelop == 1 ? "" : "s") to develop" : "Journey")
                         .font(.system(size: 13, weight: .light, design: .rounded))
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
                 }

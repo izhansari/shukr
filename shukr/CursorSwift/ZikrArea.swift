@@ -16,7 +16,11 @@ import SwiftData
 import WidgetKit
 
 /// Which of the Zikr area's two places a door opens (the wheel's clock → History, books → Your azkar).
-enum ZikrAreaStart { case azkar, history }
+enum ZikrAreaStart {
+    case azkar, history
+    /// History filtered to one prayer day (Journey's day page, its zikr row).
+    case day(Date)
+}
 
 /// The wheel's hold menu (owner, with his screenshot): Edit goal · Open zikr (the new page, not
 /// the old stats sheet) · Reorder goals · Pause · Share goal… · Delete….
@@ -96,6 +100,7 @@ struct ZikrAreaPage: View {
             switch start {
             case .azkar: YourAzkarPage()
             case .history: ZikrHistoryHome()
+            case .day(let date): ZikrHistoryHome(initial: .day(date))
             }
         }
         .fontDesign(.rounded)
@@ -2060,8 +2065,11 @@ private struct ZikrHistoryHome: View {
     /// One filter at a time, as Give to Causes' (owner: search, or a filter for common things — no chips).
     enum Filter: Hashable {
         case goals, freestyle, zikr(PersistentIdentifier, String), goal(PersistentIdentifier, String), week, month, days30
+        /// One prayer day (its `PrayerDay.start`), from Journey.
+        case day(Date)
         var title: String {
             switch self {
+            case .day(let date): date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
             case .goal(_, let name): name
             case .goals: "Tasks"
             case .freestyle: "Freestyle"
@@ -2076,7 +2084,7 @@ private struct ZikrHistoryHome: View {
             case .goals, .goal: "target"
             case .freestyle: "infinity"
             case .zikr: "circle.hexagonpath"
-            case .week, .month, .days30: "calendar"
+            case .week, .month, .days30, .day: "calendar"
             }
         }
     }
@@ -2094,6 +2102,7 @@ private struct ZikrHistoryHome: View {
             case .week?: return s.startTime >= (cal.date(byAdding: .day, value: -7, to: now) ?? now)
             case .month?: return s.startTime >= (cal.dateInterval(of: .month, for: now)?.start ?? now)
             case .days30?: return s.startTime >= (cal.date(byAdding: .day, value: -30, to: now) ?? now)
+            case .day(let date)?: return PrayerDay.start(for: s.startTime) == date
             case nil: return true
             }
         }
