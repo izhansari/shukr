@@ -218,6 +218,10 @@ enum RowMotion: String, CaseIterable, Identifiable {
     /// below it, as a card fanned up from a stack — its slot opens upward and it slides up into it, sliding back down
     /// behind when folding; its words follow the motion, no late fade.
     case fan
+    /// Out, then in (owner, 2026-10-14: the fan clipped words half-way and ghosted Maghrib over Asr when closing): a row's
+    /// words stay hidden while its slot changes size and only show once it's ~85 % open; folding, they're gone in the
+    /// first part, before the slot closes. Size and words never change together, so nothing is clipped or overlapped.
+    case settle
     /// The others move first, then the new row fades in; a leaving row fades out quickly before they close
     /// up. With a plain fade a row came in at its final place while its neighbours were still sliding, so
     /// two names sat on top of each other for a few frames (owner's recording, 2026-10-01: "still no good").
@@ -238,6 +242,7 @@ enum RowMotion: String, CaseIterable, Identifiable {
         switch self {
         case .unfold: "Unfold"
         case .fan: "Fan up from below"
+        case .settle: "Settle (out, then in)"
         case .room: "Make room, then fade"
         case .today: "Today's motion"
         case .fade: "Fade"
@@ -257,6 +262,8 @@ enum RowMotion: String, CaseIterable, Identifiable {
             .modifier(active: RowUnfold(fraction: 0), identity: RowUnfold(fraction: 1))
         case .fan:
             .modifier(active: RowUnfold(fraction: 0, fromBelow: true), identity: RowUnfold(fraction: 1, fromBelow: true))
+        case .settle:
+            .modifier(active: RowUnfold(fraction: 0, wordsLate: true), identity: RowUnfold(fraction: 1, wordsLate: true))
         case .room:
             // Sami's audit timings: in after 0.15 s (0.24 read as a lag, the empty well growing first), out over
             // 0.12 s (0.08 read as a blink).
@@ -277,7 +284,7 @@ enum RowMotion: String, CaseIterable, Identifiable {
         switch self {
         case .today: springy
         // One calm ease, no spring (owner: the 0.38 s spring was "sporadic … springs heavily"; "sleek but well done").
-        case .unfold, .fan: RowMotion.unfoldEase
+        case .unfold, .fan, .settle: RowMotion.unfoldEase
         case .room, .fade, .drop, .blur: .easeInOut(duration: 0.3)
         case .none: nil
         }
@@ -286,7 +293,7 @@ enum RowMotion: String, CaseIterable, Identifiable {
 
 extension RowMotion {
     /// The public look's: the accordion (owner, 2026-10-14; was `room`, decision public-style-lock A).
-    static let standard: RowMotion = .fan   // the different style to try (owner); Unfold stays in the palette
+    static let standard: RowMotion = .settle   // out, then in (owner, 2026-10-14); Unfold / Fan stay in the palette
     /// A stored pick in DEBUG builds; public builds are locked to `standard`.
     static func resolved(_ raw: String?) -> RowMotion {
         #if DEBUG
@@ -304,19 +311,21 @@ struct RowUnfold: ViewModifier, Animatable {
     var fraction: CGFloat
     /// Fan: the row sits at its slot's bottom and slides up out of the row below (else it's revealed from the top).
     var fromBelow = false
+    /// Settle: the words only over the last 15 % of the slot (folding: gone in its first 15 %).
+    var wordsLate = false
     var animatableData: CGFloat {
         get { fraction }
         set { fraction = newValue }
     }
     /// 0 until the slot is 45 % open, then an eased rise to 1.
-    static func fade(_ f: CGFloat) -> Double {
-        let t = min(max((f - 0.45) / 0.55, 0), 1)
+    static func fade(_ f: CGFloat, from start: CGFloat = 0.45) -> Double {
+        let t = min(max((f - start) / (1 - start), 0), 1)
         return Double(t * t * (3 - 2 * t))
     }
     func body(content: Content) -> some View {
         UnfoldLayout(fraction: fraction, fromBelow: fromBelow) { content }
             .clipped()
-            .opacity(fromBelow ? Double(fraction) : Self.fade(fraction))
+            .opacity(wordsLate ? Self.fade(fraction, from: 0.85) : fromBelow ? Double(fraction) : Self.fade(fraction))
     }
 }
 

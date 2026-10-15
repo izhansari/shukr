@@ -1746,11 +1746,13 @@ struct PrayerTimesView: View {
 
         private var poppingBody: some View {
             let lost = CircleStage.shared.lost
-            return VStack {
-                Spacer()
+            // No spacing and spacers that can shrink to nothing: with five rows open the page ran out of room and the
+            // overflow pushed the list down into "N done" (owner's recording); now the circle gives way.
+            return VStack(spacing: 0) {
+                Spacer(minLength: 0)
                 if showBottom {
-                    Spacer()
-                    Spacer()
+                    Spacer(minLength: 0)
+                    Spacer(minLength: 0)
                 }
                 // The lost page (circle step 3b): the circle risen, with room for its title above and what sharing
                 // location gives below, and the buttons at the bottom (LostWords / LostPageLayer measure them).
@@ -1766,10 +1768,10 @@ struct PrayerTimesView: View {
                 .animation(lost.map { $0.risen ? CircleMotion.Lost.rise : CircleMotion.Lost.down }, value: lost?.risen)
                 .zIndex(3)
 
-                Spacer()
+                Spacer(minLength: 0)
 
                 if showBottom {
-                    Spacer()
+                    Spacer(minLength: 0)
                     BottomSharedView(showDailyAyahView: $showDailyAyahView)
                     .modifier(PullFade(live: live))
                     // The opening on the Salah circle (circle step 4): the list waits, then fades in as the ring lands.
@@ -1805,12 +1807,12 @@ struct PrayerTimesView: View {
         /// The page as it rests closed — the pop's closed layout, untouched, so the welcome still lands on it.
         private func closedPage(lost: LostStage?) -> some View {
             VStack {
-                Spacer()
+                Spacer(minLength: 0)
                 circle
                     .padding(.top, lost.map { $0.risen ? $0.titleHeight + 28 : 0 } ?? 0)
                     .padding(.bottom, lost.map { $0.risen ? 28 + $0.reasonsHeight : 0 } ?? 0)
                     .animation(lost.map { $0.risen ? CircleMotion.Lost.rise : CircleMotion.Lost.down }, value: lost?.risen)
-                Spacer()
+                Spacer(minLength: 0)
                 Color.clear.frame(height: closedBottomReserve + (lost.map { $0.risen ? $0.buttonsHeight : 0 } ?? 0))
             }
         }
@@ -1824,18 +1826,18 @@ struct PrayerTimesView: View {
                 }
             }
             return ZStack {
-                VStack {
-                    Spacer()
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
                     Color.clear.frame(width: circleSize.width, height: circleSize.height)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.closedCircleY, false))
-                    Spacer()
+                    Spacer(minLength: 0)
                     Color.clear.frame(height: closedBottomReserve)
                 }
-                VStack {
-                    Spacer(); Spacer(); Spacer()
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0); Spacer(minLength: 0); Spacer(minLength: 0)
                     Color.clear.frame(width: circleSize.width, height: circleSize.height)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openCircleY, false))
-                    Spacer(); Spacer()
+                    Spacer(minLength: 0); Spacer(minLength: 0)
                     Color.clear.frame(width: listSize.width, height: listSize.height)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openListTop, true))
                     Color.clear.frame(height: Self.listBottomGap)   // as the page: the list's bottom pinned
@@ -1866,9 +1868,12 @@ struct PrayerTimesView: View {
                             .onGeometryChange(for: CGSize.self) { $0.size } action: { if listSize != $0 { listSize = $0 } }
                             .opacity(CircleStage.shared.pageHidden ? 0 : 1)
                             .animation(CircleMotion.ease(CircleMotion.pageRevealDuration), value: CircleStage.shared.pageHidden)
-                            .frame(width: geo.size.width, alignment: .top)
-                            .modifier(SheetListRide(live: live, openTop: openTop))
-                            .animation(restMotion, value: openTop)
+                            // Anchored at its bottom (the open rest's bottom, as `poppingBody` pins it), slid down by how
+                            // closed the sheet is: rows growing or folding move only its top, never its bottom (owner: it
+                            // dipped into "N done" while the measured top jumped ahead of the rows' animation).
+                            .padding(.bottom, bottomChromeHeight + theme.listFooterRoom + Self.listBottomGap)
+                            .frame(width: geo.size.width, height: height, alignment: .bottom)
+                            .modifier(SheetListRide(live: live))
                     }
                     closedPage(lost: lost)
                         .frame(width: geo.size.width, height: height)

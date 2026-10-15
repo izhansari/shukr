@@ -16,7 +16,8 @@ enum SalahSheetDrag {
     /// Off by default (owner, 2026-10-04: "go back to gesture completion drag"); round 5 is tried from the palette menu
     /// first. A new key, so an "on" saved by the 2026-10-04 builds doesn't carry over.
     static let key = "salahSheetFollows.v3"
-    static let defaultOn = false
+    /// On (owner, 2026-10-14: the main build should be as his phone is — vertical live dragging).
+    static let defaultOn = true
     /// Pull-down from closed: a release this far past the closed rest opens the ☰ menu (decision salah-drag-tradeoffs B).
     static let refreshPull: CGFloat = 60
     /// Posted by the pull-down; the top bar's ☰ opens.
@@ -263,14 +264,14 @@ final class SheetSpring: NSObject {
     #endif
 }
 
-/// The list's place: from under the page's bottom edge (closed) to its open top, by the sheet's progress. Its own
+/// The list's place: from under the page's bottom edge (closed) to its open rest, by the sheet's progress. Its own
 /// modifier, so a frame re-renders only this, never the list (the sandbox's lost frames).
 struct SheetListRide: ViewModifier {
     let live: PagerLiveState
-    let openTop: CGFloat
+    /// The list sits at its open rest (bottom-anchored by the page); closed, it's a whole run lower — below the edge.
     func body(content: Content) -> some View {
         content
-            .offset(y: openTop + live.sheetRun - live.sheetOffset)
+            .offset(y: live.sheetRun - live.sheetOffset)
             .opacity(Self.fade(live.sheetOffset / max(live.sheetRun, 1)))
     }
 
