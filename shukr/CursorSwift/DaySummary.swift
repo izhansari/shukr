@@ -103,9 +103,11 @@ struct DayRing: View, Animatable {
                             let angle = 360 * (from + (full - from) * at)
                             // When in its window it was prayed — a dot, photo or not (owner: the photos on the ring went
                             // back to dots; tapping the fifth still shows its photo in the centre).
-                            Circle().fill(color)
-                                .frame(width: picked == i ? 13 : 9, height: picked == i ? 13 : 9)
-                                .overlay(Circle().stroke(theme.backdrop, lineWidth: 2.5))
+                            // Hollow (owner, 2026-10-15, from his picture): a ring in its grade colour round the disc's own
+                            // surface, sitting on the fifth.
+                            Circle().fill(theme.surface)
+                                .overlay(Circle().strokeBorder(color, lineWidth: picked == i ? 3 : 2.4))
+                                .frame(width: picked == i ? 15 : 12, height: picked == i ? 15 : 12)
                                 // Its photo waiting for its tap: the dot breathes (DevelopBreath, its own small view).
                                 .background { if let key = p.photoKey { DevelopBreath(key: key, color: color) } }
                                 .offset(x: 100)
@@ -180,7 +182,7 @@ struct DayCentre: View {
         } else {
             VStack(spacing: 3) {
                 CountingScore(value: score)   // counts up when animated (the day's first showing)
-                    .font(.system(size: 48, weight: .light, design: .rounded))
+                    .font(.system(size: 48, weight: .thin, design: .rounded))   // a little lighter (owner, 2026-10-15)
                     .monospacedDigit()
                 Text(caption)
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)

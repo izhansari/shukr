@@ -71,6 +71,13 @@ enum CircleMotion {
     /// A waiting photo's dot starts breathing once the ring has drawn in (DevelopBreath).
     static let dayRingBreathDelay: Double = 1.6
     static let dayCardLift = Animation.easeInOut(duration: 0.9)
+    /// The day's disc (owner, 2026-10-15: on the score side the whole circle is filled and raised, the fifths drawn on
+    /// it): it rises from the page as the fifths draw in, and settles back as they fade (out, then in — the words are
+    /// already away).
+    static let dayDiscRise = Animation.easeInOut(duration: 0.9)
+    static let dayDiscSink = Animation.easeOut(duration: CircleMomentTiming.out + 0.15)
+    /// Wider than the ring (200), so the fifths sit inside its edge.
+    static let dayDiscDiameter: CGFloat = 222
     /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
     /// release is the scroll view's own coast.
     static let sheetSnap = Animation.spring(response: 0.35, dampingFraction: 0.85)

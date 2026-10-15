@@ -151,6 +151,10 @@ struct MainCircleView: View {
     /// The prayer on the circle just came into its window, on screen: the moment plays once.
     /// The track: 0 = dashed (a prayer that hasn't started), 1 = the solid band (`CircleTrack`).
     @State private var trackSolid: CGFloat = 1
+    /// The day's disc: 0.5 = flush with the page (unseen), 1 = raised (NeuLiftCard's `lift`); up on the score side.
+    @State private var discLift: CGFloat = 0.5
+    /// Drawn only while up or on its way down (flush, it would still cover what's behind the circle).
+    @State private var discShown = false
     /// The dashed ring's drawing (CircleTrack.dashesDrawn): 0 → 1 as a prayer still to come comes in.
     @State private var dashesDrawn: CGFloat = 1
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -175,8 +179,16 @@ struct MainCircleView: View {
             // track"). It stays through the completion flourish (which hides the content above) and for the day's
             // score (SalahLook.swift).
             if theme.track.lifted {
+                // The day's score side: the whole circle raised, the fifths on it (owner) — under the band, which
+                // gives way as it rises.
+                if discShown {
+                    NeuLiftCard(shape: Circle(), lift: discLift)
+                        .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
+                        .opacity(openingHides ? 0 : 1)
+                        .allowsHitTesting(false)
+                }
                 NeuRingTrack()
-                    .opacity(openingHides ? 0 : 1)
+                    .opacity(openingHides ? 0 : 1 - Double(discLift - 0.5) * 2)
                     // ▶︎ Opening over the page as it is: the track fades out first (a launch has nothing to fade).
                     .animation(CircleStage.shared.opening?.inPlace == true ? .easeOut(duration: CircleMotion.openingTrackOutDuration) : nil, value: openingHides)
             }
@@ -507,6 +519,8 @@ struct MainCircleView: View {
             faceChanged()
         }
         .onChange(of: summaryWantsScore) { _, score in flipSummary(to: score) }
+        .onChange(of: daySummaryShowing) { _, up in raiseDisc(up) }
+        .onAppear { if daySummaryShowing { discShown = true; discLift = 1 } }
         // The welcome on this circle: its arc waits at nothing under the mark (it's hidden then, so this is unseen),
         // and sweeps out from the start as the words come in on the landing.
         // `initial`: the opening can already cover the circle when it first appears (a cold launch), and then the arc
@@ -659,6 +673,20 @@ struct MainCircleView: View {
             momentSettle = nil
             momentTask = nil
             faceChanged()
+        }
+    }
+
+    /// The day's disc up (the score side) or back down; Reduce Motion: at once.
+    private func raiseDisc(_ up: Bool) {
+        if up {
+            discShown = true
+            if reduceMotion { discLift = 1; return }
+            withAnimation(CircleMotion.dayDiscRise) { discLift = 1 }
+        } else {
+            if reduceMotion { discLift = 0.5; discShown = false; return }
+            withAnimation(CircleMotion.dayDiscSink, completionCriteria: .logicallyComplete) { discLift = 0.5 } completion: {
+                if !daySummaryShowing { discShown = false }
+            }
         }
     }
 
