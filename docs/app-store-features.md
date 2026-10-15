@@ -93,6 +93,8 @@ keywords, "What's New" and screenshot captions.
 
 **Privacy & feel**
 - Nothing leaves the device: no accounts, no tracking; location is used only on-device.
+- Your Data: see everything shukr keeps, export it all (spreadsheets, photos, voice memos) and
+  restore from a copy; part of your iPhone's own backup.
 - Light / dark / automatic appearance; a calm, rounded, circle-based design throughout.
 - A short welcome — "shukr" writes itself inside a ring that settles onto the prayer circle, with
   a soft heartbeat haptic — when the app starts fresh.
