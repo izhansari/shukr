@@ -559,10 +559,12 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   picked time, no spot, `mosqueName = ""`, streaks / day score / DayHistory / widgets / Live Activities) and
   `unmarkFromJourney`; edits through `editPrayerTime` / `movePrayer` (recorded time / spot kept). `.journeyChanged` reloads
   the pages.
-- To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused, by month newest first;
-  "<month> · N | All · N" (`journey.makeUpAll`); Made up = Qaza now; cleared like an inbox (owner): a made-up prayer (marked
-  on a later prayer day) leaves for a folded "Made up · N" row at the bottom; an empty side shows "All caught up" (a sage
-  check drawn in + a success buzz when the last one goes here). A row opens its sheet.
+- To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused; Made up = Qaza now. Top: the
+  count + each prayer's count (a tap shows only it), "<month> | All months" (`journey.makeUpAll`); months newest first as
+  pinned headings with "N left · N made up"; a month scrubber on the right edge (> 3 months; the month's name beside the
+  finger, a tick each). Made up keeps the row in place as "✓ Made up · Undo" for 3 s (`settling`; Undo = unmark), then it
+  folds into its own month's "Made up · N" (made up = marked on a later prayer day; decision makeup-made-feedback A); an
+  empty side shows "All caught up" (a check drawn in + a success buzz). A row opens its sheet (decision makeup-row-tap: kept).
 - DEBUG `-demoJourney [-demoJourneySeed] [-demoJourneyView grid] [-demoJourneyGrades] [-demoJourneyHighlight] [-demoJourneyDay N
   [-demoJourneySheet 0…4]] [-demoJourneyMakeUp]` (`-demoJourneySeed` adds ~100 earlier days where none, a break with four
   "opened, nothing marked" days; the demo opens only every other launch — ☰ always works).
