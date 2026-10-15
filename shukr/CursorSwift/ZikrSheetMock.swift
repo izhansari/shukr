@@ -56,7 +56,7 @@ struct ZikrSheetMockPage: View {
         // The title stays; the page scrolls on under it (owner), softened at the edge.
         .modifier(ScrollsUnder(edge: .top) { header })
         // The tabs, the width of the page (owner); no Start pill (owner: "it just looks strange").
-        .modifier(ScrollsUnder(edge: .bottom) { tabBar.padding(.horizontal, 16).padding(.bottom, 4) })
+        .safeAreaInset(edge: .bottom, spacing: 0) { tabBar.padding(.horizontal, 16).padding(.bottom, 4) }
         .background(theme.surface.ignoresSafeArea())
         // Pushed from Your azkar (owner): the system back top left; the bar see-through (owner).
         .navigationBarTitleDisplayMode(.inline)
@@ -185,6 +185,9 @@ struct ZikrSheetMockPage: View {
             }
             .id(goal)
             .transition(.opacity)
+            // The reminder and Edit under the card, not in it (owner).
+            GoalCardFoot(g: GoalMock.all[goal]).padding(.horizontal, 6).padding(.top, 4)
+                .id("foot-\(goal)").transition(.opacity)
         }
     }
 
@@ -260,6 +263,28 @@ struct ZikrSheetMockLauncher: View {
     }
 }
 
+/// Your azkar's `SoftRing` at hero size: a raised band in the surface, the progress in sage on it.
+struct GoalSoftRing<Center: View>: View {
+    let progress: Double
+    var size: CGFloat = 88
+    @ViewBuilder var center: () -> Center
+    @Environment(\.circleTheme) private var theme
+    var body: some View {
+        let band = size * 0.085
+        ZStack {
+            Circle().stroke(theme.surface, lineWidth: band)
+                .shadow(color: theme.shade, radius: 3, x: 2, y: 2)
+                .shadow(color: theme.light, radius: 4, x: -2, y: -2)
+            Circle().trim(from: 0, to: min(max(progress, 0), 1))
+                .stroke(Color.sage, style: StrokeStyle(lineWidth: band * 0.6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            center()
+        }
+        .frame(width: size, height: size)
+        .padding(band / 2)
+    }
+}
+
 /// A bar the page scrolls under: iOS 26's `safeAreaBar` (the scroll edge effect softens what passes beneath), the bar
 /// material before (Settings' `OverListHeader`).
 private struct ScrollsUnder<Bar: View>: ViewModifier {
@@ -326,8 +351,11 @@ struct SessionMock {
 struct GoalDaysMock: View {
     let g: GoalMock
     @Binding var picked: Int?
+    /// A finger is on the row (the card waits until it lifts to time the read-out out).
+    var touching: Binding<Bool> = .constant(false)
     var size: CGFloat = 18
     var rows = 2
+    @State private var box: CGSize = .zero
 
     var body: some View {
         let perRow = g.days.count / rows
@@ -339,20 +367,29 @@ struct GoalDaysMock: View {
                         VStack(spacing: 5) {
                             if r == 0 {
                                 Text(GoalMock.date(i).formatted(.dateTime.weekday(.narrow)))
-                                    .font(.caption2).foregroundStyle(i == g.days.count - 1 ? .primary : .tertiary)
+                                    .font(.caption2).foregroundStyle(i == g.days.count - 1 || picked == i ? .primary : .tertiary)
                             }
                             day(i)
                         }
                         .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            triggerSomeVibration(type: .light)
-                            withAnimation(.snappy(duration: 0.2)) { picked = picked == i ? nil : i }
-                        }
                     }
                 }
             }
         }
+        .contentShape(Rectangle())
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { box = $0 }
+        // Touch a day to read it; slide along to move the focus (owner), a tick per day.
+        .gesture(DragGesture(minimumDistance: 0)
+            .onChanged { v in
+                touching.wrappedValue = true
+                guard box.width > 0, box.height > 0 else { return }
+                let c = min(max(Int(v.location.x / (box.width / CGFloat(perRow))), 0), perRow - 1)
+                let r = min(max(Int(v.location.y / (box.height / CGFloat(rows))), 0), rows - 1)
+                let i = r * perRow + c
+                if picked != i { withAnimation(.snappy(duration: 0.15)) { picked = i } }
+            }
+            .onEnded { _ in touching.wrappedValue = false })
+        .sensoryFeedback(.selection, trigger: picked)
     }
 
     private func day(_ i: Int) -> some View {
@@ -370,6 +407,7 @@ struct GoalDaysMock: View {
         .frame(width: size, height: size)
         .padding(4)
         .background { if picked == i { Circle().fill(Color.primary.opacity(0.1)) } }
+        .scaleEffect(picked == i ? 1.12 : 1)
     }
 }
 
@@ -446,7 +484,6 @@ struct GoalCardToday: View {
                 fact("clock", g.average, "a day, usually")
                 fact("trophy", "\(g.best)", "best streak")   // always somewhere (owner)
             }
-            GoalCardFoot(g: g)
         }
         .padding(18)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
@@ -479,6 +516,7 @@ struct GoalCardStreak: View {
     @State private var askStart = false
     @State private var revert: Task<Void, Never>?
     @State private var dayRevert: Task<Void, Never>?
+    @State private var touching = false
     /// The Salah ring's flip (mainCircle `flipSeconds`).
     private static let flipSeconds: Double = 3
 
@@ -492,15 +530,16 @@ struct GoalCardStreak: View {
                 todayRing
             }
             VStack(spacing: 8) {
-                GoalDaysMock(g: g, picked: $picked, size: 14, rows: 1)
+                GoalDaysMock(g: g, picked: $picked, touching: $touching, size: 14, rows: 1)
                 if let picked {
                     Text(dayLine(g, picked)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                         .transition(.opacity)
                 }
             }
-            .onChange(of: picked) { _, day in
+            .onChange(of: touching) { _, on in
                 dayRevert?.cancel()
-                guard day != nil else { return }
+                guard !on, picked != nil else { return }
+                // Lifted: the day stays a moment, then goes (the Salah ring's 3 s).
                 dayRevert = Task { @MainActor in
                     try? await Task.sleep(for: .seconds(Self.flipSeconds))
                     guard !Task.isCancelled else { return }
@@ -514,8 +553,6 @@ struct GoalCardStreak: View {
                 line("calendar", "Last done \(g.lastDoneText)")
                 line("clock", "Usually \(g.average) a day")
             }
-            Divider().opacity(0.5)
-            GoalCardFoot(g: g)
         }
         .padding(18)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
@@ -547,22 +584,17 @@ struct GoalCardStreak: View {
         .contentTransition(.opacity)
     }
 
+    /// The app's soft ring (Your azkar's `SoftRing`: a raised band, the progress in sage on it), "TODAY" inside (owner).
     private var todayRing: some View {
         Button { triggerSomeVibration(type: .light); askStart = true } label: {
-            VStack(spacing: 5) {
-                ZStack {
-                    Circle().stroke(Color.primary.opacity(0.1), lineWidth: 5)
-                    Circle().trim(from: 0, to: min(Double(g.today) / Double(g.goal), 1))
-                        .stroke(Color.sage, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
-                    VStack(spacing: 0) {
-                        Text("\(g.today)").font(.system(size: 24, weight: .light, design: .rounded)).monospacedDigit()
-                        Text("of \(g.goal)").font(.caption2).foregroundStyle(.secondary)
-                    }
+            GoalSoftRing(progress: Double(g.today) / Double(g.goal), size: 88) {
+                VStack(spacing: 0) {
+                    Text("TODAY").font(.system(size: 8.5, weight: .semibold)).tracking(1).foregroundStyle(.secondary)
+                    Text("\(g.today)").font(.system(size: 24, weight: .light, design: .rounded)).monospacedDigit()
+                    Text("of \(g.goal)").font(.caption2).foregroundStyle(.secondary)
                 }
-                .frame(width: 80, height: 80)
-                Text("TODAY").font(.caption2.weight(.medium)).tracking(1.1).foregroundStyle(.secondary)
             }
-            .contentShape(Rectangle())
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Today, \(g.today) of \(g.goal). Start")
