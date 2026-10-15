@@ -98,6 +98,8 @@ struct PrayerRowActionButton: View {
     let symbol: String
     let label: String
     var size: CGFloat = 30
+    /// The thin ring round it (the pencil by the name has none — owner: "just the pen").
+    var ringed = true
     let action: () -> Void
     var body: some View {
         Button {
@@ -108,7 +110,7 @@ struct PrayerRowActionButton: View {
                 .font(.system(size: size * 0.43, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: size, height: size)
-                .overlay(Circle().strokeBorder(Color.secondary.opacity(0.35), lineWidth: 1))
+                .overlay { if ringed { Circle().strokeBorder(Color.secondary.opacity(0.35), lineWidth: 1) } }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

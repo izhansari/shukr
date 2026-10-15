@@ -3308,7 +3308,7 @@ struct PrayerButton: View {
                 }
                 // G · the marked row's pencil, right after its name (owner's drawing): the time / place editor.
                 if showsActions {
-                    PrayerRowActionButton(symbol: "pencil", label: "Edit time or place", size: 26) { openTimeEditor() }
+                    PrayerRowActionButton(symbol: "pencil", label: "Edit time or place", size: 26, ringed: false) { openTimeEditor() }
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
                 // Prayed at a masjid: a small mosque mark by the name.
