@@ -1049,7 +1049,7 @@ private struct MemoryThumb: View {
             .overlay {
                 if let image { Image(uiImage: image).resizable().scaledToFill() }
             }
-            .developReveal(key)
+            .developReveal(key, width: CGFloat(side) / 2.4)
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
             .developingTag(key, width: CGFloat(side) / 2.4)
             .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") {
@@ -2648,7 +2648,7 @@ private struct MemoryCard: View {
         let showSelfie = swapped && images.front != nil
         PrayerPhotoFace(back: showSelfie ? images.front : images.back, front: showSelfie ? images.back : images.front,
                         width: width)
-            .developReveal(key)
+            .developReveal(key, width: tagged ? width : 0, interactive: tagged)   // only the top card takes the tap
             .developingTag(key, width: tagged ? width : 0, shown: tagged)
             .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") {
                 if let hit = Self.cache.object(forKey: Self.cacheKey(key)) { images = hit.images; return }
