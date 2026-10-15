@@ -2,14 +2,14 @@ import SwiftUI
 import MapKit
 
 // Journey's prayer sheet (phase 2; spec screen 3, mock-ups Sheet5 / Sheet5Mark): one half sheet for a marked prayer and an
-// unmarked one, on any day. Top right: delete (unmark — it removes the prayer's data), save, close (owner, round 2:
-// "the X button to dismiss, the save button that's only on when we've edited a field, the delete button for unmarking").
-// Nothing is saved until Save: the time (the window bar or the wheel), the place and the note are drafts, and Save lights
-// up only once one differs from what's stored, like the Salah page's editor; a swipe down is held while there are edits, so
-// leaving them is always the user's own ✕. The score ring and the window bar (no sentence — owner: it got old); "Prayed at
-// <time> ⌄" opens the wheel (the sheet grows to full height, only the time shows); the place as a map card that grows in
-// place (movable, the pin kept), the photo as itself (it opens in place) — two different things, drawn differently
-// (owner). An unmarked past prayer defaults to made up today = Qaza (owner), marked with its pill.
+// unmarked one, on any day. Top right only the trash (unmark — it removes the prayer's data); once something is edited,
+// Cancel · Save come in at the bottom, the Salah page editor's own buttons (owner, round 3). Nothing is saved until Save:
+// the time (the window bar or the wheel), the place and the note are drafts; a swipe down closes it only while nothing is
+// edited, so leaving edits is always the user's own Cancel. No sage on the sheet (owner). The score ring and the window
+// bar (no sentence — owner: it got old); "Prayed at <time> ⌄" opens the wheel (the sheet grows to full height, only the
+// time shows); the place as a map card that grows in place (movable, the pin kept), the photo as itself (it opens in
+// place) — two different things, drawn differently (owner). An unmarked past prayer defaults to made up today = Qaza
+// (owner), marked with its pill.
 
 extension Notification.Name {
     /// A prayer was marked, unmarked or edited from Journey: its pages read their rows again.
@@ -27,7 +27,10 @@ struct JourneyPrayerSheet: View {
     @State private var draft: Date
     @State private var wheelOpen = false
     @State private var mapOpen = false
-    @State private var detent: PresentationDetent = .medium
+    @State private var detent: PresentationDetent
+    /// Half height; a little taller once Cancel · Save (or the Mark pill) sit at the bottom, so they never cover the note.
+    private static let resting = PresentationDetent.height(480)
+    private static let withButtons = PresentationDetent.height(548)
     @State private var pickingSpot = false
     /// A spot picked here, saved with Save / Mark.
     @State private var draftSpot: CLLocationCoordinate2D?
@@ -49,12 +52,14 @@ struct JourneyPrayerSheet: View {
         let start = prayer.timeAtComplete ?? Date()
         _draft = State(initialValue: start)
         openedWith = start
+        _detent = State(initialValue: prayer.isCompleted ? Self.resting : Self.withButtons)
         let stored = PrayerPhotos.note(PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name))
         savedNote = stored
         _note = State(initialValue: stored)
     }
 
     private var marked: Bool { prayer.isCompleted }
+    private var restingDetent: PresentationDetent { !marked || edited ? Self.withButtons : Self.resting }
     private var excused: Bool { !marked && Excused.covers(start: prayer.startTime, end: prayer.endTime) }
     private var range: ClosedRange<Date> { prayer.startTime...max(prayer.startTime, Date()) }
     private var jumuah: Bool { marked && prayer.isJumuah && draftSpot == nil }
@@ -93,16 +98,29 @@ struct JourneyPrayerSheet: View {
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
-            if !marked && !mapOpen { markPill.padding(.horizontal, 22).padding(.bottom, 10) }
+            if !mapOpen {
+                if !marked {
+                    markPill.padding(.horizontal, 22).padding(.bottom, 10)
+                } else if edited {
+                    SaveCancelButtons(canSave: edited, onCancel: { dismiss() }, onSave: save)
+                        .padding(.horizontal, 22).padding(.bottom, 10)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
         }
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
-        .presentationDetents([.medium, .large], selection: $detent)
+        .presentationDetents([Self.resting, Self.withButtons, .large], selection: $detent)
         .presentationDragIndicator(.visible)
         // Edits are left only by the user's own ✕ (owner: "so long as I press cancel myself").
         .interactiveDismissDisabled(marked && edited)
+        .animation(.easeInOut(duration: 0.25), value: edited)
         .onChange(of: wheelOpen || mapOpen) { _, big in
-            withAnimation(.easeInOut(duration: 0.3)) { detent = big ? .large : .medium }
+            withAnimation(.easeInOut(duration: 0.3)) { detent = big ? .large : restingDetent }
+        }
+        .onChange(of: edited) {
+            guard detent != .large else { return }
+            withAnimation(.easeInOut(duration: 0.25)) { detent = restingDetent }
         }
         .sheet(isPresented: $pickingSpot) {
             PrayerLocationPicker(prayerName: prayer.displayName, original: shownSpot, recorded: prayer.recordedSpot ?? savedSpot,
@@ -157,13 +175,6 @@ struct JourneyPrayerSheet: View {
                         // up: the system alert.
                         if !UnmarkPrompt.ask(for: prayer, onUnmark: unmark) { confirmUnmark = true }
                     }
-                }
-                circleButton("xmark", label: marked && edited ? "Close without saving" : "Close") { dismiss() }
-                if marked {
-                    // Save: grey until something differs from what's stored, then green (the Salah editor's rule).
-                    circleButton("checkmark", tint: edited ? .green : nil, filled: edited, label: "Save") { save() }
-                        .disabled(!edited)
-                        .animation(.easeInOut(duration: 0.2), value: edited)
                 }
             }
         }
@@ -252,7 +263,7 @@ struct JourneyPrayerSheet: View {
                     }
                 }
                 // Made up today (the default) reads quietly: picking another day and time is there, not the main choice.
-                .foregroundStyle(excused || jumuah || madeUpToday ? Color.secondary : Color.sage)
+                .foregroundStyle(excused || jumuah || madeUpToday ? Color.secondary : Color.primary)
             }
             .padding(.vertical, 13)
             .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
@@ -310,8 +321,8 @@ struct JourneyPrayerSheet: View {
             action()
         } label: {
             Text(title)
-                .font(.system(size: 14, weight: .light, design: .rounded))
-                .foregroundStyle(Color.sage)
+                .font(.system(size: 14, weight: .regular, design: .rounded))
+                .foregroundStyle(.secondary)
                 .padding(.vertical, 6)
                 .contentShape(Rectangle())
         }
@@ -376,7 +387,7 @@ struct JourneyPrayerSheet: View {
                 } label: {
                     Label("Add where you prayed", systemImage: "mappin.and.ellipse")
                         .font(.system(size: 15, weight: .light, design: .rounded))
-                        .foregroundStyle(Color.sage)
+                        .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 8)
                         .contentShape(Rectangle())
@@ -414,7 +425,7 @@ struct JourneyPrayerSheet: View {
                 Spacer(minLength: 0)
                 Text(note ?? "Add a note")
                     .font(.system(size: 15, weight: .light, design: .rounded))
-                    .foregroundStyle(note == nil ? Color.sage : .primary.opacity(0.75))
+                    .foregroundStyle(note == nil ? Color.secondary : Color.primary.opacity(0.75))
                     .multilineTextAlignment(.trailing)
                     .lineLimit(3)
             }
@@ -452,15 +463,15 @@ struct JourneyPrayerSheet: View {
 
     // MARK: Saving
 
-    /// An unmarked prayer's one action.
+    /// An unmarked prayer's one action, in the Salah editor's Save look.
     private var markPill: some View {
         Button(action: mark) {
             Text(excused ? "Excused" : "Mark \(prayer.displayName)")
-                .font(.system(size: 16, weight: .regular, design: .rounded))
-                .foregroundStyle(excused ? Color.secondary : Color.sage)
+                .fontWeight(.semibold)
+                .foregroundStyle(excused ? Color.secondary : Color.green)
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(Capsule().fill(excused ? Color.primary.opacity(0.06) : Color.sage.opacity(0.16)))
+                .padding(.vertical, 14)
+                .background(Capsule().strokeBorder(excused ? Color(.separator) : Color.green, lineWidth: excused ? 1 : 1.5))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

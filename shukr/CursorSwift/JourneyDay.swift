@@ -40,9 +40,8 @@ struct JourneyDayPage: View {
                 heading
                 ring.frame(maxWidth: .infinity).padding(.top, 22)
                 prayerRows.padding(.top, 26)
-                dayMap
                 notes
-                zikrRow
+                links
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 30)
@@ -190,7 +189,7 @@ struct JourneyDayPage: View {
                     triggerSomeVibration(type: .light)
                     sheetRow = row
                 } label: {
-                    JourneyPrayerRow(row: row, excused: excused, place: place(row)) { openPile(row) }
+                    JourneyPrayerRow(row: row, excused: excused, place: place(row))
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -206,14 +205,71 @@ struct JourneyDayPage: View {
         }
     }
 
-    private func openPile(_ row: PrayerModel) {
-        triggerSomeVibration(type: .light)
-        var quiet = Transaction()
-        quiet.disablesAnimations = true
-        withTransaction(quiet) { pile = JourneyPileRoute(key: PrayerPhotos.key(dayKey: row.dayKey, name: row.name)) }
+    // MARK: Out of the day: its photos, its map, its zikr
+
+    /// The day's photos as one small pile, its map and its zikr as rows of their own (owner: thumbnails in the rows never
+    /// lined up; the map card didn't look right — a link instead).
+    private var links: some View {
+        let photoKeys = rows.filter(\.isCompleted).map { PrayerPhotos.key(dayKey: $0.dayKey, name: $0.name) }.filter(PrayerPhotos.has)
+        let pins = pins
+        return VStack(spacing: 0) {
+            if !photoKeys.isEmpty {
+                linkRow(title: photoKeys.count == 1 ? "1 photo" : "\(photoKeys.count) photos",
+                        detail: photoKeys.map { String($0.dropFirst(11)) }.joined(separator: ", ")) {
+                    JourneyDayPhotoStack(keys: photoKeys)
+                } action: {
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { pile = JourneyPileRoute(key: photoKeys[0]) }
+                }
+            }
+            if !pins.isEmpty {
+                let names = Array(NSOrderedSet(array: rows.compactMap(place))) as? [String] ?? []
+                linkRow(title: "On the map",
+                        detail: ([pins.count == 1 ? "1 prayer" : "\(pins.count) prayers"] + names.prefix(2)).joined(separator: " · ")) {
+                    linkSymbol("map")
+                } action: { showMap = true }
+            }
+            if !sessions.isEmpty {
+                let seconds = sessions.reduce(0) { $0 + $1.secondsPassed }
+                let names = Array(NSOrderedSet(array: sessions.map { $0.mantra?.name ?? "Freestyle" })) as? [String] ?? []
+                linkRow(title: "Zikr · \(ZikrMinutes.text(seconds))",
+                        detail: "\(sessions.count) session\(sessions.count == 1 ? "" : "s") · \(names.prefix(3).joined(separator: ", "))") {
+                    linkSymbol("circle.hexagonpath")
+                } action: { showZikr = true }
+            }
+        }
+        .padding(.top, 18)
     }
 
-    // MARK: The day on a map
+    private func linkSymbol(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
+    }
+
+    private func linkRow<Lead: View>(title: String, detail: String, @ViewBuilder lead: () -> Lead,
+                                     action: @escaping () -> Void) -> some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            action()
+        } label: {
+            HStack(spacing: 14) {
+                lead().frame(width: 40, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.system(size: 16, weight: .light, design: .rounded))
+                    Text(detail)
+                        .font(.system(size: 13, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(.tertiary)
+            }
+            .padding(.vertical, 14)
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
     /// Every marked prayer with a spot, as a pin in its grade's colour.
     private var pins: [JourneyDayPin] {
@@ -221,34 +277,6 @@ struct JourneyDayPage: View {
         return rows.compactMap { row in
             guard row.isCompleted, let at = spot(row) else { return nil }
             return JourneyDayPin(id: row.name, name: row.displayName, spot: at, score: row.numberScore, atMasjid: row.atMasjid)
-        }
-    }
-
-    /// The day's prayers on a map (owner): a still card fitted to the pins; a tap opens it full and movable.
-    @ViewBuilder private var dayMap: some View {
-        let pins = pins
-        if !pins.isEmpty {
-            Button {
-                triggerSomeVibration(type: .light)
-                showMap = true
-            } label: {
-                JourneyDayMap(pins: pins, interactive: false)
-                    .frame(height: 150)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .allowsHitTesting(false)
-                    .overlay(alignment: .bottomTrailing) {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 30, height: 30)
-                            .background(Circle().fill(.regularMaterial))
-                            .padding(8)
-                    }
-                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("The day's prayers on a map")
-            .padding(.top, 22)
         }
     }
 
@@ -280,38 +308,6 @@ struct JourneyDayPage: View {
             .padding(.top, 22)
         }
     }
-
-    // MARK: Zikr
-
-    @ViewBuilder private var zikrRow: some View {
-        if !sessions.isEmpty {
-            let seconds = sessions.reduce(0) { $0 + $1.secondsPassed }
-            let names = Array(NSOrderedSet(array: sessions.map { $0.mantra?.name ?? "Freestyle" })) as? [String] ?? []
-            Button {
-                triggerSomeVibration(type: .light)
-                showZikr = true
-            } label: {
-                HStack(spacing: 14) {
-                    Image(systemName: "circle.hexagonpath").font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Zikr · \(ZikrMinutes.text(seconds))").font(.system(size: 16, weight: .light, design: .rounded))
-                        Text("\(sessions.count) session\(sessions.count == 1 ? "" : "s") · \(names.prefix(3).joined(separator: ", "))")
-                            .font(.system(size: 13, weight: .light, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 8)
-                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, 14)
-                .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
-                .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 18)
-        }
-    }
 }
 
 enum ZikrMinutes {
@@ -324,14 +320,12 @@ enum ZikrMinutes {
     }
 }
 
-/// One prayer on a day's page: its dot in its grade colour, the name, when · where (or its window, unmarked), the photo,
-/// the grade.
+/// One prayer on a day's page: its dot in its grade colour, the name, when · where (or its window, unmarked), the grade.
+/// (Its photo is in the day's pile below — thumbnails here never lined up, owner.)
 private struct JourneyPrayerRow: View {
     let row: PrayerModel
     let excused: Bool
     let place: String?
-    /// A tap on the photo: its day's pile.
-    let onPhoto: () -> Void
 
     var body: some View {
         let score = row.isCompleted ? row.numberScore : nil
@@ -354,10 +348,6 @@ private struct JourneyPrayerRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 8)
-            if row.isCompleted, PrayerPhotos.has(photoKey) {
-                PrayerPhotoCard(key: photoKey, width: 40, opens: false)
-                    .highPriorityGesture(TapGesture().onEnded(onPhoto))
-            }
             if let score {
                 Text(row.isJumuah ? "100" : PrayerScoring.grade(for: score) == .perfect ? "Perfect" : PrayerScoring.summary(for: score))
                     .font(.system(size: 14, weight: .light, design: .rounded))
@@ -465,5 +455,45 @@ struct JourneyDayMapSheet: View {
                 }
         }
         .presentationDetents([.large])
+    }
+}
+
+/// A day's photos as a small tilted pile (Journey's Moments tile, for one day); still developing ones stay veiled.
+struct JourneyDayPhotoStack: View {
+    let keys: [String]
+    @State private var images: [String: UIImage] = [:]
+    private static let lies: [(angle: Double, x: CGFloat, y: CGFloat)] = [(-9, 0, 2), (6, 8, -1), (-2, 14, 1)]
+
+    var body: some View {
+        let shown = Array(keys.suffix(3))
+        ZStack(alignment: .leading) {
+            ForEach(Array(shown.enumerated()), id: \.1) { i, key in
+                square(key, lie: Self.lies[i + 3 - shown.count])
+            }
+        }
+        .frame(height: 30)
+        .task(id: keys) {
+            var loaded: [String: UIImage] = [:]
+            for key in keys.suffix(3) { if let image = await PrayerPhotos.thumbnail(key) { loaded[key] = image } }
+            images = loaded
+        }
+    }
+
+    private func square(_ key: String, lie: (angle: Double, x: CGFloat, y: CGFloat)) -> some View {
+        let corner = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        return Group {
+            if let image = images[key] {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                Color.primary.opacity(0.08)
+            }
+        }
+        .frame(width: 26, height: 26)
+        .developReveal(key, width: 26, interactive: false)
+        .clipShape(corner)
+        .overlay(corner.strokeBorder(Color.white.opacity(0.7), lineWidth: 1.2))
+        .shadow(color: .black.opacity(0.18), radius: 2, y: 1.5)
+        .rotationEffect(.degrees(lie.angle))
+        .offset(x: lie.x, y: lie.y)
     }
 }

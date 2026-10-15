@@ -540,13 +540,15 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - The day page (`JourneyDayPage`): `DayRing` + `DayCentre` on a raised 222 pt disc (tap a fifth), rows time · place (masjid,
   else `PrayerPlaceNames`) · grade (Jumu'ah = 100) + `PrayerPhotoCard`, notes, "Zikr · N min" → `ZikrAreaPage(start: .day)`
   (History's `.day` filter); ‹ › walk days at once, no fade (a fade overlapped two days' words); a started prayer's row
-  opens the prayer sheet; a photo opens that day's pile (`MemoriesPage(openPile:leaveWithPile: true)`, pushed without a
-  slide, the fade — never the zoom; closing pops Moments too; Sami's OK); the day's prayers on a map (`JourneyDayMap`, a
-  still card → `JourneyDayMapSheet`); each note under its prayer's name in semibold (owner).
-- The prayer sheet (`JourneyPrayerSheet`, any day, marked or not): a half sheet (large while the wheel or the map is open);
-  top right trash (unmark: Sami's `UnmarkPrompt`, the system alert if another overlay is up) · ✕ (leaves edits) · ✓ Save —
-  grey until the time, place or note differs from what's stored, then green (owner: the Salah editor's rule); a swipe down
-  is held while edited; the date line says "not saved". Score ring + `PrayerWindowBar` (tap / drag sets the time) — no
+  opens the prayer sheet (rows carry no thumbnail — they never lined up, owner); each note under its prayer's name in
+  semibold; then link rows: "N photos" with the day's photos as a small tilted pile (`JourneyDayPhotoStack`, veiled while
+  developing) → that day's pile (`MemoriesPage(openPile:leaveWithPile: true)`, pushed without a slide, the fade — never the
+  zoom; closing pops Moments too; Sami's OK), "On the map" → `JourneyDayMapSheet` (owner: a link, not a map card), Zikr.
+- The prayer sheet (`JourneyPrayerSheet`, any day, marked or not): ~half height (`resting` 480; `withButtons` 548 once edited
+  or unmarked; large while the wheel or the map is open); top right only the trash (unmark: Sami's `UnmarkPrompt`, the
+  system alert if another overlay is up); once the time, place or note differs, the Salah editor's `SaveCancelButtons` come
+  in at the bottom (owner); a swipe down is held while edited; the date line says "not saved"; no sage anywhere on it
+  (owner) — the Mark pill is Save's green edge. Score ring + `PrayerWindowBar` (tap / drag sets the time) — no
   sentence (owner: it got old); "Prayed at ⌄" → a date + time wheel inline (start…now) with "Prayed it on <its day>? ›" /
   "Made up today instead ›"; the place as a map card with its name on it (`JourneyPlaceMap`: grows in place, movable, pin
   kept, "Move the pin" → `PrayerLocationPicker`; no spot → "Add where you prayed") and the photo as itself (`PrayerPhotoCard`,
