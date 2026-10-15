@@ -1605,7 +1605,8 @@ struct UnmarkPrompt: View {
                 Text("Unmark \(name)?")
                     .font(.headline)
                     .padding(.top, photoKey == nil ? 24 : 0)
-                Text(photoKey == nil ? "It goes back to not prayed." : "This photo will be deleted too.")
+                Text("Are you sure you want to mark this prayer as incomplete?"   // the alert's words (owner: keep the copy)
+                     + (photoKey == nil ? "" : " Its photo will be deleted too."))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -1613,7 +1614,7 @@ struct UnmarkPrompt: View {
                     .padding(.horizontal, 20)
                 VStack(spacing: 8) {
                     Button { close(unmark: true) } label: {
-                        Text(photoKey == nil ? "Unmark" : "Unmark and delete photo")
+                        Text("Unmark")
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, minHeight: 48)
