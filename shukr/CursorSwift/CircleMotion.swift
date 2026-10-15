@@ -243,6 +243,8 @@ enum RowMotion: String, CaseIterable, Identifiable {
     }
 
     static let key = "salahLook.rowMotion"
+    /// The accordion's one ease: slow in, a long soft landing — rows, card and circle together.
+    static let unfoldEase = Animation.timingCurve(0.4, 0, 0.2, 1, duration: 0.55)
 
     var transition: AnyTransition {
         switch self {
@@ -267,7 +269,8 @@ enum RowMotion: String, CaseIterable, Identifiable {
     func animation(springy: Animation) -> Animation? {
         switch self {
         case .today: springy
-        case .unfold: .smooth(duration: 0.38)
+        // One calm ease, no spring (owner: the 0.38 s spring was "sporadic … springs heavily"; "sleek but well done").
+        case .unfold: RowMotion.unfoldEase
         case .room, .fade, .drop, .blur: .easeInOut(duration: 0.3)
         case .none: nil
         }
@@ -288,18 +291,23 @@ extension RowMotion {
     static var current: RowMotion { resolved(UserDefaults.standard.string(forKey: key)) }
 }
 
-/// A row's unfold (RowMotion.unfold): its height at `fraction` of its own, clipped, fading in as it opens (the fade a little
-/// behind the height, so a row reads once it has room).
+/// A row's unfold (RowMotion.unfold): its height at `fraction` of its own, clipped; its words fade in only over the second
+/// half, once the slot has room (and fade first when folding) — no half-drawn rows mid-move (owner: calmer).
 struct RowUnfold: ViewModifier, Animatable {
     var fraction: CGFloat
     var animatableData: CGFloat {
         get { fraction }
         set { fraction = newValue }
     }
+    /// 0 until the slot is 45 % open, then an eased rise to 1.
+    static func fade(_ f: CGFloat) -> Double {
+        let t = min(max((f - 0.45) / 0.55, 0), 1)
+        return Double(t * t * (3 - 2 * t))
+    }
     func body(content: Content) -> some View {
         UnfoldLayout(fraction: fraction) { content }
             .clipped()
-            .opacity(Double(fraction * fraction))
+            .opacity(Self.fade(fraction))
     }
 }
 
