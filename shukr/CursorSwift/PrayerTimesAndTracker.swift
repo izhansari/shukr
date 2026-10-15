@@ -1482,10 +1482,20 @@ struct PrayerTimesView: View {
                 withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
                 // `-demoKeepCurrent YES`: all but the prayer on now (the list's looks with done, now and coming rows).
                 let keepCurrent = UserDefaults.standard.bool(forKey: "demoKeepCurrent")
+                // `-demoMarkMixed`: each marked at its own point in its window (Fajr after it = Qaza, Asr late, the rest
+                // early or on time) — a day page with mixed grades. Pair with a fake clock after Isha starts.
+                let mixed = ProcessInfo.processInfo.arguments.contains("-demoMarkMixed")
+                let at: [String: Double] = ["Fajr": 1.4, "Dhuhr": 0.25, "Asr": 0.7, "Maghrib": 0.1, "Isha": 0.12]
                 for prayer in viewModel.todaysPrayers where !prayer.isCompleted && prayer.startTime <= Date()
                     && !(keepCurrent && prayer.endTime > Date()) {
                     try? await Task.sleep(for: .seconds(0.6))
-                    viewModel.togglePrayerCompletion(for: prayer)
+                    if mixed, let f = at[prayer.name] {
+                        let span = prayer.endTime.timeIntervalSince(prayer.startTime)
+                        let when = prayer.startTime.addingTimeInterval(f > 1 ? span + 40 * 60 : span * f)
+                        viewModel.markFromJourney(prayer, at: min(when, Date().addingTimeInterval(-60)))
+                    } else {
+                        viewModel.togglePrayerCompletion(for: prayer)
+                    }
                 }
                 // `-demoShowDone YES`: the "N done" fold open, so the done rows show too.
                 if UserDefaults.standard.bool(forKey: "demoShowDone") {
