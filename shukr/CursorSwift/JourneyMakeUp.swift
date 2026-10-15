@@ -6,8 +6,9 @@ import SwiftData
 // opens its prayer sheet (prayed it in time after all? set the time there; decision makeup-row-tap: kept for now).
 // Round 2 (owner, 484 of them): the total and each prayer's count on top (a prayer filters the list), months as pinned
 // headings with their totals ("12 left · 3 made up"), a month scrubber down the right edge; Made up keeps the row in place
-// as "✓ Made up · Undo" for 3 s, then it folds into its own month's "Made up · N" (decision makeup-made-feedback A); a
-// cleared list says "All caught up".
+// as "✓ Made up · Undo" for 3 s (decision makeup-made-feedback A), then it leaves the list — made-up prayers are out of the
+// way like Reminders' completed ones: "✓ N made up · Show" under the total puts them back in their months, greyed (owner,
+// round 3: not folded under each month); a month with nothing left drops out; a cleared list says "All caught up".
 
 struct JourneyMakeUpPage: View {
     /// The month Journey was showing (the switch's left side).
@@ -20,8 +21,8 @@ struct JourneyMakeUpPage: View {
     @State private var madeUp: [Entry] = []
     /// One prayer only (a tap on its count).
     @State private var only: String?
-    /// Months whose "Made up · N" row is open.
-    @State private var expanded: Set<Date> = []
+    /// Made-up prayers shown in their months (Reminders' Show Completed).
+    @AppStorage("journey.showMadeUp") private var showMade = false
     /// Just made up: still in place with Undo until its 3 s run out (the token tells a later tap from this one).
     @State private var settling: [PersistentIdentifier: UUID] = [:]
     @State private var sheetRow: PrayerModel?
@@ -46,7 +47,7 @@ struct JourneyMakeUpPage: View {
     private var shownMade: [Entry] { madeUp.filter { inScope($0) && (only == nil || $0.row.name == only) } }
     /// The months on the page, newest first.
     private var months: [Date] {
-        Array(Set(shownOpen.map(\.month) + shownMade.map(\.month))).sorted(by: >)
+        Array(Set(shownOpen.map(\.month) + (showMade ? shownMade.map(\.month) : []))).sorted(by: >)
     }
 
     var body: some View {
@@ -66,11 +67,12 @@ struct JourneyMakeUpPage: View {
                     }
                     ForEach(months, id: \.self) { m in
                         Section {
-                            ForEach(shownOpen.filter { $0.month == m }) { entry in
-                                row(entry)
-                                    .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
+                            ForEach(monthRows(m)) { entry in
+                                Group {
+                                    if entry.row.isCompleted && !isSettling(entry) { madeRow(entry) } else { row(entry) }
+                                }
+                                .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
                             }
-                            madeUpRow(m)
                         } header: {
                             monthHeader(m).id(m)
                         }
@@ -104,6 +106,13 @@ struct JourneyMakeUpPage: View {
         .task { load() }
     }
 
+    /// A month's rows, newest first: what's left, and the made-up ones among them while shown.
+    private func monthRows(_ m: Date) -> [Entry] {
+        let open = shownOpen.filter { $0.month == m }
+        guard showMade else { return open }
+        return (open + shownMade.filter { $0.month == m }).sorted { $0.row.startTime > $1.row.startTime }
+    }
+
     private var caughtUpLine: String {
         if let only { return "No \(only) left to make up." }
         return showAll ? "Every prayer on the days you used shukr is marked." : "Nothing left from \(monthName(month))."
@@ -129,6 +138,28 @@ struct JourneyMakeUpPage: View {
             }
             .padding(.top, 14)
             .animation(.snappy, value: left.count)
+            let made = madeUp.filter(inScope).count
+            if made > 0 {
+                Button {
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.easeInOut(duration: 0.3)) { showMade.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .light))
+                        Text("\(made) made up")
+                            .contentTransition(.numericText(value: Double(made)))
+                        Text("·")
+                        Text(showMade ? "Hide" : "Show").foregroundStyle(.primary)
+                    }
+                    .font(.system(size: 14, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .animation(.snappy, value: made)
+                .accessibilityLabel(showMade ? "Hide the \(made) made up" : "Show the \(made) made up")
+            }
             if counts.count > 1 || only != nil {
                 // Each prayer's count; a tap shows only that prayer ("work through my Fajrs").
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -264,59 +295,26 @@ struct JourneyMakeUpPage: View {
         }
     }
 
-    /// The month's made-up prayers, folded under its open ones (never at the page's bottom — owner).
-    @ViewBuilder private func madeUpRow(_ m: Date) -> some View {
-        let list = shownMade.filter { $0.month == m }
-        if !list.isEmpty {
-            let isOpen = expanded.contains(m)
-            VStack(alignment: .leading, spacing: 0) {
-                Button {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        if isOpen { expanded.remove(m) } else { expanded.insert(m) }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle").font(.system(size: 14, weight: .light))
-                        Text("Made up · \(list.count)")
-                            .font(.system(size: 14, weight: .light, design: .rounded))
-                            .contentTransition(.numericText(value: Double(list.count)))
-                        Spacer()
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
-                            .rotationEffect(.degrees(isOpen ? 180 : 0))
-                    }
+    /// A made-up prayer among what's left (while shown): greyed, its dot filled, when it was made up. Opens its sheet.
+    private func madeRow(_ entry: Entry) -> some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            sheetRow = entry.row
+        } label: {
+            HStack(spacing: 12) {
+                Circle().fill(PrayerScoring.color(for: entry.row.numberScore)).frame(width: 8, height: 8)
+                nameAndDay(entry.row).opacity(0.55)
+                Spacer(minLength: 8)
+                Label(madeUpWhen(entry.row), systemImage: "checkmark")
+                    .font(.system(size: 13, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
-                    .padding(.vertical, 11)
-                    .padding(.horizontal, 2)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if isOpen {
-                    ForEach(list) { entry in
-                        Button {
-                            triggerSomeVibration(type: .light)
-                            sheetRow = entry.row
-                        } label: {
-                            HStack(spacing: 12) {
-                                Circle().fill(PrayerScoring.color(for: entry.row.numberScore)).frame(width: 8, height: 8)
-                                nameAndDay(entry.row).opacity(0.55)
-                                Spacer(minLength: 8)
-                                Text(madeUpWhen(entry.row))
-                                    .font(.system(size: 13, weight: .light, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 2)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .transition(.opacity)
-                }
             }
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+            .padding(.vertical, 11)
+            .padding(.horizontal, 2)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
     }
 
     /// "Qaza · today" / "Qaza · Oct 12".

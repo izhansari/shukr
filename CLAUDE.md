@@ -562,9 +562,11 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused; Made up = Qaza now. Top: the
   count + each prayer's count (a tap shows only it), "<month> | All months" (`journey.makeUpAll`); months newest first as
   pinned headings with "N left · N made up"; a month scrubber on the right edge (> 3 months; the month's name beside the
-  finger, a tick each). Made up keeps the row in place as "✓ Made up · Undo" for 3 s (`settling`; Undo = unmark), then it
-  folds into its own month's "Made up · N" (made up = marked on a later prayer day; decision makeup-made-feedback A); an
-  empty side shows "All caught up" (a check drawn in + a success buzz). A row opens its sheet (decision makeup-row-tap: kept).
+  finger, a tick each). Made up keeps the row in place as "✓ Made up · Undo" for 3 s (`settling`; Undo = unmark; decision
+  makeup-made-feedback A), then it leaves the list (made up = marked on a later prayer day); a month with nothing left drops
+  out; "✓ N made up · Show" under the total (`journey.showMadeUp`, Reminders' Show Completed — owner: not folded under each
+  month) puts them back in their months, greyed, by date; an empty side shows "All caught up" (a check drawn in + a
+  success buzz). A row opens its sheet (decision makeup-row-tap: kept).
 - DEBUG `-demoJourney [-demoJourneySeed] [-demoJourneyView grid] [-demoJourneyGrades] [-demoJourneyHighlight] [-demoJourneyDay N
   [-demoJourneySheet 0…4]] [-demoJourneyMakeUp]` (`-demoJourneySeed` adds ~100 earlier days where none, a break with four
   "opened, nothing marked" days; the demo opens only every other launch — ☰ always works).
