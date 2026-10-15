@@ -83,6 +83,12 @@ extension PrayerPhotos {
 
 /// Pushed like 99 Names (decision swipe-back-pages A: a full-screen cover never swiped back), the system's back button.
 struct MemoriesPage: View {
+    /// Opens on this photo's pile (Journey's day page: a tap on a photo opens its day's pile — Sami's OK, 2026-10-15). Always
+    /// the fade, never the zoom (the zoom from a veiled day's square can freeze part-way).
+    var openPile: String? = nil
+    /// Closing that pile leaves Moments too, straight back to the page that opened it.
+    var leaveWithPile = false
+    @Environment(\.dismiss) private var dismissPage
     /// Read as the page is made (a directory listing), so its bars are right on the push's first frame — loaded in
     /// `.task`, the bottom bar arrived mid-push and was lost (owner's video).
     @State private var photos: [MemoryPhoto] = PrayerPhotos.all()
@@ -524,6 +530,19 @@ struct MemoriesPage: View {
             if FrameMonitor.on { FrameMonitor.shared.note(closed ? "pile closed" : "pile opened") }
         }
         .task { await perfCycle() }
+        .task {
+            // After a yield, so `photos` and the pile's geometry are settled (in the push's own turn the pile could land
+            // behind a page still mounting — Sami).
+            guard let openPile, deckStart == nil else { return }
+            await Task.yield()
+            openDeck(MemoryPhoto(key: openPile))
+        }
+        .onChange(of: deckStart == nil) { _, closed in
+            guard closed, leaveWithPile else { return }
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { dismissPage() }
+        }
         // The pile in its own clear layer over everything, presented without a slide (like a prayer photo from the hold
         // editor): the page's bars stay as they are underneath. Hiding them for the pile and bringing them back left a
         // second, ghost bottom bar with an empty search field (owner's screenshot) once Memories was pushed.

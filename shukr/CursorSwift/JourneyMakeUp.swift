@@ -84,8 +84,6 @@ struct JourneyMakeUpPage: View {
             JourneyPrayerSheet(prayer: row)
                 .environmentObject(viewModel)
                 .environment(\.circleTheme, theme)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
         }
         .task { load() }
     }

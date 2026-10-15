@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import CoreLocation
+import MapKit
 
 /// A day in Journey (spec screen 2, mock-up Day5): the day's ring for any day (DayRing, as the Salah page's day page), its
 /// score and "N of 5 in time"; the five prayers (time · place · grade, the photo); the notes; the day's zikr → History
@@ -19,6 +20,12 @@ struct JourneyDayPage: View {
     @State private var showZikr = false
     @State private var places = 0   // bumps as place names arrive
     @State private var pickToken = 0
+    /// A photo's day pile, opened over Moments (owner: a photo here opens the pile for that day).
+    @State private var pile: JourneyPileRoute?
+    @State private var showMap = false
+    /// The day's notes (prayer name, note), read with the rows: a note saved in the sheet leaves the rows as they were, so
+    /// reading them in the body never redrew.
+    @State private var written: [(String, String)] = []
 
     private var today: Date { PrayerDay.start() }
     #if DEBUG
@@ -33,6 +40,7 @@ struct JourneyDayPage: View {
                 heading
                 ring.frame(maxWidth: .infinity).padding(.top, 22)
                 prayerRows.padding(.top, 26)
+                dayMap
                 notes
                 zikrRow
             }
@@ -51,12 +59,15 @@ struct JourneyDayPage: View {
             }
         }
         .navigationDestination(isPresented: $showZikr) { ZikrAreaPage(start: .day(date)) }
+        // Pushed without a slide: the pile fades in over the page and, closed, takes Moments with it.
+        .navigationDestination(item: $pile) { MemoriesPage(openPile: $0.key, leaveWithPile: true) }
         .sheet(item: $sheetRow, onDismiss: load) { row in
             JourneyPrayerSheet(prayer: row)
                 .environmentObject(viewModel)
                 .environment(\.circleTheme, theme)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showMap) {
+            JourneyDayMapSheet(title: date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()), pins: pins)
         }
         .task { load() }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in load() }
@@ -93,6 +104,10 @@ struct JourneyDayPage: View {
         var kept: [String: PrayerModel] = [:]
         for row in mine where !(kept[row.name]?.isCompleted ?? false) || row.isCompleted { kept[row.name] = row }
         rows = JourneyLog.names.compactMap { kept[$0] }
+        written = rows.compactMap { row in
+            guard row.isCompleted, let text = PrayerPhotos.note(PrayerPhotos.key(dayKey: row.dayKey, name: row.name)) else { return nil }
+            return (row.displayName, text)
+        }
         // The day's zikr: sessions whose prayer day is this one.
         let from = date.addingTimeInterval(-86_400), to = date.addingTimeInterval(2 * 86_400)
         let near = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= from && $0.startTime < to }))) ?? []
@@ -175,7 +190,7 @@ struct JourneyDayPage: View {
                     triggerSomeVibration(type: .light)
                     sheetRow = row
                 } label: {
-                    JourneyPrayerRow(row: row, excused: excused, place: place(row))
+                    JourneyPrayerRow(row: row, excused: excused, place: place(row)) { openPile(row) }
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -191,6 +206,52 @@ struct JourneyDayPage: View {
         }
     }
 
+    private func openPile(_ row: PrayerModel) {
+        triggerSomeVibration(type: .light)
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { pile = JourneyPileRoute(key: PrayerPhotos.key(dayKey: row.dayKey, name: row.name)) }
+    }
+
+    // MARK: The day on a map
+
+    /// Every marked prayer with a spot, as a pin in its grade's colour.
+    private var pins: [JourneyDayPin] {
+        let _ = places
+        return rows.compactMap { row in
+            guard row.isCompleted, let at = spot(row) else { return nil }
+            return JourneyDayPin(id: row.name, name: row.displayName, spot: at, score: row.numberScore, atMasjid: row.atMasjid)
+        }
+    }
+
+    /// The day's prayers on a map (owner): a still card fitted to the pins; a tap opens it full and movable.
+    @ViewBuilder private var dayMap: some View {
+        let pins = pins
+        if !pins.isEmpty {
+            Button {
+                triggerSomeVibration(type: .light)
+                showMap = true
+            } label: {
+                JourneyDayMap(pins: pins, interactive: false)
+                    .frame(height: 150)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .allowsHitTesting(false)
+                    .overlay(alignment: .bottomTrailing) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 30, height: 30)
+                            .background(Circle().fill(.regularMaterial))
+                            .padding(8)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("The day's prayers on a map")
+            .padding(.top, 22)
+        }
+    }
+
     private func place(_ row: PrayerModel) -> String? {
         if let m = row.mosqueName, !m.isEmpty { return m }
         return spot(row).flatMap(PrayerPlaceNames.name)
@@ -199,18 +260,21 @@ struct JourneyDayPage: View {
     // MARK: Notes
 
     @ViewBuilder private var notes: some View {
-        let written = rows.compactMap { row -> (String, String)? in
-            guard row.isCompleted, let text = PrayerPhotos.note(PrayerPhotos.key(dayKey: row.dayKey, name: row.name)) else { return nil }
-            return (row.displayName, text)
-        }
         if !written.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text(written.count == 1 ? "NOTE" : "NOTES")
                     .font(.system(size: 12, design: .rounded)).tracking(0.8).foregroundStyle(.secondary)
+                // The prayer's name in its own weight over its note (owner: the thing the note lives under).
                 ForEach(written, id: \.0) { name, text in
-                    Text(written.count == 1 ? text : "\(name) · \(text)")
-                        .font(.system(size: 15, weight: .light, design: .rounded))
-                        .lineSpacing(3)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(name)
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        Text(text)
+                            .font(.system(size: 15, weight: .light, design: .rounded))
+                            .foregroundStyle(.primary.opacity(0.8))
+                            .lineSpacing(3)
+                    }
+                    .padding(.top, 2)
                 }
             }
             .padding(.top, 22)
@@ -266,6 +330,8 @@ private struct JourneyPrayerRow: View {
     let row: PrayerModel
     let excused: Bool
     let place: String?
+    /// A tap on the photo: its day's pile.
+    let onPhoto: () -> Void
 
     var body: some View {
         let score = row.isCompleted ? row.numberScore : nil
@@ -289,7 +355,8 @@ private struct JourneyPrayerRow: View {
             }
             Spacer(minLength: 8)
             if row.isCompleted, PrayerPhotos.has(photoKey) {
-                PrayerPhotoCard(key: photoKey, width: 40)
+                PrayerPhotoCard(key: photoKey, width: 40, opens: false)
+                    .highPriorityGesture(TapGesture().onEnded(onPhoto))
             }
             if let score {
                 Text(row.isJumuah ? "100" : PrayerScoring.grade(for: score) == .perfect ? "Perfect" : PrayerScoring.summary(for: score))
@@ -314,5 +381,89 @@ private struct JourneyPrayerRow: View {
         if excused { return "Excused" }
         if row.endTime > Date() { return "Until \(time(row.endTime))" }
         return "Not marked · its window was \(time(row.startTime)) – \(time(row.endTime))"
+    }
+}
+
+struct JourneyPileRoute: Hashable, Identifiable {
+    let key: String
+    var id: String { key }
+}
+
+struct JourneyDayPin: Identifiable {
+    let id: String
+    let name: String
+    let spot: CLLocationCoordinate2D
+    let score: Double?
+    let atMasjid: Bool
+}
+
+/// The day's marked prayers as pins in their grade colours, fitted to them (a little room round a lone pin).
+struct JourneyDayMap: View {
+    let pins: [JourneyDayPin]
+    let interactive: Bool
+    @AppStorage(MapModes.satelliteKey) private var satellite = false
+    @State private var camera: MapCameraPosition = .automatic
+
+    var body: some View {
+        Map(position: $camera, interactionModes: interactive ? .all : []) {
+            ForEach(pins) { pin in
+                Marker(pin.name, systemImage: pin.atMasjid ? "building.columns.fill" : "hands.and.sparkles.fill", coordinate: pin.spot)
+                    .tint(PrayerScoring.color(for: pin.score))
+            }
+        }
+        .mapStyle(interactive && satellite ? .hybrid(elevation: .realistic) : .standard(pointsOfInterest: .excludingAll))
+        .onAppear { camera = Self.fit(pins) }
+        .overlay(alignment: .topTrailing) {
+            if interactive {
+                VStack(spacing: 0) {
+                    Button { satellite.toggle() } label: {
+                        Image(systemName: MapModes.globeSymbol(longitude: pins.first?.spot.longitude)).mapControlIcon()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(satellite ? "Standard map" : "Satellite map")
+                    Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.4)) { camera = Self.fit(pins) }
+                    } label: {
+                        Image(systemName: "mappin.and.ellipse").mapControlIcon()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to the day's prayers")
+                }
+                .mapGlass(Capsule())
+                .padding(10)
+            }
+        }
+    }
+
+    static func fit(_ pins: [JourneyDayPin]) -> MapCameraPosition {
+        guard !pins.isEmpty else { return .automatic }
+        let lats = pins.map(\.spot.latitude), lons = pins.map(\.spot.longitude)
+        let centre = CLLocationCoordinate2D(latitude: (lats.min()! + lats.max()!) / 2, longitude: (lons.min()! + lons.max()!) / 2)
+        let span = MKCoordinateSpan(latitudeDelta: max((lats.max()! - lats.min()!) * 1.6, 0.006),
+                                    longitudeDelta: max((lons.max()! - lons.min()!) * 1.6, 0.006))
+        return .region(MKCoordinateRegion(center: centre, span: span))
+    }
+}
+
+/// The day's map, full and movable.
+struct JourneyDayMapSheet: View {
+    let title: String
+    let pins: [JourneyDayPin]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            JourneyDayMap(pins: pins, interactive: true)
+                .ignoresSafeArea(edges: .bottom)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button { dismiss() } label: { Image(systemName: "checkmark") }.accessibilityLabel("Done")
+                    }
+                }
+        }
+        .presentationDetents([.large])
     }
 }
