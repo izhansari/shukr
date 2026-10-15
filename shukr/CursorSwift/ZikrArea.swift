@@ -345,6 +345,8 @@ private struct SegmentRing<Center: View>: View {
     var future: Int? = nil
     /// The part a finger is on (History's ring), drawn bolder.
     var highlight: Int? = nil
+    /// A heat map (History's month, owner 2026-10-15): each lit part's strength, 0…1 — the sage deepens with it.
+    var heat: [Double]? = nil
     @ViewBuilder var center: () -> Center
     @Environment(\.circleTheme) private var theme
     var body: some View {
@@ -364,8 +366,9 @@ private struct SegmentRing<Center: View>: View {
                 if f > 0 {
                     // One day picked out: it stands bold, the others step back.
                     let dim = highlight != nil && highlight != i
+                    let strength = heat.map { $0.indices.contains(i) ? $0[i] : 1 } ?? (f >= 1 ? 1 : 0.6)
                     Circle().trim(from: a, to: a + (b - a) * min(f, 1))
-                        .stroke(Color.sage.opacity(dim ? 0.3 : (f >= 1 ? 1 : 0.6)), style: StrokeStyle(lineWidth: highlight == i ? 9 : 5, lineCap: n == 1 ? .round : .butt))
+                        .stroke(Color.sage.opacity(dim ? 0.3 * strength : strength), style: StrokeStyle(lineWidth: highlight == i ? 9 : 5, lineCap: n == 1 ? .round : .butt))
                         .rotationEffect(.degrees(-90))
                 }
             }
@@ -1520,12 +1523,20 @@ private struct MonthHero: View {
     @State private var revert: Task<Void, Never>?
     private var shownDay: Int? { scrub ?? pointed }
     private let ringSize: CGFloat = 126
+    /// Each day against the month's best (owner: see which days were better): by time, or by count while the count shows.
+    /// Eased a little (^0.7) so a short day still reads; the faintest lit day stays at 0.16.
+    private var heat: [Double] {
+        let values = s.days.map { showCount ? Double($0.count) : $0.seconds }
+        let top = values.max() ?? 0
+        guard top > 0 else { return values.map { _ in 1 } }
+        return values.map { 0.16 + 0.84 * pow($0 / top, 0.7) }
+    }
 
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 18) {
                 SegmentRing(parts: s.days.map { $0.seconds >= 1 || $0.count > 0 ? 1 : 0 }, size: ringSize,
-                            future: s.today.map { $0 + 1 }, highlight: shownDay) { center }
+                            future: s.today.map { $0 + 1 }, highlight: shownDay, heat: heat) { center }
                     .contentShape(Circle())
                     .onTapGesture { flipToCount() }
                     .gesture(DragGesture(minimumDistance: 4)

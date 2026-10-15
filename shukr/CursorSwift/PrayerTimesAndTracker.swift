@@ -1315,6 +1315,22 @@ struct PrayerTimesView: View {
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoZikrHistory") {
+                // `-demoHistorySeed`: this month's days with sessions of different lengths (the month ring's heat map).
+                if ProcessInfo.processInfo.arguments.contains("-demoHistorySeed"),
+                   ((try? context.fetchCount(FetchDescriptor<SessionDataModel>())) ?? 0) == 0 {
+                    let today = PrayerDay.start(), day = Calendar.current.component(.day, from: today)
+                    let minutes = [3, 0, 12, 1, 6, 0, 25, 2, 9, 0, 4, 15, 0, 7, 1, 18, 5, 0, 11, 2, 8, 0, 3, 20, 6, 0, 10, 4, 1, 14, 2]
+                    for d in 0..<day where minutes[d % minutes.count] > 0 {
+                        guard let start = Calendar.current.date(byAdding: .day, value: d - (day - 1), to: today)?
+                            .addingTimeInterval(10 * 3600) else { continue }
+                        let secs = Double(minutes[d % minutes.count] * 60)
+                        context.insert(SessionDataModel(title: "Subhanallah", sessionMode: 0, targetMin: 0, targetCount: 0,
+                                                        totalCount: Int(secs / 1.5), startTime: start, secondsPassed: secs,
+                                                        avgTimePerClick: 1.5, tasbeehRate: "1.5s",
+                                                        mantra: MantraModel.find(named: "Subhanallah", in: context)))
+                    }
+                    try? context.save()
+                }
                 try? await Task.sleep(for: .seconds(1))
                 showZikrHistory = true
                 return
