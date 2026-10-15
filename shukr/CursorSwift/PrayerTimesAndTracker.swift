@@ -3032,8 +3032,9 @@ struct PrayerButton: View {
         case .quiet:
             if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
         case .prayedOnTap:
-            // G · the raised row with fully round ends (owner: "round the edge of the list item when it's punched out").
-            if isCurrentPrayer || showsActions { NeuRaised(shape: Capsule(), radius: 8, offset: 4) } else { Color.clear }
+            // G · the raised row with fully round ends (owner: "round the edge of the list item when it's punched out"), its
+            // lift soft (half the shadow): close to the well's pressed edge, a full lift fought it (owner).
+            if isCurrentPrayer || showsActions { NeuRaised(shape: Capsule(), radius: 4, offset: 2) } else { Color.clear }
         case .now, .dayNow, .nowLeads, .prayedAt:
             // Sami's C–F · the prayer on now is the one raised block in the well (PrayerListLooks.swift).
             if isCurrentPrayer || showsActions { NeuRaised(shape: shape, radius: 8, offset: 4) } else { Color.clear }
