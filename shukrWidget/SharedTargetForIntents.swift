@@ -1839,16 +1839,24 @@ struct PrayerTimeUnavailable: Error, CustomLocalizedStringResourceConvertible {
 /// when Fajr starts — by default, whenever shukr rings it (iOS 26.1+ AlarmKit, the alarm on and allowed, not excused);
 /// otherwise Fajr's start, as before. The alarm rule from Settings → Reminders → Fajr Alarm, as the scheduler reads it.
 enum FajrAlarmShown {
-    static func time(fajrStart: Date, sunrise: Date) -> Date? {
+    /// shukr rings the Fajr alarm: iOS 26.1+, on, allowed, not excused (Explore only talks about it then — owner).
+    static var isOn: Bool {
         #if DEBUG
-        // `-demoLockAlarm YES` (in the app — Explore's Lock Screen pictures): an alarm 20 min before Fajr.
-        if UserDefaults.standard.bool(forKey: "demoLockAlarm") { return fajrStart.addingTimeInterval(-20 * 60) }
+        if UserDefaults.standard.bool(forKey: "demoLockAlarm") { return true }   // `-demoLockAlarm YES` (in the app)
         #endif
-        guard #available(iOS 26.1, *) else { return nil }
+        guard #available(iOS 26.1, *) else { return false }
         guard let g = UserDefaults(suiteName: SharedStore.appGroup),
-              g.bool(forKey: "alarmEnabled"), g.bool(forKey: "alarmKitActive"), !Excused.isActive else { return nil }
+              g.bool(forKey: "alarmEnabled"), g.bool(forKey: "alarmKitActive"), !Excused.isActive else { return false }
         #if canImport(AlarmKit)
-        guard AlarmManager.shared.authorizationState == .authorized else { return nil }
+        guard AlarmManager.shared.authorizationState == .authorized else { return false }
+        #endif
+        return true
+    }
+
+    static func time(fajrStart: Date, sunrise: Date) -> Date? {
+        guard isOn, let g = UserDefaults(suiteName: SharedStore.appGroup) else { return nil }
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "demoLockAlarm") { return fajrStart.addingTimeInterval(-20 * 60) }
         #endif
         let isFajr = g.object(forKey: "alarmIsFajr") as? Bool ?? true
         let before = g.object(forKey: "alarmIsBefore") as? Bool ?? true

@@ -186,7 +186,7 @@ private struct LockScreenScene: View {
                 }
                 .frame(width: 340, height: 22)
                 .font(.system(size: 17, weight: .semibold))
-                Text(ExplorePreset.clockFace)
+                LockDemoClock()
                     .font(.system(size: 104, weight: .semibold, design: .rounded))
                     .lineLimit(1).fixedSize()
                 HStack(spacing: 12) {
@@ -198,6 +198,7 @@ private struct LockScreenScene: View {
             .foregroundStyle(.white)
             .padding(.top, 72)
         }
+        .playsLockStates()   // the widgets' states in turn, the clock with them
     }
 }
 

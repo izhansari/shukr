@@ -533,13 +533,15 @@ struct ShowcaseStory {
         case .lockTime: ShowcaseStory(title: "Time left", hook: "A small ring that speaks up when it matters",
             lead: "A circle under your clock with the prayer that's on. In its last hour the name turns into the minutes left, so you notice before it's gone.",
             points: [p("lock", "No unlocking", "There every time you lift your phone"),
-                     p("circle.dashed", "Fills as time passes", "The ring follows the prayer's window"),
-                     p("alarm", "Your Fajr alarm", "After Isha it shows when your alarm will ring")],
+                     p("circle.dashed", "Fills as time passes", "The ring follows the prayer's window")]
+                     // Only with the Fajr alarm set up (owner: only talk about it then).
+                     + (FajrAlarmShown.isOn ? [p("alarm", "Your Fajr alarm", "After Isha it shows when your alarm will ring")] : []),
             how: "How to add it", steps: lockSteps)
         case .lockCountdown: ShowcaseStory(title: "Countdown", hook: "Watch the time tick down",
             lead: "A wider widget under your clock: the prayer that's on, a live timer to its end, and a bar that fills as time passes.",
             points: [p("timer", "To the second", "Hours, minutes and seconds left"),
-                     p("arrow.right.circle", "Between prayers", "When the next one starts — or, after Isha, when your Fajr alarm rings")],
+                     p("arrow.right.circle", "Between prayers",
+                       FajrAlarmShown.isOn ? "When the next one starts — or, after Isha, when your Fajr alarm rings" : "When the next one starts")],
             how: "How to add it", steps: lockSteps)
         case .lockName: ShowcaseStory(title: "Above the clock", hook: "One quiet line above the time",
             lead: "A single line over your clock: today's Name of Allah, or the prayer that's on and when it ends.",
@@ -1275,11 +1277,21 @@ enum ExplorePreset {
     static var asr: (start: Date, end: Date) { windows[prayer]! }
     static var fajrAlarm: String { shortTimePM(today(5, 10)) }   // 20 minutes before Fajr
     /// The Lock Screen / StandBy clock at that moment: "5:50".
-    static var clockFace: String {
+    static var clockFace: String { clockFace(at: now) }
+    static func clockFace(at date: Date) -> String {
         let f = DateFormatter()
         f.setLocalizedDateFormatFromTemplate("jmm")
         f.amSymbol = ""; f.pmSymbol = ""
-        return f.string(from: now).trimmingCharacters(in: .whitespaces)
+        return f.string(from: date).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The Lock Screen widget's entry at a playing state (LockDemoStep); none = the preset moment.
+    static func lockEntry(_ step: LockDemoStep?) -> PrayersWidgetEntry {
+        let base = prayersEntry()
+        guard let step else { return base }
+        var e = base.at(step.date, list: false)
+        if step.asrMarked { e.completedScores[prayer] = PrayerScoring.score(start: asr.start, end: asr.end, markedAt: asr.end.addingTimeInterval(-25 * 60)) }
+        return e
     }
 
     /// The Prayers widget's entry for that day (the widget's own view draws it).
@@ -1434,7 +1446,8 @@ private struct RealComplications: View {
 /// draws it there; never taking a touch.
 struct RealLockWidget: View {
     let family: WidgetFamily
-    @State private var entry: PrayersWidgetEntry?
+    /// The state Explore's Lock Screen picture is playing (LockDemoPlayer); none = the preset moment.
+    @Environment(\.lockDemoStep) private var step
     private var size: CGSize {
         switch family {
         case .accessoryCircular: CGSize(width: 76, height: 76)
@@ -1443,23 +1456,71 @@ struct RealLockWidget: View {
         }
     }
     var body: some View {
-        ZStack { if let entry { PrayerLockScreenView(entry: entry, family: family) } }
+        PrayerLockScreenView(entry: ExplorePreset.lockEntry(step), family: family)
             .frame(width: size.width, height: size.height)
             .environment(\.colorScheme, .dark)
             .foregroundStyle(.white)
             .tint(.white)   // iOS draws Lock Screen widgets in one tint; outside it the bar came out blue
             .allowsHitTesting(false)
+    }
+}
+
+/// One state of the Lock Screen widget in Explore's picture (owner, 2026-10-15: "a motion graphic that shows all of the
+/// states"): a moment of the preset day, and whether Asr is marked by then.
+struct LockDemoStep: Equatable {
+    let date: Date
+    let asrMarked: Bool
+    /// In turn: Asr filling · its last hour ("27m left") · Asr marked, the next prayer dashed · and only with the Fajr
+    /// alarm set up (owner: only then talk about it), after Isha — when the alarm rings.
+    static var all: [LockDemoStep] {
+        let asr = ExplorePreset.asr, cal = Calendar.current
+        var steps = [LockDemoStep(date: ExplorePreset.now, asrMarked: false),
+                     LockDemoStep(date: asr.end.addingTimeInterval(-27 * 60), asrMarked: false),
+                     LockDemoStep(date: asr.end.addingTimeInterval(-20 * 60), asrMarked: true)]
+        if FajrAlarmShown.isOn,
+           let night = cal.date(byAdding: .minute, value: 30, to: cal.startOfDay(for: ExplorePreset.now.addingTimeInterval(86_400))) {
+            steps.append(LockDemoStep(date: night, asrMarked: true))
+        }
+        return steps
+    }
+}
+private struct LockDemoStepKey: EnvironmentKey { static let defaultValue: LockDemoStep? = nil }
+extension EnvironmentValues {
+    var lockDemoStep: LockDemoStep? {
+        get { self[LockDemoStepKey.self] }
+        set { self[LockDemoStepKey.self] = newValue }
+    }
+}
+
+/// Plays `LockDemoStep.all` over a Lock Screen picture, one state every 2.4 s (the last held a little longer) — the
+/// setup's notification demo's way: a task tied to the view (off screen it stops), discrete steps, no per-frame timer;
+/// Reduce Motion: the first state, still. The clock and every widget in the picture read the same step.
+struct LockDemoPlayer: ViewModifier {
+    @State private var i = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    func body(content: Content) -> some View {
+        let steps = LockDemoStep.all
+        content
+            .environment(\.lockDemoStep, steps[min(i, steps.count - 1)])
             .task {
-                entry = ExplorePreset.prayersEntry()
-                #if DEBUG
-                // `-demoLockAlarm YES`: after Isha (12:30 AM), with the Fajr alarm set (FajrAlarmShown).
-                if UserDefaults.standard.bool(forKey: "demoLockAlarm"), let e = entry,
-                   let night = Calendar.current.date(byAdding: .minute, value: 30, to: Calendar.current.startOfDay(for: e.date.addingTimeInterval(86_400))) {
-                    entry = e.at(night)
+                guard !reduceMotion, steps.count > 1 else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(i == steps.count - 1 ? 3.2 : 2.4))
+                    if Task.isCancelled { break }
+                    withAnimation(.easeInOut(duration: 0.35)) { i = (i + 1) % steps.count }
                 }
-                #endif
             }
     }
+}
+extension View {
+    /// Explore's Lock Screen pictures: the widget's states in turn (LockDemoPlayer).
+    func playsLockStates() -> some View { modifier(LockDemoPlayer()) }
+}
+
+/// The clock on Explore's Lock Screen pictures, at the state playing.
+struct LockDemoClock: View {
+    @Environment(\.lockDemoStep) private var step
+    var body: some View { Text(ExplorePreset.clockFace(at: step?.date ?? ExplorePreset.now)).contentTransition(.numericText()) }
 }
 
 /// The Zikr widget itself at one size, with the preset day's tasks.
@@ -1687,11 +1748,14 @@ private struct LockClock<Accessory: View>: View {
     var body: some View {
         VStack(spacing: 6) {
             if top { accessory() }
-            Text(ExplorePreset.clockFace)
+            Group {
+                if top { Text(ExplorePreset.clockFace) } else { LockDemoClock() }
+            }
                 .font(.system(size: 40, weight: .semibold, design: .rounded))
             if !top { accessory() }
         }
         .foregroundStyle(.white)
+        .playsLockStates()
     }
 }
 
