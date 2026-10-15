@@ -85,7 +85,8 @@ struct DayRing: View, Animatable {
     private static let gap = 0.014
 
     var body: some View {
-        let style = StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap)
+        // Half the prayer arc's band: the five grade colours together are loud, so thin (owner, 2026-10-15).
+        let style = StrokeStyle(lineWidth: theme.arc.width * 0.5, lineCap: theme.arc.cap)
         ZStack {
             ForEach(0..<5, id: \.self) { i in
                 let from = Double(i) / 5 + Self.gap, full = Double(i + 1) / 5 - Self.gap
@@ -112,7 +113,7 @@ struct DayRing: View, Animatable {
                     } else {
                         // Not marked: the fifth stays a faint track.
                         Circle().trim(from: from, to: to)
-                            .stroke(Color.secondary.opacity(0.18), style: StrokeStyle(lineWidth: theme.arc.width, lineCap: .round, dash: [1, 7]))
+                            .stroke(Color.secondary.opacity(0.18), style: StrokeStyle(lineWidth: theme.arc.width * 0.5, lineCap: .round, dash: [1, 7]))
                     }
                 }
                 .opacity(share < 0.001 ? 0 : (on ? 1 : 0.25))   // undrawn: nothing (a zero trim still drew a cap)
