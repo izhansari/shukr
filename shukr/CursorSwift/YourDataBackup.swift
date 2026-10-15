@@ -20,6 +20,17 @@ struct ShukrBackup: Codable {
     var sessions: [Session] = []
     var donations: [SadaqahDonation] = []
     var excused: [ExcusedRange] = []
+    // Added after the first copies (optional, so those still open): the audit of everything shukr keeps (2026-10-14).
+    /// The 99 Names marked "knew it" (their ids, 0 = Allah).
+    var namesKnown: [Int]? = nil
+    /// Prayer photos with a heart (their keys).
+    var photoFavorites: [String]? = nil
+    var favoriteMosques: [FavoriteMosque]? = nil
+    /// Mosques not to recommend (MosqueHiding's ids: name|lat|lon).
+    var hiddenMosques: [String]? = nil
+    var bests: Bests? = nil
+    /// The settings as words, for the record (a restore never changes this iPhone's settings).
+    var settings: [String: String]? = nil
 
     struct Prayer: Codable {
         var id: UUID, name: String, dateAtMake: Date, startTime: Date, endTime: Date
@@ -28,6 +39,8 @@ struct ShukrBackup: Codable {
         var recordedTimeAtComplete: Date?, recordedLat: Double?, recordedLon: Double?, dayKey: String?
     }
     struct DayScore: Codable { var date: Date, averageScore: Double? }
+    /// The best streaks as kept (they're recounted from the rows too, but a record can outlive its rows).
+    struct Bests: Codable { var dayStreak: Int, dayStreakDate: Date?, inTimeStreak: Int }
     struct Zikr: Codable {
         var id: UUID, name: String, fullText: String, notes: String, quickAddStep: Int, createdAt: Date, builtInID: String?
         /// Paths inside the copy (azkar-media/…).
@@ -87,6 +100,15 @@ extension DataExport {
         }
         b.donations = SadaqahLog.shared.donations
         b.excused = Excused.ranges
+        b.namesKnown = KnownNames.decode(UserDefaults.standard.string(forKey: KnownNames.key) ?? "").sorted()
+        b.photoFavorites = PrayerPhotoFavorites.shared.keys.sorted()
+        b.favoriteMosques = MosqueFavorites.all
+        b.hiddenMosques = (UserDefaults.standard.stringArray(forKey: MosqueHiding.key) ?? []).sorted()
+        let d = UserDefaults.standard
+        let bestOn = d.double(forKey: "dateOfMaxPrayerStreak")
+        b.bests = .init(dayStreak: d.integer(forKey: "maxPrayerStreak"), dayStreakDate: bestOn > 0 ? Date(timeIntervalSince1970: bestOn) : nil,
+                        inTimeStreak: d.integer(forKey: "maxOnTimeStreak"))
+        b.settings = Dictionary(DataSettings.rows(), uniquingKeysWith: { a, _ in a })
         return (b, files)
     }
 
@@ -163,7 +185,11 @@ struct BackupSource {
 /// What a restore would add, worked out before anything is written (the sheet says it), then what it did.
 struct RestorePlan {
     var prayers = 0, prayersMarked = 0, sessions = 0, azkar = 0, goals = 0, photos = 0, donations = 0, excused = 0
-    var total: Int { prayers + prayersMarked + sessions + azkar + goals + photos + donations + excused }
+    var names = 0, photoFavorites = 0, masajid = 0, hidden = 0, bests = 0
+    var total: Int {
+        prayers + prayersMarked + sessions + azkar + goals + photos + donations + excused
+            + names + photoFavorites + masajid + hidden + bests
+    }
 }
 
 enum DataRestore {
@@ -319,6 +345,46 @@ enum DataRestore {
         if write && plan.excused > 0 {
             // The running one stays last (Excused's rule).
             Excused.save(ranges.sorted { ($0.end == nil ? 1 : 0, $0.start) < ($1.end == nil ? 1 : 0, $1.start) })
+        }
+
+        // The lists you made: added to, never taken from.
+        let d = UserDefaults.standard
+        var learned = KnownNames.decode(d.string(forKey: KnownNames.key) ?? "")
+        let newNames = Set(b.namesKnown ?? []).subtracting(learned)
+        plan.names = newNames.count
+        if write && !newNames.isEmpty { learned.formUnion(newNames); d.set(KnownNames.encode(learned), forKey: KnownNames.key) }
+
+        let hearts = (b.photoFavorites ?? []).filter { !PrayerPhotoFavorites.shared.contains($0) }
+        plan.photoFavorites = hearts.count
+        if write { hearts.forEach { PrayerPhotoFavorites.shared.set($0, true) } }
+
+        let starred = Set(MosqueFavorites.all.map(\.id))
+        let newMasajid = (b.favoriteMosques ?? []).filter { !starred.contains($0.id) }
+        plan.masajid = newMasajid.count
+        if write && !newMasajid.isEmpty { MosqueFavorites.merge(newMasajid) }
+
+        var hidden = Set(d.stringArray(forKey: MosqueHiding.key) ?? [])
+        let newHidden = Set(b.hiddenMosques ?? []).subtracting(hidden)
+        plan.hidden = newHidden.count
+        if write && !newHidden.isEmpty {
+            hidden.formUnion(newHidden)
+            d.set(Array(hidden), forKey: MosqueHiding.key)
+            NotificationCenter.default.post(name: MosqueHiding.changed, object: nil)
+        }
+
+        // A best streak that's higher in the copy.
+        if let bests = b.bests {
+            if bests.dayStreak > d.integer(forKey: "maxPrayerStreak") {
+                plan.bests += 1
+                if write {
+                    d.set(bests.dayStreak, forKey: "maxPrayerStreak")
+                    if let on = bests.dayStreakDate { d.set(on.timeIntervalSince1970, forKey: "dateOfMaxPrayerStreak") }
+                }
+            }
+            if bests.inTimeStreak > d.integer(forKey: "maxOnTimeStreak") {
+                plan.bests += 1
+                if write { d.set(bests.inTimeStreak, forKey: "maxOnTimeStreak") }
+            }
         }
         return plan
     }

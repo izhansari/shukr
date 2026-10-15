@@ -1283,7 +1283,7 @@ struct PrayerTimesView: View {
             // `-yourDataExportNow`: Your Data's copy made at launch into tmp/YourData (pull it with devicectl: the store
             // itself sits outside what devicectl may copy). Nothing else changes.
             if ProcessInfo.processInfo.arguments.contains("-yourDataExportNow") {
-                let url = await DataExport.makeCopy(context, media: true)
+                let url = await DataExport.makeCopy(context)
                 print("📦 Your Data copy:", url?.path ?? "failed")
             }
             if ProcessInfo.processInfo.arguments.contains("-demoScheduledNotifications") {

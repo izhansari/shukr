@@ -210,6 +210,12 @@ enum MosqueFavorites {
         return (try? JSONDecoder().decode([FavoriteMosque].self, from: data)) ?? []
     }
 
+    /// Your Data's restore: masajid starred in a copy and not here, added.
+    static func merge(_ add: [FavoriteMosque]) {
+        let have = Set(all.map(\.id))
+        save(all + add.filter { !have.contains($0.id) })
+    }
+
     private static func save(_ list: [FavoriteMosque]) {
         UserDefaults.standard.set(try? JSONEncoder().encode(list), forKey: key)
         NotificationCenter.default.post(name: MosqueHiding.changed, object: nil)

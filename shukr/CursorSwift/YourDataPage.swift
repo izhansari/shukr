@@ -2,24 +2,25 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
-// Settings → Your Data (owner, 2026-10-14): what shukr keeps, that it's private and on this iPhone only, whether it's
-// backed up, a copy of it all, and a restore from one. A plain grouped list (owner, round 3: no soft look, no big buttons —
-// "I liked how you had the thing before with all the different aspects of our app that have data"): the privacy line and
-// the room it takes, each kind of data with what's in it, then Export / Restore as rows. Top right, in the bar's Liquid
-// Glass, a cloud (`link.icloud`, the default color) for "Is it backed up?". The export and the restore are glass sheets.
+// Settings → Your Data (owner, 2026-10-14): a plain "export your data" page, as any app has one ("whatever someone
+// would expect to see in a page like this in any other app"): that it's private and on this iPhone, what to export (each
+// kind with its size, all chosen to start with), one Export, then Restore from a copy, the backup and privacy cards.
+// Top right, in the bar's Liquid Glass, a cloud (`link.icloud`, the default color) for "Is it backed up?".
 //
 // The facts it states (checked 2026-10-14): no network code in shukr (no account, no server, no analytics); Apple Maps is
 // asked for mosques and place names; nothing is excluded from the iPhone's backup and nothing syncs (no CloudKit);
 // prayer photos live in Application Support, not the Photos library. iOS doesn't tell an app whether iCloud Backup is on
-// or when it last ran, so the cloud never shows a state shukr can't know (decision your-data-icloud C: say where to check
-// + when you last made a copy; shukr's own iCloud Drive copy later — then the cloud can show its real state).
+// or when it last ran (decision your-data-icloud C: say where to check + when you last made a copy).
 
 struct YourDataPage: View {
     @Environment(\.modelContext) private var context
     @State private var counts = Counts()
     @State private var sizes = Sizes()
     @State private var info: Info?
-    @State private var exportSheet = false
+    @State private var chosen: Set<DataKind> = Set(DataKind.allCases)
+    @State private var making = false
+    @State private var made: URL?
+    @State private var failed = false
     @State private var picking = false
     @State private var restore: BackupSource?
     @State private var notACopy = false
@@ -27,22 +28,37 @@ struct YourDataPage: View {
     enum Info { case privacy, backup }
 
     struct Counts {
-        var marked = 0, sessions = 0, azkar = 0, goals = 0, photos = 0, donations = 0, excused = 0
+        var marked = 0, sessions = 0, azkar = 0, goals = 0, photos = 0, names = 0, donations = 0, excused = 0
         var firstMarked: Date?
-        var zikrSeconds: Double = 0
     }
     /// What each kind takes. Prayers, zikr sessions and azkar share one store file, so the file is split between them
     /// by how much each holds (their records' size in the copy's JSON); azkar photos and voice memos are files of their
     /// own and count to azkar exactly; donations, Excused Mode and settings are their own files / entries.
     struct Sizes {
         var prayers: Int64 = 0, sessions: Int64 = 0, azkar: Int64 = 0, photos: Int64 = 0
-        var donations: Int64 = 0, excused: Int64 = 0, settings: Int64 = 0, other: Int64 = 0
-        /// The bar's parts: zikr = sessions + azkar; other = everything outside the four big ones.
-        var zikr: Int64 { sessions + azkar }
-        var rest: Int64 { donations + excused + settings + other }
-        var total: Int64 { prayers + zikr + photos + rest }
+        var names: Int64 = 0, donations: Int64 = 0, excused: Int64 = 0, settings: Int64 = 0, other: Int64 = 0
         var known = false
+        func of(_ kind: DataKind) -> Int64 {
+            switch kind {
+            case .prayers: prayers
+            case .zikr: sessions
+            case .azkar: azkar
+            case .photos: photos
+            case .names: names
+            case .donations: donations
+            case .excused: excused
+            case .settings: settings
+            }
+        }
     }
+
+    /// The 99 Names, donations and Excused Mode only once used.
+    private var kinds: [DataKind] {
+        DataKind.allCases.filter {
+            ($0 != .names || counts.names > 0) && ($0 != .donations || counts.donations > 0) && ($0 != .excused || counts.excused > 0)
+        }
+    }
+    private var picked: [DataKind] { kinds.filter(chosen.contains) }
 
     var body: some View {
         List {
@@ -52,37 +68,33 @@ struct YourDataPage: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 4, trailing: 16))
             }
             Section {
-                sizeBar
-                ReminderWhyLink(symbol: "lock", title: "What stays private") { info = .privacy }
-                // Said in words too, not only behind the bar's cloud (fresh-eyes review: backup is the safety fact).
-                ReminderWhyLink(symbol: "icloud", title: "In your iPhone's backup") { info = .backup }
+                ForEach(kinds, id: \.self) { pickRow($0) }
+            } header: {
+                Text("What to export")
+            } footer: {
+                Text("A .zip with a spreadsheet for each, your photos and voice memos, and a file shukr can restore from.")
             }
             Section {
-                // Each line starts with what that kind takes (owner: "how much data it's taking up … the very first item").
-                row(.prayers, "checkmark.circle", "Prayers", sized(sizes.prayers, prayersLine))
-                row(.zikr, "circle.hexagonpath", "Zikr sessions", sized(sizes.sessions, sessionsLine))
-                row(.azkar, "books.vertical", "Azkar and daily goals",
-                    sized(sizes.azkar, "\(counts.azkar) of yours · \(counts.goals) daily goal\(counts.goals == 1 ? "" : "s")"))
-                row(.photos, "camera", "Prayer photos",
-                    sized(sizes.photos, counts.photos == 0 ? "None yet" : "\(counts.photos) photo\(counts.photos == 1 ? "" : "s")"))
-                if counts.donations > 0 { row(.donations, "gift", "Donations you logged", sized(sizes.donations, "\(counts.donations) logged")) }
-                if counts.excused > 0 {
-                    row(.excused, "pause.circle", "Excused Mode", sized(sizes.excused, "\(counts.excused) time\(counts.excused == 1 ? "" : "s")"))
+                Button(action: export) {
+                    HStack(spacing: 8) {
+                        Spacer()
+                        if making { ProgressView() }
+                        Text(making ? "Making your copy…" : exportTitle)
+                            .font(.system(.body, design: .rounded, weight: .semibold))
+                        Spacer()
+                    }
+                    .foregroundStyle(Color.sage)
                 }
-                row(.settings, "gearshape", "Your settings", sized(sizes.settings, "Location, prayer times, alarm, masajid"))
-            } header: { Text("On this iPhone") }
+                .disabled(picked.isEmpty || making)
+            } footer: {
+                Text(exportLine)
+            }
             Section {
-                Button { exportSheet = true } label: {
-                    Label("Export my data", systemImage: "square.and.arrow.up").foregroundStyle(Color.sage)
-                }
-                // Quieter than Export (review: a restore shouldn't look as inviting); its sheet says what it would add first.
                 Button { picking = true } label: {
                     Label("Restore from a copy", systemImage: "arrow.counterclockwise").foregroundStyle(Color(.label))
                 }
-            } header: {
-                Text("Your copy")
-            } footer: {
-                Text(exportLine)
+                ReminderWhyLink(symbol: "icloud", title: "In your iPhone's backup") { info = .backup }
+                ReminderWhyLink(symbol: "lock", title: "What stays private") { info = .privacy }
             }
         }
         .reminderPageTitle("Your Data")
@@ -102,7 +114,20 @@ struct YourDataPage: View {
             }
             #endif
         }
-        .sheet(isPresented: $exportSheet) { ExportSheet(sizes: sizes) }
+        .sheet(isPresented: Binding(get: { made != nil }, set: { if !$0 { made = nil } })) {
+            if let made {
+                FeedbackShareSheet(items: [made]) { completed, _ in
+                    if completed { lastExport = Date().timeIntervalSince1970 }
+                }
+                .presentationDetents([.medium, .large])
+                .ignoresSafeArea()
+            }
+        }
+        .alert("Couldn't make the copy", isPresented: $failed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Your data is safe. Try again in a moment, or without photos if space is short.")
+        }
         .sheet(item: Binding(get: { restore.map(RestoreBox.init) }, set: { if $0 == nil { restore = nil } })) {
             RestoreSheet(source: $0.source) { load() }
         }
@@ -113,7 +138,7 @@ struct YourDataPage: View {
         .alert("That isn't a shukr copy", isPresented: $notACopy) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Pick the .zip that Export my data made (or the folder Files unzipped it into).")
+            Text("Pick the .zip that Export made (or the folder Files unzipped it into).")
         }
         .infoModal(isPresented: Binding(get: { info == .privacy }, set: { if !$0 { info = nil } }),
                    title: "What stays private", symbol: "lock") {
@@ -130,13 +155,13 @@ struct YourDataPage: View {
                 .init(big: "Check iCloud Backup", small: "Settings → your name → iCloud → iCloud Backup. When it's on, shukr is in it, photos too.", symbol: "icloud", warn: false),
                 .init(big: "On a new iPhone", small: "Set it up from that backup and shukr comes back with your history, photos and goals.", symbol: "iphone", warn: false),
                 .init(big: "Deleting shukr deletes it", small: "Removing the app removes its data from this iPhone too. Backups made before still have it.", symbol: "trash", warn: false, neutral: true),
-                .init(big: "Your own copy", small: "Export my data makes a copy you can keep anywhere, and Restore from a copy brings it back.", symbol: "square.and.arrow.up", warn: false),
+                .init(big: "Your own copy", small: "Export makes a copy you can keep anywhere, and Restore from a copy brings it back.", symbol: "square.and.arrow.up", warn: false),
             ])
         }
     }
 
-    /// The page's one focal thing (owner: "the hero is beautiful and informative"): a ring holding the state — sage all
-    /// round, a lock inside — over a light title and one grey line. Flat (owner: no soft look on this page).
+    /// The page's one focal thing: a ring holding the state — sage all round, a lock inside — over a light title and one
+    /// grey line.
     private var hero: some View {
         VStack(spacing: 0) {
             ZStack {
@@ -162,82 +187,90 @@ struct YourDataPage: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// A kind of data, and a tap into its page (owner: "click into any of the sections").
-    private func row(_ kind: DataKind, _ symbol: String, _ title: String, _ line: String) -> some View {
-        NavigationLink { DataDetailPage(kind: kind, sizes: sizes) } label: {
+    /// A kind to include: its size first, what's in it, a check that goes on and off.
+    private func pickRow(_ kind: DataKind) -> some View {
+        let on = chosen.contains(kind)
+        return Button {
+            if on { chosen.remove(kind) } else { chosen.insert(kind) }
+        } label: {
             HStack(spacing: 12) {
-                Image(systemName: symbol).foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
+                Image(systemName: kind.symbol).foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                    Text(line).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+                    Text(kind.title).foregroundStyle(Color(.label))
+                    Text(line(kind)).font(.footnote).foregroundStyle(Color(.secondaryLabel))
                 }
+                Spacer(minLength: 8)
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(on ? Color.sage : Color(.tertiaryLabel))
             }
             .padding(.vertical, 2)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    private var prayersLine: String {
-        guard counts.marked > 0 else { return "None marked yet" }
-        let since = counts.firstMarked.map { " since " + $0.formatted(.dateTime.month(.abbreviated).year()) } ?? ""
-        return "\(counts.marked.formatted()) marked\(since)"
+    /// What's in a kind, its size first once measured.
+    private func line(_ kind: DataKind) -> String {
+        func s(_ n: Int, _ one: String, _ many: String) -> String { "\(n.formatted()) \(n == 1 ? one : many)" }
+        let what: String = switch kind {
+        case .prayers: counts.marked == 0 ? "None marked yet"
+            : s(counts.marked, "marked", "marked") + (counts.firstMarked.map { " since " + $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "")
+        case .zikr: counts.sessions == 0 ? "None yet" : s(counts.sessions, "session", "sessions")
+        case .azkar: s(counts.azkar, "of yours", "of yours") + " · " + s(counts.goals, "goal", "goals") + " · media"
+        case .photos: counts.photos == 0 ? "None yet" : s(counts.photos, "photo", "photos") + " and notes"
+        case .names: "\(counts.names) of 99"
+        case .donations: s(counts.donations, "logged", "logged")
+        case .excused: s(counts.excused, "time", "times")
+        case .settings: "Location, reminders, masajid"
+        }
+        return sizes.known ? Self.size(sizes.of(kind)) + " · " + what : what
     }
 
-    private var sessionsLine: String {
-        guard counts.sessions > 0 else { return "None yet" }
-        let s = counts.zikrSeconds
-        let h = Int((s / 3600).rounded())
-        let time = s < 60 ? "under a minute" : s < 3600 ? "\(Int((s / 60).rounded())) min" : "\(h.formatted()) hour\(h == 1 ? "" : "s")"
-        return "\(counts.sessions.formatted()) sessions · \(time)"
-    }
-
-    /// The space it takes, in parts — as the "Your …" pages show their room.
-    private var sizeBar: some View {
-        // In KB so a small part still shows; the key says each part's size. Prayers / zikr are an estimate (one file).
-        let kb = { (b: Int64) in Int(b / 1000) }
-        return ReminderSlotsBar(caption: sizes.known ? "\(Self.size(sizes.total)) on this iPhone" : "Measuring…",
-                                limit: max(kb(sizes.total), 1),
-                                parts: [.init(count: kb(sizes.prayers), color: Color.sage, label: "Prayers", value: Self.size(sizes.prayers)),
-                                        .init(count: kb(sizes.zikr), color: Color(.systemIndigo), label: "Zikr", value: Self.size(sizes.zikr)),
-                                        .init(count: kb(sizes.photos), color: Color(.systemTeal), label: "Photos", value: Self.size(sizes.photos)),
-                                        .init(count: kb(sizes.rest), color: Color(.systemGray3), label: "Other", value: Self.size(sizes.rest))])
-    }
-
-    /// A row's grey line, its size first once measured.
-    private func sized(_ bytes: Int64, _ rest: String) -> String {
-        sizes.known ? Self.size(bytes) + " · " + rest : rest
+    private var exportTitle: String {
+        guard sizes.known, !picked.isEmpty else { return "Export" }
+        return "Export · about " + Self.size(picked.reduce(0) { $0 + sizes.of($1) })
     }
 
     /// When the last copy was made, and a gentle word when it's been a while (decision your-data-icloud C).
     private var exportLine: String {
-        guard lastExport > 0 else {
-            return "A .zip of spreadsheets, your photos and memos, and everything shukr needs to bring it back. You haven't made one yet."
-        }
+        guard lastExport > 0 else { return "You haven't made a copy yet." }
         let when = Date(timeIntervalSince1970: lastExport)
         let days = Calendar.current.dateComponents([.day], from: when, to: .now).day ?? 0
         let said = "Your last copy: " + when.formatted(.dateTime.month(.abbreviated).day().year())
         return days >= 30 ? said + ". A fresh one takes a moment." : said + "."
     }
 
+    private func export() {
+        making = true
+        let include = Set(picked)
+        Task {
+            let url = await DataExport.makeCopy(context, include: include)
+            making = false
+            if let url { made = url } else { failed = true }
+        }
+    }
+
     static func size(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        bytes < 1000 ? "under 1 KB" : ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     // MARK: Loading
 
     private func load() {
         var c = Counts()
-        // Prayers whose time has come, as the Prayers page counts them (a test mark ahead of time isn't one).
+        // Prayers whose time has come (a test mark ahead of time isn't one).
         let now = Date()
         c.marked = (try? context.fetchCount(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted && $0.startTime <= now }))) ?? 0
         var first = FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted }, sortBy: [SortDescriptor(\.startTime)])
         first.fetchLimit = 1
         c.firstMarked = (try? context.fetch(first))?.first?.startTime
-        let sessions = (try? context.fetch(FetchDescriptor<SessionDataModel>())) ?? []
-        c.sessions = sessions.count
-        c.zikrSeconds = sessions.reduce(0) { $0 + $1.secondsPassed }
+        c.sessions = (try? context.fetchCount(FetchDescriptor<SessionDataModel>())) ?? 0
         c.azkar = ((try? context.fetch(FetchDescriptor<MantraModel>())) ?? []).filter { !$0.isBuiltIn }.count
         c.goals = (try? context.fetchCount(FetchDescriptor<TaskModel>())) ?? 0
         c.photos = DataExport.photoCount()
+        c.names = KnownNames.decode(UserDefaults.standard.string(forKey: KnownNames.key) ?? "").count
         c.donations = SadaqahLog.shared.donations.count
         c.excused = Excused.ranges.count
         counts = c
@@ -307,73 +340,6 @@ private struct GlassSheet: ViewModifier {
     }
 }
 
-/// Export my data: what goes in, photos and memos or not, then the system share sheet.
-private struct ExportSheet: View {
-    let sizes: YourDataPage.Sizes
-    @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
-    @AppStorage(DataExport.lastExportKey) private var lastExport: Double = 0
-    @State private var withMedia = true
-    @State private var making = false
-    @State private var made: URL?
-    @State private var failed = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            SheetHead(symbol: "square.and.arrow.up", title: "A copy of your data",
-                      line: "A .zip you can keep anywhere, and bring back with Restore from a copy.")
-            VStack(alignment: .leading, spacing: 2) {
-                SheetLine(symbol: "tablecells", text: "Spreadsheets of your prayers, zikr, azkar, goals and donations")
-                SheetLine(symbol: "arrow.counterclockwise", text: "Everything shukr needs to restore it")
-                Toggle(isOn: $withMedia) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "photo").font(.system(size: 15, weight: .light)).foregroundStyle(.secondary).frame(width: 24)
-                        Text("Photos and voice memos" + (sizes.known && sizes.photos > 0 ? " · \(YourDataPage.size(sizes.photos))" : ""))
-                            .font(.system(.subheadline, design: .rounded))
-                    }
-                }
-                .tint(Color.sage)
-                .padding(.vertical, 2)
-            }
-            .padding(.horizontal, 32).padding(.top, 18)
-            Spacer(minLength: 12)
-            PrimaryButton(title: making ? "Making your copy…" : "Make my copy", enabled: !making) { make() }
-            SecondaryButton(title: "Not now") { dismiss() }
-                .padding(.bottom, 14)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .modifier(GlassSheet(height: 470))
-        .sheet(isPresented: Binding(get: { made != nil }, set: { if !$0 { made = nil } })) {
-            if let made {
-                FeedbackShareSheet(items: [made]) { completed, _ in
-                    guard completed else { return }
-                    lastExport = Date().timeIntervalSince1970
-                    dismiss()
-                }
-                .presentationDetents([.medium, .large])
-                .ignoresSafeArea()
-            }
-        }
-        .alert("Couldn't make the copy", isPresented: $failed) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Your data is safe. Try again in a moment, or without photos if space is short.")
-        }
-    }
-
-    private func make() {
-        making = true
-        let media = withMedia
-        Task {
-            // The spreadsheets and the backup from the store here (SwiftData's objects stay on the main actor), the files
-            // and the zip off it.
-            let url = await DataExport.makeCopy(context, media: media)
-            making = false
-            if let url { made = url } else { failed = true }
-        }
-    }
-}
-
 /// Restore from a copy: what it would add (nothing here changes), then add it.
 private struct RestoreSheet: View {
     let source: BackupSource
@@ -422,7 +388,8 @@ private struct RestoreSheet: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .modifier(GlassSheet(height: 500))
+        // As tall as its lines need (a full copy lists ten).
+        .modifier(GlassSheet(height: min(360 + CGFloat(max(lines(added ?? plan).count, 1)) * 31, 720)))
         .task {
             plan = DataRestore.plan(source, context)
             planned = true
@@ -440,6 +407,11 @@ private struct RestoreSheet: View {
         if p.photos > 0 { out.append(("camera", n(p.photos, "prayer photo", "prayer photos"))) }
         if p.donations > 0 { out.append(("gift", n(p.donations, "donation", "donations"))) }
         if p.excused > 0 { out.append(("pause.circle", n(p.excused, "Excused Mode stretch", "Excused Mode stretches"))) }
+        if p.names > 0 { out.append(("character.book.closed", n(p.names, "of the 99 Names learned", "of the 99 Names learned"))) }
+        if p.photoFavorites > 0 { out.append(("heart", n(p.photoFavorites, "hearted photo", "hearted photos"))) }
+        if p.masajid > 0 { out.append(("star", n(p.masajid, "starred masjid", "starred masajid"))) }
+        if p.hidden > 0 { out.append(("eye.slash", n(p.hidden, "hidden masjid", "hidden masajid"))) }
+        if p.bests > 0 { out.append(("flame", n(p.bests, "best streak", "best streaks"))) }
         return out
     }
 }
@@ -450,22 +422,29 @@ private struct RestoreSheet: View {
 enum DataExport {
     static let lastExportKey = "yourData.lastExport"
 
-    /// One spreadsheet on its own (a details page's export), in tmp/YourData/one, ready to share.
-    static func oneFile(_ name: String, _ text: String) -> URL? {
-        let dir = FileManager.default.temporaryDirectory.appending(path: "YourData/one", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appending(path: name)
-        return (try? Data(text.utf8).write(to: url, options: .atomic)) == nil ? nil : url
-    }
-
-    /// The whole copy: the spreadsheets and the backup from the store here (SwiftData's objects stay on the main actor),
-    /// the files and the zip off it. In tmp/YourData.
-    @MainActor static func makeCopy(_ context: ModelContext, media: Bool) async -> URL? {
-        let sheets = sheets(context)
-        let (backup, files) = backup(context, media: media)
-        let json = (try? ShukrBackup.encoder.encode(backup)) ?? Data()
+    /// The copy of what's chosen: the spreadsheets and the backup from the store here (SwiftData's objects stay on the
+    /// main actor), the files and the zip off it. In tmp/YourData. Zikr sessions keep their azkar's records in the backup
+    /// (so a restore links them), not their media.
+    @MainActor static func makeCopy(_ context: ModelContext, include: Set<DataKind> = Set(DataKind.allCases)) async -> URL? {
+        var all = sheets(context)
+        all["settings.csv"] = DataSettings.csv()
+        let names = Set(include.flatMap(\.sheets) + ["README.txt"])
+        let sheets = all.filter { names.contains($0.key) }
+        var (b, files) = backup(context, media: include.contains(.azkar))
+        if !include.contains(.prayers) { b.prayers = []; b.dayScores = [] }
+        if !include.contains(.zikr) { b.sessions = [] }
+        if !include.contains(.azkar) { b.goals = []; if !include.contains(.zikr) { b.azkar = [] } }
+        if !include.contains(.donations) { b.donations = [] }
+        if !include.contains(.excused) { b.excused = [] }
+        if !include.contains(.azkar) { files = [] }
+        if !include.contains(.prayers) { b.bests = nil }
+        if !include.contains(.photos) { b.photoFavorites = nil }
+        if !include.contains(.names) { b.namesKnown = nil }
+        if !include.contains(.settings) { b.favoriteMosques = nil; b.hiddenMosques = nil; b.settings = nil }
+        let json = (try? ShukrBackup.encoder.encode(b)) ?? Data()
+        let photos = include.contains(.photos)
         return await Task.detached(priority: .userInitiated) {
-            try? zip(sheets: sheets, json: json, azkarMedia: files, photos: media)
+            try? zip(sheets: sheets, json: json, azkarMedia: files, photos: photos)
         }.value
     }
 
@@ -508,7 +487,8 @@ enum DataExport {
             prefs += exactSize(group.appending(path: "Library/Preferences/\(SharedStore.appGroup).plist"))
         }
         s.excused = Int64(UserDefaults(suiteName: SharedStore.appGroup)?.data(forKey: Excused.key)?.count ?? 0)
-        s.settings = max(prefs - s.excused, 0)
+        s.names = Int64(UserDefaults.standard.string(forKey: KnownNames.key)?.utf8.count ?? 0)
+        s.settings = max(prefs - s.excused - s.names, 0)
         s.known = true
         return s
     }
@@ -569,6 +549,16 @@ enum DataExport {
         })
 
         if !SadaqahLog.shared.donations.isEmpty { out["donations.csv"] = SadaqahLog.shared.csv() }
+        let known = KnownNames.decode(UserDefaults.standard.string(forKey: KnownNames.key) ?? "")
+        out["names-learned.csv"] = table(["Number", "Name", "Arabic", "Meaning"], NamesOfAllah.all.filter { known.contains($0.id) }.map {
+            [String($0.id), $0.transliteration, $0.arabic, $0.meaning]
+        })
+        out["your-masajid.csv"] = table(["Masjid", "Latitude", "Longitude", "Starred or hidden"],
+            MosqueFavorites.all.map { [$0.name, String(format: "%.5f", $0.latitude), String(format: "%.5f", $0.longitude), "starred"] }
+            + (UserDefaults.standard.stringArray(forKey: MosqueHiding.key) ?? []).map { id in
+                let p = id.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                return [p.first ?? id, p.count > 1 ? p[1] : "", p.count > 2 ? p[2] : "", "hidden"]
+            })
         let ranges = Excused.ranges
         if !ranges.isEmpty {
             out["excused-mode.csv"] = table(["Started", "Estimated end", "Ended"], ranges.map {
@@ -581,8 +571,10 @@ enum DataExport {
         prayers.csv: every prayer shukr has a record of, prayed or not, with its score.
         zikr-sessions.csv: every zikr session.
         azkar.csv and daily-goals.csv: your azkar and your daily goals.
-        donations.csv and excused-mode.csv: only if you've used them.
-        photos/ and azkar-media/: your prayer photos (with their notes) and azkar photos and voice memos, if you chose to include them.
+        names-learned.csv: the 99 Names you've marked as learned.
+        donations.csv and excused-mode.csv: when you've used them and chose them.
+        settings.csv and your-masajid.csv: your settings, and the masajid you starred or hid on the map.
+        photos/ and azkar-media/: your prayer photos (with their notes) and azkar photos and voice memos, when you chose them.
         shukr-backup.json: everything above for shukr itself. To bring it back, open shukr → Settings → Your Data → Restore from a copy, and pick this .zip.
 
         Times are in your iPhone's time zone. Open the .csv files in Numbers, Excel or Google Sheets.
