@@ -49,6 +49,8 @@ struct YourDataPage: View {
             Section {
                 sizeBar
                 ReminderWhyLink(symbol: "lock", title: "What stays private") { info = .privacy }
+                // Said in words too, not only behind the bar's cloud (fresh-eyes review: backup is the safety fact).
+                ReminderWhyLink(symbol: "icloud", title: "In your iPhone's backup") { info = .backup }
             }
             Section {
                 row(.prayers, "checkmark.circle", "Prayers", prayersLine)
@@ -64,8 +66,9 @@ struct YourDataPage: View {
                 Button { exportSheet = true } label: {
                     Label("Export my data", systemImage: "square.and.arrow.up").foregroundStyle(Color.sage)
                 }
+                // Quieter than Export (review: a restore shouldn't look as inviting); its sheet says what it would add first.
                 Button { picking = true } label: {
-                    Label("Restore from a copy", systemImage: "arrow.counterclockwise").foregroundStyle(Color.sage)
+                    Label("Restore from a copy", systemImage: "arrow.counterclockwise").foregroundStyle(Color(.label))
                 }
             } header: {
                 Text("Your copy")
@@ -209,7 +212,9 @@ struct YourDataPage: View {
 
     private func load() {
         var c = Counts()
-        c.marked = (try? context.fetchCount(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted }))) ?? 0
+        // Prayers whose time has come, as the Prayers page counts them (a test mark ahead of time isn't one).
+        let now = Date()
+        c.marked = (try? context.fetchCount(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted && $0.startTime <= now }))) ?? 0
         var first = FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted }, sortBy: [SortDescriptor(\.startTime)])
         first.fetchLimit = 1
         c.firstMarked = (try? context.fetch(first))?.first?.startTime
