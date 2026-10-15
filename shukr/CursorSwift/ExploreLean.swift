@@ -133,9 +133,11 @@ enum ExploreLean {
                          parts: [("Siri", opened(.siri))]),
             ExploreStory(id: .answer, title: "Answer from a notification", line: "I already prayed · nudge me later",
                          symbol: "bell.badge", parts: [("Notifications on", notifications)]),
-            ExploreStory(id: .masjid, title: "Your masjid", line: "Mosques near you, Jumu'ah, a dua on arrival", symbol: "building.columns",
-                         parts: [("A masjid starred or prayed at", atMasjid || !MosqueFavorites.all.isEmpty), ("Jumu'ah at a masjid", jumuah),
-                                 ("A dua on arrival", d.bool(forKey: MasjidArrival.enabledKey))]),
+            ExploreStory(id: .masjid, title: "Your masjid",
+                         line: MasjidArrival.parked ? "Mosques near you, Jumu'ah" : "Mosques near you, Jumu'ah, a dua on arrival",
+                         symbol: "building.columns",
+                         parts: [("A masjid starred or prayed at", atMasjid || !MosqueFavorites.all.isEmpty), ("Jumu'ah at a masjid", jumuah)]
+                            + (MasjidArrival.parked ? [] : [("A dua on arrival", d.bool(forKey: MasjidArrival.enabledKey))])),
             ExploreStory(id: .map, title: "The map", line: "Where you prayed, and the qibla", symbol: "map",
                          parts: [("The map", opened(.map))]),
             ExploreStory(id: .journey, title: "How you're doing", line: "Insights and your day's ring", symbol: "chart.pie",
@@ -487,16 +489,19 @@ struct ExploreStoryPage: View {
             ExploreCard(title: "Your masjid", why: "Find mosques near you, and let shukr notice when you pray at one.",
                         features: [("building.columns", "Mosques near you", "The nearest first, with drive and walk times, Look Around and directions."),
                                    ("star", "Star yours", "Your masjid gets its own pin."),
-                                   ("checkmark.seal", "Jumu'ah counted", "Friday's Dhuhr at a masjid counts as Jumu'ah, full marks."),
-                                   ("hands.sparkles", "A dua when you arrive", "Switch it on below; shukr greets you at your masjid's door.")],
+                                   ("checkmark.seal", "Jumu'ah counted", "Friday's Dhuhr at a masjid counts as Jumu'ah, full marks.")]
+                            + (MasjidArrival.parked ? [] : [("hands.sparkles", "A dua when you arrive", "Switch it on below; shukr greets you at your masjid's door.")]),
                         action: ("Find mosques near me", { go("map") })) { ExploreStoryPicture(id: .masjid) }
-            // The switch is only in the setup otherwise: here it just does it (it asks for "Always" location).
-            Toggle(isOn: Binding(get: { arrivalDuas }, set: { MasjidArrival.shared.setEnabled($0); arrivalDuas = $0 })) {
-                Label("A dua when you arrive", systemImage: "hands.sparkles")
+            // The switch is only in the setup otherwise: here it just does it (it asks for "Always" location). Parked
+            // with the duas.
+            if !MasjidArrival.parked {
+                Toggle(isOn: Binding(get: { arrivalDuas }, set: { MasjidArrival.shared.setEnabled($0); arrivalDuas = $0 })) {
+                    Label("A dua when you arrive", systemImage: "hands.sparkles")
+                }
+                .tint(Color.sage)
+                .padding(.horizontal, 16).frame(minHeight: 52)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
             }
-            .tint(Color.sage)
-            .padding(.horizontal, 16).frame(minHeight: 52)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
         case .map:
             ExploreCard(title: "The map", why: "Every prayer you've marked, where you prayed it, and the qibla from where you stand.",
                         features: [("mappin.and.ellipse", "Your prayers", "Coloured by how you did; filter by prayer and dates."),

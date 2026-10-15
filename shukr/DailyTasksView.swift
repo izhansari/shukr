@@ -248,9 +248,11 @@ struct ZikrCircleWheel: View {
     /// The goals the summary counts: paused ones left out, so the wheel and Your azkar agree.
     private var countedTasks: [TaskModel] { tasks.filter { $0.pausedAt == nil } }
     private func summaryText(done: Int, secondsLeft: TimeInterval) -> String {
-        let word = "daily goals"   // decision zikr-goal-word A
         let n = countedTasks.count
-        if done == n { return "all \(n) \(word) done today" }
+        let word = n == 1 ? "daily goal" : "daily goals"   // decision zikr-goal-word A
+        // Every goal paused: it read "all 0 daily goals done today".
+        if n == 0 { return "Daily goals paused" }
+        if done == n { return n == 1 ? "daily goal done today" : "all \(n) \(word) done today" }
         let base = "\(done) of \(n) \(word) done"
         guard secondsLeft > 0 else { return base }
         let estimate = zikrEstimateString(secondsLeft).replacingOccurrences(of: "~", with: "")
@@ -312,8 +314,9 @@ struct ZikrCircleWheel: View {
             // Everything left at your pace (tasks with no history yet are left out) — once the launch has settled.
             let ready = summaryReady || sharedState.horizontalPage == .zikr
             let left = ready ? tasks.filter { !isDone($0) }.compactMap { $0.secondsLeft(progress($0)) }.reduce(0, +) : 0
+            let allDone = !tasks.isEmpty && done == tasks.count
             HStack(spacing: 5) {
-                if done == tasks.count { Image(systemName: "checkmark") }
+                if allDone { Image(systemName: "checkmark") }
                 Text(summaryText(done: done, secondsLeft: left))
                     .contentTransition(.numericText())
                 Image(systemName: "chevron.right").font(.caption2.weight(.light))   // a link to Your azkar
@@ -321,7 +324,7 @@ struct ZikrCircleWheel: View {
             .font(.footnote)
             .fontWeight(.light)
             .fontDesign(.rounded)
-            .foregroundStyle(done == tasks.count ? Color.sage : .secondary)
+            .foregroundStyle(allDone ? Color.sage : .secondary)
             .animation(.snappy, value: done)
             .task {
                 guard !summaryReady else { return }

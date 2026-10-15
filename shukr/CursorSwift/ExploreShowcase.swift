@@ -413,7 +413,8 @@ struct ShowcaseStoryPage: View {
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-                if card.id == .mosques || card.id == .jumuah {
+                // Parked with the duas (`MasjidArrival.parked`): it asked for "Always" and then did nothing.
+                if !MasjidArrival.parked, card.id == .mosques || card.id == .jumuah {
                     // The arrival dua's switch was only in the setup: here it just does it (asks for "Always").
                     Toggle(isOn: Binding(get: { arrivalDuas }, set: { MasjidArrival.shared.setEnabled($0); arrivalDuas = $0 })) {
                         Label("A dua when you arrive", systemImage: "hands.sparkles")
