@@ -2003,7 +2003,7 @@ private struct LocationStep: View {
                 // The mosque finder and masjid marking are one point (owner); Jumu'ah is just one prayer it covers.
                 whyRow("building.columns", "Find the nearest mosques",
                        "Marked prayers save to that mosque.")
-                whyRow("lock", "It stays on your phone", "No account, nothing sent anywhere.")
+                whyRow("lock", "It stays private", "On your phone, and your backup if on.")
             }
             .padding(.horizontal, 32)
             // Refused at iOS's prompt: what they're missing, frosted over what it would have given — as on the

@@ -4,8 +4,9 @@ import UIKit
 import SwiftUI
 import Network
 
-// shukr's own copy in iCloud Drive (owner, 2026-10-14, decision icloud-copy-go A; container set up by Bradley):
-// Your Data → "Copy to iCloud Drive" saves the full copy (the same .zip Export makes) to iCloud Drive → shukr once a day,
+// shukr's own backup in iCloud (owner, 2026-10-14, decision icloud-copy-go A; container set up by Bradley; hidden since
+// icloud-backup-privacy A): Your Data → "Back up to iCloud Drive" saves the full copy (the same .zip Export makes) to
+// the container's hidden Backups folder (not in Files / iCloud.com; only shukr reads it) once a day,
 // keeps the newest `keep`, and logs every try. The page lists the copies with iCloud's own upload state, so you can see
 // they're there. iOS still doesn't tell an app about the iPhone's own backup; this is shukr's copy, which we can see.
 // Restore from a copy opens Files, where the shukr folder is.
@@ -46,6 +47,8 @@ import Network
     private(set) var log: [LogLine] = []
     /// What this iPhone holds now (`measure`), for the near-empty guard.
     private(set) var here: Counts?
+    /// shukr's hidden backup folder: `<container>/Backups`, outside the public Documents, so Files and iCloud.com never
+    /// show it (decision icloud-backup-privacy A: everything stays in the copy, kept as private as the iPhone's backup).
     private var documents: URL?
 
     var isOn: Bool {
@@ -97,9 +100,10 @@ import Network
         guard isOn else { availability = .available; copies = []; return }
         let docs = await Task.detached(priority: .utility) { () -> URL? in
             guard let root = FileManager.default.url(forUbiquityContainerIdentifier: ICloudCopy.containerID) else { return nil }
-            let docs = root.appending(path: "Documents", directoryHint: .isDirectory)
-            try? FileManager.default.createDirectory(at: docs, withIntermediateDirectories: true)
-            return docs
+            let hidden = root.appending(path: "Backups", directoryHint: .isDirectory)
+            try? FileManager.default.createDirectory(at: hidden, withIntermediateDirectories: true)
+            ICloudCopy.moveOutOfFiles(from: root.appending(path: "Documents", directoryHint: .isDirectory), to: hidden)
+            return hidden
         }.value
         documents = docs
         availability = docs == nil ? .off : .available
@@ -192,6 +196,20 @@ import Network
             && left.contains(names[6]) && left.contains(names[7]) && left.contains(names[8])
         print(ok ? "☁️ prune self-test PASS" : "☁️ prune self-test FAIL")
         try? fm.removeItem(at: dir)
+        // Moving out of Files: backups and first-builds backups go; an Export and other files stay.
+        let base = fm.temporaryDirectory.appending(path: "MoveSelfTest", directoryHint: .isDirectory)
+        let docs = base.appending(path: "Documents", directoryHint: .isDirectory)
+        let hidden = base.appending(path: "Backups", directoryHint: .isDirectory)
+        try? fm.removeItem(at: base)
+        try? fm.createDirectory(at: docs, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: hidden, withIntermediateDirectories: true)
+        for n in [names[2], names[7], names[6], names[8]] { fm.createFile(atPath: docs.appending(path: n).path, contents: Data("x".utf8)) }
+        moveOutOfFiles(from: docs, to: hidden)
+        let stayed = ((try? fm.contentsOfDirectory(atPath: docs.path)) ?? []).sorted()
+        let moved = ((try? fm.contentsOfDirectory(atPath: hidden.path)) ?? []).sorted()
+        print("☁️ move self-test stayed: \(stayed) moved: \(moved)")
+        print(stayed == [names[6], names[8]].sorted() && moved == [names[2], names[7]].sorted() ? "☁️ move self-test PASS" : "☁️ move self-test FAIL")
+        try? fm.removeItem(at: base)
     }
     #endif
 
@@ -204,6 +222,58 @@ import Network
     }
 
     // MARK: Files
+
+    /// Backups made before they were hidden (Documents, shown in Files) move into the hidden folder: those named as
+    /// backups and the first builds' "shukr data <date> <time>.zip". An Export the user saved there ("shukr data
+    /// <date>.zip", no time) and anything else stays where it is.
+    nonisolated static func moveOutOfFiles(from docs: URL, to hidden: URL) {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: docs.path) else { return }
+        for name in names where name.wholeMatch(of: backupName) != nil || name.wholeMatch(of: firstBuildsName) != nil {
+            let from = docs.appending(path: name), to = hidden.appending(path: name)
+            guard !fm.fileExists(atPath: to.path) else { continue }
+            var error: NSError?
+            NSFileCoordinator().coordinate(writingItemAt: from, options: .forMoving, writingItemAt: to, options: .forReplacing, error: &error) { a, b in
+                do { try fm.moveItem(at: a, to: b); print("☁️ moved \(name) out of Files") } catch { print("☁️ couldn't move \(name): \(error)") }
+            }
+        }
+    }
+
+    /// The backups for Restore, read without making anything (the switch may be off: a new iPhone restoring first).
+    /// The hidden folder, and any backup still in Documents from before.
+    nonisolated static func backupsForRestore() async -> [Copy] {
+        guard FileManager.default.ubiquityIdentityToken != nil else { return [] }
+        return await Task.detached(priority: .userInitiated) { () -> [Copy] in
+            guard let root = FileManager.default.url(forUbiquityContainerIdentifier: containerID) else { return [] }
+            let all = list(root.appending(path: "Backups", directoryHint: .isDirectory)) + list(root.appending(path: "Documents", directoryHint: .isDirectory))
+            return all.sorted { $0.made > $1.made }
+        }.value
+    }
+
+    /// A backup brought down from iCloud if it isn't here yet, then copied out under coordination, for Restore to read.
+    nonisolated static func localCopy(of copy: Copy) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) { () -> URL in
+            let fm = FileManager.default
+            try? fm.startDownloadingUbiquitousItem(at: copy.url)
+            for _ in 0..<240 {   // up to a minute
+                let status = (try? copy.url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?.ubiquitousItemDownloadingStatus
+                if status == nil || status == .current { break }
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            let out = fm.temporaryDirectory.appending(path: "YourDataRestore", directoryHint: .isDirectory)
+            try? fm.removeItem(at: out)
+            try fm.createDirectory(at: out, withIntermediateDirectories: true)
+            let target = out.appending(path: copy.url.lastPathComponent)
+            var coordinated: NSError?
+            var failure: Error?
+            NSFileCoordinator().coordinate(readingItemAt: copy.url, options: [], error: &coordinated) { url in
+                do { try fm.copyItem(at: url, to: target) } catch { failure = error }
+            }
+            if let coordinated { throw coordinated }
+            if let failure { throw failure }
+            return target
+        }.value
+    }
 
     /// Backups are "shukr backup <date> <time> (N prayers, N sessions, N photos).zip" — their own name, so a manual
     /// Export ("shukr data <date>.zip") saved into the same folder is never listed or pruned.
@@ -413,7 +483,7 @@ struct BackupCard: View {
         case .off: "Your data is only on this iPhone."
         case .noICloud: "Nothing can be backed up until it's on."
         case .none: "The first backup hasn't been made."
-        case .backingUp: "Uploading to your iCloud Drive."
+        case .backingUp: "Uploading to your iCloud."
         case .backedUp(let c): "Last backup " + YourDataPage.when(c.made).lowercasedFirstWord + " · " + YourDataPage.size(c.bytes)
         case .stale(let c): "Last backup " + YourDataPage.when(c.made).lowercasedFirstWord
         case .failed(let why): "Your last backup didn't reach iCloud. " + why
@@ -425,20 +495,20 @@ struct BackupCard: View {
     /// What it means, in one or two sentences.
     private var sentence: String {
         switch state {
-        case .off: "Turn it on and shukr backs up everything to your own iCloud Drive once a day. Only you can see it."
+        case .off: "Turn it on and shukr backs up everything to your iCloud once a day, hidden from Files. Only shukr reads it."
         case .noICloud: "Turn it on in Settings → your name → iCloud → iCloud Drive, and shukr backs up the next time you open it."
         case .none: "shukr backs up when you open it. You can make the first one now."
         case .backingUp: "It's usually there within a minute. You can leave this page."
-        case .backedUp: "Everything in shukr is in your own iCloud Drive, and only you can see it."
+        case .backedUp: "Kept in your iCloud, hidden from Files. Only shukr reads it. For files you can open, use Export."
         case .stale: "shukr backs up once a day when it's opened, and the last one is a few days old. Back up now to bring it up to date."
         case .failed: "Check that you're online and iCloud has room (Settings → your name → iCloud), then try again."
-        case .emptier: "A new iPhone or a fresh install? shukr won't back up over your fuller backup, so it stays safe. Restore from it: it's in iCloud Drive → shukr."
+        case .emptier: "A new iPhone or a fresh install? shukr won't back up over your fuller backup, so it stays safe. Restore from it first."
         }
     }
 
     private var points: [ReminderWhy.Point] {
         let daily = ReminderWhy.Point(big: "Every day", small: "When you open shukr, once a day. The newest \(ICloudCopy.keep) are kept, and your fullest backup is never deleted.", symbol: "calendar", warn: false)
-        let restore = ReminderWhy.Point(big: "Getting it back", small: "On a new iPhone, install shukr, then Your Data → Restore from a copy → iCloud Drive → shukr.", symbol: "arrow.counterclockwise", warn: false)
+        let restore = ReminderWhy.Point(big: "Getting it back", small: "On a new iPhone, install shukr, then Your Data → Restore from a copy, and pick a backup.", symbol: "arrow.counterclockwise", warn: false)
         switch state {
         case .off, .none, .backedUp, .stale: return [daily, restore]
         case .backingUp, .noICloud, .failed, .emptier: return []

@@ -743,7 +743,7 @@ struct ExcusedIntroStory: View {
         Page(picture: .checkIn, title: "After your estimate",
              text: "Once your estimated days are up, we'll send you one notification a day asking if you're ready to pray again. Not yet? Add a few more days."),
         Page(picture: .privacy, title: "Private by design",
-             text: "shukr never tracks or predicts your cycle. Each month you turn this on yourself, on purpose, so nothing is guessed or kept beyond what you set. It stays on this phone."),
+             text: "shukr never tracks or predicts your cycle. Each month you turn this on yourself, on purpose, so nothing is guessed or kept beyond what you set. It stays on this phone, and in your iCloud backup if you turn it on."),
         Page(picture: .elsewhere, title: "Everywhere else",
              text: "Widgets, Siri and your watch still show prayer times. Tapping ✓ asks if you're back, and nothing is ever said out loud."),
     ]
@@ -829,7 +829,7 @@ struct ExcusedInfoSheet: View {
         (.paused, "Paused, not missed", "Grey pause dots in your list; your streaks stay as they were."),
         (.quiet, "Quiet", "No prayer reminders, Live Activity cards or Fajr alarm. Zikr keeps going unless you pause it."),
         (.checkIn, "After your estimate", "Once your estimated days are up, we'll send you one notification a day asking if you're back. Not yet? Add a few more days."),
-        (.privacy, "Private by design", "shukr never tracks or predicts your cycle: you turn this on each month yourself. It stays on this phone."),
+        (.privacy, "Private by design", "shukr never tracks or predicts your cycle: you turn this on each month yourself. It stays on this phone, and in your iCloud backup if you turn it on."),
         (.elsewhere, "Widgets, Siri, watch", "Prayer times as usual. Tapping \u{2713} asks if you're back; nothing is said out loud."),
     ]
 

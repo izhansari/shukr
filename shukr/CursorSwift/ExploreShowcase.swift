@@ -600,7 +600,7 @@ struct ShowcaseStory {
         // Your journey
         case .memories: ShowcaseStory(title: "Memories", hook: "Remember where you prayed",
             lead: "After you mark a prayer, take a photo with both cameras at once: where you are, and you. They're kept day by day, private on your phone.",
-            points: [p("lock", "Private", "Never leaves your phone"),
+            points: [p("lock", "Private", "On your phone and your iCloud backup"),
                      p("magnifyingglass", "Find any", "By prayer, place, note or date"),
                      p("calendar", "On this day", "What you saw a year ago")],
             action: "Open Memories", memories: true)

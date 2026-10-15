@@ -498,7 +498,7 @@ struct SadaqahPage: View {
             } header: {
                 Text("Your donations")
             } footer: {
-                Text("Private: kept on this phone only. Gave somewhere else? Log it with +.")
+                Text("Private: on this phone, and in your iCloud backup if you turn it on. Gave somewhere else? Log it with +.")
             }
         }
         // The new-task flow's page: white, soft grey cards, no gap under the bar.

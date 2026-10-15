@@ -26,6 +26,7 @@ struct YourDataPage: View {
     @State private var restore: BackupSource?
     @State private var notACopy = false
     @State private var about: DataKind?
+    @State private var showBackups = false
     @AppStorage(DataExport.lastExportKey) private var lastExport: Double = 0
     @AppStorage(ICloudCopy.enabledKey) private var iCloudOn = false
     @State private var cloud = ICloudCopy.shared
@@ -110,7 +111,8 @@ struct YourDataPage: View {
             }
             iCloudSection
             Section {
-                Button { picking = true } label: {
+                // The iCloud backups are hidden from Files, so Restore lists them here; "Choose a file…" for an Export.
+                Button { showBackups = true } label: {
                     Label("Restore from a copy", systemImage: "arrow.counterclockwise").foregroundStyle(Color(.label))
                 }
                 ReminderWhyLink(symbol: "lock", title: "What stays private") { info = .privacy }
@@ -178,6 +180,15 @@ struct YourDataPage: View {
             Text("Your data is safe. Try again in a moment, or without photos if space is short.")
         }
         .sheet(item: $about) { DataKindSheet(kind: $0) }
+        .sheet(isPresented: $showBackups) {
+            BackupListSheet(pick: { source in
+                showBackups = false
+                Task { try? await Task.sleep(for: .milliseconds(450)); restore = source }   // after this sheet has gone
+            }, chooseFile: {
+                showBackups = false
+                Task { try? await Task.sleep(for: .milliseconds(450)); picking = true }
+            })
+        }
         .sheet(item: Binding(get: { restore.map(RestoreBox.init) }, set: { if $0 == nil { restore = nil } })) {
             RestoreSheet(source: $0.source) { load() }
         }
@@ -192,17 +203,17 @@ struct YourDataPage: View {
         }
         .infoModal(isPresented: Binding(get: { info == .privacy }, set: { if !$0 { info = nil } }),
                    title: "What stays private", symbol: "lock") {
-            ReminderExplainer(head: "Everything you do in shukr stays on this iPhone.", points: [
+            ReminderExplainer(head: "Everything you do in shukr stays on this iPhone, and in your iCloud backup if you turn it on.", points: [
                 .init(big: "No account, no server", small: "shukr has nowhere to send your data. Your prayers, zikr, photos and notes are never sent to us or anyone else.", symbol: "lock.shield", warn: false),
                 .init(big: "Your location", small: "Used on your phone for prayer times, the qibla and where you prayed. Looking for mosques or a place's name asks Apple Maps, as the Maps app does.", symbol: "location", warn: false),
-                .init(big: "Your photos", small: "Prayer photos stay inside shukr, not in your Photos library. They leave this iPhone only in a copy you make.", symbol: "photo.on.rectangle", warn: false),
-                .init(big: "Only when you ask", small: "A copy is made when you tap Export, and goes only where you send it. iCloud Backup puts one in your own iCloud Drive each day, where only you can see it.", symbol: "square.and.arrow.up", warn: false),
+                .init(big: "Your photos", small: "Prayer photos stay inside shukr, not in your Photos library. They leave this iPhone only in a copy you make, or in your iCloud backup if you turn it on.", symbol: "photo.on.rectangle", warn: false),
+                .init(big: "Only when you ask", small: "A copy is made when you tap Export, and goes only where you send it. iCloud Backup keeps one in your iCloud each day, hidden from Files: only shukr reads it.", symbol: "square.and.arrow.up", warn: false),
             ])
         }
         .infoModal(isPresented: Binding(get: { info == .backup }, set: { if !$0 { info = nil } }),
                    title: "iCloud Backup", symbol: backup.symbol) {
             // Restore: the card closes first, then Files opens on the page.
-            BackupCard(context: context, restore: { info = nil; picking = true })
+            BackupCard(context: context, restore: { info = nil; showBackups = true })
         }
     }
 
@@ -224,7 +235,7 @@ struct YourDataPage: View {
                 .multilineTextAlignment(.center)
                 .padding(.top, 22)
             Text(iCloudOn && cloud.availability == .available
-                 ? "Private: on this iPhone, backed up daily to your own iCloud Drive. No account and no server: nothing you do in shukr is sent to us or anyone."
+                 ? "Private: on this iPhone, and backed up daily to your iCloud, where only shukr reads it. No account and no server: nothing you do in shukr is sent to us or anyone."
                  : "Private, and only on this iPhone. No account and no server: nothing you do in shukr is sent to us or anyone.")
                 .font(.system(.subheadline, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -297,7 +308,7 @@ struct YourDataPage: View {
     private var iCloudSection: some View {
         Section {
             // No clouds in this section (owner: four on one page): the top right's cloud is the state.
-            Toggle("Back up to iCloud Drive", isOn: $iCloudOn)
+            Toggle("Back up to iCloud", isOn: $iCloudOn)
             .tint(.sage)
             .disabled(cloud.availability == .off && !iCloudOn && !Self.demoState)
             if showsBackupRow {
@@ -391,9 +402,9 @@ struct YourDataPage: View {
 
     private var iCloudLine: String {
         switch backup {
-        case .off: return "Backs up everything to your own iCloud Drive once a day. Only you can see it."
+        case .off: return "Backs up everything to your iCloud once a day, hidden from Files. Only shukr reads it."
         case .noICloud: return "iCloud Drive is off on this iPhone. Turn it on in Settings → your name → iCloud → iCloud Drive."
-        default: return "Once a day, when you open shukr, everything is backed up to iCloud Drive → shukr. The newest \(ICloudCopy.keep) are kept, and your fullest backup is never deleted."
+        default: return "Once a day, when you open shukr, everything is backed up to your iCloud, hidden from Files: only shukr reads it. The newest \(ICloudCopy.keep) are kept, and your fullest is never deleted. For files you can open, use Export."
         }
     }
 
@@ -527,6 +538,119 @@ private struct DataKindSheet: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .frame(maxHeight: .infinity, alignment: .top)
         .modifier(GlassSheet(height: height))
+    }
+}
+
+/// Restore from a copy: the iCloud backups (hidden from Files, so listed here), newest first, the fullest marked; a tap
+/// brings it down if needed and opens the restore sheet. "Choose a file…" for an Export kept elsewhere.
+private struct BackupListSheet: View {
+    let pick: (BackupSource) -> Void
+    let chooseFile: () -> Void
+    @State private var copies: [ICloudCopy.Copy]?
+    @State private var opening: URL?
+    @State private var failed = false
+    @State private var height: CGFloat = 380
+
+    private var fullest: URL? {
+        copies?.filter { $0.counts != nil }.max { $0.counts!.score < $1.counts!.score }?.url
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SheetHead(symbol: "arrow.counterclockwise", title: "Restore from a backup",
+                      line: "Only what's missing is added. Nothing on this iPhone is changed or removed.")
+            VStack(spacing: 8) {
+                if let copies {
+                    if copies.isEmpty {
+                        Text("No iCloud backups yet.")
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(copies.prefix(6)) { row($0) }
+                    }
+                } else {
+                    ProgressView().padding(.vertical, 16)
+                }
+            }
+            .padding(.horizontal, 24).padding(.top, 18)
+            Button("Choose a file…", action: chooseFile)
+                .font(.system(.subheadline, design: .rounded, weight: .medium))
+                .foregroundStyle(Color.sage)
+                .padding(.top, 16).padding(.bottom, 28)
+        }
+        .frame(maxWidth: .infinity)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .modifier(GlassSheet(height: height))
+        .task {
+            #if DEBUG
+            // `-demoBackupList`: stand-in backups (the simulator has no iCloud).
+            if UserDefaults.standard.bool(forKey: "demoBackupList") {
+                let u = { (n: String) in URL(fileURLWithPath: "/" + n) }
+                copies = [ICloudCopy.Copy(url: u("a"), made: .now.addingTimeInterval(-3600), bytes: 2_900_000, upload: .inICloud, counts: .init(prayers: 2215, sessions: 142, photos: 83)),
+                          ICloudCopy.Copy(url: u("b"), made: .now.addingTimeInterval(-86400 - 3600), bytes: 2_880_000, upload: .inICloud, counts: .init(prayers: 2210, sessions: 141, photos: 82)),
+                          ICloudCopy.Copy(url: u("c"), made: .now.addingTimeInterval(-2 * 86400), bytes: 2_787_884, upload: .inICloud)]
+                return
+            }
+            #endif
+            copies = await ICloudCopy.backupsForRestore()
+        }
+        .alert("Couldn't open that backup", isPresented: $failed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Check that you're online, then try again.")
+        }
+    }
+
+    private func row(_ c: ICloudCopy.Copy) -> some View {
+        Button { open(c) } label: {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(YourDataPage.when(c.made))
+                        .font(.system(.body, design: .rounded))
+                        .foregroundStyle(Color(.label))
+                    Text(c.counts.map { "\($0.prayers.formatted()) prayers · \($0.sessions.formatted()) sessions · \($0.photos.formatted()) photos" }
+                         ?? YourDataPage.size(c.bytes))
+                        .font(.system(.footnote, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+                Spacer(minLength: 6)
+                if c.url == fullest {
+                    Text("Fullest")
+                        .font(.system(.caption, design: .rounded, weight: .semibold))
+                        .foregroundStyle(Color.sage)
+                }
+                if opening == c.url {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.06)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(opening != nil)
+    }
+
+    private func open(_ c: ICloudCopy.Copy) {
+        opening = c.url
+        Task {
+            do {
+                let url = try await ICloudCopy.localCopy(of: c)
+                let source = try BackupSource.open(url)
+                opening = nil
+                pick(source)
+            } catch {
+                opening = nil
+                failed = true
+            }
+        }
     }
 }
 
