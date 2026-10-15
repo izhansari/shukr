@@ -291,6 +291,8 @@ struct GoalMock {
     var daysSince: Int { (days.lastIndex { $0 >= goal }).map { days.count - 1 - $0 } ?? 14 }
     /// Days the goal was met, of the 14.
     var met: Int { days.filter { $0 >= goal }.count }
+    /// Each day's share of its goal (capped at 1), averaged over the 14 — partial days count for what they got.
+    var consistency: Int { Int((days.map { min(Double($0) / Double(max(goal, 1)), 1) }.reduce(0, +) / Double(days.count) * 100).rounded()) }
     var lastDoneText: String { daysSince == 0 ? "today" : daysSince == 1 ? "yesterday" : "\(daysSince) days ago" }
 
     static let all = [
@@ -465,42 +467,46 @@ struct GoalCardToday: View {
 
 // MARK: - Goal card B · Streak first
 
-/// How the last two weeks went leads ("11 of 14 days" — countable on the rings under it, owner: a comment on the rings);
-/// today a bigger ring labelled "today" (owner: "20 of 50" by a row of rings read as a count of them); then the facts
-/// as lines — streak and best, last done, the usual time; the reminder (tappable) and Edit at its foot.
+/// How the last two weeks went leads ("9 of 14 days" — countable on the rings under it); a tap flips it to how
+/// consistent that is, back by itself after 3 s as the Salah ring's flip (a second tap goes back at once). Today a bigger
+/// ring labelled TODAY: a tap asks to start the goal. A day's ring tapped: its numbers under the row (owner: "I liked it
+/// better when its relative data came underneath"), gone again after 3 s. Then streak · best, last done, the usual
+/// time; the reminder (tappable) and Edit at its foot.
 struct GoalCardStreak: View {
     let g: GoalMock
     @State private var picked: Int?
+    @State private var showConsistency = false
+    @State private var askStart = false
+    @State private var revert: Task<Void, Never>?
+    @State private var dayRevert: Task<Void, Never>?
+    /// The Salah ring's flip (mainCircle `flipSeconds`).
+    private static let flipSeconds: Double = 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text("\(g.met) of \(g.days.count)").font(.system(size: 30, weight: .light, design: .rounded)).monospacedDigit()
-                        Text("days").font(.system(size: 20, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    }
-                    // A tapped day takes this line (no "Tap a day" line).
-                    Text(picked.map { dayLine(g, $0) } ?? "goal met, last two weeks")
-                        .font(.footnote).foregroundStyle(picked == nil ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.primary))
-                        .monospacedDigit().contentTransition(.opacity)
-                }
+                headline
+                    .contentShape(Rectangle())
+                    .onTapGesture { flipHeadline() }
                 Spacer()
-                VStack(spacing: 5) {
-                    ZStack {
-                        Circle().stroke(Color.primary.opacity(0.1), lineWidth: 5)
-                        Circle().trim(from: 0, to: min(Double(g.today) / Double(g.goal), 1))
-                            .stroke(Color.sage, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
-                        VStack(spacing: 0) {
-                            Text("\(g.today)").font(.system(size: 24, weight: .light, design: .rounded)).monospacedDigit()
-                            Text("of \(g.goal)").font(.caption2).foregroundStyle(.secondary)
-                        }
-                    }
-                    .frame(width: 80, height: 80)
-                    Text("TODAY").font(.caption2.weight(.medium)).tracking(1.1).foregroundStyle(.secondary)
+                todayRing
+            }
+            VStack(spacing: 8) {
+                GoalDaysMock(g: g, picked: $picked, size: 14, rows: 1)
+                if let picked {
+                    Text(dayLine(g, picked)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        .transition(.opacity)
                 }
             }
-            GoalDaysMock(g: g, picked: $picked, size: 14, rows: 1)
+            .onChange(of: picked) { _, day in
+                dayRevert?.cancel()
+                guard day != nil else { return }
+                dayRevert = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(Self.flipSeconds))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: 0.25)) { picked = nil }
+                }
+            }
             VStack(alignment: .leading, spacing: 9) {
                 line(g.streak > 0 ? "flame.fill" : "flame",
                      g.streak > 0 ? "\(g.streak) day streak · best \(g.best)" : "No streak going · best \(g.best)",
@@ -513,6 +519,66 @@ struct GoalCardStreak: View {
         }
         .padding(18)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 4))
+        // The app's "Start …?" (a zikr's page): part done → Continue / Start over.
+        .alert("Start \(g.name)?", isPresented: $askStart) {
+            if g.today > 0 && g.today < g.goal {
+                Button("Continue · \(g.goal - g.today) to go") {}
+                Button("Start over") {}
+            } else {
+                Button("Start") {}
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(g.today > 0 && g.today < g.goal ? "You're at \(g.today) of \(g.goal) today." : "\(g.goal) today, about 3 min.")
+        }
+    }
+
+    private var headline: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(showConsistency ? "\(g.consistency)%" : "\(g.met) of \(g.days.count)")
+                    .font(.system(size: 30, weight: .light, design: .rounded)).monospacedDigit()
+                Text(showConsistency ? "consistent" : "days")
+                    .font(.system(size: 20, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+            }
+            Text(showConsistency ? "of each day's goal, last two weeks" : "goal met, last two weeks")
+                .font(.footnote).foregroundStyle(.secondary)
+        }
+        .contentTransition(.opacity)
+    }
+
+    private var todayRing: some View {
+        Button { triggerSomeVibration(type: .light); askStart = true } label: {
+            VStack(spacing: 5) {
+                ZStack {
+                    Circle().stroke(Color.primary.opacity(0.1), lineWidth: 5)
+                    Circle().trim(from: 0, to: min(Double(g.today) / Double(g.goal), 1))
+                        .stroke(Color.sage, style: StrokeStyle(lineWidth: 5, lineCap: .round)).rotationEffect(.degrees(-90))
+                    VStack(spacing: 0) {
+                        Text("\(g.today)").font(.system(size: 24, weight: .light, design: .rounded)).monospacedDigit()
+                        Text("of \(g.goal)").font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 80, height: 80)
+                Text("TODAY").font(.caption2.weight(.medium)).tracking(1.1).foregroundStyle(.secondary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Today, \(g.today) of \(g.goal). Start")
+    }
+
+    /// The Salah ring's rule: a tap flips, back after 3 s; a tap while flipped goes back at once.
+    private func flipHeadline() {
+        triggerSomeVibration(type: .light)
+        revert?.cancel()
+        if showConsistency { withAnimation(.snappy) { showConsistency = false }; return }
+        withAnimation(.snappy) { showConsistency = true }
+        revert = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(Self.flipSeconds))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy) { showConsistency = false }
+        }
     }
 
     private func line(_ symbol: String, _ text: String, sage: Bool = false) -> some View {
