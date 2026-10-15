@@ -78,27 +78,35 @@ struct NowTimeLeft: View {
 }
 
 /// The buttons where the row's time sits, in the pill's order (Tasbih, then the camera); the pencil sits right after the
-/// name (owner's drawing). Neutral: grey symbols (the name's grey) in a thin grey ring, no fill (owner).
+/// name (owner's drawing). Soft discs pressed into the raised row, the Live Activity card's light grey symbols (owner:
+/// "match our live activity a little … punch them in").
 struct PrayerRowActionButtons: View {
     let showsCamera: Bool
     let onCamera: () -> Void
     let onTasbih: () -> Void
     var body: some View {
         HStack(spacing: 8) {
-            PrayerRowActionButton(symbol: "circle.hexagonpath", label: "Post-salah tasbih", action: onTasbih)   // the pill's beads
-            if showsCamera { PrayerRowActionButton(symbol: "camera", label: "Add a photo", action: onCamera) }
+            PrayerRowActionButton(symbol: "circle.hexagonpath", label: "Post-salah tasbih", style: .pressed, action: onTasbih)   // the pill's beads
+            if showsCamera { PrayerRowActionButton(symbol: "camera", label: "Add a photo", style: .pressed, action: onCamera) }
         }
         .transition(.opacity.combined(with: .scale(scale: 0.9)))
     }
 }
 
-/// One of the marked row's buttons: a grey symbol in a thin grey ring.
+/// One of the marked row's buttons.
 struct PrayerRowActionButton: View {
+    enum Style {
+        /// A grey symbol in a thin grey ring.
+        case ringed
+        /// The symbol alone (the pencil by the name — owner: "just the pen").
+        case bare
+        /// A soft disc pressed into the row (NeuPressed), as the Live Activity card's buttons are soft.
+        case pressed
+    }
     let symbol: String
     let label: String
     var size: CGFloat = 30
-    /// The thin ring round it (the pencil by the name has none — owner: "just the pen").
-    var ringed = true
+    var style: Style = .ringed
     let action: () -> Void
     var body: some View {
         Button {
@@ -106,10 +114,11 @@ struct PrayerRowActionButton: View {
             action()
         } label: {
             Image(systemName: symbol)
-                .font(.system(size: size * 0.43, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: size * 0.43, weight: style == .pressed ? .light : .medium))
+                .foregroundStyle(style == .pressed ? AnyShapeStyle(Color.primary.opacity(0.65)) : AnyShapeStyle(.secondary))
                 .frame(width: size, height: size)
-                .overlay { if ringed { Circle().strokeBorder(Color.secondary.opacity(0.35), lineWidth: 1) } }
+                .background { if style == .pressed { NeuPressed(shape: Circle(), radius: 2.5, offset: 1.5) } }
+                .overlay { if style == .ringed { Circle().strokeBorder(Color.secondary.opacity(0.35), lineWidth: 1) } }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)

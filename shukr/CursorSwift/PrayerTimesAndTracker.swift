@@ -3031,7 +3031,10 @@ struct PrayerButton: View {
             else { NeuRaised(shape: shape) }
         case .quiet:
             if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
-        case .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap:
+        case .prayedOnTap:
+            // G · the raised row with fully round ends (owner: "round the edge of the list item when it's punched out").
+            if isCurrentPrayer || showsActions { NeuRaised(shape: Capsule(), radius: 8, offset: 4) } else { Color.clear }
+        case .now, .dayNow, .nowLeads, .prayedAt:
             // Sami's C–F · the prayer on now is the one raised block in the well (PrayerListLooks.swift).
             if isCurrentPrayer || showsActions { NeuRaised(shape: shape, radius: 8, offset: 4) } else { Color.clear }
         case .card, .well, .timeline:
@@ -3301,7 +3304,7 @@ struct PrayerButton: View {
                 }
                 // G · the marked row's pencil, right after its name (owner's drawing): the time / place editor.
                 if showsActions {
-                    PrayerRowActionButton(symbol: "pencil", label: "Edit time or place", size: 26, ringed: false) { openTimeEditor() }
+                    PrayerRowActionButton(symbol: "pencil", label: "Edit time or place", size: 26, style: .bare) { openTimeEditor() }
                         .padding(.leading, -6)   // close to the name (owner); the tap area stays 26 pt
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
