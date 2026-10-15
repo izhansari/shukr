@@ -533,12 +533,13 @@ struct ShowcaseStory {
         case .lockTime: ShowcaseStory(title: "Time left", hook: "A small ring that speaks up when it matters",
             lead: "A circle under your clock with the prayer that's on. In its last hour the name turns into the minutes left, so you notice before it's gone.",
             points: [p("lock", "No unlocking", "There every time you lift your phone"),
-                     p("circle.dashed", "Fills as time passes", "The ring follows the prayer's window")],
+                     p("circle.dashed", "Fills as time passes", "The ring follows the prayer's window"),
+                     p("alarm", "Your Fajr alarm", "After Isha it shows when your alarm will ring")],
             how: "How to add it", steps: lockSteps)
         case .lockCountdown: ShowcaseStory(title: "Countdown", hook: "Watch the time tick down",
             lead: "A wider widget under your clock: the prayer that's on, a live timer to its end, and a bar that fills as time passes.",
             points: [p("timer", "To the second", "Hours, minutes and seconds left"),
-                     p("arrow.right.circle", "Between prayers", "When the next one starts")],
+                     p("arrow.right.circle", "Between prayers", "When the next one starts — or, after Isha, when your Fajr alarm rings")],
             how: "How to add it", steps: lockSteps)
         case .lockName: ShowcaseStory(title: "Above the clock", hook: "One quiet line above the time",
             lead: "A single line over your clock: today's Name of Allah, or the prayer that's on and when it ends.",
@@ -1448,7 +1449,16 @@ struct RealLockWidget: View {
             .foregroundStyle(.white)
             .tint(.white)   // iOS draws Lock Screen widgets in one tint; outside it the bar came out blue
             .allowsHitTesting(false)
-            .task { entry = ExplorePreset.prayersEntry() }
+            .task {
+                entry = ExplorePreset.prayersEntry()
+                #if DEBUG
+                // `-demoLockAlarm YES`: after Isha (12:30 AM), with the Fajr alarm set (FajrAlarmShown).
+                if UserDefaults.standard.bool(forKey: "demoLockAlarm"), let e = entry,
+                   let night = Calendar.current.date(byAdding: .minute, value: 30, to: Calendar.current.startOfDay(for: e.date.addingTimeInterval(86_400))) {
+                    entry = e.at(night)
+                }
+                #endif
+            }
     }
 }
 

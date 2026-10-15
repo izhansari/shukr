@@ -20,6 +20,9 @@ keywords, "What's New" and screenshot captions.
 - Home-screen widget: the current prayer's ring and time, mark it prayed right from the
   widget (the check fills once the current prayer is prayed and the circle moves on to the next),
   and corner buttons for today's times, the qibla and tasbeeh.
+- Lock Screen widgets: the prayer that's on with a ring that fills (minutes left in its last hour), a countdown, or one
+  line above the clock — and after Isha, when your Fajr alarm will ring (iOS 26.1+, with the alarm on), else when
+  Fajr starts.
 
 **More widgets**
 - Zikr: today's zikr tasks like the Reminders widget — an overall progress ring, how many are

@@ -29,7 +29,7 @@ struct PrayersWidget: Widget {
         .contentMarginsDisabled()
         .configurationDisplayName("Prayers")
         // Shown under the name in Edit Widget too: where its look is set now (owner: a caption, not a one-option picker).
-        .description("Today's prayers and how much time is left. Set its look in shukr → Settings → Appearance.")
+        .description("Today's prayers and how much time is left; on the Lock Screen after Isha, when your Fajr alarm rings. Set its look in shukr → Settings → Appearance.")
         // + the Lock Screen (2026-09-26): a ring by the clock, a card under it, a line above it.
         .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
@@ -233,6 +233,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             }
         }
         moments += PrayerScoring.gradeChanges(start: prayer.start, end: prayer.end)
+        // The Lock Screen shows the Fajr alarm until it rings, then Fajr's start (FajrAlarmShown).
+        if prayer.name == "Fajr", let alarm = FajrAlarmShown.time(fajrStart: prayer.start, sunrise: prayer.end) { moments.append(alarm) }
         return moments.filter { $0 > now }
     }
 
@@ -1343,6 +1345,8 @@ extension SharedStore {
 ///   the start / end, so it switches on time.
 /// - Rectangular: name, "ends 6:48 PM" / "at 4:10 PM", and a bar that fills, or a countdown.
 /// - Inline (above the clock): "Asr · ends 6:48 PM".
+/// - Fajr still to come with shukr's Fajr alarm set (iOS 26.1+, on, allowed, not excused): every size shows when the
+///   alarm rings, under an alarm clock, instead of Fajr's start, until it has rung (owner, 2026-10-15; FajrAlarmShown).
 struct PrayerLockScreenView: View {
     let entry: PrayersWidgetEntry
     let family: WidgetFamily
@@ -1357,6 +1361,13 @@ struct PrayerLockScreenView: View {
         live && prayer.end > entry.date && prayer.end.timeIntervalSince(entry.date) <= PrayerLockScreenView.timeLeftFrom
     }
     static let timeLeftFrom: TimeInterval = 60 * 60
+    /// Fajr still to come with shukr's alarm set (owner, 2026-10-15): when it rings, until it has — in place of Fajr's
+    /// start (FajrAlarmShown); nil otherwise.
+    private var alarm: Date? {
+        guard !live, prayer.name == "Fajr",
+              let a = FajrAlarmShown.time(fajrStart: prayer.start, sunrise: prayer.end), a > entry.date else { return nil }
+        return a
+    }
     private static let clock: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "h:mm"
@@ -1417,12 +1428,13 @@ struct PrayerLockScreenView: View {
                     .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2.5, 3.5]))
                     .opacity(0.55)
                 VStack(spacing: 1) {
-                    Image(systemName: prayerIcon(for: prayer.name))
+                    // The Fajr alarm set: its time under an alarm clock instead of Fajr's start.
+                    Image(systemName: alarm != nil ? "alarm" : prayerIcon(for: prayer.name))
                         .font(.system(size: 9.5, weight: .medium))       // same as the live state
                     Text(prayer.name)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .lineLimit(1).minimumScaleFactor(0.6)
-                    Text(Self.clock.string(from: prayer.start))   // "5:32", no zero, no AM
+                    Text(Self.clock.string(from: alarm ?? prayer.start))   // "5:32", no zero, no AM
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .monospacedDigit()
                 }
@@ -1491,7 +1503,13 @@ struct PrayerLockScreenView: View {
                 }
             }
             .widgetAccentable()
-            (Text(live ? "ends " : "at ") + Text(live ? prayer.end : prayer.start, style: .time))
+            Group {
+                if let alarm {
+                    Text("\(Image(systemName: "alarm")) alarm ") + Text(alarm, style: .time)
+                } else {
+                    Text(live ? "ends " : "at ") + Text(live ? prayer.end : prayer.start, style: .time)
+                }
+            }
                 .font(.system(size: 13, weight: .regular, design: .rounded))
                 .foregroundStyle(.secondary)
             if live {
@@ -1509,7 +1527,7 @@ struct PrayerLockScreenView: View {
                 }
                 .progressViewStyle(.linear)
             } else {
-                (Text("in ") + PrayersWidgetView.relative(prayer.start))
+                (Text("in ") + PrayersWidgetView.relative(alarm ?? prayer.start))
                     .font(.system(size: 13, weight: .regular, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -1519,9 +1537,13 @@ struct PrayerLockScreenView: View {
 
     private var inline: some View {
         Label {
-            Text(prayer.name + (live ? " · ends " : " · ")) + Text(live ? prayer.end : prayer.start, style: .time)
+            if let alarm {
+                Text(prayer.name + " alarm · ") + Text(alarm, style: .time)
+            } else {
+                Text(prayer.name + (live ? " · ends " : " · ")) + Text(live ? prayer.end : prayer.start, style: .time)
+            }
         } icon: {
-            Image(systemName: prayerIcon(for: prayer.name))
+            Image(systemName: alarm != nil ? "alarm" : prayerIcon(for: prayer.name))
         }
     }
 }

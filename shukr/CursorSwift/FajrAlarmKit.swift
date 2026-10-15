@@ -20,6 +20,7 @@ import SwiftUI
 import SwiftData
 import AlarmKit
 import AppIntents
+import WidgetKit
 
 /// The alarm rule's minutes: 5-minute steps up to an hour; before the END of Fajr at least 10 (owner: you need time to
 /// wake up and make wudu — 0 or 5 minutes before sunrise is too late). Setup's and Settings' wheels and the scheduler
@@ -63,6 +64,19 @@ enum FajrAlarms {
         return false
     }
     static var isActive: Bool { supported && group?.bool(forKey: activeKey) == true }
+
+    /// The Lock Screen shows the alarm's time after Isha (FajrAlarmShown): the Prayers widget is reloaded when what it
+    /// reads changes — on / allowed / the rule — and only then (every plan would spend iOS's reload budget).
+    @available(iOS 26.1, *)
+    @MainActor static func refreshLockScreenIfChanged() {
+        guard let g = group else { return }
+        let sig = [g.bool(forKey: "alarmEnabled"), isActive, AlarmManager.shared.authorizationState == .authorized,
+                   g.object(forKey: "alarmIsFajr") as? Bool ?? true, g.object(forKey: "alarmIsBefore") as? Bool ?? true]
+            .map { $0 ? "1" : "0" }.joined() + "|\(g.integer(forKey: "alarmOffsetMinutes"))"
+        guard g.string(forKey: "lockScreenAlarmSig") != sig else { return }
+        g.set(sig, forKey: "lockScreenAlarmSig")
+        WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.prayers)
+    }
     static var scheduledThrough: Date? {
         let t = group?.double(forKey: throughKey) ?? 0
         return t > 0 ? Date(timeIntervalSince1970: t) : nil
@@ -147,6 +161,7 @@ enum FajrAlarms {
     /// add the missing days until AlarmKit's cap. Cheap when nothing changed (no calls at all).
     @MainActor static func plan(reason: String) async {
         guard #available(iOS 26.1, *) else { return }
+        defer { refreshLockScreenIfChanged() }
         // Switched off by a misread while AlarmKit is allowed and still holds our alarms (only `disable` turns it off on
         // purpose, and it cancels them all): back on, so they're kept to the rule again. The owner's phone, 2026-10-10:
         // mode off, permission authorized, 56 alarms nobody planned any more.

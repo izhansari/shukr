@@ -1833,13 +1833,38 @@ struct PrayerTimeUnavailable: Error, CustomLocalizedStringResourceConvertible {
     var localizedStringResource: LocalizedStringResource { "Open shukr once so it knows where you are." }
 }
 
+// MARK: - The Fajr alarm on the Lock Screen
+
+/// The Lock Screen's Fajr (owner, 2026-10-15): once Isha is done the Prayers widget shows when the Fajr alarm rings, not
+/// when Fajr starts — by default, whenever shukr rings it (iOS 26.1+ AlarmKit, the alarm on and allowed, not excused);
+/// otherwise Fajr's start, as before. The alarm rule from Settings → Reminders → Fajr Alarm, as the scheduler reads it.
+enum FajrAlarmShown {
+    static func time(fajrStart: Date, sunrise: Date) -> Date? {
+        #if DEBUG
+        // `-demoLockAlarm YES` (in the app — Explore's Lock Screen pictures): an alarm 20 min before Fajr.
+        if UserDefaults.standard.bool(forKey: "demoLockAlarm") { return fajrStart.addingTimeInterval(-20 * 60) }
+        #endif
+        guard #available(iOS 26.1, *) else { return nil }
+        guard let g = UserDefaults(suiteName: SharedStore.appGroup),
+              g.bool(forKey: "alarmEnabled"), g.bool(forKey: "alarmKitActive"), !Excused.isActive else { return nil }
+        #if canImport(AlarmKit)
+        guard AlarmManager.shared.authorizationState == .authorized else { return nil }
+        #endif
+        let isFajr = g.object(forKey: "alarmIsFajr") as? Bool ?? true
+        let before = g.object(forKey: "alarmIsBefore") as? Bool ?? true
+        let raw = g.integer(forKey: "alarmOffsetMinutes")
+        let minutes = isFajr ? raw : max(10, raw)   // FajrAlarmRule.clamp: before the end of Fajr, at least 10
+        return (isFajr ? fajrStart : sunrise).addingTimeInterval(TimeInterval(minutes * 60) * (before ? -1 : 1))
+    }
+}
+
 // MARK: - The Fajr alarm's time, for any shortcut
 
 /// "Get Fajr Alarm Time" (owner: usable in any shortcut — lights on at that time): the next time your Fajr alarm
 /// rule gives (Settings → Reminders → Fajr Alarm), whether or not the alarm is on. Never stops a shortcut.
 struct FajrAlarmTimeIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Fajr Alarm Time"   // was "Autopilot …" (owner: verb first, no jargon)
-    static var description = IntentDescription("The next time your Fajr alarm rule gives — e.g. 20 minutes before Fajr starts — from Settings → Reminders → Fajr Alarm, whether or not the alarm is on. Use it in any shortcut: lights, music, a Focus.",
+    static var description = IntentDescription("The next time your Fajr alarm rule gives — e.g. 20 minutes before Fajr starts — from Settings → Reminders → Fajr Alarm, whether or not the alarm is on. Use it in any shortcut: lights, music, a Focus. With the alarm on, it's also what shukr's Lock Screen widget shows after Isha.",
                                                categoryName: "Fajr Alarm", searchKeywords: ["wake", "alarm", "fajr", "morning"],
                                                resultValueName: "Fajr Alarm Time")
 

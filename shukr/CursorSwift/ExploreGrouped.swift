@@ -67,7 +67,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
     var lead: String {
         switch self {
         case .homeWidgets: "Widgets are the live tiles that sit among your apps. shukr's show the prayer that's on and how long you have, and you mark it with a tap. Your zikr, the Name of the Day and today's verse can live there too."
-        case .lockWidgets: "Lock Screen widgets sit right under your clock. Lift your phone and you see the prayer that's on and the time left, counting down in its last hour. No unlocking, no opening anything."
+        case .lockWidgets: "Lock Screen widgets sit right under your clock. Lift your phone and you see the prayer that's on and the time left, counting down in its last hour, and after Isha when your Fajr alarm will ring. No unlocking, no opening anything."
         case .controls: "Control Center is the panel you pull down from your phone's top-right corner. Put shukr there and marking a prayer, checking when it ends or finding the qibla is a swipe and a tap from any app."
         case .siri: "Shortcuts is Apple's app for quick actions. shukr's answer with a card, no opening the app: how long is left, today's times, the nearest mosques. Tap one, press the Action button, or ask Siri."
         case .watch: "Mark a prayer, count zikr with taps, a pinch or the Crown, and see the prayer's ring right on your watch face, without taking your phone out."
