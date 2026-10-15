@@ -1196,7 +1196,7 @@ enum ZikrLockWords {
     static let verseSource = "Al-Baqarah 2:152"
     static let inside: [(symbol: String, words: String)] = [
         ("circle.hexagonpath", "A counter for\nany zikr"),
-        ("checklist", "Daily goals,\ngently reminded"),
+        ("checklist", "Daily tasks,\ngently reminded"),
         ("flame", "Streaks that\nkeep you going"),
     ]
     /// Ibn Kathir's tafsir of 2:152 cites this hadith qudsi to explain the verse; the hadith itself wasn't said about it,

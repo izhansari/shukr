@@ -142,9 +142,9 @@ enum ExploreLean {
                          parts: [("The map", opened(.map))]),
             ExploreStory(id: .journey, title: "How you're doing", line: "Insights and your day's ring", symbol: "chart.pie",
                          parts: [("Insights", opened(.journey))]),
-            ExploreStory(id: .memories, title: "Memories", line: "A photo with each prayer", symbol: "photo.stack",
+            ExploreStory(id: .memories, title: "Moments", line: "A photo with each prayer", symbol: "photo.stack",
                          parts: [("A prayer photo", !PrayerPhotos.all().isEmpty)]),
-            ExploreStory(id: .goals, title: "Daily zikr goals", line: "Tasks with streaks", symbol: "target",
+            ExploreStory(id: .goals, title: "Daily zikr tasks", line: "Tasks with streaks", symbol: "target",
                          parts: [("A daily task", tasks)]),
             ExploreStory(id: .zikrExtras, title: "Zikr extras", line: "Sleep mode and Tasbih Fatimah", symbol: "moon.zzz",
                          parts: [("Sleep mode", d.bool(forKey: SleepMorning.introConfirmedKey)), ("Tasbih Fatimah", tasbihFatimah)]),
@@ -172,7 +172,7 @@ enum ExploreLean {
             case .widgets where lateLately >= 3: add(4, "You often pray near the end of a window. Your Home Screen can show how long is left.")
             case .masjid where atMasjid: add(4, "You pray at a masjid. shukr can count Jumu'ah there and greet you with a dua.")
             case .zikrExtras where zikrDays >= 4: add(4, "You count zikr most days. Sleep mode saves a session when you drift off.")
-            case .goals where zikrDays >= 2 && !tasks: add(4, "You count zikr often. A daily goal keeps a streak going.")
+            case .goals where zikrDays >= 2 && !tasks: add(4, "You count zikr often. A daily task keeps a streak going.")
             case .watch where !watchInstalled: add(4, "You have an Apple Watch. Mark prayers and count zikr from your wrist.")
             default: break
             }
@@ -228,7 +228,7 @@ enum ExploreLean {
         case .map: "Every prayer you've marked, where you prayed it."
         case .journey: "See which prayer needs you most."
         case .memories: "A photo after you pray, kept day by day."
-        case .goals: "A daily goal for a zikr, with a streak."
+        case .goals: "A daily task for a zikr, with a streak."
         case .zikrExtras: "Sleep mode and Tasbih Fatimah after every prayer."
         case .learn: "A verse a day, and the 99 Names one by one."
         }
@@ -513,7 +513,7 @@ struct ExploreStoryPage: View {
                                    ("circle.circle", "Your day in one ring", "After your last prayer, each prayer's fifth in its colour.")],
                         action: ("Open Insights", { go("insights") })) { ExploreStoryPicture(id: .journey) }
         case .goals:
-            ExploreCard(title: "Daily zikr goals", why: "Pick a zikr and a daily goal; shukr keeps your streak.",
+            ExploreCard(title: "Daily zikr tasks", why: "Pick a zikr and a daily task; shukr keeps your streak.",
                         features: [("target", "A count or minutes", "33 a day, or 5 minutes, your choice."),
                                    ("flame", "Streaks", "Every day you meet it, the streak grows."),
                                    ("bell", "A reminder", "At a time or around a prayer, if you'd like.")],

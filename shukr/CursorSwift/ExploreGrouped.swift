@@ -27,7 +27,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .watch: "Apple Watch"
         case .answer: "Answer from notifications"
         case .mapMasjid: "The shukr map"   // owner: broader than the masjid
-        case .memories: "Memories"
+        case .memories: "Moments"
         case .insights: "Insights"
         case .zikrExtras: "Zikr extras"
         }
@@ -44,7 +44,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .mapMasjid: "Prayer pins and the mosque finder"
         case .memories: "A photo with each prayer, kept day by day"
         case .insights: "See which prayer needs you most"
-        case .zikrExtras: "Count in bed, after salah, or toward a daily goal"
+        case .zikrExtras: "Count in bed, after salah, or toward a daily task"
         }
     }
     /// What's good about it: the group page's headline, under its name.
@@ -75,7 +75,7 @@ enum ExploreGroupID: String, CaseIterable, Identifiable {
         case .mapMasjid: "One map for both: each prayer you mark is pinned where you prayed it, colored by how you did, and the mosque finder lists the nearest masajid with walk and drive times. A Friday Dhuhr at one counts as Jumu'ah."
         case .memories: "After you mark a prayer, take a photo with both cameras at once, and keep it with that prayer, day by day, private on your phone."
         case .insights: "Your score for each prayer, how consistent you've been, and whether you're improving week by week."
-        case .zikrExtras: "Fall asleep counting and your session's saved. Tasbih Fatimah is a tap away after you pray. Set a daily goal and keep a streak."
+        case .zikrExtras: "Fall asleep counting and your session's saved. Tasbih Fatimah is a tap away after you pray. Set a daily task and keep a streak."
         }
     }
     var members: [ShowcaseCardID] {
@@ -146,13 +146,13 @@ extension ShowcaseCardID {
         case .insights: "Which prayer needs you most"
         case .sleep: "Saves your count if you drift off"
         case .tasbihFatimah: "33 · 33 · 34, offered after each prayer"
-        case .goals: "A daily goal, and a streak for keeping it"
+        case .goals: "A daily task, and a streak for keeping it"
         case .siriTimeLeft: "The time left, with a ✓ to mark it"
         case .siriPrayerTime: "Any prayer's time, for your own shortcuts"
         case .siriTodaysTimes: "All five times, with what you've prayed"
         case .siriIPrayed: "Marks the prayer that's on, with your score"
         case .siriFajrAlarm: "When your Fajr alarm rings next"
-        case .siriOpenPage: "Straight to Qibla, Zikr, Memories…"
+        case .siriOpenPage: "Straight to Qibla, Zikr, Moments…"
         case .siriTasbihFatimah: "Starts 33 · 33 · 34"
         case .siriZikrTasks: "Your tasks in a card; tap one to start it"
         case .siriMosques: "The nearest mosques on a map, with directions"
@@ -191,11 +191,11 @@ extension ShowcaseCardID {
         case .prayersMap: "Your prayers on the map"
         case .mosques: "Mosques near you"
         case .jumuah: "Jumu'ah at the masjid"
-        case .memories: "Memories"
+        case .memories: "Moments"
         case .insights: "Insights"
         case .sleep: "Sleep mode"
         case .tasbihFatimah: "Tasbih Fatimah after prayer"
-        case .goals: "Daily goals with streaks"
+        case .goals: "Daily tasks with streaks"
         // The Shortcuts tiles' own names (ShukrAppShortcuts.swift).
         case .siriTimeLeft: "Time Left"
         case .siriPrayerTime: "Prayer Time"

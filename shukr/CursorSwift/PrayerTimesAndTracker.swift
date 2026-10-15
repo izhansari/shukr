@@ -2130,7 +2130,7 @@ struct PrayerTimesView: View {
                                     .padding(.bottom, 10)
                                 Divider()
                                 menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
-                                menuRow("Memories", "photo.stack") { MemoriesPresenter.shared.open = true }
+                                menuRow("Moments", "photo.stack") { MemoriesPresenter.shared.open = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 // While excused only (owner): quick to manage or end (Excused.swift).

@@ -502,7 +502,7 @@ struct MemoriesPage: View {
         )
         .safeAreaInset(edge: .bottom) { if hasPhotos { bottomBar } }
         .sensoryFeedback(.selection, trigger: level)
-        .navigationTitle("Memories")
+        .navigationTitle("Moments")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -1324,7 +1324,7 @@ struct MemoriesDeck: View {
             }
             Button("Cancel", role: .cancel) { deleting = nil }
         } message: {
-            Text("It's removed from Memories, along with its note.")
+            Text("It's removed from Moments, along with its note.")
         }
         // A photo deleted (or retaken) under the pile: stay on the same photo if it's still there, else the one beside
         // it in its day, else the nearest; none left closes the pile.
@@ -3150,7 +3150,7 @@ struct MemoriesPileMock: View {
         let octKeys = (4...10).map { String(format: "2026-10-%02d", $0) }
         return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Memories").font(.system(size: 17, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity)
+                Text("Moments").font(.system(size: 17, weight: .semibold, design: .rounded)).frame(maxWidth: .infinity)
                 // A month with no photos stays, slim: the gap between photos is still there to see (owner: a sense of time).
                 // A month header like every other (owner: the boxed row "not the same size … spacing is different"),
                 // with "No photos" beside it and no calendar under it.

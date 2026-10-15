@@ -155,7 +155,7 @@ struct ExploreShukrPage: View {
         case .controls: ("switch.2", "Control Center")
         case .siri: ("waveform", "Siri")
         case .watch: ("applewatch", "Apple Watch")
-        case .memories: ("photo.stack", "Memories")
+        case .memories: ("photo.stack", "Moments")
         }
         return HStack(spacing: 14) {
             Image(systemName: symbol).font(.system(size: 17)).frame(width: 26)
@@ -178,7 +178,7 @@ struct ExploreShukrPage: View {
         case .controls: "Control Center"
         case .siri: "Siri"
         case .watch: "Apple Watch"
-        case .memories: "Memories"
+        case .memories: "Moments"
         }
     }
 }
@@ -236,7 +236,7 @@ struct ExploreFeatureCard: View {
                         why: "shukr a swipe away, even inside another app.",
                         features: [("clock", "Prayer", "The prayer that's on, or the next one, and its time."),
                                    ("location.north.line", "Qibla and Tasbeeh", "Straight to the qibla map, or your zikr."),
-                                   ("book", "Daily Ayah, 99 Names, Memories", "Each opens straight to it.")],
+                                   ("book", "Daily Ayah, 99 Names, Moments", "Each opens straight to it.")],
                         steps: [("arrow.down.right", "Swipe down from the top-right corner"),
                                 ("plus", "Tap + at the top left, then Add a Control"),
                                 ("magnifyingglass", "Search shukr and add the ones you want")],
@@ -267,12 +267,12 @@ struct ExploreFeatureCard: View {
                                 ("arrow.down", "Scroll to Available Apps"),
                                 ("square.and.arrow.down", "Tap Install next to shukr")]) { WatchPicture() }
         case .memories:
-            ExploreCard(startOpen: open, title: "Memories",
+            ExploreCard(startOpen: open, title: "Moments",
                         why: "A photo after you pray, kept day by day.",
                         features: [("camera", "Both cameras at once", "Where you are, and you, after you mark a prayer."),
                                    ("magnifyingglass", "Find any of them", "By prayer, place, note or date. Hijri dates too."),
                                    ("calendar", "On this day", "What you saw a year ago.")],
-                        action: ("Open Memories", { MemoriesPresenter.shared.open = true })) { MemoriesPicture() }
+                        action: ("Open Moments", { MemoriesPresenter.shared.open = true })) { MemoriesPicture() }
         }
     }
 

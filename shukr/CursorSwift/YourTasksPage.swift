@@ -31,7 +31,7 @@ struct YourTasksPage: View {
                                 .font(.system(size: 34, weight: .light))
                                 .foregroundStyle(Color.sage)
                             Text("No zikr tasks yet").font(.headline)
-                            Text("A task is a daily goal for a zikr — 33 Astaghfirullah, 10 minutes of Subhanallah.")
+                            Text("A task is a zikr you say each day — 33 Astaghfirullah, 10 minutes of Subhanallah.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)

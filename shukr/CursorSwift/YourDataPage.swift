@@ -287,7 +287,7 @@ struct YourDataPage: View {
         case .prayers: counts.marked == 0 ? "None marked yet"
             : s(counts.marked, "marked", "marked") + (counts.firstMarked.map { " since " + $0.formatted(.dateTime.month(.abbreviated).year()) } ?? "")
         case .zikr: counts.sessions == 0 ? "None yet" : s(counts.sessions, "session", "sessions")
-        case .azkar: s(counts.azkar, "of yours", "of yours") + " · " + s(counts.goals, "goal", "goals") + " · media"
+        case .azkar: s(counts.azkar, "of yours", "of yours") + " · " + s(counts.goals, "task", "tasks") + " · media"
         case .photos: counts.photos == 0 ? "None yet" : s(counts.photos, "photo", "photos") + " and notes"
         case .names: "\(counts.names) of 99"
         case .donations: counts.donations == 0 ? "None logged yet" : s(counts.donations, "donation", "donations") + " from Give to Causes"
@@ -717,7 +717,7 @@ private struct RestoreSheet: View {
         if p.prayersMarked > 0 { out.append(("checkmark.circle.fill", n(p.prayersMarked, "mark", "marks") + " for prayers left unmarked here")) }
         if p.sessions > 0 { out.append(("circle.hexagonpath", n(p.sessions, "zikr session", "zikr sessions"))) }
         if p.azkar > 0 { out.append(("books.vertical", n(p.azkar, "zikr of yours", "azkar of yours"))) }
-        if p.goals > 0 { out.append(("target", n(p.goals, "daily goal", "daily goals"))) }
+        if p.goals > 0 { out.append(("target", n(p.goals, "task", "tasks"))) }
         if p.photos > 0 { out.append(("camera", n(p.photos, "prayer photo", "prayer photos"))) }
         if p.donations > 0 { out.append(("gift", n(p.donations, "donation", "donations"))) }
         if p.excused > 0 { out.append(("pause.circle", n(p.excused, "Excused Mode stretch", "Excused Mode stretches"))) }
@@ -859,7 +859,7 @@ enum DataExport {
         })
 
         let goals = ((try? context.fetch(FetchDescriptor<TaskModel>())) ?? []).sorted { $0.sortOrder < $1.sortOrder }
-        out["daily-goals.csv"] = table(["Goal", "Zikr", "Kind", "Each day", "Paused", "Reminder"], goals.map { t in
+        out["tasks.csv"] = table(["Task", "Zikr", "Kind", "Each day", "Paused", "Reminder"], goals.map { t in
             [t.title, t.displayName, t.isCountMode ? "count" : "minutes", String(t.goal),
              t.pausedAt.map(stamp) ?? "", t.reminderKind == nil ? "" : "on"]
         })
@@ -886,7 +886,7 @@ enum DataExport {
 
         prayers.csv: every prayer shukr has a record of, prayed or not, with its score.
         zikr-sessions.csv: every zikr session.
-        azkar.csv and daily-goals.csv: your azkar and your daily goals.
+        azkar.csv and tasks.csv: your azkar and your tasks.
         names-learned.csv: the 99 Names you've marked as learned.
         donations.csv and excused-mode.csv: when you've used them and chose them.
         settings.csv and your-masajid.csv: your settings, and the masajid you starred or hid on the map.

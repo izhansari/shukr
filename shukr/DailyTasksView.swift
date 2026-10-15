@@ -249,10 +249,10 @@ struct ZikrCircleWheel: View {
     private var countedTasks: [TaskModel] { tasks.filter { $0.pausedAt == nil } }
     private func summaryText(done: Int, secondsLeft: TimeInterval) -> String {
         let n = countedTasks.count
-        let word = n == 1 ? "daily goal" : "daily goals"   // decision zikr-goal-word A
+        let word = n == 1 ? "task" : "tasks"   // decision zikr-goal-word A
         // Every goal paused: it read "all 0 daily goals done today".
-        if n == 0 { return "Daily goals paused" }
-        if done == n { return n == 1 ? "daily goal done today" : "all \(n) \(word) done today" }
+        if n == 0 { return "Tasks paused" }
+        if done == n { return n == 1 ? "task done today" : "all \(n) \(word) done today" }
         let base = "\(done) of \(n) \(word) done"
         guard secondsLeft > 0 else { return base }
         let estimate = zikrEstimateString(secondsLeft).replacingOccurrences(of: "~", with: "")
@@ -630,7 +630,7 @@ struct ZikrCircleWheel: View {
                 // circle (owner: glass broke under the wheel's shrink and tilt; "Frosted always, on the circle").
                 .overlay(alignment: .bottom) { freestyleChip.offset(y: 16) }
         case .add:
-            ZikrCircleFace(title: "New goal", icon: "plus", subtitle: "for any zikr", ring: .dashed)
+            ZikrCircleFace(title: "New task", icon: "plus", subtitle: "for any zikr", ring: .dashed)
         case .task(let task):
             // Hold = the task's options, like every task row in the tab (tap still starts it).
             let example = TourExamples.shared.isExample(task)

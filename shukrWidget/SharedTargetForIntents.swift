@@ -2495,7 +2495,7 @@ struct StartTasbihFatimahIntent: AppIntent {
 
 /// Opens Memories (a control, a shortcut).
 struct OpenMemoriesIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open Memories"
+    static var title: LocalizedStringResource = "Open Moments"
     /// Folded into "Open shukr" → Memories; its control (owner, 2026-10-12): hidden from the action list, still runs in saved shortcuts.
     static var isDiscoverable: Bool = false
     static var description = IntentDescription("Opens your prayer photos in shukr.")
@@ -2539,8 +2539,8 @@ enum ShukrPage: String, AppEnum, CaseIterable {
                                           synonyms: ["ayah", "the ayah", "verse of the day", "Quran"]),
         .names: DisplayRepresentation(title: "99 Names", subtitle: "The names of Allah", image: .init(systemName: "moon.stars"),
                                       synonyms: ["names", "names of Allah", "Asma ul Husna"]),
-        .memories: DisplayRepresentation(title: "Memories", subtitle: "Your prayer photos", image: .init(systemName: "photo.stack"),
-                                         synonyms: ["photos", "prayer photos"]),
+        .memories: DisplayRepresentation(title: "Moments", subtitle: "Your prayer photos", image: .init(systemName: "photo.stack"),
+                                         synonyms: ["photos", "prayer photos", "memories"]),   // its old name (owner renamed it Moments, 2026-10-15)
         // Its own tile until iOS 27 hid every tile outside a section (2026-10-14): a page here, so it stays on the page.
         .tasbihFatimah: DisplayRepresentation(title: "Tasbih Fatimah", subtitle: "33 · 33 · 34", image: .init(systemName: "circle.hexagonpath"),
                                               synonyms: ["Tasbih Fatimah", "tasbeeh Fatimah", "33 33 34"]),
@@ -2564,11 +2564,11 @@ struct ShukrPageOptions: DynamicOptionsProvider {
     func results() async throws -> [ShukrPage] { ShukrPage.allCases }
 }
 
-/// "Open shukr": one tile for every page (owner, 2026-10-12) — "Open qibla in shukr", "Open memories in shukr".
+/// "Open shukr": one tile for every page (owner, 2026-10-12) — "Open qibla in shukr", "Open moments in shukr".
 struct OpenShukrIntent: AppIntent {
     static var title: LocalizedStringResource = "Open shukr"
-    static var description = IntentDescription("Opens shukr on the page you pick: Salah, Qibla, Zikr, Daily Ayah, 99 Names or Memories.",
-                                               categoryName: "Open shukr", searchKeywords: ["open", "go to", "show", "qibla", "zikr", "ayah", "names", "memories"])
+    static var description = IntentDescription("Opens shukr on the page you pick: Salah, Qibla, Zikr, Daily Ayah, 99 Names or Moments.",
+                                               categoryName: "Open shukr", searchKeywords: ["open", "go to", "show", "qibla", "zikr", "ayah", "names", "moments", "memories"])
     static var openAppWhenRun: Bool = true
 
     @Parameter(title: "Page", default: .salah) var page: ShukrPage

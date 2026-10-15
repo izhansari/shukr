@@ -22,17 +22,17 @@ enum ZikrAreaStart { case azkar, history }
 /// the old stats sheet) · Reorder goals · Pause · Share goal… · Delete….
 @MainActor @ViewBuilder func goalWheelMenu(_ task: TaskModel, onEdit: @escaping () -> Void, onOpenZikr: @escaping () -> Void,
                                               onReorder: @escaping () -> Void, onDelete: @escaping () -> Void) -> some View {
-    Button(action: onEdit) { Label("Edit goal", systemImage: "pencil") }
+    Button(action: onEdit) { Label("Edit task", systemImage: "pencil") }
     if task.mantra != nil { Button(action: onOpenZikr) { Label("Open zikr", systemImage: "circle.hexagonpath") } }
     Button {
         Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); onReorder() }
-    } label: { Label("Reorder goals", systemImage: "arrow.up.arrow.down") }
+    } label: { Label("Reorder tasks", systemImage: "arrow.up.arrow.down") }
     Button { withAnimation(.snappy) { setGoalPaused(task, true) } } label: {
         Label("Pause", systemImage: "pause.circle")
     }
     Button {
         Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); TaskSharing.share(task) }
-    } label: { Label("Share goal…", systemImage: "square.and.arrow.up") }
+    } label: { Label("Share task…", systemImage: "square.and.arrow.up") }
     Divider()
     Button(role: .destructive, action: onDelete) { Label("Delete…", systemImage: "trash") }
 }
@@ -585,14 +585,14 @@ private struct GoalMenu: View {
         if !paused {
             Button { if let onStart { onStart() } else { startGoal(task, resume: false) } } label: { Label("Start", systemImage: "play.fill") }
         }
-        Button(action: onEdit) { Label("Edit goal", systemImage: "pencil") }
+        Button(action: onEdit) { Label("Edit task", systemImage: "pencil") }
         if let onOpenZikr { Button(action: onOpenZikr) { Label("Open zikr", systemImage: "circle.hexagonpath") } }
         Button {
             withAnimation(.snappy) { setGoalPaused(task, !paused) }
         } label: { Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.circle" : "pause.circle") }
         Button {
             Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); TaskSharing.share(task) }
-        } label: { Label("Share goal…", systemImage: "square.and.arrow.up") }
+        } label: { Label("Share task…", systemImage: "square.and.arrow.up") }
         Divider()
         Button(role: .destructive, action: onDelete) { Label("Delete…", systemImage: "trash") }
     }
@@ -607,7 +607,7 @@ private struct DeleteGoalAlert: ViewModifier {
         content.alert(task.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
                       isPresented: Binding(get: { task != nil }, set: { if !$0 { task = nil } }),
                       presenting: task) { t in
-            Button("Delete Goal", role: .destructive) {
+            Button("Delete Task", role: .destructive) {
                 then()   // a goal's own page leaves first
                 withAnimation { TaskModel.delete(t, in: context) }
                 task = nil
@@ -653,7 +653,7 @@ private struct DeleteSessionAlert: ViewModifier {
             }
             Button("Cancel", role: .cancel) { session = nil }
         } message: {
-            Text("Its count comes off your totals and today's goals. This can't be undone.")
+            Text("Its count comes off your totals and today's tasks. This can't be undone.")
         }
     }
 }
@@ -844,11 +844,11 @@ private struct YourAzkarPage: View {
         let done = parts.filter { $0 >= 1 }.count
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Soft.title("Your azkar", "\(zikrs.filter { !$0.isBuiltIn }.count) azkar · \(live.count) daily goals"
+                Soft.title("Your azkar", "\(zikrs.filter { !$0.isBuiltIn }.count) azkar · \(live.count) task\(live.count == 1 ? "" : "s")"
                            + (tasks.count > live.count ? " · \(tasks.count - live.count) paused" : ""))
                 if !live.isEmpty && !searching { hero(parts: parts, done: done) }
                 if !liveShown.isEmpty {
-                    SoftLabel(title: "Daily goals", trailing: "in the wheel's order")
+                    SoftLabel(title: "Tasks", trailing: "in the wheel's order")
                     SoftCard { goalList }
                 }
                 if !pausedShown.isEmpty {
@@ -884,7 +884,7 @@ private struct YourAzkarPage: View {
                         if showBuiltIns { ForEach(builtIns) { zikrRow($0) } }
                     }
                 }
-                Text("Hold a goal for options, or hold and drag it to change the wheel's order.")
+                Text("Hold a task for options, or hold and drag it to change the wheel's order.")
                     .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity).padding(.top, 4)
             }
@@ -973,7 +973,7 @@ private struct YourAzkarPage: View {
                 }
                 // The ring's key only until a goal is done (Sami: good once).
                 if done == 0 {
-                    Text("Each part of the ring is one goal.").font(.footnote).foregroundStyle(.secondary)
+                    Text("Each part of the ring is one task.").font(.footnote).foregroundStyle(.secondary)
                 } else if bestStreak > 1 {
                     Text("Your longest streak now: \(bestStreak) days").font(.footnote).foregroundStyle(.secondary)
                 }
@@ -989,7 +989,7 @@ private struct YourAzkarPage: View {
             .matchedTransitionSource(id: "zikr-\(z.id)", in: zoom)
             .contextMenu {
                 Button { open = .zikr(z, source: "zikr-\(z.id)") } label: { Label("Open", systemImage: "circle.hexagonpath") }
-                Button { newGoalFor = z } label: { Label("Make it a daily goal", systemImage: "target") }
+                Button { newGoalFor = z } label: { Label("Make it a task", systemImage: "target") }
             }
     }
 
@@ -1020,7 +1020,7 @@ private struct ZikrPage: View {
 
     enum Tab: String, CaseIterable, Identifiable {
         // "Details", not "Zikr" (owner: the whole page is the zikr's).
-        case details = "Details", goals = "Daily goals", history = "History"
+        case details = "Details", goals = "Tasks", history = "History"
         var id: String { rawValue }
     }
     /// History's goal filter (a zikr with more than one goal).
@@ -1090,14 +1090,14 @@ private struct ZikrPage: View {
                 // on Daily goals the goal (it opens in their shukr), elsewhere the zikr's words.
                 if tab == .goals, let g = goal {
                     Button { TaskSharing.share(g) } label: { Image(systemName: "square.and.arrow.up") }
-                        .accessibilityLabel("Share goal")
+                        .accessibilityLabel("Share task")
                 } else {
                     ShareLink(item: shareText) { Image(systemName: "square.and.arrow.up") }
                         .accessibilityLabel("Share zikr")
                 }
                 Menu {
                     Button { card = ZikrCardRequest(mantra: zikr) } label: { Label("Edit the zikr", systemImage: "text.book.closed") }
-                    Button { addingGoal = true } label: { Label(goals.isEmpty ? "Make it a daily goal" : "Another daily goal", systemImage: "plus") }
+                    Button { addingGoal = true } label: { Label(goals.isEmpty ? "Make it a task" : "Another task", systemImage: "plus") }
                 } label: { Image(systemName: "ellipsis") }
             }
         }
@@ -1249,7 +1249,7 @@ private struct ZikrPage: View {
         if let g = goal {
             VStack(alignment: .leading, spacing: 10) {
                 // How many there are (owner: nowhere said it), in History's MOST SAID type.
-                Text("\(goals.count) DAILY GOAL\(goals.count == 1 ? "" : "S")")
+                Text("\(goals.count) TASK\(goals.count == 1 ? "" : "S")")
                     .font(.caption.weight(.medium)).tracking(1.2).foregroundStyle(.secondary).padding(.leading, 4)
                 goalChips
                 Color.clear.frame(height: 2)
@@ -1261,11 +1261,11 @@ private struct ZikrPage: View {
         } else {
             VStack(spacing: 12) {
                 Image(systemName: "target").font(.system(size: 30, weight: .light)).foregroundStyle(.secondary)
-                Text("No daily goal yet").font(.system(size: 20, weight: .light, design: .rounded))
-                Text("A daily goal puts \(zikr.name) on your wheel each day, with a streak to keep.")
+                Text("No task yet").font(.system(size: 20, weight: .light, design: .rounded))
+                Text("A task puts \(zikr.name) on your wheel each day, with a streak to keep.")
                     .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Button { addingGoal = true } label: {
-                    Text("Add a daily goal").font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
+                    Text("Add a task").font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
                         .padding(.horizontal, 18).frame(height: 40)
                         .overlay(Capsule().strokeBorder(Color.sage.opacity(0.6), lineWidth: 1))
                         .contentShape(Capsule())
@@ -1299,7 +1299,7 @@ private struct ZikrPage: View {
                         .frame(width: 34, height: 34).background(Circle().fill(Color.primary.opacity(0.05)))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Another daily goal")
+                .accessibilityLabel("Another task")
             }
             .padding(.horizontal, 2)
         }
@@ -1324,16 +1324,16 @@ private struct ZikrPage: View {
             .buttonStyle(.plain)
             Spacer(minLength: 8)
             Menu {
-                Button { editing = g } label: { Label("Edit goal", systemImage: "pencil") }
+                Button { editing = g } label: { Label("Edit task", systemImage: "pencil") }
                 Button { reminding = g } label: { Label(when == nil ? "Add a reminder" : "Change reminder", systemImage: "bell") }
                 Button { withAnimation(.snappy) { setGoalPaused(g, !paused) } } label: {
                     Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.circle" : "pause.circle")
                 }
                 Button {
                     Task { @MainActor in try? await Task.sleep(for: .seconds(0.35)); TaskSharing.share(g) }
-                } label: { Label("Share goal…", systemImage: "square.and.arrow.up") }
+                } label: { Label("Share task…", systemImage: "square.and.arrow.up") }
                 Divider()
-                Button(role: .destructive) { toDelete = g } label: { Label("Delete goal…", systemImage: "trash") }
+                Button(role: .destructive) { toDelete = g } label: { Label("Delete task…", systemImage: "trash") }
             } label: {
                 Text("Edit").font(.subheadline.weight(.medium)).foregroundStyle(.primary)
                     .padding(.horizontal, 14).frame(height: 32)
@@ -1382,7 +1382,7 @@ private struct ZikrPage: View {
                         SessionRow(session: s, showsMantraName: false, onOpen: { sessionToOpen = s },
                                    onDelete: { sessionToDelete = s }, rowBackground: AnyView(Color.clear), quiet: true,
                                    showsDay: true,
-                                   goalName: goals.count > 1 && historyPick == .all ? (s.task?.title ?? "no goal") : nil)
+                                   goalName: goals.count > 1 && historyPick == .all ? (s.task?.title ?? "no task") : nil)
                             .padding(.vertical, 10)
                     }
                 }
@@ -1409,7 +1409,7 @@ private struct ZikrPage: View {
             HStack(spacing: 8) {
                 chip("All", .all)
                 ForEach(goals) { chip($0.title, .goal($0.id)) }
-                if sessions.contains(where: { $0.task == nil }) { chip("No goal", .noGoal) }
+                if sessions.contains(where: { $0.task == nil }) { chip("No task", .noGoal) }
             }
             .padding(.horizontal, 2)
         }
@@ -2063,7 +2063,7 @@ private struct ZikrHistoryHome: View {
         var title: String {
             switch self {
             case .goal(_, let name): name
-            case .goals: "Daily goals"
+            case .goals: "Tasks"
             case .freestyle: "Freestyle"
             case .zikr(_, let name): name
             case .week: "This week"
@@ -2146,7 +2146,7 @@ private struct ZikrHistoryHome: View {
                     .barGlass(Capsule())
                     .disabled(selection.isEmpty)
                 } else {
-                    Soft.search("A zikr, a goal, \"Friday\"", Binding(get: { state.historyQuery }, set: { state.historyQuery = $0 }))
+                    Soft.search("A zikr, a task, \"Friday\"", Binding(get: { state.historyQuery }, set: { state.historyQuery = $0 }))
                     filterMenu
                 }
             }
@@ -2184,7 +2184,7 @@ private struct ZikrHistoryHome: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Their counts come off your totals and today's goals. This can't be undone.")
+            Text("Their counts come off your totals and today's tasks. This can't be undone.")
         }
         .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
         // Recount the month card only when what it's about changes.
@@ -2223,7 +2223,7 @@ private struct ZikrHistoryHome: View {
             } label: { Label("A zikr", systemImage: "circle.hexagonpath") }
             Menu {
                 ForEach(usedGoals) { t in option(.goal(t.persistentModelID, t.title)) }
-            } label: { Label("A daily goal", systemImage: "target") }
+            } label: { Label("A task", systemImage: "target") }
         } label: {
             if let active {
                 HStack(spacing: 5) {

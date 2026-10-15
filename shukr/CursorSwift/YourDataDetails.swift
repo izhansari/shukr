@@ -13,7 +13,7 @@ enum DataKind: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .prayers: "Prayers"
         case .zikr: "Zikr sessions"
-        case .azkar: "Azkar and daily goals"
+        case .azkar: "Azkar and tasks"
         case .photos: "Prayer photos"
         case .names: "99 Names you've learned"
         case .donations: "Donations"
@@ -40,7 +40,7 @@ enum DataKind: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .prayers: "Each prayer's day and times, whether you prayed it and when you marked it, its score and grade, and the masjid or spot where you prayed (when location was on). Your best streaks come with it."
         case .zikr: "Each counting session: when it started, which zikr, the goal it ran with, how many and for how long, and whether it ended in sleep mode."
-        case .azkar: "The azkar you've written, with their full text, notes, photos and voice memos, and your daily goals: what each asks of you each day, whether it's paused, and its reminder."
+        case .azkar: "The azkar you've written, with their full text, notes, photos and voice memos, and your tasks: what each asks of you each day, whether it's paused, and its reminder."
         case .photos: "The photos you took after a prayer, front and back, the notes you wrote on them, and the ones you hearted."
         case .donations: "Each donation you logged: the day, who it went to (with the EIN for a listed US nonprofit), what it was for, the amount and your note. It's your own record; the charity's receipt is the official one."
         case .names: "The Names of Allah you've marked as known, each with its Arabic and meaning."
@@ -54,8 +54,8 @@ enum DataKind: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .prayers: "Marking prayers in shukr, its widgets, Live Activities, Siri and your Apple Watch"
         case .zikr: "The counter on the Zikr page, Tasbih Fatimah after a prayer, and your Apple Watch"
-        case .azkar: "Your azkar and their daily goals, on the Zikr page"
-        case .photos: "The camera after you mark a prayer, and Memories"
+        case .azkar: "Your azkar and their tasks, on the Zikr page"
+        case .photos: "The camera after you mark a prayer, and Moments"
         case .donations: "Give to Causes: a log after you give through a listed charity, or one you add with +"
         case .names: "99 Names: the list and the flashcards"
         case .excused: "Excused Mode, in Settings → Prayer Times"
@@ -77,7 +77,7 @@ enum DataKind: String, CaseIterable, Hashable, Identifiable {
         switch self {
         case .prayers: ["prayers.csv"]
         case .zikr: ["zikr-sessions.csv"]
-        case .azkar: ["azkar.csv", "daily-goals.csv"]
+        case .azkar: ["azkar.csv", "tasks.csv"]
         case .names: ["names-learned.csv"]
         case .donations: ["donations.csv"]
         case .excused: ["excused-mode.csv"]

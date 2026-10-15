@@ -187,7 +187,7 @@ enum ExploreShowcase {
                 card(.sleep, "Count until you fall asleep", d.bool(forKey: SleepMorning.introConfirmedKey)),
                 card(.tasbihFatimah, "Tasbih Fatimah after every prayer",
                      sessions.contains { ($0.mantra?.name ?? $0.title) == PostSalahTasbeeh.mantraName }),
-                card(.goals, "A daily goal with a streak", ((try? context.fetchCount(FetchDescriptor<TaskModel>())) ?? 0) > 0),
+                card(.goals, "A daily task with a streak", ((try? context.fetchCount(FetchDescriptor<TaskModel>())) ?? 0) > 0),
             ]),
         ]
         // Only what can apply: watch cards with a watch, the Action button on phones that have one.
@@ -598,12 +598,12 @@ struct ShowcaseStory {
                      p("star", "Your masjid", "Star it to give it its own pin")],
             action: "Find mosques near me", link: "map")
         // Your journey
-        case .memories: ShowcaseStory(title: "Memories", hook: "Remember where you prayed",
+        case .memories: ShowcaseStory(title: "Moments", hook: "Remember where you prayed",
             lead: "After you mark a prayer, take a photo with both cameras at once: where you are, and you. They're kept day by day, private on your phone.",
             points: [p("lock", "Private", "On your phone and your iCloud backup"),
                      p("magnifyingglass", "Find any", "By prayer, place, note or date"),
                      p("calendar", "On this day", "What you saw a year ago")],
-            action: "Open Memories", memories: true)
+            action: "Open Moments", memories: true)
         case .insights: ShowcaseStory(title: "Insights", hook: "See which prayer needs you most",
             lead: "Your score for each prayer, how consistent you've been, and whether you're improving week by week, so you know where to focus.",
             points: [p("chart.bar", "Each prayer ranked", "By its recent score"),
@@ -620,8 +620,8 @@ struct ShowcaseStory {
             lead: "Each time you mark a prayer, shukr offers Tasbih Fatimah. One tap and it counts each phrase for you.",
             points: [p("list.number", "Counts each phrase", "You just keep tapping")],
             action: "Go to Salah", link: "salah")
-        case .goals: ShowcaseStory(title: "Daily goals", hook: "Make your zikr a daily habit",
-            lead: "Pick a zikr and a daily goal, a count or minutes. Meet it each day and your streak grows.",
+        case .goals: ShowcaseStory(title: "Daily tasks", hook: "Make your zikr a daily habit",
+            lead: "Pick a zikr and a daily task, a count or minutes. Meet it each day and your streak grows.",
             points: [p("flame", "A streak", "Every day you meet it"),
                      p("bell", "A reminder", "If you'd like one")],
             action: "Go to Zikr", link: "zikr")
@@ -646,7 +646,7 @@ struct ShowcaseStory {
             "When your Fajr alarm rings next, shown as the alarm itself. Use it in your own shortcuts, like turning the lights on at that time.",
             [p("alarm", "Even when it's off", "When it would ring")], siri: "“When is my Fajr alarm in shukr”")
         case .siriOpenPage: tile("Open shukr", "Straight to the page you want",
-            "Jump right into Salah, Qibla, Zikr, Daily Ayah, the 99 Names or Memories.",
+            "Jump right into Salah, Qibla, Zikr, Daily Ayah, the 99 Names or Moments.",
             [p("square.grid.2x2", "A tile for each page", "Pick the one you use most")], siri: "“Open Qibla in shukr”")
         case .siriTasbihFatimah: tile("Open Tasbih Fatimah", "Tasbih Fatimah in one tap",
             "Opens straight into 33 SubhanAllah, 33 Alhamdulillah and 34 Allahu Akbar, counting each phrase for you.",

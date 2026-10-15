@@ -331,7 +331,7 @@ extension EnvironmentValues {
     var softFooterCount: Int? = nil
 }
 
-/// "Memories ›" on the day's page, in "N done"'s spot above the bottom bar (decision memories-link-place B: under the
+/// "Moments ›" on the day's page, in "N done"'s spot above the bottom bar (decision memories-link-place B: under the
 /// day's line the list rode up over it). Once there's a photo (PrayerMemories.swift); today's photos once developed
 /// (and before they're looked at): "Today's photos have developed ›"; while they develop, "… after Isha".
 struct MemoriesFooterLink: View {
@@ -363,7 +363,7 @@ struct MemoriesFooterLink: View {
                             }
                         }
                     Text(toDevelop > 0 ? "\(toDevelop) photo\(toDevelop == 1 ? "" : "s") to develop"
-                         : developing ? "Memories · today's develop after Isha" : "Memories")
+                         : developing ? "Moments · today's develop after Isha" : "Moments")
                         .font(.system(size: 13, weight: .light, design: .rounded))
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
                 }
