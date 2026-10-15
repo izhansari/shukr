@@ -78,7 +78,8 @@ struct NowTimeLeft: View {
     static let openTasbih = Notification.Name("PrayerRowActions.openTasbih")
 }
 
-/// The three buttons, where the row's time sits: soft sage circles (sage = tap).
+/// The three buttons, where the row's time sits: neutral and flat — grey symbols on a faint circle (owner: not green),
+/// in the pill's order (Tasbih, then the camera).
 struct PrayerRowActionButtons: View {
     let showsCamera: Bool
     let onEdit: () -> Void
@@ -87,8 +88,8 @@ struct PrayerRowActionButtons: View {
     var body: some View {
         HStack(spacing: 8) {
             button("pencil", label: "Edit time or place", onEdit)
-            if showsCamera { button("camera", label: "Add a photo", onCamera) }
             button("circle.hexagonpath", label: "Post-salah tasbih", onTasbih)   // the pill's beads
+            if showsCamera { button("camera", label: "Add a photo", onCamera) }
         }
         .transition(.opacity.combined(with: .scale(scale: 0.9)))
     }
@@ -99,9 +100,9 @@ struct PrayerRowActionButtons: View {
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.sage)
+                .foregroundStyle(.secondary)
                 .frame(width: 30, height: 30)
-                .background(Circle().fill(Color.sage.opacity(0.14)))
+                .background(Circle().fill(Color.primary.opacity(0.06)))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
