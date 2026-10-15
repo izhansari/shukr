@@ -277,7 +277,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   marked, list open) — `DayRing` on the ring's band: five fifths (Fajr at the top) in their grade colours, a dot where in
   each window it was prayed (Qaza at the end), unmarked = faint dashes; the circle's own tap area shrinks to the middle
   there (`daySummaryShowing`) so the band's tap picks a fifth (centre shows it, lets go after 8 s). Centre: whole-number
-  score + "4 of 5 in time" / "all five in time" / "all five early". One line under the circle from `DayInsight`: act-on
+  score + "4 of 5 in time" / "all five in time" / "all five early". One line under the circle (centred in the room between the ring and the list — `DayPageState.ringListGap`, measured from the rests; owner) from `DayInsight`: act-on
   (missed → Qaza → late, "hardest this week" + "Set a Fajr alarm ›" when off; the same fix three nights running gives
   way), milestones (7, 14, 21, 30… days all in time), noticed (rotated, none repeated within 3 days), Thursday →
   Jumu'ah; kept per prayer day (`daySummary.shownLines`); none in the tour. A full day glows once (`daySummary.glowed`). The fifths are drawn, not faded (owner, 2026-10-14): `DayRing.drawn` (animatable) draws them clockwise from the top one after another, each dot as its fifth completes; every flip to the score side `CircleMotion.dayRingDraw` (0.5 s), closing `dayRingRetract` (0.3 s, counter-clockwise) — one value, so a quick flick back turns it round; the first showing each day (`daySummary.firstDrawn`) draws slower (`dayRingFirstDraw` 1.2 s) and then counts the score up from 0 (`CountingScore`); Reduce Motion: at once.

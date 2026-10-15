@@ -28,6 +28,9 @@ extension DayPrayer {
     /// Izhan: "let it expand first then raise the card"), cleared with it. Kept here, not in the card's view: the list
     /// rebuilds its card as the page swaps, and a view's own state started out raised.
     private(set) var lifted = false
+    /// The open page's room between the ring's outer edge and the list's top (measured at rest): the day's line sits in its
+    /// middle (owner: it hung 22 pt under the ring with the list far below). nil until measured.
+    var ringListGap: CGFloat?
     private var token = 0
 
     func pageAppeared() {

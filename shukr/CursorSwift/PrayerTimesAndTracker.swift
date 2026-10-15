@@ -1920,6 +1920,11 @@ struct PrayerTimesView: View {
                     spring.go(open: showBottom, animated: !quiet && UIApplication.shared.applicationState == .active)
                 }
                 .onChange(of: rests) { _, new in
+                    // The day's line centres itself in the open page's room under the ring (106 = the ring's radius + band).
+                    let gap = new.openListTop - new.openCircleY - 106
+                    if new.openListTop > 0, abs((DayPageState.shared.ringListGap ?? -1) - gap) > 0.5 {
+                        DayPageState.shared.ringListGap = max(gap, 0)
+                    }
                     guard !restsReady, new.openListTop > 0 else { return }
                     DispatchQueue.main.async { restsReady = true }
                 }

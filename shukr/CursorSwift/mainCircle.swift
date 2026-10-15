@@ -940,6 +940,8 @@ struct summaryCircle: View, Equatable {
     @State private var pickedAt = Date.distantPast
     @State private var line: DayInsight.Line?
     @State private var glow = false
+    /// The day's line's height (one or two lines, the Fajr alarm link): to centre it in the room under the ring.
+    @State private var lineHeight: CGFloat = 20
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The fifths drawn (DayRing's `drawn`): toward 1 on the score side, 0 otherwise, animated (CircleMotion.dayRing…).
     @State private var drawn: CGFloat = 0
@@ -1092,8 +1094,13 @@ struct summaryCircle: View, Equatable {
             .overlay(alignment: .top) {
                 // Memories' link sits at the bottom, in "N done"'s spot above the bar (MemoriesFooterLink; decision
                 // memories-link-place B — the list dragged up over it here).
+                // Centred in the room between the ring and the list (DayPageState.ringListGap; 22 pt under the ring until
+                // measured — owner: it sat crowded under the ring with the list far below).
                 dayLine
-                    .frame(width: 310).offset(y: 222)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if abs(lineHeight - $0) > 0.5 { lineHeight = $0 } }
+                    .frame(width: 310)
+                    .offset(y: 206 + max(((DayPageState.shared.ringListGap ?? (32 + lineHeight)) - lineHeight) / 2, 12))   // from the ring view's top: 200 + its band
+                    .animation(.easeOut(duration: CircleMotion.quick), value: DayPageState.shared.ringListGap)
                     .modifier(CircleWordsAway(away: away || !showsScore))
             }
             // The ring itself is drawn in and out (`drawn`), not faded.
