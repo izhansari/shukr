@@ -4,12 +4,15 @@ import CoreLocation
 
 /// A day in Journey (spec screen 2, mock-up Day5): the day's ring for any day (DayRing, as the Salah page's day page), its
 /// score and "N of 5 in time"; the five prayers (time · place · grade, the photo); the notes; the day's zikr → History
-/// filtered to that day. ‹ › walk the days from the first one to today. Marking from here is phase 2 (the prayer sheet).
+/// filtered to that day. ‹ › walk the days from the first one to today. A row opens its prayer sheet (JourneyPrayerSheet):
+/// mark, unmark, set the time, the place, the note.
 struct JourneyDayPage: View {
     @State var date: Date
     let firstDay: Date?
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
+    @EnvironmentObject private var viewModel: PrayerViewModel
+    @State private var sheetRow: PrayerModel?
     @State private var rows: [PrayerModel] = []
     @State private var sessions: [SessionDataModel] = []
     @State private var picked: Int?
@@ -18,6 +21,9 @@ struct JourneyDayPage: View {
     @State private var pickToken = 0
 
     private var today: Date { PrayerDay.start() }
+    #if DEBUG
+    @MainActor private static var demoSheetDone = false
+    #endif
     private var canGoBack: Bool { firstDay.map { date > $0 } ?? false }
     private var canGoForward: Bool { date < today }
 
@@ -45,7 +51,26 @@ struct JourneyDayPage: View {
             }
         }
         .navigationDestination(isPresented: $showZikr) { ZikrAreaPage(start: .day(date)) }
+        .sheet(item: $sheetRow, onDismiss: load) { row in
+            JourneyPrayerSheet(prayer: row)
+                .environmentObject(viewModel)
+                .environment(\.circleTheme, theme)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
         .task { load() }
+        .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in load() }
+        #if DEBUG
+        .task {
+            // -demoJourneySheet N: the day's Nth prayer's sheet (0 = Fajr), once per launch.
+            let args = ProcessInfo.processInfo.arguments
+            guard !Self.demoSheetDone, let i = args.firstIndex(of: "-demoJourneySheet"), args.indices.contains(i + 1),
+                  let n = Int(args[i + 1]) else { return }
+            Self.demoSheetDone = true
+            try? await Task.sleep(for: .seconds(0.6))
+            sheetRow = rows.first { $0.name == JourneyLog.names[min(max(n, 0), 4)] }
+        }
+        #endif
     }
 
     private func step(_ by: Int) {
@@ -144,8 +169,17 @@ struct JourneyDayPage: View {
         let ranges = Excused.ranges
         return VStack(spacing: 0) {
             ForEach(rows, id: \.id) { row in
-                JourneyPrayerRow(row: row, excused: !row.isCompleted && Excused.covers(start: row.startTime, end: row.endTime, in: ranges),
-                                 place: place(row))
+                let excused = !row.isCompleted && Excused.covers(start: row.startTime, end: row.endTime, in: ranges)
+                // A prayer that has started opens its sheet (one to come has nothing to mark yet).
+                Button {
+                    triggerSomeVibration(type: .light)
+                    sheetRow = row
+                } label: {
+                    JourneyPrayerRow(row: row, excused: excused, place: place(row))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(row.startTime > Date())
                 Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
             }
             if rows.isEmpty {

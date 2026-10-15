@@ -185,6 +185,7 @@ struct JourneyPage: View {
     @State private var month = JourneyLog.monthStart(PrayerDay.start())
     @State private var openDay: JourneyDayRoute?
     @State private var showMoments = false
+    @State private var showMakeUp = false
     @State private var highlight: JourneyHighlight?
     @State private var pick: JourneyPick?
 
@@ -202,7 +203,9 @@ struct JourneyPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
+        .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: month) }
         .task { reload() }
+        .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in reload() }
         .onChange(of: month) {
@@ -220,6 +223,10 @@ struct JourneyPage: View {
             if args.contains("-demoJourneyHighlight") { highlight = .allInTime }
             if args.contains("-demoJourneyPick") {
                 pick = JourneyPick(prayer: 0, date: Calendar.current.date(byAdding: .day, value: -3, to: today) ?? today)
+            }
+            if args.contains("-demoJourneyMakeUp") {
+                try? await Task.sleep(for: .seconds(0.6))
+                showMakeUp = true
             }
             if let i = args.firstIndex(of: "-demoJourneyDay"), args.indices.contains(i + 1), let back = Int(args[i + 1]) {
                 try? await Task.sleep(for: .seconds(0.6))
@@ -302,7 +309,7 @@ struct JourneyPage: View {
             stepButton("chevron.right", enabled: month < thisMonth, label: "Next month") { step(1) }
             Spacer(minLength: 6)
             gradesButton
-            JourneyViewSwitch(view: $view)
+            JourneySwitch(options: [("Calendar", "calendar"), ("Grid", "grid")], selection: $view)
         }
         .frame(height: 34)
     }
@@ -359,7 +366,7 @@ struct JourneyPage: View {
 
     private func tiles(_ m: JourneyLog.Month, compact: Bool) -> some View {
         HStack(spacing: 10) {
-            // Prayers (phase 3) and To make up (phase 2) aren't built yet: shown quiet, not tappable.
+            // Prayers (phase 3) isn't built yet: shown quiet, not tappable.
             JourneyTile(title: "Prayers", ready: false, compact: compact) {
                 HStack(alignment: .bottom, spacing: 5) {
                     ForEach(0..<5, id: \.self) { i in
@@ -371,9 +378,12 @@ struct JourneyPage: View {
                 }
                 .frame(height: 28, alignment: .bottom)
             } action: {}
-            JourneyTile(title: "To make up", ready: false, compact: compact) {
+            JourneyTile(title: "To make up", ready: true, compact: compact) {
                 Text("\(m.toMakeUp)").font(.system(size: 26, weight: .thin, design: .rounded)).frame(height: 28)
-            } action: {}
+            } action: {
+                triggerSomeVibration(type: .light)
+                showMakeUp = true
+            }
             JourneyTile(title: momentsTitle, ready: true, compact: compact) {
                 MomentsTileStack().frame(height: 30)
             } action: {
@@ -394,15 +404,15 @@ struct JourneyDayRoute: Hashable, Identifiable {
     var id: Date { date }
 }
 
-/// Calendar | Grid: a pressed capsule with the picked side raised (the soft look's switch).
-private struct JourneyViewSwitch: View {
-    @Binding var view: String
+/// Calendar | Grid (and To make up's <month> | All): a pressed capsule with the picked side raised (the soft look's switch).
+struct JourneySwitch: View {
+    let options: [(title: String, id: String)]
+    @Binding var selection: String
     @Namespace private var pill
 
     var body: some View {
         HStack(spacing: 0) {
-            side("Calendar", "calendar")
-            side("Grid", "grid")
+            ForEach(options, id: \.id) { side($0.title, $0.id) }
         }
         .padding(3)
         .background(NeuPressed(shape: Capsule(), radius: 3, offset: 2))
@@ -411,17 +421,17 @@ private struct JourneyViewSwitch: View {
 
     private func side(_ title: String, _ id: String) -> some View {
         Button {
-            guard view != id else { return }
+            guard selection != id else { return }
             triggerSomeVibration(type: .light)
-            withAnimation(.easeOut(duration: 0.22)) { view = id }
+            withAnimation(.easeOut(duration: 0.22)) { selection = id }
         } label: {
             Text(title)
-                .font(.system(size: 13, weight: view == id ? .regular : .light, design: .rounded))
-                .foregroundStyle(view == id ? .primary : .secondary)
+                .font(.system(size: 13, weight: selection == id ? .regular : .light, design: .rounded))
+                .foregroundStyle(selection == id ? .primary : .secondary)
                 .padding(.horizontal, 12)
                 .frame(maxHeight: .infinity)
                 .background {
-                    if view == id { NeuRaised(shape: Capsule(), radius: 2.5, offset: 1.2).matchedGeometryEffect(id: "pill", in: pill) }
+                    if selection == id { NeuRaised(shape: Capsule(), radius: 2.5, offset: 1.2).matchedGeometryEffect(id: "pill", in: pill) }
                 }
                 .contentShape(Capsule())
         }
@@ -983,7 +993,8 @@ private struct MomentsTileStack: View {
 #if DEBUG
 enum JourneySeed {
     /// `-demoJourneySeed`: ~100 earlier days of rows where there are none — mostly in time, Fajr often late, a few missed,
-    /// one Qaza a week, Jumu'ah at a masjid on most Fridays, a 10-day break 60 days back (no rows at all). Sim only.
+    /// one Qaza a week, Jumu'ah at a masjid on most Fridays, a 10-day break 60 days back (no rows, but four days opened and
+    /// nothing marked — To make up must never list them). Sim only.
     @MainActor static func seedIfAsked(_ context: ModelContext) {
         guard ProcessInfo.processInfo.arguments.contains("-demoJourneySeed") else { return }
         let cal = Calendar.current
@@ -999,7 +1010,8 @@ enum JourneySeed {
         for back in 1...100 {
             guard let day = cal.date(byAdding: .day, value: -back, to: today) else { continue }
             let key = PrayerNotificationID.dayKey(day)
-            if taken.contains(key) || (58...67).contains(back) { continue }
+            let opened = (60...63).contains(back)   // in the break: rows, nothing marked
+            if taken.contains(key) || ((58...67).contains(back) && !opened) { continue }
             for (slot, w) in windows.enumerated() {
                 guard let start = cal.date(bySettingHour: w.1.0, minute: w.1.1, second: 0, of: day),
                       let end = cal.date(bySettingHour: w.2.0, minute: w.2.1, second: 0, of: day) else { continue }
@@ -1018,9 +1030,9 @@ enum JourneySeed {
                 } else {
                     at = start.addingTimeInterval(length * Double(h % 6) * 0.07)
                 }
-                if slot == 1 && friday && back % 14 != 0 { row.mosqueName = "Masjid Al-Noor" }
-                if slot != 0 { row.latPrayedAt = 35.79 + Double(h) * 0.0005; row.longPrayedAt = -78.78 }
-                if let at {
+                if slot == 1 && friday && back % 14 != 0 && !opened { row.mosqueName = "Masjid Al-Noor" }
+                if slot != 0 && !opened { row.latPrayedAt = 35.79 + Double(h) * 0.0005; row.longPrayedAt = -78.78 }
+                if let at, !opened {
                     row.isCompleted = true
                     row.setPrayerScore(atDate: at)
                 }

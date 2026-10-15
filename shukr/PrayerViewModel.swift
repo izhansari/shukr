@@ -604,6 +604,40 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         objectWillChange.send()
     }
 
+    /// A mark from Journey's prayer sheet, on any day (decision journey-past-marks A): at `date` — after the window it's
+    /// Qaza. The prayer on now, marked now, takes the list's own path (the spot, the masjid, the moment); any other is
+    /// scored at the picked time with no spot (where it was prayed days ago isn't known — the sheet can add one). The picked
+    /// time is the recorded one, so nothing reads as edited. False = not marked (excused).
+    @MainActor @discardableResult func markFromJourney(_ prayer: PrayerModel, at date: Date) -> Bool {
+        guard !prayer.isCompleted, prayer.startTime <= Date() else { return false }
+        if Excused.covers(start: prayer.startTime, end: prayer.endTime) { return false }
+        let now = Date()
+        if prayer.endTime > now, abs(date.timeIntervalSince(now)) < 60 {
+            togglePrayerCompletion(for: prayer)
+            DayHistory.invalidate()
+            return prayer.isCompleted
+        }
+        prayer.isCompleted = true
+        prayer.mosqueName = ""   // checked: no spot, so no masjid search (a spot added later decides)
+        prayer.setPrayerScore(atDate: date)
+        prayer.cancelUpcomingNudges()
+        PrayerCompletionHaptics.play()
+        calculateDayScore(for: prayer.startTime)
+        calculatePrayerStreak()
+        DayHistory.invalidate()
+        pushCompletionsToWidget()
+        PhotoDevelop.check(todaysPrayers)
+        objectWillChange.send()
+        return true
+    }
+
+    /// An unmark from Journey's prayer sheet: the list's own path (its photo goes too).
+    @MainActor func unmarkFromJourney(_ prayer: PrayerModel) {
+        guard prayer.isCompleted else { return }
+        togglePrayerCompletion(for: prayer)
+        DayHistory.invalidate()
+    }
+
     func togglePrayerCompletion(for prayer: PrayerModel) {
         // The tour's pretend prayer: the moment plays, nothing is saved, scored into streaks, sent to widgets or rescheduled.
         if TourRuntime.isPracticeAnywhere(prayer) {

@@ -519,7 +519,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   the glass bar). Search + one filter (kind · when · a zikr · a daily goal) in the bottom glass bar; the title moves into
   the bar on scroll.
 
-**Journey** (Journey.swift, JourneyDay.swift; spec + phases board/mocks/journey/spec.md, mock-ups v5; Bradley builds it)
+**Journey** (Journey.swift, JourneyDay.swift, JourneyPrayerSheet.swift, JourneyMakeUp.swift; spec + phases board/mocks/journey/spec.md, mock-ups v5; Bradley builds it)
 - ☰ → Journey (`JourneyPresenter.open`, pushed on the root stack) replaces Insights and the Moments row; the day page's pill
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
   link "journey" ("insights" too). InsightsView is kept in code, unreached. One screen, no scroll on a 6.1" iPhone (owner;
@@ -531,7 +531,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (`journey.view`); the calendar = five dots a day, green disc = all five in time, grey = all five with a Qaza, a tap opens
   the day; the grid = Insights' squares (colors off: prayed soft grey, the rest outlines; the picked one in its grade color, 1.18×, glowing, a thin dark border (Insights' consistency page; 11 pt tall cells, nearer squares); its line grey with a grade-colored dot (owner: colored words were hard to read); colors fade 0.3 s) + All five, a touch or slide picks a square (`JourneyPick`) and its
   line shows under the grid ("Fajr · Wed, Oct 7 ›" / "Late · 75 · prayed … · window …"), a tap on the line opens the day
-  (owner: a square shouldn't leave the page; no legend); tiles Prayers / To make up (grey, phases 3 / 2) · Moments (three
+  (owner: a square shouldn't leave the page; no legend); tiles Prayers (grey, phase 3) · To make up (the shown month's count) · Moments (three
   tilted squares: the newest photos, else Explore's stand-ins; opens MemoriesPage). No ⚙. iOS 26's back button shows no
   page name (idea back-button-names, parked).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
@@ -539,9 +539,27 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   badges and keys only once `Excused.ranges` isn't empty.
 - The day page (`JourneyDayPage`): `DayRing` + `DayCentre` on a raised 222 pt disc (tap a fifth), rows time · place (masjid,
   else `PrayerPlaceNames`) · grade (Jumu'ah = 100) + `PrayerPhotoCard`, notes, "Zikr · N min" → `ZikrAreaPage(start: .day)`
-  (History's `.day` filter); ‹ › walk days at once, no fade (a fade overlapped two days' words). Next: phase 2 (the prayer
-  sheet, past-day marking, To make up). DEBUG `-demoJourney [-demoJourneySeed] [-demoJourneyView grid] [-demoJourneyGrades] [-demoJourneyHighlight] [-demoJourneyDay N]`
-  (`-demoJourneySeed` adds ~100 earlier days of rows where none; the demo opens only every other launch — ☰ always works).
+  (History's `.day` filter); ‹ › walk days at once, no fade (a fade overlapped two days' words); a started prayer's row
+  opens the prayer sheet.
+- The prayer sheet (`JourneyPrayerSheet`, any day, marked or not): score ring + one sentence (frost, don't scold; a mark on a
+  later prayer day reads "Made up today, it counts as Qaza"), `PrayerWindowBar` (tap / drag sets the time), "Prayed at ⌄" →
+  a date + time wheel inline (start…now) with "Prayed it on <its day>? ›" / "Made up today instead ›"; while it's open only
+  the time shows; tiles place (`JourneyPlaceMap`: the map grows in place via matchedGeometry, movable, pin kept, the app
+  map's capsule, "Move the pin" → `PrayerLocationPicker`; no spot → "Add where ›") and moment (`PrayerPhotoCard` opens the
+  viewer in place; "Take one" only while marked and on); note (an alert; an unmarked one's waits for Mark); Done / Mark +
+  Unmark (Sami's `UnmarkPrompt`, the system alert if another overlay is up) / Not now. **An unmarked past prayer defaults to
+  made up now = Qaza, wheel closed, the time grey** (owner: another day / time is there, never the main choice). Marks go
+  through `PrayerViewModel.markFromJourney` (the prayer on now, marked now → the list's own path; else scored at the
+  picked time, no spot, `mosqueName = ""`, streaks / day score / DayHistory / widgets / Live Activities) and
+  `unmarkFromJourney`; edits through `editPrayerTime` / `movePrayer` (recorded time / spot kept). `.journeyChanged` reloads
+  the pages.
+- To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused, by month newest first;
+  "<month> · N | All · N" (`journey.makeUpAll`); Made up = Qaza now; cleared like an inbox (owner): a made-up prayer (marked
+  on a later prayer day) leaves for a folded "Made up · N" row at the bottom; an empty side shows "All caught up" (a sage
+  check drawn in + a success buzz when the last one goes here). A row opens its sheet.
+- DEBUG `-demoJourney [-demoJourneySeed] [-demoJourneyView grid] [-demoJourneyGrades] [-demoJourneyHighlight] [-demoJourneyDay N
+  [-demoJourneySheet 0…4]] [-demoJourneyMakeUp]` (`-demoJourneySeed` adds ~100 earlier days where none, a break with four
+  "opened, nothing marked" days; the demo opens only every other launch — ☰ always works).
 
 **Explore shukr** (ExploreSimple.swift = the default; ExploreGrouped.swift; ExploreShowcase.swift; ExploreLean.swift; Frank's ExploreShukr.swift) — My Dev Stuff → "Explore page" (`explore.variant2` — a new key so a phone that had picked another starts on simple: simple · grouped · showcase · lean · original)
 - Simple (owner 2026-10-13, ask settings-explore-lean: back to the original, "very simple … no scrolling horizontally", the detail behind a tap): Frank's original card look, one per group down the page (`ShowcasePicture` 170 pt, name, the group's one line, New, ›), no counts or rings; a tap → `ExploreGroupPage` (or a one-member group's story). The Siri group is **Shortcuts** (owner: Shortcuts and their cards first, Siri one line — "our name isn't easy to say"): members by tile name, `ShowcaseStory.tile` (lead, points + "Or ask Siri", How to run it; Apple's `ShortcutsLink` is on the Shortcuts section's page only — it opens shukr's whole page in Shortcuts, and iOS has no link to one tile), pictures = the REAL card views in a Shortcuts sheet (`ShortcutSheetShot`: TodaysTimesSnippet, PrayerCardSnippet, NextPrayerSnippet, ZikrTasksSnippet, NearbyMosquesSnippet, PrayedHereSnippet, the alarm card; `ShowcaseSamples` stand in without data) or `ShortcutTiles`; Control Center stories say what's built (I Prayed never unmarks, the Zikr control's line); `ShowcaseCardID.available` hides the 26-only members before 26. `ShowcasePicture` lays its picture over the panel, never sizing it (a wide picture pushed the page off screen). A group's list rows: name + `memberLine` (what it does — owner: names alone didn't tell Today's Prayers from Today's Times; no "See how / Tried", the ✓ says that); a row opens `ExploreStoryPager` (owner's mock: ONLY the pictures page — a horizontal `.viewAligned` ScrollView, the neighbours peeking in 14 pt at both edges, the dots right under it — and below, the current item's words and buttons (`ShowcaseStoryPage(embedded: true)`: no picture, no scroll view of its own), the old words gone at once and the new fading in (a crossfade overlapped them); "2 of 5" in the bar (the Next card at the foot was removed — owner: too many things on the page); decision explore-story-next D; marks a story opened only when shown). DEBUG `-demoExplore -demoExploreGroup siri [-demoExploreMember siriMosques]`.
