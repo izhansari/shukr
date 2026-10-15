@@ -26,7 +26,8 @@ struct ZikrSheetMockPage: View {
     @State private var style: CardStyle = UserDefaults.standard.string(forKey: "zikrMockCard") == "B" ? .streak : .today
     @State private var dark: Bool? = UserDefaults.standard.string(forKey: "zikrMockLook").map { $0 == "dark" }
     @State private var hasGoals = !UserDefaults.standard.bool(forKey: "zikrMockNoGoal")
-    @State private var goal = 0
+    @State private var goal: Int
+    init(startGoal: Int = 0) { _goal = State(initialValue: startGoal) }
 
     private var isDark: Bool { dark ?? (phoneScheme == .dark) }
 
@@ -90,23 +91,13 @@ struct ZikrSheetMockPage: View {
             .padding(.top, 4)
     }
 
-    /// The Give page's capsule switch, three wide.
+    /// The system's segmented control — Liquid Glass on iOS 26 (owner, 2026-10-15: not our soft one).
     private var tabSwitch: some View {
-        HStack(spacing: 0) {
-            ForEach(Tab.allCases) { t in
-                let on = tab == t
-                Button { tab = t } label: {
-                    Text(t.rawValue)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(on ? Color.primary : Color.secondary)
-                        .frame(maxWidth: .infinity).frame(height: 34)
-                        .background { if on { NeuRaised(shape: Capsule(), radius: 3, offset: 1.5) } }
-                }
-                .buttonStyle(.plain)
-            }
+        Picker("Section", selection: $tab) {
+            ForEach(Tab.allCases) { Text($0.rawValue).tag($0) }
         }
-        .padding(4)
-        .background(NeuPressed(shape: Capsule(), radius: 3, offset: 2))
+        .pickerStyle(.segmented)
+        .controlSize(.large)
         .padding(.horizontal, 20)
         .sensoryFeedback(.selection, trigger: tab)
     }
@@ -259,16 +250,25 @@ struct ZikrSheetMockPage: View {
 
 /// A stand-in for Your azkar's row: the page is pushed from it (owner), so the back chevron is the system's.
 struct ZikrSheetMockLauncher: View {
-    @State private var pushed = UserDefaults.standard.string(forKey: "zikrMockTab") != nil
+    /// The goal tapped (its page opens on it); a screenshot argument pushes the first at once.
+    @State private var pushed: Int? = UserDefaults.standard.string(forKey: "zikrMockTab") != nil ? 0 : nil
     var body: some View {
         List {
             Section("Daily goals") {
-                NavigationLink("durood · Morning Durood") { ZikrSheetMockPage() }
-                NavigationLink("durood · Night Durood") { ZikrSheetMockPage() }
+                ForEach(Array(GoalMock.all.enumerated()), id: \.offset) { i, g in
+                    Button { pushed = i } label: {
+                        HStack {
+                            Text("durood · \(g.name)").foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                }
             }
         }
         .navigationTitle("Your azkar")
-        .navigationDestination(isPresented: $pushed) { ZikrSheetMockPage() }
+        .navigationDestination(item: $pushed) { ZikrSheetMockPage(startGoal: $0) }
     }
 }
 
