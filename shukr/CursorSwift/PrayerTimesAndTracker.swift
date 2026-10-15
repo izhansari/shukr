@@ -2533,11 +2533,11 @@ struct PrayerTimesView: View {
                     Image(systemName: streak.keptToday && streak.current > 0 ? "flame.fill" : "flame")
                         .foregroundColor(streak.keptToday && streak.current > 0 ? Color.sage : .secondary)
                     Group {
-                        // Whose streak it is (the cold test met four unlabelled streaks).
+                        // "0 day streak", a tap "Best streak: N days" (owner, 2026-10-15: not "Goal streak").
                         if showBest {
-                            Text("Best goal streak: \(streak.best) days").transition(.blurReplace)
+                            Text("Best streak: \(streak.best) day\(streak.best == 1 ? "" : "s")").transition(.blurReplace)
                         } else {
-                            Text("Goal streak: \(streak.current) day\(streak.current == 1 ? "" : "s")").transition(.blurReplace)
+                            Text("\(streak.current) day streak").transition(.blurReplace)
                         }
                     }
                     .fixedSize()
