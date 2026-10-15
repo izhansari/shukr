@@ -69,8 +69,9 @@ enum SalahLook: String, CaseIterable, Identifiable {
     /// G's behaviour: the score / "@ time" on a prayed row's tap, unprayed names regular, the marked row's buttons (G and
     /// the raised list).
     var behavesLikeG: Bool { self == .prayedOnTap || self == .raised }
-    /// The raised list's row height: its band is a capsule of it, the card's corners its half (the mock's 42 pt).
-    static let raisedRowHeight: CGFloat = 42
+    /// The raised list's row height: its band is a capsule of it, the card's corners its half. 44 pt ≈ the original
+    /// list's row pitch (owner: back to the original spacing; 42 felt different on the phone).
+    static let raisedRowHeight: CGFloat = 44
     /// The day's line through the dots (B, D).
     var drawsDayLine: Bool { self == .timeline || self == .dayNow }
 

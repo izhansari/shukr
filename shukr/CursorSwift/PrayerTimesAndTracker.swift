@@ -3074,7 +3074,6 @@ struct PrayerButton: View {
     /// The name's size for the look (Sami's looks; the others keep .callout).
     private var nameFont: Font {
         switch look {
-        case .raised: .subheadline                                   // the raised list: 15 pt (owner)
         case .dayNow: .body                                          // D · a size up, with more air
         case .nowLeads: isCurrentPrayer ? .title3 : .subheadline     // E · the one on now leads
         // G · one size for every row (owner: stepping sizes on mark / unmark "looks tacky"); the lift alone sets the one on
@@ -3381,7 +3380,7 @@ struct PrayerButton: View {
             #endif
             .padding(.horizontal)
             .padding(.vertical, theme.rowVerticalPadding)   // the well's rows a bit shorter (owner, 2026-10-01)
-            .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 42 pt rows
+            .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 44 pt rows
             // E · the raised one gets its own room (the rest are compact).
             .padding(.vertical, look == .nowLeads && isCurrentPrayer ? 6 : 0)
             .contentShape(Rectangle())
