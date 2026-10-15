@@ -768,7 +768,28 @@ struct SettingsView: View {
                     #if DEBUG
                     // My Dev Stuff, grouped (owner, settings-cleanup-1: "it's a lot of stuff in there and it's not really
                     // ordered"). Pickers for looks already decided stay only where the app still reads them.
+                    // Cleaned up (owner, 2026-10-15): what's been used in the last few days on top, by area; everything older
+                    // folded into one section. Every existing row is sage, so a NEW dev setting — the default blue — stands
+                    // out; give new rows no tint.
                     if showDevStuff {
+                        Section {
+                            // The whole prayer list raised, the one on now a step more (owner, 2026-10-14).
+                            NavigationLink("Raised list mock-up") { RaisedListMockPage() }
+                            // Today's soft ring beside the app icon's lifted one, everywhere it shows (owner, 2026-10-14).
+                            NavigationLink("Ring depth mock-ups") { RingDepthMockPage() }
+                            // The Salah list following the finger, away from the real pager (owner, 2026-10-14).
+                            Button("Prayer list drag (sandbox)…") { showListSandbox = true }
+                            // The Salah sheet: the finger drags it (a ScrollView) or a swipe pops it (the old way).
+                            Toggle("Salah sheet: follows the finger", isOn: $salahSheetFollows)
+                            // Plays the prayer-begins moment on the Salah circle (visual only: no test
+                            // times, no prayer rows or notifications touched).
+                            Button("Preview prayer begins", systemImage: "play.circle") {
+                                NotificationCenter.default.post(name: PrayerStartPreview.request, object: nil)
+                            }
+                        } header: { Text("Dev · Salah page") }
+                        .tint(Color.sage)
+                        .accentColor(Color.sage)   // the rows' icons take the accent, not the tint
+
                         Section {
                             // Moved here from the page (owner, settings cleanup 2026-10-12).
                             Button {
@@ -776,24 +797,12 @@ struct SettingsView: View {
                             } label: {
                                 Label("Run setup from the start", systemImage: "arrow.counterclockwise.circle")
                             }
-                            // The first freestyle session's tips again (was under Tours; the Zikr tour took its place).
-                            CountingTipsAgainRow()
                             // Zikr locked as a new person sees it, or open (ZikrLock; owner: "i wanna be able to test
                             // in my dev build").
                             Toggle(isOn: Binding(get: { !ZikrLock.shared.unlocked },
                                                  set: { ZikrLock.shared.setLockedForTesting($0) })) {
                                 Label("Zikr locked (test)", systemImage: "lock")
                             }
-                            // Page 3's trial layouts (decision first-zikr-choice); release builds always show cards.
-                            Picker(selection: $firstZikrChoice) {
-                                Text("One zikr").tag("one")
-                                Text("Choose: cards").tag("cards")
-                                Text("Choose: swipe").tag("swipe")
-                            } label: {
-                                Label("First zikr page (test)", systemImage: "rectangle.stack")
-                            }
-                            // The Live Activity card's tuner (was under Live Activities on the page).
-                            Button("Live Activity card tuner…") { showLATuner = true }
                             // Explore shukr's page: the showcase (default), the lean one, or Frank's original (owner: "keep it as
                             // something in the dev settings that I can change back to").
                             Picker(selection: $exploreVariant) {
@@ -801,88 +810,77 @@ struct SettingsView: View {
                             } label: {
                                 Label("Explore page", systemImage: "sparkles")
                             }
-                        } header: { Text("Dev · Setup, zikr & Live Activity") }
+                        } header: { Text("Dev · Setup, Zikr & Explore") }
+                        .tint(Color.sage)
+                        .accentColor(Color.sage)   // the rows' icons take the accent, not the tint
 
                         Section {
-                            Button("Ring playground…") { showRingPlayground = true }
-                            // The Salah list following the finger, away from the real pager (owner, 2026-10-14).
-                            Button("Prayer list drag (sandbox)…") { showListSandbox = true }
-                            // Today's soft ring beside the app icon's lifted one, everywhere it shows (owner, 2026-10-14).
-                            NavigationLink("Ring depth mock-ups") { RingDepthMockPage() }
-                            // The whole prayer list raised, the one on now a step more (owner, 2026-10-14).
-                            NavigationLink("Raised list mock-up") { RaisedListMockPage() }
-                            // The setup's Live Activity page on its own, its words editable from its ⚙ (owner).
-                            Button("Live Activity setup page…") { showLiveActivitySetup = true }
-                            Button("NEXT label playground…") { showNextPlayground = true }
-                            // Plays the prayer-begins moment on the Salah circle (visual only: no test
-                            // times, no prayer rows or notifications touched).
-                            Button("Preview prayer begins", systemImage: "play.circle") {
-                                NotificationCenter.default.post(name: PrayerStartPreview.request, object: nil)
-                            }
-                        } header: { Text("Dev · Playgrounds") }
-
-                        Section {
-                            Picker("Tasbeeh ring", selection: $tasbeehRingStyle) {
-                                ForEach(TasbeehRingStyle.allCases) { Text($0.rawValue).tag($0.rawValue) }
-                            }
-                            Picker("Zikr wheel", selection: $zikrWheelStyle) {
-                                ForEach(ZikrWheelStyle.allCases) { Text($0.title).tag($0.rawValue) }
-                            }
-                            Picker("Prayer list dot", selection: $prayerDotStyle) {
-                                ForEach(PrayerDotStyle.allCases) { Text($0.title).tag($0.rawValue) }
-                            }
-                            // A prayer that hasn't started: "NEXT" above it, or the dashed ring alone.
-                            Picker("Next prayer", selection: $showNextLabel) {
-                                Text("NEXT + dashed ring").tag(true)
-                                Text("Dashed ring only").tag(false)
-                            }
-                            .onChange(of: showNextLabel) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
-                            Picker("Mosque icon", selection: $mosqueIconStyle) {
-                                ForEach(MosqueIconStyle.allCases) { style in
-                                    Label(style.title, systemImage: style.button(on: false)).tag(style.rawValue)
-                                }
-                            }
-                        } header: { Text("Dev · Looks (decided; still read)") }
-
-                        Section {
+                            // The Live Activity card's tuner (was under Live Activities on the page).
+                            Button("Live Activity card tuner…") { showLATuner = true }
                             // Every notification shukr sends, to this phone 6 s apart (lock it to see).
                             Button("Send notification samples") { Task { await NotificationSamples.send() } }
-                            Button("Reset Autopilot Fajr Alert") {
-                                didShowAlarmSetupAlert = false
-                                alarmEnabled = false
-                            }
-                        } header: { Text("Dev · Notifications & alarm") }
+                        } header: { Text("Dev · Live Activities & notifications") }
+                        .tint(Color.sage)
+                        .accentColor(Color.sage)   // the rows' icons take the accent, not the tint
 
                         Section {
-                            // Prayers widget speed test: flip one, tap the home widget, feel the difference.
-                            Toggle("Still ring (no live fill)", isOn: $widgetStillRing)
-                                .onChange(of: widgetStillRing) { WidgetCenter.shared.reloadAllTimelines() }
-                            Toggle("Fewest updates", isOn: $widgetFewestEntries)
-                                .onChange(of: widgetFewestEntries) { WidgetCenter.shared.reloadAllTimelines() }
-                        } header: { Text("Dev · Widget") }
-
-                        Section {
-                            // The Salah sheet: the finger drags it (a ScrollView) or a swipe pops it (the old way).
-                            Toggle("Salah sheet: follows the finger", isOn: $salahSheetFollows)
-                        } header: { Text("Dev · Salah sheet") }
-
-                        Section {
-                            Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
-                            Toggle("Location printer", isOn: $viewModel.locationPrints)
-                            Toggle("Scheduling printer", isOn: $viewModel.schedulePrints)
-                            Toggle("Calculation printer", isOn: $viewModel.calculationPrints)
-                        } header: { Text("Dev · Compass, location & logs") }
-
-                        Section {
-                            Toggle("Use test prayer times", isOn: $viewModel.useTestPrayers)
-                                .onChange(of: viewModel.useTestPrayers) { _, _ in
-                                    viewModel.fetchPrayerTimes(cameFrom: "toggle Use Test Prayer Times")
+                            DisclosureGroup("Older dev stuff") {
+                                // The first freestyle session's tips again (was under Tours; the Zikr tour took its place).
+                                CountingTipsAgainRow()
+                                // Page 3's trial layouts (decision first-zikr-choice); release builds always show cards.
+                                Picker(selection: $firstZikrChoice) {
+                                    Text("One zikr").tag("one")
+                                    Text("Choose: cards").tag("cards")
+                                    Text("Choose: swipe").tag("swipe")
+                                } label: {
+                                    Label("First zikr page (test)", systemImage: "rectangle.stack")
                                 }
-                        } header: {
-                            Text("Dev · Test data")
-                        } footer: {
-                            if viewModel.useTestPrayers { Text("Using test times with short intervals.") }
-                        }
+                                Button("Ring playground…") { showRingPlayground = true }
+                                // The setup's Live Activity page on its own, its words editable from its ⚙ (owner).
+                                Button("Live Activity setup page…") { showLiveActivitySetup = true }
+                                Button("NEXT label playground…") { showNextPlayground = true }
+                                // Looks already decided, still read by the app.
+                                Picker("Tasbeeh ring", selection: $tasbeehRingStyle) {
+                                    ForEach(TasbeehRingStyle.allCases) { Text($0.rawValue).tag($0.rawValue) }
+                                }
+                                Picker("Zikr wheel", selection: $zikrWheelStyle) {
+                                    ForEach(ZikrWheelStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                                }
+                                Picker("Prayer list dot", selection: $prayerDotStyle) {
+                                    ForEach(PrayerDotStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                                }
+                                // A prayer that hasn't started: "NEXT" above it, or the dashed ring alone.
+                                Picker("Next prayer", selection: $showNextLabel) {
+                                    Text("NEXT + dashed ring").tag(true)
+                                    Text("Dashed ring only").tag(false)
+                                }
+                                .onChange(of: showNextLabel) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
+                                Picker("Mosque icon", selection: $mosqueIconStyle) {
+                                    ForEach(MosqueIconStyle.allCases) { style in
+                                        Label(style.title, systemImage: style.button(on: false)).tag(style.rawValue)
+                                    }
+                                }
+                                Button("Reset Autopilot Fajr Alert") {
+                                    didShowAlarmSetupAlert = false
+                                    alarmEnabled = false
+                                }
+                                // Prayers widget speed test: flip one, tap the home widget, feel the difference.
+                                Toggle("Widget: still ring (no live fill)", isOn: $widgetStillRing)
+                                    .onChange(of: widgetStillRing) { WidgetCenter.shared.reloadAllTimelines() }
+                                Toggle("Widget: fewest updates", isOn: $widgetFewestEntries)
+                                    .onChange(of: widgetFewestEntries) { WidgetCenter.shared.reloadAllTimelines() }
+                                Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
+                                Toggle("Location printer", isOn: $viewModel.locationPrints)
+                                Toggle("Scheduling printer", isOn: $viewModel.schedulePrints)
+                                Toggle("Calculation printer", isOn: $viewModel.calculationPrints)
+                                Toggle("Use test prayer times", isOn: $viewModel.useTestPrayers)
+                                    .onChange(of: viewModel.useTestPrayers) { _, _ in
+                                        viewModel.fetchPrayerTimes(cameFrom: "toggle Use Test Prayer Times")
+                                    }
+                            }
+                        } header: { Text("Dev · Older") }
+                        .tint(Color.sage)
+                        .accentColor(Color.sage)   // the rows' icons take the accent, not the tint
                     }
                     #endif
                     

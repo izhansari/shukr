@@ -262,6 +262,7 @@ a prayer checks `Excused.covers(start:end:)` (Excused.swift). Read `Excused.rang
 
 **Simulator & testing**
 - **The circle system** (decision circle-system A, 2026-10-02; rules and owners: `shukrGit/board/circle-system.md`): MainCircleView owns every moment (CircleMoments.swift — morning, lost and the opening are circle states); the look is one value, `@Environment(\.circleTheme)` (CircleTheme.swift; `CircleTheme.standard` = everyone's default, `.today`) — never the SalahLook keys; timings only from CircleMotion.swift; out, then in (fades eased out; a ring faded over another gets `.compositingGroup()`). Every change passes `scripts/circle-check.sh`: `shots <parent> HEAD` (pixel diff) and `strip <moment>` (one-frame jumps); the app's clock runs from `--clock` (fakeclock.c); simulators only.
+- **My Dev Stuff** (Settings → tap "Sneak Peek…"; owner 2026-10-15): recent rows on top by area (Salah page · Setup, Zikr & Explore · Live Activities & notifications), the rest folded under Dev · Older; every existing row sage (`.tint` + `.accentColor`) — add a NEW row with no tint so it shows blue; move it into an area once it's settled.
 - Simulated taps miss Menus and segmented controls (use DEBUG args or the app's own prefs; `simctl defaults write` leaves a plist the app can't clear). Any `-demo…` arg skips welcome / prompts / setup. Not testable in the sim: mic, camera, haptics, BGTask, significant-change.
 
 ## Features: current state
