@@ -109,6 +109,8 @@ struct JourneyLog {
         var scoreSum = 0.0
         /// The average score of the prayers due, 0…100 (nil before anything's due).
         var averageScore: Int? { due == 0 ? nil : Int((scoreSum / Double(due) * 100).rounded()) }
+        /// The day with the best score (the mean of its five, an unprayed one 0; the latest of a tie), 0…100.
+        var bestDay: (date: Date, score: Int)?
         /// Per prayer (Fajr … Isha): prayed and due.
         var perPrayer = Array(repeating: (prayed: 0, due: 0), count: 5)
     }
@@ -124,6 +126,8 @@ struct JourneyLog {
             m.inTime += d.inTime
             if d.allInTime { m.allInTimeDays += 1 }
             if d.allFive { m.allFiveDays += 1 }
+            let dayScore = Int((d.marks.reduce(0) { $0 + ($1.score ?? 0) } / 5 * 100).rounded())
+            if dayScore >= (m.bestDay?.score ?? -1) { m.bestDay = (date, dayScore) }
             for (i, mark) in d.marks.enumerated() {
                 m.scoreSum += mark.score ?? 0
                 if mark.done { m.perPrayer[i].prayed += 1 }
@@ -150,7 +154,15 @@ struct JourneyLog {
 /// The card's two day counts light their days up and dim the rest (as Insights did — owner: it helps most in the grid).
 enum JourneyHighlight: Equatable {
     case allInTime, allFive
-    func matches(_ d: JourneyLog.Day) -> Bool { self == .allInTime ? d.allInTime : d.allFive }
+    /// The month's best day (a tap on the average score — owner).
+    case bestDay(Date)
+    func matches(_ d: JourneyLog.Day) -> Bool {
+        switch self {
+        case .allInTime: d.allInTime
+        case .allFive: d.allFive
+        case .bestDay(let date): Calendar.current.isDate(d.date, inSameDayAs: date)
+        }
+    }
 }
 
 /// A square picked in the grid: its one line shows under the grid; a tap on the line opens the day (owner: a tap on a square
@@ -193,7 +205,10 @@ struct JourneyPage: View {
         .task { reload() }
         .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in reload() }
-        .onChange(of: month) { pick = nil }
+        .onChange(of: month) {
+            pick = nil
+            if case .bestDay = highlight { highlight = nil }   // another month has its own best day
+        }
         .onChange(of: view) { pick = nil }
         #if DEBUG
         .task {
@@ -276,10 +291,14 @@ struct JourneyPage: View {
     private var monthRow: some View {
         HStack(spacing: 6) {
             stepButton("chevron.left", enabled: month > firstMonth, label: "Previous month") { step(-1) }
-            Text(month.formatted(.dateTime.month(.wide).year(Calendar.current.isDate(month, equalTo: thisMonth, toGranularity: .year) ? .omitted : .defaultDigits)))
+            // A fixed width, so › stays under the finger as the months change (owner): this year's months by name, earlier
+            // years' as "Sep 2025".
+            Text(Calendar.current.isDate(month, equalTo: thisMonth, toGranularity: .year)
+                 ? month.formatted(.dateTime.month(.wide)) : month.formatted(.dateTime.month(.abbreviated).year()))
                 .font(.system(size: 17, weight: .light, design: .rounded))
                 .lineLimit(1)
-                .fixedSize()
+                .minimumScaleFactor(0.8)
+                .frame(width: 88, alignment: .leading)
             stepButton("chevron.right", enabled: month < thisMonth, label: "Next month") { step(1) }
             Spacer(minLength: 6)
             gradesButton
@@ -465,13 +484,40 @@ private struct JourneyCard: View {
             HStack(spacing: 4) {
                 figure("\(numbers.allInTimeDays)", "days all in time", .allInTime)
                 figure("\(numbers.allFiveDays)", "days with all five", .allFive)
-                figure(numbers.averageScore.map { "\($0)" } ?? "–", "average score", nil)
+                bestDayFigure
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)
         .padding(.bottom, 12)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
+    }
+
+    /// The average score; a tap lights up the month's best day and shows its score and date instead (owner); again, back.
+    @ViewBuilder private var bestDayFigure: some View {
+        let best = numbers.bestDay
+        let on: Bool = { if case .bestDay = highlight { true } else { false } }()
+        Button {
+            guard let best else { return }
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeOut(duration: 0.2)) { highlight = on ? nil : .bestDay(best.date) }
+        } label: {
+            VStack(spacing: 1) {
+                Text(on ? "\(best?.score ?? 0)" : numbers.averageScore.map { "\($0)" } ?? "–")
+                    .font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
+                    .contentTransition(.numericText())
+                Text(on ? "best · \(best?.date.formatted(.dateTime.month(.abbreviated).day()) ?? "")" : "average score")
+                    .font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.85)
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity)
+            .background { if on { NeuPressed(shape: RoundedRectangle(cornerRadius: 12, style: .continuous), radius: 3, offset: 2) } }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(best == nil)
+        .accessibilityHint(on ? "Shows every day again" : "Lights up the month's best day")
     }
 
     /// Prayed ⇄ in time, back by itself after 4 s (the Salah ring's flip).
@@ -676,7 +722,7 @@ private struct JourneyGrid: View {
     /// What was picked when the finger went down (lifting on that same square without sliding puts it away).
     @State private var pickAtTouch: JourneyPick??
     @State private var movedToOther = false
-    private static let label: CGFloat = 54, countWidth: CGFloat = 40, gap: CGFloat = 6, rowHeight: CGFloat = 24, rowGap: CGFloat = 6
+    private static let label: CGFloat = 54, countWidth: CGFloat = 40, gap: CGFloat = 6, rowHeight: CGFloat = 16, rowGap: CGFloat = 5
 
     var body: some View {
         let days = JourneyLog.daysOf(month: month)
@@ -827,7 +873,7 @@ private struct JourneyGrid: View {
     /// Insights' squares: with colours off a prayed one is a soft grey, an unprayed one only an outline; the picked one
     /// always shows its grade colour, a little larger, glowing (owner: "the same way as it does in Insights").
     @ViewBuilder private func cell(_ mark: JourneyLog.Mark, date: Date, picked: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 2, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 2.5, style: .continuous)
         let color: Color? = mark.score.map { PrayerScoring.color(for: $0) }
         Group {
             switch mark {
@@ -838,15 +884,16 @@ private struct JourneyGrid: View {
             }
         }
         .overlay {
-            // The picked one has no border (owner: the black outline was too heavy): its colour, size and glow are enough.
-            shape.strokeBorder(picked && mark.done ? Color.clear
-                               : mark == .missed ? Color.primary.opacity(picked ? 0.5 : 0.3)
+            // The picked one as on Insights' "How consistent am I?" page — a dark border, here a thin one (owner: the first was
+            // too heavy, none was too hard to make out) — over its colour, 1.18× and a glow.
+            shape.strokeBorder(picked ? Color.primary.opacity(0.6)
+                               : mark == .missed ? Color.primary.opacity(0.3)
                                : mark.done || mark == .excused ? Color.clear
                                : Color.primary.opacity(date > today ? 0.06 : 0.12),
                                lineWidth: 1)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 22)
+        .frame(height: 11)   // nearer a rounded square than a tall bar (owner)
         .scaleEffect(picked ? 1.18 : 1)
         .shadow(color: picked ? (color ?? .clear).opacity(0.5) : .clear, radius: 4)
         .zIndex(picked ? 1 : 0)
