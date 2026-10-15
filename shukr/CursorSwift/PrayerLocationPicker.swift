@@ -448,7 +448,18 @@ struct PrayerLocationPicker: View {
 
 /// "123 Main St, Cary" for a spot (cached per ~10 m).
 enum PrayerSpotAddress {
-    private static var cache: [String: String] = [:]
+    /// Read and written from many lookups at once (Memories' captions, run concurrently): a plain static dictionary
+    /// crashed (Dictionary.setValue → doesNotRecognizeSelector, 2026-10-15). Behind a lock now.
+    private static let store = Cache()
+    private final class Cache: @unchecked Sendable {
+        private var values: [String: String] = [:]
+        private let lock = NSLock()
+        subscript(key: String) -> String? {
+            get { lock.lock(); defer { lock.unlock() }; return values[key] }
+            set { lock.lock(); values[key] = newValue; lock.unlock() }
+        }
+    }
+    private static var cache: Cache { store }
     static func cached(_ c: CLLocationCoordinate2D) -> String? {
         cache[String(format: "%.4f,%.4f", c.latitude, c.longitude)]
     }

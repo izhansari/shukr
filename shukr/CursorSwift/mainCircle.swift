@@ -1058,6 +1058,16 @@ struct summaryCircle: View, Equatable {
     /// The day the slow first draw played (once a day).
     static let firstDrawKey = "daySummary.firstDrawn"
 
+    /// When the Fajr alarm rings for this Fajr — the rule from Settings (before / after Fajr or sunrise, by the offset);
+    /// nil when it's off or excused (it won't ring).
+    private func alarmTime(for fajr: (start: Date, end: Date)) -> Date? {
+        guard fajrAlarmOn, !Excused.isActive, let g = UserDefaults(suiteName: SharedStore.appGroup) else { return nil }
+        let isFajr = g.object(forKey: "alarmIsFajr") as? Bool ?? true
+        let before = g.object(forKey: "alarmIsBefore") as? Bool ?? true
+        let shift = TimeInterval(g.integer(forKey: "alarmOffsetMinutes") * 60) * (before ? -1 : 1)
+        return (isFajr ? fajr.start : fajr.end).addingTimeInterval(shift)   // Fajr's window ends at sunrise
+    }
+
     func getTheNextFajrTime() {
         if let todaysFajr = viewModel.getPrayerTime(for: "Fajr", on: Date()){
             if todaysFajr.start > Date(){
@@ -1144,6 +1154,15 @@ struct summaryCircle: View, Equatable {
                     .fontDesign(.rounded)
                     .fontWeight(.thin)
                     .transition(.blurReplace)
+                    // The bridge to tomorrow (owner, 2026-10-15): when the Fajr alarm will ring, quietly, if it's on.
+                    if let alarm = alarmTime(for: fajrTime) {
+                        Label(shortTimePM(alarm), systemImage: "alarm")
+                            .labelStyle(.titleAndIcon)
+                            .font(.caption).fontDesign(.rounded).fontWeight(.light)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 4)
+                            .accessibilityLabel("Fajr alarm at \(shortTimePM(alarm))")
+                    }
                 }
             }
             .modifier(CircleWordsAway(away: away || showsScore))
