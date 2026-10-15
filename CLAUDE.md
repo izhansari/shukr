@@ -39,6 +39,11 @@ Data, flows, gestures: test by real taps in every state, not only demo flags. A 
 risky data / flow change is a request, not a round. Only a real bug (a crash, lost data, something wrong he'd notice)
 stops the next item.
 
+**Design: the guide first** (owner 2026-10-15). Before any mockup or new view, read `docs/design-language.md` (findings +
+vocabulary, screenshots in `shukrGit/board/mocks/design-library/`) and describe the design in its words ("one hero in a
+ring, a flat list, sage only on what you tap"). When he approves a design that adds a pattern, whoever built it adds a
+line + a screenshot to the guide in the same commit, so it never goes stale.
+
 **Between sessions:** the hash, the facts, what's wanted — short. Engineers talk to each other directly about merges and
 installs.
 
