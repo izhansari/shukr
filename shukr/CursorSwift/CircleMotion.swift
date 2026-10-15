@@ -61,11 +61,9 @@ enum CircleMotion {
     /// raise the card"); the rows' make-room-then-fade takes ~0.3–0.6 s.
     static let dayCardLiftDelay: Double = 0.7
     /// The day ring's fifths drawing in, clockwise from the top one after another, on every flip to the day's page
-    /// (owner, 2026-10-14: drawn, not faded); closing runs it back, quicker. One animatable value, so a quick flick back
-    /// turns it round from where it is — never a timed run to wait on.
+    /// (owner, 2026-10-14: drawn, not faded); leaving, it just fades (CircleMomentTiming.out), as the dashed ring does.
     /// A little shorter than Fajr's dashes drawing in (`dashesDrawDuration` 1.8 s) — 0.5 s read busy (owner).
     static let dayRingDraw = Animation.easeInOut(duration: 1.5)
-    static let dayRingRetract = Animation.easeInOut(duration: 1.0)
     /// The first showing each day: slower, then the score counts up from 0 once the ring is whole.
     static let dayRingFirstDrawDuration: Double = 2.0
     static let dayRingFirstDraw = Animation.easeInOut(duration: dayRingFirstDrawDuration)

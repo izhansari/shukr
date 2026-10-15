@@ -945,6 +945,9 @@ struct summaryCircle: View, Equatable {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The fifths drawn (DayRing's `drawn`): toward 1 on the score side, 0 otherwise, animated (CircleMotion.dayRing…).
     @State private var drawn: CGFloat = 0
+    /// Leaving, the drawn ring just fades (as the dashed ring does); drawn back to 0 unseen once gone.
+    @State private var ringFade: Double = 1
+    @State private var drawToken = 0
     /// The first showing today: the score counts up from 0 once the ring is whole (nil = show the score as it is).
     @State private var countedScore: Double?
     /// A stored day score, `daysBack` prayer days before today (1 = yesterday).
@@ -1020,13 +1023,25 @@ struct summaryCircle: View, Equatable {
 
     /// Draw the fifths to `target`: in on every flip (the first time today slower, then the score counts up); out, quicker.
     private func drawTo(_ target: CGFloat) {
-        guard drawn != target else { return }
-        if reduceMotion { drawn = target; countedScore = nil; return }
+        drawToken += 1
+        let token = drawToken
+        guard drawn != target || ringFade < 1 else { return }
+        if reduceMotion { drawn = target; ringFade = 1; countedScore = nil; return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
         guard target == 1 else {
+            // Out: a fade, as the dashed ring leaves (owner) — the draw only plays coming in. Reset unseen once gone.
             countedScore = nil
-            withAnimation(CircleMotion.dayRingRetract) { drawn = 0 }
+            withAnimation(.easeOut(duration: CircleMomentTiming.out)) { ringFade = 0 }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
+                guard token == drawToken else { return }
+                withTransaction(quiet) { drawn = 0; ringFade = 1 }
+            }
             return
         }
+        // In (a flick back mid-fade too): from nothing, drawn clockwise.
+        if ringFade < 1 { withTransaction(quiet) { drawn = 0; ringFade = 1 } }
         let today = PrayerNotificationID.dayKey(PrayerDay.date())
         let first = UserDefaults.standard.string(forKey: Self.firstDrawKey) != today && !TourRuntime.shared.active
         guard first else {
@@ -1035,8 +1050,6 @@ struct summaryCircle: View, Equatable {
         }
         UserDefaults.standard.set(today, forKey: Self.firstDrawKey)
         // To 0 at once: set inside the face's own animated swap, it counted down from the old value first.
-        var quiet = Transaction()
-        quiet.disablesAnimations = true
         withTransaction(quiet) { countedScore = 0 }
         withAnimation(CircleMotion.dayRingFirstDraw) { drawn = 1 }
         Task { @MainActor in
@@ -1054,7 +1067,10 @@ struct summaryCircle: View, Equatable {
     /// nil when it's off or excused (it won't ring).
     private func alarmTime(for fajr: (start: Date, end: Date)) -> Date? {
         // Only once it's set up: on, iOS's alarm permission given (AlarmKit), not excused — never a nudge (owner).
-        guard fajrAlarmOn, FajrAlarms.allowed != false, !Excused.isActive,
+        // On 26.1+ the alarm is iOS's (AlarmKit): only with permission actually given; before, the Shortcut path.
+        var permitted = true
+        if #available(iOS 26.1, *) { permitted = FajrAlarms.allowed == true }
+        guard fajrAlarmOn, permitted, !Excused.isActive,
               let g = UserDefaults(suiteName: SharedStore.appGroup) else { return nil }
         let isFajr = g.object(forKey: "alarmIsFajr") as? Bool ?? true
         let before = g.object(forKey: "alarmIsBefore") as? Bool ?? true
@@ -1090,6 +1106,7 @@ struct summaryCircle: View, Equatable {
                 pickedAt = Date()
                 triggerSomeVibration(type: .light)
             }
+            .opacity(ringFade)
             .background {
                 // A full day: the ring glows once (its first showing that day), then settles.
                 Circle().fill(Color.green.opacity(0.12)).frame(width: 290, height: 290).blur(radius: 32)
@@ -1148,18 +1165,32 @@ struct summaryCircle: View, Equatable {
                     .fontDesign(.rounded)
                     .fontWeight(.thin)
                     .transition(.blurReplace)
-                    // The bridge to tomorrow (owner, 2026-10-15): when the Fajr alarm will ring, quietly, if it's on.
-                    if let alarm = alarmTime(for: fajrTime) {
-                        Label(shortTimePM(alarm), systemImage: "alarm")
-                            .labelStyle(.titleAndIcon)
-                            .font(.caption).fontDesign(.rounded).fontWeight(.light)
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 4)
-                            .accessibilityLabel("Fajr alarm at \(shortTimePM(alarm))")
-                    }
                 }
             }
             .modifier(CircleWordsAway(away: away || showsScore))
+        }
+        // The bridge to tomorrow (owner, 2026-10-15): when the Fajr alarm rings, under the ring on the next-Fajr side —
+        // out of the circle (inside it, it pushed Fajr's name off its place); a tap opens Settings at the Fajr alarm.
+        .overlay(alignment: .bottom) {
+            if let fajr = nextFajr, let alarm = alarmTime(for: fajr) {
+                Button {
+                    triggerSomeVibration(type: .light)
+                    // Settings, then its alarm row once the page has come to rest (scrolling mid-swipe stalls it).
+                    Task { if await sharedState.navigate(to: .settings) { SettingsJump.shared.request(SettingsJump.fajrAlarm) } }
+                } label: {
+                    Label("Alarm \(shortTimePM(alarm))", systemImage: "alarm")
+                        .labelStyle(.titleAndIcon)
+                        .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .offset(y: 56)
+                .modifier(CircleWordsAway(away: away || showsScore))
+                .allowsHitTesting(!showsScore && !away)
+                .accessibilityLabel("Fajr alarm at \(shortTimePM(alarm)). Change it in Settings.")
+            }
         }
         .transition(.opacity)
         .onAppear { getTheNextFajrTime(); refreshDay(); DayPageState.shared.pageAppeared() }
