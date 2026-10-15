@@ -66,7 +66,7 @@ struct NowTimeLeft: View {
 
 /// G · the moment after marking the prayer on now from the list (owner, 2026-10-14): its row stays raised and its time
 /// becomes three buttons — edit, camera (while its window is open), Tasbih — in place of the post-salah pill. Closing the
-/// list hands the moment to the pill (PagerChromeView); a tap on another row puts the buttons away; unmarking clears them;
+/// list hands the moment to the pill (PagerChromeView); other rows' taps leave them (owner); unmarking clears them;
 /// the day's last prayer keeps the pill (the day page comes). Marks from anywhere else: the pill, as always.
 @MainActor @Observable final class PrayerRowActions {
     static let shared = PrayerRowActions()

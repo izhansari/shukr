@@ -3170,7 +3170,6 @@ struct PrayerButton: View {
     private func timeTap() {
         // G · while this row's buttons are up, a tap on it (the name) does nothing — it used to flip and clear them (owner).
         if showsActions { return }
-        putActionsAway()
         guard isFuturePrayer || prayerObject.isCompleted else { return }
         TourTargets.shared.lastTappedRow = prayerObject.name   // its change glows (the tour)
         TourRuntime.shared.event(prayerObject.isCompleted ? .markedRowTapped : .comingRowTapped)   // the tour's list card
@@ -3215,7 +3214,6 @@ struct PrayerButton: View {
 
     /// A tap round the dot: mark / unmark (a prayer that hasn't started can't be marked).
     private func markTap() {
-        if PrayerRowActions.shared.name != prayerObject.name { putActionsAway() }
         if !isFuturePrayer { handlePrayerButtonPress() }
     }
 
@@ -3223,11 +3221,7 @@ struct PrayerButton: View {
     private var showsActions: Bool {
         look == .prayedOnTap && prayerObject.isCompleted && PrayerRowActions.shared.name == prayerObject.name
     }
-    /// A tap on a row (not a button): the buttons go, quietly (no pill — they were dismissed, not left).
-    private func putActionsAway() {
-        guard PrayerRowActions.shared.name != nil else { return }
-        withAnimation(.smooth(duration: 0.3)) { PrayerRowActions.shared.name = nil }
-    }
+
 
     /// Radius of the circle round the dot where a tap marks (a 44 pt circle; the dot is 14 pt).
     static let markRadius: CGFloat = 22
