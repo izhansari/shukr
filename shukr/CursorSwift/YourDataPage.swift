@@ -141,8 +141,8 @@ struct YourDataPage: View {
                 try? await Task.sleep(for: .milliseconds(600))
                 about = k
             }
-            // `-demoBackupState <state>` opens the top right's card on that state.
-            if UserDefaults.standard.string(forKey: "demoBackupState") != nil {
+            // `-demoBackupState <state>` puts the page in that state; with `-demoBackupCard YES` its card opens too.
+            if UserDefaults.standard.bool(forKey: "demoBackupCard") {
                 try? await Task.sleep(for: .milliseconds(600))
                 info = .backup
             }
@@ -300,7 +300,7 @@ struct YourDataPage: View {
             .tint(.sage)
             .disabled(cloud.availability == .off && !iCloudOn)
             if showsBackupRow {
-                lastBackupRow(shownCopy)
+                lastBackupRow
             }
         } header: {
             Text("iCloud Backup")
@@ -309,50 +309,55 @@ struct YourDataPage: View {
         }
     }
 
+    /// The row shows while backups can run (on, iCloud Drive there); DEBUG `-demoBackupState` shows it for its state.
     private var showsBackupRow: Bool {
-        #if DEBUG
-        if UserDefaults.standard.string(forKey: "demoBackupRow") != nil { return true }
-        #endif
-        return iCloudOn && cloud.availability == .available
-    }
-    /// The newest backup (DEBUG `-demoBackupRow inICloud|uploading|failed|none`: a stand-in, the simulator has no iCloud).
-    private var shownCopy: ICloudCopy.Copy? {
-        #if DEBUG
-        if let demo = UserDefaults.standard.string(forKey: "demoBackupRow") {
-            let upload: ICloudCopy.Upload = switch demo { case "uploading": .uploading; case "failed": .failed("full"); default: .inICloud }
-            return demo == "none" ? nil : ICloudCopy.Copy(url: URL(fileURLWithPath: "/demo.zip"), made: .now.addingTimeInterval(-600), bytes: 2_787_884, upload: upload)
+        switch backup {
+        case .off, .noICloud: false
+        default: true
         }
-        #endif
-        return cloud.copies.first
     }
 
-    /// One row (owner: not two under the switch): the last backup and iCloud's state on the left, Back Up Now as a
-    /// round outlined button on the right (a spinner while it runs). Plain Image + Text, no Label: a list lines its
-    /// separators up with a row's first Label, which sat on the right ("In iCloud") and cut the line short.
-    private func lastBackupRow(_ c: ICloudCopy.Copy?) -> some View {
-        let state: (symbol: String, word: String, tint: Color)? = c.map {
-            switch $0.upload {
-            case .inICloud: ("checkmark.icloud", "In iCloud", .sage)
-            case .uploading: ("icloud.and.arrow.up", "Uploading", Color(.secondaryLabel))
-            case .waiting: ("icloud", "Waiting to upload", Color(.secondaryLabel))
-            case .failed: ("exclamationmark.icloud", "Not uploaded", .orange)
+    /// The backup the row talks about: the state's own, else the newest (a failed try keeps the last good one).
+    private var rowCopy: ICloudCopy.Copy? {
+        switch backup {
+        case .backedUp(let c), .stale(let c): return c
+        default:
+            #if DEBUG
+            if let demo = UserDefaults.standard.string(forKey: "demoBackupState"), demo != "none" {
+                return ICloudCopy.Copy(url: URL(fileURLWithPath: "/demo.zip"), made: .now.addingTimeInterval(-26 * 3600), bytes: 2_787_884, upload: .inICloud)
             }
+            #endif
+            return cloud.copies.first
         }
+    }
+
+    /// One row (owner: not two under the switch): the state's cloud in the Label's icon slot (a list lines its
+    /// separators up with a row's first Label — on the right it cut the line short), the last backup and the state's
+    /// word under it, Back Up Now as a round outlined button (a spinner while it runs). Everything here reads
+    /// `backup`, as the top right and the card do, so they never disagree (owner: a green check under an orange cloud).
+    private var lastBackupRow: some View {
+        let (symbol, word, tint): (String, String?, Color) = switch backup {
+        case .backedUp: ("checkmark.icloud", "In iCloud", .sage)
+        case .backingUp: ("icloud.and.arrow.up", "Uploading", Color(.secondaryLabel))
+        case .stale: ("exclamationmark.icloud", "Out of date", .orange)
+        case .failed: ("exclamationmark.icloud", "Last try didn't finish", .orange)
+        case .none, .off, .noICloud: ("icloud", nil, Color(.secondaryLabel))
+        }
+        let c = rowCopy
         return HStack(spacing: 12) {
-            // The state's cloud in the icon slot, as the switch's row has one: the texts and the separator line up.
             Label {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(c == nil ? "No backup yet" : "Last backup").foregroundStyle(Color(.label))
-                    if let c, let state {
-                        (Text(Self.when(c.made) + " · " + Self.size(c.bytes) + " · ").foregroundStyle(Color(.secondaryLabel))
-                         + Text(state.word).foregroundStyle(state.tint))
+                    if let c {
+                        (Text(Self.when(c.made) + " · " + Self.size(c.bytes) + (word == nil ? "" : " · ")).foregroundStyle(Color(.secondaryLabel))
+                         + Text(word ?? "").foregroundStyle(tint))
                             .font(.footnote)
                             .lineLimit(1)
                             .minimumScaleFactor(0.85)
                     }
                 }
             } icon: {
-                Image(systemName: state?.symbol ?? "icloud").foregroundStyle(state?.tint ?? Color(.secondaryLabel))
+                Image(systemName: symbol).foregroundStyle(tint)
             }
             Spacer(minLength: 8)
             Button(action: backUpNow) {
@@ -377,13 +382,11 @@ struct YourDataPage: View {
     }
 
     private var iCloudLine: String {
-        if cloud.availability == .off {
-            return "iCloud Drive is off on this iPhone. Turn it on in Settings → your name → iCloud → iCloud Drive."
+        switch backup {
+        case .off: return "Backs up everything to your own iCloud Drive once a day. Only you can see it."
+        case .noICloud: return "iCloud Drive is off on this iPhone. Turn it on in Settings → your name → iCloud → iCloud Drive."
+        default: return "Once a day, when you open shukr, everything is backed up to iCloud Drive → shukr. The newest \(ICloudCopy.keep) backups are kept."
         }
-        guard iCloudOn else { return "Backs up everything to your own iCloud Drive once a day. Only you can see it." }
-        var line = "Once a day, when you open shukr, everything is backed up to iCloud Drive → shukr. The newest \(ICloudCopy.keep) backups are kept."
-        if case .failed(let why) = backup { line = "The last backup didn't finish: \(why) " + line }
-        return line
     }
 
     /// "Today, 3:12 PM" / "Yesterday, 9:40 PM" / "Oct 12, 9:40 PM".
@@ -477,9 +480,10 @@ private struct SheetLine: View {
     let symbol: String
     let text: String
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: symbol).font(.system(size: 15, weight: .light)).foregroundStyle(.secondary).frame(width: 24)
             Text(text).font(.system(.subheadline, design: .rounded))
+                .fixedSize(horizontal: false, vertical: true)   // wraps, never "…" (a sheet's first, smaller size cut it)
             Spacer(minLength: 0)
         }
         .padding(.vertical, 5)
@@ -511,7 +515,9 @@ private struct DataKindSheet: View {
             .padding(.horizontal, 32).padding(.top, 18).padding(.bottom, 30)
         }
         .frame(maxWidth: .infinity)
+        .fixedSize(horizontal: false, vertical: true)   // measured at its own height, not the sheet's current one
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .frame(maxHeight: .infinity, alignment: .top)
         .modifier(GlassSheet(height: height))
     }
 }
