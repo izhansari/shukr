@@ -85,18 +85,20 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - ☰ → Journey (`JourneyPresenter.open`, pushed on the root stack) replaces Insights and the Moments row; the day page's pill
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
   link "journey" ("insights" too). InsightsView is kept in code, unreached. iOS 26's back button shows no page name.
-- Journey v6 (owner 2026-10-16, canvas board/mocks/journey-v6, checks acceptance.md): `JourneyPage` scrolls — "Journey"
-  (38 regular) + "Since <weekday, date>" / "It starts with your first prayer"; Your journey's card (`JourneyHomeCard`:
-  days you marked a prayer, the last 12 weeks a week a column — cells by amount: faint none, grey 1–4, dark all five,
-  green all five in time, the canvas's light values and Frank's dark ones — prayers marked · % in time on those days · best
-  streak; day one: "0 days so far" + "Every prayer you mark shows up here."); three flat rows (`JourneyHomeRow`): Prayer
-  scores (`JourneyMiniRing` = `PrayerScores.prayedScore`, "<ranked.first> is your strongest") · To make up (lifetime
-  `openCount`) · Moments (photo count) → the same pages as before; MONTHS · % in time (`JourneyMonthsList`, newest first,
-  "Away · <dates> · N weeks" lines, the latest five then "All N months ›" in place); MILESTONES (`JourneyMilestonesList`).
-  The title moves into the bar on scroll. A month row → `JourneyMonthPage`: name + raised ‹ › (months with marks only),
-  "N days you marked a prayer", days all in time · days with all five · average score between hairlines, the five-dot
-  calendar (`JourneyCalendar`, discs + key; a day → the day page, today only once all five are marked), "Tap a day to
-  open it.", grade colors in the bar's ··· (`journey.grades`). Gone: the ring card, Calendar | Grid and the grid, the tiles.
+- Journey v6 (owner 2026-10-16, canvas board/mocks/journey-v6, checks acceptance.md + acceptance-2.md): `JourneyPage`
+  scrolls — "Journey" (38 regular) + "Since <weekday, date>" / "It starts with your first prayer"; Your journey's card
+  (`JourneyHomeCard`: days you marked a prayer, the last 12 weeks a week a column — cells by amount: faint none, grey 1–4,
+  dark all five, green all five in time — prayers marked · % in time on those days · best streak; a tap on a square marks
+  it and puts its day's line under the grid, "Mon, Sep 28 · 4 of 5 · 4 in time · Open ›"; the same square / elsewhere on
+  the card lets go; day one: "0 days so far"); three flat rows (`JourneyHomeRow`): Prayer scores (`JourneyMiniRing` =
+  `PrayerScores.prayedScore`, "<ranked.first> is your strongest") · To make up (lifetime `openCount`) · Moments; MONTHS ·
+  % in time (`JourneyMonthsList`: newest first, "Away · <dates> · N weeks" lines, the first three months then "Show more"
+  in place); MILESTONES (`JourneyMilestonesList`; a tap → `JourneyMilestoneCard` in the frosted ⓘ card: what, When, How,
+  "See that day ›"). The title moves into the bar on scroll. A month row → `JourneyMonthPage`: name + raised ‹ ›, "N days
+  you marked a prayer", days all in time · days with all five · average score between hairlines (a tap lights those days
+  / the best-scored day(s) — `JourneyHighlight`, "100 · best · Sep 4"; again, off), the five-dot calendar
+  (`JourneyCalendar`) between its neighbours — a sideways drag turns the month (the day pager's motion; ‹ › slide too;
+  months with marks only) — "Tap a day to open it.", grade colors in the bar's ··· (`journey.grades`).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.
@@ -143,13 +145,14 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   month) puts them back in their months, greyed, by date; an empty side shows "All caught up" (a check drawn in + a
   success buzz). A row opens its sheet (decision makeup-row-tap: kept).
 - Milestones (`JourneyMilestone.earned`, YourJourney.swift; earned once, dated, newest first, a hollow dot each): Day one,
-  first Jumu'ah / first prayer at a masjid, 7…365 days all in time in a row, each run that beat the best ("Your best
-  streak: N days" over its dates on the latest), the 100/500/1000th prayer, each prayer's 100th/500th, a perfect day,
-  Welcome back after 7+ days away, years since day one.
+  first Jumu'ah / first prayer at a masjid, 7…365 days all in time in a row, each streak that beat the best ("Your best
+  streak: N days" over its dates on the latest), every hundredth prayer (the list keeps the 100th, 500th, every thousandth
+  and the latest), each prayer's 100th/500th, a perfect day, Welcome back (the latest return only), years since day one.
+  Each carries its card: symbol, about, how, day.
 - Milestone celebration (`MilestoneCelebration`, `MilestoneCelebrationLayer` over the Salah page): after a mark (2.4 s)
   and on every activation, a new milestone plays the first mark's glow + card (`TourOverlay` .celebrate) in its words,
-  "Added to Your journey.", Continue; seen ids in `journey.milestones.seen` (the first check records silently; never
-  over the tour). DEBUG `-demoMilestoneCelebration`.
+  "Added to Your journey.", Continue; seen ids in `journey.milestones.seen` (the first check records silently, and so does the first after a
+  `seenVersion` bump — 2: every hundred prayers; never over the tour). DEBUG `-demoMilestoneCelebration`.
 - DEBUG `-demoJourney [-demoJourneySeed] [-demoJourneyMonth N] [-demoJourneyDay N
   [-demoJourneySheet 0…4]] [-demoJourneyMakeUp]` (`-demoJourneySeed` adds ~100 earlier days where none, a break with four
   "opened, nothing marked" days; the demo opens only every other launch — ☰ always works).
