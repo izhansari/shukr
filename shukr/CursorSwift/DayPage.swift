@@ -209,18 +209,16 @@ struct DayCardRow: View {
 
 // MARK: - Days changing (Journey)
 
-/// A day following the finger sideways: it moves a third of the travel, fades toward nothing and shrinks to 94 % as the
-/// travel reaches `out`; coming in, the same from the other side, backwards (owner, 2026-10-16: "as it moves off the page,
-/// it fades out and gets a little smaller. And when it comes in, the opposite").
-struct DaySlideMotion: ViewModifier {
-    let travel: CGFloat
-    let out: CGFloat
+/// A day in Journey's pager by its distance from the middle (`position` in page widths: 0 on the page, ±1 a page off):
+/// it fades and shrinks a little as it goes, and grows and brightens as it comes in (owner, 2026-10-16: "as it moves off
+/// the page, it fades out and gets a little smaller. And when it comes in, the opposite").
+struct DayPaneMotion: ViewModifier {
+    let position: CGFloat
     func body(content: Content) -> some View {
-        let t = min(abs(travel) / max(out, 1), 1)
+        let d = min(abs(position), 1)
         content
-            .offset(x: travel / 3)
-            .scaleEffect(1 - 0.06 * t)
-            .opacity(1 - t)
+            .scaleEffect(1 - 0.06 * d)
+            .opacity(1 - 0.75 * d)
     }
 }
 

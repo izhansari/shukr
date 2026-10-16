@@ -3,92 +3,97 @@ import SwiftData
 import CoreLocation
 import MapKit
 
-/// A day in Journey, on the Salah tab's day page pieces (the day page merge, owner 2026-10-15; DayPage.swift): the date
-/// centred on top, the day's ring (DayRing / DayCentre), the picked prayer's note and place under it, the list card with
-/// plain chevrons either side (‹ › walk the days from the first one to yesterday — today only once all five are marked),
-/// and the pill that flips the card to the day's Notes · Photos · On the map · Zikr. A row tapped picks its prayer into
-/// the ring; held, it opens the prayer's sheet (JourneyPrayerSheet: mark, unmark, the time, the place, the note). A drag
-/// sideways moves a day; the left edge stays the system's back.
+/// A day in Journey, on the Salah tab's day page pieces (the day page merge, owner 2026-10-15; DayPage.swift): the date in
+/// the top bar, then the day (JourneyDayPane: the ring, the picked prayer's lines, the list card and its flip pill) with
+/// plain chevrons either side of the card. The days are a pager: the neighbouring day waits just off the edge and comes in
+/// under the finger as this one goes out (owner, 2026-10-16: "I want to be able to drag and see the other one coming in as
+/// well. Knowing that I'm pulling something in, not just pushing something out"), each fading and shrinking a little with
+/// its distance. ‹ › walk the days from the first one to yesterday — today only once all five are marked. The left ~20 pt
+/// edge stays the system's back. The doors a day opens (its prayer sheet, the note, the place, the map, the zikr, the
+/// pile, To make up) live here, so a day piece only says which.
 struct JourneyDayPage: View {
     @State var date: Date
     let firstDay: Date?
-    @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var viewModel: PrayerViewModel
     @State private var sheetRow: PrayerModel?
-    @State private var rows: [PrayerModel] = []
-    @State private var facts = DayFacts()
-    @State private var picked: Int?
-    @State private var flipped = false
-    @State private var notesOpen = false
-    @State private var noteShown = false
+    @State private var noteRow: PrayerModel?
     @State private var placeSheet: PrayerModel?
-    @State private var showMap = false
+    @State private var mapPins: [JourneyDayPin]?
     @State private var zikrDay: Date?
     @State private var showMakeUp = false
-    @State private var makeUpCount: Int?
     /// A photo's day pile, opened over Moments (owner: a photo here opens the pile for that day).
     @State private var pile: JourneyPileRoute?
-    @State private var places = 0   // bumps as place names arrive
-    /// The picked row's band glides between rows in this space (DayPickBand).
-    @Namespace private var pickSpace
+    /// The finger's travel sideways (0 at rest); the days sit a page width apart and move with it.
+    @State private var dragOffset: CGFloat = 0
+    @State private var dragHorizontal: Bool?
 
     private var today: Date { PrayerDay.start() }
-    #if DEBUG
-    @MainActor private static var demoSheetDone = false
-    #endif
+    private var pageWidth: CGFloat { UIScreen.main.bounds.width }
+    private func day(_ by: Int) -> Date { Calendar.current.date(byAdding: .day, value: by, to: date) ?? date }
     private var canGoBack: Bool { firstDay.map { date > $0 } ?? false }
     /// Forward to today only once it's over — all five marked: the day page never shows live rows (owner).
     private var canGoForward: Bool {
-        guard let next = Calendar.current.date(byAdding: .day, value: 1, to: date), next <= today else { return false }
+        let next = day(1)
+        guard next <= today else { return false }
         if next < today { return true }
         let t = viewModel.todaysPrayers
         return t.count == 5 && t.allSatisfy(\.isCompleted)
     }
-    /// Every prayer excused and none marked: the card keeps its size, a symbol and a line in it (ExcusedDayCard).
-    private var excusedDay: Bool {
-        guard !rows.isEmpty, rows.allSatisfy({ !$0.isCompleted }) else { return false }
-        let ranges = Excused.ranges
-        return rows.allSatisfy { Excused.covers(start: $0.startTime, end: $0.endTime, in: ranges) }
-    }
-    /// The picked prayer's row.
-    private var pickedRow: PrayerModel? {
-        guard let i = picked, DayRing.order.indices.contains(i) else { return nil }
-        return rows.first { $0.name == DayRing.order[i] }
-    }
-    /// "5:31 PM · On time · 83", under the note on its card.
-    private var pickedLine: String {
-        guard let row = pickedRow else { return "" }
-        return [row.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) }, row.scoreSummary].compactMap { $0 }.joined(separator: " · ")
+    /// The day the top bar names: the neighbour once it's more than half in.
+    private var shownDate: Date {
+        if dragOffset < -pageWidth / 2 { return day(1) }
+        if dragOffset > pageWidth / 2 { return day(-1) }
+        return date
     }
 
+    /// The Salah tab's day page geometry (measured on it, raised look, 2026-10-16 — owner: "the spacing of the page
+    /// vertically doesn't seem to match"): the ring's disc top 98.7 pt under the top bar's line, 87.3 pt from the disc to the
+    /// card (the lines under the ring centred in it), 14 pt from the card to the pill.
+    static let ringTop: CGFloat = 82.7
+    static let ringToCard: CGFloat = 87.3
+    static let cardToPill: CGFloat = 14
+
     var body: some View {
-        let _ = places
-        ViewThatFits(in: .vertical) {
-            content
-            ScrollView { content }
+        ZStack(alignment: .top) {
+            ForEach([-1, 0, 1], id: \.self) { k in
+                if k == 0 || (k < 0 ? canGoBack : canGoForward) {
+                    let x = CGFloat(k) * pageWidth + dragOffset
+                    JourneyDayPane(date: day(k), current: k == 0, actions: actions)
+                        .id(day(k))   // a day keeps its piece as it becomes the current one: no reload, no jump
+                        .modifier(DayPaneMotion(position: x / pageWidth))
+                        .offset(x: x)
+                        .allowsHitTesting(k == 0)
+                }
+            }
+            // The chevrons stay on the page, beside the card (12 pt off it), whatever the days do.
+            HStack {
+                chevron("chevron.left", enabled: canGoBack, label: "Previous day") { page(-1) }
+                Spacer()
+                chevron("chevron.right", enabled: canGoForward, label: "Next day") { page(1) }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: SalahLook.raisedRowHeight * 5)
+            .padding(.top, Self.ringTop + CircleMotion.dayDiscDiameter + Self.ringToCard)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .contentShape(Rectangle())
+        .gesture(dayDrag)
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .principal) { heading } }
-        // Sideways, live: the ring and the card follow the finger, the date stays (owner, 2026-10-16: "drag the list and
-        // the ring together while keeping the date at the top … animate nicely"). The left ~20 pt edge stays the
-        // system's back swipe, which wins there.
-        .gesture(dayDrag)
         .navigationDestination(item: $zikrDay) { ZikrDaySessionsPage(date: $0) }
         // Pushed without a slide: the pile fades in over the page and, closed, takes Moments with it.
         .navigationDestination(item: $pile) { MemoriesPage(openPile: $0.key, leaveWithPile: true) }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(date)) }
-        .sheet(item: $sheetRow, onDismiss: load) { row in
+        .sheet(item: $sheetRow) { row in
             JourneyPrayerSheet(prayer: row)
                 .environmentObject(viewModel)
                 .environment(\.circleTheme, theme)
         }
-        .sheet(isPresented: $showMap) {
-            JourneyDayMapSheet(title: date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()), pins: facts.pins)
+        .sheet(isPresented: Binding(get: { mapPins != nil }, set: { if !$0 { mapPins = nil } })) {
+            JourneyDayMapSheet(title: date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()), pins: mapPins ?? [])
         }
         .sheet(item: $placeSheet) { row in
             if let spot = DayFacts.spot(row) {
@@ -97,85 +102,44 @@ struct JourneyDayPage: View {
             }
         }
         // The note's card (Settings' ⓘ way, grey).
-        .infoModal(isPresented: $noteShown, title: pickedRow?.displayName ?? "",
-                   symbol: prayerIcon(for: pickedRow?.name ?? "Fajr"), tint: .secondary) {
-            DayNoteInfo(text: pickedRow.flatMap(DayFacts.note) ?? "", line: pickedLine)
+        .infoModal(isPresented: Binding(get: { noteRow != nil }, set: { if !$0 { noteRow = nil } }),
+                   title: noteRow?.displayName ?? "", symbol: prayerIcon(for: noteRow?.name ?? "Fajr"), tint: .secondary) {
+            DayNoteInfo(text: noteRow.flatMap(DayFacts.note) ?? "",
+                        line: [noteRow?.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) }, noteRow?.scoreSummary]
+                            .compactMap { $0 }.joined(separator: " · "))
         }
-        .task { load() }
-        .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in load() }
-        .onReceive(NotificationCenter.default.publisher(for: SessionDeletion.changed)) { _ in load() }   // the back's Zikr row
-        // A missed prayer picked: how many are owed, for its pill.
-        .onChange(of: picked) { _, i in
-            guard let i, DayRing.order.indices.contains(i),
-                  let p = dayPrayers.first(where: { $0.name == DayRing.order[i] }), p.missed else { return }
-            let container = context.container
-            Task { makeUpCount = await JourneyMakeUpPage.openCount(container: container) }
-        }
-        #if DEBUG
-        .task {
-            // -demoJourneySheet N: the day's Nth prayer's sheet (0 = Fajr), once per launch.
-            let args = ProcessInfo.processInfo.arguments
-            guard !Self.demoSheetDone, let i = args.firstIndex(of: "-demoJourneySheet"), args.indices.contains(i + 1),
-                  let n = Int(args[i + 1]) else { return }
-            Self.demoSheetDone = true
-            try? await Task.sleep(for: .seconds(0.6))
-            sheetRow = rows.first { $0.name == JourneyLog.names[min(max(n, 0), 4)] }
-        }
-        #endif
     }
 
-    /// The Salah tab's day page geometry (measured on it, raised look, 2026-10-16 — owner: "the spacing of the page
-    /// vertically doesn't seem to match"): the ring's disc top 98.7 pt under the top bar's line, 87.3 pt from the disc to the
-    /// card (the lines under the ring centred in it), 14 pt from the card to the pill.
-    private static let ringTop: CGFloat = 82.7
-    private static let ringToCard: CGFloat = 87.3
-    private static let cardToPill: CGFloat = 14
-
-    private var content: some View {
-        VStack(spacing: 0) {
-            ring.modifier(dayMotion).padding(.top, Self.ringTop)
-            // The room under the ring: the picked prayer's lines centred in it, so the card never moves.
-            Color.clear.frame(height: Self.ringToCard).overlay { underRing.modifier(dayMotion) }
-            cardRow
-            DayFlipPill(flipped: flipped) {
-                withAnimation(CircleMotion.dayFlip) { flipped.toggle() }
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }   // never the same photo twice
-            }
-            .modifier(dayMotion)
-            .padding(.top, Self.cardToPill)
-            .opacity(facts.isEmpty ? 0 : 1)   // no pill when the back is empty (owner)
-            .allowsHitTesting(!facts.isEmpty)
-            .animation(.easeOut(duration: CircleMotion.quick), value: facts.isEmpty)
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 24)
+    private var actions: JourneyDayActions {
+        JourneyDayActions(
+            openSheet: { sheetRow = $0 },
+            note: { noteRow = $0 },
+            place: { placeSheet = $0 },
+            map: { mapPins = $0 },
+            zikr: { zikrDay = $0 },
+            pile: { key in
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { pile = JourneyPileRoute(key: key) }
+            },
+            makeUp: { showMakeUp = true })
     }
 
-    // MARK: Days, live
+    // MARK: Paging
 
-    /// The finger's travel sideways (0 at rest). The day follows it only a short way, fading and shrinking a little — never
-    /// off the page (owner, 2026-10-16: "not where I can see … this screen, which has nothing in it at all").
-    @State private var dragOffset: CGFloat = 0
-    @State private var dragHorizontal: Bool?
-    private var pageWidth: CGFloat { UIScreen.main.bounds.width }
-    /// Travel at which the day is gone (faded, smaller): half the width.
-    private var travelOut: CGFloat { pageWidth / 2 }
-
-    /// What the travel does to the ring, its lines, the card and the pill.
-    private var dayMotion: DaySlideMotion { DaySlideMotion(travel: dragOffset, out: travelOut) }
-
-    /// The finger moves the day; past a third of the width (or a flick) the next day comes in, else it springs back. At
-    /// the first / latest day it gives a little and comes back.
+    /// The finger carries the days; let go past a quarter of the width (or with a flick) and the next one settles in on
+    /// the day spring, else this one springs back. At the first / latest day it gives a little. A drag that starts on the
+    /// left ~20 pt edge is the system's back swipe, not a day.
     private var dayDrag: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { v in
-                if dragHorizontal == nil { dragHorizontal = abs(v.translation.width) > abs(v.translation.height) }
+                if dragHorizontal == nil {
+                    dragHorizontal = v.startLocation.x > 20 && abs(v.translation.width) > abs(v.translation.height)
+                }
                 guard dragHorizontal == true else { return }
                 let w = v.translation.width
                 let allowed = w < 0 ? canGoForward : canGoBack
-                // Under the finger it fades only to 40 % (never an empty page while held); the rest after letting go.
-                let held = travelOut * 0.6
-                dragOffset = allowed ? max(min(w * 0.6, held), -held) : w * 0.15
+                dragOffset = allowed ? w : w * 0.15
             }
             .onEnded { v in
                 defer { dragHorizontal = nil }
@@ -183,58 +147,41 @@ struct JourneyDayPage: View {
                 let w = v.translation.width, projected = v.predictedEndTranslation.width
                 let by = w < 0 ? 1 : -1
                 let allowed = by > 0 ? canGoForward : canGoBack
-                guard allowed, abs(w) > pageWidth / 3 || abs(projected) > pageWidth * 0.6 else {
+                guard allowed, abs(w) > pageWidth / 4 || abs(projected) > pageWidth / 2 else {
                     withAnimation(CircleMotion.daySlideIn) { dragOffset = 0 }
                     return
                 }
-                slide(by)
+                page(by)
             }
     }
 
-    /// Out the way the finger went (fading, smaller), the day swapped unseen, in from the other side (small and faint to
-    /// full) on the spring.
-    private func slide(_ by: Int) {
-        let out: CGFloat = by > 0 ? -travelOut : travelOut
+    /// The neighbour settles in on the spring; then it becomes this page's day (its piece stays — no reload).
+    private func page(_ by: Int) {
+        guard by < 0 ? canGoBack : canGoForward else { return }
         triggerSomeVibration(type: .light)
-        withAnimation(CircleMotion.daySlideOut) { dragOffset = out } completion: {
+        withAnimation(CircleMotion.daySlideIn) { dragOffset = by > 0 ? -pageWidth : pageWidth } completion: {
             var quiet = Transaction()
             quiet.disablesAnimations = true
             withTransaction(quiet) {
-                step(by, buzz: false)
-                dragOffset = -out
+                date = day(by)
+                dragOffset = 0
             }
-            withAnimation(CircleMotion.daySlideIn) { dragOffset = 0 }
         }
     }
 
-    private func step(_ by: Int, buzz: Bool = true) {
-        guard by < 0 ? canGoBack : canGoForward,
-              let next = Calendar.current.date(byAdding: .day, value: by, to: date) else { return }
-        if buzz { triggerSomeVibration(type: .light) }
-        // At once, rows and all (owner's rule: out, then in — a fade left the two days' words over each other).
-        picked = nil
-        flipped = false
-        notesOpen = false
-        date = next
-        load()
+    private func chevron(_ symbol: String, enabled: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            // Plain (no soft ring — owner), but noticeable: a size up, a step brighter than secondary.
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(enabled ? Color.primary.opacity(0.55) : Color.secondary.opacity(0.2))
+                .frame(width: 28, height: 60)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(label)
     }
-
-    // MARK: Data
-
-    private var key: String { PrayerNotificationID.dayKey(date) }
-
-    private func load() {
-        let all = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: date)))) ?? []
-        let mine = all.filter { $0.dayKey == key && JourneyLog.names.contains($0.name) }
-        // One per prayer, a completed row winning.
-        var kept: [String: PrayerModel] = [:]
-        for row in mine where !(kept[row.name]?.isCompleted ?? false) || row.isCompleted { kept[row.name] = row }
-        rows = JourneyLog.names.compactMap { kept[$0] }
-        facts = DayFacts.load(rows: rows, day: date, context: context) { places += 1 }
-    }
-
-    /// For the ring (DayRing finds its fifths by the five names: a Jumu'ah row is Dhuhr's).
-    private var dayPrayers: [DayPrayer] { rows.map(DayPrayer.init) }
 
     // MARK: Heading
 
@@ -242,14 +189,15 @@ struct JourneyDayPage: View {
     /// back chevron … say relatively to today where we are in time … don't need the Islamic calendar").
     private var heading: some View {
         VStack(spacing: 1) {
-            Text(date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+            Text(shownDate.formatted(.dateTime.weekday(.wide).month(.wide).day()))
                 .font(.system(size: 17, weight: .regular, design: .rounded))
-            Text(Self.relative(date, to: today))
+            Text(Self.relative(shownDate, to: today))
                 .font(.system(size: 12, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
         }
         .lineLimit(1)
         .contentTransition(.opacity)
+        .animation(.easeOut(duration: CircleMotion.quick), value: shownDate)
         .accessibilityElement(children: .combine)
     }
 
@@ -267,6 +215,114 @@ struct JourneyDayPage: View {
         case 7..<31 where months < 1: return ago(days / 7, "week")
         default: return months < 12 ? ago(max(months, 1), "month") : ago(months / 12, "year")
         }
+    }
+}
+
+/// What a day piece asks its page to open.
+struct JourneyDayActions {
+    let openSheet: (PrayerModel) -> Void
+    let note: (PrayerModel) -> Void
+    let place: (PrayerModel) -> Void
+    let map: ([JourneyDayPin]) -> Void
+    let zikr: (Date) -> Void
+    let pile: (String) -> Void
+    let makeUp: () -> Void
+}
+
+/// One day of Journey's pager: the ring (DayRing / DayCentre), the picked prayer's note and place under it, the Salah
+/// list's card (DayCardRow rows, the gliding pick band) and the pill that flips it to the day's Notes · Photos · On the
+/// map · Zikr. It reads its own day; a pick or a flip is its own and clears once it's no longer the current day.
+struct JourneyDayPane: View {
+    let date: Date
+    /// The day on the page (a neighbour takes no taps; paged away, its pick and flip clear).
+    let current: Bool
+    let actions: JourneyDayActions
+    @Environment(\.modelContext) private var context
+    @Environment(\.circleTheme) private var theme
+    @State private var rows: [PrayerModel] = []
+    @State private var facts = DayFacts()
+    @State private var picked: Int?
+    @State private var flipped = false
+    @State private var notesOpen = false
+    @State private var makeUpCount: Int?
+    @State private var places = 0   // bumps as place names arrive
+    /// The picked row's band glides between rows in this space (DayPickBandLayer).
+    @Namespace private var pickSpace
+    #if DEBUG
+    @MainActor private static var demoSheetDone = false
+    #endif
+
+    /// Every prayer excused and none marked: the card keeps its size, a symbol and a line in it (ExcusedDayCard).
+    private var excusedDay: Bool {
+        guard !rows.isEmpty, rows.allSatisfy({ !$0.isCompleted }) else { return false }
+        let ranges = Excused.ranges
+        return rows.allSatisfy { Excused.covers(start: $0.startTime, end: $0.endTime, in: ranges) }
+    }
+    private var pickedRow: PrayerModel? {
+        guard let i = picked, DayRing.order.indices.contains(i) else { return nil }
+        return rows.first { $0.name == DayRing.order[i] }
+    }
+    /// For the ring (DayRing finds its fifths by the five names: a Jumu'ah row is Dhuhr's).
+    private var dayPrayers: [DayPrayer] { rows.map(DayPrayer.init) }
+
+    var body: some View {
+        let _ = places
+        VStack(spacing: 0) {
+            ring.padding(.top, JourneyDayPage.ringTop)
+            // The room under the ring: the picked prayer's lines centred in it, so the card never moves.
+            Color.clear.frame(height: JourneyDayPage.ringToCard).overlay { underRing }
+            card
+            DayFlipPill(flipped: flipped) {
+                withAnimation(CircleMotion.dayFlip) { flipped.toggle() }
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }   // never the same photo twice
+            }
+            .padding(.top, JourneyDayPage.cardToPill)
+            .opacity(facts.isEmpty ? 0 : 1)   // no pill when the back is empty (owner)
+            .allowsHitTesting(!facts.isEmpty)
+            .animation(.easeOut(duration: CircleMotion.quick), value: facts.isEmpty)
+        }
+        .frame(maxWidth: .infinity)
+        .task { load() }
+        .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in load() }
+        .onReceive(NotificationCenter.default.publisher(for: SessionDeletion.changed)) { _ in load() }   // the back's Zikr row
+        // Paged away: nothing picked, the front up, when it comes back.
+        .onChange(of: current) { _, now in
+            guard !now else { return }
+            picked = nil
+            flipped = false
+            notesOpen = false
+        }
+        // A missed prayer picked: how many are owed, for its pill.
+        .onChange(of: picked) { _, i in
+            guard let i, DayRing.order.indices.contains(i),
+                  let p = dayPrayers.first(where: { $0.name == DayRing.order[i] }), p.missed else { return }
+            let container = context.container
+            Task { makeUpCount = await JourneyMakeUpPage.openCount(container: container) }
+        }
+        #if DEBUG
+        .task {
+            // -demoJourneySheet N: the day's Nth prayer's sheet (0 = Fajr), once per launch.
+            let args = ProcessInfo.processInfo.arguments
+            guard current, !Self.demoSheetDone, let i = args.firstIndex(of: "-demoJourneySheet"), args.indices.contains(i + 1),
+                  let n = Int(args[i + 1]) else { return }
+            Self.demoSheetDone = true
+            try? await Task.sleep(for: .seconds(0.6))
+            if let row = rows.first(where: { $0.name == JourneyLog.names[min(max(n, 0), 4)] }) { actions.openSheet(row) }
+        }
+        #endif
+    }
+
+    // MARK: Data
+
+    private func load() {
+        let key = PrayerNotificationID.dayKey(date)
+        let all = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: date)))) ?? []
+        let mine = all.filter { $0.dayKey == key && JourneyLog.names.contains($0.name) }
+        // One per prayer, a completed row winning.
+        var kept: [String: PrayerModel] = [:]
+        for row in mine where !(kept[row.name]?.isCompleted ?? false) || row.isCompleted { kept[row.name] = row }
+        rows = JourneyLog.names.compactMap { kept[$0] }
+        facts = DayFacts.load(rows: rows, day: date, context: context) { places += 1 }
     }
 
     // MARK: The ring
@@ -288,7 +344,7 @@ struct JourneyDayPage: View {
                     .foregroundStyle(excusedDay ? .primary : .secondary)
             } else {
                 DayCentre(day: day, score: PrayerScoring.dayScore(for: rows), picked: picked, yesterday: false,
-                          makeUpCount: makeUpCount, onMakeUp: { showMakeUp = true })
+                          makeUpCount: makeUpCount, onMakeUp: actions.makeUp)
                     .animation(CircleMotion.dayPick, value: picked)
                     .allowsHitTesting(picked != nil)
             }
@@ -300,54 +356,29 @@ struct JourneyDayPage: View {
     @ViewBuilder private var underRing: some View {
         if let row = pickedRow, DayFacts.note(row) != nil || DayFacts.place(row) != nil {
             DayPickLines(note: DayFacts.note(row), place: DayFacts.place(row),
-                         onNote: { noteShown = true }, onPlace: { placeSheet = row })
+                         onNote: { actions.note(row) }, onPlace: { actions.place(row) })
                 .transition(.opacity)
         }
     }
 
     // MARK: The card
 
-    /// The list card between two plain chevrons (owner: "just use plain chevrons … we don't want to overdo the soft
-    /// ring look"), flipping to the back (DayFlipCard / DayBackCard) as the Salah tab's does.
-    private var cardRow: some View {
-        HStack(spacing: 12) {   // further from the card (owner, 2026-10-16)
-            chevron("chevron.left", enabled: canGoBack, label: "Previous day") { slide(-1) }
-            // Each face carries the card's surface, so the whole card turns (Bradley's review).
-            DayFlipCard(angle: flipped ? 180 : 0) {
-                prayerRows.modifier(SalahListInsets())
-                    .background { DayPickBandLayer(picked: picked.flatMap { DayRing.order.indices.contains($0) ? DayRing.order[$0] : nil }, look: theme.list) }
-                    .environment(\.dayPickSpace, pickSpace)
-                    .modifier(SalahLookCard(raised: true))
-            } back: {
-                DayBackCard(facts: facts, notesOpen: $notesOpen,
-                            onPhotos: {
-                                guard let first = facts.photoKeys.first else { return }
-                                var quiet = Transaction()
-                                quiet.disablesAnimations = true
-                                withTransaction(quiet) { pile = JourneyPileRoute(key: first) }
-                            },
-                            onMap: { showMap = true },
-                            onZikr: { zikrDay = date })
-                    .modifier(SalahLookCard(raised: true))
-            }
-            .modifier(SalahLookListFrame())   // the Salah list's width (290 in the soft looks): one card shape on both pages
-            .modifier(dayMotion)   // the card goes with the day; the chevrons beside it stay
-            chevron("chevron.right", enabled: canGoForward, label: "Next day") { slide(1) }
+    /// The Salah list's card, flipping to the back (DayFlipCard / DayBackCard) as the Salah tab's does.
+    private var card: some View {
+        // Each face carries the card's surface, so the whole card turns (Bradley's review).
+        DayFlipCard(angle: flipped ? 180 : 0) {
+            prayerRows.modifier(SalahListInsets())
+                .background { DayPickBandLayer(picked: picked.flatMap { DayRing.order.indices.contains($0) ? DayRing.order[$0] : nil }, look: theme.list) }
+                .environment(\.dayPickSpace, pickSpace)
+                .modifier(SalahLookCard(raised: true))
+        } back: {
+            DayBackCard(facts: facts, notesOpen: $notesOpen,
+                        onPhotos: { if let first = facts.photoKeys.first { actions.pile(first) } },
+                        onMap: { actions.map(facts.pins) },
+                        onZikr: { actions.zikr(date) })
+                .modifier(SalahLookCard(raised: true))
         }
-    }
-
-    private func chevron(_ symbol: String, enabled: Bool, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            // Plain (no soft ring — owner), but noticeable: a size up, the full secondary grey.
-            Image(systemName: symbol)
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(enabled ? Color.primary.opacity(0.55) : Color.secondary.opacity(0.2))
-                .frame(width: 28, height: 60)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .accessibilityLabel(label)
+        .modifier(SalahLookListFrame())   // the Salah list's width (290 in the soft looks): one card shape on both pages
     }
 
     private var prayerRows: some View {
@@ -381,7 +412,7 @@ struct JourneyDayPage: View {
                                     case .first:
                                         guard row.startTime <= Date() else { return }
                                         triggerSomeVibration(type: .light)
-                                        sheetRow = row
+                                        actions.openSheet(row)
                                     case .second:
                                         guard let i, !flipped else { return }
                                         triggerSomeVibration(type: .light)
@@ -389,7 +420,7 @@ struct JourneyDayPage: View {
                                     }
                                 }
                         )
-                        .accessibilityAction(named: "Open") { sheetRow = row }
+                        .accessibilityAction(named: "Open") { actions.openSheet(row) }
                 }
             }
         }

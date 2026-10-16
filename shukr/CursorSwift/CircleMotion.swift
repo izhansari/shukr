@@ -89,11 +89,9 @@ enum CircleMotion {
     static let dayPickIn = Animation.easeOut(duration: 0.26).delay(0.12)
     /// The day page's centre swapping: out, then in.
     static let dayPickSwap = AnyTransition.asymmetric(insertion: .opacity.animation(dayPickIn), removal: .opacity.animation(dayPickOut))
-    /// Journey's days changing (owner, 2026-10-16: "calm … as it moves off the page, it fades out and gets a little smaller.
-    /// And when it comes in, the opposite … keep this springing"): the day follows the finger a short way, fading and
-    /// shrinking; the next comes in from small and faint on this spring.
-    static let daySlideOut = Animation.easeIn(duration: 0.12)
-    static let daySlideIn = Animation.spring(response: 0.45, dampingFraction: 0.9)
+    /// Journey's days settling after the finger lets go (a pager: the next day comes in as this one goes — owner, 2026-10-16:
+    /// "knowing that I'm pulling something in"); quick, not lazy ("faster, more responsive feeling").
+    static let daySlideIn = Animation.spring(response: 0.3, dampingFraction: 0.88)   // quicker (owner: "faster, more responsive feeling, rather than lazy")
     /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
     /// release is the scroll view's own coast.
     static let sheetSnap = Animation.spring(response: 0.35, dampingFraction: 0.85)
