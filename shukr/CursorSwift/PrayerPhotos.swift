@@ -783,9 +783,11 @@ struct PrayerPhotoThumb: View {
 /// a tap outside or a swipe down closes it.
 struct PrayerPhotoViewer: View {
     let key: String
-    /// A day's photos as a pile (the day page's Photos row — owner, 2026-10-16: "match the first picture for the pile"):
-    /// the others lie just under this one; a swipe sideways brings the next (or the one before) to the top, round and
-    /// round; any other drag closes, as for one photo. Empty: one photo.
+    /// A day's photos as a pile (the day page's Photos row — owner, 2026-10-16: "match the first picture for the pile",
+    /// and "match how we expect the pile to work"): Moments' pile in the viewer's look. It opens on the day's newest photo
+    /// with the earlier ones lying under it, each at its own lie, picked once; a swipe right takes the top one off to the
+    /// right, a swipe left brings the next one back from the right; at either end it gives a little. Nothing under the
+    /// top ever moves on a swipe. Any other drag closes, as for one photo. Empty: one photo.
     var pile: [String] = []
     /// The small photo it was opened from: the card zooms out of it and back into it (one view, scaled and moved).
     var from: CGRect? = nil
@@ -798,19 +800,38 @@ struct PrayerPhotoViewer: View {
          onClose: @escaping () -> Void) {
         self.key = key
         self.pile = pile
-        _shownKey = State(initialValue: key)
+        let top = pile.count > 1 ? pile.count - 1 : 0
+        _index = State(initialValue: top)
+        _shownKey = State(initialValue: pile.count > 1 ? pile[top] : key)
+        _lies = State(initialValue: Dictionary(uniqueKeysWithValues: pile.map {
+            ($0, PileLie(dx: .random(in: -22...22), dy: .random(in: -14...14), tilt: .random(in: -9...9)))
+        }))
         self.from = from
         self.onClose = onClose
         _images = State(initialValue: initial)
-        _share = State(initialValue: PrayerShareOptions(key: key))
+        _share = State(initialValue: PrayerShareOptions(key: pile.count > 1 ? pile[top] : key))
     }
 
     /// The photo on top (one photo: always `key`).
     @State private var shownKey: String
     /// The pile's photos, read once (a swipe shows the next at once, no blank frame).
     @State private var pileImages: [String: (back: UIImage?, front: UIImage?)] = [:]
-    /// A sideways drag on a pile moves the top photo only (the next one under it); any other drag carries the card to close.
-    private var pileSwipe: Bool { pile.count > 1 && abs(drag.width) > abs(drag.height) }
+    /// The photo on top of the pile, as an index into `pile`: the ones before it lie under it, the ones after wait off
+    /// to the right (MemoriesDeck's way).
+    @State private var index: Int
+    /// Where each card lies once it's under the top one — picked once per photo, so a swipe never re-places the others
+    /// (they all jumped to new turns on every swipe — owner: "I swipe one off, everything in the back kind of shifts").
+    @State private var lies: [String: PileLie]
+    struct PileLie { var dx: CGFloat; var dy: CGFloat; var tilt: Double }
+    /// Cards whose selfie is showing big (a tap on the top one).
+    @State private var swapped: Set<String> = []
+    /// This drag's way, fixed by its first move: sideways turns the pile, any other way closes.
+    @State private var sideways: Bool?
+    /// The cards under the top one show once the zoom in has landed (drawn during it they scattered round the small
+    /// photo it grew from), and go as it closes.
+    @State private var settled = false
+    private var isPile: Bool { pile.count > 1 }
+    private var pileSwipe: Bool { isPile && sideways == true }
     private var closeDrag: CGSize { pileSwipe ? .zero : drag }
     private var dragDistance: CGFloat { hypot(closeDrag.width, closeDrag.height) }
     @State private var place: String?
@@ -842,40 +863,13 @@ struct PrayerPhotoViewer: View {
                 VStack(spacing: 22) {
                     // Sharing: the card shows what will be sent.
                     ZStack {
-                    // A pile: the next photos lie just under the top one, a little turned (Moments' pile's way).
-                    ForEach(Array(underPile.enumerated().reversed()), id: \.element) { depth, under in
-                        let im = pileImages[under] ?? (nil, nil)
-                        PrayerPhotoFramed(back: im.back, front: im.front, key: under, tagOpacity: 0, width: width)
-                            .developingTag(under, width: width)
-                            .rotationEffect(.degrees(depth == 0 ? -3.5 : 4))
-                            .offset(x: depth == 0 ? -6 : 7, y: depth == 0 ? 6 : -4)
-                            .scaleEffect(0.97)
-                            .opacity(shown && !sharing ? 1 : 0)
-                            .allowsHitTesting(false)
-                    }
-                    PrayerPhotoFramed(back: images.back, front: images.front, key: shownKey,
-                                      place: sharing ? (share.addPlace ? share.shownPlace : nil) : place,
-                                      score: sharing && share.addScore ? share.score : nil,
-                                      tagOpacity: shown ? 1 : 0, width: width)
-                        .developReveal(shownKey, width: width)
-                        .developingTag(shownKey, width: width)
-                        .shadow(color: .black.opacity(shown ? 0.35 : 0), radius: 30, y: 14)
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
-                            guard cardFrame == nil, rect.width > 1 else { return }
-                            cardFrame = rect
-                            zoomIn()
+                        if isPile {
+                            ForEach(Array(pile.enumerated()), id: \.element) { i, k in
+                                pileCard(i, k, width: width, screen: geo.size.width)
+                            }
+                        } else {
+                            topCard(key: shownKey, images: images, width: width)
                         }
-                        .scaleEffect(zoom.scale)
-                        .offset(x: zoom.dx, y: zoom.dy)
-                        .opacity(from != nil && cardFrame == nil ? 0 : 1)
-                        .onTapGesture {
-                            guard images.front != nil else { return }
-                            triggerSomeVibration(type: .light)
-                            withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
-                        }
-                        // A pile: the top photo follows a sideways finger, turning a little.
-                        .offset(x: pileSwipe ? drag.width : 0)
-                        .rotationEffect(.degrees(pileSwipe ? Double(drag.width / 28) : 0))
                     }
                     HStack(spacing: 18) {
                         Button { setSharing(!sharing) } label: {
@@ -902,14 +896,20 @@ struct PrayerPhotoViewer: View {
                 .scaleEffect(from == nil && !shown ? 0.86 : 1)
                 .opacity(from == nil && !shown ? 0 : 1)
                 .gesture(DragGesture()
-                    .onChanged { value in if !sharing { drag = value.translation } }
-                    .onEnded { value in
+                    .onChanged { value in
                         guard !sharing else { return }
-                        // A pile, sideways: the next photo (left) or the one before (right), else back in place.
+                        // Decided once, on the first move (Moments' pile): a sloppy sideways swipe stays a swipe.
+                        if isPile, sideways == nil {
+                            let t = value.translation
+                            sideways = abs(t.width) > abs(t.height)
+                        }
+                        drag = value.translation
+                    }
+                    .onEnded { value in
+                        defer { sideways = nil }
+                        guard !sharing else { return }
                         if pileSwipe {
-                            let w = value.translation.width, flung = value.predictedEndTranslation.width
-                            if abs(w) > 90 || abs(flung) > 260 { turnPile(w < 0 ? 1 : -1, width: width) }
-                            else { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = .zero } }
+                            turnPile(far: value.translation.width, flung: value.predictedEndTranslation.width)
                             return
                         }
                         let far = hypot(value.translation.width, value.translation.height)
@@ -936,7 +936,11 @@ struct PrayerPhotoViewer: View {
             print("PHOTOCARD open \(key)")
             #endif
             PrayerPhotoViewing.shared.opened()
-            if from == nil { withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true } }
+            if from == nil {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true } completion: {
+                    withAnimation(.easeOut(duration: 0.2)) { settled = true }
+                }
+            }
         }
         .onDisappear {
             #if DEBUG
@@ -944,10 +948,16 @@ struct PrayerPhotoViewer: View {
             #endif
             PrayerPhotoViewing.shared.closed()
         }
-        .task { if images.back == nil { images = await PrayerPhotos.load(key) } }
+        .task { if !isPile, images.back == nil { images = await PrayerPhotos.load(key) } }
         .task {
-            // The pile's photos, read once (the next is on screen the moment it's on top).
-            for k in pile where pileImages[k] == nil { pileImages[k] = await PrayerPhotos.load(k) }
+            // The pile's photos, read once off the main thread, the top one first (each card shows the moment it's read).
+            guard isPile else { return }
+            let order = [pile[index]] + pile.reversed().filter { $0 != pile[index] }
+            for k in order where pileImages[k] == nil {
+                let loaded = await PrayerPhotos.load(k)
+                pileImages[k] = loaded
+                if k == shownKey { images = loaded }
+            }
         }
         .task(id: "\(showPlace)|\(shownKey)") { await lookUpPlace() }
         .task(id: "\(sharing)|\(share.signature)|\(images.back?.hash ?? 0)") { if sharing { share.render(images) } }
@@ -976,32 +986,99 @@ struct PrayerPhotoViewer: View {
     private func zoomIn() {
         guard from != nil else { return }
         DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { shown = true }
-        }
-    }
-
-    /// The pile's photos under the top one, next first (two at most).
-    private var underPile: [String] {
-        guard pile.count > 1, let i = pile.firstIndex(of: shownKey) else { return [] }
-        return (1..<min(pile.count, 3)).map { pile[(i + $0) % pile.count] }
-    }
-
-    /// The top photo off the side the finger went, then the next (or the one before) is the top — it was the one under it.
-    private func turnPile(_ by: Int, width: CGFloat) {
-        guard let i = pile.firstIndex(of: shownKey) else { return }
-        let next = pile[(i + by + pile.count) % pile.count]
-        triggerSomeVibration(type: .light)
-        withAnimation(.easeOut(duration: 0.18)) { drag = CGSize(width: (by > 0 ? -1 : 1) * width * 1.4, height: 0) } completion: {
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            withTransaction(quiet) {
-                shownKey = next
-                images = pileImages[next] ?? (nil, nil)
-                share = PrayerShareOptions(key: next)
-                drag = .zero
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { shown = true } completion: {
+                withAnimation(.easeOut(duration: 0.2)) { settled = true }
             }
-            if images.back == nil { Task { images = await PrayerPhotos.load(next) } }
         }
+    }
+
+    /// The photo as the viewer shows it: framed, veiled until developed, its tag; the top one zooms, takes taps. A pile
+    /// draws every card through here (`top` false under it): one view per photo whatever its place, so a card coming to
+    /// the top keeps its veil — built anew there, it showed unveiled for a frame first.
+    @ViewBuilder
+    private func topCard(key k: String, images im: (back: UIImage?, front: UIImage?), width: CGFloat, top: Bool = true) -> some View {
+        PrayerPhotoFramed(back: im.back, front: im.front, key: k,
+                          place: top ? (sharing ? (share.addPlace ? share.shownPlace : nil) : place) : nil,
+                          score: top && sharing && share.addScore ? share.score : nil,
+                          tagOpacity: top && shown ? 1 : 0, width: width)
+            .developReveal(k, width: top ? width : 0, interactive: top)
+            .developingTag(k, width: width, shown: top)
+            .shadow(color: .black.opacity(top ? (shown ? 0.35 : 0) : 0.18), radius: top ? 30 : 14, y: top ? 14 : 8)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
+                guard top, cardFrame == nil, rect.width > 1 else { return }
+                cardFrame = rect
+                zoomIn()
+            }
+            .scaleEffect(top ? zoom.scale : 1)
+            .offset(x: top ? zoom.dx : 0, y: top ? zoom.dy : 0)
+            .opacity(top && from != nil && cardFrame == nil ? 0 : 1)
+            .onTapGesture {
+                guard im.front != nil else { return }
+                triggerSomeVibration(type: .light)
+                withAnimation(.snappy(duration: 0.25)) {
+                    if isPile {
+                        if swapped.contains(k) { swapped.remove(k) } else { swapped.insert(k) }
+                        images = faces(k)
+                    } else {
+                        images = (images.front, images.back)
+                    }
+                }
+            }
+    }
+
+    /// A pile card's two pictures, the selfie big if it was tapped.
+    private func faces(_ k: String) -> (back: UIImage?, front: UIImage?) {
+        let im = pileImages[k] ?? (nil, nil)
+        return swapped.contains(k) ? (im.front, im.back) : im
+    }
+
+    /// One card of the pile (MemoriesDeck's `card`): under the top at its own lie, on top straight (a swipe right takes it
+    /// off to the right), the next one off to the right (a swipe left pulls it in), the rest out there with it.
+    @ViewBuilder
+    private func pileCard(_ i: Int, _ k: String, width: CGFloat, screen: CGFloat) -> some View {
+        let w = pileSwipe ? drag.width : 0
+        let last = pile.count - 1
+        let (x, y, angle): (CGFloat, CGFloat, Double) = {
+            if i < index {
+                let l = lies[k] ?? PileLie(dx: 0, dy: 0, tilt: 0)
+                return (l.dx, l.dy, l.tilt)
+            } else if i == index {
+                // At the first photo a swipe right only gives a little; at the last a swipe left does the same.
+                let x = w > 0 ? (index == 0 ? w / 6 : w) : (index == last ? w / 6 : 0)
+                return (x, 0, Double(x) / 40)
+            } else {
+                let x = screen + (i == index + 1 ? min(w, 0) : 0)
+                return (x, 0, Double(x) / 40)
+            }
+        }()
+        topCard(key: k, images: faces(k), width: width, top: i == index)
+            // Under the top (or waiting off to the right): veiled like it would be on top, out until the zoom has landed.
+            .opacity(i == index ? 1 : i < index ? (settled && !sharing ? 1 : 0) : (settled ? 1 : 0))
+        .rotationEffect(.degrees(angle))
+        .offset(x: x, y: y)
+        .zIndex(Double(i))
+        .allowsHitTesting(i == index)
+    }
+
+    /// A sideways swipe let go: the next photo comes in from the right (left swipe) or the top one goes back off to the
+    /// right (right swipe) — the others stay exactly where they lie; else it springs back.
+    private func turnPile(far: CGFloat, flung: CGFloat) {
+        let settle = Animation.spring(response: 0.42, dampingFraction: 0.82)
+        var next = index
+        if (far < -90 || flung < -240), index < pile.count - 1 { next = index + 1 }
+        else if (far > 90 || flung > 240), index > 0 { next = index - 1 }
+        guard next != index else {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { drag = .zero }
+            return
+        }
+        triggerSomeVibration(type: .light)
+        withAnimation(settle) {
+            index = next
+            drag = .zero
+        }
+        shownKey = pile[next]
+        images = faces(pile[next])
+        share = PrayerShareOptions(key: pile[next])
     }
 
     private func setSharing(_ on: Bool) {
@@ -1013,6 +1090,8 @@ struct PrayerPhotoViewer: View {
     private func close() {
         closing = true
         sharing = false
+        // Only the top photo goes home: the ones under it go at once (Moments' pile gathers them the same way).
+        withAnimation(.easeOut(duration: 0.12)) { settled = false }
         triggerSomeVibration(type: .light)
         if from != nil, cardFrame != nil {
             // Back into the small photo, then the cover goes (and the small photo shows again in the same moment).
