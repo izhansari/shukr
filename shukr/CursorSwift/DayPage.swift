@@ -311,24 +311,35 @@ struct DayBackCard: View {
     let onZikr: () -> Void
 
     var body: some View {
+        // Always the four rows, in their places (owner, 2026-10-16: "we have an empty row at the bottom … it might be cleaner to
+        // always show the four rows. And if there's no items for it, then we just say no items"): an empty one greyed, "None",
+        // no chevron, nothing to open.
         VStack(spacing: 0) {
-            if !facts.notes.isEmpty {
+            if facts.notes.isEmpty {
+                emptyRow(symbol: "text.quote", title: "Notes")
+            } else {
                 row(symbol: "text.quote", title: facts.notes.count == 1 ? "Note" : "Notes",
                     detail: facts.notes.map(\.name).joined(separator: ", "), action: onNotes)
             }
-            if !facts.photoKeys.isEmpty {
+            if facts.photoKeys.isEmpty {
+                emptyRow(symbol: "photo.on.rectangle", title: "Photos")
+            } else {
                 let n = facts.photoKeys.count
                 // "N photos to develop" lives here now (owner): the count waiting for its tap, in the title.
                 row(title: (n == 1 ? "1 photo" : "\(n) photos") + (facts.developing > 0 ? " · \(facts.developing) developing" : ""),
                     detail: facts.photoNames.joined(separator: ", "),
                     lead: { JourneyDayPhotoStack(keys: facts.photoKeys) }, action: onPhotos)
             }
-            if !facts.pins.isEmpty {
+            if facts.pins.isEmpty {
+                emptyRow(symbol: "map", title: "On the map")
+            } else {
                 row(symbol: "map", title: "On the map",
                     detail: ([facts.pins.count == 1 ? "1 prayer" : "\(facts.pins.count) prayers"] + facts.placeNames.prefix(2)).joined(separator: " · "),
                     action: onMap)
             }
-            if !facts.sessions.isEmpty {
+            if facts.sessions.isEmpty {
+                emptyRow(symbol: "circle.hexagonpath", title: "Zikr")
+            } else {
                 let seconds = facts.sessions.reduce(0) { $0 + $1.secondsPassed }
                 let names = Array(NSOrderedSet(array: facts.sessions.map { $0.mantra?.name ?? "Freestyle" })) as? [String] ?? []
                 row(symbol: "circle.hexagonpath", title: "Zikr · \(ZikrMinutes.text(seconds))",
@@ -337,6 +348,23 @@ struct DayBackCard: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// A row with nothing that day: in its place, greyed, "None", no chevron.
+    private func emptyRow(symbol: String, title: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol).font(.system(size: 20, weight: .light)).foregroundStyle(.tertiary)
+                .frame(width: 40, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: 16, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                Text("None").font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.tertiary)
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 20)
+        .frame(minHeight: 55)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+        .accessibilityElement(children: .combine)
     }
 
     private func row(symbol: String, title: String, detail: String, action: @escaping () -> Void) -> some View {
