@@ -583,6 +583,7 @@ private struct JourneyCalendar: View {
             }
             .font(.system(size: 11, weight: .light, design: .rounded))
             .foregroundStyle(.secondary)
+            .padding(.top, 14)   // ~20 pt under the calendar with the stack's 6 (the canvas; Frank's check)
             .frame(maxWidth: .infinity)
         }
     }

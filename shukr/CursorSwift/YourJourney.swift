@@ -54,7 +54,8 @@ struct JourneyHomeCard: View {
             Text(caption)
                 .font(.system(size: 11.5, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)   // one line on a 16e too: a wrapped caption hung below its neighbours
         }
         .frame(maxWidth: .infinity)
     }
@@ -554,6 +555,12 @@ struct JourneyMilestone: Identifiable, Equatable {
             date = next
         }
         closeRun()
+
+        // One Welcome back, the latest return (Frank's check on the owner's data: one per break read as a log of breaks, not
+        // achievements; spec: "earned once, dated"). Each return still gets its moment (its own id) when it happens.
+        if let latest = out.last(where: { $0.id.hasPrefix("back.") })?.id {
+            out.removeAll { $0.id.hasPrefix("back.") && $0.id != latest }
+        }
 
         // Years since day one.
         var years = 1
