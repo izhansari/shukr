@@ -583,16 +583,23 @@ struct JourneyDayMapSheet: View {
 struct JourneyDayPhotoStack: View {
     let keys: [String]
     @State private var images: [String: UIImage] = [:]
-    private static let lies: [(angle: Double, x: CGFloat, y: CGFloat)] = [(-9, 0, 2), (6, 8, -1), (-2, 14, 1)]
+    /// The top photo square in its box, the ones under it peeking out a little, tilted — the same box whether the day has one
+    /// photo or five (owner, 2026-10-16: "the pile has to be the same size as our sf regardless of 1 or 5 pics"; with one
+    /// photo it used to sit 14 pt in, "empty space in the beginning").
+    private static let lies: [(angle: Double, x: CGFloat, y: CGFloat)] = [(0, 0, 0), (8, 2, -1), (-8, -2, 1)]
+    /// The row's symbols' box (20 pt glyphs), so the pile lines up with the note, the map and the zikr symbols.
+    static let box: CGFloat = 24
+    private static let side: CGFloat = 20
 
     var body: some View {
         let shown = Array(keys.suffix(3))
-        ZStack(alignment: .leading) {
-            ForEach(Array(shown.enumerated()), id: \.1) { i, key in
-                square(key, lie: Self.lies[i + 3 - shown.count])
+        ZStack {
+            // Under ones first; the newest on top.
+            ForEach(Array(shown.reversed().enumerated()).reversed(), id: \.element) { depth, key in
+                square(key, lie: Self.lies[depth])
             }
         }
-        .frame(height: 30)
+        .frame(width: Self.box, height: Self.box)
         .task(id: keys) {
             var loaded: [String: UIImage] = [:]
             for key in keys.suffix(3) { if let image = await PrayerPhotos.thumbnail(key) { loaded[key] = image } }
@@ -601,7 +608,7 @@ struct JourneyDayPhotoStack: View {
     }
 
     private func square(_ key: String, lie: (angle: Double, x: CGFloat, y: CGFloat)) -> some View {
-        let corner = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let corner = RoundedRectangle(cornerRadius: 5, style: .continuous)
         return Group {
             if let image = images[key] {
                 Image(uiImage: image).resizable().scaledToFill()
@@ -609,10 +616,10 @@ struct JourneyDayPhotoStack: View {
                 Color.primary.opacity(0.08)
             }
         }
-        .frame(width: 26, height: 26)
-        .developReveal(key, width: 26, interactive: false)
+        .frame(width: Self.side, height: Self.side)
+        .developReveal(key, width: Self.side, interactive: false)
         .clipShape(corner)
-        .overlay(corner.strokeBorder(Color.white.opacity(0.7), lineWidth: 1.2))
+        .overlay(corner.strokeBorder(Color.white.opacity(0.7), lineWidth: 1))
         .shadow(color: .black.opacity(0.18), radius: 2, y: 1.5)
         .rotationEffect(.degrees(lie.angle))
         .offset(x: lie.x, y: lie.y)
