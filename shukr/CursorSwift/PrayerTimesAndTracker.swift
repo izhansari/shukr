@@ -1502,6 +1502,31 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(1.5))
                     PrayerListFold.shared.showDone = true
                 }
+                // `-demoDayFacts`: the day page's back has something of everything — notes on Fajr, Asr and Maghrib (the
+                // owner's picture), places on Dhuhr, Asr and Maghrib, one zikr session today.
+                if ProcessInfo.processInfo.arguments.contains("-demoDayFacts") {
+                    let notes = ["Fajr": "so tireddddddd but thankful",
+                                 "Asr": "asr on top of the mountain today and it was really nice i enjoyed praying with beautiful views sA",
+                                 "Maghrib": "love praying maghrib early. especially because its one of the prayers with a short window and towards the night as a wind down i love it."]
+                    for prayer in viewModel.todaysPrayers where prayer.isCompleted {
+                        if let text = notes[prayer.name] { PrayerPhotos.setNote(PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name), text) }
+                        if ["Dhuhr", "Asr", "Maghrib"].contains(prayer.name), prayer.latPrayedAt == nil {
+                            prayer.latPrayedAt = 35.79 + (prayer.name == "Asr" ? 0.02 : 0)
+                            prayer.longPrayedAt = -78.78 - (prayer.name == "Maghrib" ? 0.03 : 0)
+                        }
+                    }
+                    // One session today, not one more per launch.
+                    let dayStart = PrayerDay.start()
+                    let today = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
+                    if today.isEmpty, let zikr = try? context.fetch(FetchDescriptor<MantraModel>()).first {
+                        let session = SessionDataModel(title: zikr.name, sessionMode: 0, targetMin: 0, targetCount: 0, totalCount: 33,
+                                                       startTime: Date().addingTimeInterval(-3600), secondsPassed: 70,
+                                                       avgTimePerClick: 2.1, tasbeehRate: "", mantra: zikr)
+                        context.insert(session)
+                    }
+                    try? context.save()
+                    NotificationCenter.default.post(name: .journeyChanged, object: nil)
+                }
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoDayMilestones") {
@@ -1597,7 +1622,13 @@ struct PrayerTimesView: View {
         // Memories (PrayerMemories.swift), from the ☰ menu or the day page's link: pushed, so it swipes back (decision
         // swipe-back-pages A).
         .navigationDestination(isPresented: Binding(get: { MemoriesPresenter.shared.open },
-                                                    set: { MemoriesPresenter.shared.open = $0 })) { MemoriesPage() }
+                                                    set: { MemoriesPresenter.shared.open = $0; if !$0 { MemoriesPresenter.shared.openPile = nil } })) {
+            // The day page's Photos row opens that day's pile and leaves with it (DayBackCard).
+            MemoriesPage(openPile: MemoriesPresenter.shared.openPile, leaveWithPile: MemoriesPresenter.shared.openPile != nil)
+        }
+        // The day page's Zikr row: that day's sessions alone (ZikrDaySessionsPage).
+        .navigationDestination(item: Binding(get: { DayPageState.shared.zikrDay },
+                                             set: { DayPageState.shared.zikrDay = $0 })) { ZikrDaySessionsPage(date: $0) }
         // Journey (Journey.swift), from ☰ or the day page's "Journey ›".
         .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.open },
                                                     set: { JourneyPresenter.shared.open = $0 })) { JourneyPage() }
@@ -2727,6 +2758,26 @@ struct TodaysPrayerListView: View {
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.standard.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var motion: RowMotion { RowMotion.resolved(motionRaw) }
+    /// The day page (the merge, owner 2026-10-15): the card's back — the day's notes, photos, map and zikr (DayFacts),
+    /// read when the page comes up and when the rows or photos change; the flip, the pick and the back's doors live in
+    /// DayPageState (the pill is in the chrome, the ring in MainCircleView).
+    @Environment(\.modelContext) private var context
+    private var dayState = DayPageState.shared
+    @State private var facts = DayFacts()
+    @State private var dayPageShown = false
+    @State private var placesTick = 0   // bumps as place names arrive
+    @State private var showDayMap = false
+
+    private func reloadFacts(_ dayPage: Bool) {
+        dayPageShown = dayPage
+        guard dayPage else {
+            facts = DayFacts()
+            dayState.backHasContent = false
+            return
+        }
+        facts = DayFacts.load(rows: viewModel.todaysPrayers, day: PrayerDay.start(), context: context) { placesTick += 1 }
+        dayState.backHasContent = !facts.isEmpty
+    }
 
     /// Done prayers fold out of the list so it only shows what's left; all five come back once
     /// the day is complete. A prayer just marked stays while the circle's marking moment runs (the stage's `heldRow`:
@@ -2838,9 +2889,20 @@ struct TodaysPrayerListView: View {
         // looks (SalahLook.swift) draw the card round the rows only, with those two lines under it (owner,
         // 2026-10-01: "move "done" text outside of the prayer list card").
         let outside = theme.listFooterOutside
+        // The day page: all five marked and the page up (the tour's practice day isn't one).
+        let dayPage = allDone && dayState.up && !TourRuntime.shared.active
+        // A whole excused day: every prayer excused, none marked — the card keeps its size, a symbol and a line in it.
+        let ranges = Excused.ranges
+        let excusedDay = loaded.count == 5 && done.isEmpty && Excused.isActive
+            && viewModel.todaysPrayers.allSatisfy { Excused.covers(start: $0.startTime, end: $0.endTime, in: ranges) }
+        let _ = placesTick
         VStack(spacing: 0) {
             if !(outside && visible.isEmpty) {
+                DayFlipCard(angle: dayPage && dayState.flipped ? 180 : 0) {
                 VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
+                if excusedDay {
+                    ExcusedDayCard(line: Excused.current.map { "You're excused · \(Excused.dayLine($0))" } ?? "You're excused")
+                } else {
                 ForEach(Array(visible.enumerated()), id: \.element) { index, prayerName in
                     VStack(spacing: 0) {
                         if let row = PrayerButton(name: prayerName, viewModel: viewModel) {
@@ -2865,9 +2927,25 @@ struct TodaysPrayerListView: View {
                         perfectLine(perfect: perfect)
                     }
                 }
+                }
                 .padding(.horizontal, theme.list == .raised ? 0 : 16)   // the raised list's band reaches the card's edges
                 .padding(.vertical, theme.list == .raised ? 0 : 12)
+                // Each face carries the card's surface, so the whole card turns (Bradley's review).
                 .modifier(SalahLookCard(raised: allDone && DayPageState.shared.lifted && !TourRuntime.shared.active))
+                } back: {
+                    // The back (DayBackCard): its doors — that day's pile in Moments, the day's pins, the day's zikr.
+                    if dayPage {
+                        DayBackCard(facts: facts,
+                                    notesOpen: Binding(get: { dayState.notesOpen }, set: { dayState.notesOpen = $0 }),
+                                    onPhotos: {
+                                        MemoriesPresenter.shared.openPile = facts.photoKeys.first
+                                        MemoriesPresenter.shared.open = true
+                                    },
+                                    onMap: { showDayMap = true },
+                                    onZikr: { dayState.zikrDay = PrayerDay.start() })
+                            .modifier(SalahLookCard(raised: true))
+                    }
+                }
                 // The tour's list steps put their bubble above this, never over the rows (audit J).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("prayerList", $0) }
             }
@@ -2909,8 +2987,22 @@ struct TodaysPrayerListView: View {
         // The list closed: folded again next time, as when this was the list's own @State (shared now with the soft
         // looks' footer; it stayed open until a relaunch — Sami's audit).
         .onDisappear { showDone = false }
+        // The back's facts: with the page, and again when a row, a photo or a note changes.
+        .task(id: "\(dayPage)|\(PrayerPhotoRevision.shared.value)|" + viewModel.todaysPrayers.map {
+            "\($0.name)\($0.isCompleted)\($0.timeAtComplete?.timeIntervalSince1970 ?? 0)\($0.latPrayedAt ?? 0)\($0.mosqueName ?? "")"
+        }.joined()) {
+            reloadFacts(dayPage)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reloadFacts(dayPageShown) }
+        .onReceive(NotificationCenter.default.publisher(for: SessionDeletion.changed)) { _ in reloadFacts(dayPageShown) }
+        // The day page over (a row unmarked, the day turned): nothing picked, the front up. On `allDone`, not `dayPage`:
+        // a push drops `up` too, and the back must still be there on the way back (Bradley's review).
+        .onChange(of: allDone) { _, done in if !done { dayState.leaveDay() } }
+        .sheet(isPresented: $showDayMap) {
+            JourneyDayMapSheet(title: "Today", pins: facts.pins).stageCover("dayMap")
+        }
     }
- 
+
 }
 
 /*
@@ -3251,6 +3343,13 @@ struct PrayerButton: View {
     private func timeTap() {
         // G · while this row's buttons are up, a tap on it (the name) does nothing — it used to flip and clear them (owner).
         if showsActions { return }
+        // The day page (the merge, owner 2026-10-15): a tap on a marked row picks it into the ring, as its fifth does; the
+        // score is always under the time there, so the flip has nothing left to show.
+        if DayPageState.shared.up && prayerObject.isCompleted && !TourRuntime.shared.active {
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { DayPageState.shared.togglePick(name: prayerObject.name) }
+            return
+        }
         guard isFuturePrayer || prayerObject.isCompleted else { return }
         TourTargets.shared.lastTappedRow = prayerObject.name   // its change glows (the tour)
         TourRuntime.shared.event(prayerObject.isCompleted ? .markedRowTapped : .comingRowTapped)   // the tour's list card
@@ -3452,6 +3551,15 @@ struct PrayerButton: View {
             .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 44 pt rows
             // E · the raised one gets its own room (the rest are compact).
             .padding(.vertical, look == .nowLeads && isCurrentPrayer ? 6 : 0)
+            // The day page: the picked row, a touch raised (its photo or words are in the ring).
+            .background {
+                if DayPageState.shared.up, let i = DayPageState.shared.picked, DayRing.order.indices.contains(i),
+                   DayRing.order[i] == prayerObject.name {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05))
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .transition(.opacity)
+                }
+            }
             .contentShape(Rectangle())
             .coordinateSpace(.named(PrayerButton.rowSpace))
             .gesture(rowGesture)
@@ -3543,6 +3651,19 @@ struct PrayerButton: View {
                 } else if prayerObject.isCompleted {
                     // Completed Prayer: Show Completion Time
                     if let prayedAt = prayerObject.timeAtComplete {
+                        if DayPageState.shared.up && !TourRuntime.shared.active {
+                            // The day page (the merge, owner): when you prayed, the grade and score always under it.
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(shortTimePM(prayedAt))
+                                    .font(timeFontSize).fontDesign(.rounded).fontWeight(.light)
+                                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
+                                Text(completedTimeAndScore)
+                                    .font(.caption2).fontDesign(.rounded).fontWeight(.light)
+                                    .foregroundStyle(.tertiary)
+                                    .lineLimit(1)
+                            }
+                            .allowsHitTesting(false)
+                        } else {
                         ExternalToggleText(
                             // F · when you prayed it, not when it started (the flip still shows the score).
                             originalText: look == .prayedAt ? "prayed \(shortTimePM(prayedAt))" : shortTimePM(shownStart),
@@ -3558,6 +3679,7 @@ struct PrayerButton: View {
                             .font(timeFontSize)
                             .foregroundColor(.secondary.opacity(statusBasedOpacity))
                             .allowsHitTesting(false)
+                        }
                     }
                 } else {
                     // Current Prayer: Show Start Time

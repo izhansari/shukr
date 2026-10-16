@@ -10,6 +10,8 @@ import SwiftData
 @MainActor @Observable final class JourneyPresenter {
     static let shared = JourneyPresenter()
     var open = false
+    /// Open and go straight on to To make up (the day page's "N to make up ›" pill, DayMakeUpPill).
+    var makeUp = false
 }
 
 /// Every prayer day's five marks, read once from the rows (`build`). Days are keyed "YYYY-MM-DD" (the prayer day).
@@ -204,7 +206,15 @@ struct JourneyPage: View {
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: month) }
-        .task { reload() }
+        .task {
+            reload()
+            // Asked for To make up straight away (the day page's pill): on, once the page is there to push from.
+            if JourneyPresenter.shared.makeUp {
+                JourneyPresenter.shared.makeUp = false
+                try? await Task.sleep(for: .seconds(0.05))
+                showMakeUp = true
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in reload() }
@@ -270,6 +280,10 @@ struct JourneyPage: View {
 
     private func open(_ date: Date) {
         guard let first = log.firstDay, date >= first, date <= today else { return }
+        // Today opens only once it's over — all five marked (owner, 2026-10-15: the day page "doesn't show up in journey
+        // unless the day is over or all 5 have been marked, so it never shows current prayers"). Until then the Salah
+        // tab is today's page.
+        guard date < today || log.day(date).allFive else { return }
         triggerSomeVibration(type: .light)
         openDay = JourneyDayRoute(date: date)
     }

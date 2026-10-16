@@ -1,0 +1,445 @@
+import SwiftUI
+import SwiftData
+import CoreLocation
+
+// The day page (owner, 2026-10-15; spec board/mocks/day-page-merge/spec.md, his words d-261015-ae6c … -5009): the Salah
+// tab's end-of-day page and Journey's day page are ONE screen, built from the pieces here and used by both. The ring
+// (DayRing / DayCentre, DaySummary.swift) holds the day, or the prayer picked by its fifth or its row; under the ring the
+// picked prayer's note and place, each a door; a pill at the bottom flips the list card to its back — the day's Notes,
+// Photos, On the map and Zikr rows. Build it once, use it twice (owner: "build it once and use it twice").
+
+/// What the day has beyond its five marks, read once from its rows (both pages): the notes, the photos, the pins, the
+/// zikr sessions. `load` is a fetch and a directory listing — call it when the rows change, not in a body.
+struct DayFacts {
+    struct Note: Identifiable {
+        let name: String
+        let text: String
+        var id: String { name }
+    }
+    var notes: [Note] = []
+    var photoKeys: [String] = []
+    /// The prayers those photos are of, as the rows name them ("Jumu'ah" on a Friday, not the key's "Dhuhr").
+    var photoNames: [String] = []
+    /// Photos of the day developed but still waiting for their tap (PhotoDevelop.needsReveal).
+    var developing = 0
+    var pins: [JourneyDayPin] = []
+    /// The marked prayers with a spot, Fajr → Isha: their names come in as the geocoder answers (`onPlaces`), so they're
+    /// read at draw time (`placeNames`), not kept.
+    var placedRows: [PrayerModel] = []
+    var sessions: [SessionDataModel] = []
+    /// The marked prayers' place names, Fajr → Isha, each once.
+    @MainActor var placeNames: [String] {
+        Array(NSOrderedSet(array: placedRows.compactMap(Self.place))) as? [String] ?? []
+    }
+    /// Nothing for the back: no pill then (owner: "a row only if it has something; no pill if the whole back is empty").
+    var isEmpty: Bool { notes.isEmpty && photoKeys.isEmpty && pins.isEmpty && sessions.isEmpty }
+
+    /// `day` is the prayer day's start (PrayerDay.start); `onPlaces` fires as place names arrive (a redraw then).
+    @MainActor static func load(rows: [PrayerModel], day: Date, context: ModelContext,
+                                onPlaces: @escaping () -> Void = {}) -> DayFacts {
+        var facts = DayFacts()
+        let order = JourneyLog.names
+        let done = rows.filter(\.isCompleted)
+            .sorted { (order.firstIndex(of: $0.name) ?? 9) < (order.firstIndex(of: $1.name) ?? 9) }
+        facts.notes = done.compactMap { row in
+            PrayerPhotos.note(PrayerPhotos.key(dayKey: row.dayKey, name: row.name)).map { Note(name: row.displayName, text: $0) }
+        }
+        let withPhoto = done.filter { PrayerPhotos.has(PrayerPhotos.key(dayKey: $0.dayKey, name: $0.name)) }
+        let keys = withPhoto.map { PrayerPhotos.key(dayKey: $0.dayKey, name: $0.name) }
+        facts.photoKeys = keys
+        facts.photoNames = withPhoto.map(\.displayName)
+        facts.developing = keys.filter { PhotoDevelop.needsReveal(key: $0) }.count
+        facts.pins = done.compactMap { row in
+            spot(row).map { JourneyDayPin(id: row.name, name: row.displayName, spot: $0, score: row.numberScore, atMasjid: row.atMasjid) }
+        }
+        facts.placedRows = done.filter { spot($0) != nil }
+        // The day's zikr: sessions whose prayer day is this one.
+        let from = day.addingTimeInterval(-86_400), to = day.addingTimeInterval(2 * 86_400)
+        let near = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= from && $0.startTime < to }))) ?? []
+        facts.sessions = near.filter { PrayerDay.start(for: $0.startTime) == day }.sorted { $0.startTime < $1.startTime }
+        PrayerPlaceNames.fill(done.compactMap(spot), onEach: onPlaces)
+        return facts
+    }
+
+    static func spot(_ row: PrayerModel) -> CLLocationCoordinate2D? {
+        guard let lat = row.latPrayedAt, let lon = row.longPrayedAt else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+
+    /// The masjid's name, else the place's (once geocoded, PrayerPlaceNames).
+    @MainActor static func place(_ row: PrayerModel) -> String? {
+        if let m = row.mosqueName, !m.isEmpty { return m }
+        return spot(row).flatMap(PrayerPlaceNames.name)
+    }
+
+    /// The prayer's note, if one was written.
+    static func note(_ row: PrayerModel) -> String? {
+        guard row.isCompleted else { return nil }
+        return PrayerPhotos.note(PrayerPhotos.key(dayKey: row.dayKey, name: row.name))
+    }
+}
+
+// MARK: - The flip
+
+/// The list card turning over on its upright axis (owner: "the prayer list card flip around so we see the back of the
+/// card"). `angle` 0 = the front, 180 = the back; animate it with CircleMotion.dayFlip. The back is sized to the front
+/// (measured), so the card never changes height; whichever face is away takes no taps.
+struct DayFlipCard<Front: View, Back: View>: View, Animatable {
+    var angle: Double
+    private let front: Front
+    private let back: Back
+    @State private var frontHeight: CGFloat = 0
+    var animatableData: Double {
+        get { angle }
+        set { angle = newValue }
+    }
+
+    init(angle: Double, @ViewBuilder front: () -> Front, @ViewBuilder back: () -> Back) {
+        self.angle = angle
+        self.front = front()
+        self.back = back()
+    }
+
+    var body: some View {
+        let showsBack = angle >= 90
+        ZStack {
+            front
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if abs(frontHeight - $0) > 0.5 { frontHeight = $0 } }
+                .opacity(showsBack ? 0 : 1)
+                .allowsHitTesting(!showsBack)
+                .accessibilityHidden(showsBack)
+            back
+                .frame(maxWidth: .infinity)
+                .frame(height: frontHeight > 0 ? frontHeight : nil)
+                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))   // drawn mirrored, so it reads right once turned
+                .opacity(showsBack ? 1 : 0)
+                .allowsHitTesting(showsBack)
+                .accessibilityHidden(!showsBack)
+        }
+        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+    }
+}
+
+/// The pill that flips the card, where "N photos to develop" sat (owner): one soft pill, the same look as the day page's
+/// footer link. The words are placeholders (owner: "not a fan … we can change whenever").
+struct DayFlipPill: View {
+    let flipped: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            action()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: flipped ? "list.bullet" : "rectangle.2.swap")
+                    .font(.system(size: 12, weight: .light))
+                Text(flipped ? "Prayers" : "Your day")
+                    .font(.system(size: 13, weight: .light, design: .rounded))
+            }
+            // A step up from the footer link's tertiary (Bradley: it read as disabled): this one does something.
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(NeuRaised(shape: Capsule(), radius: 2.5, offset: 1.2).opacity(0.9))
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(flipped ? "Show the prayers" : "Show the day's notes, photos, map and zikr")
+    }
+}
+
+// MARK: - The back
+
+/// The back of the list card: the day's rows, each with a grey second line, the same way Journey's day page listed them
+/// (owner's picture). Notes is a row like the others; a tap unfolds every note inside the card, and only then the card
+/// scrolls, the other rows below (owner: "the prayer list is not a scrollable item … if we need to, when the notes is
+/// revealed and unfolded, then we can let it scroll"). Rows only for what the day has.
+struct DayBackCard: View {
+    let facts: DayFacts
+    @Binding var notesOpen: Bool
+    let onPhotos: () -> Void
+    let onMap: () -> Void
+    let onZikr: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Group {
+            if notesOpen {
+                ScrollView(showsIndicators: false) { rows }
+            } else {
+                rows
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var rows: some View {
+        VStack(spacing: 0) {
+            if !facts.notes.isEmpty {
+                row(symbol: "text.quote", title: facts.notes.count == 1 ? "Note" : "Notes",
+                    detail: facts.notes.map(\.name).joined(separator: ", "), opens: notesOpen) {
+                    withAnimation(reduceMotion ? .easeOut(duration: CircleMotion.quick) : CircleMotion.rowFold) { notesOpen.toggle() }
+                }
+                if notesOpen {
+                    VStack(alignment: .leading, spacing: 10) {
+                        // The prayer's name in its own weight over its note (Journey's way).
+                        ForEach(facts.notes) { note in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(note.name).font(.system(size: 15, weight: .semibold, design: .rounded))
+                                Text(note.text)
+                                    .font(.system(size: 15, weight: .light, design: .rounded))
+                                    .foregroundStyle(.primary.opacity(0.8))
+                                    .lineSpacing(3)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 14)
+                    .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+                    .transition(.opacity)
+                }
+            }
+            if !facts.photoKeys.isEmpty {
+                let n = facts.photoKeys.count
+                // "N photos to develop" lives here now (owner): the count waiting for its tap, in the title.
+                row(title: (n == 1 ? "1 photo" : "\(n) photos") + (facts.developing > 0 ? " · \(facts.developing) developing" : ""),
+                    detail: facts.photoNames.joined(separator: ", "),
+                    lead: { JourneyDayPhotoStack(keys: facts.photoKeys) }, action: onPhotos)
+            }
+            if !facts.pins.isEmpty {
+                row(symbol: "map", title: "On the map",
+                    detail: ([facts.pins.count == 1 ? "1 prayer" : "\(facts.pins.count) prayers"] + facts.placeNames.prefix(2)).joined(separator: " · "),
+                    action: onMap)
+            }
+            if !facts.sessions.isEmpty {
+                let seconds = facts.sessions.reduce(0) { $0 + $1.secondsPassed }
+                let names = Array(NSOrderedSet(array: facts.sessions.map { $0.mantra?.name ?? "Freestyle" })) as? [String] ?? []
+                row(symbol: "circle.hexagonpath", title: "Zikr · \(ZikrMinutes.text(seconds))",
+                    detail: "\(facts.sessions.count) session\(facts.sessions.count == 1 ? "" : "s") · \(names.prefix(3).joined(separator: ", "))",
+                    action: onZikr)
+            }
+        }
+    }
+
+    private func row(symbol: String, title: String, detail: String, opens: Bool? = nil, action: @escaping () -> Void) -> some View {
+        row(title: title, detail: detail, opens: opens, lead: {
+            Image(systemName: symbol).font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
+        }, action: action)
+    }
+
+    /// A row: its symbol or pile, the title, the grey line, a chevron (down while the notes are open).
+    private func row<Lead: View>(title: String, detail: String, opens: Bool? = nil,
+                                 @ViewBuilder lead: () -> Lead, action: @escaping () -> Void) -> some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            action()
+        } label: {
+            HStack(spacing: 14) {
+                lead().frame(width: 40, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.system(size: 16, weight: .light, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.8)   // "5 photos · 5 developing" fits the card's width
+                    Text(detail)
+                        .font(.system(size: 13, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(opens == true ? 90 : 0))
+            }
+            .padding(.horizontal, 20)
+            .frame(minHeight: 55)
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Under the ring
+
+/// The picked prayer's note and place under the ring, whenever it has them (owner: "nothing stays hidden; show a door
+/// to get to everything"). The note is one line, cut off; a tap opens the whole note on a frosted card. The place opens
+/// the map on that prayer's pin.
+struct DayPickLines: View {
+    let note: String?
+    let place: String?
+    let onNote: () -> Void
+    let onPlace: () -> Void
+
+    var body: some View {
+        VStack(spacing: 5) {
+            if let note {
+                door(symbol: "text.quote", text: note, action: onNote)
+                    .accessibilityLabel("Note: \(note). Opens the whole note.")
+            }
+            if let place {
+                door(symbol: "mappin.and.ellipse", text: place, action: onPlace)
+                    .accessibilityLabel("Prayed at \(place). Opens the map.")
+            }
+        }
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
+    }
+
+    private func door(symbol: String, text: String, action: @escaping () -> Void) -> some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            action()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 11, weight: .light))
+                Text(text).lineLimit(1).truncationMode(.tail)
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium)).foregroundStyle(.tertiary)
+            }
+            .font(.system(size: 14, weight: .light, design: .rounded))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The whole note on the frosted card (InfoModal): the note, then one grey line — when it was prayed and its grade.
+struct DayNoteInfo: View {
+    let text: String
+    let line: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(text)
+                .font(.system(size: 16, weight: .light, design: .rounded))
+                .lineSpacing(3)
+            Text(line)
+                .font(.system(size: 13, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - In the ring
+
+/// A missed prayer picked: the way to the others still owed (owner, 2026-10-15: "a link to the page saying see the others
+/// you gotta make up here"; a basic pill, no sage, not the soft-look pill). Marking stays the list's dot.
+struct DayMakeUpPill: View {
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            action()
+        } label: {
+            HStack(spacing: 4) {
+                Text("\(count) to make up")
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
+            }
+            .font(.system(size: 13, weight: .light, design: .rounded))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Capsule().fill(Color.primary.opacity(0.07)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        // The circle's own tap layer lets taps through while this is in the centre (as for a photo).
+        .onAppear { DayPageState.shared.centreAppeared() }
+        .onDisappear { DayPageState.shared.centreGone() }
+        .accessibilityLabel("\(count) prayers to make up. Opens To make up.")
+    }
+}
+
+/// The picked prayer's photo filling the ring (owner: "the photo, if there is one, becomes the main focus"), the name and
+/// when it was prayed on a frosted tag at the bottom (the name always stays in the ring). A tap opens it full screen, as
+/// the card does (PrayerPhotoCard); developing ones reveal here too.
+struct PrayerPhotoCircle: View {
+    let key: String
+    let diameter: CGFloat
+    let caption: String
+    @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
+    @State private var open = false
+    @State private var frame: CGRect = .zero
+
+    var body: some View {
+        let small = diameter * 0.3
+        ZStack(alignment: .topLeading) {
+            Group {
+                if let back = images.back { Image(uiImage: back).resizable().scaledToFill() } else { Color.primary.opacity(0.08) }
+            }
+            .frame(width: diameter, height: diameter)
+            .clipShape(Circle())
+            if let front = images.front {
+                Image(uiImage: front).resizable().scaledToFill()
+                    .frame(width: small, height: small)
+                    .clipShape(RoundedRectangle(cornerRadius: small * 0.26, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: small * 0.26, style: .continuous).stroke(Color.white, lineWidth: 1))
+                    .padding(diameter * 0.12)
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .clipShape(Circle())
+        .contentShape(Circle())
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame = $0 }
+        .opacity(open ? 0 : 1)   // out in the viewer while it's open, so it's never there twice
+        .onTapGesture {
+            guard images.back != nil else { return }
+            triggerSomeVibration(type: .light)
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { open = true }
+        }
+        .fullScreenCover(isPresented: $open) {
+            PrayerPhotoViewer(key: key, from: frame.width > 0 ? frame : nil, initial: images) {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { open = false }
+            }
+            .presentationBackground(.clear)
+        }
+        .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { images = await PrayerPhotos.load(key) }
+        .developReveal(key, width: diameter)
+        .developingTag(key, width: diameter)
+        // The name tag last, over the develop veil too: the name always stays in the ring (owner).
+        .overlay(alignment: .bottom) {
+            Text(caption)
+                .font(.system(size: 12, weight: .regular, design: .rounded))
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.bottom, 16)
+                .opacity(open ? 0 : 1)
+                .allowsHitTesting(false)
+        }
+        .accessibilityLabel("Your \(PrayerPhotos.caption(key)) photo")
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
+// MARK: - A whole excused day
+
+/// Every prayer of the day excused and none marked: the list card keeps its full size, a symbol at the top and a little
+/// copy in it (owner, 2026-10-15: "still show the prayer list in the same size that it would normally be … fill the space
+/// with like an SF symbol … with some basic copy").
+struct ExcusedDayCard: View {
+    /// "You were excused · day 3 of 7" (today), "Excused that day" (Journey).
+    let line: String
+    var height: CGFloat = SalahLook.raisedRowHeight * 5
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "pause.circle")
+                .font(.system(size: 30, weight: .light))
+                .foregroundStyle(.secondary)
+            Text(line)
+                .font(.system(size: 16, weight: .light, design: .rounded))
+            Text("Nothing to mark. The day isn't counted.")
+                .font(.system(size: 13, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
+        .accessibilityElement(children: .combine)
+    }
+}

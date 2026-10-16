@@ -32,6 +32,8 @@ struct MemoryPhoto: Identifiable, Hashable {
 @MainActor @Observable final class MemoriesPresenter {
     static let shared = MemoriesPresenter()
     var open = false
+    /// Open on this photo's day pile and leave with it (the day page's Photos row, DayBackCard); nil = Moments itself.
+    var openPile: String?
 }
 
 extension PrayerPhotos {

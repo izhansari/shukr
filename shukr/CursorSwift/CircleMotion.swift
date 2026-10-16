@@ -79,6 +79,9 @@ enum CircleMotion {
     static let dayDiscSink = dayDiscRise
     /// Wider than the ring (200), so the fifths sit inside its edge.
     static let dayDiscDiameter: CGFloat = 222
+    /// The list card turning over to its back (DayFlipCard; the day page merge, owner 2026-10-15): half a second on its
+    /// upright axis, the ring and the pill staying put.
+    static let dayFlip = Animation.easeInOut(duration: 0.5)
     /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
     /// release is the scroll view's own coast.
     static let sheetSnap = Animation.spring(response: 0.35, dampingFraction: 0.85)

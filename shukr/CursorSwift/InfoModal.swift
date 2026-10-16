@@ -13,9 +13,10 @@ import SwiftUI
 extension View {
     /// The ⓘ's explanation as a floating card over a light frost; a tap on the page around it or its ✕ closes it.
     /// Drawn by `infoModalHost()` at the app's top (a full-screen cover hid the page it should frost over).
-    func infoModal<Content: View>(isPresented: Binding<Bool>, title: String, symbol: String,
+    /// `tint`: the symbol's colour — sage in Settings; grey on the Salah page's cards (no sage there, owner 2026-10-15).
+    func infoModal<Content: View>(isPresented: Binding<Bool>, title: String, symbol: String, tint: Color = .sage,
                                   @ViewBuilder content: @escaping () -> Content) -> some View {
-        modifier(InfoModalPresenter(isPresented: isPresented, title: title, symbol: symbol, body: content))
+        modifier(InfoModalPresenter(isPresented: isPresented, title: title, symbol: symbol, tint: tint, body: content))
     }
 
     /// Where info cards are drawn: over everything this view holds (PrayerTimesView's root).
@@ -29,6 +30,7 @@ extension View {
         let id = UUID()
         let title: String
         let symbol: String
+        var tint: Color = .sage
         let content: AnyView
         let close: () -> Void
     }
@@ -39,6 +41,7 @@ private struct InfoModalPresenter<Body: View>: ViewModifier {
     @Binding var isPresented: Bool
     let title: String
     let symbol: String
+    var tint: Color = .sage
     let body: () -> Body
     @State private var shownID: UUID?
 
@@ -47,7 +50,7 @@ private struct InfoModalPresenter<Body: View>: ViewModifier {
             .onChange(of: isPresented) { _, on in
                 let center = InfoModalCenter.shared
                 if on {
-                    let item = InfoModalCenter.Item(title: title, symbol: symbol, content: AnyView(body()),
+                    let item = InfoModalCenter.Item(title: title, symbol: symbol, tint: tint, content: AnyView(body()),
                                                     close: { isPresented = false })
                     shownID = item.id
                     center.item = item
@@ -63,7 +66,7 @@ private struct InfoModalHost: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay {
             if let item = center.item {
-                InfoModal(title: item.title, symbol: item.symbol, close: {
+                InfoModal(title: item.title, symbol: item.symbol, tint: item.tint, close: {
                     item.close()
                     if center.item?.id == item.id { center.item = nil }
                 }) { item.content }
@@ -77,6 +80,7 @@ private struct InfoModalHost: ViewModifier {
 struct InfoModal<Content: View>: View {
     let title: String
     let symbol: String
+    var tint: Color = .sage
     let close: () -> Void
     @ViewBuilder let content: () -> Content
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

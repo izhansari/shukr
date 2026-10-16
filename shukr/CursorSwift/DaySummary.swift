@@ -12,7 +12,8 @@ extension DayPrayer {
         self.init(name: row.name, start: row.startTime, end: row.endTime,
                   markedAt: row.isCompleted ? row.timeAtComplete : nil,
                   score: row.isCompleted ? row.numberScore : nil,
-                  photoKey: row.isCompleted && PrayerPhotos.has(key) ? key : nil)
+                  photoKey: row.isCompleted && PrayerPhotos.has(key) ? key : nil,
+                  excused: !row.isCompleted && Excused.covers(start: row.startTime, end: row.endTime))
     }
 }
 
@@ -21,9 +22,37 @@ extension DayPrayer {
 @MainActor @Observable final class DayPageState {
     static let shared = DayPageState()
     private(set) var up = false
-    /// A prayer's photo is in the ring's centre: the circle's own tap layer lets taps through to it (owner: "still
-    /// can't click on the image while it's in the center of my ring").
-    var photoInCentre = false
+    /// What's in the ring's centre takes its own taps — a prayer's photo, the make-up pill: the circle's own tap layer
+    /// lets taps through to it (owner: "still can't click on the image while it's in the center of my ring"). A count,
+    /// not a flag: one pick replacing another has the old view's late onDisappear land after the new one's onAppear.
+    var centreTakesTaps: Bool { centreTaps > 0 }
+    private var centreTaps = 0
+    func centreAppeared() { centreTaps += 1 }
+    func centreGone() { centreTaps = max(0, centreTaps - 1) }
+    /// The prayer picked, by its fifth or its row (0 = Fajr … 4 = Isha; nil = the day). Shared, not the ring's own: the
+    /// rows pick too, and the flip clears it (the day page merge, owner 2026-10-15). No timer: a second tap, the flip or
+    /// the day changing clears it.
+    var picked: Int?
+    /// The list card shows its back (DayFlipCard). Flipping clears the pick — the back's pile would show the same photo
+    /// as the ring (owner: "never the same photo twice").
+    var flipped = false {
+        didSet { if flipped { picked = nil } }
+    }
+    /// The back's Notes row unfolded (the back scrolls only then).
+    var notesOpen = false
+    /// The back has something (DayFacts): the chrome shows the flip pill; empty, it shows "Journey ›" as before.
+    var backHasContent = false
+    /// The back's Zikr row: that day's sessions, pushed by PrayerTimesView (ZikrDaySessionsPage).
+    var zikrDay: Date?
+
+    /// No pick while the back is up: the ring's photo would sit beside the back's pile (Bradley's review).
+    func togglePick(_ i: Int) {
+        guard !flipped else { return }
+        picked = picked == i ? nil : i
+    }
+    func togglePick(name: String) {
+        if let i = DayRing.order.firstIndex(of: name) { togglePick(i) }
+    }
     /// The list's card is raised: set `CircleMotion.dayCardLiftDelay` after the page comes up (its rows unfold first —
     /// Izhan: "let it expand first then raise the card"), cleared with it. Kept here, not in the card's view: the list
     /// rebuilds its card as the page swaps, and a view's own state started out raised.
@@ -44,10 +73,20 @@ extension DayPrayer {
         }
     }
 
+    /// The circle left the screen (a push, the page swapping): the lift is reset; the pick, the flip and the open notes
+    /// stay — coming back from the back's Zikr or Photos page lands on the back again (Bradley's review). `leaveDay`
+    /// clears them when the day page itself goes.
     func pageGone() {
         token += 1
         up = false
         lifted = false
+    }
+
+    /// The day page is over (the score side left, the day changed, a row unmarked): nothing picked, the front up.
+    func leaveDay() {
+        picked = nil
+        flipped = false
+        notesOpen = false
     }
 }
 
@@ -145,40 +184,50 @@ struct DayRing: View, Animatable {
     }
 }
 
-/// The centre: the score and "4 of 5 in time", or the tapped prayer.
+/// The centre: the score and "4 of 5 in time", or the picked prayer — its photo filling the ring (the name on a tag in
+/// it), else its name, when it was prayed and its grade; "excused"; or, missed, the way to To make up (owner, 2026-10-15,
+/// the day page merge: the row already says the time and the score, so the ring shows what the row can't).
 struct DayCentre: View {
     let day: [DayPrayer]
     let score: Double
     let picked: Int?
     let yesterday: Bool
+    /// Prayers still owed (JourneyMakeUpPage.entries), for a missed prayer picked; nil or 0 = no pill.
+    var makeUpCount: Int? = nil
+    var onMakeUp: (() -> Void)? = nil
+
+    /// Inside the fifths' dots (r 100, 15 pt picked): a little air round it.
+    static let photoDiameter: CGFloat = 168
 
     var body: some View {
-        if let i = picked, DayRing.order.indices.contains(i),
-           let p = day.first(where: { $0.name == DayRing.order[i] }), let key = p.photoKey {
-            // A tapped prayer with a photo: the photo, its name and when (prayer photos, decision prayer-photos-day A).
-            VStack(spacing: 6) {
-                PrayerPhotoCard(key: key, width: 92)
-                    .onAppear { DayPageState.shared.photoInCentre = true }
-                    .onDisappear { DayPageState.shared.photoInCentre = false }
-                Text("\(p.name) · \(p.markedAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")")
-                    .font(.footnote).fontWeight(.light).fontDesign(.rounded).foregroundStyle(.secondary)
-            }
-            .transition(.opacity)
-        } else if let i = picked, DayRing.order.indices.contains(i) {
+        if let i = picked, DayRing.order.indices.contains(i) {
             let name = DayRing.order[i]
             let p = day.first { $0.name == name }
-            VStack(spacing: 3) {
-                Text(name).font(.system(size: 30, weight: .light, design: .rounded))
-                Text(p?.markedAt.map { "prayed \($0.formatted(date: .omitted, time: .shortened))" } ?? "not marked")
-                    .font(.footnote).fontWeight(.thin).fontDesign(.rounded).foregroundStyle(.secondary)
-                if let s = p?.score {
-                    Text(PrayerScoring.summary(for: s))
-                        .font(.caption).fontDesign(.rounded)
-                        .foregroundStyle(PrayerScoring.color(for: s).opacity(0.9))
-                        .padding(.top, 2)
+            if let p, let key = p.photoKey {
+                // The photo is the focus (owner); its name and when stay in the ring, on the tag.
+                PrayerPhotoCircle(key: key, diameter: Self.photoDiameter,
+                                  caption: "\(p.name) · \(p.markedAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")")
+                    .onAppear { DayPageState.shared.centreAppeared() }
+                    .onDisappear { DayPageState.shared.centreGone() }
+                    .transition(.opacity)
+            } else {
+                VStack(spacing: 3) {
+                    Text(name).font(.system(size: 30, weight: .light, design: .rounded))
+                    Text(p?.excused == true ? "excused"
+                         : p?.markedAt.map { "prayed \($0.formatted(date: .omitted, time: .shortened))" } ?? "not marked")
+                        .font(.footnote).fontWeight(.thin).fontDesign(.rounded).foregroundStyle(.secondary)
+                    if let s = p?.score {
+                        Text(PrayerScoring.summary(for: s))
+                            .font(.caption).fontDesign(.rounded)
+                            .foregroundStyle(PrayerScoring.color(for: s).opacity(0.9))
+                            .padding(.top, 2)
+                    } else if let p, p.missed, let makeUpCount, makeUpCount > 0, let onMakeUp {
+                        // Missed: "see the others you gotta make up" (owner); marking stays the list's dot.
+                        DayMakeUpPill(count: makeUpCount, action: onMakeUp).padding(.top, 6)
+                    }
                 }
+                .transition(.opacity)
             }
-            .transition(.opacity)
         } else {
             VStack(spacing: 3) {
                 CountingScore(value: score)   // counts up when animated (the day's first showing)

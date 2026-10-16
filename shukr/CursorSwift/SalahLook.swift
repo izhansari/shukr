@@ -345,7 +345,15 @@ struct MemoriesFooterLink: View {
     var body: some View {
         let _ = photos.value
         let _ = reveals.value
-        if day.up {
+        if day.up && day.backHasContent {
+            // The day page merge (owner, 2026-10-15): the pill flips the list card to the day's rows; "N photos to
+            // develop" moved into the back's Photos row.
+            DayFlipPill(flipped: day.flipped) {
+                withAnimation(CircleMotion.dayFlip) { day.flipped.toggle() }
+            }
+            .padding(.bottom, 12)
+            .transition(.opacity)
+        } else if day.up {
             let toDevelop = photos.hasPhotos ? waiting : 0
             Button {
                 triggerSomeVibration(type: .light)

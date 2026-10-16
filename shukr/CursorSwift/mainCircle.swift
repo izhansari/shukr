@@ -412,8 +412,8 @@ struct MainCircleView: View {
                 .onTapGesture {
                     handleTap()  // Toggle the trigger
                 }
-                // A prayer's photo in the day page's centre takes its own tap (it opens).
-                .allowsHitTesting(!(daySummaryShowing && DayPageState.shared.photoInCentre))
+                // A prayer's photo or the make-up pill in the day page's centre takes its own tap.
+                .allowsHitTesting(!(daySummaryShowing && DayPageState.shared.centreTakesTaps))
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
@@ -446,6 +446,9 @@ struct MainCircleView: View {
                                guard !TourRuntime.shared.active || TourRuntime.shared.allowsMap else { TourRuntime.shared.nudge(); return }
                                TourRuntime.shared.event(.mapOpened); showQiblaMap = true
                            })
+                    // Not over a picked prayer's photo or pill in the day page's centre (Bradley's review).
+                    .opacity(daySummaryShowing && DayPageState.shared.centreTakesTaps ? 0 : 1)
+                    .animation(.easeOut(duration: CircleMotion.quick), value: DayPageState.shared.centreTakesTaps)
                 // "Compass needs a moment · tap" under the ring — laid out at zero size, so the circle
                 // never moves (it stays centred on the page).
                 Color.clear
@@ -967,8 +970,13 @@ struct summaryCircle: View, Equatable {
     @Environment(\.circleTheme) private var theme
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var fajrAlarmOn = false
     @State private var history: [[DayPrayer]] = []
-    @State private var picked: Int?
-    @State private var pickedAt = Date.distantPast
+    /// The picked prayer lives in DayPageState (the rows pick too, the flip clears it — the day page merge).
+    private var picked: Int? { DayPageState.shared.picked }
+    /// The picked prayer's note, on the frosted card; its place, on the map sheet (DayPickLines' doors).
+    @State private var noteShown = false
+    @State private var placeSheet: PrayerModel?
+    /// Prayers still owed, read when a missed prayer is picked (DayMakeUpPill).
+    @State private var makeUpCount: Int?
     @State private var line: DayInsight.Line?
     @State private var glow = false
     /// The day's line's height (one or two lines, the Fajr alarm link): to centre it in the room under the ring.
@@ -1001,10 +1009,24 @@ struct summaryCircle: View, Equatable {
         showingYesterday ? (history.first ?? []) : viewModel.todaysPrayers.map(DayPrayer.init)
     }
 
+    /// Today's row of the picked prayer (none while yesterday's day is shown: those rows are gone).
+    private var pickedRow: PrayerModel? {
+        guard let i = picked, DayRing.order.indices.contains(i), !showingYesterday else { return nil }
+        return viewModel.todaysPrayers.first { $0.name == DayRing.order[i] }
+    }
+    /// "5:31 PM · On time · 83", under the note on its card.
+    private var pickedLine: String {
+        guard let row = pickedRow else { return "" }
+        return [row.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) }, row.scoreSummary].compactMap { $0 }.joined(separator: " · ")
+    }
+
     @ViewBuilder private var dayLine: some View {
-        if let i = picked, DayRing.order.indices.contains(i), let p = shownDay.first(where: { $0.name == DayRing.order[i] }) {
-            Text("\(p.name)'s window: \(p.start.formatted(date: .omitted, time: .shortened)) – \(p.end.formatted(date: .omitted, time: .shortened))")
-                .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+        if picked != nil {
+            // The picked prayer's note and place, each a door (the day page merge, owner 2026-10-15); neither: nothing.
+            if let row = pickedRow {
+                DayPickLines(note: DayFacts.note(row), place: DayFacts.place(row),
+                             onNote: { noteShown = true }, onPlace: { placeSheet = row })
+            }
         } else if shownDay.isEmpty {
             // No rows for the day shown (the app not opened that day): say so, not nothing (Ben's audit).
             Text(showingYesterday ? "No prayers marked yesterday." : "No prayers marked today.")
@@ -1129,12 +1151,16 @@ struct summaryCircle: View, Equatable {
         ZStack{
             // The day (decision day-score-end): the ring holds the day's five prayers round the score; a fifth tapped
             // tells that prayer; one line under the circle.
-            DayCentre(day: shownDay, score: countedScore ?? shownScore, picked: picked, yesterday: showingYesterday)
+            DayCentre(day: shownDay, score: countedScore ?? shownScore, picked: picked, yesterday: showingYesterday,
+                      makeUpCount: makeUpCount, onMakeUp: {
+                          // To make up, in Journey (the pill in the ring; marking stays the list's dot — owner).
+                          JourneyPresenter.shared.makeUp = true
+                          JourneyPresenter.shared.open = true
+                      })
                 .animation(.easeOut(duration: CircleMotion.quick), value: picked)
                 .modifier(CircleWordsAway(away: away || !showsScore))
             DayRing(day: shownDay, picked: picked, drawn: drawn) { i in
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == i ? nil : i }
-                pickedAt = Date()
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { DayPageState.shared.togglePick(i) }
                 triggerSomeVibration(type: .light)
             }
             .opacity(ringFade)
@@ -1227,27 +1253,31 @@ struct summaryCircle: View, Equatable {
         .onAppear { getTheNextFajrTime(); refreshDay(); DayPageState.shared.pageAppeared() }
         .onDisappear { DayPageState.shared.pageGone() }
         .onChange(of: showsScore) { _, shows in
-            picked = nil
+            DayPageState.shared.leaveDay()   // the side swapped: nothing picked, the front up
             if shows { refreshDay() }
         }
         // A mark (or an unmark) changes the day.
         .onChange(of: viewModel.todaysPrayers.map { "\($0.name)\($0.isCompleted)\($0.timeAtComplete?.timeIntervalSince1970 ?? 0)" }) { _, _ in
             refreshDay()
         }
-        // A tapped fifth lets go after a while.
-        // A new tap restarts it: the old wait is cancelled and must stop there — `try?` swallowed the cancellation and
-        // cleared the new pick at once (Izhan: a second fifth flickered back to the score).
-        .task(id: pickedAt) {
-            guard picked != nil else { return }
-            do {
-                try await Task.sleep(for: .seconds(8))
-                // Its photo open (the floating card): held until it's closed, then 8 s more.
-                while PrayerPhotoViewing.shared.isOpen {
-                    try await Task.sleep(for: .milliseconds(500))
-                    if !PrayerPhotoViewing.shared.isOpen { try await Task.sleep(for: .seconds(8)) }
-                }
-            } catch { return }
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }
+        // A pick stays until a second tap, the flip or the day changing clears it (owner: no timer). A missed prayer
+        // picked reads how many are owed, for its pill.
+        .onChange(of: picked) { _, i in
+            guard let i, DayRing.order.indices.contains(i),
+                  let p = shownDay.first(where: { $0.name == DayRing.order[i] }), p.missed else { return }
+            makeUpCount = JourneyMakeUpPage.entries(context).open.count
+        }
+        // The note's card (Settings' ⓘ way, grey: no sage on the Salah page) and the place's map sheet.
+        .infoModal(isPresented: $noteShown, title: pickedRow?.displayName ?? "",
+                   symbol: prayerIcon(for: pickedRow?.name ?? "Fajr"), tint: .secondary) {
+            DayNoteInfo(text: pickedRow.flatMap(DayFacts.note) ?? "", line: pickedLine)
+        }
+        .sheet(item: $placeSheet) { row in
+            if let spot = DayFacts.spot(row) {
+                PrayerPlaceMapSheet(caption: "\(row.displayName) · \(row.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")",
+                                    place: DayFacts.place(row) ?? "", spot: spot, score: row.numberScore, atMasjid: row.atMasjid)
+                    .stageCover("dayPlace")
+            }
         }
     }
     

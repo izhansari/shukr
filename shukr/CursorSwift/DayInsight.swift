@@ -9,8 +9,12 @@ struct DayPrayer {
     let score: Double?
     /// Its photo, if one was taken (PrayerPhotos.swift).
     var photoKey: String? = nil
+    /// Not prayed because excused (Excused.swift): the pause dot, "excused" when picked.
+    var excused = false
 
     var done: Bool { markedAt != nil && score != nil }
+    /// Its window over and nothing marked (not excused): the day page offers To make up.
+    var missed: Bool { !done && !excused && end < Date() }
     /// In its window (Perfect, On time or Late) — not Qaza, not missed.
     var inTime: Bool { done && (score ?? 0) >= PrayerScoring.inWindowFloor - 0.0001 }
     var perfect: Bool { done && (score ?? 0) >= 0.9999 }

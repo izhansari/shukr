@@ -230,6 +230,10 @@ extension TaskModel {
 /// Deleting sessions (History's and a zikr page's Edit → Delete): task progress, the widget and
 /// the reminders (a task that's no longer done today gets its reminder back) all follow.
 enum SessionDeletion {
+    /// Posted after sessions are deleted: pages holding fetched sessions reload (the day page's Zikr page and its back —
+    /// a deleted model kept in a list can crash when read).
+    static let changed = Notification.Name("SessionDeletion.changed")
+
     @MainActor static func delete(_ sessions: [SessionDataModel], in context: ModelContext) {
         guard !sessions.isEmpty else { return }
         CountTips.shared.sessionsDeleted(sessions.map(\.id))   // the session tour's practice session
@@ -237,6 +241,7 @@ enum SessionDeletion {
         try? context.save()
         WidgetCenter.shared.reloadAllTimelines()
         NotificationScheduler.reschedule(context: context, reason: "sessions deleted")
+        NotificationCenter.default.post(name: changed, object: nil)
     }
 }
 
