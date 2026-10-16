@@ -85,23 +85,20 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - ☰ → Journey (`JourneyPresenter.open`, pushed on the root stack) replaces Insights and the Moments row; the day page's pill
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
   link "journey" ("insights" too). InsightsView is kept in code, unreached. iOS 26's back button shows no page name.
-- Journey v6 (owner 2026-10-16, canvas board/mocks/journey-v6, checks acceptance.md + acceptance-2.md): `JourneyPage`
-  scrolls — "Journey" (38 regular) + "Since <weekday, date>" / "It starts with your first prayer"; Your journey's card
-  (`JourneyHomeCard`: days you marked a prayer, the last 12 weeks a week a column — cells by amount: faint none, grey 1–4,
-  dark all five, green all five in time — prayers marked · % in time on those days · best streak; a tap on a square marks
-  it and puts its day's line under the grid, "Mon, Sep 28 · 4 of 5 · 4 in time · Open ›"; the same square / elsewhere on
-  the card lets go; day one: "0 days so far"); three flat rows (`JourneyHomeRow`): Prayer scores (`JourneyMiniRing` =
-  `PrayerScores.prayedScore`, "<ranked.first> is your strongest") · To make up (lifetime `openCount`) · Moments; MONTHS ·
-  % in time (`JourneyMonthsList`: newest first, "Away · <dates> · N weeks" lines, the first three months then "Show more"
-  in place); MILESTONES (`JourneyMilestonesList`; a tap → `JourneyMilestoneCard` in the frosted ⓘ card: what, When, How,
-  "See that day ›"). The title moves into the bar on scroll. A month row → `JourneyMonthPage`: name + raised ‹ ›, "N days
-  you marked a prayer", days all in time · days with all five · average score between hairlines (a tap lights those days
-  / the best-scored day(s) — `JourneyHighlight`, "100 · best · Sep 4"; again, off), the calendar of rings
-  (`JourneyCalendar`, `JourneyDayRing`; spec board/mocks/month-fifths/spec.md: all due prayed → a closed ring, green +
-  green fill all in time, soft + grey fill with a Qaza; not finished → F2 fifths at 1.8, prayed soft, missed a track;
-  today its fifths + a dot; excused all day → the pause badge) between its neighbours — a sideways drag turns the month
-  (the day pager's motion; ‹ › slide too; months with marks only) — "Tap a day to open it." No grade colors (no ···).
-  "All five" / "all in time" count excused prayers as done on a day with a mark (`JourneyLog.Day.allFive`, the card's rule).
+- Journey on one screen (owner 2026-10-16, board/mocks/journey-v6/build-plan.md "A"/"B", canvas v7): `JourneyPage`
+  doesn't scroll — "Journey" (38 regular) + "Since <weekday, date>" / "It starts with your first prayer"; the card
+  (`JourneyHomeCard`): days you marked a prayer (54 pt, 42 on an SE); "THE LAST N WEEKS" (or the months in view once
+  scrolled, "JUL – SEP 2026") · "a week a row"; the grid a week a row (`YourJourneyStats.weeks`, the week holding the
+  first day to today's): seven rounded bars (11 pt, 3 apart, radius 5; colors by amount — faint none, grey 1–4, dark all
+  five, green all five in time), a 34 pt column of sage month names by the week holding the 1st ("Jan’26" on January and
+  the first month) that open the month, today's week at the bottom, scrolling up to the first day under a top fade; its
+  natural height 12 weeks, growing into the room left (`ViewThatFits`; where five rows don't fit under 12 weeks — a 6.3"
+  phone by a row, an SE, large text — the rows scroll in their own area with a bottom fade). A tile's tap puts its day
+  in the three numbers' place ("Tue, Sep 1 · 5 of 5 · all in time · Open ›"); again, the numbers. Five rows
+  (`JourneyHomeRow`, 58 / 52 pt): This month ("<measure>, so far", → the current month; hold → `ThisMonthMeasure`: in
+  their window · on time or better (default) · Perfect · average score, each with its value and what it counts, stored as
+  `journey.thisMonth`) · Prayer scores · To make up · Moments · Milestones ("Latest: <milestone>, <date>" →
+  `JourneyMilestonesPage`: the list, its frosted cards, "See that day ›"). A month page: JourneyMonth.swift (Frank).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.
