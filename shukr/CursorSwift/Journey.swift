@@ -402,14 +402,12 @@ struct JourneyMonthRoute: Hashable, Identifiable {
 // MARK: - A month
 
 /// A month (Journey v6): its name with ‹ › to the next month with prayers, "N days you marked a prayer", its three numbers in
-/// one flat row between hairlines, and the five-dot calendar with its discs and key; a day opens the day page. Grade
-/// colours behind the ··· in the bar (the canvas's pick: they moved here with the calendar).
+/// one flat row between hairlines, and the calendar of rings (JourneyDayRing) with its key; a day opens the day page. No grade
+/// colours here (spec month-fifths: the switch and the ··· menu went with the rings).
 struct JourneyMonthPage: View {
     let log: JourneyLog
     @State var start: Date
     @Environment(\.circleTheme) private var theme
-    /// Grade colours on the calendar's dots. Off by default (decision journey-day-look B).
-    @AppStorage("journey.grades") private var grades = false
     @State private var openDay: JourneyDayRoute?
     /// A number tapped (owner, 2026-10-16: "tapping the days all in time, days with all five and average score, do the same
     /// thing we used to have earlier"): only its days lit on the calendar; again, off; one at a time; a new month clears it.
@@ -463,15 +461,6 @@ struct JourneyMonthPage: View {
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Toggle("Grade colors", isOn: $grades)
-                } label: {
-                    Image(systemName: "ellipsis").accessibilityLabel("More")
-                }
-            }
-        }
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
     }
 
@@ -533,9 +522,8 @@ struct JourneyMonthPage: View {
         return ZStack(alignment: .top) {
             ForEach(panes, id: \.month) { pane in
                 let place = calendarPlace(pane.k)
-                JourneyCalendar(log: log, month: pane.month, today: today, grades: grades,
-                                highlight: pane.k == 0 ? focus : nil, compact: false) { open($0) }
-                    .animation(.easeInOut(duration: 0.3), value: grades)
+                JourneyCalendar(log: log, month: pane.month, today: today,
+                                highlight: pane.k == 0 ? focus : nil) { open($0) }
                     .animation(.easeInOut(duration: 0.3), value: focus)
                     .modifier(DayPaneMotion(away: place.away))
                     .offset(x: place.x)
@@ -696,15 +684,12 @@ struct JourneySwitch: View {
 
 // MARK: - The calendar
 
-/// The month as a calendar: each day five dots (Fajr … Isha), monochrome unless grade colours are on; a soft green disc
-/// behind a day with all five in time, a grey one behind all five with a Qaza (decision journey-day-look B).
+/// The month as a calendar of rings, one per day (JourneyDayRing; spec month-fifths).
 private struct JourneyCalendar: View {
     let log: JourneyLog
     let month: Date
     let today: Date
-    let grades: Bool
     let highlight: JourneyHighlight?
-    let compact: Bool
     let onDay: (Date) -> Void
 
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 0), count: 7) }
@@ -721,21 +706,19 @@ private struct JourneyCalendar: View {
                 }
             }
             LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: compact ? 34 : 40) }
+                ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size) }
                 ForEach(days, id: \.self) { date in
                     let day = log.day(date)
-                    // A day the card lights up shows its grade colours whatever the switch (owner, as Insights did).
-                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay,
-                                   grades: grades || highlight?.matches(day) == true, usesExcused: log.usesExcused)
+                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, usesExcused: log.usesExcused)
                         .opacity(highlight.map { $0.matches(day) ? 1 : 0.22 } ?? 1)
-                        .frame(height: compact ? 34 : 40)
+                        .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
                         .onTapGesture { onDay(date) }
                 }
             }
             HStack(spacing: 16) {
-                key(Circle().fill(Color.green.opacity(0.22)), "All five in time")
-                key(Circle().fill(Color.primary.opacity(0.09)), "All five")
+                key(keyRing(inTime: true), "All five in time")
+                key(keyRing(inTime: false), "All five")
                 if hasExcused { key(ExcusedDayBadge(size: 10), "Excused") }
             }
             .font(.system(size: 11, weight: .light, design: .rounded))
@@ -751,9 +734,36 @@ private struct JourneyCalendar: View {
         return Array(symbols[first...] + symbols[..<first])
     }
 
+    @Environment(\.colorScheme) private var scheme
+    /// The key's swatch: a closed day ring in small (green all in time; soft with a grey fill when one was a Qaza).
+    private func keyRing(inTime: Bool) -> some View {
+        let dark = scheme == .dark
+        return Circle().fill(inTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
+            .padding(1.6)
+            .overlay(Circle().stroke(inTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark), lineWidth: 1.1))
+    }
+
     private func key<V: View>(_ swatch: V, _ title: String) -> some View {
         HStack(spacing: 5) { swatch.frame(width: 12, height: 12); Text(title) }
     }
+}
+
+/// One day as a ring (spec board/mocks/month-fifths/spec.md, locked 2026-10-16 — owner: "It's F2 and thinner at 1.8"),
+/// drawn in a 44-unit square scaled to `JourneyDayRing.size`: everything due prayed → a closed ring with a fill (green, all
+/// in time — Late counts, excused counts as done; soft with a grey fill when one was a Qaza); not finished → its fifths, Fajr
+/// at the top, clockwise, a prayed fifth soft and a missed one a faint track; today keeps its fifths until it's over (nothing
+/// for prayers still to come) with a dot under its number. The fifths are what the day page's ring grows from.
+enum JourneyDayRing {
+    static let size: CGFloat = 46
+    static let k = size / 44
+    static let radius = 15.5 * k, band = 1.8 * k, fill = 12.1 * k, number = 12.5 * k
+    /// Each fifth 72°, a 14° gap between them.
+    static func fifth(_ i: Int) -> (from: CGFloat, to: CGFloat) { (CGFloat(i * 72 + 7) / 360, CGFloat((i + 1) * 72 - 7) / 360) }
+    static func green(_ dark: Bool) -> Color { dark ? Color(red: 0x30 / 255, green: 0xD1 / 255, blue: 0x58 / 255) : Color(red: 0x28 / 255, green: 0xA7 / 255, blue: 0x45 / 255) }
+    static func soft(_ dark: Bool) -> Color { dark ? .white.opacity(0.40) : .black.opacity(0.36) }
+    static func strong(_ dark: Bool) -> Color { dark ? .white.opacity(0.78) : .black.opacity(0.70) }
+    static func track(_ dark: Bool) -> Color { dark ? .white.opacity(0.14) : .black.opacity(0.12) }
+    static func greyFill(_ dark: Bool) -> Color { dark ? .white.opacity(0.10) : .black.opacity(0.14) }
 }
 
 private struct JourneyDayCell: View {
@@ -761,51 +771,59 @@ private struct JourneyDayCell: View {
     let date: Date
     let today: Date
     let first: Date?
-    let grades: Bool
     let usesExcused: Bool
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let future = date > today
         let before = first.map { date < $0 } ?? true
-        VStack(spacing: 3) {
-            Text("\(Calendar.current.component(.day, from: date))")
-                .font(.system(size: 14, weight: date == today ? .semibold : .light, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(future || before || !day.active ? Color.secondary.opacity(future ? 0.5 : 0.8) : Color.primary)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(disc))
-            if usesExcused && day.excusedDay && !day.active {
-                ExcusedDayBadge(size: 9).offset(y: -2)
-            } else if !future && !before && day.active {
-                HStack(spacing: 2) {
-                    ForEach(0..<5, id: \.self) { i in dot(day.marks[i]) }
+        let isToday = date == today
+        let dark = scheme == .dark
+        let excusedAllDay = usesExcused && day.excusedDay && !day.active
+        let drawn = !future && !before && day.active
+        ZStack {
+            if drawn {
+                if day.allFive && !isToday {
+                    Circle().fill(day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
+                        .frame(width: JourneyDayRing.fill * 2, height: JourneyDayRing.fill * 2)
+                    Circle()
+                        .stroke(day.allInTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark), lineWidth: JourneyDayRing.band)
+                        .frame(width: JourneyDayRing.radius * 2, height: JourneyDayRing.radius * 2)
+                } else {
+                    ForEach(0..<5, id: \.self) { i in fifth(i, today: isToday, dark: dark) }
                 }
-                .frame(height: 4)
-            } else {
-                Color.clear.frame(height: 4)
+            }
+            Text("\(Calendar.current.component(.day, from: date))")
+                .font(.system(size: JourneyDayRing.number, weight: isToday ? .semibold : .regular, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(future ? Color.secondary.opacity(0.55) : drawn || isToday ? Color.primary : Color.secondary.opacity(0.85))
+                .offset(y: isToday ? -2.2 * JourneyDayRing.k : 0)
+            if isToday {
+                Circle().fill(Color.primary).frame(width: 3 * JourneyDayRing.k, height: 3 * JourneyDayRing.k)
+                    .offset(y: 7.6 * JourneyDayRing.k)
+            } else if excusedAllDay {
+                ExcusedDayBadge(size: 9.2 * JourneyDayRing.k).offset(y: 13 * JourneyDayRing.k)
             }
         }
+        .frame(width: JourneyDayRing.size, height: JourneyDayRing.size)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibility)
     }
 
-    private var disc: Color {
-        guard day.allFive else { return .clear }
-        return day.allInTime ? Color.green.opacity(0.22) : Color.primary.opacity(0.09)
-    }
-
-    @ViewBuilder private func dot(_ mark: JourneyLog.Mark) -> some View {
-        switch mark {
-        case .done(let s):
-            Circle().fill(grades ? PrayerScoring.color(for: s) : Color.primary.opacity(0.72)).frame(width: 4, height: 4)
-        case .missed:
-            Circle().strokeBorder(Color.secondary.opacity(0.75), lineWidth: 0.9).frame(width: 4, height: 4)
-        case .toCome:
-            Circle().fill(Color.primary.opacity(0.13)).frame(width: 4, height: 4)
-        case .excused:
-            Circle().fill(Color.secondary.opacity(0.3)).frame(width: 4, height: 4)
-        case .none:
-            Color.clear.frame(width: 4, height: 4)
+    /// A prayer's fifth: prayed (or excused) soft — today's a little stronger — missed a faint track; nothing for one to come.
+    @ViewBuilder private func fifth(_ i: Int, today: Bool, dark: Bool) -> some View {
+        let mark = day.marks[i]
+        let color: Color? = switch mark {
+        case .done, .excused: today ? JourneyDayRing.strong(dark) : JourneyDayRing.soft(dark)
+        case .missed: JourneyDayRing.track(dark)
+        case .toCome, .none: nil
+        }
+        if let color {
+            let arc = JourneyDayRing.fifth(i)
+            Circle().trim(from: arc.from, to: arc.to)
+                .stroke(color, style: StrokeStyle(lineWidth: JourneyDayRing.band, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: JourneyDayRing.radius * 2, height: JourneyDayRing.radius * 2)
         }
     }
 

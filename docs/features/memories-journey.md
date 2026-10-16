@@ -96,9 +96,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   in place); MILESTONES (`JourneyMilestonesList`; a tap → `JourneyMilestoneCard` in the frosted ⓘ card: what, When, How,
   "See that day ›"). The title moves into the bar on scroll. A month row → `JourneyMonthPage`: name + raised ‹ ›, "N days
   you marked a prayer", days all in time · days with all five · average score between hairlines (a tap lights those days
-  / the best-scored day(s) — `JourneyHighlight`, "100 · best · Sep 4"; again, off), the five-dot calendar
-  (`JourneyCalendar`) between its neighbours — a sideways drag turns the month (the day pager's motion; ‹ › slide too;
-  months with marks only) — "Tap a day to open it.", grade colors in the bar's ··· (`journey.grades`).
+  / the best-scored day(s) — `JourneyHighlight`, "100 · best · Sep 4"; again, off), the calendar of rings
+  (`JourneyCalendar`, `JourneyDayRing`; spec board/mocks/month-fifths/spec.md: all due prayed → a closed ring, green +
+  green fill all in time, soft + grey fill with a Qaza; not finished → F2 fifths at 1.8, prayed soft, missed a track;
+  today its fifths + a dot; excused all day → the pause badge) between its neighbours — a sideways drag turns the month
+  (the day pager's motion; ‹ › slide too; months with marks only) — "Tap a day to open it." No grade colors (no ···).
+  "All five" / "all in time" count excused prayers as done on a day with a mark (`JourneyLog.Day.allFive`, the card's rule).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.
