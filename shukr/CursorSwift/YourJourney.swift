@@ -19,6 +19,10 @@ struct YourJourneyPage: View {
     private let stats: YourJourneyStats
     /// The title moves into the bar once it has scrolled under it (as the Zikr pages' `titleInBar`).
     @State private var titleShown = false
+    @State private var showMoments = false
+    /// The newest developed photos, oldest first (the row's four).
+    @State private var photos: [(key: String, image: UIImage)] = []
+    private let momentsCount = PrayerPhotos.all().count
 
     init(log: JourneyLog, onMonth: @escaping (Date) -> Void = { _ in }) {
         self.log = log
@@ -33,6 +37,7 @@ struct YourJourneyPage: View {
                 card.padding(.top, 18)
                 if !stats.monthRows.isEmpty { months.padding(.top, 26) }
                 if !stats.milestones.isEmpty { milestones.padding(.top, 26) }
+                if momentsCount > 0 { moments.padding(.top, 20) }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 40)
@@ -45,6 +50,56 @@ struct YourJourneyPage: View {
         .fontDesign(.rounded)
         .navigationTitle(titleShown ? "Your journey" : "")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
+        .task { await loadPhotos() }
+    }
+
+    // MARK: Moments
+
+    /// "MOMENTS · N", "All photos ›" (sage: it's the tap), and the four newest photos — developed ones only, a photo
+    /// still waiting for its tap veiled as everywhere (DevelopReveal).
+    private var moments: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                sectionTitle("MOMENTS · \(momentsCount)")
+                Spacer()
+                Button { showMoments = true } label: {
+                    Text("All photos ›").font(.system(size: 14, weight: .regular, design: .rounded)).foregroundStyle(Color.sage)
+                }
+                .buttonStyle(.plain)
+            }
+            if !photos.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(0..<4, id: \.self) { i in
+                        Group {
+                            if photos.indices.contains(i) {
+                                Color.clear
+                                    .overlay {
+                                        Image(uiImage: photos[i].image).resizable().scaledToFill()
+                                            .modifier(DevelopReveal(key: photos[i].key, width: 80, interactive: false))
+                                    }
+                            } else {
+                                Color.clear
+                            }
+                        }
+                        .aspectRatio(1, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { showMoments = true }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Your newest moments")
+                .accessibilityAddTraits(.isButton)
+            }
+        }
+    }
+
+    private func loadPhotos() async {
+        let keys = PrayerPhotos.all().map(\.key).filter { PhotoDevelop.isDeveloped(key: $0) }.suffix(4)
+        var loaded: [(key: String, image: UIImage)] = []
+        for key in keys { if let image = await PrayerPhotos.thumbnail(key) { loaded.append((key, image)) } }
+        photos = loaded.reversed()   // newest first, as the milestones
     }
 
     private var header: some View {
