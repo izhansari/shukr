@@ -139,6 +139,20 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   out; "✓ N made up · Show" under the total (`journey.showMadeUp`, Reminders' Show Completed — owner: not folded under each
   month) puts them back in their months, greyed, by date; an empty side shows "All caught up" (a check drawn in + a
   success buzz). A row opens its sheet (decision makeup-row-tap: kept).
+- Your journey (`YourJourneyPage`, YourJourney.swift; Journey phase 4, mockup board/mocks/journey-phase4): Journey's "Day N
+  · since … ›" (sage) opens it. A raised card: active days ("N days you marked a prayer"), the last 12 weeks a week a
+  column (84 prayer days to today: green all five in time, grey all five, hollow some missed, faint none, today lighter),
+  prayers marked · % in time on active days · best streak (days all in time; excused days skip). MONTHS newest first with
+  the % in time on that month's active days; a 7+ day gap with no mark (a fully excused day isn't one) is one "Away ·
+  dates" row; "Better each month since <m>" when the last 3+ months each beat the one before; a row → Journey on that
+  month. MILESTONES (`JourneyMilestone.earned`, earned once, dated, newest first): Day one, first Jumu'ah / first prayer
+  at a masjid, 7…365 days all in time in a row, each run that beat the best ("your best" on the latest), 100/500/1000th
+  prayer, 100th/500th of each prayer, a perfect day, Welcome back, years since day one. MOMENTS · N + the 4 newest
+  developed photos → Moments.
+- Milestone celebration (`MilestoneCelebration`, `MilestoneCelebrationLayer` over the Salah page): after a mark (2.4 s)
+  and on every activation, a new milestone plays the first mark's glow + card (`TourOverlay` .celebrate) in its words,
+  "Added to Your journey.", Continue; seen ids in `journey.milestones.seen` (the first check records silently; never
+  over the tour). DEBUG `-demoMilestoneCelebration`.
 - DEBUG `-demoJourney [-demoJourneySeed] [-demoJourneyView grid] [-demoJourneyGrades] [-demoJourneyHighlight] [-demoJourneyDay N
   [-demoJourneySheet 0…4]] [-demoJourneyMakeUp]` (`-demoJourneySeed` adds ~100 earlier days where none, a break with four
   "opened, nothing marked" days; the demo opens only every other launch — ☰ always works).

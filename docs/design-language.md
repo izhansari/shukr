@@ -50,8 +50,9 @@ is why this is hard. The points above still hold, but they have to be stretched,
 | Drawn in / written in | Motion that builds a thing instead of fading it in |
 | Calm | No bounce, no glow, nothing loud — the opposite of "tacky" |
 | Streak | Always "streak", never "run": "best streak 10 days", "4-day streak · keep it today" (Izhan, Zikr round) |
+| Week grid | A long stretch in small: the last 12 weeks, a week a column, today bottom right; green = all five in time, grey = all five, hollow = some missed, faint = none — no unbounded heat map (Your journey, owner 2026-10-16; picture 25) |
 | Scrolling sage chips | For a choice with no fixed count (a zikr's goals — could be 10): chips that scroll sideways. A capsule switch only for a fixed two or three (Sadaqah \| Community) |
 
 ## The 24 pictures
 
-01 Salah ring · 02 Salah + list · 03 the day's page · 04 Zikr wheel · 05 session pause · 06 setup hadith · 07 "welcome to shukr" · 08 setup welcome · 09 prayer photo · 10 Memories · 11 qibla map · 12 Live Activity card · 13 Explore shukr · 14 Give to Causes · 15 New task goal · 16 zikr card modal · 17 setup: notifications off · 18 setup: Live Activities · 19 setup: Fajr alarm off · 20 setup: location off · 21 "All reminders topped up" sheet · 22 calibrate your compass · 23 "Your prayer reminders are off" sheet (home) · 24 "shukr lost your location".
+01 Salah ring · 02 Salah + list · 03 the day's page · 04 Zikr wheel · 05 session pause · 06 setup hadith · 07 "welcome to shukr" · 08 setup welcome · 09 prayer photo · 10 Memories · 11 qibla map · 12 Live Activity card · 13 Explore shukr · 14 Give to Causes · 15 New task goal · 16 zikr card modal · 17 setup: notifications off · 18 setup: Live Activities · 19 setup: Fajr alarm off · 20 setup: location off · 21 "All reminders topped up" sheet · 22 calibrate your compass · 23 "Your prayer reminders are off" sheet (home) · 24 "shukr lost your location" · 25 Your journey (the week grid).
