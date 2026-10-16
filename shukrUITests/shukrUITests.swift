@@ -194,6 +194,60 @@ final class shukrUITests: XCTestCase {
             }
         }
     }
+
+    // MARK: Journey (journey-perf, 2026-10-15): opened the way he does — ☰ → Journey — on his real data (never the seed).
+
+    private func openJourney(_ app: XCUIApplication) {
+        let menu = app.buttons.matching(NSPredicate(format: "label IN {'Menu', 'More', 'line.3.horizontal'} OR identifier == 'line.3.horizontal'")).firstMatch
+        if menu.waitForExistence(timeout: 4) { menu.tap() } else { app.windows.firstMatch.swipeDown(velocity: .slow) }
+        let row = app.buttons["Journey"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 4), "no Journey row in ☰")
+        row.tap()
+        XCTAssertTrue(app.staticTexts["Journey"].firstMatch.waitForExistence(timeout: 4), "Journey didn't open")
+        sleep(2)
+    }
+
+    /// One pass through Journey: months back and forth, Calendar ⇄ Grid, the page scrolled, a day opened and scrolled, back.
+    private func journeyPass(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        for label in ["Previous month", "Previous month", "Next month", "Next month"] {
+            let b = app.buttons[label].firstMatch
+            if b.exists && b.isEnabled { b.tap(); usleep(700_000) }
+        }
+        for label in ["Grid", "Calendar"] {
+            let b = app.buttons[label].firstMatch
+            if b.exists { b.tap(); usleep(900_000) }
+            window.swipeUp(velocity: .default); usleep(800_000)
+            window.swipeDown(velocity: .default); usleep(800_000)
+        }
+        let day = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS ' of 5 prayed'")).firstMatch
+        if day.exists {
+            day.tap(); usleep(1_500_000)
+            window.swipeUp(velocity: .default); usleep(800_000)
+            window.swipeDown(velocity: .default); usleep(800_000)
+            let back = app.navigationBars.buttons.firstMatch
+            if back.exists { back.tap() } else {
+                window.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+                    .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5)))
+            }
+            usleep(1_200_000)
+        }
+    }
+
+    @available(iOS 26.0, *)
+    func testJourneyHitches() throws {
+        let app = launchForPerf()
+        openJourney(app)
+        measure(metrics: [XCTHitchMetric(application: app)], options: perfOptions()) { journeyPass(app) }
+    }
+
+    /// The same moves with no metrics (an Instruments recording alongside), then JOURNEY_IDLE seconds still on Journey.
+    func testJourneySwipesOnly() throws {
+        let app = launchForPerf()
+        openJourney(app)
+        for _ in 0..<3 { journeyPass(app) }
+        sleep(UInt32(ProcessInfo.processInfo.environment["JOURNEY_IDLE"] ?? "") ?? 0)
+    }
 }
 
 /// Live Activity research (MY4R, 2026-10-11): drives a real phone with a Dynamic Island through a test chain and keeps
