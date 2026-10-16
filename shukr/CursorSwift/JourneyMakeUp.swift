@@ -479,8 +479,10 @@ struct JourneyMakeUpPage: View {
     /// The last entries read: the page opens with them while fresh ones are read.
     @MainActor static var last: (open: [Entry], madeUp: [Entry])?
 
-    /// `entries` off the main thread, from its own context on the store.
-    static func entries(container: ModelContainer, keeping: Set<PersistentIdentifier> = [], now: Date = Date()) async
+    /// `entries` off the main thread, from its own context on the store. `nonisolated`, as the two below: a View's statics
+    /// are main-actor isolated, and without it the detached task hopped back to the main thread to run the fetch (Frank's
+    /// trace on c240064: all 147 samples of the 135 ms on Main Thread).
+    nonisolated static func entries(container: ModelContainer, keeping: Set<PersistentIdentifier> = [], now: Date = Date()) async
         -> (open: [Entry], madeUp: [Entry]) {
         let ranges = await MainActor.run { Excused.ranges }
         return await Task.detached(priority: .userInitiated) {
@@ -489,14 +491,14 @@ struct JourneyMakeUpPage: View {
     }
 
     /// How many are owed (the day page's "N to make up" pill), read off the main thread.
-    static func openCount(container: ModelContainer) async -> Int {
+    nonisolated static func openCount(container: ModelContainer) async -> Int {
         await entries(container: container).open.count
     }
 
     /// Open: unmarked prayers whose window has ended, on active days only, never an excused one — plus `keeping`, just made
     /// up and still shown in place. Made up: marked on a later prayer day than its own (the Made up button, or the sheet's
     /// default) — newest made up first.
-    static func entries(in context: ModelContext, keeping: Set<PersistentIdentifier> = [], ranges: [ExcusedRange],
+    nonisolated static func entries(in context: ModelContext, keeping: Set<PersistentIdentifier> = [], ranges: [ExcusedRange],
                         now: Date = Date()) -> (open: [Entry], madeUp: [Entry]) {
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>()) else { return ([], []) }
         var kept: [String: PrayerModel] = [:]

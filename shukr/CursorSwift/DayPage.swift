@@ -108,15 +108,20 @@ struct DayFlipCard<Front: View, Back: View>: View, Animatable {
                 .opacity(showsBack ? 0 : 1)
                 .allowsHitTesting(!showsBack)
                 .accessibilityHidden(showsBack)
-            back
-                .frame(maxWidth: .infinity)
-                .frame(height: frontHeight > 0 ? frontHeight : nil)
-                .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))   // drawn mirrored, so it reads right once turned
-                .opacity(showsBack ? 1 : 0)
-                .allowsHitTesting(showsBack)
-                .accessibilityHidden(!showsBack)
+            // The back is built only once the card starts to turn: unseen, it cost every visit its rows and its photo pile
+            // (Frank's hitch test, c240064: the warm rounds grew with each day page opened).
+            if angle > 0 {
+                back
+                    .frame(maxWidth: .infinity)
+                    .frame(height: frontHeight > 0 ? frontHeight : nil)
+                    .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))   // drawn mirrored, so it reads right once turned
+                    .opacity(showsBack ? 1 : 0)
+                    .allowsHitTesting(showsBack)
+                    .accessibilityHidden(!showsBack)
+            }
         }
-        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+        // No 3D layer at rest: the list is always inside this card on the Salah tab, flipped or not.
+        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: angle == 0 ? 0 : 0.5)
     }
 }
 
