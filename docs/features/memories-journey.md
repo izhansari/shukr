@@ -99,6 +99,17 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   their window · on time or better (default) · Perfect · average score, each with its value and what it counts, stored as
   `journey.thisMonth`) · Prayer scores · To make up · Moments · Milestones ("Latest: <milestone>, <date>" →
   `JourneyMilestonesPage`: the list, its frosted cards, "See that day ›"). A month page: JourneyMonth.swift (Frank).
+- The month (`JourneyMonthPage`, JourneyMonth.swift): the title "September 2026" with an up-down symbol — a tap zooms out
+  to the year; "N days you marked a prayer"; days all in time · days with all five · average score (a tap lights those
+  days); the calendar of rings (`JourneyDayRing`, spec board/mocks/month-fifths/spec.md: complete → closed ring + fill,
+  green all in time, soft + grey with a Qaza; otherwise F2 fifths at 1.8; today its fifths + a dot; excused all day → the
+  badge). Months page up and down (drag down → the month before, 1:1, settles past a quarter or a flick; months with marks
+  only; each month clipped to its own height). Month | Year at the bottom (`JourneySwitch`); a pinch in → the year, spread →
+  back. No ‹ ›, no grade colors. "All five" counts excused prayers as done on a day with a mark.
+- The year (`JourneyYearView`, JourneyYear.swift): every year from the first, opening on this one (earlier above, a fade
+  under the back button); twelve small months of square tiles in the card's colors (`JourneyTileColor`), each six weeks
+  tall, its name (sage = this month) and one line ("9 days · 84%" in time of due, or "Away"); the month you came from
+  outlined, today outlined; a tap on a month with prayers opens it.
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.

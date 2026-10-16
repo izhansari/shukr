@@ -11,9 +11,12 @@ struct JourneyMonthRoute: Hashable, Identifiable {
 
 // MARK: - A month
 
-/// A month (Journey v6): its name with ‹ › to the next month with prayers, "N days you marked a prayer", its three numbers in
-/// one flat row between hairlines, and the calendar of rings (JourneyDayRing) with its key; a day opens the day page. No grade
-/// colours here (spec month-fifths: the switch and the ··· menu went with the rings).
+/// A month (Journey v6): its name — a tap zooms out to the year — "N days you marked a prayer", its three numbers in one flat
+/// row between hairlines, and the calendar of rings (JourneyDayRing) with its key; a day opens the day page. Months page up
+/// and down (drag down for the month before); Month | Year at the bottom and a pinch switch to the year (JourneyYearView).
+/// Owner, 2026-10-16 (build-plan.md, decisions 1–2): "the chevrons for back and forward a month needs to change. instead
+/// indicate that the month name (title on month page) can be tapped with an updown sf symbol … when tapped it just zooms out
+/// to the year view". No grade colours here (spec month-fifths).
 struct JourneyMonthPage: View {
     let log: JourneyLog
     @State var start: Date
@@ -22,10 +25,15 @@ struct JourneyMonthPage: View {
     /// A number tapped (owner, 2026-10-16: "tapping the days all in time, days with all five and average score, do the same
     /// thing we used to have earlier"): only its days lit on the calendar; again, off; one at a time; a new month clears it.
     @State private var focus: JourneyHighlight?
-    /// The finger's travel sideways on the calendar (owner, 2026-10-16: "swipe month to month with my finger on the
-    /// calendar"): Journey's day pager, for months — the next month's calendar rides in 1:1, this one leaves at 90 %.
+    /// The finger's travel up or down on the calendar (owner, 2026-10-16: months page up and down — Sami's sideways swipe
+    /// turned 90°): the month before rides in from the top 1:1, this one leaves at 90 %.
     @State private var dragOffset: CGFloat = 0
-    @State private var dragHorizontal: Bool?
+    @State private var dragVertical: Bool?
+    /// Each month's calendar height as laid out (five or six weeks); the shown month's is one page of travel.
+    @State private var paneHeights: [Date: CGFloat] = [:]
+    private var paneHeight: CGFloat { paneHeights[start] ?? 340 }
+    /// The year, in place of the month (the title, Month | Year, or a pinch).
+    @State private var showYear = false
 
     init(log: JourneyLog, start: Date) {
         self.log = log
@@ -47,7 +55,6 @@ struct JourneyMonthPage: View {
         return out
     }
 
-    private var pageWidth: CGFloat { UIScreen.main.bounds.width }
     /// The month `by` away among the months with marks (nil: none that way).
     private func neighbour(_ by: Int) -> Date? {
         let list = months
@@ -56,38 +63,73 @@ struct JourneyMonthPage: View {
     }
     /// The month the title and numbers name: the neighbour once it's more than half in.
     private var shownMonth: Date {
-        if dragOffset < -pageWidth / 2, let next = neighbour(1) { return next }
-        if dragOffset > pageWidth / 2, let previous = neighbour(-1) { return previous }
+        if dragOffset < -travel / 2, let next = neighbour(1) { return next }
+        if dragOffset > travel / 2, let previous = neighbour(-1) { return previous }
         return start
     }
 
     var body: some View {
-        // Fits on a phone as it is (no scroll to fight the sideways drag); a scroll only when it doesn't (large type).
-        ViewThatFits(in: .vertical) {
-            page
-            ScrollView { page }
+        ZStack {
+            if showYear {
+                JourneyYearView(log: log, today: today, current: start) { month in
+                    triggerSomeVibration(type: .light)
+                    withAnimation(Self.zoom) { start = month; showYear = false }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 1.08)))
+                .simultaneousGesture(MagnifyGesture().onEnded { v in
+                    if v.magnification > 1.15 { withAnimation(Self.zoom) { showYear = false } }   // spread: back into the month
+                })
+            } else {
+                // Fits on a phone as it is (no scroll to fight the drag); a scroll only when it doesn't (large type).
+                ViewThatFits(in: .vertical) {
+                    page
+                    ScrollView { page }
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .simultaneousGesture(MagnifyGesture().onEnded { v in
+                    if v.magnification < 0.85 { withAnimation(Self.zoom) { showYear = true } }   // pinch in: the year
+                })
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .safeAreaInset(edge: .bottom) {
+            JourneySwitch(options: [("Month", "month"), ("Year", "year")],
+                          selection: Binding(get: { showYear ? "year" : "month" },
+                                             set: { v in withAnimation(Self.zoom) { showYear = v == "year" } }))
+                .padding(.bottom, 6)
+        }
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
     }
 
+    /// Month ↔ year: a calm zoom (the month shrinks away as the year settles in, and back).
+    private static let zoom = Animation.easeInOut(duration: 0.35)
+
     private var page: some View {
         let shown = shownMonth
         let numbers = log.month(shown)
         return VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Text(shown.formatted(.dateTime.month(.wide).year()))
-                    .font(.system(size: 30, weight: .regular, design: .rounded))
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                    .id(shown)
-                    .transition(CircleMotion.dayPickSwap)
-                Spacer(minLength: 8)
-                step("chevron.left", by: -1, label: "Previous month")
-                step("chevron.right", by: 1, label: "Next month")
+            // The month's name says it can be tapped (owner: "an updown sf symbol"): a tap zooms out to the year.
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(Self.zoom) { showYear = true }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 7) {
+                    Text(shown.formatted(.dateTime.month(.wide).year()))
+                        .font(.system(size: 30, weight: .regular, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                        .id(shown)
+                        .transition(CircleMotion.dayPickSwap)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityHint("Shows the year")
             VStack(alignment: .leading, spacing: 0) {
                 Text(numbers.activeDays == 1 ? "1 day you marked a prayer" : "\(numbers.activeDays) days you marked a prayer")
                     .font(.system(size: 16, weight: .light, design: .rounded))
@@ -121,7 +163,7 @@ struct JourneyMonthPage: View {
                 .padding(.top, 20)
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 40)
+        .padding(.bottom, 24)
         .onChange(of: shown) { focus = nil }   // another month: its own days
     }
 
@@ -134,45 +176,52 @@ struct JourneyMonthPage: View {
                 let place = calendarPlace(pane.k)
                 JourneyCalendar(log: log, month: pane.month, today: today,
                                 highlight: pane.k == 0 ? focus : nil) { open($0) }
+                    .fixedSize(horizontal: false, vertical: true)
                     .animation(.easeInOut(duration: 0.3), value: focus)
                     .modifier(DayPaneMotion(away: place.away))
-                    .offset(x: place.x)
+                    .offset(y: place.y)
                     .allowsHitTesting(pane.k == 0)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { paneHeights[pane.month] = max($0, 1) }
             }
         }
+        .frame(height: paneHeight, alignment: .top)
+        .clipped()   // this month's own height: the neighbours wait a travel above and below, out of sight
         .contentShape(Rectangle())
         .gesture(swipe)
     }
 
-    private func calendarPlace(_ k: Int) -> (x: CGFloat, away: CGFloat) {
-        let w = pageWidth
-        let x: CGFloat
+    /// How far a neighbour waits: this month's height and a row's room more, so a taller month (six weeks) above stays hidden.
+    private var travel: CGFloat { paneHeight + 60 }
+
+    private func calendarPlace(_ k: Int) -> (y: CGFloat, away: CGFloat) {
+        let h = travel
+        let y: CGFloat
         if k == 0 {
-            x = dragOffset * 0.9
+            y = dragOffset * 0.9
         } else {
             let incoming = (k > 0 && dragOffset < 0) || (k < 0 && dragOffset > 0)
-            x = CGFloat(k) * w + (incoming ? dragOffset : 0)
+            y = CGFloat(k) * h + (incoming ? dragOffset : 0)
         }
-        return (x, min(abs(x) / w, 1))
+        return (y, min(abs(y) / h, 1))
     }
 
     private var swipe: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { v in
-                if dragHorizontal == nil {
-                    // The left edge stays the system's back swipe.
-                    dragHorizontal = v.startLocation.x > 20 && abs(v.translation.width) > abs(v.translation.height)
+                if dragVertical == nil {
+                    // Up or down only; the left edge stays the system's back swipe.
+                    dragVertical = v.startLocation.x > 20 && abs(v.translation.height) > abs(v.translation.width)
                 }
-                guard dragHorizontal == true else { return }
-                let w = v.translation.width
-                dragOffset = neighbour(w < 0 ? 1 : -1) != nil ? w : w * 0.15   // nothing that way: a little give
+                guard dragVertical == true else { return }
+                let h = v.translation.height
+                dragOffset = neighbour(h < 0 ? 1 : -1) != nil ? h : h * 0.15   // nothing that way: a little give
             }
             .onEnded { v in
-                defer { dragHorizontal = nil }
-                guard dragHorizontal == true else { return }
-                let w = v.translation.width, projected = v.predictedEndTranslation.width
-                let by = w < 0 ? 1 : -1
-                guard neighbour(by) != nil, abs(w) > pageWidth / 4 || abs(projected) > pageWidth / 2 else {
+                defer { dragVertical = nil }
+                guard dragVertical == true else { return }
+                let h = v.translation.height, projected = v.predictedEndTranslation.height
+                let by = h < 0 ? 1 : -1   // drag up: the next month; down: the one before
+                guard neighbour(by) != nil, abs(h) > travel / 4 || abs(projected) > travel / 2 else {
                     withAnimation(CircleMotion.daySlideIn) { dragOffset = 0 }
                     return
                 }
@@ -184,7 +233,7 @@ struct JourneyMonthPage: View {
     private func turn(_ by: Int) {
         guard let month = neighbour(by) else { return }
         triggerSomeVibration(type: .light)
-        withAnimation(CircleMotion.daySlideIn) { dragOffset = by > 0 ? -pageWidth : pageWidth } completion: {
+        withAnimation(CircleMotion.daySlideIn) { dragOffset = by > 0 ? -travel : travel } completion: {
             var quiet = Transaction()
             quiet.disablesAnimations = true
             withTransaction(quiet) {
@@ -221,25 +270,6 @@ struct JourneyMonthPage: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
         .accessibilityHint(kind == nil ? "" : on ? "Shows every day again" : "Lights these days on the calendar")
-    }
-
-    /// A small raised disc with a plain chevron (owner: not the sage arrows); flat and faint when there's no month that way.
-    /// It turns the month as the swipe does.
-    private func step(_ symbol: String, by: Int, label: String) -> some View {
-        let enabled = neighbour(by) != nil
-        return Button {
-            turn(by)
-        } label: {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(enabled ? Color.primary.opacity(0.75) : Color.secondary.opacity(0.3))
-                .frame(width: 34, height: 34)
-                .background { if enabled { NeuRaised(shape: Circle(), radius: 2.5, offset: 1.2) } }
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .accessibilityLabel(label)
     }
 
     private func open(_ date: Date) {
