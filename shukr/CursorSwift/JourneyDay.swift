@@ -32,6 +32,8 @@ struct JourneyDayPage: View {
     /// The card's back up or not belongs to the page, not to a day: paged while flipped, the next day comes in already
     /// showing its back, never turning as it arrives (owner, 2026-10-16).
     @State private var flipped = false
+    /// A Journey transition landing on this page or leaving it (JourneyTransitionLab): how far its own pieces are in.
+    @Environment(\.journeyDayEntrance) private var entrance
 
     private var today: Date { PrayerDay.start() }
     private var pageWidth: CGFloat { UIScreen.main.bounds.width }
@@ -120,12 +122,13 @@ struct JourneyDayPage: View {
             .padding(.horizontal, 16)
             .frame(height: SalahLook.raisedRowHeight * 5)
             .padding(.top, layout.ringTop + CircleMotion.dayDiscDiameter + layout.ringToCard)
+            .opacity(entrance?.rest ?? 1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .ignoresSafeArea(edges: .top)   // laid out from the screen's top, as the Salah page's rests are
         .contentShape(Rectangle())
         .gesture(dayDrag)
-        .background(theme.surface.ignoresSafeArea())
+        .background(theme.surface.opacity(entrance?.page ?? 1).ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .principal) { heading } }
@@ -262,6 +265,7 @@ struct JourneyDayPage: View {
             .id(shownDate)
             .transition(CircleMotion.dayPickSwap)
         }
+        .opacity(entrance?.rest ?? 1)
         .accessibilityElement(children: .combine)
     }
 
@@ -283,6 +287,44 @@ struct JourneyDayPage: View {
 }
 
 /// The day page's vertical gaps (JourneyDayPage.layout).
+/// A Journey transition landing on the day page or leaving it (JourneyTransitionLab, 2026-10-16): how far the page's own
+/// pieces are in, each 0…1. Nil (the default) is the page as always. The grown ring hands over to `disc` and `drawn`.
+struct JourneyDayEntrance: Equatable {
+    /// The page's surface (it covers what's under it).
+    var page: Double = 1
+    /// The raised disc behind the ring.
+    var disc: Double = 1
+    /// DayRing's draw-in: its grade colours, fifth by fifth.
+    var drawn: CGFloat = 1
+    /// Everything else: the centre, the lines, the card, the pill, the chevrons, the heading.
+    var rest: Double = 1
+}
+
+extension EnvironmentValues {
+    @Entry var journeyDayEntrance: JourneyDayEntrance? = nil
+}
+
+/// Where the current day's disc is on screen and which day it is — a transition into the day page lands on it, and going
+/// back leaves from it (the day may have been paged since). Not observed: read when a transition starts or lands.
+@MainActor final class JourneyDayRingSpot {
+    static let shared = JourneyDayRingSpot()
+    private(set) var date: Date?
+    private(set) var frame: CGRect = .zero
+    private var frames: [Date: CGRect] = [:]
+    /// Called when the frame first arrives (a transition waiting to land).
+    var onReport: ((Date, CGRect) -> Void)?
+    func report(date: Date, frame: CGRect) {
+        frames[date] = frame
+        self.date = date
+        self.frame = frame
+        onReport?(date, frame)
+    }
+    func claim(date: Date) {
+        self.date = date
+        if let f = frames[date] { frame = f }
+    }
+}
+
 struct JourneyDayLayout: Equatable {
     let ringTop: CGFloat
     let ringToCard: CGFloat
@@ -322,6 +364,7 @@ struct JourneyDayPane: View {
     @State private var places = 0   // bumps as place names arrive
     /// The picked row's band glides between rows in this space (DayPickBandLayer).
     @Namespace private var pickSpace
+    @Environment(\.journeyDayEntrance) private var entrance
     #if DEBUG
     @MainActor private static var demoSheetDone = false
     #endif
@@ -346,14 +389,14 @@ struct JourneyDayPane: View {
             ring.padding(.top, layout.ringTop)
             // The room under the ring: the picked prayer's lines centred in it, so the card never moves.
             Color.clear.frame(height: layout.ringToCard).overlay { underRing.frame(width: 310) }   // the Salah tab's line width
-            card
+            card.opacity(entrance?.rest ?? 1)
             DayFlipPill(flipped: flipped) {
                 // To the back: the pick clears; to the front: a pick made on the back stays, its row raised (owner).
                 if !flipped { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil } }
                 onFlip()
             }
             .padding(.top, layout.cardToPill)
-            .opacity(facts.isEmpty ? 0 : 1)   // no pill when the back is empty (owner)
+            .opacity(facts.isEmpty ? 0 : entrance?.rest ?? 1)   // no pill when the back is empty (owner)
             .allowsHitTesting(!facts.isEmpty)
             .animation(.easeOut(duration: CircleMotion.quick), value: facts.isEmpty)
         }
@@ -406,7 +449,8 @@ struct JourneyDayPane: View {
         let marked = rows.filter(\.isCompleted).count
         return ZStack {
             NeuRaised(shape: Circle(), radius: 9, offset: 4.5).frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
-            DayRing(day: day, picked: picked) { i in
+                .opacity(entrance?.disc ?? 1)
+            DayRing(day: day, picked: picked, drawn: entrance?.drawn ?? 1) { i in
                 triggerSomeVibration(type: .light)   // on either side of the card (owner)
                 withAnimation(CircleMotion.dayPick) { picked = picked == i ? nil : i }
             }
@@ -415,14 +459,21 @@ struct JourneyDayPane: View {
                     .multilineTextAlignment(.center)
                     .font(.system(size: excusedDay ? 30 : 15, weight: .light, design: .rounded))
                     .foregroundStyle(excusedDay ? .primary : .secondary)
+                    .opacity(entrance?.rest ?? 1)
             } else {
                 DayCentre(day: day, score: PrayerScoring.dayScore(for: rows), picked: picked, yesterday: false,
                           makeUpCount: makeUpCount, onMakeUp: actions.makeUp)
                     .animation(CircleMotion.dayPick, value: picked)
                     .allowsHitTesting(picked != nil)
+                    .opacity(entrance?.rest ?? 1)
             }
         }
         .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
+        // Where the day's disc sits, for a transition that lands on it or leaves from it (the current day only).
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+            if current { JourneyDayRingSpot.shared.report(date: date, frame: frame) }
+        }
+        .onChange(of: current) { _, now in if now { JourneyDayRingSpot.shared.claim(date: date) } }
     }
 
     /// The picked prayer's note and place, each a door (DayPickLines); nothing otherwise.

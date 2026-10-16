@@ -791,6 +791,12 @@ struct SettingsView: View {
                         .accentColor(Color.sage)   // the rows' icons take the accent, not the tint
 
                         Section {
+                            // Journey's two transitions on a test screen (owner, 2026-10-16: "It can be a test version of
+                            // it, just to get the transition right").
+                            NavigationLink("Journey transitions (test)") { JourneyTransitionLab() }
+                        } header: { Text("Dev · Journey") }
+
+                        Section {
                             // Moved here from the page (owner, settings cleanup 2026-10-12).
                             Button {
                                 NotificationCenter.default.post(name: FirstRunSetup.rerun, object: nil)
