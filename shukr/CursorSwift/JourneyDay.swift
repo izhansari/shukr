@@ -40,6 +40,27 @@ struct JourneyDayPage: View {
         let t = viewModel.todaysPrayers
         return t.count == 5 && t.allSatisfy(\.isCompleted)
     }
+    /// Yesterday, this day and tomorrow (the ones that exist), with their place: -1, 0, 1.
+    private var shownDays: [(k: Int, date: Date)] {
+        [-1, 0, 1].filter { $0 == 0 || ($0 < 0 ? canGoBack : canGoForward) }.map { ($0, day($0)) }
+    }
+
+    /// Where a day sits for the finger's travel, and how far "away" it is (0 here … 1 gone). The day coming in rides
+    /// under the finger, growing and brightening; the day going out moves only a third as far, shrinking and fading in
+    /// place — the new one is pulled in over it (owner, 2026-10-16: "Knowing that I'm pulling something in, not just
+    /// pushing something out … as it goes off to the side, it goes off less and less with our finger. And as it comes in,
+    /// it comes in more and more"). At a full page of travel each is at its rest, so the hand-over never jumps (the one
+    /// gone is invisible when it snaps to its slot).
+    private func panePlace(_ k: Int) -> (x: CGFloat, away: CGFloat) {
+        let w = pageWidth
+        let p = min(abs(dragOffset) / w, 1)
+        let dir: CGFloat = dragOffset < 0 ? -1 : 1
+        if k == 0 { return (dir * w * p / 3, p) }
+        let incoming = (k > 0 && dragOffset < 0) || (k < 0 && dragOffset > 0)
+        if incoming { return (CGFloat(k) * w * (1 - p), 1 - p) }
+        return (CGFloat(k) * w, 1)
+    }
+
     /// The day the top bar names: the neighbour once it's more than half in.
     private var shownDate: Date {
         if dragOffset < -pageWidth / 2 { return day(1) }
@@ -56,15 +77,14 @@ struct JourneyDayPage: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            ForEach([-1, 0, 1], id: \.self) { k in
-                if k == 0 || (k < 0 ? canGoBack : canGoForward) {
-                    let x = CGFloat(k) * pageWidth + dragOffset
-                    JourneyDayPane(date: day(k), current: k == 0, actions: actions)
-                        .id(day(k))   // a day keeps its piece as it becomes the current one: no reload, no jump
-                        .modifier(DayPaneMotion(position: x / pageWidth))
-                        .offset(x: x)
-                        .allowsHitTesting(k == 0)
-                }
+            // Keyed by the date, not the slot: the day coming in stays the same piece as it becomes this page's day (keyed by
+            // slot it was rebuilt at the swap, and its score, caption and pill flashed — owner).
+            ForEach(shownDays, id: \.date) { item in
+                let place = panePlace(item.k)
+                JourneyDayPane(date: item.date, current: item.k == 0, actions: actions)
+                    .modifier(DayPaneMotion(away: place.away))
+                    .offset(x: place.x)
+                    .allowsHitTesting(item.k == 0)
             }
             // The chevrons stay on the page, beside the card (12 pt off it), whatever the days do.
             HStack {
