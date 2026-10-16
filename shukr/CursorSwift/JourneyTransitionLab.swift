@@ -148,6 +148,12 @@ struct JourneyTransitionLab: View {
     @State private var dayDial: CGFloat = 0
     /// The edge swipe: which dial and where it was when the finger came down.
     @State private var backDrag: (day: Bool, from: CGFloat)?
+    /// The comparison (option 1C, the organizer's ask, so Izhan can feel both): Apple's zoom from the month's rows on the
+    /// card into the real month page, a plain push with the system's own interactive back. The dial is his pick.
+    @AppStorage("journeyLabZoom") private var zoom = false
+    @Namespace private var zoomSpace
+    @State private var zoomMonth: JourneyMonthRoute?
+    @State private var zoomSource: CGRect?
 
     private var today: Date { PrayerDay.start() }
     private var width: CGFloat { UIScreen.main.bounds.width }
@@ -155,8 +161,18 @@ struct JourneyTransitionLab: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             LabJourneyLayer(dial: monthDial, stats: stats ?? YourJourneyStats(log: JourneyLog(), today: today), log: log,
-                            openMonth: month?.start, growFrom: month?.card, geo: geo, onMonth: { openMonth($0) })
+                            openMonth: month?.start, growFrom: month?.card, geo: geo, zoom: zoom,
+                            onStyle: { zoom.toggle() }, onMonth: { openMonth($0) })
                 .allowsHitTesting(month == nil)
+            // The zoom's source: the tapped month's rows on the card (clear; the system zooms the page out of its frame).
+            if let r = zoomSource {
+                GlobalCanvas { o in
+                    Color.clear
+                        .frame(width: r.width, height: r.height)
+                        .matchedTransitionSource(id: "month", in: zoomSpace)
+                        .position(x: r.midX - o.x, y: r.midY - o.y)
+                }
+            }
             if let month {
                 LabMonthLayer(dial: monthDial, dayDial: dayDial, flight: month, log: log, today: today, geo: geo,
                               hiddenDay: day?.to == nil ? nil : day?.date, onReady: { runMonth(to: 1) }, onDay: { openDay($0) })
@@ -199,6 +215,10 @@ struct JourneyTransitionLab: View {
                         .accessibilityLabel("Back")
                 }
             }
+        }
+        .navigationDestination(item: $zoomMonth) { route in
+            JourneyMonthPage(log: log, start: route.month)
+                .navigationTransition(.zoom(sourceID: "month", in: zoomSpace))
         }
         .task {
             await load()
@@ -270,6 +290,12 @@ struct JourneyTransitionLab: View {
                 if r.minY >= grid.minY + 8, r.maxY <= grid.maxY + 1 { tiles[d.date] = r }
             }
         }
+        if zoom {
+            let rects = Array(tiles.values) + [label].compactMap { $0 }
+            zoomSource = rects.dropFirst().reduce(rects.first ?? geo.grid) { $0.union($1) }
+            zoomMonth = JourneyMonthRoute(month: start)
+            return
+        }
         monthDial = 0
         month = LabMonthFlight(start: start, tiles: tiles, label: label, labelText: labelText, card: geo.card)
         // The month layer calls onReady once its title is laid out; then the dial runs.
@@ -292,21 +318,28 @@ struct JourneyTransitionLab: View {
         triggerSomeVibration(type: .light)
         dayDial = 0
         day = LabDayFlight(date: date, from: geo.cells[date], to: nil)
-        // The day page reports where its disc sits; the dial runs from there.
+        // The dial runs once the day page has laid out its disc (where to land) and read its rows (its heavy first moment:
+        // Bradley's check, 2026-10-16 — a real tap logged a 177 ms stall and the ring jumped while the page loaded mid-flight).
         let spot = JourneyDayRingSpot.shared
-        spot.onReport = { reported, frame in
-            guard reported == date, self.day?.to == nil else { return }
-            self.day?.to = frame
-            spot.onReport = nil
+        let tapped = CACurrentMediaTime()
+        var landed: CGRect?
+        var loaded = false
+        func go() {
+            guard let landed, loaded, self.day?.date == date, self.day?.to == nil else { return }
+            spot.onReport = nil; spot.onLoaded = nil
+            self.day?.to = landed
+            print(String(format: "🎞️ day page ready after %.0f ms", (CACurrentMediaTime() - tapped) * 1000))
             DispatchQueue.main.async { runDay(to: 1) }
         }
-        // Never reported (shouldn't happen): land where the day page puts its disc on a 17 Pro.
+        spot.onReport = { reported, frame in if reported == date { landed = frame; go() } }
+        spot.onLoaded = { reported in if reported == date { loaded = true; go() } }
+        // Never ready (shouldn't happen): land where the day page puts its disc on a 17 Pro.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             guard self.day?.date == date, self.day?.to == nil else { return }
-            spot.onReport = nil
+            spot.onReport = nil; spot.onLoaded = nil
             let d = CircleMotion.dayDiscDiameter
-            self.day?.to = CGRect(x: (width - d) / 2, y: JourneyDayPage.ringTop, width: d, height: d)
-            print("🎞️ day page never reported its disc; landing on the default")
+            self.day?.to = landed ?? CGRect(x: (width - d) / 2, y: JourneyDayPage.ringTop, width: d, height: d)
+            print("🎞️ day page not ready in 0.4 s; landing anyway")
             runDay(to: 1)
         }
     }
@@ -375,6 +408,8 @@ private struct LabJourneyLayer: View, Animatable {
     /// The card's frame when its month was tapped: its surface grows from there into the page.
     let growFrom: CGRect?
     let geo: LabGeometry
+    let zoom: Bool
+    let onStyle: () -> Void
     let onMonth: (Date) -> Void
     var animatableData: CGFloat { get { dial } set { dial = newValue } }
 
@@ -388,9 +423,13 @@ private struct LabJourneyLayer: View, Animatable {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Journey").font(.system(size: 38, weight: .regular, design: .rounded))
-                Text("Transition test · tap a month's name")
-                    .font(.system(size: 16, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
+                // The switch between his pick and the comparison.
+                Button(action: onStyle) {
+                    (Text(zoom ? "Apple's zoom" : "The dial (your pick)").foregroundStyle(Color.sage)
+                     + Text(" · tap to switch").foregroundStyle(.secondary))
+                        .font(.system(size: 16, weight: .light, design: .rounded))
+                }
+                .buttonStyle(.plain)
             }
             .opacity(1 - jo).offset(y: 28 * jo)
             LabCard(stats: stats, openMonth: openMonth, gridOpacity: others, wordsOpacity: words, geo: geo, onMonth: onMonth)
@@ -931,16 +970,19 @@ private struct LabDayLayer: View, Animatable {
     @ViewBuilder private func flyingRing(o: CGPoint, to: CGRect, z: CGFloat, soft: CGFloat, landed: Bool) -> some View {
         let dark = scheme == .dark
         let day = log.day(flight.date)
-        let spec = LabRingSpec.month(day: day, today: false, dark: dark)
+        // Today flies as the month draws it: strong fifths, never closed (Bradley's check).
+        let spec = LabRingSpec.month(day: day, today: flight.date == PrayerDay.start(), dark: dark)
+        // The month's cell may be drawn smaller than 46 pt (the month page's 1 / 0.9 / 0.8 / 0.7, fef10e5): start from its size.
+        let cell = (flight.from?.height ?? JourneyDayRing.size) / JourneyDayRing.size   // height: the cell is a column wide
         let fromCentre = flight.from.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: to.midX, y: to.midY)
         let centre = LabMotion.lerp(fromCentre, CGPoint(x: to.midX, y: to.midY), z)
         // From a missing cell (paged to a day of another month) it only fades, at the page's size.
         let k = flight.from == nil ? 1 : z
-        let radius = LabMotion.lerp(JourneyDayRing.radius, 100, k)
-        let band = LabMotion.lerp(JourneyDayRing.band, theme.arc.width * 0.5, k)
+        let radius = LabMotion.lerp(JourneyDayRing.radius * cell, 100, k)
+        let band = LabMotion.lerp(JourneyDayRing.band * cell, theme.arc.width * 0.5, k)
         let gap = LabMotion.lerp(7.0 / 360, 0.014, k)
         let closedGap = LabMotion.lerp(0, 0.014, LabMotion.seg(k, 0.5, 1))
-        let disc = LabMotion.lerp(JourneyDayRing.fill * 2, CircleMotion.dayDiscDiameter, k)
+        let disc = LabMotion.lerp(JourneyDayRing.fill * 2 * cell, CircleMotion.dayDiscDiameter, k)
         let fill: Color? = spec.closed ? (day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark)) : nil
         ZStack {
             if !landed {

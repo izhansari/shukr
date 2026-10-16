@@ -319,6 +319,9 @@ extension EnvironmentValues {
         self.frame = frame
         onReport?(date, frame)
     }
+    /// Called when the current day has read its rows (the page's heavy first moment, before a transition runs).
+    var onLoaded: ((Date) -> Void)?
+    func loaded(date: Date) { onLoaded?(date) }
     func claim(date: Date) {
         self.date = date
         if let f = frames[date] { frame = f }
@@ -440,6 +443,7 @@ struct JourneyDayPane: View {
         for row in mine where !(kept[row.name]?.isCompleted ?? false) || row.isCompleted { kept[row.name] = row }
         rows = JourneyLog.names.compactMap { kept[$0] }
         facts = DayFacts.load(rows: rows, day: date, context: context) { places += 1 }
+        if current { JourneyDayRingSpot.shared.loaded(date: date) }
     }
 
     // MARK: The ring
