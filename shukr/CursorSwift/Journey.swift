@@ -207,6 +207,7 @@ struct JourneyPage: View {
     @State private var openDay: JourneyDayRoute?
     @State private var showMoments = false
     @State private var showMakeUp = false
+    @State private var showScores = false
     @State private var highlight: JourneyHighlight?
     @State private var pick: JourneyPick?
 
@@ -225,6 +226,7 @@ struct JourneyPage: View {
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: month) }
+        .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
         .onAppear {
             onScreen = true
             if dirty { reload() }
@@ -258,6 +260,12 @@ struct JourneyPage: View {
             if args.contains("-demoJourneyHighlight") { highlight = .allInTime }
             if args.contains("-demoJourneyPick") {
                 pick = JourneyPick(prayer: 0, date: Calendar.current.date(byAdding: .day, value: -3, to: today) ?? today)
+            }
+            // `-demoPrayerScores [Fajr]`: Prayer scores, a prayer opened when one is named.
+            if let i = args.firstIndex(of: "-demoPrayerScores") {
+                if args.indices.contains(i + 1), JourneyLog.names.contains(args[i + 1]) { PrayerScoresPage.demoPick = args[i + 1] }
+                try? await Task.sleep(for: .seconds(0.6))
+                showScores = true
             }
             if args.contains("-demoJourneyMakeUp") {
                 try? await Task.sleep(for: .seconds(0.6))
@@ -418,8 +426,8 @@ struct JourneyPage: View {
 
     private func tiles(_ m: JourneyLog.Month, compact: Bool) -> some View {
         HStack(spacing: 10) {
-            // Prayers (phase 3) isn't built yet: shown quiet, not tappable.
-            JourneyTile(title: "Prayers", ready: false, compact: compact) {
+            // Prayers → Prayer scores (phase 3): every prayer you've marked, by prayer.
+            JourneyTile(title: "Prayers", ready: true, compact: compact) {
                 HStack(alignment: .bottom, spacing: 5) {
                     ForEach(0..<5, id: \.self) { i in
                         let p = m.perPrayer[i]
@@ -429,7 +437,10 @@ struct JourneyPage: View {
                     }
                 }
                 .frame(height: 28, alignment: .bottom)
-            } action: {}
+            } action: {
+                triggerSomeVibration(type: .light)
+                showScores = true
+            }
             JourneyTile(title: "To make up", ready: true, compact: compact) {
                 Text("\(m.toMakeUp)").font(.system(size: 26, weight: .thin, design: .rounded)).frame(height: 28)
             } action: {
