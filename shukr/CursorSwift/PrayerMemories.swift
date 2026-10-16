@@ -88,8 +88,8 @@ struct MemoriesPage: View {
     var openPile: String? = nil
     /// Closing that pile leaves Moments too, straight back to the page that opened it.
     var leaveWithPile = false
-    /// One prayer's photos only, on the Prayers level (Prayer scores' "N photos ›" — Frank's check: it opened on every
-    /// prayer's photos, 114, under a row that said 9). Nil: every photo.
+    /// One prayer's photos only, as one grid (`onePrayerGrid`; Prayer scores' "N photos ›" — Frank's check: it opened on
+    /// every prayer's photos, 114, under a row that said 9). Nil: every photo.
     var onlyPrayer: String? = nil
     @Environment(\.dismiss) private var dismissPage
     /// Read as the page is made (a directory listing), so its bars are right on the push's first frame — loaded in
@@ -276,7 +276,8 @@ struct MemoriesPage: View {
                 .barGlass(Circle())
                 .accessibilityLabel("Close search")
             } else {
-                levelSwitch
+                // One prayer's grid has no levels.
+                if onlyPrayer == nil { levelSwitch }
                 Spacer(minLength: 0)
                 Button(action: openSearch) {
                     Image(systemName: "magnifyingglass").font(.system(size: 19, weight: .medium)).frame(width: 48, height: 48)
@@ -495,6 +496,8 @@ struct MemoriesPage: View {
                 }
             } else if searching {
                 resultsList
+            } else if onlyPrayer != nil {
+                onePrayerGrid
             } else {
                 switch level {
                 case .months: levelScroll(.months) { monthStacks }
@@ -513,9 +516,8 @@ struct MemoriesPage: View {
             }
         )
         .safeAreaInset(edge: .bottom) { if hasPhotos { bottomBar } }
-        .onAppear { if onlyPrayer != nil, level != .prayers { level = .prayers } }
         .sensoryFeedback(.selection, trigger: level)
-        .navigationTitle("Moments")
+        .navigationTitle(onlyPrayer ?? "Moments")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -803,6 +805,31 @@ struct MemoriesPage: View {
             id = String(Self.dayKeyFormatter.string(from: next).prefix(7))
         }
         return ids.map { ($0, byID[$0]) }
+    }
+
+    /// One prayer's photos as a grid like the Photos app (owner, 2026-10-16: "fill in a grid with the newest one at the
+    /// bottom. And the oldest one is going to the top left"): oldest first, opening at the bottom. Frank's check of
+    /// 8b4203e: the Prayers level filtered to one prayer drew the other four columns as empty boxes.
+    private var onePrayerGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 4), spacing: 2) {
+                ForEach(visible.sorted { $0.key < $1.key }) { photo in
+                    MemoryThumb(key: photo.key, side: 300, corner: 0)
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
+                        .clipped()
+                        .background(MemoryFrameProbe(key: photo.key))
+                        .overlay(alignment: .topTrailing) {
+                            if PrayerPhotoFavorites.shared.contains(photo.key) { FavoriteBadge(size: 10).padding(4) }
+                        }
+                        .opacity(zoomHidden == photo.key ? 0 : 1)
+                        .contentShape(Rectangle())
+                        .onTapGesture { openDeck(photo, from: photo.key) }
+                }
+            }
+            .padding(.bottom, 24)
+        }
+        .defaultScrollAnchor(.bottom)
     }
 
     /// Every prayer: a row per day, five squares.
