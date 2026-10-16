@@ -411,6 +411,10 @@ struct JourneyMonthPage: View {
     /// A number tapped (owner, 2026-10-16: "tapping the days all in time, days with all five and average score, do the same
     /// thing we used to have earlier"): only its days lit on the calendar; again, off; one at a time; a new month clears it.
     @State private var focus: JourneyHighlight?
+    /// The finger's travel sideways on the calendar (owner, 2026-10-16: "swipe month to month with my finger on the
+    /// calendar"): Journey's day pager, for months — the next month's calendar rides in 1:1, this one leaves at 90 %.
+    @State private var dragOffset: CGFloat = 0
+    @State private var dragHorizontal: Bool?
 
     init(log: JourneyLog, start: Date) {
         self.log = log
@@ -432,56 +436,27 @@ struct JourneyMonthPage: View {
         return out
     }
 
-    var body: some View {
-        let numbers = log.month(start)
+    private var pageWidth: CGFloat { UIScreen.main.bounds.width }
+    /// The month `by` away among the months with marks (nil: none that way).
+    private func neighbour(_ by: Int) -> Date? {
         let list = months
-        let at = list.firstIndex(of: start)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 10) {
-                    Text(start.formatted(.dateTime.month(.wide).year()))
-                        .font(.system(size: 30, weight: .regular, design: .rounded))
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                    Spacer(minLength: 8)
-                    step("chevron.left", to: at.flatMap { $0 > 0 ? list[$0 - 1] : nil }, label: "Previous month")
-                    step("chevron.right", to: at.flatMap { $0 + 1 < list.count ? list[$0 + 1] : nil }, label: "Next month")
-                }
-                Text(numbers.activeDays == 1 ? "1 day you marked a prayer" : "\(numbers.activeDays) days you marked a prayer")
-                    .font(.system(size: 16, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-                HStack(alignment: .top, spacing: 0) {
-                    fact("\(numbers.allInTimeDays)", "days all in time", .allInTime)
-                    fact("\(numbers.allFiveDays)", "days with all five", .allFive)
-                    // The best day's score and date in its place while it's lit (as Journey's card did).
-                    if case .bestScore(let best) = focus {
-                        let days = JourneyLog.daysOf(month: start).filter { focus?.matches(log.day($0)) == true }
-                        fact("\(best)", days.count == 1 ? "best · \(days[0].formatted(.dateTime.month(.abbreviated).day()))"
-                                                      : "best · \(days.count) days", focus)
-                    } else {
-                        fact(numbers.averageScore.map { "\($0)" } ?? "–", "average score",
-                             numbers.bestDay.map { .bestScore($0.score) })
-                    }
-                }
-                .padding(.vertical, 16)
-                .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
-                .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
-                .padding(.top, 22)
-                JourneyCalendar(log: log, month: start, today: today, grades: grades, highlight: focus, compact: false) { open($0) }
-                    .padding(.top, 24)
-                    .animation(.easeInOut(duration: 0.3), value: grades)
-                    .animation(.easeInOut(duration: 0.3), value: focus)
-                Text("Tap a day to open it.")
-                    .font(.system(size: 13, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 20)
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 40)
-            .id(start)
-            .transition(.opacity)
+        guard let at = list.firstIndex(of: start), list.indices.contains(at + by) else { return nil }
+        return list[at + by]
+    }
+    /// The month the title and numbers name: the neighbour once it's more than half in.
+    private var shownMonth: Date {
+        if dragOffset < -pageWidth / 2, let next = neighbour(1) { return next }
+        if dragOffset > pageWidth / 2, let previous = neighbour(-1) { return previous }
+        return start
+    }
+
+    var body: some View {
+        // Fits on a phone as it is (no scroll to fight the sideways drag); a scroll only when it doesn't (large type).
+        ViewThatFits(in: .vertical) {
+            page
+            ScrollView { page }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
@@ -495,6 +470,127 @@ struct JourneyMonthPage: View {
             }
         }
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
+    }
+
+    private var page: some View {
+        let shown = shownMonth
+        let numbers = log.month(shown)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                Text(shown.formatted(.dateTime.month(.wide).year()))
+                    .font(.system(size: 30, weight: .regular, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .id(shown)
+                    .transition(CircleMotion.dayPickSwap)
+                Spacer(minLength: 8)
+                step("chevron.left", by: -1, label: "Previous month")
+                step("chevron.right", by: 1, label: "Next month")
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(numbers.activeDays == 1 ? "1 day you marked a prayer" : "\(numbers.activeDays) days you marked a prayer")
+                    .font(.system(size: 16, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+                HStack(alignment: .top, spacing: 0) {
+                    fact("\(numbers.allInTimeDays)", "days all in time", .allInTime)
+                    fact("\(numbers.allFiveDays)", "days with all five", .allFive)
+                    // The best day's score and date in its place while it's lit (as Journey's card did).
+                    if case .bestScore(let best) = focus {
+                        let days = JourneyLog.daysOf(month: shown).filter { focus?.matches(log.day($0)) == true }
+                        fact("\(best)", days.count == 1 ? "best · \(days[0].formatted(.dateTime.month(.abbreviated).day()))"
+                                                      : "best · \(days.count) days", focus)
+                    } else {
+                        fact(numbers.averageScore.map { "\($0)" } ?? "–", "average score",
+                             numbers.bestDay.map { .bestScore($0.score) })
+                    }
+                }
+                .padding(.vertical, 16)
+                .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+                .padding(.top, 22)
+            }
+            .id(shown)
+            .transition(CircleMotion.dayPickSwap)
+            calendars.padding(.top, 24)
+            Text("Tap a day to open it.")
+                .font(.system(size: 13, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 20)
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 40)
+        .onChange(of: shown) { focus = nil }   // another month: its own days
+    }
+
+    /// The month's calendar between its neighbours, a page apart, moving with the finger (Journey's day pager: the one
+    /// coming in rides 1:1, the one going out at 90 %, each fading and shrinking a little with its distance — never overlapping).
+    private var calendars: some View {
+        let panes: [(k: Int, month: Date)] = [-1, 0, 1].compactMap { k in k == 0 ? (0, start) : neighbour(k).map { (k, $0) } }
+        return ZStack(alignment: .top) {
+            ForEach(panes, id: \.month) { pane in
+                let place = calendarPlace(pane.k)
+                JourneyCalendar(log: log, month: pane.month, today: today, grades: grades,
+                                highlight: pane.k == 0 ? focus : nil, compact: false) { open($0) }
+                    .animation(.easeInOut(duration: 0.3), value: grades)
+                    .animation(.easeInOut(duration: 0.3), value: focus)
+                    .modifier(DayPaneMotion(away: place.away))
+                    .offset(x: place.x)
+                    .allowsHitTesting(pane.k == 0)
+            }
+        }
+        .contentShape(Rectangle())
+        .gesture(swipe)
+    }
+
+    private func calendarPlace(_ k: Int) -> (x: CGFloat, away: CGFloat) {
+        let w = pageWidth
+        let x: CGFloat
+        if k == 0 {
+            x = dragOffset * 0.9
+        } else {
+            let incoming = (k > 0 && dragOffset < 0) || (k < 0 && dragOffset > 0)
+            x = CGFloat(k) * w + (incoming ? dragOffset : 0)
+        }
+        return (x, min(abs(x) / w, 1))
+    }
+
+    private var swipe: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { v in
+                if dragHorizontal == nil {
+                    // The left edge stays the system's back swipe.
+                    dragHorizontal = v.startLocation.x > 20 && abs(v.translation.width) > abs(v.translation.height)
+                }
+                guard dragHorizontal == true else { return }
+                let w = v.translation.width
+                dragOffset = neighbour(w < 0 ? 1 : -1) != nil ? w : w * 0.15   // nothing that way: a little give
+            }
+            .onEnded { v in
+                defer { dragHorizontal = nil }
+                guard dragHorizontal == true else { return }
+                let w = v.translation.width, projected = v.predictedEndTranslation.width
+                let by = w < 0 ? 1 : -1
+                guard neighbour(by) != nil, abs(w) > pageWidth / 4 || abs(projected) > pageWidth / 2 else {
+                    withAnimation(CircleMotion.daySlideIn) { dragOffset = 0 }
+                    return
+                }
+                turn(by)
+            }
+    }
+
+    /// The neighbour settles in on the spring, then becomes this page's month (its calendar stays — no reload).
+    private func turn(_ by: Int) {
+        guard let month = neighbour(by) else { return }
+        triggerSomeVibration(type: .light)
+        withAnimation(CircleMotion.daySlideIn) { dragOffset = by > 0 ? -pageWidth : pageWidth } completion: {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                start = month
+                dragOffset = 0
+            }
+        }
     }
 
     /// A number; a tap lights its days (`kind`; nil: nothing to light). While another is on, it steps back.
@@ -527,21 +623,21 @@ struct JourneyMonthPage: View {
     }
 
     /// A small raised disc with a plain chevron (owner: not the sage arrows); flat and faint when there's no month that way.
-    private func step(_ symbol: String, to month: Date?, label: String) -> some View {
-        Button {
-            guard let month else { return }
-            triggerSomeVibration(type: .light)
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { start = month; focus = nil }
+    /// It turns the month as the swipe does.
+    private func step(_ symbol: String, by: Int, label: String) -> some View {
+        let enabled = neighbour(by) != nil
+        return Button {
+            turn(by)
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(month != nil ? Color.primary.opacity(0.75) : Color.secondary.opacity(0.3))
+                .foregroundStyle(enabled ? Color.primary.opacity(0.75) : Color.secondary.opacity(0.3))
                 .frame(width: 34, height: 34)
-                .background { if month != nil { NeuRaised(shape: Circle(), radius: 2.5, offset: 1.2) } }
+                .background { if enabled { NeuRaised(shape: Circle(), radius: 2.5, offset: 1.2) } }
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(month == nil)
+        .disabled(!enabled)
         .accessibilityLabel(label)
     }
 
