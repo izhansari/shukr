@@ -50,7 +50,7 @@ is why this is hard. The points above still hold, but they have to be stretched,
 | Drawn in / written in | Motion that builds a thing instead of fading it in |
 | Calm | No bounce, no glow, nothing loud — the opposite of "tacky" |
 | Streak | Always "streak", never "run": "best streak 10 days", "4-day streak · keep it today" (Izhan, Zikr round) |
-| Week grid | A long stretch in small: the last 12 weeks, a week a column, today bottom right; green = all five in time, grey = all five, hollow = some missed, faint = none — no unbounded heat map (Your journey, owner 2026-10-16; picture 25) |
+| Week grid | A long stretch in small: the last 12 weeks, a week a column, today bottom right; by how much was prayed — faint none, grey 1–4, dark all five, green only for all five in time (the month calendar's idea) — no unbounded heat map (Journey v6, owner 2026-10-16: "make colors of the 12 week grid match your mockup"; picture 25) |
 | Scrolling sage chips | For a choice with no fixed count (a zikr's goals — could be 10): chips that scroll sideways. A capsule switch only for a fixed two or three (Sadaqah \| Community) |
 
 ## The 24 pictures

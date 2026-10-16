@@ -1464,7 +1464,7 @@ struct PrayerTimesView: View {
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoInsights") || ProcessInfo.processInfo.arguments.contains("-demoJourney") {
-                // Journey (`-demoJourneySeed` fills ~100 earlier days first; `-demoJourneyView grid`, `-demoJourneyDay N`).
+                // Journey (`-demoJourneySeed` fills ~100 earlier days first; `-demoJourneyMonth N`, `-demoJourneyDay N`).
                 #if DEBUG
                 JourneySeed.seedIfAsked(context)
                 #endif

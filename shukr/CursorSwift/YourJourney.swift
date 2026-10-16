@@ -2,10 +2,9 @@
 //  YourJourney.swift
 //  shukr
 //
-//  Journey phase 4 — Your journey (owner, 2026-10-16: "follow this mockup", board/mocks/journey-phase4; rules in
-//  board/mocks/journey/spec.md, Screens 5, Data rules, Milestones). Reached from Journey's "Day N · since …" line.
-//  Active days only: days before the first mark don't exist, rates count only the days shukr was used, a break of 7+
-//  days folds into one "Away" row, excused prayers are never missed.
+//  Journey's first screen (Journey v6, owner 2026-10-16) and its pieces: Your journey's card, the three rows, the months,
+//  the milestones and their celebration. Rules in board/mocks/journey/spec.md (Data rules, Milestones): active days only,
+//  rates only over days shukr was used, a break of 7+ days folds into one "Away" line, excused prayers are never missed.
 //
 
 import SwiftUI
