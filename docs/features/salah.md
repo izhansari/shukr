@@ -33,8 +33,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   filter; a delete reloads it and the back via `SessionDeletion.changed`), rows only for what the day has (`DayFacts`, read
   when the rows / photos / notes change); Notes unfolds inside the card and only then the card scrolls; flipping clears the
   pick (never the same photo twice); the back and open notes survive a push (`pageGone` keeps them; `leaveDay` clears). A
-  whole excused day: the card keeps its size with a pause symbol and a line (`ExcusedDayCard`) — all day for now (his call
-  pending). Pill words "Your day" / "Prayers" are placeholders. DEBUG `-demoDayFacts` (with `-demoMarkAll`).
+  whole excused day: the rows stay through the day, each dot pausing once its window has begun; once every window is over
+  the card keeps its size with a pause symbol and a line (`ExcusedDayCard`; owner: "when the full day ends, then we show the
+  card"). Pill words "Your day" / "Prayers" are placeholders. DEBUG `-demoDayFacts` (with `-demoMarkAll`).
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.

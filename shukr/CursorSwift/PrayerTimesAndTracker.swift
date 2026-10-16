@@ -2891,10 +2891,14 @@ struct TodaysPrayerListView: View {
         let outside = theme.listFooterOutside
         // The day page: all five marked and the page up (the tour's practice day isn't one).
         let dayPage = allDone && dayState.up && !TourRuntime.shared.active
-        // A whole excused day: every prayer excused, none marked — the card keeps its size, a symbol and a line in it.
+        // A whole excused day: every prayer excused, none marked, and every window over — only then the card keeps its
+        // size with a symbol and a line in it. Through the day the rows stay, each dot pausing once its window has begun
+        // (owner, 2026-10-15: "show the pause in them once we are in that prayers window. when the full day ends, then we
+        // show the card").
         let ranges = Excused.ranges
+        let now = Date()
         let excusedDay = loaded.count == 5 && done.isEmpty && Excused.isActive
-            && viewModel.todaysPrayers.allSatisfy { Excused.covers(start: $0.startTime, end: $0.endTime, in: ranges) }
+            && viewModel.todaysPrayers.allSatisfy { Excused.covers(start: $0.startTime, end: $0.endTime, in: ranges) && $0.endTime <= now }
         let _ = placesTick
         VStack(spacing: 0) {
             if !(outside && visible.isEmpty) {
