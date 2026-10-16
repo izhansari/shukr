@@ -45,20 +45,20 @@ struct JourneyDayPage: View {
         [-1, 0, 1].filter { $0 == 0 || ($0 < 0 ? canGoBack : canGoForward) }.map { ($0, day($0)) }
     }
 
-    /// Where a day sits for the finger's travel, and how far "away" it is (0 here … 1 gone). The day coming in rides
-    /// under the finger, growing and brightening; the day going out moves only a third as far, shrinking and fading in
-    /// place — the new one is pulled in over it (owner, 2026-10-16: "Knowing that I'm pulling something in, not just
-    /// pushing something out … as it goes off to the side, it goes off less and less with our finger. And as it comes in,
-    /// it comes in more and more"). At a full page of travel each is at its rest, so the hand-over never jumps (the one
-    /// gone is invisible when it snaps to its slot).
+    /// Where a day sits for the finger's travel, and how far "away" it is (0 here … 1 a page off). Side by side, never
+    /// overlapping (owner, 2026-10-16: "I don't want overlap … just subtly a little bit more"): the day coming in rides 1:1
+    /// under the finger; the day going out moves at 90 % of it, trailing a touch as it leaves. At a full page of travel each
+    /// is at its rest, so the hand-over never jumps.
     private func panePlace(_ k: Int) -> (x: CGFloat, away: CGFloat) {
         let w = pageWidth
-        let p = min(abs(dragOffset) / w, 1)
-        let dir: CGFloat = dragOffset < 0 ? -1 : 1
-        if k == 0 { return (dir * w * p / 3, p) }
-        let incoming = (k > 0 && dragOffset < 0) || (k < 0 && dragOffset > 0)
-        if incoming { return (CGFloat(k) * w * (1 - p), 1 - p) }
-        return (CGFloat(k) * w, 1)
+        let x: CGFloat
+        if k == 0 {
+            x = dragOffset * 0.9
+        } else {
+            let incoming = (k > 0 && dragOffset < 0) || (k < 0 && dragOffset > 0)
+            x = CGFloat(k) * w + (incoming ? dragOffset : 0)
+        }
+        return (x, min(abs(x) / w, 1))
     }
 
     /// The day the top bar names: the neighbour once it's more than half in.

@@ -211,14 +211,14 @@ struct DayCardRow: View {
 
 /// A day in Journey's pager by how far away it is (`away`: 0 on the page, 1 gone): it shrinks and fades as it goes, and
 /// grows and brightens as it comes in (owner, 2026-10-16: "as it moves off the page, it fades out and gets a little
-/// smaller. And when it comes in, the opposite"; "make the size change a little more intense").
+/// smaller. And when it comes in, the opposite"; "a little more intense" — subtly).
 struct DayPaneMotion: ViewModifier {
     let away: CGFloat
     func body(content: Content) -> some View {
         let d = min(max(away, 0), 1)
         content
-            .scaleEffect(1 - 0.18 * d)
-            .opacity(1 - d)
+            .scaleEffect(1 - 0.1 * d)    // a touch more than the first 6 % (owner: "subtly a little bit more, not dramatically")
+            .opacity(1 - 0.75 * d)
     }
 }
 
