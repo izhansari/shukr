@@ -783,6 +783,10 @@ struct PrayerPhotoThumb: View {
 /// a tap outside or a swipe down closes it.
 struct PrayerPhotoViewer: View {
     let key: String
+    /// A day's photos as a pile (the day page's Photos row — owner, 2026-10-16: "match the first picture for the pile"):
+    /// the others lie just under this one; a swipe sideways brings the next (or the one before) to the top, round and
+    /// round; any other drag closes, as for one photo. Empty: one photo.
+    var pile: [String] = []
     /// The small photo it was opened from: the card zooms out of it and back into it (one view, scaled and moved).
     var from: CGRect? = nil
     let onClose: () -> Void
@@ -790,16 +794,25 @@ struct PrayerPhotoViewer: View {
     /// The card's own place, measured once; until then it isn't drawn (it would flash full size).
     @State private var cardFrame: CGRect?
 
-    init(key: String, from: CGRect? = nil, initial: (back: UIImage?, front: UIImage?) = (nil, nil),
+    init(key: String, pile: [String] = [], from: CGRect? = nil, initial: (back: UIImage?, front: UIImage?) = (nil, nil),
          onClose: @escaping () -> Void) {
         self.key = key
+        self.pile = pile
+        _shownKey = State(initialValue: key)
         self.from = from
         self.onClose = onClose
         _images = State(initialValue: initial)
         _share = State(initialValue: PrayerShareOptions(key: key))
     }
 
-    private var dragDistance: CGFloat { hypot(drag.width, drag.height) }
+    /// The photo on top (one photo: always `key`).
+    @State private var shownKey: String
+    /// The pile's photos, read once (a swipe shows the next at once, no blank frame).
+    @State private var pileImages: [String: (back: UIImage?, front: UIImage?)] = [:]
+    /// A sideways drag on a pile moves the top photo only (the next one under it); any other drag carries the card to close.
+    private var pileSwipe: Bool { pile.count > 1 && abs(drag.width) > abs(drag.height) }
+    private var closeDrag: CGSize { pileSwipe ? .zero : drag }
+    private var dragDistance: CGFloat { hypot(closeDrag.width, closeDrag.height) }
     @State private var place: String?
     @State private var shown = false
     @State private var closing = false
@@ -812,7 +825,7 @@ struct PrayerPhotoViewer: View {
     @Environment(\.modelContext) private var context
 
     private func lookUpPlace() async {
-        place = showPlace ? await PrayerPhotos.place(for: key, in: context) : nil
+        place = showPlace ? await PrayerPhotos.place(for: shownKey, in: context) : nil
     }
 
     var body: some View {
@@ -828,12 +841,24 @@ struct PrayerPhotoViewer: View {
                     .onTapGesture { if sharing { setSharing(false) } else { close() } }
                 VStack(spacing: 22) {
                     // Sharing: the card shows what will be sent.
-                    PrayerPhotoFramed(back: images.back, front: images.front, key: key,
+                    ZStack {
+                    // A pile: the next photos lie just under the top one, a little turned (Moments' pile's way).
+                    ForEach(Array(underPile.enumerated().reversed()), id: \.element) { depth, under in
+                        let im = pileImages[under] ?? (nil, nil)
+                        PrayerPhotoFramed(back: im.back, front: im.front, key: under, tagOpacity: 0, width: width)
+                            .developingTag(under, width: width)
+                            .rotationEffect(.degrees(depth == 0 ? -3.5 : 4))
+                            .offset(x: depth == 0 ? -6 : 7, y: depth == 0 ? 6 : -4)
+                            .scaleEffect(0.97)
+                            .opacity(shown && !sharing ? 1 : 0)
+                            .allowsHitTesting(false)
+                    }
+                    PrayerPhotoFramed(back: images.back, front: images.front, key: shownKey,
                                       place: sharing ? (share.addPlace ? share.shownPlace : nil) : place,
                                       score: sharing && share.addScore ? share.score : nil,
                                       tagOpacity: shown ? 1 : 0, width: width)
-                        .developReveal(key, width: width)
-                        .developingTag(key, width: width)
+                        .developReveal(shownKey, width: width)
+                        .developingTag(shownKey, width: width)
                         .shadow(color: .black.opacity(shown ? 0.35 : 0), radius: 30, y: 14)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
                             guard cardFrame == nil, rect.width > 1 else { return }
@@ -848,6 +873,10 @@ struct PrayerPhotoViewer: View {
                             triggerSomeVibration(type: .light)
                             withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
                         }
+                        // A pile: the top photo follows a sideways finger, turning a little.
+                        .offset(x: pileSwipe ? drag.width : 0)
+                        .rotationEffect(.degrees(pileSwipe ? Double(drag.width / 28) : 0))
+                    }
                     HStack(spacing: 18) {
                         Button { setSharing(!sharing) } label: {
                             // One symbol (swapping to the filled one crossfaded two glyphs — the ghost, owner); on = a
@@ -857,8 +886,8 @@ struct PrayerPhotoViewer: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Share")
                         // Nothing to share until it has developed.
-                        .disabled(!PhotoDevelop.isDeveloped(key: key))
-                        .opacity(PhotoDevelop.isDeveloped(key: key) ? 1 : 0.35)
+                        .disabled(!PhotoDevelop.isDeveloped(key: shownKey))
+                        .opacity(PhotoDevelop.isDeveloped(key: shownKey) ? 1 : 0.35)
                         Button(action: close) { circleIcon("xmark") }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Close")
@@ -867,7 +896,7 @@ struct PrayerPhotoViewer: View {
                 }
                 // Room for the share options under it.
                 .offset(y: sharing ? -110 : 0)
-                .offset(drag)
+                .offset(closeDrag)
                 .scaleEffect(1 - min(dragDistance / 1400, 0.22))
                 // Opened from a small photo: the card zooms (above); else the old spring-in.
                 .scaleEffect(from == nil && !shown ? 0.86 : 1)
@@ -876,6 +905,13 @@ struct PrayerPhotoViewer: View {
                     .onChanged { value in if !sharing { drag = value.translation } }
                     .onEnded { value in
                         guard !sharing else { return }
+                        // A pile, sideways: the next photo (left) or the one before (right), else back in place.
+                        if pileSwipe {
+                            let w = value.translation.width, flung = value.predictedEndTranslation.width
+                            if abs(w) > 90 || abs(flung) > 260 { turnPile(w < 0 ? 1 : -1, width: width) }
+                            else { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = .zero } }
+                            return
+                        }
                         let far = hypot(value.translation.width, value.translation.height)
                         let flung = hypot(value.predictedEndTranslation.width, value.predictedEndTranslation.height)
                         if far > 120 || flung > 280 { close() }
@@ -909,7 +945,11 @@ struct PrayerPhotoViewer: View {
             PrayerPhotoViewing.shared.closed()
         }
         .task { if images.back == nil { images = await PrayerPhotos.load(key) } }
-        .task(id: showPlace) { await lookUpPlace() }
+        .task {
+            // The pile's photos, read once (the next is on screen the moment it's on top).
+            for k in pile where pileImages[k] == nil { pileImages[k] = await PrayerPhotos.load(k) }
+        }
+        .task(id: "\(showPlace)|\(shownKey)") { await lookUpPlace() }
         .task(id: "\(sharing)|\(share.signature)|\(images.back?.hash ?? 0)") { if sharing { share.render(images) } }
     }
 
@@ -937,6 +977,30 @@ struct PrayerPhotoViewer: View {
         guard from != nil else { return }
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { shown = true }
+        }
+    }
+
+    /// The pile's photos under the top one, next first (two at most).
+    private var underPile: [String] {
+        guard pile.count > 1, let i = pile.firstIndex(of: shownKey) else { return [] }
+        return (1..<min(pile.count, 3)).map { pile[(i + $0) % pile.count] }
+    }
+
+    /// The top photo off the side the finger went, then the next (or the one before) is the top — it was the one under it.
+    private func turnPile(_ by: Int, width: CGFloat) {
+        guard let i = pile.firstIndex(of: shownKey) else { return }
+        let next = pile[(i + by + pile.count) % pile.count]
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeOut(duration: 0.18)) { drag = CGSize(width: (by > 0 ? -1 : 1) * width * 1.4, height: 0) } completion: {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                shownKey = next
+                images = pileImages[next] ?? (nil, nil)
+                share = PrayerShareOptions(key: next)
+                drag = .zero
+            }
+            if images.back == nil { Task { images = await PrayerPhotos.load(next) } }
         }
     }
 

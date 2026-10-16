@@ -428,71 +428,13 @@ struct DayNotesInfo: View {
 
 // MARK: - The day's pile
 
-/// What the Photos row opens: the day's photos and where its little pile sits.
+/// What the Photos row opens: the day's photos as a pile in the photo viewer (PrayerPhotoViewer's `pile` — the same view
+/// as a photo opened from the ring's fifth: owner, 2026-10-16, "I want it to match the first picture for the pile"),
+/// zooming out of the row's little pile.
 struct DayPileRoute: Identifiable {
     let keys: [String]
     let from: CGRect
     var id: String { keys.joined() }
-}
-
-/// The day's photos as Moments' deck — only that day's (no neighbouring days, no strip, no Moments under it), each card
-/// with its badges — over the page's frost, zooming out of the row's little pile and back into it, as a photo opened from
-/// the ring's fifth does (owner, 2026-10-16: "just open that days pile … the same way the picture looks when opening a
-/// moment from inside the ring … contained to the day … shukr badge top right and prayer name badge bottom left";
-/// "doesnt open on new page").
-struct DayPileViewer: View {
-    let route: DayPileRoute
-    let onClose: () -> Void
-    @State private var shown = false
-    @State private var closing = false
-    @State private var topFrame: CGRect?
-
-    private var photos: [MemoryPhoto] { route.keys.map { MemoryPhoto(key: $0) } }
-
-    /// Hidden, the deck sits on the row's little pile (its size and place); shown, where it belongs.
-    private var zoom: (scale: CGFloat, dx: CGFloat, dy: CGFloat) {
-        guard !shown, let top = topFrame, top.width > 0, route.from.width > 0 else { return (1, 0, 0) }
-        return (route.from.width / top.width, route.from.midX - top.midX, route.from.midY - top.midY)
-    }
-
-    var body: some View {
-        ZStack {
-            // The page behind, blurred and dimmed (the photo viewer's); a tap there closes.
-            Rectangle().fill(.ultraThinMaterial)
-                .overlay(Color.black.opacity(0.25))
-                .ignoresSafeArea()
-                .opacity(shown ? 1 : 0)
-                .onTapGesture { close() }
-            NavigationStack {
-                if let first = photos.first {
-                    MemoriesDeck(photos: photos, start: first, shown: shown, hideTop: false, folded: closing,
-                                 neighboursShown: false, framed: true,
-                                 onTopFrame: { f in
-                                     guard topFrame == nil, f.width > 1 else { return }
-                                     topFrame = f
-                                     DispatchQueue.main.async {
-                                         withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) { shown = true }
-                                     }
-                                 },
-                                 onClose: { _, _, _, _ in close() })
-                        .scaleEffect(zoom.scale)
-                        .offset(x: zoom.dx, y: zoom.dy)
-                        .opacity(topFrame == nil ? 0 : 1)   // not drawn till measured (it would flash full size)
-                        .containerBackground(.clear, for: .navigation)
-                }
-            }
-        }
-        .onAppear { PrayerPhotoViewing.shared.opened() }
-        .onDisappear { PrayerPhotoViewing.shared.closed() }
-    }
-
-    /// Back into the row's pile, then the cover goes.
-    private func close() {
-        guard !closing else { return }
-        closing = true
-        triggerSomeVibration(type: .light)
-        withAnimation(.spring(response: 0.36, dampingFraction: 0.92)) { shown = false } completion: { onClose() }
-    }
 }
 
 // MARK: - Under the ring

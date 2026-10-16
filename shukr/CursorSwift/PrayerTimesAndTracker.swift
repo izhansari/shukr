@@ -2782,7 +2782,7 @@ struct TodaysPrayerListView: View {
     @State private var showDayMap = false
     /// The back's Notes: the frosted ⓘ card (owner).
     @State private var notesShown = false
-    /// The back's Photos: the day's deck over the page (DayPileViewer).
+    /// The back's Photos: the day's photos as a pile in the photo viewer, over the page.
     @State private var dayPile: DayPileRoute?
 
     private func reloadFacts(_ dayPage: Bool) {
@@ -3031,7 +3031,7 @@ struct TodaysPrayerListView: View {
             JourneyDayMapSheet(title: "Today", pins: facts.pins).stageCover("dayMap")
         }
         .fullScreenCover(item: $dayPile) { route in
-            DayPileViewer(route: route) {
+            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from) {
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
                 withTransaction(quiet) { dayPile = nil }

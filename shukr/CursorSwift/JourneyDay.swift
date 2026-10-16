@@ -23,7 +23,7 @@ struct JourneyDayPage: View {
     @State private var notes: [DayFacts.Note]?
     @State private var zikrDay: Date?
     @State private var showMakeUp = false
-    /// The back's Photos: the day's deck over the page (DayPileViewer).
+    /// The back's Photos: the day's photos as a pile in the photo viewer, over the page.
     @State private var dayPile: DayPileRoute?
     /// The finger's travel sideways (0 at rest); the days sit a page width apart and move with it.
     @State private var dragOffset: CGFloat = 0
@@ -124,7 +124,7 @@ struct JourneyDayPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .principal) { heading } }
         .fullScreenCover(item: $dayPile) { route in
-            DayPileViewer(route: route) {
+            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from) {
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
                 withTransaction(quiet) { dayPile = nil }
