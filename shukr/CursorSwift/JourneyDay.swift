@@ -19,7 +19,8 @@ struct JourneyDayPage: View {
     @State private var sheetRow: PrayerModel?
     @State private var noteRow: PrayerModel?
     @State private var placeSheet: PrayerModel?
-    @State private var mapPins: [JourneyDayPin]?
+    /// The back's map: the app's prayer map on that day's prayers only.
+    @State private var mapDay: Date?
     @State private var notes: [DayFacts.Note]?
     @State private var zikrDay: Date?
     @State private var showMakeUp = false
@@ -137,8 +138,8 @@ struct JourneyDayPage: View {
                 .environmentObject(viewModel)
                 .environment(\.circleTheme, theme)
         }
-        .sheet(isPresented: Binding(get: { mapPins != nil }, set: { if !$0 { mapPins = nil } })) {
-            JourneyDayMapSheet(title: date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()), pins: mapPins ?? [])
+        .fullScreenCover(isPresented: Binding(get: { mapDay != nil }, set: { if !$0 { mapDay = nil } })) {
+            LocationMapContentView(dayOnly: mapDay ?? date)
         }
         .sheet(item: $placeSheet) { row in
             if let spot = DayFacts.spot(row) {
@@ -167,7 +168,7 @@ struct JourneyDayPage: View {
             openSheet: { sheetRow = $0 },
             note: { noteRow = $0 },
             place: { placeSheet = $0 },
-            map: { mapPins = $0 },
+            map: { mapDay = $0 },
             notes: { notes = $0 },
             zikr: { zikrDay = $0 },
             pile: { route in
@@ -283,7 +284,7 @@ struct JourneyDayActions {
     let openSheet: (PrayerModel) -> Void
     let note: (PrayerModel) -> Void
     let place: (PrayerModel) -> Void
-    let map: ([JourneyDayPin]) -> Void
+    let map: (Date) -> Void
     let notes: ([DayFacts.Note]) -> Void
     let zikr: (Date) -> Void
     let pile: (DayPileRoute) -> Void
@@ -436,7 +437,7 @@ struct JourneyDayPane: View {
             DayBackCard(facts: facts,
                         onNotes: { actions.notes(facts.notes) },
                         onPhotos: { from in actions.pile(DayPileRoute(keys: facts.photoKeys, from: from)) },
-                        onMap: { actions.map(facts.pins) },
+                        onMap: { actions.map(date) },
                         onZikr: { actions.zikr(date) })
                 .modifier(SalahLookCard(raised: true))
         }
@@ -506,77 +507,6 @@ struct JourneyDayPin: Identifiable {
     let spot: CLLocationCoordinate2D
     let score: Double?
     let atMasjid: Bool
-}
-
-/// The day's marked prayers as pins in their grade colours, fitted to them (a little room round a lone pin).
-struct JourneyDayMap: View {
-    let pins: [JourneyDayPin]
-    let interactive: Bool
-    @AppStorage(MapModes.satelliteKey) private var satellite = false
-    @State private var camera: MapCameraPosition = .automatic
-
-    var body: some View {
-        Map(position: $camera, interactionModes: interactive ? .all : []) {
-            ForEach(pins) { pin in
-                Marker(pin.name, systemImage: pin.atMasjid ? "building.columns.fill" : "hands.and.sparkles.fill", coordinate: pin.spot)
-                    .tint(PrayerScoring.color(for: pin.score))
-            }
-        }
-        .mapStyle(interactive && satellite ? .hybrid(elevation: .realistic) : .standard(pointsOfInterest: .excludingAll))
-        .onAppear { camera = Self.fit(pins) }
-        .overlay(alignment: .topTrailing) {
-            if interactive {
-                VStack(spacing: 0) {
-                    Button { satellite.toggle() } label: {
-                        Image(systemName: MapModes.globeSymbol(longitude: pins.first?.spot.longitude)).mapControlIcon()
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(satellite ? "Standard map" : "Satellite map")
-                    Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.4)) { camera = Self.fit(pins) }
-                    } label: {
-                        Image(systemName: "mappin.and.ellipse").mapControlIcon()
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Back to the day's prayers")
-                }
-                .mapGlass(Capsule())
-                .padding(10)
-            }
-        }
-    }
-
-    static func fit(_ pins: [JourneyDayPin]) -> MapCameraPosition {
-        guard !pins.isEmpty else { return .automatic }
-        let lats = pins.map(\.spot.latitude), lons = pins.map(\.spot.longitude)
-        let centre = CLLocationCoordinate2D(latitude: (lats.min()! + lats.max()!) / 2, longitude: (lons.min()! + lons.max()!) / 2)
-        let span = MKCoordinateSpan(latitudeDelta: max((lats.max()! - lats.min()!) * 1.6, 0.006),
-                                    longitudeDelta: max((lons.max()! - lons.min()!) * 1.6, 0.006))
-        return .region(MKCoordinateRegion(center: centre, span: span))
-    }
-}
-
-/// The day's map, full and movable.
-struct JourneyDayMapSheet: View {
-    let title: String
-    let pins: [JourneyDayPin]
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            JourneyDayMap(pins: pins, interactive: true)
-                .ignoresSafeArea(edges: .bottom)
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button { dismiss() } label: { Image(systemName: "checkmark") }.accessibilityLabel("Done")
-                    }
-                }
-        }
-        .presentationDetents([.large])
-    }
 }
 
 /// A day's photos as a small tilted pile (Journey's Moments tile, for one day); still developing ones stay veiled.

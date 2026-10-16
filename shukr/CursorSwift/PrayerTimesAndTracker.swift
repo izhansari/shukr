@@ -3027,8 +3027,9 @@ struct TodaysPrayerListView: View {
         // The day page over (a row unmarked, the day turned): nothing picked, the front up. On `allDone`, not `dayPage`:
         // a push drops `up` too, and the back must still be there on the way back (Bradley's review).
         .onChange(of: allDone) { _, done in if !done { dayState.leaveDay() } }
-        .sheet(isPresented: $showDayMap) {
-            JourneyDayMapSheet(title: "Today", pins: facts.pins).stageCover("dayMap")
+        // The back's map: the app's prayer map on today's prayers only (owner, 2026-10-16).
+        .fullScreenCover(isPresented: $showDayMap) {
+            LocationMapContentView(dayOnly: PrayerDay.start()).stageCover("dayMap")
         }
         .fullScreenCover(item: $dayPile) { route in
             PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from) {

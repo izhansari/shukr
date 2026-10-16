@@ -247,6 +247,8 @@ struct PrayerSpotsHome: View {
     @ObservedObject var viewModel: LocationViewModel
     let collapsed: Bool
     let custom: () -> Void
+    /// The day page's map: no title, no filter — the day's own heading over its prayers (owner, 2026-10-16).
+    var dayOnly: Date? = nil
 
     private var subtitle: String {
         let n = viewModel.visiblePrayerCount
@@ -307,9 +309,19 @@ struct PrayerSpotsHome: View {
         .buttonStyle(.plain)
     }
 
-    private var header: some View {
-        MapSheetHeader(title: "Prayer spots", subtitle: subtitle) {
-            PrayerFilterMenu(viewModel: viewModel, custom: custom)
+    @ViewBuilder private var header: some View {
+        if dayOnly != nil {
+            // Collapsed, the day's line stands in for the header; open, the day section's own label is the heading.
+            if collapsed {
+                Text(viewModel.prayers.count == 1 ? "1 prayer on the map" : "\(viewModel.prayers.count) prayers on the map")
+                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            MapSheetHeader(title: "Prayer spots", subtitle: subtitle) {
+                PrayerFilterMenu(viewModel: viewModel, custom: custom)
+            }
         }
     }
 

@@ -130,6 +130,10 @@ final class LocationViewModel: ObservableObject {
     var lastMosqueSearch: MKCoordinateRegion?
     /// Zoom to fit the results once they arrive (a fresh search, not a pan-and-refresh).
     var fitMosquesWhenFound = false
+    /// The day page's map (one day's prayers): fit them once their pins are on the map.
+    var fitPrayersWhenSet = false
+    /// The day page's map: no qibla line on it (owner, 2026-10-16).
+    @Published var hidesQiblaLine = false
 
     /// The mosques' list (the pill): back to the list, no mosque open.
     func openMosqueList() {
@@ -588,6 +592,8 @@ struct MapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        // The day page's map: no qibla line, even one drawn before it said so (the first fix lands before onAppear).
+        if viewModel.hidesQiblaLine { context.coordinator.dropQiblaLine(on: mapView) }
         let style: UIUserInterfaceStyle = dark ? .dark : .light
         if mapView.overrideUserInterfaceStyle != style { mapView.overrideUserInterfaceStyle = style }
         // Only when the mode changed: a new configuration reloads the map's tiles.
@@ -646,6 +652,7 @@ struct MapView: UIViewRepresentable {
         }
 
         private func setPrayers(_ prayers: [PrayerModel], on mapView: MKMapView) {
+            defer { fitDayIfAsked(on: mapView) }
             mapView.removeAnnotations(prayerAnnotations)
             prayerAnnotations = prayers.compactMap { prayer in
                 guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return nil }
@@ -681,6 +688,28 @@ struct MapView: UIViewRepresentable {
             for a in mapView.selectedAnnotations { mapView.deselectAnnotation(a, animated: true) }
         }
 
+        /// The day page's map: its prayers' pins in view, above the sheet, once (a lone pin a few streets around).
+        private func fitDayIfAsked(on mapView: MKMapView) {
+            guard parent.viewModel.fitPrayersWhenSet, !prayerAnnotations.isEmpty else { return }
+            parent.viewModel.fitPrayersWhenSet = false
+            var rect = MKMapRect.null
+            for a in prayerAnnotations { rect = rect.union(MKMapRect(origin: MKMapPoint(a.coordinate), size: MKMapSize(width: 0, height: 0))) }
+            let minSide = MKMapPointsPerMeterAtLatitude(prayerAnnotations[0].coordinate.latitude) * 800
+            if rect.size.width < minSide || rect.size.height < minSide {
+                rect = rect.insetBy(dx: -max(minSide - rect.size.width, 0) / 2, dy: -max(minSide - rect.size.height, 0) / 2)
+            }
+            DispatchQueue.main.async {
+                mapView.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 140, left: 60, bottom: mapView.bounds.height * 0.5, right: 60),
+                                          animated: false)
+            }
+        }
+
+        func dropQiblaLine(on mapView: MKMapView) {
+            guard let line = qiblaLine else { return }
+            mapView.removeOverlay(line)
+            qiblaLine = nil
+        }
+
         /// The user moved: redraw the great-circle line to the Kaaba and update the bearing.
         func userMoved(to coordinate: CLLocationCoordinate2D, on mapView: MKMapView) {
             let here = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
@@ -690,7 +719,7 @@ struct MapView: UIViewRepresentable {
             if let origin = lineOrigin, origin.distance(from: here) < 2 { return }
             lineOrigin = here
             let line = MKGeodesicPolyline(coordinates: [coordinate, LocationViewModel.meccaCoordinate], count: 2)
-            mapView.addOverlay(line, level: .aboveRoads)
+            if !parent.viewModel.hidesQiblaLine { mapView.addOverlay(line, level: .aboveRoads) }
             if let old = qiblaLine { mapView.removeOverlay(old) }
             qiblaLine = line
             let bearing = LocationViewModel.bearingToMecca(from: coordinate)
@@ -909,6 +938,19 @@ struct MapView: UIViewRepresentable {
 // MARK: - ContentView
 
 struct LocationMapContentView: View {
+    /// The day page's map (owner, 2026-10-16: "a smaller version of the prayer explore map filtered only to show todays
+    /// prayers with no option to show any other days prayers"): this prayer day's prayers only, the prayers layer from the
+    /// start; no title pill, no Explore, no ?, no qibla ring or line, no filter or title in the sheet. The sheet lists the
+    /// day's prayers (a row → its pin), a pin → its prayer in the sheet — the map's own. ⌄, the globe and locate stay.
+    var dayOnly: Date? = nil
+    init(dayOnly: Date? = nil) { self.dayOnly = dayOnly }
+    private var dayMode: Bool { dayOnly != nil }
+    /// The prayers the map shows: all of them, or the day page's day's.
+    private var shownPrayers: [PrayerModel] {
+        guard let dayOnly else { return Array(prayers) }
+        let key = PrayerNotificationID.dayKey(dayOnly)
+        return prayers.filter { $0.dayKey == key && $0.isCompleted }
+    }
     /// The qibla buzz's last beat (see the aligned task): kept across restarts of that task.
     @State private var lastAlignBuzz = Date.distantPast
     @StateObject private var viewModel = LocationViewModel()
@@ -953,7 +995,8 @@ struct LocationMapContentView: View {
     private func showGuideIfFirstTime(_ topic: MapGuideTopic, after delay: Double) {
         let defaults = UserDefaults.standard
         // Not over the app tour's map step (owner: its own guide would pop up under the tour's panel); it shows next time.
-        guard !defaults.bool(forKey: topic.seenKey), !TourRuntime.shared.active else { return }
+        // Not on the day page's map either.
+        guard !defaults.bool(forKey: topic.seenKey), !TourRuntime.shared.active, !dayMode else { return }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demo") })
             && !ProcessInfo.processInfo.arguments.contains("-demoQiblaGuide") { return }
@@ -1098,7 +1141,7 @@ struct LocationMapContentView: View {
                         .transition(.layerPage)
                 } else {
                     PrayerSpotsHome(viewModel: viewModel, collapsed: sheetSmall,
-                                    custom: { showFilterSheet = true })
+                                    custom: { showFilterSheet = true }, dayOnly: dayOnly)
                         .transition(.layerPage)
                 }
             }
@@ -1119,13 +1162,20 @@ struct LocationMapContentView: View {
         ZStack {
             MapView(viewModel: viewModel, envLocation: envLocation, anchor: anchor, dark: appDark)
                 .ignoresSafeArea()
-                .onAppear { viewModel.prayers = prayers }
-                .onChange(of: prayers.count) { _, _ in viewModel.prayers = prayers }
+                .onAppear {
+                    if dayMode {
+                        viewModel.hidesQiblaLine = true
+                        viewModel.fitPrayersWhenSet = true
+                    }
+                    viewModel.prayers = shownPrayers
+                    if dayMode { setMode(prayers: true, mosques: false) }
+                }
+                .onChange(of: prayers.count) { _, _ in viewModel.prayers = shownPrayers }
 
             // Qibla ring, sitting on the user's dot: the green line is the direction, the
             // ring's arrow repeats it and the chevron follows the compass.
             AnchoredQiblaRing(anchor: anchor, degrees: viewModel.qiblaBearing, isAtMecca: viewModel.isAtMecca)
-                .opacity(inQiblaMode ? 1 : 0)
+                .opacity(inQiblaMode && !dayMode ? 1 : 0)
                 .animation(.easeInOut(duration: 0.2), value: inQiblaMode)
 
             // Facing Mecca: the whole screen edge glows green.
@@ -1172,7 +1222,8 @@ struct LocationMapContentView: View {
                         Spacer()
                     }
 
-                    // Status pill: compass hint in qibla mode, count in prayers mode.
+                    // Status pill: compass hint in qibla mode, count in prayers mode (not on the day page's map).
+                    if !dayMode {
                     HStack {
                         Spacer()
                         // Prayer spots: the count, and the filter under it when one is on;
@@ -1222,6 +1273,7 @@ struct LocationMapContentView: View {
                             .transition(.move(edge: .top).combined(with: .opacity))
                         }
                     }
+                    }
 
                     HStack {
                         Spacer()
@@ -1257,8 +1309,9 @@ struct LocationMapContentView: View {
                             }
                             .mapGlass(Capsule())
                             // Explore under the capsule (swapped with the ? — owner, map-one-sheet), so
-                            // it stays reachable over a layer's sheet; it opens leftwards in place.
-                            exploreDock
+                            // it stays reachable over a layer's sheet; it opens leftwards in place. Not on the day
+                            // page's map: one day's prayers, nothing else to explore.
+                            if !dayMode { exploreDock }
                         }
                     }
                 }
@@ -1296,8 +1349,9 @@ struct LocationMapContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
             }
-            // Out of the way while the Explore column is open: at the sheet's middle height the two met.
-            .opacity(viewModel.movingPrayer == nil && !exploreOpen ? 1 : 0)
+            // Out of the way while the Explore column is open: at the sheet's middle height the two met. Not on the day
+            // page's map (no ?, no verse).
+            .opacity(viewModel.movingPrayer == nil && !exploreOpen && !dayMode ? 1 : 0)
             .allowsHitTesting(viewModel.movingPrayer == nil && !exploreOpen)
             .animation(ExploreDock.motion, value: exploreOpen)
             .animation(.easeInOut(duration: 0.25), value: showsPrayerVerse)
