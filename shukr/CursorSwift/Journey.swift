@@ -208,6 +208,7 @@ struct JourneyPage: View {
     @State private var showMoments = false
     @State private var showMakeUp = false
     @State private var showScores = false
+    @State private var showJourney = false
     @State private var highlight: JourneyHighlight?
     @State private var pick: JourneyPick?
 
@@ -227,6 +228,7 @@ struct JourneyPage: View {
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: month) }
         .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
+        .navigationDestination(isPresented: $showJourney) { YourJourneyPage(log: log) }
         .onAppear {
             onScreen = true
             if dirty { reload() }
@@ -340,13 +342,18 @@ struct JourneyPage: View {
             Group {
                 if let first = log.firstDay {
                     let n = (Calendar.current.dateComponents([.day], from: first, to: today).day ?? 0) + 1
-                    Text("Day \(n) · since \(first.formatted(.dateTime.month(.abbreviated).day().year()))")
+                    // The door to Your journey (spec, Screens 1: "Day N · since <first day> ›"); sage = tap.
+                    Button { showJourney = true } label: {
+                        Text("Day \(n) · since \(first.formatted(.dateTime.month(.abbreviated).day().year())) ›")
+                            .foregroundStyle(Color.sage)
+                    }
+                    .buttonStyle(.plain)
                 } else {
                     Text("Every prayer you mark shows up here.")
+                        .foregroundStyle(.secondary)
                 }
             }
             .font(.system(size: 15, weight: .light, design: .rounded))
-            .foregroundStyle(.secondary)
         }
     }
 
