@@ -345,20 +345,7 @@ struct MemoriesFooterLink: View {
     var body: some View {
         let _ = photos.value
         let _ = reveals.value
-        if day.up && day.backHasContent {
-            // The day page merge (owner, 2026-10-15): the pill flips the list card to the day's rows; "N photos to
-            // develop" moved into the back's Photos row.
-            DayFlipPill(flipped: day.flipped) {
-                withAnimation(CircleMotion.dayFlip) { day.flipped.toggle() }
-            }
-            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { f in
-                // Journey's pill sits where this one does — read only once the day page is up and settled (closed, the
-                // footer sits off the bottom of the screen).
-                if day.lifted, f.maxY <= UIScreen.main.bounds.height, day.salahPill != f { day.salahPill = f }
-            }
-            .padding(.bottom, 12)
-            .transition(.opacity)
-        } else if day.up {
+        if day.up {
             let toDevelop = photos.hasPhotos ? waiting : 0
             Button {
                 triggerSomeVibration(type: .light)
@@ -386,6 +373,12 @@ struct MemoriesFooterLink: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            // The day card is Journey's alone now (owner, 2026-10-16: "the salah stays simple"); Journey's flip pill
+            // still sits where this link does — read once the day page is up and settled (closed, the footer is off
+            // the bottom of the screen).
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { f in
+                if day.lifted, f.maxY <= UIScreen.main.bounds.height, day.salahPill != f { day.salahPill = f }
+            }
             .padding(.bottom, 12)   // the same air above the bar as "N done"
             .transition(.opacity)
             .animation(.easeOut(duration: CircleMotion.quick), value: toDevelop)

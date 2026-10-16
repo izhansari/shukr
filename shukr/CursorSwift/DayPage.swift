@@ -222,49 +222,48 @@ struct DayPaneMotion: ViewModifier {
     }
 }
 
-// MARK: - The flip
+// MARK: - The two faces
 
-/// The list card turning over on its upright axis (owner: "the prayer list card flip around so we see the back of the
-/// card"). `angle` 0 = the front, 180 = the back; animate it with CircleMotion.dayFlip. The back is sized to the front
-/// (measured), so the card never changes height; whichever face is away takes no taps.
-struct DayFlipCard<Front: View, Back: View>: View, Animatable {
-    var angle: Double
+/// Journey's day card: the prayers, or the day's rows behind the pill. A plain fade, out then in (owner, 2026-10-16: "get
+/// rid of the flipping on the cards … just make it be a simple fade"; it turned over on its upright axis before).
+/// `progress` 0 = the prayers, 1 = the day; animate it with CircleMotion.dayFlip: the front fades out over the first
+/// half, the day's rows in over the second, never both at once. The back is sized to the front (measured), so the card
+/// never changes height; the face not shown takes no taps.
+struct DayFadeCard<Front: View, Back: View>: View, Animatable {
+    var progress: Double
     private let front: Front
     private let back: Back
     @State private var frontHeight: CGFloat = 0
     var animatableData: Double {
-        get { angle }
-        set { angle = newValue }
+        get { progress }
+        set { progress = newValue }
     }
 
-    init(angle: Double, @ViewBuilder front: () -> Front, @ViewBuilder back: () -> Back) {
-        self.angle = angle
+    init(progress: Double, @ViewBuilder front: () -> Front, @ViewBuilder back: () -> Back) {
+        self.progress = progress
         self.front = front()
         self.back = back()
     }
 
     var body: some View {
-        let showsBack = angle >= 90
+        let showsBack = progress >= 0.5
         ZStack {
             front
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if abs(frontHeight - $0) > 0.5 { frontHeight = $0 } }
-                .opacity(showsBack ? 0 : 1)
+                .opacity(max(0, 1 - progress * 2))
                 .allowsHitTesting(!showsBack)
                 .accessibilityHidden(showsBack)
-            // The back is built only once the card starts to turn: unseen, it cost every visit its rows and its photo pile
-            // (Frank's hitch test, c240064: the warm rounds grew with each day page opened).
-            if angle > 0 {
+            // The back is built only once the card starts to change: unseen, it cost every visit its rows and its photo
+            // pile (Frank's hitch test, c240064).
+            if progress > 0 {
                 back
                     .frame(maxWidth: .infinity)
                     .frame(height: frontHeight > 0 ? frontHeight : nil)
-                    .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))   // drawn mirrored, so it reads right once turned
-                    .opacity(showsBack ? 1 : 0)
+                    .opacity(max(0, progress * 2 - 1))
                     .allowsHitTesting(showsBack)
                     .accessibilityHidden(!showsBack)
             }
         }
-        // No 3D layer at rest: the list is always inside this card on the Salah tab, flipped or not.
-        .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: angle == 0 ? 0 : 0.5)
     }
 }
 

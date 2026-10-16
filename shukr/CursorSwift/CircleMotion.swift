@@ -79,8 +79,8 @@ enum CircleMotion {
     static let dayDiscSink = dayDiscRise
     /// Wider than the ring (200), so the fifths sit inside its edge.
     static let dayDiscDiameter: CGFloat = 222
-    /// The list card turning over to its back (DayFlipCard; the day page merge, owner 2026-10-15): half a second on its
-    /// upright axis, the ring and the pill staying put.
+    /// Journey's day card changing face (DayFadeCard): the prayers out, then the day's rows in (owner, 2026-10-16: "just
+    /// make it be a simple fade"; it turned over before), half a second in all.
     static let dayFlip = Animation.easeInOut(duration: 0.5)
     /// A prayer picked on the day page (owner, 2026-10-16: "doesn't really feel clean and calm"): the raised band glides to
     /// its row; the ring's centre goes out, then the new one comes in (never a crossfade).

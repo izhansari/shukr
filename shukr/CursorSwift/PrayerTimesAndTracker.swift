@@ -1631,9 +1631,6 @@ struct PrayerTimesView: View {
         // swipe-back-pages A).
         .navigationDestination(isPresented: Binding(get: { MemoriesPresenter.shared.open },
                                                     set: { MemoriesPresenter.shared.open = $0 })) { MemoriesPage() }
-        // The day page's Zikr row: History locked to today.
-        .navigationDestination(item: Binding(get: { DayPageState.shared.zikrDay },
-                                             set: { DayPageState.shared.zikrDay = $0 })) { ZikrAreaPage(start: .dayOnly($0)) }
         // Journey (Journey.swift), from ☰ or the day page's "Journey ›".
         .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.open },
                                                     set: { JourneyPresenter.shared.open = $0 })) { JourneyPage() }
@@ -2774,31 +2771,9 @@ struct TodaysPrayerListView: View {
     private var motion: RowMotion { RowMotion.resolved(motionRaw) }
     /// The day page's picked-row band glides between rows in this space (DayPickBand).
     @Namespace private var pickSpace
-    /// The day page (the merge, owner 2026-10-15): the card's back — the day's notes, photos, map and zikr (DayFacts),
-    /// read when the page comes up and when the rows or photos change; the flip, the pick and the back's doors live in
-    /// DayPageState (the pill is in the chrome, the ring in MainCircleView).
-    @Environment(\.modelContext) private var context
+    /// The day page's pick (DayPageState; the ring is MainCircleView's). No day card here: that's Journey's (owner,
+    /// 2026-10-16: "the salah stays simple").
     private var dayState = DayPageState.shared
-    @State private var facts = DayFacts()
-    @State private var dayPageShown = false
-    @State private var placesTick = 0   // bumps as place names arrive
-    @State private var showDayMap = false
-    /// The back's Notes: the frosted ⓘ card (owner).
-    @State private var notesShown = false
-    /// The back's Photos: the day's photos as a pile in the photo viewer, over the page.
-    @State private var dayPile: DayPileRoute?
-
-    private func reloadFacts(_ dayPage: Bool) {
-        dayPageShown = dayPage
-        guard dayPage else {
-            facts = DayFacts()
-            dayState.backHasContent = false
-            return
-        }
-        facts = DayFacts.load(rows: viewModel.todaysPrayers, day: PrayerDay.start(), context: context) { placesTick += 1 }
-        dayState.backHasContent = !facts.isEmpty
-    }
-
     /// Done prayers fold out of the list so it only shows what's left; all five come back once
     /// the day is complete. A prayer just marked stays while the circle's marking moment runs (the stage's `heldRow`:
     /// one clock, the moment's), and then for as long as its post-salah pill is up (owner: "it's really annoying when I
@@ -2919,10 +2894,8 @@ struct TodaysPrayerListView: View {
         let now = Date()
         let excusedDay = loaded.count == 5 && done.isEmpty && Excused.isActive
             && viewModel.todaysPrayers.allSatisfy { Excused.covers(start: $0.startTime, end: $0.endTime, in: ranges) && $0.endTime <= now }
-        let _ = placesTick
         VStack(spacing: 0) {
             if !(outside && visible.isEmpty) {
-                DayFlipCard(angle: dayPage && dayState.flipped ? 180 : 0) {
                 Group {
                 VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
                 if excusedDay {
@@ -2961,23 +2934,9 @@ struct TodaysPrayerListView: View {
                                      look: theme.list)
                 }
                 .environment(\.dayPickSpace, pickSpace)
-                // Each face carries the card's surface, so the whole card turns (Bradley's review).
+                // The Salah tab keeps only the prayer list: the day card is Journey's (owner, 2026-10-16: "the salah
+                // stays simple. the journey one gets extra stuff").
                 .modifier(SalahLookCard(raised: allDone && DayPageState.shared.lifted && !TourRuntime.shared.active))
-                } back: {
-                    // The back (DayBackCard): its doors — that day's pile in Moments, the day's pins, the day's zikr.
-                    if dayPage {
-                        DayBackCard(facts: facts,
-                                    onNotes: { notesShown = true },
-                                    onPhotos: { from in
-                                        var quiet = Transaction()
-                                        quiet.disablesAnimations = true   // no slide: the deck zooms out of the row
-                                        withTransaction(quiet) { dayPile = DayPileRoute(keys: facts.photoKeys, from: from) }
-                                    },
-                                    onMap: { showDayMap = true },
-                                    onZikr: { dayState.zikrDay = PrayerDay.start() })
-                            .modifier(SalahLookCard(raised: true))
-                    }
-                }
                 // The tour's list steps put their bubble above this, never over the rows (audit J).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("prayerList", $0) }
             }
@@ -3019,32 +2978,9 @@ struct TodaysPrayerListView: View {
         // The list closed: folded again next time, as when this was the list's own @State (shared now with the soft
         // looks' footer; it stayed open until a relaunch — Sami's audit).
         .onDisappear { showDone = false }
-        // The back's facts: with the page, and again when a row, a photo or a note changes.
-        .task(id: "\(dayPage)|\(PrayerPhotoRevision.shared.value)|" + viewModel.todaysPrayers.map {
-            "\($0.name)\($0.isCompleted)\($0.timeAtComplete?.timeIntervalSince1970 ?? 0)\($0.latPrayedAt ?? 0)\($0.mosqueName ?? "")"
-        }.joined()) {
-            reloadFacts(dayPage)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reloadFacts(dayPageShown) }
-        .onReceive(NotificationCenter.default.publisher(for: SessionDeletion.changed)) { _ in reloadFacts(dayPageShown) }
         // The day page over (a row unmarked, the day turned): nothing picked, the front up. On `allDone`, not `dayPage`:
         // a push drops `up` too, and the back must still be there on the way back (Bradley's review).
         .onChange(of: allDone) { _, done in if !done { dayState.leaveDay() } }
-        // The back's map: the app's prayer map on today's prayers only (owner, 2026-10-16).
-        .fullScreenCover(isPresented: $showDayMap) {
-            LocationMapContentView(dayOnly: PrayerDay.start()).stageCover("dayMap")
-        }
-        .fullScreenCover(item: $dayPile) { route in
-            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from) {
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { dayPile = nil }
-            }
-            .presentationBackground(.clear)
-        }
-        .infoModal(isPresented: $notesShown, title: facts.notes.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
-            DayNotesInfo(notes: facts.notes)
-        }
 
     }
 

@@ -20,22 +20,18 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   animatable `lift`, inner shadows shrink to nothing, then outer ones grow — never a crossfade; decision list-raised-card).
 - **The day page merge** (owner 2026-10-15, spec board/mocks/day-page-merge/spec.md; DayPage.swift, shared with Journey's day
   page — "build it once and use it twice"): the day page's rows show the time prayed with "On time · 88" under it (no flip); a
-  tap on a marked row or its fifth picks the prayer (`DayPageState.picked`, no timer — a second tap, the flip, the side swapping
+  tap on a marked row or its fifth picks the prayer (`DayPageState.picked`, no timer — a second tap, the side swapping
   or a row unmarked clears it): its photo fills the ring (`PrayerPhotoCircle`, the name on a tag that stays over the develop
   veil; the circle's tap layer lets it through, `centreTakesTaps`, a count), else name / "prayed 5:54 PM" / grade; missed →
   "N to make up ›" as a plain pill (`DayMakeUpPill`, no sage) → Journey's To make up (`JourneyPresenter.makeUp`); excused →
   "excused". Under the ring the picked prayer's note (one line, cut; a tap → the frosted card, `infoModal(tint: .secondary)`)
   and its place (a tap → `PrayerPlaceMapSheet` on that pin), each a door (`DayPickLines`); neither → nothing; the qibla
-  arrow hides over the photo. The pill in the chrome (`DayFlipPill`, in the "N photos to develop" / "Journey ›" spot, only
-  when the back has something) flips the list card (`DayFlipCard`, `CircleMotion.dayFlip` 0.5 s, each face carrying the card's
-  surface) to its back (`DayBackCard`): Notes · "N photos · M developing" (the day's pile, `MemoriesPresenter.openPile`) ·
-  On the map (`JourneyDayMapSheet`) · "Zikr · N min" (`ZikrDaySessionsPage`: that day's sessions alone — no hero card, no
-  filter; a delete reloads it and the back via `SessionDeletion.changed`), rows only for what the day has (`DayFacts`, read
-  when the rows / photos / notes change); Notes unfolds inside the card and only then the card scrolls; flipping clears the
-  pick (never the same photo twice); the back and open notes survive a push (`pageGone` keeps them; `leaveDay` clears). A
+  arrow hides over the photo. No day card on the Salah tab (owner, 2026-10-16: "the salah stays simple. the journey one
+  gets extra stuff"): the chrome keeps "N photos to develop ›" / "Journey ›"; the card's day side (`DayBackCard`) is
+  Journey's day page's alone (memories-journey.md). A
   whole excused day: the rows stay through the day, each dot pausing once its window has begun; once every window is over
   the card keeps its size with a pause symbol and a line (`ExcusedDayCard`; owner: "when the full day ends, then we show the
-  card"). Pill words "Your day" / "Prayers" are placeholders. DEBUG `-demoDayFacts` (with `-demoMarkAll`).
+  card"). DEBUG `-demoDayFacts` (with `-demoMarkAll`).
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.

@@ -110,7 +110,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   the full behaviour in salah.md "The day page merge"): the date centred on top ("Thursday, October 15" / "Today · Jumada I 4"),
   `DayRing` + `DayCentre` on a raised 222 pt disc, the picked prayer's note and place under it (`DayPickLines`), the list card
   (dot · name · time prayed with the grade under it; a tap picks, a hold opens the prayer sheet) between two plain chevrons
-  (owner: no soft-ring chevrons), the flip pill under it; a drag sideways moves a day (the left edge stays the system's back);
+  (owner: no soft-ring chevrons), the pill under it ("Your day" / "Prayers", placeholders) fades the card to the day's rows
+  and back (`DayFadeCard`: out, then in, on one card surface — owner 2026-10-16, it flipped before; `DayBackCard`: Notes ·
+  Photos · On the map · Zikr); the side shown belongs to the page, so the next day comes in on it; a drag sideways moves a day (the left edge stays the system's back);
   days change at once, no fade. A day opens only once over or all five marked (`JourneyPage.open`, `canGoForward`) — never
   live rows. The back's Photos row → that day's pile (`MemoriesPage(openPile:leaveWithPile: true)`, pushed without a slide),
   On the map → `JourneyDayMapSheet`, Zikr → `ZikrDaySessionsPage`; a missed prayer picked → "N to make up ›" → To make up.

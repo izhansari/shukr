@@ -30,22 +30,11 @@ extension DayPrayer {
     func centreAppeared() { centreTaps += 1 }
     func centreGone() { centreTaps = max(0, centreTaps - 1) }
     /// The prayer picked, by its fifth or its row (0 = Fajr … 4 = Isha; nil = the day). Shared, not the ring's own: the
-    /// rows pick too, and the flip clears it (the day page merge, owner 2026-10-15). No timer: a second tap, the flip or
-    /// the day changing clears it.
+    /// rows pick too (the day page merge, owner 2026-10-15). No timer: a second tap or the day changing clears it. The
+    /// Salah tab has no day card to flip (owner, 2026-10-16: "the salah stays simple"); Journey's is JourneyDayPage's.
     var picked: Int?
-    /// The list card shows its back (DayFlipCard). Turning to the back clears the pick; turning to the front keeps one made on
-    /// the back (owner, 2026-10-16).
-    var flipped = false {
-        didSet { if flipped { picked = nil } }
-    }
-    /// The back has something (DayFacts): the chrome shows the flip pill; empty, it shows "Journey ›" as before.
-    var backHasContent = false
-    /// The back's Zikr row: History locked to that day, pushed by PrayerTimesView (ZikrAreaPage .dayOnly).
-    var zikrDay: Date?
 
-    /// A fifth can be picked on either side of the card (owner, 2026-10-16: "allow me to click on a fifth even when I'm
-    /// showing … the back of the day card"); turning to the back clears a pick, turning to the front keeps it ("flipping it
-    /// back to the prayers should still keep that fifth selected with the prayer list item also selected").
+    /// A fifth (or its row) picks; the same one again clears it.
     func togglePick(_ i: Int) {
         picked = picked == i ? nil : i
     }
@@ -92,7 +81,6 @@ extension DayPrayer {
     /// The day page is over (the score side left, the day changed, a row unmarked): nothing picked, the front up.
     func leaveDay() {
         picked = nil
-        flipped = false
     }
 }
 

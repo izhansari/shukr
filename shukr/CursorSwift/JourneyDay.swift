@@ -437,22 +437,22 @@ struct JourneyDayPane: View {
 
     // MARK: The card
 
-    /// The Salah list's card, flipping to the back (DayFlipCard / DayBackCard) as the Salah tab's does.
+    /// The Salah list's card; the pill fades it to the day's rows (DayFadeCard / DayBackCard) — Journey's alone (owner,
+    /// 2026-10-16: "the salah stays simple. the journey one gets extra stuff").
     private var card: some View {
-        // Each face carries the card's surface, so the whole card turns (Bradley's review).
-        DayFlipCard(angle: flipped ? 180 : 0) {
+        // One card surface under both faces: only what's on it fades (a surface per face blinked out mid-change).
+        DayFadeCard(progress: flipped ? 1 : 0) {
             prayerRows.modifier(SalahListInsets())
                 .background { DayPickBandLayer(picked: picked.flatMap { DayRing.order.indices.contains($0) ? DayRing.order[$0] : nil }, look: theme.list) }
                 .environment(\.dayPickSpace, pickSpace)
-                .modifier(SalahLookCard(raised: true))
         } back: {
             DayBackCard(facts: facts,
                         onNotes: { actions.notes(facts.notes) },
                         onPhotos: { from in actions.pile(DayPileRoute(keys: facts.photoKeys, from: from)) },
                         onMap: { actions.map(date) },
                         onZikr: { actions.zikr(date) })
-                .modifier(SalahLookCard(raised: true))
         }
+        .modifier(SalahLookCard(raised: true))
         .modifier(SalahLookListFrame())   // the Salah list's width (290 in the soft looks): one card shape on both pages
     }
 
