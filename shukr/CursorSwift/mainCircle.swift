@@ -1265,7 +1265,8 @@ struct summaryCircle: View, Equatable {
         .onChange(of: picked) { _, i in
             guard let i, DayRing.order.indices.contains(i),
                   let p = shownDay.first(where: { $0.name == DayRing.order[i] }), p.missed else { return }
-            makeUpCount = JourneyMakeUpPage.entries(context).open.count
+            let container = context.container
+            Task { makeUpCount = await JourneyMakeUpPage.openCount(container: container) }
         }
         // The note's card (Settings' ⓘ way, grey: no sage on the Salah page) and the place's map sheet.
         .infoModal(isPresented: $noteShown, title: pickedRow?.displayName ?? "",

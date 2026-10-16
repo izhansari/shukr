@@ -17,8 +17,8 @@ struct JourneyMakeUpPage: View {
     @Environment(\.circleTheme) private var theme
     @EnvironmentObject private var viewModel: PrayerViewModel
     @AppStorage("journey.makeUpAll") private var showAll = false
-    @State private var open: [Entry] = []
-    @State private var madeUp: [Entry] = []
+    @State private var open: [Entry] = JourneyMakeUpPage.last?.open ?? []
+    @State private var madeUp: [Entry] = JourneyMakeUpPage.last?.madeUp ?? []
     /// One prayer only (a tap on its count).
     @State private var only: String?
     /// Made-up prayers shown in their months (Reminders' Show Completed).
@@ -36,11 +36,37 @@ struct JourneyMakeUpPage: View {
         headingY.filter { $0.value <= 80 }.max { $0.value < $1.value }?.key
     }
 
-    struct Entry: Identifiable {
-        let row: PrayerModel
+    /// A prayer to make up (or made up), as plain values: read off the main thread (`entries`), the row itself looked up
+    /// by id only for an action (`model`). Frank's trace, 2026-10-15: `entries` took 108–130 ms on the main thread on
+    /// open, on Made up (3 s later, inside the row's leave) and on Undo (inside the tap).
+    struct Entry: Identifiable, Sendable {
+        let id: PersistentIdentifier
+        let name: String
+        let displayName: String
+        let dayKey: String
+        let dayStart: Date
+        let startTime: Date
+        let isCompleted: Bool
+        let numberScore: Double?
+        let timeAtComplete: Date?
         let month: Date
-        var id: PersistentIdentifier { row.persistentModelID }
+
+        init(_ row: PrayerModel) {
+            id = row.persistentModelID
+            name = row.name
+            displayName = row.displayName
+            dayKey = row.dayKey
+            dayStart = row.dayStart
+            startTime = row.startTime
+            isCompleted = row.isCompleted
+            numberScore = row.numberScore
+            timeAtComplete = row.timeAtComplete
+            month = JourneyLog.monthStart(dayStart)
+        }
     }
+
+    /// The entry's row, for an action (the sheet, Made up, Undo).
+    private func model(_ e: Entry) -> PrayerModel? { context.model(for: e.id) as? PrayerModel }
 
     // MARK: What's shown
 
@@ -48,8 +74,8 @@ struct JourneyMakeUpPage: View {
     private func isSettling(_ e: Entry) -> Bool { settling[e.id] != nil }
     /// Open in the switch's scope (just-made-up ones included, in place).
     private var scopedOpen: [Entry] { open.filter(inScope) }
-    private var shownOpen: [Entry] { scopedOpen.filter { only == nil || $0.row.name == only } }
-    private var shownMade: [Entry] { madeUp.filter { inScope($0) && (only == nil || $0.row.name == only) } }
+    private var shownOpen: [Entry] { scopedOpen.filter { only == nil || $0.name == only } }
+    private var shownMade: [Entry] { madeUp.filter { inScope($0) && (only == nil || $0.name == only) } }
     /// The months on the page, newest first.
     private var months: [Date] {
         Array(Set(shownOpen.map(\.month) + (showMade ? shownMade.map(\.month) : []))).sorted(by: >)
@@ -74,7 +100,7 @@ struct JourneyMakeUpPage: View {
                         Section {
                             ForEach(monthRows(m)) { entry in
                                 Group {
-                                    if entry.row.isCompleted && !isSettling(entry) { madeRow(entry) } else { row(entry) }
+                                    if entry.isCompleted && !isSettling(entry) { madeRow(entry) } else { row(entry) }
                                 }
                                 .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
                             }
@@ -104,20 +130,22 @@ struct JourneyMakeUpPage: View {
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $sheetRow, onDismiss: { withAnimation(.easeInOut(duration: 0.35)) { load(celebrate: true) } }) { row in
+        // The reload is read off the main thread first, then animated in (it ran inside the animation: a stall as the
+        // sheet closed).
+        .sheet(item: $sheetRow, onDismiss: { Task { await reload(celebrate: true, animation: .easeInOut(duration: 0.35)) } }) { row in
             JourneyPrayerSheet(prayer: row)
                 .environmentObject(viewModel)
                 .environment(\.circleTheme, theme)
         }
         .onChange(of: showAll) { only = nil }
-        .task { load() }
+        .task { await reload() }
     }
 
     /// A month's rows, newest first: what's left, and the made-up ones among them while shown.
     private func monthRows(_ m: Date) -> [Entry] {
         let open = shownOpen.filter { $0.month == m }
         guard showMade else { return open }
-        return (open + shownMade.filter { $0.month == m }).sorted { $0.row.startTime > $1.row.startTime }
+        return (open + shownMade.filter { $0.month == m }).sorted { $0.startTime > $1.startTime }
     }
 
     private var caughtUpLine: String {
@@ -128,7 +156,7 @@ struct JourneyMakeUpPage: View {
     // MARK: The top: the total, each prayer's count, the switch
 
     private func summary(_ left: [Entry]) -> some View {
-        let counts = JourneyLog.names.map { name in (name, left.filter { $0.row.name == name }.count) }.filter { $0.1 > 0 }
+        let counts = JourneyLog.names.map { name in (name, left.filter { $0.name == name }.count) }.filter { $0.1 > 0 }
         return VStack(alignment: .leading, spacing: 0) {
             Text("To make up").font(.system(size: 34, weight: .light, design: .rounded))
             Text("Prayers left unmarked on days you used shukr.")
@@ -230,23 +258,22 @@ struct JourneyMakeUpPage: View {
     }
 
     @ViewBuilder private func row(_ entry: Entry) -> some View {
-        let row = entry.row
         let justMade = isSettling(entry)
         HStack(spacing: 12) {
             Button {
                 triggerSomeVibration(type: .light)
-                sheetRow = row
+                sheetRow = model(entry)
             } label: {
                 HStack(spacing: 12) {
                     Group {
                         if justMade {
-                            Circle().fill(PrayerScoring.color(for: row.numberScore))
+                            Circle().fill(PrayerScoring.color(for: entry.numberScore))
                         } else {
                             Circle().strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.3)
                         }
                     }
                     .frame(width: 8, height: 8)
-                    nameAndDay(row).opacity(justMade ? 0.55 : 1)
+                    nameAndDay(entry).opacity(justMade ? 0.55 : 1)
                     Spacer(minLength: 8)
                 }
                 .contentShape(Rectangle())
@@ -259,7 +286,7 @@ struct JourneyMakeUpPage: View {
                         .font(.system(size: 14, weight: .regular, design: .rounded))
                         .foregroundStyle(.secondary)
                     Button {
-                        undo(row)
+                        undo(entry)
                     } label: {
                         Text("Undo")
                             .font(.system(size: 14, weight: .regular, design: .rounded))
@@ -273,7 +300,7 @@ struct JourneyMakeUpPage: View {
                 .transition(.opacity)
             } else {
                 Button {
-                    makeUp(row)
+                    makeUp(entry)
                 } label: {
                     Text("Made up")
                         .font(.system(size: 14, weight: .regular, design: .rounded))
@@ -284,7 +311,7 @@ struct JourneyMakeUpPage: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint("Marks \(row.displayName) as made up now: Qaza")
+                .accessibilityHint("Marks \(entry.displayName) as made up now: Qaza")
                 .transition(.opacity)
             }
         }
@@ -293,10 +320,10 @@ struct JourneyMakeUpPage: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
     }
 
-    private func nameAndDay(_ row: PrayerModel) -> some View {
+    private func nameAndDay(_ e: Entry) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(row.displayName).font(.system(size: 17, weight: .light, design: .rounded))
-            Text(row.dayStart.addingTimeInterval(12 * 3600).formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
+            Text(e.displayName).font(.system(size: 17, weight: .light, design: .rounded))
+            Text(e.dayStart.addingTimeInterval(12 * 3600).formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
                 .font(.system(size: 13, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
         }
@@ -306,13 +333,13 @@ struct JourneyMakeUpPage: View {
     private func madeRow(_ entry: Entry) -> some View {
         Button {
             triggerSomeVibration(type: .light)
-            sheetRow = entry.row
+            sheetRow = model(entry)
         } label: {
             HStack(spacing: 12) {
-                Circle().fill(PrayerScoring.color(for: entry.row.numberScore)).frame(width: 8, height: 8)
-                nameAndDay(entry.row).opacity(0.55)
+                Circle().fill(PrayerScoring.color(for: entry.numberScore)).frame(width: 8, height: 8)
+                nameAndDay(entry).opacity(0.55)
                 Spacer(minLength: 8)
-                Label(madeUpWhen(entry.row), systemImage: "checkmark")
+                Label(madeUpWhen(entry), systemImage: "checkmark")
                     .font(.system(size: 13, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -325,8 +352,8 @@ struct JourneyMakeUpPage: View {
     }
 
     /// "Qaza · today" / "Qaza · Oct 12".
-    private func madeUpWhen(_ row: PrayerModel) -> String {
-        guard let at = row.timeAtComplete else { return "Qaza" }
+    private func madeUpWhen(_ e: Entry) -> String {
+        guard let at = e.timeAtComplete else { return "Qaza" }
         return "Qaza · " + (Calendar.current.isDateInToday(at) ? "today" : at.formatted(.dateTime.month(.abbreviated).day()))
     }
 
@@ -387,29 +414,32 @@ struct JourneyMakeUpPage: View {
 
     // MARK: Making up
 
-    private func makeUp(_ row: PrayerModel) {
-        guard viewModel.markFromJourney(row, at: Date()) else { return }
-        let id = row.persistentModelID, token = UUID()
+    private func makeUp(_ entry: Entry) {
+        guard let row = model(entry), viewModel.markFromJourney(row, at: Date()) else { return }
+        let id = entry.id, token = UUID()
         withAnimation(.easeInOut(duration: 0.25)) { settling[id] = token }
         NotificationCenter.default.post(name: .journeyChanged, object: nil)
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             guard settling[id] == token else { return }
+            // The fresh list is read first (off the main thread), then the row leaves with it in one animation.
+            let keep = Set(settling.keys).subtracting([id])
+            let result = await Self.entries(container: context.container, keeping: keep)
+            guard settling[id] == token else { return }
             withAnimation(.easeInOut(duration: 0.4)) {
                 settling[id] = nil
-                load(celebrate: true)
+                apply(result, celebrate: true)
             }
         }
     }
 
-    private func undo(_ row: PrayerModel) {
+    private func undo(_ entry: Entry) {
         triggerSomeVibration(type: .light)
+        guard let row = model(entry) else { return }
         viewModel.unmarkFromJourney(row)
-        withAnimation(.easeInOut(duration: 0.25)) {
-            settling[row.persistentModelID] = nil
-            load()
-        }
+        withAnimation(.easeInOut(duration: 0.25)) { settling[entry.id] = nil }
         NotificationCenter.default.post(name: .journeyChanged, object: nil)
+        Task { await reload(animation: .easeInOut(duration: 0.25)) }
     }
 
     // MARK: Data
@@ -424,22 +454,50 @@ struct JourneyMakeUpPage: View {
         return (sameYear ? start.formatted(.dateTime.month(.wide)) : start.formatted(.dateTime.month(.wide).year())).uppercased()
     }
 
-    /// `celebrate`: the side shown just went empty here — the caught-up moment plays (with a success buzz).
-    private func load(celebrate: Bool = false) {
+    /// The entries read off the main thread, then set — inside `animation` when given. `celebrate`: the side shown just
+    /// went empty here — the caught-up moment plays (with a success buzz).
+    private func reload(celebrate: Bool = false, animation: Animation? = nil) async {
+        let result = await Self.entries(container: context.container, keeping: Set(settling.keys))
+        if let animation {
+            withAnimation(animation) { apply(result, celebrate: celebrate) }
+        } else {
+            apply(result, celebrate: celebrate)
+        }
+    }
+
+    private func apply(_ result: (open: [Entry], madeUp: [Entry]), celebrate: Bool) {
         let leftNow = { (list: [Entry]) in list.filter { self.inScope($0) && !self.isSettling($0) }.count }
         let before = leftNow(open)
-        (open, madeUp) = Self.entries(context, keeping: Set(settling.keys))
+        (open, madeUp) = result
+        Self.last = result
         if celebrate, before > 0, leftNow(open) == 0, settling.isEmpty {
             cleared += 1
             triggerSomeVibration(type: .success)
         }
     }
 
+    /// The last entries read: the page opens with them while fresh ones are read.
+    @MainActor static var last: (open: [Entry], madeUp: [Entry])?
+
+    /// `entries` off the main thread, from its own context on the store.
+    static func entries(container: ModelContainer, keeping: Set<PersistentIdentifier> = [], now: Date = Date()) async
+        -> (open: [Entry], madeUp: [Entry]) {
+        let ranges = await MainActor.run { Excused.ranges }
+        return await Task.detached(priority: .userInitiated) {
+            entries(in: ModelContext(container), keeping: keeping, ranges: ranges, now: now)
+        }.value
+    }
+
+    /// How many are owed (the day page's "N to make up" pill), read off the main thread.
+    static func openCount(container: ModelContainer) async -> Int {
+        await entries(container: container).open.count
+    }
+
     /// Open: unmarked prayers whose window has ended, on active days only, never an excused one — plus `keeping`, just made
     /// up and still shown in place. Made up: marked on a later prayer day than its own (the Made up button, or the sheet's
     /// default) — newest made up first.
-    @MainActor static func entries(_ context: ModelContext, keeping: Set<PersistentIdentifier> = [], now: Date = Date())
-        -> (open: [Entry], madeUp: [Entry]) {
+    static func entries(in context: ModelContext, keeping: Set<PersistentIdentifier> = [], ranges: [ExcusedRange],
+                        now: Date = Date()) -> (open: [Entry], madeUp: [Entry]) {
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>()) else { return ([], []) }
         var kept: [String: PrayerModel] = [:]
         var active: Set<String> = []
@@ -449,8 +507,7 @@ struct JourneyMakeUpPage: View {
             if let k = kept[id], k.isCompleted, !row.isCompleted { continue }
             kept[id] = row
         }
-        let ranges = Excused.ranges
-        let entry = { (row: PrayerModel) in Entry(row: row, month: JourneyLog.monthStart(row.dayStart)) }
+        let entry = { (row: PrayerModel) in Entry(row) }
         let open = kept.values
             .filter { row in
                 if keeping.contains(row.persistentModelID) { return true }

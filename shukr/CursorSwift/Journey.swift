@@ -72,9 +72,23 @@ struct JourneyLog {
         return days[key] ?? Day(key: key, date: Calendar.current.startOfDay(for: date))
     }
 
+    /// The last log built, shown at once while a fresh one is read (the page never opens blank).
+    @MainActor static var last: JourneyLog?
+
+    /// The log built off the main thread, from its own context on the store (Frank's trace, 2026-10-15: `build` took
+    /// 71–80 ms on the main thread on every open of Journey — the whole fetch of the prayer rows). Plain values come back.
+    static func load(container: ModelContainer, ranges: [ExcusedRange], now: Date = Date()) async -> JourneyLog {
+        await Task.detached(priority: .userInitiated) {
+            build(in: ModelContext(container), ranges: ranges, now: now)
+        }.value
+    }
+
     @MainActor static func build(_ context: ModelContext, now: Date = Date()) -> JourneyLog {
+        build(in: context, ranges: Excused.ranges, now: now)
+    }
+
+    static func build(in context: ModelContext, ranges: [ExcusedRange], now: Date = Date()) -> JourneyLog {
         var log = JourneyLog()
-        let ranges = Excused.ranges
         log.usesExcused = !ranges.isEmpty
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>()) else { return log }
         // One row per prayer per day, a completed row winning (onePerPrayer's rule).
@@ -183,7 +197,12 @@ struct JourneyPage: View {
     /// default (decision journey-day-look B).
     @AppStorage("journey.grades") private var grades = false
     @AppStorage("journey.view") private var view = "calendar"
-    @State private var log = JourneyLog()
+    @State private var log = JourneyLog.last ?? JourneyLog()
+    /// The log is read off the main thread (JourneyLog.load); a newer request drops an older result, and a change while
+    /// another page is over this one waits for its return (`dirty`) — no rebuild under To make up on every Made up.
+    @State private var loadToken = 0
+    @State private var onScreen = false
+    @State private var dirty = false
     @State private var month = JourneyLog.monthStart(PrayerDay.start())
     @State private var openDay: JourneyDayRoute?
     @State private var showMoments = false
@@ -206,7 +225,13 @@ struct JourneyPage: View {
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: month) }
+        .onAppear {
+            onScreen = true
+            if dirty { reload() }
+        }
+        .onDisappear { onScreen = false }
         .task {
+            onScreen = true
             reload()
             // Asked for To make up straight away (the day page's pill): on, once the page is there to push from.
             if JourneyPresenter.shared.makeUp {
@@ -246,7 +271,20 @@ struct JourneyPage: View {
         #endif
     }
 
-    private func reload() { log = JourneyLog.build(context) }
+    private func reload() {
+        guard onScreen else { dirty = true; return }   // under another page: read it on the way back
+        dirty = false
+        loadToken += 1
+        let token = loadToken
+        let container = context.container
+        let ranges = Excused.ranges
+        Task {
+            let built = await JourneyLog.load(container: container, ranges: ranges)
+            guard token == loadToken else { return }
+            log = built
+            JourneyLog.last = built
+        }
+    }
     #if DEBUG
     @MainActor private static var demoDone = false
     #endif

@@ -107,7 +107,8 @@ struct JourneyDayPage: View {
         .onChange(of: picked) { _, i in
             guard let i, DayRing.order.indices.contains(i),
                   let p = dayPrayers.first(where: { $0.name == DayRing.order[i] }), p.missed else { return }
-            makeUpCount = JourneyMakeUpPage.entries(context).open.count
+            let container = context.container
+            Task { makeUpCount = await JourneyMakeUpPage.openCount(container: container) }
         }
         #if DEBUG
         .task {

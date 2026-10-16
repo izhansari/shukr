@@ -99,6 +99,13 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.
+- Off the main thread (Frank's trace 2026-10-15: the log 71–80 ms on every open, To make up's entries 108–130 ms on open,
+  Made up and Undo): `JourneyLog.load(container:ranges:)` and `JourneyMakeUpPage.entries(container:)` read on a detached
+  task with their own `ModelContext` and return plain values (`JourneyLog`; `Entry` is a value snapshot of the row — its
+  `PrayerModel` is looked up by id only for an action, `model(_:)`); the last result is kept (`JourneyLog.last`,
+  `JourneyMakeUpPage.last`) so a page never opens blank. JourneyPage reloads only while on screen (`dirty` until its
+  return); To make up's reloads come after the read, the animation wrapping only the state change (Made up's leave 3 s
+  later, Undo, the sheet's close). A newer load drops an older result (`loadToken`).
 - The day page (`JourneyDayPage`, on the Salah tab's day page pieces — the day page merge, owner 2026-10-15, DayPage.swift;
   the full behaviour in salah.md "The day page merge"): the date centred on top ("Thursday, October 15" / "Today · Jumada I 4"),
   `DayRing` + `DayCentre` on a raised 222 pt disc, the picked prayer's note and place under it (`DayPickLines`), the list card
