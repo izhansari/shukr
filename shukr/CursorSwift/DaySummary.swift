@@ -204,20 +204,21 @@ struct DayCentre: View {
     var makeUpCount: Int? = nil
     var onMakeUp: (() -> Void)? = nil
 
-    /// Inside the fifths' dots (r 100, 15 pt picked): a little air round it.
-    static let photoDiameter: CGFloat = 168
-
     var body: some View {
         if let i = picked, DayRing.order.indices.contains(i) {
             let name = DayRing.order[i]
             let p = day.first { $0.name == name }
             if let p, let key = p.photoKey {
-                // The photo is the focus (owner); its name and when stay in the ring, on the tag.
-                PrayerPhotoCircle(key: key, diameter: Self.photoDiameter,
-                                  caption: "\(p.name) · \(p.markedAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")")
-                    .onAppear { DayPageState.shared.centreAppeared() }
-                    .onDisappear { DayPageState.shared.centreGone() }
-                    .transition(CircleMotion.dayPickSwap)
+                // The rounded-square photo inside the ring, its name and when under it (owner, 2026-10-16: "keep the
+                // [squircle] picture inside of the ring instead of it filling the whole ring"); a tap opens it.
+                VStack(spacing: 6) {
+                    PrayerPhotoCard(key: key, width: 92)
+                    Text("\(p.name) · \(p.markedAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")")
+                        .font(.footnote).fontWeight(.light).fontDesign(.rounded).foregroundStyle(.secondary)
+                }
+                .onAppear { DayPageState.shared.centreAppeared() }
+                .onDisappear { DayPageState.shared.centreGone() }
+                .transition(CircleMotion.dayPickSwap)
             } else {
                 VStack(spacing: 3) {
                     Text(name).font(.system(size: 30, weight: .light, design: .rounded))
