@@ -23,8 +23,8 @@ struct JourneyDayPage: View {
     @State private var notes: [DayFacts.Note]?
     @State private var zikrDay: Date?
     @State private var showMakeUp = false
-    /// A photo's day pile, opened over Moments (owner: a photo here opens the pile for that day).
-    @State private var pile: JourneyPileRoute?
+    /// The back's Photos: the day's deck over the page (DayPileViewer).
+    @State private var dayPile: DayPileRoute?
     /// The finger's travel sideways (0 at rest); the days sit a page width apart and move with it.
     @State private var dragOffset: CGFloat = 0
     @State private var dragHorizontal: Bool?
@@ -123,8 +123,14 @@ struct JourneyDayPage: View {
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .principal) { heading } }
-        // Pushed without a slide: the pile fades in over the page and, closed, takes Moments with it.
-        .navigationDestination(item: $pile) { MemoriesPage(openPile: $0.key, leaveWithPile: true) }
+        .fullScreenCover(item: $dayPile) { route in
+            DayPileViewer(route: route) {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { dayPile = nil }
+            }
+            .presentationBackground(.clear)
+        }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(date)) }
         .sheet(item: $sheetRow) { row in
             JourneyPrayerSheet(prayer: row)
@@ -164,10 +170,10 @@ struct JourneyDayPage: View {
             map: { mapPins = $0 },
             notes: { notes = $0 },
             zikr: { zikrDay = $0 },
-            pile: { key in
+            pile: { route in
                 var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { pile = JourneyPileRoute(key: key) }
+                quiet.disablesAnimations = true   // no slide: the deck zooms out of the row
+                withTransaction(quiet) { dayPile = route }
             },
             makeUp: { showMakeUp = true })
     }
@@ -280,7 +286,7 @@ struct JourneyDayActions {
     let map: ([JourneyDayPin]) -> Void
     let notes: ([DayFacts.Note]) -> Void
     let zikr: (Date) -> Void
-    let pile: (String) -> Void
+    let pile: (DayPileRoute) -> Void
     let makeUp: () -> Void
 }
 
@@ -429,7 +435,7 @@ struct JourneyDayPane: View {
         } back: {
             DayBackCard(facts: facts,
                         onNotes: { actions.notes(facts.notes) },
-                        onPhotos: { if let first = facts.photoKeys.first { actions.pile(first) } },
+                        onPhotos: { from in actions.pile(DayPileRoute(keys: facts.photoKeys, from: from)) },
                         onMap: { actions.map(facts.pins) },
                         onZikr: { actions.zikr(date) })
                 .modifier(SalahLookCard(raised: true))
@@ -493,12 +499,6 @@ enum ZikrMinutes {
     }
 }
 
-/// One prayer on a day's page: its dot in its grade colour, the name, when · where (or its window, unmarked), the grade.
-/// (Its photo is in the day's pile below — thumbnails here never lined up, owner.)
-struct JourneyPileRoute: Hashable, Identifiable {
-    let key: String
-    var id: String { key }
-}
 
 struct JourneyDayPin: Identifiable {
     let id: String

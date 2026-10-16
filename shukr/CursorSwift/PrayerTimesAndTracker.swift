@@ -1627,10 +1627,7 @@ struct PrayerTimesView: View {
         // Memories (PrayerMemories.swift), from the ☰ menu or the day page's link: pushed, so it swipes back (decision
         // swipe-back-pages A).
         .navigationDestination(isPresented: Binding(get: { MemoriesPresenter.shared.open },
-                                                    set: { MemoriesPresenter.shared.open = $0; if !$0 { MemoriesPresenter.shared.openPile = nil } })) {
-            // The day page's Photos row opens that day's pile and leaves with it (DayBackCard).
-            MemoriesPage(openPile: MemoriesPresenter.shared.openPile, leaveWithPile: MemoriesPresenter.shared.openPile != nil)
-        }
+                                                    set: { MemoriesPresenter.shared.open = $0 })) { MemoriesPage() }
         // The day page's Zikr row: History locked to today.
         .navigationDestination(item: Binding(get: { DayPageState.shared.zikrDay },
                                              set: { DayPageState.shared.zikrDay = $0 })) { ZikrAreaPage(start: .dayOnly($0)) }
@@ -2785,6 +2782,8 @@ struct TodaysPrayerListView: View {
     @State private var showDayMap = false
     /// The back's Notes: the frosted ⓘ card (owner).
     @State private var notesShown = false
+    /// The back's Photos: the day's deck over the page (DayPileViewer).
+    @State private var dayPile: DayPileRoute?
 
     private func reloadFacts(_ dayPage: Bool) {
         dayPageShown = dayPage
@@ -2966,9 +2965,10 @@ struct TodaysPrayerListView: View {
                     if dayPage {
                         DayBackCard(facts: facts,
                                     onNotes: { notesShown = true },
-                                    onPhotos: {
-                                        MemoriesPresenter.shared.openPile = facts.photoKeys.first
-                                        MemoriesPresenter.shared.open = true
+                                    onPhotos: { from in
+                                        var quiet = Transaction()
+                                        quiet.disablesAnimations = true   // no slide: the deck zooms out of the row
+                                        withTransaction(quiet) { dayPile = DayPileRoute(keys: facts.photoKeys, from: from) }
                                     },
                                     onMap: { showDayMap = true },
                                     onZikr: { dayState.zikrDay = PrayerDay.start() })
@@ -3029,6 +3029,14 @@ struct TodaysPrayerListView: View {
         .onChange(of: allDone) { _, done in if !done { dayState.leaveDay() } }
         .sheet(isPresented: $showDayMap) {
             JourneyDayMapSheet(title: "Today", pins: facts.pins).stageCover("dayMap")
+        }
+        .fullScreenCover(item: $dayPile) { route in
+            DayPileViewer(route: route) {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { dayPile = nil }
+            }
+            .presentationBackground(.clear)
         }
         .infoModal(isPresented: $notesShown, title: facts.notes.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
             DayNotesInfo(notes: facts.notes)

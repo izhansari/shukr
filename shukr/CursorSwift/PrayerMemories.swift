@@ -32,8 +32,6 @@ struct MemoryPhoto: Identifiable, Hashable {
 @MainActor @Observable final class MemoriesPresenter {
     static let shared = MemoriesPresenter()
     var open = false
-    /// Open on this photo's day pile and leave with it (the day page's Photos row, DayBackCard); nil = Moments itself.
-    var openPile: String?
 }
 
 extension PrayerPhotos {
@@ -1169,9 +1167,15 @@ struct MemoriesDeck: View {
     /// simulator's recording; worse with veiled cards on the phone — owner: "freezes part-way").
     private static let warm = 0.02
 
+    /// The day page's pile: cards with their badges — the shukr pill and the prayer's tag (PrayerPhotoFramed), as a photo
+    /// opened from the day ring's fifth — and no day strip (owner, 2026-10-16); Moments keeps the plain face and its strip.
+    var framed = false
+
     init(photos: [MemoryPhoto], start: MemoryPhoto, shown: Bool, hideTop: Bool, folded: Bool, neighboursShown: Bool = true,
+         framed: Bool = false,
          onTopFrame: @escaping (CGRect) -> Void,
          onClose: @escaping (_ key: String, _ dayKey: String, _ scale: CGFloat, _ drag: CGSize) -> Void) {
+        self.framed = framed
         self.folded = folded
         self.neighboursShown = neighboursShown
         self.photos = photos
@@ -1283,6 +1287,8 @@ struct MemoriesDeck: View {
                     .opacity(!shown ? Self.warm : down > 10 || emptyDay != nil ? 0 : 1)
                     .padding(.top, 6)
                 Spacer(minLength: 0)
+                // The day page's pile is one day: no strip (owner: "this pile doesnt allow swiping to other days").
+                if !framed {
                 VStack(spacing: 8) {
                     // The strip is its own bar (owner: "put a separator for that new bottom bar"; the system Divider was too
                     // faint on the frosted page).
@@ -1300,6 +1306,7 @@ struct MemoriesDeck: View {
                 .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : Self.warm)
                 .allowsHitTesting(shown && !noteEditing)
                 .padding(.bottom, 22)
+                }
             }
             .frame(width: geo.size.width)
             // No tap-to-close on the frosted page: a missed tap on the note or a prayer symbol closed it (owner) —
@@ -1739,7 +1746,7 @@ struct MemoriesDeck: View {
         return ZStack {
             ForEach(cards, id: \.self) { i in
                 let l = lie[photos[i].key] ?? Lie(dx: 0, dy: 0, tilt: 0)
-                MemoryCard(key: photos[i].key, width: width, tagged: i == top)
+                MemoryCard(key: photos[i].key, width: width, tagged: i == top, framed: framed)
                     .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
                     .rotationEffect(.degrees(i == top ? 0 : l.tilt))
                     .offset(x: i == top ? 0 : l.dx, y: i == top ? 0 : l.dy)
@@ -1914,7 +1921,7 @@ struct MemoriesDeck: View {
                 return (l.dx * (1 - fold), l.dy * (1 - fold), l.tilt * (1 - fold))
             }
         }()
-        MemoryCard(key: key, width: width, swapped: swapped.contains(key), tagged: i == index)
+        MemoryCard(key: key, width: width, swapped: swapped.contains(key), tagged: i == index, framed: framed)
             .overlay(alignment: .topTrailing) {
                 // A favourite carries its heart on the photo (owner).
                 if i == index && PrayerPhotoFavorites.shared.contains(key) { FavoriteBadge(size: 15).padding(12) }
@@ -2664,18 +2671,28 @@ private struct MemoryCard: View {
     /// The top card wears the developing tag (the ones under it would peek theirs out round its edges).
     var tagged = false
 
-    init(key: String, width: CGFloat, swapped: Bool = false, tagged: Bool = false) {
+    /// With its badges (PrayerPhotoFramed): the day page's pile.
+    var framed = false
+
+    init(key: String, width: CGFloat, swapped: Bool = false, tagged: Bool = false, framed: Bool = false) {
         self.key = key
         self.width = width
         self.swapped = swapped
         self.tagged = tagged
+        self.framed = framed
         _images = State(initialValue: Self.cache.object(forKey: Self.cacheKey(key))?.images ?? (nil, nil))
     }
 
     var body: some View {
         let showSelfie = swapped && images.front != nil
-        PrayerPhotoFace(back: showSelfie ? images.front : images.back, front: showSelfie ? images.back : images.front,
-                        width: width)
+        let back = showSelfie ? images.front : images.back, front = showSelfie ? images.back : images.front
+        Group {
+            if framed {
+                PrayerPhotoFramed(back: back, front: front, key: key, width: width)
+            } else {
+                PrayerPhotoFace(back: back, front: front, width: width)
+            }
+        }
             .developReveal(key, width: tagged ? width : 0, interactive: tagged)   // only the top card takes the tap
             .developingTag(key, width: tagged ? width : 0, shown: tagged)
             .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") {
