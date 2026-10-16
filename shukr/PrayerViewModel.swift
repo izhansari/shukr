@@ -226,7 +226,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             WatchSync.shared.send()
         }
         updateCityName(for: location)
+        #if DEBUG
+        let passStart = Date()
+        #endif
         fetchPrayerTimes(cameFrom: "updateLocation")
+        #if DEBUG
+        // How long a move's pass holds the main thread (the compass reads its heading there; compass-freeze 8Q9K).
+        CompassLog.write("location pass \(Int(Date().timeIntervalSince(passStart) * 1000)) ms\(travelled ? " · travelled" : "")")
+        #endif
 
     }
     

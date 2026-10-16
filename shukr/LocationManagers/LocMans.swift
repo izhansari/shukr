@@ -125,6 +125,11 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     #if DEBUG
     private var samplesThisSecond = 0, restarts = 0
     private var lastRaw = "", lastCL = "–"
+    /// When the watchdog last ticked: a tick much later than 1 s means the main thread was busy that long — the
+    /// heading arrives on it, so the arrow stood still meanwhile (compass-freeze, 8Q9K: logged, not guessed).
+    private var lastTickAt: Date?
+    /// Core Motion samples this second with no heading (−1, thrown away below): if a car shows only these, that's the freeze.
+    private var droppedThisSecond = 0
     #endif
 
     override init() {
@@ -306,6 +311,11 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     
     // CL Location Manager Delegate method for location updates
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        #if DEBUG
+        if let fix = locations.last, appActive {
+            CompassLog.write("fix ±\(Int(fix.horizontalAccuracy)) m · \(fix.speed >= 0 ? "\(Int((fix.speed * 3.6).rounded())) km/h" : "speed –")")
+        }
+        #endif
         userLocation = locations.last
         locationUpdates.send(locations.last)
         // With Always, iOS wakes shukr for a big move: a moment to top everything up (the app sets this; AutoTopUp) —
@@ -349,6 +359,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         } else {
             #if DEBUG
             CompassLog.write("app inactive")
+            lastTickAt = nil
             #endif
             // Nothing to point while we're not on screen; Core Location suspends its own.
             motion.stopDeviceMotionUpdates()
@@ -384,7 +395,13 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         // fix we point people to) — ours instead (CompassCalibrationSheet, via CompassHealth).
         motion.showsDeviceMovementDisplay = false
         motion.startDeviceMotionUpdates(using: frame, to: .main) { [weak self] sample, _ in
-            guard let self, let sample, sample.heading >= 0 else { return }
+            guard let self, let sample else { return }
+            guard sample.heading >= 0 else {
+                #if DEBUG
+                self.droppedThisSecond += 1
+                #endif
+                return
+            }
             self.lastMotionAt = Date()
             self.take(sample.heading, reliable: sample.magneticField.accuracy != .uncalibrated, smoothing: 0.25)
         }
@@ -437,6 +454,13 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     private func checkHeading() {
         guard appActive, headingWanted else { return }
+        #if DEBUG
+        let tick = Date()
+        if let last = lastTickAt, tick.timeIntervalSince(last) > 1.5 {
+            CompassLog.write("main thread busy ~\(String(format: "%.1f", tick.timeIntervalSince(last) - 1))s")
+        }
+        lastTickAt = tick
+        #endif
         let quiet = Date().timeIntervalSince(lastSampleAt)
         // Core Motion reads ~30 times a second; Core Location only when the phone turns (1° filter),
         // so without Core Motion a still phone is quiet on purpose — give it longer.
@@ -455,12 +479,12 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         #if DEBUG
         let source = motion.isDeviceMotionActive ? (motionFrame == .xTrueNorthZVertical ? "CM true" : "CM mag") : "CL"
         let bearing = qiblaBearing.map { "\(Int($0.rounded()))°" } ?? "–"
-        let first = "\(source) \(lastRaw) · CL \(lastCL) · \(samplesThisSecond)/s · quiet \(String(format: "%.1f", quiet))s"
+        let first = "\(source) \(lastRaw) · CL \(lastCL) · \(samplesThisSecond)/s\(droppedThisSecond > 0 ? " (\(droppedThisSecond) no heading)" : "") · quiet \(String(format: "%.1f", quiet))s"
         let second = "qibla \(bearing) · off \(Int(compass.qibla.heading.rounded()))° · \(compass.status)"
             + "\(compass.qibla.aligned ? " · aligned" : "") · restarts \(restarts)"
         if UserDefaults.standard.bool(forKey: "compassDebug") { compass.debugLine = first + "\n" + second }
         CompassLog.write(first + " · " + second)
-        samplesThisSecond = 0
+        samplesThisSecond = 0; droppedThisSecond = 0
         #endif
     }
 
