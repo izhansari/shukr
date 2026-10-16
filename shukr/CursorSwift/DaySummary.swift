@@ -33,8 +33,8 @@ extension DayPrayer {
     /// rows pick too, and the flip clears it (the day page merge, owner 2026-10-15). No timer: a second tap, the flip or
     /// the day changing clears it.
     var picked: Int?
-    /// The list card shows its back (DayFlipCard). Flipping clears the pick — the back's pile would show the same photo
-    /// as the ring (owner: "never the same photo twice").
+    /// The list card shows its back (DayFlipCard). Turning to the back clears the pick; turning to the front keeps one made on
+    /// the back (owner, 2026-10-16).
     var flipped = false {
         didSet { if flipped { picked = nil } }
     }
@@ -43,9 +43,10 @@ extension DayPrayer {
     /// The back's Zikr row: History locked to that day, pushed by PrayerTimesView (ZikrAreaPage .dayOnly).
     var zikrDay: Date?
 
-    /// No pick while the back is up: the ring's photo would sit beside the back's pile (Bradley's review).
+    /// A fifth can be picked on either side of the card (owner, 2026-10-16: "allow me to click on a fifth even when I'm
+    /// showing … the back of the day card"); turning to the back clears a pick, turning to the front keeps it ("flipping it
+    /// back to the prayers should still keep that fifth selected with the prayer list item also selected").
     func togglePick(_ i: Int) {
-        guard !flipped else { return }
         picked = picked == i ? nil : i
     }
     func togglePick(name: String) {

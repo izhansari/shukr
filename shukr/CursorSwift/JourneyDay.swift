@@ -334,8 +334,9 @@ struct JourneyDayPane: View {
             Color.clear.frame(height: layout.ringToCard).overlay { underRing.frame(width: 310) }   // the Salah tab's line width
             card
             DayFlipPill(flipped: flipped) {
+                // To the back: the pick clears; to the front: a pick made on the back stays, its row raised (owner).
+                if !flipped { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil } }
                 withAnimation(CircleMotion.dayFlip) { flipped.toggle() }
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }   // never the same photo twice
             }
             .padding(.top, layout.cardToPill)
             .opacity(facts.isEmpty ? 0 : 1)   // no pill when the back is empty (owner)
@@ -393,8 +394,7 @@ struct JourneyDayPane: View {
         return ZStack {
             NeuRaised(shape: Circle(), radius: 9, offset: 4.5).frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
             DayRing(day: day, picked: picked) { i in
-                guard !flipped else { return }   // no pick while the back is up (its pile would double the photo)
-                triggerSomeVibration(type: .light)
+                triggerSomeVibration(type: .light)   // on either side of the card (owner)
                 withAnimation(CircleMotion.dayPick) { picked = picked == i ? nil : i }
             }
             if marked == 0 && picked == nil {

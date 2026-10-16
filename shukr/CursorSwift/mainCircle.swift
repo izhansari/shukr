@@ -446,9 +446,11 @@ struct MainCircleView: View {
                                guard !TourRuntime.shared.active || TourRuntime.shared.allowsMap else { TourRuntime.shared.nudge(); return }
                                TourRuntime.shared.event(.mapOpened); showQiblaMap = true
                            })
-                    // Not over a picked prayer's photo or pill in the day page's centre (Bradley's review).
-                    .opacity(daySummaryShowing && DayPageState.shared.centreTakesTaps ? 0 : 1)
-                    .animation(.easeOut(duration: CircleMotion.quick), value: DayPageState.shared.centreTakesTaps)
+                    // Not on the day's score ring at all (owner, 2026-10-16: "when we're showing the day score ring, get rid of
+                    // the compass arrow").
+                    .opacity(daySummaryShowing ? 0 : 1)
+                    .allowsHitTesting(!daySummaryShowing)
+                    .animation(.easeOut(duration: CircleMotion.quick), value: daySummaryShowing)
                 // "Compass needs a moment · tap" under the ring — laid out at zero size, so the circle
                 // never moves (it stays centred on the page).
                 Color.clear
