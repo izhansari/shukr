@@ -11,137 +11,49 @@
 import SwiftUI
 import SwiftData
 
-struct YourJourneyPage: View {
-    @Environment(\.circleTheme) private var theme
-    let log: JourneyLog
-    /// A month row: back to Journey on that month (owner, 2026-10-16).
-    var onMonth: (Date) -> Void = { _ in }
-    private let stats: YourJourneyStats
-    /// The title moves into the bar once it has scrolled under it (as the Zikr pages' `titleInBar`).
-    @State private var titleShown = false
-    @State private var showMoments = false
-    /// The newest developed photos, oldest first (the row's four).
-    @State private var photos: [(key: String, image: UIImage)] = []
-    private let momentsCount = PrayerPhotos.all().count
+/// Journey's first screen (Journey v6, owner 2026-10-16: "yeah this is it … this is gonna tie the knot on this page";
+/// board/mocks/journey-v6): Your journey's card leads, then Prayer scores · To make up · Moments as three flat rows, the
+/// months (a break folded into one "Away" line) and the milestones. Every piece is one we had, in a gentler order.
 
-    init(log: JourneyLog, onMonth: @escaping (Date) -> Void = { _ in }) {
-        self.log = log
-        self.onMonth = onMonth
-        self.stats = YourJourneyStats(log: log, today: PrayerDay.start())
-    }
+/// The card: days you marked a prayer, the last 12 weeks, three figures. Before the first mark: "0 days so far", the weeks
+/// empty, and the line that says what will fill it.
+struct JourneyHomeCard: View {
+    let stats: YourJourneyStats
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                header
-                card.padding(.top, 18)
-                if !stats.monthRows.isEmpty { months.padding(.top, 26) }
-                if !stats.milestones.isEmpty { milestones.padding(.top, 26) }
-                if momentsCount > 0 { moments.padding(.top, 20) }
-            }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 40)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 40 } action: { _, under in
-            withAnimation(.easeOut(duration: 0.15)) { titleShown = under }
-        }
-        .background(theme.surface.ignoresSafeArea())
-        .fontDesign(.rounded)
-        .navigationTitle(titleShown ? "Your journey" : "")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
-        .task { await loadPhotos() }
-    }
-
-    // MARK: Moments
-
-    /// "MOMENTS · N", "All photos ›" (sage: it's the tap), and the four newest photos — developed ones only, a photo
-    /// still waiting for its tap veiled as everywhere (DevelopReveal).
-    private var moments: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                sectionTitle("MOMENTS · \(momentsCount)")
-                Spacer()
-                Button { showMoments = true } label: {
-                    Text("All photos ›").font(.system(size: 14, weight: .regular, design: .rounded)).foregroundStyle(Color.sage)
-                }
-                .buttonStyle(.plain)
-            }
-            if !photos.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(0..<4, id: \.self) { i in
-                        Group {
-                            if photos.indices.contains(i) {
-                                Color.clear
-                                    .overlay {
-                                        Image(uiImage: photos[i].image).resizable().scaledToFill()
-                                            .modifier(DevelopReveal(key: photos[i].key, width: 80, interactive: false))
-                                    }
-                            } else {
-                                Color.clear
-                            }
-                        }
-                        .aspectRatio(1, contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture { showMoments = true }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Your newest moments")
-                .accessibilityAddTraits(.isButton)
-            }
-        }
-    }
-
-    private func loadPhotos() async {
-        let keys = PrayerPhotos.all().map(\.key).filter { PhotoDevelop.isDeveloped(key: $0) }.suffix(4)
-        var loaded: [(key: String, image: UIImage)] = []
-        for key in keys { if let image = await PrayerPhotos.thumbnail(key) { loaded.append((key, image)) } }
-        photos = loaded.reversed()   // newest first, as the milestones
-    }
-
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Your journey").font(.system(size: 32, weight: .light, design: .rounded))
-            if let first = log.firstDay {
-                Text("Since \(first.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))")
-                    .font(.system(size: 15, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.top, 4)
-    }
-
-    // MARK: The card
-
-    /// The one raised block (the mockup's card): days you marked a prayer, the last 12 weeks, three figures.
-    private var card: some View {
+        let empty = stats.activeDays == 0
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("\(stats.activeDays)").font(.system(size: 52, weight: .ultraLight, design: .rounded))
-                Text(stats.activeDays == 1 ? "day you marked a prayer" : "days you marked a prayer")
+                Text("\(stats.activeDays)").font(.system(size: 54, weight: .thin, design: .rounded))
+                    .foregroundStyle(empty ? .secondary : .primary)
+                Text(empty ? "days so far" : stats.activeDays == 1 ? "day you marked a prayer" : "days you marked a prayer")
                     .font(.system(size: 17, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
             }
             weeks
             Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
-            HStack(alignment: .top, spacing: 0) {
-                figure("\(stats.prayersMarked)", "prayers marked")
-                figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days")
-                figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days", "best streak")
+            if empty {
+                Text("Every prayer you mark shows up here.")
+                    .font(.system(size: 15, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            } else {
+                HStack(alignment: .top, spacing: 0) {
+                    figure("\(stats.prayersMarked)", "prayers marked")
+                    figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days")
+                    figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days", "best streak")
+                }
             }
         }
-        .padding(.top, 22).padding(.horizontal, 18).padding(.bottom, 18)
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 30, style: .continuous)))
+        .padding(.top, 20).padding(.horizontal, 18).padding(.bottom, 16)
+        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
     }
 
     private func figure(_ value: String, _ caption: String) -> some View {
         VStack(spacing: 2) {
-            Text(value).font(.system(size: 19, weight: .light, design: .rounded))
+            Text(value).font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
             Text(caption)
-                .font(.system(size: 11, weight: .light, design: .rounded))
+                .font(.system(size: 11.5, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -158,7 +70,7 @@ struct YourJourneyPage: View {
             }
             .font(.system(size: 11, weight: .light, design: .rounded))
             .foregroundStyle(.tertiary)
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 ForEach(0..<12, id: \.self) { col in
                     VStack(spacing: 4) {
                         ForEach(0..<7, id: \.self) { row in
@@ -167,141 +79,237 @@ struct YourJourneyPage: View {
                     }
                 }
             }
-            HStack {
-                Text(stats.gridStart.formatted(.dateTime.month(.abbreviated).day()))
-                Spacer()
-                Text("Today")
+            if stats.activeDays > 0 {
+                HStack {
+                    Text(stats.gridStart.formatted(.dateTime.month(.abbreviated).day()))
+                    Spacer()
+                    Text("Today")
+                }
+                .font(.system(size: 11, weight: .light, design: .rounded))
+                .foregroundStyle(.tertiary)
             }
-            .font(.system(size: 11, weight: .light, design: .rounded))
-            .foregroundStyle(.tertiary)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("The last 12 weeks: \(stats.grid.filter { $0 == .allInTime }.count) days all five in time, \(stats.grid.filter { $0 == .allFive }.count) days all five")
     }
 
-    // MARK: Months
+    /// The canvas's colours (owner, 2026-10-16: "make colors of the 12 week grid match your mockup"): monochrome by how much
+    /// was prayed, green only for all five in time — the month calendar's idea. Light from the canvas, dark from Frank's
+    /// first draft of it.
+    @Environment(\.colorScheme) private var scheme
+    private func color(_ kind: YourJourneyStats.Kind) -> Color {
+        let dark = scheme == .dark
+        switch kind {
+        case .none: return dark ? Color(red: 0x2E / 255, green: 0x30 / 255, blue: 0x35 / 255)
+                                : Color(red: 126 / 255, green: 132 / 255, blue: 143 / 255).opacity(0.25 * 0.55)
+        case .some: return dark ? Color(red: 0x55 / 255, green: 0x57 / 255, blue: 0x5D / 255)
+                                : Color(red: 35 / 255, green: 38 / 255, blue: 44 / 255).opacity(0.30)
+        case .allFive: return dark ? Color(red: 0xA9 / 255, green: 0xAB / 255, blue: 0xB1 / 255)
+                                   : Color(red: 35 / 255, green: 38 / 255, blue: 44 / 255).opacity(0.62)
+        case .allInTime: return dark ? Color(red: 0x4C / 255, green: 0x8E / 255, blue: 0x62 / 255)
+                                     : Color(red: 52 / 255, green: 199 / 255, blue: 89 / 255).opacity(0.55)
+        }
+    }
 
-    /// Every month, newest first, a break folded into one "Away" row (spec: "every month (a break folds into one
-    /// 'Away · dates' row)").
-    private var months: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .firstTextBaseline) {
-                sectionTitle("MONTHS")
-                Spacer()
-                if let since = stats.betterSince {
-                    Text("Better each month since \(since.formatted(.dateTime.month(.wide)))")
+    /// A day: 15 pt tall, corner 4 (the canvas).
+    private func cell(_ kind: YourJourneyStats.Kind, today: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(color(kind))
+            .frame(maxWidth: .infinity)
+            .frame(height: 15)
+    }
+}
+
+/// A plain row (the canvas's list row): a symbol, a title over a grey line, a value, and a sage ›.
+struct JourneyHomeRow<Symbol: View, Value: View>: View {
+    let title: String
+    let line: String
+    var last = false
+    var quiet = false
+    @ViewBuilder let symbol: () -> Symbol
+    @ViewBuilder let value: () -> Value
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            action()
+        } label: {
+            HStack(spacing: 13) {
+                symbol().frame(width: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 17, weight: .light, design: .rounded))
+                    Text(line)
                         .font(.system(size: 13, weight: .light, design: .rounded))
                         .foregroundStyle(.secondary)
+                        .opacity(quiet ? 0.8 : 1)
+                        .lineLimit(1)
                 }
+                Spacer(minLength: 8)
+                value()
+                    .font(.system(size: 17, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Text("›").font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(Color.sage)
             }
+            .padding(.vertical, 13)
+            .padding(.horizontal, 2)
+            .overlay(alignment: .bottom) { if !last { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) } }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Prayer scores' row value: its lifetime score in a small pressed ring (PrayerScores.prayedScore — the page's own number).
+struct JourneyMiniRing: View {
+    let score: Int
+    var body: some View {
+        ZStack {
+            NeuPressed(shape: Circle(), radius: 2.5, offset: 1.5)
+            Circle().trim(from: 0, to: CGFloat(score) / 100)
+                .stroke(Color.primary.opacity(0.65), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .padding(3)
+            Text("\(score)").font(.system(size: 12, weight: .light, design: .rounded)).foregroundStyle(.primary)
+        }
+        .frame(width: 38, height: 38)
+    }
+}
+
+/// The section labels: "MONTHS" with "% in time" on the right, "MILESTONES".
+struct JourneySectionLabel: View {
+    let title: String
+    var trailing: String? = nil
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).font(.system(size: 12, weight: .light, design: .rounded)).tracking(1).foregroundStyle(.secondary)
+            Spacer()
+            if let trailing {
+                Text(trailing).font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// Every month, newest first, a break folded into one "Away" line (spec: "every month (a break folds into one 'Away ·
+/// dates' row)"); the latest five months, then "All N months ›" opens the rest in place.
+struct JourneyMonthsList: View {
+    let rows: [YourJourneyStats.MonthRow]
+    let onMonth: (Date) -> Void
+    @State private var all = false
+    static let shown = 5
+
+    var body: some View {
+        let monthCount = rows.filter { $0.rate != nil }.count
+        let visible: [YourJourneyStats.MonthRow] = {
+            guard !all, monthCount > Self.shown else { return rows }
+            var out: [YourJourneyStats.MonthRow] = [], months = 0
+            for r in rows {
+                if r.rate != nil { if months == Self.shown { break }; months += 1 }
+                out.append(r)
+            }
+            while out.last?.rate == nil, !out.isEmpty { out.removeLast() }   // never end on an Away line
+            return out
+        }()
+        VStack(alignment: .leading, spacing: 4) {
+            JourneySectionLabel(title: "MONTHS", trailing: "% in time")
             VStack(spacing: 0) {
-                ForEach(stats.monthRows) { row in monthRow(row) }
+                ForEach(visible) { row in
+                    if row.rate == nil { away(row) } else { month(row) }
+                }
+                if !all, monthCount > Self.shown {
+                    Button {
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.easeOut(duration: CircleMotion.quick)) { all = true }
+                    } label: {
+                        Text("All \(monthCount) months ›")
+                            .font(.system(size: 15, weight: .light, design: .rounded))
+                            .foregroundStyle(Color.sage)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 12).padding(.horizontal, 2)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
 
-    private func sectionTitle(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 12, weight: .regular, design: .rounded))
-            .tracking(0.8)
-            .foregroundStyle(.tertiary)
+    private func away(_ row: YourJourneyStats.MonthRow) -> some View {
+        HStack {
+            Text("Away")
+            Spacer()
+            Text(row.note ?? "")
+        }
+        .font(.system(size: 13, weight: .light, design: .rounded))
+        .foregroundStyle(.secondary)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 2)
+        .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+        .accessibilityElement(children: .combine)
     }
 
-    private func monthRow(_ row: YourJourneyStats.MonthRow) -> some View {
-        Button { onMonth(row.month) } label: {
-            HStack(spacing: 14) {
+    private func month(_ row: YourJourneyStats.MonthRow) -> some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            onMonth(row.month)
+        } label: {
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(row.title).font(.system(size: 17, weight: .light, design: .rounded))
+                    Text(row.title).font(.system(size: 16, weight: .light, design: .rounded))
                     if let note = row.note {
-                        Text(note)
-                            .font(.system(size: 11, weight: .light, design: .rounded))
-                            .foregroundStyle(.tertiary)
+                        Text(note).font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
                 }
-                .frame(width: 96, alignment: .leading)
+                .frame(width: 122, alignment: .leading)
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         Capsule().fill(Color.primary.opacity(0.1))
-                        if let rate = row.rate {
-                            Capsule().fill(Color.primary.opacity(0.75)).frame(width: geo.size.width * CGFloat(rate) / 100)
-                        }
+                        Capsule().fill(Color.primary.opacity(0.55)).frame(width: geo.size.width * CGFloat(row.rate ?? 0) / 100)
                     }
                 }
                 .frame(height: 4)
-                Text(row.rate.map { "\($0)%" } ?? "")
+                Text("\(row.rate ?? 0)%")
                     .font(.system(size: 14, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
                     .frame(width: 40, alignment: .trailing)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.tertiary)
+                Text("›").font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(Color.sage)
             }
-            .padding(.vertical, 13)
+            .padding(.vertical, 12)
             .padding(.horizontal, 2)
             .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(row.rate.map { "\(row.title), \($0) percent in time" } ?? "\(row.title), \(row.note ?? "")")
+        .accessibilityLabel("\(row.title), \(row.rate ?? 0) percent in time")
     }
+}
 
-    // MARK: Milestones
-
-    private var milestones: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            sectionTitle("MILESTONES")
+/// Earned once, dated, newest first; a hollow dot each (the canvas).
+struct JourneyMilestonesList: View {
+    let milestones: [JourneyMilestone]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            JourneySectionLabel(title: "MILESTONES")
             VStack(spacing: 0) {
-                ForEach(stats.milestones) { m in
+                ForEach(milestones) { m in
                     HStack(spacing: 14) {
-                        Circle().fill(dot(m.tone)).frame(width: 10, height: 10)
+                        Circle().strokeBorder(Color.primary.opacity(0.6), lineWidth: 1.5).frame(width: 10, height: 10)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(m.text).font(.system(size: 15, weight: .light, design: .rounded))
-                            Text(Self.milestoneDate(m.date))
+                            Text(m.detail ?? m.date.formatted(.dateTime.month(.abbreviated).day().year()))
                                 .font(.system(size: 12, weight: .light, design: .rounded))
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
                     }
-                    .padding(.vertical, 11)
+                    .padding(.vertical, 10)
                     .padding(.horizontal, 2)
                     .accessibilityElement(children: .combine)
                 }
             }
         }
-    }
-
-    private func dot(_ tone: JourneyMilestone.Tone) -> Color {
-        switch tone {
-        case .count: Color.primary.opacity(0.75)
-        case .inTime: Self.green.opacity(0.85)
-        case .quiet: Color.primary.opacity(0.3)
-        }
-    }
-
-    /// "Thursday, Oct 1"; another year's date carries its year.
-    static func milestoneDate(_ date: Date) -> String {
-        let cal = Calendar.current
-        let sameYear = cal.component(.year, from: date) == cal.component(.year, from: Date())
-        return sameYear ? date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-                        : date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year())
-    }
-
-    /// The mockup's green (rgb 52 184 100): softer than the system green, which shouted from 84 cells.
-    static let green = Color(red: 52 / 255, green: 184 / 255, blue: 100 / 255)
-
-    /// Green = all five in time, grey = all five, hollow = some missed, faint = no shukr that day; today lighter.
-    @ViewBuilder private func cell(_ kind: YourJourneyStats.Kind, today: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 3, style: .continuous)
-        Group {
-            switch kind {
-            case .allInTime: shape.fill(Self.green.opacity(today ? 0.4 : 0.75))
-            case .allFive: shape.fill(Color.primary.opacity(today ? 0.16 : 0.3))
-            case .some: today ? AnyView(shape.fill(Color.primary.opacity(0.14))) : AnyView(shape.strokeBorder(Color.primary.opacity(0.28), lineWidth: 1.2))
-            case .none: today ? AnyView(shape.fill(Color.primary.opacity(0.14))) : AnyView(shape.strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 14)
     }
 }
 
@@ -331,8 +339,6 @@ struct YourJourneyStats {
         let at: Date
     }
     var monthRows: [MonthRow] = []
-    /// "Better each month since <month>": the first of 3+ months in a row, up to this one, each better than the last.
-    var betterSince: Date?
     /// Every milestone earned, newest first.
     var milestones: [JourneyMilestone] = []
 
@@ -347,7 +353,7 @@ struct YourJourneyStats {
     /// The months with a marked day, and every break (≥ 7 days in a row with no mark; a fully excused day isn't away).
     private mutating func buildMonths(log: JourneyLog, first: Date, today: Date) {
         let cal = Calendar.current
-        var perMonth: [Date: (inTime: Int, due: Int)] = [:]
+        var perMonth: [Date: (inTime: Int, due: Int, days: Int)] = [:]
         var rows: [MonthRow] = []
         var gapStart: Date?
         var gapLength = 0
@@ -355,8 +361,9 @@ struct YourJourneyStats {
             defer { gapStart = nil; gapLength = 0 }
             guard let start = gapStart, gapLength >= 7, let end = cal.date(byAdding: .day, value: -1, to: day) else { return }
             let fmt = Date.FormatStyle.dateTime.month(.abbreviated).day()
+            let length = gapLength >= 14 ? "\(Int((Double(gapLength) / 7).rounded())) weeks" : "\(gapLength) days"
             rows.append(MonthRow(id: "away-\(PrayerNotificationID.dayKey(start))", month: JourneyLog.monthStart(start), title: "Away",
-                                 note: "\(start.formatted(fmt)) – \(end.formatted(fmt))", rate: nil, at: start))
+                                 note: "\(start.formatted(fmt)) – \(end.formatted(fmt)) · \(length)", rate: nil, at: start))
         }
         var date = first
         while date <= today {
@@ -365,8 +372,9 @@ struct YourJourneyStats {
             if d.active {
                 closeGap(endingBefore: date)
                 let m = JourneyLog.monthStart(date)
-                perMonth[m, default: (0, 0)].inTime += d.inTime
-                perMonth[m, default: (0, 0)].due += d.due
+                perMonth[m, default: (0, 0, 0)].inTime += d.inTime
+                perMonth[m, default: (0, 0, 0)].due += d.due
+                perMonth[m, default: (0, 0, 0)].days += 1
             } else if excusedAll {
                 closeGap(endingBefore: date)
             } else if date < today || !d.marks.contains(.toCome) {
@@ -378,28 +386,13 @@ struct YourJourneyStats {
         }
         if let next = cal.date(byAdding: .day, value: 1, to: today) { closeGap(endingBefore: next) }
 
-        let thisMonth = JourneyLog.monthStart(today), firstMonth = JourneyLog.monthStart(first)
-        let ordinal = NumberFormatter()
-        ordinal.numberStyle = .ordinal
-        var chrono: [(Date, Int)] = []
-        for (m, t) in perMonth.sorted(by: { $0.key < $1.key }) where t.due > 0 {
+        for (m, t) in perMonth where t.due > 0 {
             let rate = Int((Double(t.inTime) / Double(t.due) * 100).rounded())
-            chrono.append((m, rate))
-            let note: String? = m == thisMonth ? "so far"
-                : m == firstMonth && cal.component(.day, from: first) > 1
-                    ? "from the \(ordinal.string(from: NSNumber(value: cal.component(.day, from: first))) ?? "")" : nil
             rows.append(MonthRow(id: "month-\(PrayerNotificationID.dayKey(m))", month: m,
-                                 title: m.formatted(.dateTime.month(.wide)) + (cal.component(.year, from: m) == cal.component(.year, from: today) ? "" : " \(cal.component(.year, from: m))"),
-                                 note: note, rate: rate, at: m))
+                                 title: m.formatted(.dateTime.month(.wide).year()),
+                                 note: t.days == 1 ? "1 day" : "\(t.days) days", rate: rate, at: m))
         }
         monthRows = rows.sorted { $0.at > $1.at }
-
-        // Each month better than the one before, up to this one: from where the climb began (3 months at least).
-        if let last = chrono.last, last.0 == thisMonth {
-            var start = chrono.count - 1
-            while start > 0, chrono[start - 1].1 < chrono[start].1 { start -= 1 }
-            if chrono.count - start >= 3 { betterSince = chrono[start].0 }
-        }
     }
 
     init(log: JourneyLog, today: Date) {
@@ -453,6 +446,8 @@ struct JourneyMilestone: Identifiable, Equatable {
     let text: String
     let date: Date
     let tone: Tone
+    /// The line under it in place of the date ("Jan 5 – Feb 17, 2025" for the best streak).
+    var detail: String? = nil
     /// Within a day, the later-earned one sits higher (newest first).
     var order = 0
 
@@ -488,6 +483,11 @@ struct JourneyMilestone: Identifiable, Equatable {
             if run >= 3, run > bestAtRunStart, let last = runLastDay, let firstOfRun = runFirstDay {
                 out.removeAll { $0.id == "run.\(run)" && cal.isDate($0.date, inSameDayAs: last) }   // the same news twice
                 add("best.\(PrayerNotificationID.dayKey(firstOfRun))", "\(run) days in a row, all in time", last, .inTime)
+                if let k = out.firstIndex(where: { $0.id == "best.\(PrayerNotificationID.dayKey(firstOfRun))" }) {
+                    let sameYear = cal.component(.year, from: firstOfRun) == cal.component(.year, from: last)
+                    let from = firstOfRun.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
+                    out[k].detail = "\(from) – \(last.formatted(.dateTime.month(.abbreviated).day().year()))"
+                }
             }
             run = 0
             bestAtRunStart = best
@@ -508,18 +508,14 @@ struct JourneyMilestone: Identifiable, Equatable {
                 if out.isEmpty {
                     let first = (0..<5).filter { d.marks[$0].done }
                         .min { (d.slots[$0]?.markedAt ?? .distantFuture) < (d.slots[$1]?.markedAt ?? .distantFuture) }
-                    if let i = first {
-                        let name = d.slots[i]?.jumuah == true ? "Jumu'ah" : JourneyLog.names[i]
-                        let at = d.slots[i]?.markedAt.map { ", " + $0.formatted(date: .omitted, time: .shortened) } ?? ""
-                        add("dayOne", "Day one: \(name)\(at)", date, .quiet)
-                    }
+                    if first != nil { add("dayOne", "Day one", date, .quiet) }
                 }
                 for i in 0..<5 where d.marks[i].done {
                     total += 1
                     perName[i] += 1
-                    if Self.totals.contains(total) { add("total.\(total)", "\(ordinal(total)) prayer marked", date, .count) }
+                    if Self.totals.contains(total) { add("total.\(total)", "\(ordinal(total)) prayer", date, .count) }
                     if Self.perPrayer.contains(perName[i]) {
-                        add("\(JourneyLog.names[i]).\(perName[i])", "\(ordinal(perName[i])) \(JourneyLog.names[i]) marked", date, .count)
+                        add("\(JourneyLog.names[i]).\(perName[i])", "\(ordinal(perName[i])) \(JourneyLog.names[i])", date, .count)
                     }
                     let slot = d.slots[i]
                     if !jumuahDone, slot?.jumuah == true {
@@ -567,9 +563,11 @@ struct JourneyMilestone: Identifiable, Equatable {
             years += 1
         }
 
-        // The latest best is "your best"; the ones it beat stay as they were.
+        // The latest best is "Your best streak: N days" over its dates (the canvas); the ones it beat stay as they were.
         if let i = out.lastIndex(where: { $0.id.hasPrefix("best.") }) {
-            out[i] = JourneyMilestone(id: out[i].id, text: out[i].text + ": your best", date: out[i].date, tone: .inTime, order: out[i].order)
+            let n = out[i].text.split(separator: " ").first.map(String.init) ?? ""
+            out[i] = JourneyMilestone(id: out[i].id, text: "Your best streak: \(n) days", date: out[i].date, tone: .inTime,
+                                      detail: out[i].detail, order: out[i].order)
         }
         return out.sorted { ($0.date, $0.order) > ($1.date, $1.order) }
     }
