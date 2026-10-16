@@ -291,11 +291,14 @@ struct JourneyMonthsList: View {
 /// Earned once, dated, newest first; a hollow dot each (the canvas).
 struct JourneyMilestonesList: View {
     let milestones: [JourneyMilestone]
+    /// A tap: its card (JourneyMilestoneCard).
+    var onTap: (JourneyMilestone) -> Void = { _ in }
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             JourneySectionLabel(title: "MILESTONES")
             VStack(spacing: 0) {
                 ForEach(milestones) { m in
+                    Button { triggerSomeVibration(type: .light); onTap(m) } label: {
                     HStack(spacing: 14) {
                         Circle().strokeBorder(Color.primary.opacity(0.6), lineWidth: 1.5).frame(width: 10, height: 10)
                         VStack(alignment: .leading, spacing: 2) {
@@ -308,7 +311,11 @@ struct JourneyMilestonesList: View {
                     }
                     .padding(.vertical, 10)
                     .padding(.horizontal, 2)
+                    .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                     .accessibilityElement(children: .combine)
+                    .accessibilityHint("Shows how it was earned")
                 }
             }
         }
@@ -439,19 +446,55 @@ struct YourJourneyStats {
 
 // MARK: - Milestones
 
+/// A milestone's card, in the frosted ⓘ card (InfoModal): what it is, when, how it was earned, and its day.
+struct JourneyMilestoneCard: View {
+    let milestone: JourneyMilestone
+    /// Its day page (nil: none to open — today's still going, or a year since day one).
+    var onDay: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(milestone.about)
+                .font(.system(size: 15, weight: .light, design: .rounded))
+                .foregroundStyle(.primary.opacity(0.85))
+                .fixedSize(horizontal: false, vertical: true)
+            InfoModalRow(symbol: "calendar", title: "When",
+                         text: milestone.date.formatted(.dateTime.weekday(.wide).month(.wide).day().year()))
+            if let how = milestone.how {
+                InfoModalRow(symbol: "checkmark.circle", title: "How", text: how)
+            }
+            if let onDay {
+                Button { triggerSomeVibration(type: .light); onDay() } label: {
+                    Text("See that day ›")
+                        .font(.system(size: 15, weight: .regular, design: .rounded))
+                        .foregroundStyle(Color.sage)
+                        .padding(.top, 2)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
 /// Earned once, dated (spec "Milestones", owner 2026-10-16: "a milestone for each one" — every prayer, not only Fajr).
 /// One walk over the log from day one; the same rules as the page (prayer days, excused never missed, a run skips a fully
 /// excused day and waits on an unfinished today).
 struct JourneyMilestone: Identifiable, Equatable {
     enum Tone { case count, inTime, quiet }   // the mockup's dots: dark, green, grey
     let id: String
-    let text: String
+    var text: String
     let date: Date
     let tone: Tone
     /// The line under it in place of the date ("Jan 5 – Feb 17, 2025" for the best streak).
     var detail: String? = nil
     /// Within a day, the later-earned one sits higher (newest first).
     var order = 0
+    /// Its card (a tap — owner, 2026-10-16: "click on a milestone to learn more about it"): a symbol, what it is, how it was
+    /// earned, and the day it opens (nil: none — a year since day one).
+    var symbol = "flag"
+    var about = ""
+    var how: String? = nil
+    var day: Date? = nil
 
     /// Days all in time in a row worth a milestone (DayInsight's own list).
     static let runs: [Int] = [7, 14, 21, 30, 40, 50, 60, 90, 100, 150, 200, 250, 300, 365]
@@ -464,10 +507,18 @@ struct JourneyMilestone: Identifiable, Equatable {
         guard let firstDay = log.firstDay else { return [] }
         let cal = Calendar.current
         var out: [JourneyMilestone] = []
-        func add(_ id: String, _ text: String, _ date: Date, _ tone: Tone) {
+        func add(_ id: String, _ text: String, _ date: Date, _ tone: Tone,
+                 symbol: String = "flag", about: String = "", how: String? = nil, day: Date? = nil) {
             guard !out.contains(where: { $0.id == id }) else { return }
-            out.append(JourneyMilestone(id: id, text: text, date: date, tone: tone, order: out.count))
+            out.append(JourneyMilestone(id: id, text: text, date: date, tone: tone, order: out.count,
+                                        symbol: symbol, about: about, how: how, day: day ?? date))
         }
+        /// "Isha, prayed 8:18 PM" — the prayer that earned it.
+        func prayed(_ d: JourneyLog.Day, _ i: Int) -> String {
+            let name = d.slots[i]?.jumuah == true ? "Jumu'ah" : JourneyLog.names[i]
+            return name + (d.slots[i]?.markedAt.map { ", prayed " + $0.formatted(date: .omitted, time: .shortened) } ?? "")
+        }
+        let span = Date.FormatStyle.dateTime.month(.abbreviated).day()
         func ordinal(_ n: Int) -> String {
             let f = NumberFormatter(); f.numberStyle = .ordinal
             return f.string(from: NSNumber(value: n)) ?? "\(n)"
@@ -486,7 +537,9 @@ struct JourneyMilestone: Identifiable, Equatable {
             // Keyed by the run's first day: a best still growing is one milestone, celebrated once, not one a day.
             if run >= 3, run > bestAtRunStart, let last = runLastDay, let firstOfRun = runFirstDay {
                 out.removeAll { $0.id == "run.\(run)" && cal.isDate($0.date, inSameDayAs: last) }   // the same news twice
-                add("best.\(PrayerNotificationID.dayKey(firstOfRun))", "\(run) days in a row, all in time", last, .inTime)
+                add("best.\(PrayerNotificationID.dayKey(firstOfRun))", "\(run) days in a row, all in time", last, .inTime,
+                    symbol: "trophy", about: "A new best: more days in a row with all five prayed in time than ever before.",
+                    how: "\(run) days, \(firstOfRun.formatted(span)) – \(last.formatted(span))")
                 if let k = out.firstIndex(where: { $0.id == "best.\(PrayerNotificationID.dayKey(firstOfRun))" }) {
                     let sameYear = cal.component(.year, from: firstOfRun) == cal.component(.year, from: last)
                     let from = firstOfRun.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
@@ -506,34 +559,51 @@ struct JourneyMilestone: Identifiable, Equatable {
             let unfinishedToday = date == today && d.marks.contains(.toCome)
 
             if d.active {
-                if gap >= 7 { add("back.\(d.key)", "Welcome back", date, .quiet) }
+                if gap >= 7, let left = cal.date(byAdding: .day, value: -gap, to: date),
+                   let lastAway = cal.date(byAdding: .day, value: -1, to: date) {
+                    add("back.\(d.key)", "Welcome back", date, .quiet, symbol: "arrow.uturn.left",
+                        about: "Your first prayer marked after \(gap) days away.",
+                        how: "Away \(left.formatted(span)) – \(lastAway.formatted(span))")
+                }
                 gap = 0
                 // Day one: the first prayer marked, by when it was marked.
                 if out.isEmpty {
                     let first = (0..<5).filter { d.marks[$0].done }
                         .min { (d.slots[$0]?.markedAt ?? .distantFuture) < (d.slots[$1]?.markedAt ?? .distantFuture) }
-                    if first != nil { add("dayOne", "Day one", date, .quiet) }
+                    if let i = first {
+                        add("dayOne", "Day one", date, .quiet, symbol: "sparkles",
+                            about: "The first prayer you marked in shukr.", how: prayed(d, i))
+                    }
                 }
                 for i in 0..<5 where d.marks[i].done {
                     total += 1
                     perName[i] += 1
-                    if total % 100 == 0 { add("total.\(total)", "\(ordinal(total)) prayer", date, .count) }
+                    if total % 100 == 0 {
+                        add("total.\(total)", "\(ordinal(total)) prayer", date, .count, symbol: "number",
+                            about: "\(total) prayers marked since day one.", how: prayed(d, i))
+                    }
                     if Self.perPrayer.contains(perName[i]) {
-                        add("\(JourneyLog.names[i]).\(perName[i])", "\(ordinal(perName[i])) \(JourneyLog.names[i])", date, .count)
+                        add("\(JourneyLog.names[i]).\(perName[i])", "\(ordinal(perName[i])) \(JourneyLog.names[i])", date, .count,
+                            symbol: "number", about: "\(perName[i]) \(JourneyLog.names[i]) prayers marked since day one.",
+                            how: prayed(d, i))
                     }
                     let slot = d.slots[i]
                     if !jumuahDone, slot?.jumuah == true {
                         jumuahDone = true
                         masjidDone = true   // the first Jumu'ah is also the first prayer at a masjid: once is enough
-                        add("jumuah", "First Jumu'ah at a masjid", date, .count)
+                        add("jumuah", "First Jumu'ah at a masjid", date, .count, symbol: "building.columns",
+                            about: "Your first Friday prayer marked at a masjid.",
+                            how: slot?.masjid.map { "At \($0)" } ?? prayed(d, i))
                     } else if !masjidDone, let m = slot?.masjid {
                         masjidDone = true
-                        add("masjid", "First prayer at a masjid: \(m)", date, .count)
+                        add("masjid", "First prayer at a masjid: \(m)", date, .count, symbol: "building.columns",
+                            about: "The first prayer you marked at a masjid.", how: "\(prayed(d, i)), at \(m)")
                     }
                 }
                 if !perfectDone, d.marks.allSatisfy({ ($0.score ?? 0) >= 0.9999 }) {
                     perfectDone = true
-                    add("perfect", "A perfect day: all five Perfect", date, .inTime)
+                    add("perfect", "A perfect day: all five Perfect", date, .inTime, symbol: "star",
+                        about: "All five prayers prayed early in their windows on one day — each scored 100.")
                 }
             } else if excusedAll {
                 gap = 0
@@ -550,7 +620,9 @@ struct JourneyMilestone: Identifiable, Equatable {
                 runLastDay = date
                 best = max(best, run)
                 if Self.runs.contains(run) {
-                    add("run.\(run)", run == 7 ? "A full week, all in time" : "\(run) days in a row, all in time", date, .inTime)
+                    add("run.\(run)", run == 7 ? "A full week, all in time" : "\(run) days in a row, all in time", date, .inTime,
+                        symbol: "calendar", about: "\(run) days in a row with all five prayers prayed in time.",
+                        how: runFirstDay.map { "\($0.formatted(span)) – \(date.formatted(span))" })
                 }
             } else if !unfinishedToday {
                 closeRun()
@@ -576,15 +648,17 @@ struct JourneyMilestone: Identifiable, Equatable {
         // Years since day one.
         var years = 1
         while let anniversary = cal.date(byAdding: .year, value: years, to: cal.startOfDay(for: firstDay)), anniversary <= today {
-            add("year.\(years)", years == 1 ? "One year since day one" : "\(years) years since day one", anniversary, .quiet)
+            add("year.\(years)", years == 1 ? "One year since day one" : "\(years) years since day one", anniversary, .quiet,
+                symbol: "calendar.badge.clock", about: "Day one was \(firstDay.formatted(.dateTime.month(.wide).day().year())).")
+            if let k = out.firstIndex(where: { $0.id == "year.\(years)" }) { out[k].day = nil }   // no day page for an anniversary
             years += 1
         }
 
         // The latest best is "Your best streak: N days" over its dates (the canvas); the ones it beat stay as they were.
         if let i = out.lastIndex(where: { $0.id.hasPrefix("best.") }) {
             let n = out[i].text.split(separator: " ").first.map(String.init) ?? ""
-            out[i] = JourneyMilestone(id: out[i].id, text: "Your best streak: \(n) days", date: out[i].date, tone: .inTime,
-                                      detail: out[i].detail, order: out[i].order)
+            out[i].text = "Your best streak: \(n) days"
+            out[i].about = "Your longest run of days with all five prayed in time." 
         }
         return out.sorted { ($0.date, $0.order) > ($1.date, $1.order) }
     }

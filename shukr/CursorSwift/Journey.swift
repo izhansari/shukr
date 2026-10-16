@@ -206,12 +206,30 @@ struct JourneyPage: View {
     @State private var showScores = false
     /// The title moves into the bar once it has scrolled under it (as the Zikr pages' `titleInBar`).
     @State private var titleShown = false
+    /// A milestone tapped: its frosted card.
+    @State private var milestoneCard: JourneyMilestone?
 
     private var today: Date { PrayerDay.start() }
+
+    /// A day page opens only for a day that's over or has all five marked (it never shows live rows).
+    private func opens(_ day: Date?) -> Bool {
+        guard let day, let first = log.firstDay, day >= first, day <= today else { return false }
+        return day < today || log.day(day).allFive
+    }
 
     var body: some View {
         ScrollView {
             home
+        }
+        .infoModal(isPresented: Binding(get: { milestoneCard != nil }, set: { if !$0 { milestoneCard = nil } }),
+                   title: milestoneCard?.text ?? "", symbol: milestoneCard?.symbol ?? "flag", tint: .secondary) {
+            if let m = milestoneCard {
+                JourneyMilestoneCard(milestone: m, onDay: opens(m.day) ? {
+                    let day = m.day
+                    milestoneCard = nil
+                    if let day { openDay = JourneyDayRoute(date: day) }
+                } : nil)
+            }
         }
         .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 40 } action: { _, under in
             withAnimation(.easeOut(duration: 0.15)) { titleShown = under }
@@ -314,7 +332,9 @@ struct JourneyPage: View {
             if !s.monthRows.isEmpty {
                 JourneyMonthsList(rows: s.monthRows) { m in openMonth = JourneyMonthRoute(month: m) }.padding(.top, 26)
             }
-            if !s.milestones.isEmpty { JourneyMilestonesList(milestones: s.milestones).padding(.top, 26) }
+            if !s.milestones.isEmpty {
+                JourneyMilestonesList(milestones: s.milestones) { milestoneCard = $0 }.padding(.top, 26)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 40)
