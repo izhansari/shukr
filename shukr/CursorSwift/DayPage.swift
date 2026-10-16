@@ -81,6 +81,15 @@ struct DayFacts {
 
 // MARK: - The rows (one look on both pages)
 
+extension PrayerModel {
+    /// A day page row's second line: "Late · 75"; a Jumu'ah "Jumu'ah · 100" — never "Jumu'ah at <masjid>", which ran the
+    /// width of the row (owner, 2026-10-16). The masjid stays as the mark by the name and the place under the ring.
+    var dayRowSummary: String {
+        guard let s = numberScore else { return "" }
+        return isJumuah ? "Jumu'ah · \(Int((s * 100).rounded()))" : PrayerScoring.summary(for: s)
+    }
+}
+
 /// The prayer list's raised band for a row — the prayer on now, a row whose buttons are up, a picked row on the day page.
 /// The ONE place the look's raise is drawn: PrayerButton and Journey's rows both use it (owner, 2026-10-16: "selecting a row
 /// item should match … how the current prayer looks … raised up … reference that same view logic").
@@ -141,7 +150,7 @@ struct DayCardRow: View {
             }
             Spacer()
             if row.isCompleted, let at = row.timeAtComplete {
-                DayRowTime(prayedAt: at, summary: row.scoreSummary ?? "")
+                DayRowTime(prayedAt: at, summary: row.dayRowSummary)
             } else {
                 Text(excused ? "Excused" : "Missed")
                     .font(.footnote).fontDesign(.rounded).fontWeight(.light)

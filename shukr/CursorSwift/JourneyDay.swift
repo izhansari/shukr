@@ -71,12 +71,11 @@ struct JourneyDayPage: View {
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
-        // Sideways: the days (the left ~20 pt edge is the system's back swipe, which wins there).
-        .gesture(DragGesture(minimumDistance: 24).onEnded { v in
-            let w = v.translation.width, h = v.translation.height
-            guard abs(w) > 50, abs(w) > abs(h) * 1.5 else { return }
-            step(w < 0 ? 1 : -1)
-        })
+        .toolbar { ToolbarItem(placement: .principal) { heading } }
+        // Sideways, live: the ring and the card follow the finger, the date stays (owner, 2026-10-16: "drag the list and
+        // the ring together while keeping the date at the top … animate nicely"). The left ~20 pt edge stays the
+        // system's back swipe, which wins there.
+        .gesture(dayDrag)
         .navigationDestination(item: $zikrDay) { ZikrDaySessionsPage(date: $0) }
         // Pushed without a slide: the pile fades in over the page and, closed, takes Moments with it.
         .navigationDestination(item: $pile) { MemoriesPage(openPile: $0.key, leaveWithPile: true) }
@@ -123,31 +122,84 @@ struct JourneyDayPage: View {
         #endif
     }
 
+    /// The Salah tab's day page geometry (measured on it, raised look, 2026-10-16 — owner: "the spacing of the page
+    /// vertically doesn't seem to match"): the ring's disc top 98.7 pt under the top bar's line, 87.3 pt from the disc to the
+    /// card (the lines under the ring centred in it), 14 pt from the card to the pill.
+    private static let ringTop: CGFloat = 82.7
+    private static let ringToCard: CGFloat = 87.3
+    private static let cardToPill: CGFloat = 14
+
     private var content: some View {
         VStack(spacing: 0) {
-            heading.padding(.top, 2)
-            ring.padding(.top, 18)
-            // Fixed room under the ring, so the card never moves as the lines come and go (a frame on an EmptyView is
-            // nothing: the room is a clear box the lines sit in).
-            Color.clear.frame(height: 48).overlay { underRing }.padding(.top, 8)
-            cardRow.padding(.top, 6)
+            ring.padding(.top, Self.ringTop)
+            // The room under the ring: the picked prayer's lines centred in it, so the card never moves.
+            Color.clear.frame(height: Self.ringToCard).overlay { underRing }
+            cardRow
             DayFlipPill(flipped: flipped) {
                 withAnimation(CircleMotion.dayFlip) { flipped.toggle() }
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }   // never the same photo twice
             }
-            .padding(.top, 16)
+            .padding(.top, Self.cardToPill)
             .opacity(facts.isEmpty ? 0 : 1)   // no pill when the back is empty (owner)
             .allowsHitTesting(!facts.isEmpty)
             .animation(.easeOut(duration: CircleMotion.quick), value: facts.isEmpty)
         }
+        .offset(x: dragOffset)
         .padding(.horizontal, 16)
         .padding(.bottom, 24)
     }
 
-    private func step(_ by: Int) {
+    // MARK: Days, live
+
+    /// How far the ring and the card follow the finger sideways (0 at rest).
+    @State private var dragOffset: CGFloat = 0
+    @State private var dragHorizontal: Bool?
+    private var pageWidth: CGFloat { UIScreen.main.bounds.width }
+
+    /// The finger moves the day; past a third of the width (or a flick) the next day slides in, else it springs back. At
+    /// the first / latest day it gives a little and comes back.
+    private var dayDrag: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { v in
+                if dragHorizontal == nil { dragHorizontal = abs(v.translation.width) > abs(v.translation.height) }
+                guard dragHorizontal == true else { return }
+                let w = v.translation.width
+                let allowed = w < 0 ? canGoForward : canGoBack
+                dragOffset = allowed ? w : w * 0.25
+            }
+            .onEnded { v in
+                defer { dragHorizontal = nil }
+                guard dragHorizontal == true else { return }
+                let w = v.translation.width, projected = v.predictedEndTranslation.width
+                let by = w < 0 ? 1 : -1
+                let allowed = by > 0 ? canGoForward : canGoBack
+                guard allowed, abs(w) > pageWidth / 3 || abs(projected) > pageWidth * 0.6 else {
+                    withAnimation(CircleMotion.spring) { dragOffset = 0 }
+                    return
+                }
+                slide(by)
+            }
+    }
+
+    /// Out the side the finger went, the day swapped unseen, in from the other side.
+    private func slide(_ by: Int) {
+        let out: CGFloat = by > 0 ? -pageWidth : pageWidth
+        withAnimation(.easeIn(duration: 0.18)) { dragOffset = out } completion: {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                step(by, buzz: false)
+                dragOffset = -out
+            }
+            withAnimation(CircleMotion.spring) { dragOffset = 0 }
+        }
+        triggerSomeVibration(type: .light)
+    }
+
+    private func step(_ by: Int, buzz: Bool = true) {
         guard by < 0 ? canGoBack : canGoForward,
               let next = Calendar.current.date(byAdding: .day, value: by, to: date) else { return }
-        triggerSomeVibration(type: .light)
+        if buzz { triggerSomeVibration(type: .light) }
         // At once, rows and all (owner's rule: out, then in — a fade left the two days' words over each other).
         picked = nil
         flipped = false
@@ -175,28 +227,35 @@ struct JourneyDayPage: View {
 
     // MARK: Heading
 
-    /// Centred (owner, 2026-10-15): the date, then "8 days ago · Jumada I 3".
+    /// In the top bar, on the back button's line (owner, 2026-10-16: "sit at the top, like in the top bar … same line as the
+    /// back chevron … say relatively to today where we are in time … don't need the Islamic calendar").
     private var heading: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 1) {
             Text(date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                .font(.system(size: 26, weight: .light, design: .rounded))
-            Text(subtitle)
-                .font(.system(size: 15, weight: .light, design: .rounded))
+                .font(.system(size: 17, weight: .regular, design: .rounded))
+            Text(Self.relative(date, to: today))
+                .font(.system(size: 12, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
         }
-        .multilineTextAlignment(.center)
-        .frame(maxWidth: .infinity)
+        .lineLimit(1)
         .contentTransition(.opacity)
+        .accessibilityElement(children: .combine)
     }
 
-    private var subtitle: String {
-        let back = Calendar.current.dateComponents([.day], from: date, to: today).day ?? 0
-        let when = back == 0 ? "Today" : back == 1 ? "Yesterday" : back < 14 ? "\(back) days ago"
-            : date.formatted(.dateTime.year())
-        // The Hijri date at midday (Memories' search uses Umm al-Qura too).
-        var hijri = Date.FormatStyle()
-        hijri.calendar = Calendar(identifier: .islamicUmmAlQura)
-        return "\(when) · \(date.addingTimeInterval(12 * 3600).formatted(hijri.day().month(.wide)))"
+    /// Where the day sits from today: "Today", "Yesterday", "3 days ago", "a week ago", "3 weeks ago", "a month ago",
+    /// "3 months ago", "a year ago", "2 years ago".
+    static func relative(_ day: Date, to today: Date) -> String {
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: day), to: cal.startOfDay(for: today)).day ?? 0
+        let months = cal.dateComponents([.month], from: cal.startOfDay(for: day), to: cal.startOfDay(for: today)).month ?? 0
+        func ago(_ n: Int, _ unit: String) -> String { n == 1 ? "a \(unit) ago" : "\(n) \(unit)s ago" }
+        switch days {
+        case ..<1: return "Today"
+        case 1: return "Yesterday"
+        case 2..<7: return "\(days) days ago"
+        case 7..<31 where months < 1: return ago(days / 7, "week")
+        default: return months < 12 ? ago(max(months, 1), "month") : ago(months / 12, "year")
+        }
     }
 
     // MARK: The ring
@@ -240,8 +299,8 @@ struct JourneyDayPage: View {
     /// The list card between two plain chevrons (owner: "just use plain chevrons … we don't want to overdo the soft
     /// ring look"), flipping to the back (DayFlipCard / DayBackCard) as the Salah tab's does.
     private var cardRow: some View {
-        HStack(spacing: 2) {
-            chevron("chevron.left", enabled: canGoBack, label: "Previous day") { step(-1) }
+        HStack(spacing: 12) {   // further from the card (owner, 2026-10-16)
+            chevron("chevron.left", enabled: canGoBack, label: "Previous day") { slide(-1) }
             // Each face carries the card's surface, so the whole card turns (Bradley's review).
             DayFlipCard(angle: flipped ? 180 : 0) {
                 prayerRows.modifier(SalahListInsets()).modifier(SalahLookCard(raised: true))
@@ -258,15 +317,16 @@ struct JourneyDayPage: View {
                     .modifier(SalahLookCard(raised: true))
             }
             .modifier(SalahLookListFrame())   // the Salah list's width (290 in the soft looks): one card shape on both pages
-            chevron("chevron.right", enabled: canGoForward, label: "Next day") { step(1) }
+            chevron("chevron.right", enabled: canGoForward, label: "Next day") { slide(1) }
         }
     }
 
     private func chevron(_ symbol: String, enabled: Bool, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
+            // Plain (no soft ring — owner), but noticeable: a size up, the full secondary grey.
             Image(systemName: symbol)
-                .font(.system(size: 17, weight: .light))
-                .foregroundStyle(enabled ? Color.secondary : Color.secondary.opacity(0.25))
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(enabled ? Color.primary.opacity(0.55) : Color.secondary.opacity(0.2))
                 .frame(width: 28, height: 60)
                 .contentShape(Rectangle())
         }

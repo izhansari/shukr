@@ -3639,6 +3639,11 @@ struct PrayerButton: View {
                     .foregroundColor(.secondary.opacity(statusBasedOpacity))
                     .allowsHitTesting(false)
 
+                } else if prayerObject.isCompleted && DayPageState.shared.up && !TourRuntime.shared.active,
+                          let prayedAt = prayerObject.timeAtComplete {
+                    // The day page, Jumu'ah too: "@ 1:22 PM" over "Jumu'ah · 100" (DayRowTime — Journey's rows too).
+                    DayRowTime(prayedAt: prayedAt, summary: prayerObject.dayRowSummary)
+                        .allowsHitTesting(false)
                 } else if prayerObject.isCompleted && prayerObject.isJumuah {
                     // A Jumu'ah: its time stays; a tap opens the masjid's line under the name (showMasjidLine).
                     Text(shortTimePM(shownStart))
@@ -3651,7 +3656,7 @@ struct PrayerButton: View {
                     if let prayedAt = prayerObject.timeAtComplete {
                         if DayPageState.shared.up && !TourRuntime.shared.active {
                             // The day page: "@ 7:45 PM", the grade and score under it (DayRowTime — Journey's rows too).
-                            DayRowTime(prayedAt: prayedAt, summary: completedTimeAndScore)
+                            DayRowTime(prayedAt: prayedAt, summary: prayerObject.dayRowSummary)
                                 .allowsHitTesting(false)
                         } else {
                         ExternalToggleText(
