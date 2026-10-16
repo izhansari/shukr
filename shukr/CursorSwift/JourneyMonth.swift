@@ -29,9 +29,6 @@ struct JourneyMonthPage: View {
     /// turned 90°): the month before rides in from the top 1:1, this one leaves at 90 %.
     @State private var dragOffset: CGFloat = 0
     @State private var dragVertical: Bool?
-    /// Each month's calendar height as laid out (five or six weeks); the shown month's is one page of travel.
-    @State private var paneHeights: [Date: CGFloat] = [:]
-    private var paneHeight: CGFloat { paneHeights[start] ?? 340 }
     /// The year, in place of the month (the title, Month | Year, or a pinch).
     @State private var showYear = false
 
@@ -71,19 +68,21 @@ struct JourneyMonthPage: View {
     var body: some View {
         ZStack {
             if showYear {
-                JourneyYearView(log: log, today: today, current: start) { month in
+                JourneyYearView(log: log, today: today, current: start, onPick: { month in
                     triggerSomeVibration(type: .light)
                     withAnimation(Self.zoom) { start = month; showYear = false }
-                }
-                .transition(.opacity.combined(with: .scale(scale: 1.08)))
-                .simultaneousGesture(MagnifyGesture().onEnded { v in
-                    if v.magnification > 1.15 { withAnimation(Self.zoom) { showYear = false } }   // spread: back into the month
+                }, onSpread: {
+                    withAnimation(Self.zoom) { showYear = false }   // a spread elsewhere: back into the month
                 })
+                .transition(.opacity.combined(with: .scale(scale: 1.08)))
             } else {
-                // Fits on a phone as it is (no scroll to fight the drag); a scroll only when it doesn't (large type).
+                // Never a scroll (it took the up/down drag: a six-week month on a 17 Pro didn't fit and the page scrolled
+                // instead of turning — Sami's check of 63c027c). The largest day size that fits the phone, down to 70 %.
                 ViewThatFits(in: .vertical) {
-                    page
-                    ScrollView { page }
+                    page(scale: 1)
+                    page(scale: 0.9)
+                    page(scale: 0.8)
+                    page(scale: 0.7)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 .simultaneousGesture(MagnifyGesture().onEnded { v in
@@ -107,7 +106,7 @@ struct JourneyMonthPage: View {
     /// Month ↔ year: a calm zoom (the month shrinks away as the year settles in, and back).
     private static let zoom = Animation.easeInOut(duration: 0.35)
 
-    private var page: some View {
+    private func page(scale: CGFloat) -> some View {
         let shown = shownMonth
         let numbers = log.month(shown)
         return VStack(alignment: .leading, spacing: 0) {
@@ -155,7 +154,7 @@ struct JourneyMonthPage: View {
             }
             .id(shown)
             .transition(CircleMotion.dayPickSwap)
-            calendars.padding(.top, 24)
+            calendars(scale: scale).padding(.top, 24 * scale)
             Text("Tap a day to open it.")
                 .font(.system(size: 13, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -169,31 +168,33 @@ struct JourneyMonthPage: View {
 
     /// The month's calendar between its neighbours, a page apart, moving with the finger (Journey's day pager: the one
     /// coming in rides 1:1, the one going out at 90 %, each fading and shrinking a little with its distance — never overlapping).
-    private var calendars: some View {
+    private func calendars(scale: CGFloat) -> some View {
         let panes: [(k: Int, month: Date)] = [-1, 0, 1].compactMap { k in k == 0 ? (0, start) : neighbour(k).map { (k, $0) } }
+        let height = JourneyCalendar.height(scale: scale)
         return ZStack(alignment: .top) {
             ForEach(panes, id: \.month) { pane in
-                let place = calendarPlace(pane.k)
-                JourneyCalendar(log: log, month: pane.month, today: today,
+                let place = calendarPlace(pane.k, height: height)
+                JourneyCalendar(log: log, month: pane.month, today: today, scale: scale,
                                 highlight: pane.k == 0 ? focus : nil) { open($0) }
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(height: height, alignment: .top)
                     .animation(.easeInOut(duration: 0.3), value: focus)
                     .modifier(DayPaneMotion(away: place.away))
                     .offset(y: place.y)
                     .allowsHitTesting(pane.k == 0)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { paneHeights[pane.month] = max($0, 1) }
             }
         }
-        .frame(height: paneHeight, alignment: .top)
+        // Every month six weeks tall (as the year's small months): the page never changes height as a month swaps in.
+        .frame(height: height, alignment: .top)
         .clipped()   // this month's own height: the neighbours wait a travel above and below, out of sight
         .contentShape(Rectangle())
         .gesture(swipe)
     }
 
-    /// How far a neighbour waits: this month's height and a row's room more, so a taller month (six weeks) above stays hidden.
-    private var travel: CGFloat { paneHeight + 60 }
+    /// How far a neighbour waits: the calendar's height and some room, out of sight above and below.
+    private var travel: CGFloat { JourneyCalendar.height(scale: 1) + 60 }
 
-    private func calendarPlace(_ k: Int) -> (y: CGFloat, away: CGFloat) {
+    /// One travel at every scale (the drag's turn settles at `travel`), so the month coming in lands exactly in place.
+    private func calendarPlace(_ k: Int, height: CGFloat) -> (y: CGFloat, away: CGFloat) {
         let h = travel
         let y: CGFloat
         if k == 0 {
@@ -289,8 +290,17 @@ private struct JourneyCalendar: View {
     let log: JourneyLog
     let month: Date
     let today: Date
+    /// The days' size (1 = JourneyDayRing.size): smaller where the page wouldn't fit (an SE; a six-week month on a 17 Pro).
+    var scale: CGFloat = 1
     let highlight: JourneyHighlight?
     let onDay: (Date) -> Void
+
+    /// Its height for a scale: the weekday letters, six weeks of days, the key (worked out, not measured, so the page's
+    /// fit test never feeds on itself).
+    static func height(scale: CGFloat) -> CGFloat {
+        let letters: CGFloat = 14, rows = 6 * JourneyDayRing.size * scale + 5 * 2, key: CGFloat = 14 + 14
+        return letters + 6 + rows + 6 + key
+    }
 
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 0), count: 7) }
 
@@ -306,15 +316,19 @@ private struct JourneyCalendar: View {
                 }
             }
             LazyVGrid(columns: columns, spacing: 2) {
-                ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size) }
+                ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
                 ForEach(days, id: \.self) { date in
                     let day = log.day(date)
                     JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, usesExcused: log.usesExcused)
+                        .scaleEffect(scale)
+                        .frame(height: JourneyDayRing.size * scale)
                         .opacity(highlight.map { $0.matches(day) ? 1 : 0.22 } ?? 1)
                         .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
                         .onTapGesture { onDay(date) }
                 }
+                // Six weeks always, so every month is the same height and the key never moves.
+                ForEach(0..<max(0, 42 - lead - days.count), id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
             }
             HStack(spacing: 16) {
                 key(keyRing(inTime: true), "All five in time")

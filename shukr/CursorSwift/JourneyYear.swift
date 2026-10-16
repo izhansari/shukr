@@ -28,7 +28,11 @@ struct JourneyYearView: View {
     /// The month the page was showing (outlined here as "where you were").
     let current: Date
     let onPick: (Date) -> Void
+    /// A spread not over a month with prayers: back into the month the page was showing.
+    var onSpread: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
+    /// Each small month's frame on screen, for a spread over it (build-plan C: "spread on a small month → that month").
+    @State private var frames: [Date: CGRect] = [:]
 
     private var years: [Int] {
         let cal = Calendar.current
@@ -36,6 +40,8 @@ struct JourneyYearView: View {
         let first = log.firstDay.map { cal.component(.year, from: $0) } ?? last
         return Array(first...last)
     }
+
+    private static let space = "journeyYear"
 
     var body: some View {
         ScrollView {
@@ -49,6 +55,16 @@ struct JourneyYearView: View {
         }
         .defaultScrollAnchor(.bottom)   // opens on this year; earlier years above
         .scrollIndicators(.hidden)
+        .coordinateSpace(.named(Self.space))
+        // Spread two fingers: the small month they started on opens (one with prayers); anywhere else, back to the month.
+        .simultaneousGesture(MagnifyGesture().onEnded { v in
+            guard v.magnification > 1.15 else { return }
+            if let hit = frames.first(where: { $0.value.contains(v.startLocation) })?.key, log.month(hit).activeDays > 0 {
+                onPick(hit)
+            } else {
+                onSpread()
+            }
+        })
         // Years scrolling up fade out under the back button instead of running into it.
         .mask { VStack(spacing: 0) { LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 28); Color.black } }
     }
@@ -113,6 +129,7 @@ struct JourneyYearView: View {
                 .padding(.top, 3)
             }
             .padding(6)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames[start] = $0 }
             .overlay {
                 if start == current {
                     RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.sage.opacity(0.55), lineWidth: 2)
