@@ -70,8 +70,9 @@ struct PrayerScores {
     var trend30: [String: Trend] = [:]
 
     static let names = JourneyLog.names
-    /// Best → worst by the score that counts a miss as 0 (owner: best at the top).
-    var ranked: [String] { Self.names.sorted { (prayers[$0]?.lifeScore ?? 0) > (prayers[$1]?.lifeScore ?? 0) } }
+    /// Best → worst by the score when prayed — one score everywhere (owner, 2026-10-16: "just make it always be for the
+    /// ones that we prayed"; Frank's check: the ring said 77 over a row saying 59 for the same prayer). Nothing prayed: last.
+    var ranked: [String] { Self.names.sorted { (prayers[$0]?.prayedScore ?? -1) > (prayers[$1]?.prayedScore ?? -1) } }
 
     @MainActor static var last: PrayerScores?
 
@@ -210,14 +211,15 @@ struct PrayerScores {
 
     // MARK: Words
 
-    /// All five's sentence: the strongest and the one that needs you most; the best-timed when it's another prayer.
+    /// All five's sentence: the strongest (top row) and the one that needs you most (missed most often); the latest-prayed
+    /// (bottom row) in grey when that's another prayer.
     var sentence: (line: String, sub: String?)? {
-        let order = ranked.filter { (prayers[$0]?.due ?? 0) > 0 }
+        let order = ranked.filter { (prayers[$0]?.prayed ?? 0) >= 5 }
         guard let top = order.first, let bottom = order.last, order.count >= 2 else { return nil }
-        let bestTimed = Self.names.filter { (prayers[$0]?.prayed ?? 0) >= 5 }
-            .max { (prayers[$0]?.prayedScore ?? 0) < (prayers[$1]?.prayedScore ?? 0) }
-        let sub = bestTimed.flatMap { $0 == top ? nil : "\($0) is your best-timed when you pray it" }
-        return ("\(top) is your strongest. \(bottom) needs you most.", sub)
+        let share = { (n: String) -> Double in let p = prayers[n]; return Double(p?.prayed ?? 0) / Double(max(1, p?.due ?? 0)) }
+        guard let needs = order.min(by: { share($0) < share($1) }) else { return nil }
+        let sub = bottom == needs || bottom == top ? nil : "\(bottom) is your latest when you pray it"
+        return ("\(top) is your strongest. \(needs) needs you most.", sub)
     }
 
     /// One true thing about a prayer, in a fixed order (spec: best-timed → longest streak → most at a masjid → mostly
@@ -498,7 +500,7 @@ struct PrayerScoresPage: View {
                     // One weight and one colour always: changing either as the move starts dropped the name for the
                     // whole rise (seen frame by frame, 2026-10-16).
                     Text(name).font(.system(size: 16, weight: .light, design: .rounded))
-                    Text(p.map { $0.due == 0 ? "Not enough yet" : "\($0.lifeScore) · \(Int((Double($0.prayed) / Double(max(1, $0.due)) * 100).rounded()))% prayed" } ?? " ")
+                    Text(p.map { p in p.prayedScore.map { "\($0) · \(Int((Double(p.prayed) / Double(max(1, p.due)) * 100).rounded()))% prayed" } ?? "Not enough yet" } ?? " ")
                         .font(.system(size: 12.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                 }
                 .frame(width: 104, alignment: .leading)
