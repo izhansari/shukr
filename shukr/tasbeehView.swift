@@ -1996,9 +1996,6 @@ struct tasbeehView: View {
         private var timeLeft : TimeInterval{
             return newAvrgTPC * Double(remainingCount)
         }
-        private var finishTime: Date{
-            return Date().addingTimeInterval(timeLeft)
-        }
 
         /// The session's goal for the goal page: "33" or "10 min".
         private var goalText: String {
@@ -2095,7 +2092,7 @@ struct tasbeehView: View {
                         }
                         ZikrBento(count: tasbeeh, seconds: secsToReport, secondsPerCount: newAvrgTPC,
                                   perTasbeeh: tasbeehRate,
-                                  finish: showsFinishEstimate ? (timeLeft, finishTime) : nil,
+                                  finishIn: showsFinishEstimate ? timeLeft : nil,
                                   usualSecondsPerCount: mantra?.secondsPerCount)
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.stats", $0) }
                     }
@@ -2476,15 +2473,15 @@ struct tasbeehView: View {
 
         /// The third tile while paused: what's left (a count goal: time left ⇄ the finish time; a time goal: time left
         /// ⇄ when it ends), else the pace per tasbeeh (freestyle, Tasbih Fatimah, past the goal).
-        private enum ThirdTile { case left(TimeInterval, Date), toGo(Int), counted }
+        private enum ThirdTile { case left(TimeInterval), toGo(Int), counted }
         private var thirdTile: ThirdTile {
             if !sharedState.isDoingPostNamazZikr && !goalReached {
                 if sharedState.selectedMode == 2 && remainingCount > 0 {
-                    return tasbeeh > 0 && newAvrgTPC > 0 ? .left(timeLeft, finishTime) : .toGo(remainingCount)
+                    return tasbeeh > 0 && newAvrgTPC > 0 ? .left(timeLeft) : .toGo(remainingCount)
                 }
                 if sharedState.selectedMode == 1 {
                     let left = max(0, Double(sharedState.selectedMinutes * 60) - secsToReport - timeOffset)
-                    if left > 0 { return .left(left, Date().addingTimeInterval(left)) }
+                    if left > 0 { return .left(left) }
                 }
             }
             return .counted
@@ -2650,9 +2647,13 @@ struct tasbeehView: View {
         @ViewBuilder private var finishLine: some View {
             HStack(spacing: 6) {
                 switch thirdTile {
-                case .left(let left, let at):
+                case .left(let left):
                     finishFlag
-                    Text("\(String(inMinSecStyle2(from: left).dropFirst(3))) left · you'll finish around \(shortTime(at))")
+                    // The finish follows the clock while paused (it was the time the pause screen opened, stale by the
+                    // pause's length): nothing is counted meanwhile, so what's left stays and the finish moves on.
+                    TimelineView(.everyMinute) { now in
+                        Text("\(String(inMinSecStyle2(from: left).dropFirst(3))) left · you'll finish around \(shortTime(now.date.addingTimeInterval(left)))")
+                    }
                 case .toGo(let n):
                     finishFlag
                     Text("\(n.formatted()) to go")
@@ -3824,7 +3825,9 @@ struct ZikrBento: View {
     let seconds: TimeInterval
     let secondsPerCount: Double
     let perTasbeeh: String
-    var finish: (timeLeft: TimeInterval, at: Date)? = nil
+    /// Seconds left to the goal; the finish time is now + this, kept current by the minute (a paused session's
+    /// finish moves on with the clock).
+    var finishIn: TimeInterval? = nil
     /// Lifetime use (a mantra's page): "25m 56s" instead of a stopwatch, other captions, and
     /// flat grouped-list tiles instead of glass.
     var timeText: String? = nil
@@ -3882,7 +3885,7 @@ struct ZikrBento: View {
                 }
             }
 
-            if let finish {
+            if let finishIn {
                 tile {
                     HStack(spacing: 12) {
                         Image(systemName: "flag.checkered")
@@ -3890,10 +3893,12 @@ struct ZikrBento: View {
                             .foregroundStyle(.secondary)
                             .frame(width: 26)
                         ZStack(alignment: .leading) {
-                            sentence(String(inMinSecStyle2(from: finish.timeLeft).dropFirst(3)), "left until you finish")
+                            sentence(String(inMinSecStyle2(from: finishIn).dropFirst(3)), "left until you finish")
                                 .opacity(showingFinishTime ? 0 : 1)
                                 .offset(y: showingFinishTime ? -16 : 0)
-                            sentence(shortTime(finish.at), "is your estimated finish")
+                            TimelineView(.everyMinute) { now in
+                                sentence(shortTime(now.date.addingTimeInterval(finishIn)), "is your estimated finish")
+                            }
                                 .opacity(showingFinishTime ? 1 : 0)
                                 .offset(y: showingFinishTime ? 0 : 16)
                         }
