@@ -130,6 +130,9 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     private var lastTickAt: Date?
     /// Core Motion samples this second with no heading (−1, thrown away below): if a car shows only these, that's the freeze.
     private var droppedThisSecond = 0
+    /// How the phone is held (gravity's z: −1 flat screen up, 0 upright, +1 face down): the two headings can disagree by
+    /// ~180° upright or face down, and the log has to say which (his phone's log, 2026-10-15).
+    private var gravityZ = -1.0
     #endif
 
     override init() {
@@ -396,6 +399,9 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         motion.showsDeviceMovementDisplay = false
         motion.startDeviceMotionUpdates(using: frame, to: .main) { [weak self] sample, _ in
             guard let self, let sample else { return }
+            #if DEBUG
+            self.gravityZ = sample.gravity.z
+            #endif
             guard sample.heading >= 0 else {
                 #if DEBUG
                 self.droppedThisSecond += 1
@@ -480,7 +486,8 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         let source = motion.isDeviceMotionActive ? (motionFrame == .xTrueNorthZVertical ? "CM true" : "CM mag") : "CL"
         let bearing = qiblaBearing.map { "\(Int($0.rounded()))°" } ?? "–"
         let first = "\(source) \(lastRaw) · CL \(lastCL) · \(samplesThisSecond)/s\(droppedThisSecond > 0 ? " (\(droppedThisSecond) no heading)" : "") · quiet \(String(format: "%.1f", quiet))s"
-        let second = "qibla \(bearing) · off \(Int(compass.qibla.heading.rounded()))° · \(compass.status)"
+        let pose = gravityZ < -0.8 ? "flat" : gravityZ < -0.3 ? "tilted" : gravityZ < 0.3 ? "upright" : "face down"
+        let second = "\(pose) · qibla \(bearing) · off \(Int(compass.qibla.heading.rounded()))° · \(compass.status)"
             + "\(compass.qibla.aligned ? " · aligned" : "") · restarts \(restarts)"
         if UserDefaults.standard.bool(forKey: "compassDebug") { compass.debugLine = first + "\n" + second }
         CompassLog.write(first + " · " + second)
