@@ -261,6 +261,12 @@ struct PrayerSpotsHome: View {
     }
 
     private var days: [(date: Date, prayers: [PrayerModel])] {
+        // The day page's map: the whole day, whatever's in view (opening one prayer zooms in on it; the rest stay
+        // listed — Frank's check), under the prayer day it belongs to.
+        if let dayOnly {
+            let all = viewModel.prayers.sorted { ($0.timeAtComplete ?? $0.startTime) > ($1.timeAtComplete ?? $1.startTime) }
+            return all.isEmpty ? [] : [(date: dayOnly, prayers: all)]
+        }
         let cal = Calendar.current
         var order: [Date] = []; var byDay: [Date: [PrayerModel]] = [:]
         let newest = viewModel.visiblePrayers
@@ -276,7 +282,7 @@ struct PrayerSpotsHome: View {
 
     private func daySection(_ date: Date, _ prayers: [PrayerModel]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(zikrDayLabel(date))
+            Text(dayOnly != nil ? (PrayerDay.todayWord(date) ?? zikrDayLabel(date)) : zikrDayLabel(date))
                 .font(.system(size: 11, weight: .regular, design: .rounded))
                 .tracking(1.4)
                 .textCase(.uppercase)

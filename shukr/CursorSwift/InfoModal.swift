@@ -127,8 +127,12 @@ struct InfoModal<Content: View>: View {
                     }
                     .scrollBounceBehavior(.basedOnSize)
                     .scrollIndicators(.automatic)
+                    // The bar runs in the card's margin, not over the ends of the lines (Frank's check, 2026-10-16):
+                    // the scroll view reaches 16 pt into the padding and the text keeps its width.
+                    .contentMargins(.trailing, 16, for: .scrollContent)
                     .frame(height: geo.size.height)
                 }
+                .padding(.trailing, -16)
                 .frame(height: min(max(contentHeight, 1), UIScreen.main.bounds.height * 0.66))
             }
             .padding(22)

@@ -170,10 +170,9 @@ private struct ZikrScreenshotRoot: View {
 private enum ZikrFmt {
     static func count(_ n: Int) -> String { n.formatted(.number) }
     static func goal(_ t: TaskModel) -> String { t.isCountMode ? "\(count(t.goal)) a day" : "\(t.goal) min a day" }
+    /// A prayer day's label (its days are grouped by prayer day: before Fajr, the day still on is "Today").
     static func day(_ d: Date) -> String {
-        let cal = Calendar.current
-        if cal.isDateInToday(d) { return "Today" }
-        if cal.isDateInYesterday(d) { return "Yesterday" }
+        if let word = PrayerDay.todayWord(d) { return word }
         return d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
     /// How long since (owner: "it's been 10 weeks since you did this, or it's been 3 days"), by prayer day.

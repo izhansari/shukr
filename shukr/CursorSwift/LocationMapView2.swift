@@ -107,6 +107,28 @@ final class LocationViewModel: ObservableObject {
         guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return }
         present(PrayerSpotSelection(prayers: [prayer], coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)))
     }
+    /// The day page's map: every one of the day's pins in the space between the top controls and the sheet, north-up
+    /// (Frank's check: a pin sat under the sheet's top edge). The sheet's own height once it's measured, else its medium
+    /// height (~52 % of the screen).
+    func fitDay(_ pins: [CLLocationCoordinate2D], on mapView: MKMapView, animated: Bool) {
+        guard let first = pins.first else { return }
+        var rect = MKMapRect.null
+        for c in pins { rect = rect.union(MKMapRect(origin: MKMapPoint(c), size: MKMapSize(width: 0, height: 0))) }
+        let minSide = MKMapPointsPerMeterAtLatitude(first.latitude) * 800
+        if rect.size.width < minSide || rect.size.height < minSide {
+            rect = rect.insetBy(dx: -max(minSide - rect.size.width, 0) / 2, dy: -max(minSide - rect.size.height, 0) / 2)
+        }
+        let h = mapView.bounds.height
+        let covered = sheet.height > 80 ? sheet.height : h * 0.52
+        mapView.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 130, left: 60, bottom: min(covered + 50, h * 0.75), right: 60),
+                                  animated: animated)
+    }
+    /// The day page's map, back to its list: all the day's pins again (opening one zoomed in on it).
+    func refitDay() {
+        guard let mapView else { return }
+        fitDay(prayers.compactMap { p in p.latPrayedAt.flatMap { lat in p.longPrayedAt.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) } } },
+               on: mapView, animated: true)
+    }
     /// ‹ from a spot's page: back to the home list.
     func closeSpot() {
         withAnimation(Self.pageSwap) { selection = nil }
@@ -702,17 +724,8 @@ struct MapView: UIViewRepresentable {
         private func fitDayIfAsked(on mapView: MKMapView) {
             guard parent.viewModel.fitPrayersWhenSet, !prayerAnnotations.isEmpty else { return }
             parent.viewModel.fitPrayersWhenSet = false
-            var rect = MKMapRect.null
-            for a in prayerAnnotations { rect = rect.union(MKMapRect(origin: MKMapPoint(a.coordinate), size: MKMapSize(width: 0, height: 0))) }
-            let minSide = MKMapPointsPerMeterAtLatitude(prayerAnnotations[0].coordinate.latitude) * 800
-            if rect.size.width < minSide || rect.size.height < minSide {
-                rect = rect.insetBy(dx: -max(minSide - rect.size.width, 0) / 2, dy: -max(minSide - rect.size.height, 0) / 2)
-            }
-            // The sheet covers ~52 % of the screen: the lowest pin stays clear of its top edge.
-            DispatchQueue.main.async {
-                mapView.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 140, left: 60, bottom: mapView.bounds.height * 0.58, right: 60),
-                                          animated: false)
-            }
+            let pins = prayerAnnotations.map(\.coordinate)
+            DispatchQueue.main.async { self.parent.viewModel.fitDay(pins, on: mapView, animated: false) }
         }
 
         func dropQiblaLine(on mapView: MKMapView) {
@@ -1394,6 +1407,7 @@ struct LocationMapContentView: View {
             // Back to the home list: drop the pin highlight.
             if id == nil, let mapView = viewModel.mapView {
                 for a in mapView.selectedAnnotations where !(a is MosqueAnnotation) { mapView.deselectAnnotation(a, animated: true) }
+                if dayMode { viewModel.refitDay() }
             }
         }
         .onChange(of: viewModel.mosquePath.isEmpty) { _, empty in

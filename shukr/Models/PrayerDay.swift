@@ -58,6 +58,18 @@ enum PrayerDay {
         Calendar.current.startOfDay(for: date(for: now))
     }
 
+    /// "Today" / "Yesterday" for a prayer day's start, by the prayer day (it turns at Fajr): before Fajr, the day the
+    /// Salah tab still shows is "Today", not "Yesterday" (Frank's check, 2026-10-16). nil for older days.
+    static func todayWord(_ dayStart: Date, now: Date = Date()) -> String? {
+        let cal = Calendar.current
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: dayStart), to: start(for: now)).day ?? 0
+        switch days {
+        case ..<1: return "Today"
+        case 1: return "Yesterday"
+        default: return nil
+        }
+    }
+
     // MARK: Day keys (schema 2.8.0)
 
     /// "YYYY-MM-DD" of the prayer day an instant falls in (Fajr to the next Fajr at the saved location; the 3 AM
