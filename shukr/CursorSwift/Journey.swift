@@ -213,6 +213,8 @@ struct JourneyPage: View {
     @State private var showMakeUp = false
     @State private var showScores = false
     @State private var showMilestones = false
+    /// The This month row's measure (a hold on the row chooses it).
+    @AppStorage(ThisMonthMeasure.key) private var measureRaw = ThisMonthMeasure.onTime.rawValue
 
     private var today: Date { PrayerDay.start() }
 
@@ -370,12 +372,24 @@ struct JourneyPage: View {
         let rowHeight: CGFloat = small ? 52 : 58
         let latest = s.milestones.first
         return VStack(spacing: 0) {
-            JourneyHomeRow(title: "This month", line: "On time or better, so far", height: rowHeight,
-                           quiet: s.thisMonthOnTime == nil) {
+            let measure = ThisMonthMeasure(rawValue: measureRaw) ?? .onTime
+            JourneyHomeRow(title: "This month", line: "\(measure.title), so far", height: rowHeight,
+                           quiet: s.thisMonth == nil) {
                 Image(systemName: "calendar").font(.system(size: 21, weight: .light)).foregroundStyle(.secondary)
             } value: {
-                if let pct = s.thisMonthOnTime { Text("\(pct)%") }
+                if let m = s.thisMonth { Text(measure.value(m)).contentTransition(.numericText()) }
             } action: { openMonth = JourneyMonthRoute(month: JourneyLog.monthStart(today)) }
+            // Touch and hold: the four measures, each with its value and what it counts; the check sticks.
+            .contextMenu {
+                // A toggle per measure: its check, its value, and what it counts as the menu's second line.
+                ForEach(ThisMonthMeasure.allCases) { m in
+                    Toggle(isOn: Binding(get: { measureRaw == m.rawValue },
+                                         set: { on in if on { withAnimation(.easeOut(duration: CircleMotion.quick)) { measureRaw = m.rawValue } } })) {
+                        Text(s.thisMonth.map { "\(m.title) · \(m.value($0))" } ?? m.title)
+                        Text(m.counts)
+                    }
+                }
+            }
             JourneyHomeRow(title: "Prayer scores",
                            line: scores?.strongest.map { "\($0) is your strongest" } ?? "After a few prayers",
                            height: rowHeight, quiet: scores?.strongest == nil) {
