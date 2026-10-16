@@ -1916,9 +1916,15 @@ struct PrayerTimesView: View {
                     Spacer(minLength: 0); Spacer(minLength: 0); Spacer(minLength: 0)
                     Color.clear.frame(width: circleSize.width, height: circleSize.height)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openCircleY, false))
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { f in
+                            if DayPageState.shared.salahRing != f { DayPageState.shared.salahRing = f }   // Journey's layout
+                        }
                     Spacer(minLength: Self.ringListMin); Spacer(minLength: Self.ringListMin)
                     Color.clear.frame(width: listSize.width, height: listSize.height)
                         .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openListTop, true))
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { f in
+                            if DayPageState.shared.salahList != f { DayPageState.shared.salahList = f }   // Journey's layout
+                        }
                         .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .named(SalahSheetDrag.space)).maxY }) { v in
                             if abs(rests.openListBottom - v) > 0.25 { rests.openListBottom = v }
                         }
@@ -2293,6 +2299,9 @@ struct PrayerTimesView: View {
                         .animation(.easeOut(duration: CircleMotion.quick), value: DayPageState.shared.up)
                         .modifier(follow(.doneFooter(sheetOpen: showBottom)))
                         CustomBottomBar()
+                            .onGeometryChange(for: CGFloat.self, of: { $0.frame(in: .global).minY }) { y in
+                                if abs((DayPageState.shared.salahBarTop ?? -1) - y) > 0.5 { DayPageState.shared.salahBarTop = y }
+                            }
                             .modifier(follow(.bottomBar(sheetOpen: showBottom)))
                     }
                 }

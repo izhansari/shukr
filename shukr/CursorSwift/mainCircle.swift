@@ -1026,6 +1026,8 @@ struct summaryCircle: View, Equatable {
             if let row = pickedRow {
                 DayPickLines(note: DayFacts.note(row), place: DayFacts.place(row),
                              onNote: { noteShown = true }, onPlace: { placeSheet = row })
+                    .id(row.name)   // another pick is another line: out, then in (never two notes over each other — Frank)
+                    .transition(CircleMotion.dayPickSwap)
             }
         } else if shownDay.isEmpty {
             // No rows for the day shown (the app not opened that day): say so, not nothing (Ben's audit).

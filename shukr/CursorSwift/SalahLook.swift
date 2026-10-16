@@ -351,6 +351,11 @@ struct MemoriesFooterLink: View {
             DayFlipPill(flipped: day.flipped) {
                 withAnimation(CircleMotion.dayFlip) { day.flipped.toggle() }
             }
+            .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .global) }) { f in
+                // Journey's pill sits where this one does — read only once the day page is up and settled (closed, the
+                // footer sits off the bottom of the screen).
+                if day.lifted, f.maxY <= UIScreen.main.bounds.height, day.salahPill != f { day.salahPill = f }
+            }
             .padding(.bottom, 12)
             .transition(.opacity)
         } else if day.up {

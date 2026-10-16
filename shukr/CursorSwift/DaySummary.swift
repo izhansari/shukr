@@ -60,6 +60,14 @@ extension DayPrayer {
     /// The open page's room between the ring's outer edge and the list's top (measured at rest): the day's line sits in its
     /// middle (owner: it hung 22 pt under the ring with the list far below). nil until measured.
     var ringListGap: CGFloat?
+    /// The Salah page's open rests on screen (global): the ring's box, the list's card, the day page's pill — Journey's day
+    /// page lays itself out from these, so both pages follow one rule on every phone size (Frank's check on a Pro Max: my
+    /// fixed numbers from a 17 Pro sat the card 80 pt high there). nil until the Salah page has laid out.
+    var salahRing: CGRect?
+    var salahList: CGRect?
+    var salahPill: CGRect?
+    /// The Salah page's bottom bar's top (global): the day page's pill sits a fixed distance above it.
+    var salahBarTop: CGFloat?
     private var token = 0
 
     func pageAppeared() {

@@ -71,9 +71,27 @@ struct JourneyDayPage: View {
     /// The Salah tab's day page geometry (measured on it, raised look, 2026-10-16 — owner: "the spacing of the page
     /// vertically doesn't seem to match"): the ring's disc top 98.7 pt under the top bar's line, 87.3 pt from the disc to the
     /// card (the lines under the ring centred in it), 14 pt from the card to the pill.
-    static let ringTop: CGFloat = 82.7
+    /// From the screen's top edge (the page's content ignores the top safe area, so these are in the Salah page's own
+    /// global terms — no measuring of this page's top, which fed back into its own height).
+    static let ringTop: CGFloat = 198.7
     static let ringToCard: CGFloat = 87.3
     static let cardToPill: CGFloat = 14
+
+    /// The page's gaps, from the Salah page's own rests (DayPageState.salahRing / salahList / salahPill), so the two match
+    /// on every phone; the 17 Pro numbers above until those are known.
+    private var layout: JourneyDayLayout {
+        let state = DayPageState.shared
+        guard let ring = state.salahRing, let list = state.salahList, ring.height > 0, list.height > 0 else {
+            return JourneyDayLayout(ringTop: Self.ringTop, ringToCard: Self.ringToCard, cardToPill: Self.cardToPill)
+        }
+        let discTop = ring.midY - CircleMotion.dayDiscDiameter / 2
+        let discBottom = ring.midY + CircleMotion.dayDiscDiameter / 2
+        // The pill as measured on the Salah page, else where it sits there: 12 pt above the bottom bar (its footer's padding),
+        // its own 31.7 pt tall.
+        let pillTop = state.salahPill?.minY ?? state.salahBarTop.map { $0 - 12 - 31.67 }
+        let pillGap = pillTop.map { max($0 - list.maxY, 0) } ?? Self.cardToPill
+        return JourneyDayLayout(ringTop: max(discTop, 0), ringToCard: max(list.minY - discBottom, 0), cardToPill: pillGap)
+    }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -81,7 +99,7 @@ struct JourneyDayPage: View {
             // slot it was rebuilt at the swap, and its score, caption and pill flashed — owner).
             ForEach(shownDays, id: \.date) { item in
                 let place = panePlace(item.k)
-                JourneyDayPane(date: item.date, current: item.k == 0, actions: actions)
+                JourneyDayPane(date: item.date, current: item.k == 0, layout: layout, actions: actions)
                     .modifier(DayPaneMotion(away: place.away))
                     .offset(x: place.x)
                     .allowsHitTesting(item.k == 0)
@@ -94,9 +112,10 @@ struct JourneyDayPage: View {
             }
             .padding(.horizontal, 16)
             .frame(height: SalahLook.raisedRowHeight * 5)
-            .padding(.top, Self.ringTop + CircleMotion.dayDiscDiameter + Self.ringToCard)
+            .padding(.top, layout.ringTop + CircleMotion.dayDiscDiameter + layout.ringToCard)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .ignoresSafeArea(edges: .top)   // laid out from the screen's top, as the Salah page's rests are
         .contentShape(Rectangle())
         .gesture(dayDrag)
         .background(theme.surface.ignoresSafeArea())
@@ -238,6 +257,13 @@ struct JourneyDayPage: View {
     }
 }
 
+/// The day page's vertical gaps (JourneyDayPage.layout).
+struct JourneyDayLayout: Equatable {
+    let ringTop: CGFloat
+    let ringToCard: CGFloat
+    let cardToPill: CGFloat
+}
+
 /// What a day piece asks its page to open.
 struct JourneyDayActions {
     let openSheet: (PrayerModel) -> Void
@@ -256,6 +282,7 @@ struct JourneyDayPane: View {
     let date: Date
     /// The day on the page (a neighbour takes no taps; paged away, its pick and flip clear).
     let current: Bool
+    let layout: JourneyDayLayout
     let actions: JourneyDayActions
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
@@ -288,15 +315,15 @@ struct JourneyDayPane: View {
     var body: some View {
         let _ = places
         VStack(spacing: 0) {
-            ring.padding(.top, JourneyDayPage.ringTop)
+            ring.padding(.top, layout.ringTop)
             // The room under the ring: the picked prayer's lines centred in it, so the card never moves.
-            Color.clear.frame(height: JourneyDayPage.ringToCard).overlay { underRing }
+            Color.clear.frame(height: layout.ringToCard).overlay { underRing.frame(width: 310) }   // the Salah tab's line width
             card
             DayFlipPill(flipped: flipped) {
                 withAnimation(CircleMotion.dayFlip) { flipped.toggle() }
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }   // never the same photo twice
             }
-            .padding(.top, JourneyDayPage.cardToPill)
+            .padding(.top, layout.cardToPill)
             .opacity(facts.isEmpty ? 0 : 1)   // no pill when the back is empty (owner)
             .allowsHitTesting(!facts.isEmpty)
             .animation(.easeOut(duration: CircleMotion.quick), value: facts.isEmpty)
@@ -377,7 +404,8 @@ struct JourneyDayPane: View {
         if let row = pickedRow, DayFacts.note(row) != nil || DayFacts.place(row) != nil {
             DayPickLines(note: DayFacts.note(row), place: DayFacts.place(row),
                          onNote: { actions.note(row) }, onPlace: { actions.place(row) })
-                .transition(.opacity)
+                .id(row.name)   // another pick is another line: out, then in (never two notes over each other — Frank)
+                .transition(CircleMotion.dayPickSwap)
         }
     }
 
