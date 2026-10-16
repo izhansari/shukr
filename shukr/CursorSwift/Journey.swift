@@ -213,6 +213,8 @@ struct JourneyPage: View {
     @State private var showMakeUp = false
     @State private var showScores = false
     @State private var showMilestones = false
+    /// The rows scroll (no room for five) and there's more below: the fade shows.
+    @State private var rowsMore = true
     /// The This month row's measure (a hold on the row chooses it).
     @AppStorage(ThisMonthMeasure.key) private var measureRaw = ThisMonthMeasure.onTime.rawValue
 
@@ -232,8 +234,13 @@ struct JourneyPage: View {
         // but the card's grid, which takes the room that's left. Where the rows don't fit under a 12-week card (an SE,
         // larger text), they scroll in their own area under it.
         ViewThatFits(in: .vertical) {
-            home(rowsScroll: false)
-            home(rowsScroll: true)
+            // All five rows under a growing card; then the same a little tighter (Frank's mock fit five 56 pt rows and 13
+            // weeks at 402 × 874 — Bradley's check: a 17 Pro showed four); then the SE's 52 pt rows; only then rows that
+            // scroll under a 12-week card.
+            home(rowHeight: small ? 52 : 58, tight: false, rowsScroll: false)
+            home(rowHeight: 56, tight: true, rowsScroll: false)
+            home(rowHeight: 52, tight: true, rowsScroll: false)
+            home(rowHeight: 52, tight: true, rowsScroll: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.surface.ignoresSafeArea())
@@ -327,32 +334,37 @@ struct JourneyPage: View {
     /// The title, Your journey's card (D's: a week a row), then five rows: This month, Prayer scores, To make up, Moments,
     /// Milestones (Journey on one screen, board/mocks/journey-v6/build-plan.md "A"). Before the first mark: the card says
     /// what will fill it, the rows are there, quiet.
-    private func home(rowsScroll: Bool) -> some View {
+    private func home(rowHeight: CGFloat, tight: Bool, rowsScroll: Bool) -> some View {
         let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
-        let card = JourneyHomeCard(stats: s, compact: small,
+        let card = JourneyHomeCard(stats: s, compact: small, tight: tight,
                                    onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
                                    onMonth: { openMonth = JourneyMonthRoute(month: $0) })
         return VStack(alignment: .leading, spacing: 0) {
             header
             if rowsScroll {
-                card.fixedSize(horizontal: false, vertical: true).padding(.top, 16)
-                ScrollView(.vertical, showsIndicators: false) { rows(s).padding(.bottom, 20) }
+                card.fixedSize(horizontal: false, vertical: true).padding(.top, 10)
+                ScrollView(.vertical, showsIndicators: false) { rows(s, height: rowHeight) }
                     .scrollBounceBehavior(.basedOnSize)
-                    // A fade at the bottom: there's more under it (the canvas's `.rows.more`).
+                    .onScrollGeometryChange(for: Bool.self) { geo in
+                        geo.contentSize.height - (geo.contentOffset.y + geo.contentInsets.top) - geo.containerSize.height > 4
+                    } action: { _, more in rowsMore = more }
+                    // A fade over the last rows while there's more under them (the canvas's `.rows.more`); gone at the end.
+                    // It used to fade only the empty padding below the last row, so nothing showed (Bradley's check).
                     .mask {
                         VStack(spacing: 0) {
                             Color.black
-                            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 26)
+                            LinearGradient(colors: [.black, rowsMore ? .clear : .black], startPoint: .top, endPoint: .bottom)
+                                .frame(height: 34)
                         }
                     }
-                    .padding(.top, 10)
+                    .padding(.top, 6)
             } else {
-                card.padding(.top, 16)
-                rows(s).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
+                card.padding(.top, tight ? 10 : 16)
+                rows(s, height: rowHeight).fixedSize(horizontal: false, vertical: true).padding(.top, tight ? 6 : 10)
             }
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 6)
+        .padding(.bottom, tight ? 0 : 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
@@ -366,10 +378,9 @@ struct JourneyPage: View {
         }
     }
 
-    private func rows(_ s: YourJourneyStats) -> some View {
+    private func rows(_ s: YourJourneyStats, height rowHeight: CGFloat) -> some View {
         let photos = PrayerPhotos.all().count
         let owed = makeUpTotal ?? 0
-        let rowHeight: CGFloat = small ? 52 : 58
         let latest = s.milestones.first
         return VStack(spacing: 0) {
             let measure = ThisMonthMeasure(rawValue: measureRaw) ?? .onTime

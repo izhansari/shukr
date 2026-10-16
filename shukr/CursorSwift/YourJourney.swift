@@ -23,6 +23,8 @@ struct JourneyHomeCard: View {
     let stats: YourJourneyStats
     /// A small phone: the number at 42 pt (the canvas's SE).
     var compact = false
+    /// A little less room around its parts, so five rows fit under 12 weeks on a 6.3" phone.
+    var tight = false
     var onDay: (Date) -> Void = { _ in }
     var opens: (Date) -> Bool = { _ in false }
     var onMonth: (Date) -> Void = { _ in }
@@ -54,11 +56,11 @@ struct JourneyHomeCard: View {
             .font(.system(size: 11, weight: .light, design: .rounded))
             .tracking(0.4)
             .foregroundStyle(.secondary)
-            .padding(.top, 18)
+            .padding(.top, tight ? 12 : 18)
             grid.padding(.top, 6)
             foot
         }
-        .padding(.top, 18).padding(.horizontal, 18).padding(.bottom, 14)
+        .padding(.top, tight ? 14 : 18).padding(.horizontal, 18).padding(.bottom, tight ? 10 : 14)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
     }
 
@@ -175,10 +177,10 @@ struct JourneyHomeCard: View {
                     .transition(.opacity)
                 }
             }
-            .frame(minHeight: 46, alignment: .top)
-            .padding(.top, 12)
+            .frame(minHeight: tight ? 40 : 46, alignment: .top)
+            .padding(.top, tight ? 10 : 12)
         }
-        .padding(.top, 12)
+        .padding(.top, tight ? 10 : 12)
     }
 
     /// "Fri, Sep 25 · 5 of 5 · all in time · Open ›": a tap opens the day (when it can open).
