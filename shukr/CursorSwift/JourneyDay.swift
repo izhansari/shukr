@@ -31,6 +31,8 @@ struct JourneyDayPage: View {
     /// A photo's day pile, opened over Moments (owner: a photo here opens the pile for that day).
     @State private var pile: JourneyPileRoute?
     @State private var places = 0   // bumps as place names arrive
+    /// The picked row's band glides between rows in this space (DayPickBand).
+    @Namespace private var pickSpace
 
     private var today: Date { PrayerDay.start() }
     #if DEBUG
@@ -131,32 +133,38 @@ struct JourneyDayPage: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            ring.padding(.top, Self.ringTop)
+            ring.modifier(dayMotion).padding(.top, Self.ringTop)
             // The room under the ring: the picked prayer's lines centred in it, so the card never moves.
-            Color.clear.frame(height: Self.ringToCard).overlay { underRing }
+            Color.clear.frame(height: Self.ringToCard).overlay { underRing.modifier(dayMotion) }
             cardRow
             DayFlipPill(flipped: flipped) {
                 withAnimation(CircleMotion.dayFlip) { flipped.toggle() }
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }   // never the same photo twice
             }
+            .modifier(dayMotion)
             .padding(.top, Self.cardToPill)
             .opacity(facts.isEmpty ? 0 : 1)   // no pill when the back is empty (owner)
             .allowsHitTesting(!facts.isEmpty)
             .animation(.easeOut(duration: CircleMotion.quick), value: facts.isEmpty)
         }
-        .offset(x: dragOffset)
         .padding(.horizontal, 16)
         .padding(.bottom, 24)
     }
 
     // MARK: Days, live
 
-    /// How far the ring and the card follow the finger sideways (0 at rest).
+    /// The finger's travel sideways (0 at rest). The day follows it only a short way, fading and shrinking a little — never
+    /// off the page (owner, 2026-10-16: "not where I can see … this screen, which has nothing in it at all").
     @State private var dragOffset: CGFloat = 0
     @State private var dragHorizontal: Bool?
     private var pageWidth: CGFloat { UIScreen.main.bounds.width }
+    /// Travel at which the day is gone (faded, smaller): half the width.
+    private var travelOut: CGFloat { pageWidth / 2 }
 
-    /// The finger moves the day; past a third of the width (or a flick) the next day slides in, else it springs back. At
+    /// What the travel does to the ring, its lines, the card and the pill.
+    private var dayMotion: DaySlideMotion { DaySlideMotion(travel: dragOffset, out: travelOut) }
+
+    /// The finger moves the day; past a third of the width (or a flick) the next day comes in, else it springs back. At
     /// the first / latest day it gives a little and comes back.
     private var dayDrag: some Gesture {
         DragGesture(minimumDistance: 12)
@@ -165,7 +173,9 @@ struct JourneyDayPage: View {
                 guard dragHorizontal == true else { return }
                 let w = v.translation.width
                 let allowed = w < 0 ? canGoForward : canGoBack
-                dragOffset = allowed ? w : w * 0.25
+                // Under the finger it fades only to 40 % (never an empty page while held); the rest after letting go.
+                let held = travelOut * 0.6
+                dragOffset = allowed ? max(min(w * 0.6, held), -held) : w * 0.15
             }
             .onEnded { v in
                 defer { dragHorizontal = nil }
@@ -174,26 +184,27 @@ struct JourneyDayPage: View {
                 let by = w < 0 ? 1 : -1
                 let allowed = by > 0 ? canGoForward : canGoBack
                 guard allowed, abs(w) > pageWidth / 3 || abs(projected) > pageWidth * 0.6 else {
-                    withAnimation(CircleMotion.spring) { dragOffset = 0 }
+                    withAnimation(CircleMotion.daySlideIn) { dragOffset = 0 }
                     return
                 }
                 slide(by)
             }
     }
 
-    /// Out the side the finger went, the day swapped unseen, in from the other side.
+    /// Out the way the finger went (fading, smaller), the day swapped unseen, in from the other side (small and faint to
+    /// full) on the spring.
     private func slide(_ by: Int) {
-        let out: CGFloat = by > 0 ? -pageWidth : pageWidth
-        withAnimation(.easeIn(duration: 0.18)) { dragOffset = out } completion: {
+        let out: CGFloat = by > 0 ? -travelOut : travelOut
+        triggerSomeVibration(type: .light)
+        withAnimation(CircleMotion.daySlideOut) { dragOffset = out } completion: {
             var quiet = Transaction()
             quiet.disablesAnimations = true
             withTransaction(quiet) {
                 step(by, buzz: false)
                 dragOffset = -out
             }
-            withAnimation(CircleMotion.spring) { dragOffset = 0 }
+            withAnimation(CircleMotion.daySlideIn) { dragOffset = 0 }
         }
-        triggerSomeVibration(type: .light)
     }
 
     private func step(_ by: Int, buzz: Bool = true) {
@@ -268,7 +279,7 @@ struct JourneyDayPage: View {
             DayRing(day: day, picked: picked) { i in
                 guard !flipped else { return }   // no pick while the back is up (its pile would double the photo)
                 triggerSomeVibration(type: .light)
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == i ? nil : i }
+                withAnimation(CircleMotion.dayPick) { picked = picked == i ? nil : i }
             }
             if marked == 0 && picked == nil {
                 Text(rows.isEmpty ? "No prayers\nthat day" : excusedDay ? "Excused" : "Nothing marked")
@@ -278,7 +289,7 @@ struct JourneyDayPage: View {
             } else {
                 DayCentre(day: day, score: PrayerScoring.dayScore(for: rows), picked: picked, yesterday: false,
                           makeUpCount: makeUpCount, onMakeUp: { showMakeUp = true })
-                    .animation(.easeOut(duration: CircleMotion.quick), value: picked)
+                    .animation(CircleMotion.dayPick, value: picked)
                     .allowsHitTesting(picked != nil)
             }
         }
@@ -303,7 +314,10 @@ struct JourneyDayPage: View {
             chevron("chevron.left", enabled: canGoBack, label: "Previous day") { slide(-1) }
             // Each face carries the card's surface, so the whole card turns (Bradley's review).
             DayFlipCard(angle: flipped ? 180 : 0) {
-                prayerRows.modifier(SalahListInsets()).modifier(SalahLookCard(raised: true))
+                prayerRows.modifier(SalahListInsets())
+                    .background { DayPickBandLayer(picked: picked.flatMap { DayRing.order.indices.contains($0) ? DayRing.order[$0] : nil }, look: theme.list) }
+                    .environment(\.dayPickSpace, pickSpace)
+                    .modifier(SalahLookCard(raised: true))
             } back: {
                 DayBackCard(facts: facts, notesOpen: $notesOpen,
                             onPhotos: {
@@ -317,6 +331,7 @@ struct JourneyDayPage: View {
                     .modifier(SalahLookCard(raised: true))
             }
             .modifier(SalahLookListFrame())   // the Salah list's width (290 in the soft looks): one card shape on both pages
+            .modifier(dayMotion)   // the card goes with the day; the chevrons beside it stay
             chevron("chevron.right", enabled: canGoForward, label: "Next day") { slide(1) }
         }
     }
@@ -370,7 +385,7 @@ struct JourneyDayPage: View {
                                     case .second:
                                         guard let i, !flipped else { return }
                                         triggerSomeVibration(type: .light)
-                                        withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == i ? nil : i }
+                                        withAnimation(CircleMotion.dayPick) { picked = picked == i ? nil : i }
                                     }
                                 }
                         )

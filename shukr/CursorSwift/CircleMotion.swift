@@ -82,6 +82,18 @@ enum CircleMotion {
     /// The list card turning over to its back (DayFlipCard; the day page merge, owner 2026-10-15): half a second on its
     /// upright axis, the ring and the pill staying put.
     static let dayFlip = Animation.easeInOut(duration: 0.5)
+    /// A prayer picked on the day page (owner, 2026-10-16: "doesn't really feel clean and calm"): the raised band glides to
+    /// its row; the ring's centre goes out, then the new one comes in (never a crossfade).
+    static let dayPick = Animation.smooth(duration: 0.4)
+    static let dayPickOut = Animation.easeOut(duration: 0.14)
+    static let dayPickIn = Animation.easeOut(duration: 0.26).delay(0.12)
+    /// The day page's centre swapping: out, then in.
+    static let dayPickSwap = AnyTransition.asymmetric(insertion: .opacity.animation(dayPickIn), removal: .opacity.animation(dayPickOut))
+    /// Journey's days changing (owner, 2026-10-16: "calm … as it moves off the page, it fades out and gets a little smaller.
+    /// And when it comes in, the opposite … keep this springing"): the day follows the finger a short way, fading and
+    /// shrinking; the next comes in from small and faint on this spring.
+    static let daySlideOut = Animation.easeIn(duration: 0.12)
+    static let daySlideIn = Animation.spring(response: 0.45, dampingFraction: 0.9)
     /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
     /// release is the scroll view's own coast.
     static let sheetSnap = Animation.spring(response: 0.35, dampingFraction: 0.85)

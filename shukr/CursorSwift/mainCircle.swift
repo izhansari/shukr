@@ -1157,10 +1157,10 @@ struct summaryCircle: View, Equatable {
                           JourneyPresenter.shared.makeUp = true
                           JourneyPresenter.shared.open = true
                       })
-                .animation(.easeOut(duration: CircleMotion.quick), value: picked)
+                .animation(CircleMotion.dayPick, value: picked)
                 .modifier(CircleWordsAway(away: away || !showsScore))
             DayRing(day: shownDay, picked: picked, drawn: drawn) { i in
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { DayPageState.shared.togglePick(i) }
+                withAnimation(CircleMotion.dayPick) { DayPageState.shared.togglePick(i) }
                 triggerSomeVibration(type: .light)
             }
             .opacity(ringFade)

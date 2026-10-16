@@ -209,7 +209,7 @@ struct DayCentre: View {
                                   caption: "\(p.name) · \(p.markedAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")")
                     .onAppear { DayPageState.shared.centreAppeared() }
                     .onDisappear { DayPageState.shared.centreGone() }
-                    .transition(.opacity)
+                    .transition(CircleMotion.dayPickSwap)
             } else {
                 VStack(spacing: 3) {
                     Text(name).font(.system(size: 30, weight: .light, design: .rounded))
@@ -226,7 +226,7 @@ struct DayCentre: View {
                         DayMakeUpPill(count: makeUpCount, action: onMakeUp).padding(.top, 6)
                     }
                 }
-                .transition(.opacity)
+                .transition(CircleMotion.dayPickSwap)
             }
         } else {
             VStack(spacing: 3) {
@@ -236,7 +236,7 @@ struct DayCentre: View {
                 Text(caption)
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
-            .transition(.opacity)
+            .transition(CircleMotion.dayPickSwap)
         }
     }
 

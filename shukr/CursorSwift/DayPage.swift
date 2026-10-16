@@ -107,6 +107,46 @@ struct SalahRowRaise: View {
     }
 }
 
+/// The list's space for the picked row's band: with it, one band glides from row to row (matched geometry) instead of one
+/// fading out while another fades in (owner, 2026-10-16: "the transition between selecting one to the other just doesn't
+/// feel right"). The Salah list and Journey's card each provide one.
+private struct DayPickSpaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
+extension EnvironmentValues {
+    var dayPickSpace: Namespace.ID? {
+        get { self[DayPickSpaceKey.self] }
+        set { self[DayPickSpaceKey.self] = newValue }
+    }
+}
+
+/// A row's place in the list's pick space (each row is a source; the band goes to the picked one).
+struct DayPickAnchor: ViewModifier {
+    let name: String
+    @Environment(\.dayPickSpace) private var space
+    func body(content: Content) -> some View {
+        if let space {
+            content.matchedGeometryEffect(id: "dayRow." + name, in: space, properties: .frame, isSource: true)
+        } else {
+            content
+        }
+    }
+}
+
+/// The picked row's raised band: ONE band behind all the rows, moved to the picked row's frame — it glides under the
+/// rows it passes, never over them (it was drawn inside the picked row, and later rows covered earlier ones). Goes in the
+/// list's background, inside its pick space.
+struct DayPickBandLayer: View {
+    let picked: String?
+    let look: SalahLook
+    @Environment(\.dayPickSpace) private var space
+    var body: some View {
+        if let picked, let space {
+            SalahRowRaise(look: look)
+                .matchedGeometryEffect(id: "dayRow." + picked, in: space, properties: .frame, isSource: false)
+                .transition(.opacity)
+        }
+    }
+}
+
 /// A prayed row's right side on the day page: "@ 7:45 PM" (when it was prayed), the grade and score under it
 /// ("Late · 75"). Both pages (owner, 2026-10-16: "should say '@ 7:45PM' to indicate thats the time we prayed it").
 struct DayRowTime: View {
@@ -144,7 +184,8 @@ struct DayCardRow: View {
                 .frame(width: 24, height: 24, alignment: .leading)
             Text(row.displayName)
                 .font(.callout).fontDesign(.rounded).fontWeight(.light)
-                .foregroundStyle(.secondary)
+                // Picked: bright, as the prayer on now is in the list (PrayerButton's emphasisesCurrentRow).
+                .foregroundStyle(picked && theme.emphasisesCurrentRow ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary))
             if row.atMasjid {
                 Image(systemName: "building.columns").font(.system(size: 11, weight: .light)).foregroundStyle(Color.sage)
             }
@@ -160,9 +201,26 @@ struct DayCardRow: View {
         .padding(.horizontal)
         .padding(.vertical, theme.rowVerticalPadding)
         .frame(minHeight: theme.list == .raised ? SalahLook.raisedRowHeight : nil)
-        .background { if picked { SalahRowRaise(look: theme.list).transition(.opacity) } }
+        .modifier(DayPickAnchor(name: row.name))
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Days changing (Journey)
+
+/// A day following the finger sideways: it moves a third of the travel, fades toward nothing and shrinks to 94 % as the
+/// travel reaches `out`; coming in, the same from the other side, backwards (owner, 2026-10-16: "as it moves off the page,
+/// it fades out and gets a little smaller. And when it comes in, the opposite").
+struct DaySlideMotion: ViewModifier {
+    let travel: CGFloat
+    let out: CGFloat
+    func body(content: Content) -> some View {
+        let t = min(abs(travel) / max(out, 1), 1)
+        content
+            .offset(x: travel / 3)
+            .scaleEffect(1 - 0.06 * t)
+            .opacity(1 - t)
     }
 }
 

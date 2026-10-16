@@ -2758,6 +2758,8 @@ struct TodaysPrayerListView: View {
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.standard.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var motion: RowMotion { RowMotion.resolved(motionRaw) }
+    /// The day page's picked-row band glides between rows in this space (DayPickBand).
+    @Namespace private var pickSpace
     /// The day page (the merge, owner 2026-10-15): the card's back — the day's notes, photos, map and zikr (DayFacts),
     /// read when the page comes up and when the rows or photos change; the flip, the pick and the back's doors live in
     /// DayPageState (the pill is in the chrome, the ring in MainCircleView).
@@ -2903,6 +2905,7 @@ struct TodaysPrayerListView: View {
         VStack(spacing: 0) {
             if !(outside && visible.isEmpty) {
                 DayFlipCard(angle: dayPage && dayState.flipped ? 180 : 0) {
+                Group {
                 VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
                 if excusedDay {
                     ExcusedDayCard(line: Excused.current.map { "You're excused · \(Excused.dayLine($0))" } ?? "You're excused")
@@ -2933,6 +2936,13 @@ struct TodaysPrayerListView: View {
                 }
                 }
                 .modifier(SalahListInsets())   // the raised list's band reaches the card's edges (Journey's card too)
+                }
+                // The day page's picked band, behind every row (DayPickBandLayer).
+                .background {
+                    DayPickBandLayer(picked: dayPage ? dayState.picked.flatMap { DayRing.order.indices.contains($0) ? DayRing.order[$0] : nil } : nil,
+                                     look: theme.list)
+                }
+                .environment(\.dayPickSpace, pickSpace)
                 // Each face carries the card's surface, so the whole card turns (Bradley's review).
                 .modifier(SalahLookCard(raised: allDone && DayPageState.shared.lifted && !TourRuntime.shared.active))
                 } back: {
@@ -3198,7 +3208,7 @@ struct PrayerButton: View {
     @ViewBuilder private var rowBackground: some View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         if pickedOnDayPage {
-            SalahRowRaise(look: look).transition(.opacity)
+            Color.clear   // the list draws the picked band behind all its rows (DayPickBandLayer)
         } else {
         switch look {
         case .today:
@@ -3354,7 +3364,7 @@ struct PrayerButton: View {
         // score is always under the time there, so the flip has nothing left to show.
         if DayPageState.shared.up && prayerObject.isCompleted && !TourRuntime.shared.active {
             triggerSomeVibration(type: .light)
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { DayPageState.shared.togglePick(name: prayerObject.name) }
+            withAnimation(CircleMotion.dayPick) { DayPageState.shared.togglePick(name: prayerObject.name) }
             return
         }
         guard isFuturePrayer || prayerObject.isCompleted else { return }
@@ -3478,7 +3488,7 @@ struct PrayerButton: View {
                     .layoutPriority(1)
                     .font(nameFont)   // Sami's looks try type sizes (nameFont); the others .callout
                     // Today's look: exactly the old Color.secondary (the hierarchical .secondary differed a hair).
-                    .foregroundStyle(theme.emphasisesCurrentRow && isCurrentPrayer ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
+                    .foregroundStyle(theme.emphasisesCurrentRow && (isCurrentPrayer || pickedOnDayPage) ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
                     .fontDesign(.rounded)
                     .fontWeight(nameWeight)
                     // E · the prayer on now: its time left right under its name.
@@ -3558,6 +3568,7 @@ struct PrayerButton: View {
             .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 44 pt rows
             // E · the raised one gets its own room (the rest are compact).
             .padding(.vertical, look == .nowLeads && isCurrentPrayer ? 6 : 0)
+            .modifier(DayPickAnchor(name: prayerObject.name))   // where the day page's band goes when it's picked
             .contentShape(Rectangle())
             .coordinateSpace(.named(PrayerButton.rowSpace))
             .gesture(rowGesture)
