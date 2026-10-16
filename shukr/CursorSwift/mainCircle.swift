@@ -430,6 +430,9 @@ struct MainCircleView: View {
                                 viewModel.togglePrayerCompletion(for: prayer)
                                 // The tour's Mark step (a practice the user undoes next), or a first mark's celebration.
                                 if marking { TourRuntime.shared.event(.marked(prayer, viewModel)) }
+                                if marking, let container = prayer.modelContext?.container {
+                                    MilestoneCelebration.shared.check(container: container)
+                                }
                             }
                         }
                 )

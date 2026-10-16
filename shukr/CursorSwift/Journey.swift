@@ -57,6 +57,8 @@ struct JourneyLog {
         let end: Date
         let markedAt: Date?
         let jumuah: Bool
+        /// The masjid it was marked at, if any (Your journey's "First prayer at a masjid").
+        var masjid: String? = nil
     }
 
     static let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
@@ -111,7 +113,8 @@ struct JourneyLog {
                 day.marks[slot] = row.endTime > now ? .toCome : .missed
             }
             day.slots[slot] = Slot(start: row.startTime, end: row.endTime,
-                                   markedAt: row.isCompleted ? row.timeAtComplete : nil, jumuah: row.isJumuah)
+                                   markedAt: row.isCompleted ? row.timeAtComplete : nil, jumuah: row.isJumuah,
+                                   masjid: row.isCompleted && row.atMasjid ? row.mosqueName : nil)
             log.days[key] = day
         }
         log.firstDay = log.days.values.filter(\.active).map(\.date).min()

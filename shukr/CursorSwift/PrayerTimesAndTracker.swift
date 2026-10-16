@@ -904,6 +904,9 @@ struct PrayerTimesView: View {
             // only something truly over the page hides it.
             TourLayer(covered: somethingCovers || showTasbeehPage || CircleStage.shared.lost != nil
                       || morningSession != nil || !CircleStage.shared.covers.isEmpty)
+            // A milestone a mark just earned: the first mark's glow and card, in its words (YourJourney.swift).
+            MilestoneCelebrationLayer(covered: somethingCovers || showTasbeehPage || CircleStage.shared.lost != nil
+                                      || morningSession != nil || !CircleStage.shared.covers.isEmpty)
             #if DEBUG
                 // What may hide the tour's callout (Sami's step 1 with nothing on screen): "TOUR cover …" on each change.
                 .onChange(of: "\(TourRuntime.shared.step?.rawValue ?? "-") · \(tourHiddenReason)", initial: true) { _, line in
@@ -3158,6 +3161,7 @@ struct PrayerButton: View {
                 }
                 viewModel.togglePrayerCompletion(for: prayerObject)   // the post-salah pill follows (.prayerCompleted)
                 TourRuntime.shared.event(.marked(prayerObject, viewModel))   // the tour's Mark step / a first mark
+                if let container = prayerObject.modelContext?.container { MilestoneCelebration.shared.check(container: container) }
             }
             else if !UnmarkPrompt.ask(for: prayerObject, onUnmark: {
                 isMarkingIncomplete = true
