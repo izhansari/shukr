@@ -1463,12 +1463,7 @@ struct PrayerTimesView: View {
                 showNamesPage = true
                 return
             }
-            if ProcessInfo.processInfo.arguments.contains("-demoTransitionLab") {
-                // Journey's transitions test screen (JourneyTransitionLab.swift); `-demoTransitionLabRun N` plays them.
-                try? await Task.sleep(for: .seconds(1))
-                JourneyLabPresenter.shared.open = true
-                return
-            }
+            if ProcessInfo.processInfo.arguments.contains("-demoTransitionLab") { return }   // its own task, below (Release too)
             if ProcessInfo.processInfo.arguments.contains("-demoInsights") || ProcessInfo.processInfo.arguments.contains("-demoJourney") {
                 // Journey (`-demoJourneySeed` fills ~100 earlier days first; `-demoJourneyMonth N`, `-demoJourneyDay N`).
                 #if DEBUG
@@ -1640,9 +1635,16 @@ struct PrayerTimesView: View {
         // Journey (Journey.swift), from ☰ or the day page's "Journey ›".
         .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.open },
                                                     set: { JourneyPresenter.shared.open = $0 })) { JourneyPage() }
-        // Journey's transitions test screen (`-demoTransitionLab`).
+        // Journey's transitions test screen (`-demoTransitionLab`; `-demoTransitionLabRun N` plays them). Outside DEBUG so
+        // the Release check on his phone can open it — a launch argument only (devicectl), nothing a tester can reach; it
+        // goes when the transitions move into Journey.
         .navigationDestination(isPresented: Binding(get: { JourneyLabPresenter.shared.open },
                                                     set: { JourneyLabPresenter.shared.open = $0 })) { JourneyTransitionLab() }
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-demoTransitionLab") else { return }
+            try? await Task.sleep(for: .seconds(1))
+            JourneyLabPresenter.shared.open = true
+        }
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
