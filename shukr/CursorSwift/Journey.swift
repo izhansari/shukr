@@ -228,7 +228,9 @@ struct JourneyPage: View {
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: month) }
         .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
-        .navigationDestination(isPresented: $showJourney) { YourJourneyPage(log: log) }
+        .navigationDestination(isPresented: $showJourney) {
+            YourJourneyPage(log: log) { m in month = m; showJourney = false }
+        }
         .onAppear {
             onScreen = true
             if dirty { reload() }
