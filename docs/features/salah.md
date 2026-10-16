@@ -11,13 +11,30 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - **The day's page** (decision day-score-end; DaySummary.swift, DayInsight.swift): the summary's score side (all five
   marked, list open) — `DayRing` on the ring's band: five fifths (Fajr at the top) in their grade colours, a hollow dot (a ring in its grade colour round the disc's surface — owner 2026-10-15) where in
   each window it was prayed (Qaza at the end), unmarked = faint dashes; the circle's own tap area shrinks to the middle
-  there (`daySummaryShowing`) so the band's tap picks a fifth (centre shows it, lets go after 8 s). Centre: whole-number
+  there (`daySummaryShowing`) so the band's tap picks a fifth. Centre: whole-number
   score + "4 of 5 in time" / "all five in time" / "all five early". One line under the circle (centred in the room between the ring and the list — `DayPageState.ringListGap`, measured from the rests; owner) from `DayInsight`: act-on
   (missed → Qaza → late, "hardest this week" — no "Set a Fajr alarm ›" nudge any more, owner 2026-10-15; the same fix three nights running gives
   way), milestones (7, 14, 21, 30… days all in time), noticed (rotated, none repeated within 3 days), Thursday →
   Jumu'ah; kept per prayer day (`daySummary.shownLines`); none in the tour. The summary's next-Fajr side (list closed) shows when the Fajr alarm rings, just under the ring (never inside it — it pushed Fajr's name up) — "⏰ Alarm 5:55 AM", a tap → Settings' Fajr alarm (`SettingsJump.fajrAlarm`), from the alarm rule (before / after Fajr or sunrise by the offset), only once set up — on, AlarmKit permission granted (26.1+), not excused (owner, 2026-10-15: the bridge to tomorrow; `alarmTime(for:)`). A full day glows once (`daySummary.glowed`). The fifths are drawn, not faded (owner, 2026-10-14): `DayRing.drawn` (animatable) draws them clockwise from the top one after another, each dot as its fifth completes; the fifths half the arc's band (3 pt — the grade colours together are loud, owner); on the score side the whole circle is a raised disc (owner 2026-10-15, his picture: `NeuLiftCard(Circle())` at `CircleMotion.dayDiscDiameter` 222 under the band, `discLift` 0.5 flush → 1 raised with `dayDiscRise` 0.9 s as the fifths draw, back with `dayDiscSink` = the rise reversed (owner: the quick drop was choppy); the disc drawn inside the ring's 200 pt box so the circle never moves; the band fades as it rises; `discShown` keeps the flush disc from covering what's behind; the score Thin, 48 pt) (a one-shape morph to the band was tried, c772d48, and reverted — owner: tacky; refine later); every flip to the score side `CircleMotion.dayRingDraw` (1.5 s, a little under Fajr's dashes); leaving it only fades (`ringFade`, as the dashed ring does — owner), reset to undrawn once gone; the first showing each day (`daySummary.firstDrawn`) draws slower (`dayRingFirstDraw` 2.0 s) and then counts the score up from 0 (`CountingScore`); Reduce Motion: at once.
   The list's well rises into a raised card with the day's page (all five marked and `DayPageState.lifted`, set `CircleMotion.dayCardLiftDelay` after summaryCircle mounts so the rows unfold first; kept in DayPageState because the list rebuilds its card at the swap) (`SalahLookCard(raised:)`, `NeuLiftCard`: one
   animatable `lift`, inner shadows shrink to nothing, then outer ones grow — never a crossfade; decision list-raised-card).
+- **The day page merge** (owner 2026-10-15, spec board/mocks/day-page-merge/spec.md; DayPage.swift, shared with Journey's day
+  page — "build it once and use it twice"): the day page's rows show the time prayed with "On time · 88" under it (no flip); a
+  tap on a marked row or its fifth picks the prayer (`DayPageState.picked`, no timer — a second tap, the flip, the side swapping
+  or a row unmarked clears it): its photo fills the ring (`PrayerPhotoCircle`, the name on a tag that stays over the develop
+  veil; the circle's tap layer lets it through, `centreTakesTaps`, a count), else name / "prayed 5:54 PM" / grade; missed →
+  "N to make up ›" as a plain pill (`DayMakeUpPill`, no sage) → Journey's To make up (`JourneyPresenter.makeUp`); excused →
+  "excused". Under the ring the picked prayer's note (one line, cut; a tap → the frosted card, `infoModal(tint: .secondary)`)
+  and its place (a tap → `PrayerPlaceMapSheet` on that pin), each a door (`DayPickLines`); neither → nothing; the qibla
+  arrow hides over the photo. The pill in the chrome (`DayFlipPill`, in the "N photos to develop" / "Journey ›" spot, only
+  when the back has something) flips the list card (`DayFlipCard`, `CircleMotion.dayFlip` 0.5 s, each face carrying the card's
+  surface) to its back (`DayBackCard`): Notes · "N photos · M developing" (the day's pile, `MemoriesPresenter.openPile`) ·
+  On the map (`JourneyDayMapSheet`) · "Zikr · N min" (`ZikrDaySessionsPage`: that day's sessions alone — no hero card, no
+  filter; a delete reloads it and the back via `SessionDeletion.changed`), rows only for what the day has (`DayFacts`, read
+  when the rows / photos / notes change); Notes unfolds inside the card and only then the card scrolls; flipping clears the
+  pick (never the same photo twice); the back and open notes survive a push (`pageGone` keeps them; `leaveDay` clears). A
+  whole excused day: the card keeps its size with a pause symbol and a line (`ExcusedDayCard`) — all day for now (his call
+  pending). Pill words "Your day" / "Prayers" are placeholders. DEBUG `-demoDayFacts` (with `-demoMarkAll`).
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.

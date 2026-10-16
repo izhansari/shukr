@@ -99,13 +99,15 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.
-- The day page (`JourneyDayPage`): `DayRing` + `DayCentre` on a raised 222 pt disc (tap a fifth), rows time · place (masjid,
-  else `PrayerPlaceNames`) · grade (Jumu'ah = 100) + `PrayerPhotoCard`, notes, "Zikr · N min" → `ZikrAreaPage(start: .day)`
-  (History's `.day` filter); ‹ › walk days at once, no fade (a fade overlapped two days' words); a started prayer's row
-  opens the prayer sheet (rows carry no thumbnail — they never lined up, owner); each note under its prayer's name in
-  semibold; then link rows: "N photos" with the day's photos as a small tilted pile (`JourneyDayPhotoStack`, veiled while
-  developing) → that day's pile (`MemoriesPage(openPile:leaveWithPile: true)`, pushed without a slide, the fade — never the
-  zoom; closing pops Moments too; Sami's OK), "On the map" → `JourneyDayMapSheet` (owner: a link, not a map card), Zikr.
+- The day page (`JourneyDayPage`, on the Salah tab's day page pieces — the day page merge, owner 2026-10-15, DayPage.swift;
+  the full behaviour in salah.md "The day page merge"): the date centred on top ("Thursday, October 15" / "Today · Jumada I 4"),
+  `DayRing` + `DayCentre` on a raised 222 pt disc, the picked prayer's note and place under it (`DayPickLines`), the list card
+  (dot · name · time prayed with the grade under it; a tap picks, a hold opens the prayer sheet) between two plain chevrons
+  (owner: no soft-ring chevrons), the flip pill under it; a drag sideways moves a day (the left edge stays the system's back);
+  days change at once, no fade. A day opens only once over or all five marked (`JourneyPage.open`, `canGoForward`) — never
+  live rows. The back's Photos row → that day's pile (`MemoriesPage(openPile:leaveWithPile: true)`, pushed without a slide),
+  On the map → `JourneyDayMapSheet`, Zikr → `ZikrDaySessionsPage`; a missed prayer picked → "N to make up ›" → To make up.
+  A whole excused day: `ExcusedDayCard("Excused that day")`.
 - The prayer sheet (`JourneyPrayerSheet`, any day, marked or not): ~half height (`resting` 480; `withButtons` 548 once edited
   or unmarked; large while the wheel or the map is open); top right only the trash (unmark: Sami's `UnmarkPrompt`, the
   system alert if another overlay is up); once the time, place or note differs, the Salah editor's `SaveCancelButtons` come
