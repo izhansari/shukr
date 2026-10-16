@@ -2932,8 +2932,7 @@ struct TodaysPrayerListView: View {
                     }
                 }
                 }
-                .padding(.horizontal, theme.list == .raised ? 0 : 16)   // the raised list's band reaches the card's edges
-                .padding(.vertical, theme.list == .raised ? 0 : 12)
+                .modifier(SalahListInsets())   // the raised list's band reaches the card's edges (Journey's card too)
                 // Each face carries the card's surface, so the whole card turns (Bradley's review).
                 .modifier(SalahLookCard(raised: allDone && DayPageState.shared.lifted && !TourRuntime.shared.active))
                 } back: {
@@ -3190,8 +3189,17 @@ struct PrayerButton: View {
     /// The row's surface for the Salah look (SalahLook.swift). Pills: upcoming and missed ones raised, the
     /// current one pressed in, done ones flat on the page (their dot carries the score). Quiet: only the
     /// current one pressed in. Card / well: the rows sit on the card. Today's: the old plain fill.
+    /// The day page's picked row (by its row or its fifth): raised like the prayer on now (owner, 2026-10-16).
+    private var pickedOnDayPage: Bool {
+        guard DayPageState.shared.up, let i = DayPageState.shared.picked, DayRing.order.indices.contains(i) else { return false }
+        return DayRing.order[i] == prayerObject.name
+    }
+
     @ViewBuilder private var rowBackground: some View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        if pickedOnDayPage {
+            SalahRowRaise(look: look).transition(.opacity)
+        } else {
         switch look {
         case .today:
             // On a tinted page (Soft ring with Today's look) the plain fill drew black slabs: see-through then.
@@ -3202,18 +3210,13 @@ struct PrayerButton: View {
             else { NeuRaised(shape: shape) }
         case .quiet:
             if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
-        case .raised:
-            // The raised list: the prayer on now a capsule band of the card, a subtle step more (the mock's Subtle).
-            if isCurrentPrayer || showsActions { NeuRaised(shape: Capsule(), radius: 3, offset: 1.5) } else { Color.clear }
-        case .prayedOnTap:
-            // G · the raised row with fully round ends (owner: "round the edge of the list item when it's punched out"), its
-            // lift soft (half the shadow): close to the well's pressed edge, a full lift fought it (owner).
-            if isCurrentPrayer || showsActions { NeuRaised(shape: Capsule(), radius: 4, offset: 2) } else { Color.clear }
-        case .now, .dayNow, .nowLeads, .prayedAt:
-            // Sami's C–F · the prayer on now is the one raised block in the well (PrayerListLooks.swift).
-            if isCurrentPrayer || showsActions { NeuRaised(shape: shape, radius: 8, offset: 4) } else { Color.clear }
+        case .raised, .prayedOnTap, .now, .dayNow, .nowLeads, .prayedAt:
+            // The prayer on now (or a row with its buttons up) raised: the look's band (SalahRowRaise — the one
+            // place it's drawn; the raised list's capsule, G's rounder lift, Sami's C–F block in the well).
+            if isCurrentPrayer || showsActions { SalahRowRaise(look: look) } else { Color.clear }
         case .card, .well, .timeline:
             Color.clear
+        }
         }
     }
 
@@ -3555,15 +3558,6 @@ struct PrayerButton: View {
             .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 44 pt rows
             // E · the raised one gets its own room (the rest are compact).
             .padding(.vertical, look == .nowLeads && isCurrentPrayer ? 6 : 0)
-            // The day page: the picked row, a touch raised (its photo or words are in the ring).
-            .background {
-                if DayPageState.shared.up, let i = DayPageState.shared.picked, DayRing.order.indices.contains(i),
-                   DayRing.order[i] == prayerObject.name {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05))
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .transition(.opacity)
-                }
-            }
             .contentShape(Rectangle())
             .coordinateSpace(.named(PrayerButton.rowSpace))
             .gesture(rowGesture)
@@ -3656,17 +3650,9 @@ struct PrayerButton: View {
                     // Completed Prayer: Show Completion Time
                     if let prayedAt = prayerObject.timeAtComplete {
                         if DayPageState.shared.up && !TourRuntime.shared.active {
-                            // The day page (the merge, owner): when you prayed, the grade and score always under it.
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text(shortTimePM(prayedAt))
-                                    .font(timeFontSize).fontDesign(.rounded).fontWeight(.light)
-                                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
-                                Text(completedTimeAndScore)
-                                    .font(.caption2).fontDesign(.rounded).fontWeight(.light)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                            }
-                            .allowsHitTesting(false)
+                            // The day page: "@ 7:45 PM", the grade and score under it (DayRowTime — Journey's rows too).
+                            DayRowTime(prayedAt: prayedAt, summary: completedTimeAndScore)
+                                .allowsHitTesting(false)
                         } else {
                         ExternalToggleText(
                             // F · when you prayed it, not when it started (the flip still shows the score).

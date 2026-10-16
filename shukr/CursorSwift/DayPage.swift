@@ -79,6 +79,84 @@ struct DayFacts {
     }
 }
 
+// MARK: - The rows (one look on both pages)
+
+/// The prayer list's raised band for a row — the prayer on now, a row whose buttons are up, a picked row on the day page.
+/// The ONE place the look's raise is drawn: PrayerButton and Journey's rows both use it (owner, 2026-10-16: "selecting a row
+/// item should match … how the current prayer looks … raised up … reference that same view logic").
+struct SalahRowRaise: View {
+    let look: SalahLook
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        switch look {
+        case .raised: NeuRaised(shape: Capsule(), radius: 3, offset: 1.5)
+        case .prayedOnTap: NeuRaised(shape: Capsule(), radius: 4, offset: 2)
+        case .now, .dayNow, .nowLeads, .prayedAt: NeuRaised(shape: shape, radius: 8, offset: 4)
+        case .pills, .quiet: NeuPressed(shape: shape)
+        case .today, .card, .well, .timeline: Color.clear
+        }
+    }
+}
+
+/// A prayed row's right side on the day page: "@ 7:45 PM" (when it was prayed), the grade and score under it
+/// ("Late · 75"). Both pages (owner, 2026-10-16: "should say '@ 7:45PM' to indicate thats the time we prayed it").
+struct DayRowTime: View {
+    let prayedAt: Date
+    let summary: String
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text("@ \(shortTimePM(prayedAt))")
+                .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+                .foregroundStyle(.secondary)
+            Text(summary)
+                .font(.caption2).fontDesign(.rounded).fontWeight(.light)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+        .monospacedDigit()
+    }
+}
+
+/// A row of a past day's card (Journey): the Salah list's row — its dot (the chosen dot style), name in `.callout`
+/// light, the day page's time, 44 pt tall in the raised look, raised when picked — drawn from the same pieces as
+/// PrayerButton (which only knows today's rows: it marks, it runs the tour).
+struct DayCardRow: View {
+    let row: PrayerModel
+    let excused: Bool
+    let picked: Bool
+    @Environment(\.circleTheme) private var theme
+    @AppStorage(PrayerDotStyle.key) private var dotStyleRaw = PrayerDotStyle.muted.rawValue
+
+    var body: some View {
+        HStack {
+            PrayerStatusDot(style: PrayerDotStyle(rawValue: dotStyleRaw) ?? .muted,
+                            done: row.isCompleted, future: false,
+                            scoreColor: row.getColorForPrayerScore(), pulse: 0, excused: excused)
+                .frame(width: 24, height: 24, alignment: .leading)
+            Text(row.displayName)
+                .font(.callout).fontDesign(.rounded).fontWeight(.light)
+                .foregroundStyle(.secondary)
+            if row.atMasjid {
+                Image(systemName: "building.columns").font(.system(size: 11, weight: .light)).foregroundStyle(Color.sage)
+            }
+            Spacer()
+            if row.isCompleted, let at = row.timeAtComplete {
+                DayRowTime(prayedAt: at, summary: row.scoreSummary ?? "")
+            } else {
+                Text(excused ? "Excused" : "Missed")
+                    .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, theme.rowVerticalPadding)
+        .frame(minHeight: theme.list == .raised ? SalahLook.raisedRowHeight : nil)
+        .background { if picked { SalahRowRaise(look: theme.list).transition(.opacity) } }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
+}
+
 // MARK: - The flip
 
 /// The list card turning over on its upright axis (owner: "the prayer list card flip around so we see the back of the

@@ -244,7 +244,7 @@ struct JourneyDayPage: View {
             chevron("chevron.left", enabled: canGoBack, label: "Previous day") { step(-1) }
             // Each face carries the card's surface, so the whole card turns (Bradley's review).
             DayFlipCard(angle: flipped ? 180 : 0) {
-                prayerRows.modifier(SalahLookCard(raised: true))
+                prayerRows.modifier(SalahListInsets()).modifier(SalahLookCard(raised: true))
             } back: {
                 DayBackCard(facts: facts, notesOpen: $notesOpen,
                             onPhotos: {
@@ -257,6 +257,7 @@ struct JourneyDayPage: View {
                             onZikr: { zikrDay = date })
                     .modifier(SalahLookCard(raised: true))
             }
+            .modifier(SalahLookListFrame())   // the Salah list's width (290 in the soft looks): one card shape on both pages
             chevron("chevron.right", enabled: canGoForward, label: "Next day") { step(1) }
         }
     }
@@ -276,7 +277,8 @@ struct JourneyDayPage: View {
 
     private var prayerRows: some View {
         let ranges = Excused.ranges
-        return VStack(spacing: 0) {
+        // The list's own spacing and insets for the look (theme.rowSpacing, SalahListInsets): the Salah tab's card exactly.
+        return VStack(spacing: theme.rowSpacing) {
             if excusedDay {
                 ExcusedDayCard(line: "Excused that day")
             } else if rows.isEmpty {
@@ -288,10 +290,11 @@ struct JourneyDayPage: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: SalahLook.raisedRowHeight * 5)
             } else {
-                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                ForEach(rows, id: \.id) { row in
                     let i = DayRing.order.firstIndex(of: row.name)
-                    JourneyPrayerRow(row: row, excused: !row.isCompleted && Excused.covers(start: row.startTime, end: row.endTime, in: ranges),
-                                     picked: picked != nil && picked == i, last: index == rows.count - 1)
+                    // The Salah list's row (DayCardRow: its dot, type, "@ time", the raise when picked; no separator lines).
+                    DayCardRow(row: row, excused: !row.isCompleted && Excused.covers(start: row.startTime, end: row.endTime, in: ranges),
+                               picked: picked != nil && picked == i)
                         .contentShape(Rectangle())
                         // Hold: the prayer's sheet (a prayer that has started); tap: the pick. Exclusive, as the Salah
                         // tab's rows (PrayerButton.rowGesture).
@@ -315,71 +318,6 @@ struct JourneyDayPage: View {
                 }
             }
         }
-    }
-}
-
-/// A row of the day's card: the dot in its grade's colour (hollow when not prayed; a pause mark when excused), the name,
-/// the time prayed with the grade and score under it (the Salah tab's day page rows). A picked row is a touch raised.
-private struct JourneyPrayerRow: View {
-    let row: PrayerModel
-    let excused: Bool
-    let picked: Bool
-    let last: Bool
-
-    var body: some View {
-        let score = row.isCompleted ? row.numberScore : nil
-        HStack(spacing: 12) {
-            Group {
-                if let score {
-                    Circle().fill(PrayerScoring.color(for: score))
-                } else if excused {
-                    Image(systemName: "pause.circle").font(.system(size: 11, weight: .light)).foregroundStyle(.secondary)
-                } else {
-                    Circle().strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.3)
-                }
-            }
-            .frame(width: 12, height: 12)
-            Text(row.displayName)
-                .font(.system(size: 17, weight: .light, design: .rounded))
-                .foregroundStyle(row.isCompleted ? .primary : .secondary)
-            if row.atMasjid {
-                Image(systemName: "building.columns").font(.system(size: 11, weight: .light)).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(line)
-                    .font(.system(size: 15, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                if let summary = row.scoreSummary, row.isCompleted {
-                    Text(summary)
-                        .font(.caption2).fontWeight(.light)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-            }
-            .monospacedDigit()
-        }
-        .padding(.horizontal, 20)
-        .frame(minHeight: SalahLook.raisedRowHeight)
-        .background {
-            if picked {
-                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05))
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .transition(.opacity)
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if !last { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1).padding(.horizontal, 20) }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var line: String {
-        let time = { (d: Date) in d.formatted(date: .omitted, time: .shortened) }
-        if let at = row.timeAtComplete, row.isCompleted { return time(at) }
-        if excused { return "Excused" }
-        if row.endTime > Date() { return "Until \(time(row.endTime))" }
-        return "Missed"
     }
 }
 

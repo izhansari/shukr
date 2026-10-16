@@ -449,6 +449,17 @@ struct SalahLookListFrame: ViewModifier {
     }
 }
 
+/// The prayer list's insets inside its card for the look: the raised list's band reaches the card's edges, the others sit
+/// 16 in and 12 down. Shared by the Salah list and Journey's day card, so the two cards are one size in every look.
+struct SalahListInsets: ViewModifier {
+    @Environment(\.circleTheme) private var theme
+    func body(content: Content) -> some View {
+        content
+            .padding(.horizontal, theme.list == .raised ? 0 : 16)
+            .padding(.vertical, theme.list == .raised ? 0 : 12)
+    }
+}
+
 /// The soft looks' card round the prayer rows (inside TodaysPrayerListView, so "N done" sits outside it).
 struct SalahLookCard: ViewModifier {
     /// All five marked (the day's page): the well rises into a raised card (NeuLiftCard), only then.
