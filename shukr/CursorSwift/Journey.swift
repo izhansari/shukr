@@ -46,8 +46,11 @@ struct JourneyLog {
         /// Due = prayed or missed; to come and excused never are.
         var due: Int { marks.filter { $0.done || $0 == .missed }.count }
         var inTime: Int { marks.filter(\.inTime).count }
-        var allFive: Bool { prayed == 5 }
-        var allInTime: Bool { inTime == 5 }
+        var excused: Int { marks.filter { $0 == .excused }.count }
+        /// Everything due was prayed: an excused prayer counts as done, on a day something was marked (the card's rule,
+        /// `YourJourneyStats.kind`; spec month-fifths). Without `active` a fully excused day would count and lose its badge.
+        var allFive: Bool { active && prayed + excused == 5 }
+        var allInTime: Bool { active && inTime + excused == 5 }
         /// Every prayer not prayed was excused (the pause badge instead of dots).
         var excusedDay: Bool { marks.contains(.excused) && marks.allSatisfy { $0 == .excused || $0.done } && !allFive }
     }
