@@ -18,6 +18,12 @@ import SwiftData
 /// empty, and the line that says what will fill it.
 struct JourneyHomeCard: View {
     let stats: YourJourneyStats
+    /// A square's way into its day (JourneyPage's day route) and whether that day opens (over, or all five marked).
+    var onDay: (Date) -> Void = { _ in }
+    var opens: (Date) -> Bool = { _ in false }
+    /// A square picked (owner, 2026-10-16: "some sort of tapping ability, like how the grid used to have"): marked, its
+    /// day's line under the grid; the same square again clears it.
+    @State private var picked: Int?
 
     var body: some View {
         let empty = stats.activeDays == 0
@@ -46,6 +52,12 @@ struct JourneyHomeCard: View {
         }
         .padding(.top, 20).padding(.horizontal, 18).padding(.bottom, 16)
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
+        // A tap anywhere else on the card lets the picked square go (the squares and the line take their own taps first).
+        .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .onTapGesture {
+            guard picked != nil else { return }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }
+        }
     }
 
     private func figure(_ value: String, _ caption: String) -> some View {
@@ -74,23 +86,70 @@ struct JourneyHomeCard: View {
                 ForEach(0..<12, id: \.self) { col in
                     VStack(spacing: 4) {
                         ForEach(0..<7, id: \.self) { row in
-                            cell(stats.grid[col * 7 + row], today: col == 11 && row == 6)
+                            let i = col * 7 + row
+                            cell(stats.grid[i], today: col == 11 && row == 6)
+                                .overlay {
+                                    if picked == i {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .strokeBorder(Color.primary.opacity(0.8), lineWidth: 1.4)
+                                    }
+                                }
+                                .scaleEffect(picked == i ? 1.18 : 1)
+                                .zIndex(picked == i ? 1 : 0)
+                                .contentShape(Rectangle().inset(by: -2))
+                                .onTapGesture {
+                                    guard stats.activeDays > 0 else { return }
+                                    triggerSomeVibration(type: .light)
+                                    withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == i ? nil : i }
+                                }
                         }
                     }
                 }
             }
             if stats.activeDays > 0 {
-                HStack {
-                    Text(stats.gridStart.formatted(.dateTime.month(.abbreviated).day()))
-                    Spacer()
-                    Text("Today")
+                ZStack {
+                    // The span, or the picked day's one line in its place (the old grid's line under it): the card keeps its
+                    // height either way.
+                    HStack {
+                        Text(stats.gridStart.formatted(.dateTime.month(.abbreviated).day()))
+                        Spacer()
+                        Text("Today")
+                    }
+                    .foregroundStyle(.tertiary)
+                    .opacity(picked == nil ? 1 : 0)
+                    if let i = picked, stats.gridDays.indices.contains(i) { pickedLine(stats.gridDays[i]).id(i).transition(.opacity) }
                 }
                 .font(.system(size: 11, weight: .light, design: .rounded))
-                .foregroundStyle(.tertiary)
+                .frame(height: 16)
             }
         }
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("The last 12 weeks: \(stats.grid.filter { $0 == .allInTime }.count) days all five in time, \(stats.grid.filter { $0 == .allFive }.count) days all five")
+    }
+
+    /// "Wed, Oct 7 · 4 of 5 · 3 in time ›": a tap opens the day (when it can open).
+    private func pickedLine(_ d: YourJourneyStats.GridDay) -> some View {
+        let date = d.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let what: String = d.prayed == 0 ? (d.excused ? "Excused" : "No prayers marked")
+            : d.prayed == 5 && d.inTime == 5 ? "All five in time"
+            : "\(d.prayed) of 5 · \(d.inTime) in time"
+        let canOpen = d.prayed > 0 && opens(d.date)
+        return Button {
+            guard canOpen else { return }
+            triggerSomeVibration(type: .light)
+            onDay(d.date)
+        } label: {
+            HStack(spacing: 6) {
+                Text(date).foregroundStyle(.primary)
+                Text(what).foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if canOpen { Text("Open ›").foregroundStyle(Color.sage) }
+            }
+            .font(.system(size: 12, weight: .light, design: .rounded))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(date), \(what)")
     }
 
     /// The canvas's colours (owner, 2026-10-16: "make colors of the 12 week grid match your mockup"): monochrome by how much
@@ -335,6 +394,9 @@ struct YourJourneyStats {
     /// The last 84 prayer days, oldest first, today last.
     var grid: [Kind] = Array(repeating: .none, count: 84)
     var gridStart = Date()
+    /// The same 84 days: the date, prayed, in time, excused — a square's line.
+    struct GridDay { let date: Date; let prayed: Int; let inTime: Int; let excused: Bool }
+    var gridDays: [GridDay] = []
 
     struct MonthRow: Identifiable {
         let id: String
@@ -418,7 +480,9 @@ struct YourJourneyStats {
         gridStart = cal.date(byAdding: .day, value: -83, to: today) ?? today
         for i in 0..<84 {
             guard let date = cal.date(byAdding: .day, value: i, to: gridStart) else { continue }
-            grid[i] = Self.kind(log.day(date))
+            let d = log.day(date)
+            grid[i] = Self.kind(d)
+            gridDays.append(GridDay(date: date, prayed: d.prayed, inTime: d.inTime, excused: d.marks.contains(.excused)))
         }
 
         milestones = JourneyMilestone.earned(log: log, today: today)
@@ -658,7 +722,7 @@ struct JourneyMilestone: Identifiable, Equatable {
         if let i = out.lastIndex(where: { $0.id.hasPrefix("best.") }) {
             let n = out[i].text.split(separator: " ").first.map(String.init) ?? ""
             out[i].text = "Your best streak: \(n) days"
-            out[i].about = "Your longest run of days with all five prayed in time." 
+            out[i].about = "Your longest streak of days with all five prayed in time." 
         }
         return out.sorted { ($0.date, $0.order) > ($1.date, $1.order) }
     }

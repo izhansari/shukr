@@ -327,7 +327,7 @@ struct JourneyPage: View {
         let started = log.firstDay != nil
         return VStack(alignment: .leading, spacing: 0) {
             header
-            JourneyHomeCard(stats: s).padding(.top, 18)
+            JourneyHomeCard(stats: s, onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) }).padding(.top, 18)
             rows(started: started).padding(.top, 14)
             if !s.monthRows.isEmpty {
                 JourneyMonthsList(rows: s.monthRows) { m in openMonth = JourneyMonthRoute(month: m) }.padding(.top, 26)
