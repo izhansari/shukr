@@ -20,7 +20,8 @@ enum ZikrAreaStart {
     case azkar, history
     /// History filtered to one prayer day (Journey's day page, its zikr row).
     case day(Date)
-    /// History locked to one prayer day: no month card, no search or filter (the day page's Zikr row — owner, 2026-10-16:
+    /// History locked to one prayer day: "Zikr History", the day under it, no month card, search but no filter (the day
+    /// page's Zikr row — owner, 2026-10-16:
     /// "push to the page for the zikr history and show it without the hero card and lock the filter so that it only shows
     /// that day").
     case dayOnly(Date)
@@ -2116,7 +2117,7 @@ private struct ZikrHistoryHome: View {
     }
     private var shown: [SessionDataModel] {
         let q = state.historyQuery.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty, !locked else { return filtered }
+        guard !q.isEmpty else { return filtered }
         return filtered.filter { s in
             [s.mantra?.name ?? "Freestyle", s.task?.title ?? "", s.mantra?.notes ?? "",
              s.startTime.formatted(.dateTime.weekday(.wide)), s.startTime.formatted(.dateTime.month(.wide))]
@@ -2133,8 +2134,10 @@ private struct ZikrHistoryHome: View {
             Section {
                 // Select is a mode on this same page (owner, as Photos / Mail): the title and the card stay put, only the
                 // edges change — circles on the rows, Delete in the glass bar, Done / Cancel in the bar.
-                Soft.title(active.map { $0.title } ?? "History",
-                           "\(locked ? "That day" : "All time"): \(ZikrFmt.count(base.count)) session\(base.count == 1 ? "" : "s") · \(ZikrFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(ZikrFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
+                // Locked to a day: "Zikr History", the day first in its line (owner: "coming from the day card to here, we
+                // should be clear what type of history we're showing").
+                Soft.title(locked ? "Zikr History" : active.map { $0.title } ?? "History",
+                           "\(locked ? (active?.title ?? "That day") + " ·" : "All time:") \(ZikrFmt.count(base.count)) session\(base.count == 1 ? "" : "s") · \(ZikrFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(ZikrFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
                     .bareRow(top: 0)
                 if state.historyQuery.isEmpty && !locked { MonthHero(s: story).bareRow(top: 8, bottom: 4) }
             }
@@ -2146,7 +2149,7 @@ private struct ZikrHistoryHome: View {
             Color.clear.frame(height: 20).bareRow()
         }
         .softList()
-        .titleInBar(active.map { $0.title } ?? "History", shown: $titleShown)
+        .titleInBar(locked ? "Zikr History" : active.map { $0.title } ?? "History", shown: $titleShown)
         .scrollDismissesKeyboard(.immediately)
         .modifier(SoftBottomEdge())
         .modifier(BottomBar {   // search + filter in a Liquid Glass bar at the bottom (decision zikr-search-place A)
@@ -2161,9 +2164,9 @@ private struct ZikrHistoryHome: View {
                     .buttonStyle(.plain)
                     .barGlass(Capsule())
                     .disabled(selection.isEmpty)
-                } else if !locked {
+                } else {
                     Soft.search("A zikr, a task, \"Friday\"", Binding(get: { state.historyQuery }, set: { state.historyQuery = $0 }))
-                    filterMenu
+                    if !locked { filterMenu }   // locked to the day: search within it, no other day to pick
                 }
             }
             .padding(.horizontal, 16).padding(.bottom, 6)
@@ -2184,6 +2187,8 @@ private struct ZikrHistoryHome: View {
         }
         .navigationBarBackButtonHidden(selecting)
         .zikrSheets($open, zoom: zoom, onHistory: { f in if !locked { withAnimation(.snappy) { active = f } } })
+        .onAppear { if locked { state.historyQuery = "" } }
+        .onDisappear { if locked { state.historyQuery = "" } }
         .sheet(item: $sessionToOpen) { s in
             SessionPage(session: s, onOpenZikr: s.mantra.map { m in {
                 sessionToOpen = nil
