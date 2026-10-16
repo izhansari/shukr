@@ -413,6 +413,12 @@ struct YourJourneyStats {
     /// Every milestone earned, newest first.
     var milestones: [JourneyMilestone] = []
 
+    /// A day all excused: every prayer excused, or no rows at all on a day an excused range touches (the app wasn't opened —
+    /// Bradley's Excused.streakDay steps over it too). Neither adds to a streak nor breaks it, and isn't "away".
+    static func excusedAll(_ d: JourneyLog.Day, on date: Date, in log: JourneyLog, _ excused: Excused.Days) -> Bool {
+        d.marks.allSatisfy { $0 == .excused } || (log.days[d.key] == nil && excused.excludes(date))
+    }
+
     static func kind(_ d: JourneyLog.Day) -> Kind {
         guard d.active else { return .none }
         let excused = d.marks.filter { $0 == .excused }.count
@@ -422,7 +428,7 @@ struct YourJourneyStats {
     }
 
     /// The months with a marked day, and every break (≥ 7 days in a row with no mark; a fully excused day isn't away).
-    private mutating func buildMonths(log: JourneyLog, first: Date, today: Date) {
+    private mutating func buildMonths(log: JourneyLog, first: Date, today: Date, excused: Excused.Days) {
         let cal = Calendar.current
         var perMonth: [Date: (inTime: Int, due: Int, days: Int)] = [:]
         var rows: [MonthRow] = []
@@ -439,7 +445,7 @@ struct YourJourneyStats {
         var date = first
         while date <= today {
             let d = log.day(date)
-            let excusedAll = d.marks.allSatisfy { $0 == .excused }
+            let excusedAll = Self.excusedAll(d, on: date, in: log, excused)
             if d.active {
                 closeGap(endingBefore: date)
                 let m = JourneyLog.monthStart(date)
@@ -466,7 +472,7 @@ struct YourJourneyStats {
         monthRows = rows.sorted { $0.at > $1.at }
     }
 
-    init(log: JourneyLog, today: Date) {
+    init(log: JourneyLog, today: Date, excused: Excused.Days = Excused.Days()) {
         let cal = Calendar.current
         var inTime = 0, due = 0
         for d in log.days.values where d.active {
@@ -485,15 +491,14 @@ struct YourJourneyStats {
             gridDays.append(GridDay(date: date, prayed: d.prayed, inTime: d.inTime, excused: d.marks.contains(.excused)))
         }
 
-        milestones = JourneyMilestone.earned(log: log, today: today)
+        milestones = JourneyMilestone.earned(log: log, today: today, excused: excused)
         if let first = log.firstDay {
-            buildMonths(log: log, first: cal.startOfDay(for: first), today: today)
+            buildMonths(log: log, first: cal.startOfDay(for: first), today: today, excused: excused)
             var run = 0
             var date = cal.startOfDay(for: first)
             while date <= today {
                 let d = log.day(date)
-                let excused = d.marks.filter { $0 == .excused }.count
-                if excused == 5 {
+                if Self.excusedAll(d, on: date, in: log, excused) {
                     // An excused day neither counts nor breaks.
                 } else if Self.kind(d) == .allInTime {
                     run += 1
@@ -567,7 +572,7 @@ struct JourneyMilestone: Identifiable, Equatable {
     static func keepsTotal(_ n: Int) -> Bool { n == 100 || n == 500 || n % 1000 == 0 }
     static let perPrayer: [Int] = [100, 500]
 
-    static func earned(log: JourneyLog, today: Date) -> [JourneyMilestone] {
+    static func earned(log: JourneyLog, today: Date, excused: Excused.Days = Excused.Days()) -> [JourneyMilestone] {
         guard let firstDay = log.firstDay else { return [] }
         let cal = Calendar.current
         var out: [JourneyMilestone] = []
@@ -619,7 +624,7 @@ struct JourneyMilestone: Identifiable, Equatable {
         var date = cal.startOfDay(for: firstDay)
         while date <= today {
             let d = log.day(date)
-            let excusedAll = d.marks.allSatisfy { $0 == .excused }
+            let excusedAll = YourJourneyStats.excusedAll(d, on: date, in: log, excused)
             let unfinishedToday = date == today && d.marks.contains(.toCome)
 
             if d.active {
