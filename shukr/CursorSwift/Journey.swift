@@ -173,15 +173,20 @@ struct JourneyLog {
 /// The card's two day counts light their days up and dim the rest (as Insights did — owner: it helps most in the grid).
 enum JourneyHighlight: Equatable {
     case allInTime, allFive
-    /// The month's best day (a tap on the average score — owner).
-    case bestDay(Date)
+    /// The month's best-scored day(s): every day with that score, a tie lighting each (a tap on the average score — owner).
+    case bestScore(Int)
     func matches(_ d: JourneyLog.Day) -> Bool {
         switch self {
         case .allInTime: d.allInTime
         case .allFive: d.allFive
-        case .bestDay(let date): Calendar.current.isDate(d.date, inSameDayAs: date)
+        case .bestScore(let score): d.active && d.dayScore == score
         }
     }
+}
+
+extension JourneyLog.Day {
+    /// The mean of its five scores, an unprayed one 0, 0…100 (JourneyLog.Month.bestDay's measure).
+    var dayScore: Int { Int((marks.reduce(0) { $0 + ($1.score ?? 0) } / 5 * 100).rounded()) }
 }
 
 struct JourneyPage: View {
@@ -403,6 +408,9 @@ struct JourneyMonthPage: View {
     /// Grade colours on the calendar's dots. Off by default (decision journey-day-look B).
     @AppStorage("journey.grades") private var grades = false
     @State private var openDay: JourneyDayRoute?
+    /// A number tapped (owner, 2026-10-16: "tapping the days all in time, days with all five and average score, do the same
+    /// thing we used to have earlier"): only its days lit on the calendar; again, off; one at a time; a new month clears it.
+    @State private var focus: JourneyHighlight?
 
     init(log: JourneyLog, start: Date) {
         self.log = log
@@ -443,17 +451,26 @@ struct JourneyMonthPage: View {
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
                 HStack(alignment: .top, spacing: 0) {
-                    fact("\(numbers.allInTimeDays)", "days all in time")
-                    fact("\(numbers.allFiveDays)", "days with all five")
-                    fact(numbers.averageScore.map { "\($0)" } ?? "–", "average score")
+                    fact("\(numbers.allInTimeDays)", "days all in time", .allInTime)
+                    fact("\(numbers.allFiveDays)", "days with all five", .allFive)
+                    // The best day's score and date in its place while it's lit (as Journey's card did).
+                    if case .bestScore(let best) = focus {
+                        let days = JourneyLog.daysOf(month: start).filter { focus?.matches(log.day($0)) == true }
+                        fact("\(best)", days.count == 1 ? "best · \(days[0].formatted(.dateTime.month(.abbreviated).day()))"
+                                                      : "best · \(days.count) days", focus)
+                    } else {
+                        fact(numbers.averageScore.map { "\($0)" } ?? "–", "average score",
+                             numbers.bestDay.map { .bestScore($0.score) })
+                    }
                 }
                 .padding(.vertical, 16)
                 .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
                 .padding(.top, 22)
-                JourneyCalendar(log: log, month: start, today: today, grades: grades, highlight: nil, compact: false) { open($0) }
+                JourneyCalendar(log: log, month: start, today: today, grades: grades, highlight: focus, compact: false) { open($0) }
                     .padding(.top, 24)
                     .animation(.easeInOut(duration: 0.3), value: grades)
+                    .animation(.easeInOut(duration: 0.3), value: focus)
                 Text("Tap a day to open it.")
                     .font(.system(size: 13, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -480,12 +497,33 @@ struct JourneyMonthPage: View {
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
     }
 
-    private func fact(_ value: String, _ caption: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.system(size: 30, weight: .thin, design: .rounded)).monospacedDigit()
-            Text(caption).font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+    /// A number; a tap lights its days (`kind`; nil: nothing to light). While another is on, it steps back.
+    private func fact(_ value: String, _ caption: String, _ kind: JourneyHighlight?) -> some View {
+        let on: Bool = {
+            switch (focus, kind) {
+            case (.bestScore?, .bestScore?): true
+            case let (f?, k?): f == k
+            default: false
+            }
+        }()
+        return Button {
+            guard let kind else { return }
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { focus = on ? nil : kind }
+        } label: {
+            VStack(spacing: 2) {
+                Text(value).font(.system(size: 30, weight: .thin, design: .rounded)).monospacedDigit()
+                    .contentTransition(.numericText())
+                Text(caption).font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .opacity(focus == nil || on ? 1 : 0.4)
+            .contentShape(Rectangle())
         }
-        .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityHint(kind == nil ? "" : on ? "Shows every day again" : "Lights these days on the calendar")
     }
 
     /// A small raised disc with a plain chevron (owner: not the sage arrows); flat and faint when there's no month that way.
@@ -493,7 +531,7 @@ struct JourneyMonthPage: View {
         Button {
             guard let month else { return }
             triggerSomeVibration(type: .light)
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { start = month }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { start = month; focus = nil }
         } label: {
             Image(systemName: symbol)
                 .font(.system(size: 12, weight: .semibold))
