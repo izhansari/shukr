@@ -246,17 +246,22 @@ struct JourneyDayPage: View {
 
     /// In the top bar, on the back button's line (owner, 2026-10-16: "sit at the top, like in the top bar … same line as the
     /// back chevron … say relatively to today where we are in time … don't need the Islamic calendar").
+    /// Another day: the old title goes out, then the new one comes in (Frank's check: crossfaded, both were drawn over each
+    /// other for a frame or two).
     private var heading: some View {
-        VStack(spacing: 1) {
-            Text(shownDate.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                .font(.system(size: 17, weight: .regular, design: .rounded))
-            Text(Self.relative(shownDate, to: today))
-                .font(.system(size: 12, weight: .light, design: .rounded))
-                .foregroundStyle(.secondary)
+        ZStack {
+            VStack(spacing: 1) {
+                Text(shownDate.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                    .font(.system(size: 17, weight: .regular, design: .rounded))
+                Text(Self.relative(shownDate, to: today))
+                    .font(.system(size: 12, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            .lineLimit(1)
+            .fixedSize()
+            .id(shownDate)
+            .transition(CircleMotion.dayPickSwap)
         }
-        .lineLimit(1)
-        .contentTransition(.opacity)
-        .animation(.easeOut(duration: CircleMotion.quick), value: shownDate)
         .accessibilityElement(children: .combine)
     }
 
