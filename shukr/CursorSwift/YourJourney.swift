@@ -14,124 +14,178 @@ import SwiftData
 /// board/mocks/journey-v6): Your journey's card leads, then Prayer scores · To make up · Moments as three flat rows, the
 /// months (a break folded into one "Away" line) and the milestones. Every piece is one we had, in a gentler order.
 
-/// The card: days you marked a prayer, the last 12 weeks, three figures. Before the first mark: "0 days so far", the weeks
-/// empty, and the line that says what will fill it.
+/// The card (Journey on one screen, D's card — owner, 2026-10-16, board/mocks/journey-v6/build-plan.md "A"): days you
+/// marked a prayer; the grid a week a row (seven rounded bars, the card's colors), today's week at the bottom, scrolling up
+/// to the first day with a fade at its top; month names in sage beside the week holding the 1st open that month; the
+/// label says what's in view ("THE LAST 18 WEEKS", or the months once scrolled back). A tile's tap puts its day in the
+/// three numbers' place; again, the numbers. Before the first mark: "0 days so far" and the line that says what will fill it.
 struct JourneyHomeCard: View {
     let stats: YourJourneyStats
-    /// A square's way into its day (JourneyPage's day route) and whether that day opens (over, or all five marked).
+    /// A small phone: the number at 42 pt (the canvas's SE).
+    var compact = false
     var onDay: (Date) -> Void = { _ in }
     var opens: (Date) -> Bool = { _ in false }
-    /// A square picked (owner, 2026-10-16: "some sort of tapping ability, like how the grid used to have"): marked, its
-    /// day's line under the grid; the same square again clears it.
-    @State private var picked: Int?
+    var onMonth: (Date) -> Void = { _ in }
+    @State private var picked: Date?
+    /// What the grid shows: the first week row in view, how many fit, and whether it rests at today.
+    @State private var view = (first: 0, count: 12, atEnd: true)
+    @Environment(\.colorScheme) private var scheme
+
+    /// A week row's pitch: an 11 pt bar and 3 pt between (the canvas).
+    static let pitch: CGFloat = 14
+    /// The grid's least height: 12 weeks and its top room.
+    static let minGrid: CGFloat = 12 * pitch + 12
 
     var body: some View {
         let empty = stats.activeDays == 0
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Text("\(stats.activeDays)").font(.system(size: 54, weight: .thin, design: .rounded))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("\(stats.activeDays)").font(.system(size: compact ? 42 : 54, weight: .thin, design: .rounded))
                     .foregroundStyle(empty ? .secondary : .primary)
                 Text(empty ? "days so far" : stats.activeDays == 1 ? "day you marked a prayer" : "days you marked a prayer")
-                    .font(.system(size: 17, weight: .light, design: .rounded))
+                    .font(.system(size: compact ? 15 : 17, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
             }
-            weeks
-            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
-            if empty {
-                Text("Every prayer you mark shows up here.")
-                    .font(.system(size: 15, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-            } else {
-                HStack(alignment: .top, spacing: 0) {
-                    figure("\(stats.prayersMarked)", "prayers marked")
-                    figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days")
-                    figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days", "best streak")
-                }
-            }
-        }
-        .padding(.top, 20).padding(.horizontal, 18).padding(.bottom, 16)
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
-        // A tap anywhere else on the card lets the picked square go (the squares and the line take their own taps first).
-        .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .onTapGesture {
-            guard picked != nil else { return }
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }
-        }
-    }
-
-    private func figure(_ value: String, _ caption: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value).font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
-            Text(caption)
-                .font(.system(size: 11.5, weight: .light, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)   // one line on a 16e too: a wrapped caption hung below its neighbours
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    /// The last 12 weeks, a week a column, oldest top left, today bottom right (spec: "no unbounded heat map").
-    private var weeks: some View {
-        VStack(spacing: 6) {
             HStack {
-                Text("THE LAST 12 WEEKS")
+                Text(rangeLabel)
                 Spacer()
-                Text("a week a column")
+                Text("a week a row")
             }
             .font(.system(size: 11, weight: .light, design: .rounded))
-            .foregroundStyle(.tertiary)
-            HStack(spacing: 7) {
-                ForEach(0..<12, id: \.self) { col in
-                    VStack(spacing: 4) {
-                        ForEach(0..<7, id: \.self) { row in
-                            let i = col * 7 + row
-                            cell(stats.grid[i], today: col == 11 && row == 6)
-                                .overlay {
-                                    if picked == i {
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .strokeBorder(Color.primary.opacity(0.8), lineWidth: 1.4)
-                                    }
-                                }
-                                .scaleEffect(picked == i ? 1.18 : 1)
-                                .zIndex(picked == i ? 1 : 0)
-                                .contentShape(Rectangle().inset(by: -2))
-                                .onTapGesture {
-                                    guard stats.activeDays > 0 else { return }
-                                    triggerSomeVibration(type: .light)
-                                    withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == i ? nil : i }
-                                }
-                        }
-                    }
-                }
-            }
-            if stats.activeDays > 0 {
-                ZStack {
-                    // The span, or the picked day's one line in its place (the old grid's line under it): the card keeps its
-                    // height either way.
-                    HStack {
-                        Text(stats.gridStart.formatted(.dateTime.month(.abbreviated).day()))
-                        Spacer()
-                        Text("Today")
-                    }
-                    .foregroundStyle(.tertiary)
-                    .opacity(picked == nil ? 1 : 0)
-                    if let i = picked, stats.gridDays.indices.contains(i) { pickedLine(stats.gridDays[i]).id(i).transition(.opacity) }
-                }
-                .font(.system(size: 11, weight: .light, design: .rounded))
-                .frame(height: 16)
-            }
+            .tracking(0.4)
+            .foregroundStyle(.secondary)
+            .padding(.top, 18)
+            grid.padding(.top, 6)
+            foot
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("The last 12 weeks: \(stats.grid.filter { $0 == .allInTime }.count) days all five in time, \(stats.grid.filter { $0 == .allFive }.count) days all five")
+        .padding(.top, 18).padding(.horizontal, 18).padding(.bottom, 14)
+        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
     }
 
-    /// "Wed, Oct 7 · 4 of 5 · 3 in time ›": a tap opens the day (when it can open).
-    private func pickedLine(_ d: YourJourneyStats.GridDay) -> some View {
+    /// "THE LAST 18 WEEKS" at rest; once scrolled back, the months in view ("JUN – SEP 2026").
+    private var rangeLabel: String {
+        if view.atEnd || stats.weeks.isEmpty { return "THE LAST \(min(view.count, max(stats.weeks.count, 1))) WEEKS" }
+        let rows = stats.weeks
+        let a = rows[min(max(view.first, 0), rows.count - 1)].start
+        let lastRow = min(rows.count - 1, view.first + view.count - 1)
+        let b = Calendar.current.date(byAdding: .day, value: 6, to: rows[max(lastRow, 0)].start) ?? a
+        let cal = Calendar.current
+        let from = a.formatted(.dateTime.month(.abbreviated)).uppercased()
+            + (cal.component(.year, from: a) != cal.component(.year, from: b) ? " \(cal.component(.year, from: a))" : "")
+        return "\(from) – \(b.formatted(.dateTime.month(.abbreviated)).uppercased()) \(cal.component(.year, from: b))"
+    }
+
+    private var grid: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 3) {
+                ForEach(stats.weeks) { week in row(week) }
+            }
+            .padding(.top, 12)
+        }
+        .defaultScrollAnchor(.bottom)
+        .scrollBounceBehavior(.basedOnSize)
+        .onScrollGeometryChange(for: [Int].self) { geo in
+            let count = max(1, Int((geo.containerSize.height - 12) / Self.pitch))
+            let first = max(0, Int(((geo.contentOffset.y + geo.contentInsets.top) - 12) / Self.pitch))
+            let atEnd = geo.contentSize.height - (geo.contentOffset.y + geo.contentInsets.top) - geo.containerSize.height < 4
+            return [first, count, atEnd ? 1 : 0]
+        } action: { _, v in
+            view = (v[0], v[1], v[2] == 1)
+        }
+        // A fade at the top: there are earlier weeks up there.
+        .mask {
+            VStack(spacing: 0) {
+                LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 16)
+                Color.black
+            }
+        }
+        // 12 weeks is its natural height (what Journey's fit test measures), and it grows into any room that's left.
+        .frame(minHeight: Self.minGrid, idealHeight: Self.minGrid, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Your weeks, a week a row")
+    }
+
+    private func row(_ week: YourJourneyStats.Week) -> some View {
+        HStack(spacing: 6) {
+            Group {
+                if let m = week.month {
+                    Button {
+                        triggerSomeVibration(type: .light)
+                        onMonth(m.start)
+                    } label: {
+                        Text(m.label).font(.system(size: 12.5, weight: .regular, design: .rounded)).foregroundStyle(Color.sage)
+                            .lineLimit(1).fixedSize()
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(m.start.formatted(.dateTime.month(.wide).year()))")
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(width: 34, height: 11, alignment: .leading)
+            ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
+                bar(day)
+            }
+        }
+    }
+
+    @ViewBuilder private func bar(_ day: YourJourneyStats.GridDay?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+        if let day {
+            let on = picked == day.date
+            shape.fill(color(day.kind))
+                .frame(maxWidth: .infinity)
+                .frame(height: 11)
+                .overlay {
+                    if on {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
+                            .padding(-3)
+                    }
+                }
+                .contentShape(Rectangle().inset(by: -2))
+                .onTapGesture {
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = on ? nil : day.date }
+                }
+                .accessibilityLabel(day.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+        } else {
+            Color.clear.frame(maxWidth: .infinity).frame(height: 11)   // before the first day, or still to come
+        }
+    }
+
+    /// Under the grid: the three numbers, or the picked day's line in their place (the card never grows).
+    private var foot: some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+            ZStack {
+                if stats.activeDays == 0 {
+                    Text("Every prayer you mark shows up here.")
+                        .font(.system(size: 15, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                } else if let date = picked, let day = stats.day(on: date) {
+                    dayLine(day).transition(.opacity)
+                } else {
+                    HStack(alignment: .top, spacing: 0) {
+                        figure("\(stats.prayersMarked)", "prayers marked")
+                        figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days")
+                        figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days", "best streak")
+                    }
+                    .transition(.opacity)
+                }
+            }
+            .frame(minHeight: 46, alignment: .top)
+            .padding(.top, 12)
+        }
+        .padding(.top, 12)
+    }
+
+    /// "Fri, Sep 25 · 5 of 5 · all in time · Open ›": a tap opens the day (when it can open).
+    private func dayLine(_ d: YourJourneyStats.GridDay) -> some View {
         let date = d.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
         let what: String = d.prayed == 0 ? (d.excused ? "Excused" : "No prayers marked")
-            : d.prayed == 5 && d.inTime == 5 ? "All five in time"
+            : d.prayed == 5 && d.inTime == 5 ? "5 of 5 · all in time"
             : "\(d.prayed) of 5 · \(d.inTime) in time"
         let canOpen = d.prayed > 0 && opens(d.date)
         return Button {
@@ -139,28 +193,38 @@ struct JourneyHomeCard: View {
             triggerSomeVibration(type: .light)
             onDay(d.date)
         } label: {
-            HStack(spacing: 6) {
-                Text(date).foregroundStyle(.primary)
-                Text(what).foregroundStyle(.secondary)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(date) · \(what)").foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.85)
                 Spacer(minLength: 4)
                 if canOpen { Text("Open ›").foregroundStyle(Color.sage) }
             }
-            .font(.system(size: 12, weight: .light, design: .rounded))
+            .font(.system(size: 14, weight: .light, design: .rounded))
+            .padding(.top, 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(date), \(what)")
     }
 
-    /// The canvas's colours (owner, 2026-10-16: "make colors of the 12 week grid match your mockup"): monochrome by how much
-    /// was prayed, green only for all five in time — the month calendar's idea. Light from the canvas, dark from Frank's
-    /// first draft of it.
-    @Environment(\.colorScheme) private var scheme
+    private func figure(_ value: String, _ caption: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
+            Text(caption)
+                .font(.system(size: 11, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The canvas's colours (owner, 2026-10-16: "make colors of the 12 week grid match your mockup"): monochrome by amount,
+    /// green only for all five in time. Light from the canvas, dark from Frank's first draft of it.
     private func color(_ kind: YourJourneyStats.Kind) -> Color {
         let dark = scheme == .dark
         switch kind {
         case .none: return dark ? Color(red: 0x2E / 255, green: 0x30 / 255, blue: 0x35 / 255)
-                                : Color(red: 126 / 255, green: 132 / 255, blue: 143 / 255).opacity(0.25 * 0.55)
+                                : Color(red: 126 / 255, green: 132 / 255, blue: 143 / 255).opacity(0.14)
         case .some: return dark ? Color(red: 0x55 / 255, green: 0x57 / 255, blue: 0x5D / 255)
                                 : Color(red: 35 / 255, green: 38 / 255, blue: 44 / 255).opacity(0.30)
         case .allFive: return dark ? Color(red: 0xA9 / 255, green: 0xAB / 255, blue: 0xB1 / 255)
@@ -169,14 +233,6 @@ struct JourneyHomeCard: View {
                                      : Color(red: 52 / 255, green: 199 / 255, blue: 89 / 255).opacity(0.55)
         }
     }
-
-    /// A day: 15 pt tall, corner 4 (the canvas).
-    private func cell(_ kind: YourJourneyStats.Kind, today: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .fill(color(kind))
-            .frame(maxWidth: .infinity)
-            .frame(height: 15)
-    }
 }
 
 /// A plain row (the canvas's list row): a symbol, a title over a grey line, a value, and a sage ›.
@@ -184,6 +240,8 @@ struct JourneyHomeRow<Symbol: View, Value: View>: View {
     let title: String
     let line: String
     var last = false
+    /// The row's height (the canvas: 58, 52 on a small phone); nil: its padding.
+    var height: CGFloat? = nil
     var quiet = false
     @ViewBuilder let symbol: () -> Symbol
     @ViewBuilder let value: () -> Value
@@ -211,7 +269,8 @@ struct JourneyHomeRow<Symbol: View, Value: View>: View {
                     .foregroundStyle(.secondary)
                 Text("›").font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(Color.sage)
             }
-            .padding(.vertical, 13)
+            .padding(.vertical, height == nil ? 13 : 0)
+            .frame(height: height)
             .padding(.horizontal, 2)
             .overlay(alignment: .bottom) { if !last { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) } }
             .contentShape(Rectangle())
@@ -251,110 +310,58 @@ struct JourneySectionLabel: View {
     }
 }
 
-/// Every month, newest first, a break folded into one "Away" line (spec: "every month (a break folds into one 'Away ·
-/// dates' row)"); the latest five months, then "All N months ›" opens the rest in place.
-struct JourneyMonthsList: View {
-    let rows: [YourJourneyStats.MonthRow]
-    let onMonth: (Date) -> Void
-    @State private var all = false
-    /// The first three months with a bar, then "Show more" (owner, 2026-10-16: "it spans really long … cap it to the first 3
-    /// month items with a bar and with show more at the bottom").
-    static let shown = 3
+/// Milestones, from Journey's row (one screen: the list left the page — build-plan "A"): every one earned, newest first;
+/// a tap opens its frosted card, and its day.
+struct JourneyMilestonesPage: View {
+    let milestones: [JourneyMilestone]
+    let firstDay: Date?
+    let opens: (Date?) -> Bool
+    @Environment(\.circleTheme) private var theme
+    @State private var card: JourneyMilestone?
+    @State private var openDay: JourneyDayRoute?
 
     var body: some View {
-        let monthCount = rows.filter { $0.rate != nil }.count
-        let visible: [YourJourneyStats.MonthRow] = {
-            guard !all, monthCount > Self.shown else { return rows }
-            var out: [YourJourneyStats.MonthRow] = [], months = 0
-            for r in rows {
-                if r.rate != nil { if months == Self.shown { break }; months += 1 }
-                out.append(r)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Milestones").font(.system(size: 38, weight: .regular, design: .rounded))
+                    Text(milestones.count == 1 ? "1 earned" : "\(milestones.count) earned")
+                        .font(.system(size: 16, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                JourneyMilestonesList(milestones: milestones, title: nil) { card = $0 }.padding(.top, 18)
             }
-            while out.last?.rate == nil, !out.isEmpty { out.removeLast() }   // never end on an Away line
-            return out
-        }()
-        VStack(alignment: .leading, spacing: 4) {
-            JourneySectionLabel(title: "MONTHS", trailing: "% in time")
-            VStack(spacing: 0) {
-                ForEach(visible) { row in
-                    if row.rate == nil { away(row) } else { month(row) }
-                }
-                if !all, monthCount > Self.shown {
-                    Button {
-                        triggerSomeVibration(type: .light)
-                        withAnimation(.easeOut(duration: CircleMotion.quick)) { all = true }
-                    } label: {
-                        Text("Show more")
-                            .font(.system(size: 15, weight: .light, design: .rounded))
-                            .foregroundStyle(Color.sage)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 12).padding(.horizontal, 2)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 40)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(theme.surface.ignoresSafeArea())
+        .fontDesign(.rounded)
+        .navigationBarTitleDisplayMode(.inline)
+        .infoModal(isPresented: Binding(get: { card != nil }, set: { if !$0 { card = nil } }),
+                   title: card?.text ?? "", symbol: card?.symbol ?? "flag", tint: .secondary) {
+            if let m = card {
+                JourneyMilestoneCard(milestone: m, onDay: opens(m.day) ? {
+                    let day = m.day
+                    card = nil
+                    if let day { openDay = JourneyDayRoute(date: day) }
+                } : nil)
             }
         }
-    }
-
-    private func away(_ row: YourJourneyStats.MonthRow) -> some View {
-        HStack {
-            Text("Away")
-            Spacer()
-            Text(row.note ?? "")
-        }
-        .font(.system(size: 13, weight: .light, design: .rounded))
-        .foregroundStyle(.secondary)
-        .padding(.vertical, 10)
-        .padding(.horizontal, 2)
-        .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
-        .accessibilityElement(children: .combine)
-    }
-
-    private func month(_ row: YourJourneyStats.MonthRow) -> some View {
-        Button {
-            triggerSomeVibration(type: .light)
-            onMonth(row.month)
-        } label: {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(row.title).font(.system(size: 16, weight: .light, design: .rounded))
-                    if let note = row.note {
-                        Text(note).font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    }
-                }
-                .frame(width: 122, alignment: .leading)
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.primary.opacity(0.1))
-                        Capsule().fill(Color.primary.opacity(0.55)).frame(width: geo.size.width * CGFloat(row.rate ?? 0) / 100)
-                    }
-                }
-                .frame(height: 4)
-                Text("\(row.rate ?? 0)%")
-                    .font(.system(size: 14, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 40, alignment: .trailing)
-                Text("›").font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(Color.sage)
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 2)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(row.title), \(row.rate ?? 0) percent in time")
+        .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: firstDay) }
     }
 }
 
 /// Earned once, dated, newest first; a hollow dot each (the canvas).
 struct JourneyMilestonesList: View {
     let milestones: [JourneyMilestone]
+    /// The section label (nil on the Milestones page, whose title says it).
+    var title: String? = "MILESTONES"
     /// A tap: its card (JourneyMilestoneCard).
     var onTap: (JourneyMilestone) -> Void = { _ in }
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            JourneySectionLabel(title: "MILESTONES")
+            if let title { JourneySectionLabel(title: title) }
             VStack(spacing: 0) {
                 ForEach(milestones) { m in
                     Button { triggerSomeVibration(type: .light); onTap(m) } label: {
@@ -392,11 +399,27 @@ struct YourJourneyStats {
     /// The longest run of days with every prayer in time (excused days skip, today waits until it's over).
     var bestStreak = 0
     /// The last 84 prayer days, oldest first, today last.
-    var grid: [Kind] = Array(repeating: .none, count: 84)
-    var gridStart = Date()
-    /// The same 84 days: the date, prayed, in time, excused — a square's line.
-    struct GridDay { let date: Date; let prayed: Int; let inTime: Int; let excused: Bool }
-    var gridDays: [GridDay] = []
+    /// A day on the card: its color and its line.
+    struct GridDay { let date: Date; let kind: Kind; let prayed: Int; let inTime: Int; let excused: Bool }
+    /// A week a row, from the week of the first day to today's (nil: before the first day, or still to come); the week
+    /// holding a month's 1st (or the first day) carries that month's name — "Jan’26" on January and on the first month.
+    struct Week: Identifiable {
+        let start: Date
+        let days: [GridDay?]
+        let month: (start: Date, label: String)?
+        var id: Date { start }
+    }
+    var weeks: [Week] = []
+    func day(on date: Date) -> GridDay? {
+        let cal = Calendar.current
+        for w in weeks.reversed() where w.start <= date {
+            let i = cal.dateComponents([.day], from: w.start, to: date).day ?? 0
+            return w.days.indices.contains(i) ? w.days[i] : nil
+        }
+        return nil
+    }
+    /// This month's "on time or better": Perfect + On time over every prayer due so far (nil before any is due).
+    var thisMonthOnTime: Int?
 
     struct MonthRow: Identifiable {
         let id: String
@@ -483,13 +506,41 @@ struct YourJourneyStats {
         }
         if due > 0 { inTimeRate = Int((Double(inTime) / Double(due) * 100).rounded()) }
 
-        gridStart = cal.date(byAdding: .day, value: -83, to: today) ?? today
-        for i in 0..<84 {
-            guard let date = cal.date(byAdding: .day, value: i, to: gridStart) else { continue }
-            let d = log.day(date)
-            grid[i] = Self.kind(d)
-            gridDays.append(GridDay(date: date, prayed: d.prayed, inTime: d.inTime, excused: d.marks.contains(.excused)))
+        if let first = log.firstDay {
+            let firstDay = cal.startOfDay(for: first)
+            var weekStart = cal.dateInterval(of: .weekOfYear, for: firstDay)?.start ?? firstDay
+            var labelled = false
+            while weekStart <= today {
+                var days: [GridDay?] = []
+                var month: (start: Date, label: String)?
+                for k in 0..<7 {
+                    guard let date = cal.date(byAdding: .day, value: k, to: weekStart) else { days.append(nil); continue }
+                    if month == nil, cal.component(.day, from: date) == 1 || date == firstDay, date >= firstDay {
+                        let short = date.formatted(.dateTime.month(.abbreviated))
+                        let year = !labelled || cal.component(.month, from: date) == 1
+                            ? "’" + String(cal.component(.year, from: date) % 100) : ""
+                        month = (JourneyLog.monthStart(date), short + year)
+                        labelled = true
+                    }
+                    guard date >= firstDay, date <= today else { days.append(nil); continue }
+                    let d = log.day(date)
+                    days.append(GridDay(date: date, kind: Self.kind(d), prayed: d.prayed, inTime: d.inTime,
+                                        excused: d.marks.contains(.excused)))
+                }
+                weeks.append(Week(start: weekStart, days: days, month: month))
+                guard let next = cal.date(byAdding: .day, value: 7, to: weekStart) else { break }
+                weekStart = next
+            }
         }
+        // This month, on time or better (owner's This month row): every prayer whose time has come.
+        var good = 0, owed = 0
+        for date in JourneyLog.daysOf(month: JourneyLog.monthStart(today)) where date <= today {
+            for mark in log.day(date).marks {
+                if case .done(let score) = mark { owed += 1; if score >= 0.8 - 0.0001 { good += 1 } }
+                else if mark == .missed { owed += 1 }
+            }
+        }
+        if owed > 0 { thisMonthOnTime = Int((Double(good) / Double(owed) * 100).rounded()) }
 
         milestones = JourneyMilestone.earned(log: log, today: today, excused: excused)
         if let first = log.firstDay {

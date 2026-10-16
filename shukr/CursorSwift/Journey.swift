@@ -212,10 +212,7 @@ struct JourneyPage: View {
     @State private var showMoments = false
     @State private var showMakeUp = false
     @State private var showScores = false
-    /// The title moves into the bar once it has scrolled under it (as the Zikr pages' `titleInBar`).
-    @State private var titleShown = false
-    /// A milestone tapped: its frosted card.
-    @State private var milestoneCard: JourneyMilestone?
+    @State private var showMilestones = false
 
     private var today: Date { PrayerDay.start() }
 
@@ -225,32 +222,29 @@ struct JourneyPage: View {
         return day < today || log.day(day).allFive
     }
 
+    /// A small phone (the SE's 667 pt): the card's number at 42 pt, the rows 52 pt tall.
+    private var small: Bool { UIScreen.main.bounds.height < 700 }
+
     var body: some View {
-        ScrollView {
-            home
+        // One screen (owner, 2026-10-16: "ideally, the journey page is a one-page item that doesn't move"): nothing scrolls
+        // but the card's grid, which takes the room that's left. Where the rows don't fit under a 12-week card (an SE,
+        // larger text), they scroll in their own area under it.
+        ViewThatFits(in: .vertical) {
+            home(rowsScroll: false)
+            home(rowsScroll: true)
         }
-        .infoModal(isPresented: Binding(get: { milestoneCard != nil }, set: { if !$0 { milestoneCard = nil } }),
-                   title: milestoneCard?.text ?? "", symbol: milestoneCard?.symbol ?? "flag", tint: .secondary) {
-            if let m = milestoneCard {
-                JourneyMilestoneCard(milestone: m, onDay: opens(m.day) ? {
-                    let day = m.day
-                    milestoneCard = nil
-                    if let day { openDay = JourneyDayRoute(date: day) }
-                } : nil)
-            }
-        }
-        .onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 40 } action: { _, under in
-            withAnimation(.easeOut(duration: 0.15)) { titleShown = under }
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
-        .navigationTitle(titleShown ? "Journey" : "")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
         .navigationDestination(item: $openMonth) { JourneyMonthPage(log: log, start: $0.month) }
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(today)) }
         .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
+        .navigationDestination(isPresented: $showMilestones) {
+            JourneyMilestonesPage(milestones: stats?.milestones ?? [], firstDay: log.firstDay, opens: { opens($0) })
+        }
         .onAppear {
             onScreen = true
             if stats == nil { stats = YourJourneyStats(log: log, today: today) }
@@ -328,45 +322,63 @@ struct JourneyPage: View {
 
     // MARK: Home
 
-    /// Your journey's card leads; Prayer scores, To make up and Moments as three flat rows under it; the months; the
-    /// milestones (Journey v6). Before the first mark: the card says what will fill it, the rows are there, quiet.
-    private var home: some View {
+    /// The title, Your journey's card (D's: a week a row), then five rows: This month, Prayer scores, To make up, Moments,
+    /// Milestones (Journey on one screen, board/mocks/journey-v6/build-plan.md "A"). Before the first mark: the card says
+    /// what will fill it, the rows are there, quiet.
+    private func home(rowsScroll: Bool) -> some View {
         let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
-        let started = log.firstDay != nil
+        let card = JourneyHomeCard(stats: s, compact: small,
+                                   onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
+                                   onMonth: { openMonth = JourneyMonthRoute(month: $0) })
         return VStack(alignment: .leading, spacing: 0) {
             header
-            JourneyHomeCard(stats: s, onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) }).padding(.top, 18)
-            rows(started: started).padding(.top, 14)
-            if !s.monthRows.isEmpty {
-                JourneyMonthsList(rows: s.monthRows) { m in openMonth = JourneyMonthRoute(month: m) }.padding(.top, 26)
-            }
-            if !s.milestones.isEmpty {
-                JourneyMilestonesList(milestones: s.milestones) { milestoneCard = $0 }.padding(.top, 26)
+            if rowsScroll {
+                card.fixedSize(horizontal: false, vertical: true).padding(.top, 16)
+                ScrollView(.vertical, showsIndicators: false) { rows(s).padding(.bottom, 20) }
+                    .scrollBounceBehavior(.basedOnSize)
+                    // A fade at the bottom: there's more under it (the canvas's `.rows.more`).
+                    .mask {
+                        VStack(spacing: 0) {
+                            Color.black
+                            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 26)
+                        }
+                    }
+                    .padding(.top, 10)
+            } else {
+                card.padding(.top, 16)
+                rows(s).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
             }
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 40)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Text("Journey").font(.system(size: 38, weight: .regular, design: .rounded))
             Text(log.firstDay.map { "Since \($0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))" }
                  ?? "It starts with your first prayer")
                 .font(.system(size: 16, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
         }
-        .padding(.top, 4)
     }
 
-    private func rows(started: Bool) -> some View {
+    private func rows(_ s: YourJourneyStats) -> some View {
         let photos = PrayerPhotos.all().count
         let owed = makeUpTotal ?? 0
+        let rowHeight: CGFloat = small ? 52 : 58
+        let latest = s.milestones.first
         return VStack(spacing: 0) {
+            JourneyHomeRow(title: "This month", line: "On time or better, so far", height: rowHeight,
+                           quiet: s.thisMonthOnTime == nil) {
+                Image(systemName: "calendar").font(.system(size: 21, weight: .light)).foregroundStyle(.secondary)
+            } value: {
+                if let pct = s.thisMonthOnTime { Text("\(pct)%") }
+            } action: { openMonth = JourneyMonthRoute(month: JourneyLog.monthStart(today)) }
             JourneyHomeRow(title: "Prayer scores",
                            line: scores?.strongest.map { "\($0) is your strongest" } ?? "After a few prayers",
-                           quiet: scores?.strongest == nil) {
+                           height: rowHeight, quiet: scores?.strongest == nil) {
                 HStack(alignment: .bottom, spacing: 3.1) {
                     ForEach(Array([12.0, 17, 14, 19].enumerated()), id: \.offset) { _, h in
                         Capsule().fill(Color.primary.opacity(0.55)).frame(width: 3.4, height: h)
@@ -378,18 +390,26 @@ struct JourneyPage: View {
             } action: { showScores = true }
             JourneyHomeRow(title: "To make up",
                            line: owed == 0 ? "Nothing to make up" : "Unmarked on days you used shukr",
-                           quiet: owed == 0) {
+                           height: rowHeight, quiet: owed == 0) {
                 Image(systemName: "clock").font(.system(size: 21, weight: .light)).foregroundStyle(.secondary)
             } value: {
                 Text("\(owed)")
             } action: { showMakeUp = true }
             JourneyHomeRow(title: "Moments",
                            line: photos == 0 ? "Your prayer photos will be here" : "Your prayer photos",
-                           last: true, quiet: photos == 0) {
+                           height: rowHeight, quiet: photos == 0) {
                 MomentsTileStack().scaleEffect(0.6, anchor: .leading).frame(width: 30, height: 26, alignment: .leading)
             } value: {
                 Text("\(photos)")
             } action: { showMoments = true }
+            JourneyHomeRow(title: "Milestones",
+                           line: latest.map { "Latest: \($0.text), \($0.date.formatted(.dateTime.month(.abbreviated).day()))" }
+                               ?? "Your first comes with your first prayer",
+                           last: true, height: rowHeight, quiet: latest == nil) {
+                Image(systemName: "star").font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
+            } value: {
+                EmptyView()
+            } action: { showMilestones = true }
         }
     }
 }
