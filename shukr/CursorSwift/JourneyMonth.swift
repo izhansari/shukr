@@ -137,15 +137,20 @@ struct JourneyMonthPage: View {
                 HStack(alignment: .top, spacing: 0) {
                     fact("\(numbers.allInTimeDays)", "days all in time", .allInTime)
                     fact("\(numbers.allFiveDays)", "days with all five", .allFive)
-                    // The best day's score and date in its place while it's lit (as Journey's card did).
-                    if case .bestScore(let best) = focus {
-                        let days = JourneyLog.daysOf(month: shown).filter { focus?.matches(log.day($0)) == true }
-                        fact("\(best)", days.count == 1 ? "best · \(days[0].formatted(.dateTime.month(.abbreviated).day()))"
-                                                      : "best · \(days.count) days", focus)
-                    } else {
-                        fact(numbers.averageScore.map { "\($0)" } ?? "–", "average score",
-                             numbers.bestDay.map { .bestScore($0.score) })
+                    // The best day's score and date in its place while it's lit (as Journey's card did) — out, then in: a
+                    // crossfade drew "96" and "100" over each other (Bradley's check).
+                    Group {
+                        if case .bestScore(let best) = focus {
+                            let days = JourneyLog.daysOf(month: shown).filter { focus?.matches(log.day($0)) == true }
+                            fact("\(best)", days.count == 1 ? "best · \(days[0].formatted(.dateTime.month(.abbreviated).day()))"
+                                                          : "best · \(days.count) days", focus)
+                        } else {
+                            fact(numbers.averageScore.map { "\($0)" } ?? "–", "average score",
+                                 numbers.bestDay.map { .bestScore($0.score) })
+                        }
                     }
+                    .id(focus.map { if case .bestScore = $0 { true } else { false } } ?? false)
+                    .transition(CircleMotion.dayPickSwap)
                 }
                 .padding(.vertical, 16)
                 .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
@@ -260,9 +265,10 @@ struct JourneyMonthPage: View {
         } label: {
             VStack(spacing: 2) {
                 Text(value).font(.system(size: 30, weight: .thin, design: .rounded)).monospacedDigit()
-                    .contentTransition(.numericText())
-                Text(caption).font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                // One size every month (a scale factor shrank September's and not August's, and the divider jumped while
+                // paging — Bradley's check): 11 pt fits "days with all five" in a third of an SE.
+                Text(caption).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
             .opacity(focus == nil || on ? 1 : 0.4)
@@ -308,7 +314,13 @@ private struct JourneyCalendar: View {
         let cal = Calendar.current
         let days = JourneyLog.daysOf(month: month)
         let lead = ((cal.component(.weekday, from: month) - cal.firstWeekday) + 7) % 7
-        let hasExcused = log.usesExcused && days.contains { log.day($0).marks.contains(.excused) }
+        // A past day an excused range covers with no rows at all (shukr wasn't opened during her period) is excused too: the
+        // pause badge, as a day with rows (Bradley's check; the card already steps over such days, bd44ce4).
+        let excused = Excused.Days()
+        let excusedNoRows: (Date) -> Bool = { date in
+            date < today && log.days[PrayerNotificationID.dayKey(date)] == nil && excused.excludes(date)
+        }
+        let hasExcused = days.contains { (log.usesExcused && log.day($0).marks.contains(.excused)) || excusedNoRows($0) }
         VStack(spacing: 6) {
             LazyVGrid(columns: columns, spacing: 0) {
                 ForEach(Array(weekdayLetters.enumerated()), id: \.offset) { _, letter in
@@ -319,7 +331,8 @@ private struct JourneyCalendar: View {
                 ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
                 ForEach(days, id: \.self) { date in
                     let day = log.day(date)
-                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, usesExcused: log.usesExcused)
+                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, usesExcused: log.usesExcused,
+                                   excusedNoRows: excusedNoRows(date))
                         .scaleEffect(scale)
                         .frame(height: JourneyDayRing.size * scale)
                         .opacity(highlight.map { $0.matches(day) ? 1 : 0.22 } ?? 1)
@@ -386,6 +399,8 @@ private struct JourneyDayCell: View {
     let today: Date
     let first: Date?
     let usesExcused: Bool
+    /// No rows, but an excused range covers it: excused all day.
+    var excusedNoRows = false
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -393,7 +408,7 @@ private struct JourneyDayCell: View {
         let before = first.map { date < $0 } ?? true
         let isToday = date == today
         let dark = scheme == .dark
-        let excusedAllDay = usesExcused && day.excusedDay && !day.active
+        let excusedAllDay = (usesExcused && day.excusedDay && !day.active) || excusedNoRows
         let drawn = !future && !before && day.active
         ZStack {
             if drawn {

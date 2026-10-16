@@ -377,7 +377,7 @@ struct JourneyPage: View {
                            quiet: s.thisMonth == nil) {
                 Image(systemName: "calendar").font(.system(size: 21, weight: .light)).foregroundStyle(.secondary)
             } value: {
-                if let m = s.thisMonth { Text(measure.value(m)).contentTransition(.numericText()) }
+                if let m = s.thisMonth { Text(measure.value(m)) }
             } action: { openMonth = JourneyMonthRoute(month: JourneyLog.monthStart(today)) }
             // Touch and hold: the four measures, each with its value and what it counts; the check sticks.
             .contextMenu {
