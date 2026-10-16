@@ -2148,15 +2148,30 @@ struct MemoriesDayStrip: View, Equatable {
     @State private var centreIndex = 0
     /// A finger moved the strip since it last came to rest.
     @State private var touched = false
+    /// The strip's side margins as the scroll view has them (0 until they're in).
+    @State private var leadingInset: CGFloat = 0
+    /// Scrolled onto the pile's day once the margins were in.
+    @State private var opened = false
 
     private func nearestPhotoDay(to i: Int) -> String? {
         days.indices.filter { photoDays.contains(days[$0]) }.min { abs($0 - i) < abs($1 - i) }.map { days[$0] }
     }
 
+    /// Once, as soon as the width and the margins are both in: straight onto the pile's day.
+    private func openOnPileDay() {
+        guard !opened, margin > 0, leadingInset > 0 else { return }
+        opened = true
+        scroll(to: centred, animated: false)
+    }
+
     private func scroll(to day: String?, animated: Bool) {
         guard let day, let i = days.firstIndex(of: day), margin > 0 else { return }
-        // ScrollPosition's x counts from the content's start, margins excluded (the content offset reads −margin there).
-        let x = CGFloat(i) * Self.cell
+        // Measured on the iOS 26.5 and 27 sims (2026-10-16): an animated scrollTo(x:) counts from the content's start,
+        // margins excluded, but an instant one sets the content offset itself, which reads −margin with the first day
+        // centred. Sent `i × cell` instantly (the pile opening), the strip stopped 3.5 days past the pile's day; the
+        // snap took it to 4 (Oct 8's photo, the strip on Oct 12), and on iOS 27 the position and the snap then fought
+        // every frame at 100 % CPU, the pile frozen part-way.
+        let x = CGFloat(i) * Self.cell - (animated ? 0 : margin)
         if animated {
             withAnimation(.snappy(duration: 0.35)) { position.scrollTo(x: x) }
         } else {
@@ -2191,6 +2206,12 @@ struct MemoriesDayStrip: View, Equatable {
                     tick += 1
                     onScrub(days[i])
                 }
+                // The first scroll waits for the margins, so the −margin it's sent with (`scroll`) is the one the
+                // scroll view has (the first width arrives before they're in).
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentInsets.leading } action: { _, inset in
+                    leadingInset = inset
+                    openOnPileDay()
+                }
                 .onScrollPhaseChange { _, new in
                     phase = new
                     if new == .interacting { touched = true }
@@ -2218,9 +2239,8 @@ struct MemoriesDayStrip: View, Equatable {
             // straight onto the pile's day.
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
                 if FrameMonitor.on { FrameMonitor.shared.note("strip width \(width)") }
-                let first = self.margin <= 0
                 self.margin = (width - Self.cell) / 2
-                if first { scroll(to: centred, animated: false) }
+                openOnPileDay()
             }
         }
         // The pile moved to another day: the strip follows (not while a finger is on it).
