@@ -552,6 +552,10 @@ struct MapView: UIViewRepresentable {
     @AppStorage(MapModes.satelliteKey) private var satellite = false
     /// The app's light / dark / auto setting (Settings), which the map follows (2026-09-27).
     var dark = false
+    /// The day page's map: north-up from the first frame, never turned to the qibla (owner, 2026-10-16: "the map is doing this
+    /// weird rotation thing when we open it"), no qibla line, fitted to the day's pins — set here, at creation, because the
+    /// first fix and the qibla turn come before the screen's onAppear.
+    var dayOnly = false
     private var modesKey: String { "\(satellite)" }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -561,7 +565,11 @@ struct MapView: UIViewRepresentable {
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
         mapView.userTrackingMode = .none
-        mapView.isRotateEnabled = true         // turn the map to match what's in front of you
+        mapView.isRotateEnabled = !dayOnly     // turn the map to match what's in front of you (never on the day's map)
+        if dayOnly {
+            viewModel.hidesQiblaLine = true
+            viewModel.fitPrayersWhenSet = true
+        }
         mapView.showsCompass = false           // our own glass north button (MapNorthButton)
         mapView.isPitchEnabled = false
         mapView.preferredConfiguration = MapModes.configuration(satellite: satellite)
@@ -577,8 +585,10 @@ struct MapView: UIViewRepresentable {
         mecca.title = "Mecca"
         mapView.addAnnotation(mecca)
 
-        // Start where the user is if we already have a fix; otherwise the first fix centres it.
-        if let here = envLocation.userLocation?.coordinate {
+        // Start where the user is if we already have a fix; otherwise the first fix centres it. The day's map starts on its
+        // pins instead (fitDayIfAsked), north-up.
+        if dayOnly { context.coordinator.didCentreOnUser = true }
+        if !dayOnly, let here = envLocation.userLocation?.coordinate {
             mapView.setRegion(MKCoordinateRegion(center: here, span: Coordinator.qiblaSpan), animated: false)
             context.coordinator.didCentreOnUser = true
             context.coordinator.userMoved(to: here, on: mapView)
@@ -698,8 +708,9 @@ struct MapView: UIViewRepresentable {
             if rect.size.width < minSide || rect.size.height < minSide {
                 rect = rect.insetBy(dx: -max(minSide - rect.size.width, 0) / 2, dy: -max(minSide - rect.size.height, 0) / 2)
             }
+            // The sheet covers ~52 % of the screen: the lowest pin stays clear of its top edge.
             DispatchQueue.main.async {
-                mapView.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 140, left: 60, bottom: mapView.bounds.height * 0.5, right: 60),
+                mapView.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 140, left: 60, bottom: mapView.bounds.height * 0.58, right: 60),
                                           animated: false)
             }
         }
@@ -745,7 +756,7 @@ struct MapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
             guard let coordinate = userLocation.location?.coordinate else { return }
-            if !didCentreOnUser {
+            if !didCentreOnUser && !parent.dayOnly {
                 didCentreOnUser = true
                 mapView.setRegion(MKCoordinateRegion(center: coordinate, span: Self.qiblaSpan), animated: false)
                 if !parent.viewModel.showPrayers && !parent.viewModel.showMosques {
@@ -1160,13 +1171,9 @@ struct LocationMapContentView: View {
 
     var body: some View {
         ZStack {
-            MapView(viewModel: viewModel, envLocation: envLocation, anchor: anchor, dark: appDark)
+            MapView(viewModel: viewModel, envLocation: envLocation, anchor: anchor, dark: appDark, dayOnly: dayMode)
                 .ignoresSafeArea()
                 .onAppear {
-                    if dayMode {
-                        viewModel.hidesQiblaLine = true
-                        viewModel.fitPrayersWhenSet = true
-                    }
                     viewModel.prayers = shownPrayers
                     if dayMode { setMode(prayers: true, mosques: false) }
                 }
@@ -1295,7 +1302,8 @@ struct LocationMapContentView: View {
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Centre on me")
                                 // Only while the map is turned; its own view so rotating
-                                // re-renders just it.
+                                // re-renders just it. The day page's map never turns, so never there.
+                                if !dayMode {
                                 MapNorthButton(anchor: anchor, qiblaBearing: inQiblaMode ? viewModel.qiblaBearing : nil) {
                                     // Qibla: back to your dot as well; browsing pins / mosques: north only.
                                     if inQiblaMode {
@@ -1305,6 +1313,7 @@ struct LocationMapContentView: View {
                                             viewModel.pointQiblaUp()
                                         }
                                     } else { viewModel.resetMapHeading() }
+                                }
                                 }
                             }
                             .mapGlass(Capsule())

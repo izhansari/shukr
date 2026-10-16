@@ -29,6 +29,9 @@ struct JourneyDayPage: View {
     /// The finger's travel sideways (0 at rest); the days sit a page width apart and move with it.
     @State private var dragOffset: CGFloat = 0
     @State private var dragHorizontal: Bool?
+    /// The card's back up or not belongs to the page, not to a day: paged while flipped, the next day comes in already
+    /// showing its back, never turning as it arrives (owner, 2026-10-16).
+    @State private var flipped = false
 
     private var today: Date { PrayerDay.start() }
     private var pageWidth: CGFloat { UIScreen.main.bounds.width }
@@ -101,7 +104,9 @@ struct JourneyDayPage: View {
             // slot it was rebuilt at the swap, and its score, caption and pill flashed — owner).
             ForEach(shownDays, id: \.date) { item in
                 let place = panePlace(item.k)
-                JourneyDayPane(date: item.date, current: item.k == 0, layout: layout, actions: actions)
+                JourneyDayPane(date: item.date, current: item.k == 0, layout: layout, actions: actions, pageFlipped: flipped) {
+                    withAnimation(CircleMotion.dayFlip) { flipped.toggle() }
+                }
                     .modifier(DayPaneMotion(away: place.away))
                     .offset(x: place.x)
                     .allowsHitTesting(item.k == 0)
@@ -296,16 +301,18 @@ struct JourneyDayActions {
 /// map · Zikr. It reads its own day; a pick or a flip is its own and clears once it's no longer the current day.
 struct JourneyDayPane: View {
     let date: Date
-    /// The day on the page (a neighbour takes no taps; paged away, its pick and flip clear).
+    /// The day on the page (a neighbour takes no taps; paged away, its pick clears).
     let current: Bool
     let layout: JourneyDayLayout
     let actions: JourneyDayActions
+    /// The page's flip (JourneyDayPage.flipped); a day with nothing on its back keeps its front up and shows no pill.
+    let pageFlipped: Bool
+    let onFlip: () -> Void
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @State private var rows: [PrayerModel] = []
     @State private var facts = DayFacts()
     @State private var picked: Int?
-    @State private var flipped = false
     @State private var makeUpCount: Int?
     @State private var places = 0   // bumps as place names arrive
     /// The picked row's band glides between rows in this space (DayPickBandLayer).
@@ -324,6 +331,7 @@ struct JourneyDayPane: View {
         guard let i = picked, DayRing.order.indices.contains(i) else { return nil }
         return rows.first { $0.name == DayRing.order[i] }
     }
+    private var flipped: Bool { pageFlipped && !facts.isEmpty }
     /// For the ring (DayRing finds its fifths by the five names: a Jumu'ah row is Dhuhr's).
     private var dayPrayers: [DayPrayer] { rows.map(DayPrayer.init) }
 
@@ -337,7 +345,7 @@ struct JourneyDayPane: View {
             DayFlipPill(flipped: flipped) {
                 // To the back: the pick clears; to the front: a pick made on the back stays, its row raised (owner).
                 if !flipped { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil } }
-                withAnimation(CircleMotion.dayFlip) { flipped.toggle() }
+                onFlip()
             }
             .padding(.top, layout.cardToPill)
             .opacity(facts.isEmpty ? 0 : 1)   // no pill when the back is empty (owner)
@@ -348,11 +356,10 @@ struct JourneyDayPane: View {
         .task { load() }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in load() }
         .onReceive(NotificationCenter.default.publisher(for: SessionDeletion.changed)) { _ in load() }   // the back's Zikr row
-        // Paged away: nothing picked, the front up, when it comes back.
+        // Paged away: nothing picked when it comes back (the flip stays: it's the page's).
         .onChange(of: current) { _, now in
             guard !now else { return }
             picked = nil
-            flipped = false
         }
         // A missed prayer picked: how many are owed, for its pill.
         .onChange(of: picked) { _, i in
