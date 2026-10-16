@@ -300,53 +300,21 @@ struct DayFlipPill: View {
 // MARK: - The back
 
 /// The back of the list card: the day's rows, each with a grey second line, the same way Journey's day page listed them
-/// (owner's picture). Notes is a row like the others; a tap unfolds every note inside the card, and only then the card
-/// scrolls, the other rows below (owner: "the prayer list is not a scrollable item … if we need to, when the notes is
-/// revealed and unfolded, then we can let it scroll"). Rows only for what the day has.
+/// (owner's picture). Fixed, never scrolling: Notes and Zikr open in the frosted ⓘ card (owner, 2026-10-16: "scrolling on
+/// the card is fighting with the page … open the content in a frosted overlay tooltip modal"), Photos the day's pile, the
+/// map the day's pins. Rows only for what the day has.
 struct DayBackCard: View {
     let facts: DayFacts
-    @Binding var notesOpen: Bool
+    let onNotes: () -> Void
     let onPhotos: () -> Void
     let onMap: () -> Void
     let onZikr: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            if notesOpen {
-                ScrollView(showsIndicators: false) { rows }
-            } else {
-                rows
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private var rows: some View {
         VStack(spacing: 0) {
             if !facts.notes.isEmpty {
                 row(symbol: "text.quote", title: facts.notes.count == 1 ? "Note" : "Notes",
-                    detail: facts.notes.map(\.name).joined(separator: ", "), opens: notesOpen) {
-                    withAnimation(reduceMotion ? .easeOut(duration: CircleMotion.quick) : CircleMotion.rowFold) { notesOpen.toggle() }
-                }
-                if notesOpen {
-                    VStack(alignment: .leading, spacing: 10) {
-                        // The prayer's name in its own weight over its note (Journey's way).
-                        ForEach(facts.notes) { note in
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(note.name).font(.system(size: 15, weight: .semibold, design: .rounded))
-                                Text(note.text)
-                                    .font(.system(size: 15, weight: .light, design: .rounded))
-                                    .foregroundStyle(.primary.opacity(0.8))
-                                    .lineSpacing(3)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20).padding(.top, 4).padding(.bottom, 14)
-                    .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
-                    .transition(.opacity)
-                }
+                    detail: facts.notes.map(\.name).joined(separator: ", "), action: onNotes)
             }
             if !facts.photoKeys.isEmpty {
                 let n = facts.photoKeys.count
@@ -368,17 +336,18 @@ struct DayBackCard: View {
                     action: onZikr)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private func row(symbol: String, title: String, detail: String, opens: Bool? = nil, action: @escaping () -> Void) -> some View {
-        row(title: title, detail: detail, opens: opens, lead: {
+    private func row(symbol: String, title: String, detail: String, action: @escaping () -> Void) -> some View {
+        row(title: title, detail: detail, lead: {
             Image(systemName: symbol).font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
         }, action: action)
     }
 
-    /// A row: its symbol or pile, the title, the grey line, a chevron (down while the notes are open).
-    private func row<Lead: View>(title: String, detail: String, opens: Bool? = nil,
-                                 @ViewBuilder lead: () -> Lead, action: @escaping () -> Void) -> some View {
+    /// A row: its symbol or pile, the title, the grey line, a chevron.
+    private func row<Lead: View>(title: String, detail: String, @ViewBuilder lead: () -> Lead,
+                                 action: @escaping () -> Void) -> some View {
         Button {
             triggerSomeVibration(type: .light)
             action()
@@ -394,9 +363,7 @@ struct DayBackCard: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(opens == true ? 90 : 0))
+                Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(.tertiary)
             }
             .padding(.horizontal, 20)
             .frame(minHeight: 55)
@@ -404,6 +371,42 @@ struct DayBackCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The day's notes in the frosted ⓘ card: each prayer's name in its own weight over its note (Journey's way).
+struct DayNotesInfo: View {
+    let notes: [DayFacts.Note]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(notes) { note in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(note.name).font(.system(size: 15, weight: .semibold, design: .rounded))
+                    Text(note.text)
+                        .font(.system(size: 15, weight: .light, design: .rounded))
+                        .foregroundStyle(.primary.opacity(0.8))
+                        .lineSpacing(3)
+                }
+            }
+        }
+    }
+}
+
+/// The day's zikr sessions in the frosted ⓘ card, each drawn with History's own row (SessionRow in its day-card piece),
+/// so a change to that row shows here too (owner, 2026-10-16: "use the list item object so that its easy to manage and if
+/// we change that list item then it updates and stays consistent here too"). A tap opens the session's page.
+struct DaySessionsInfo: View {
+    let sessions: [SessionDataModel]
+    let onOpen: (SessionDataModel) -> Void
+    var body: some View {
+        let shown = sessions.sorted { $0.startTime > $1.startTime }
+        VStack(spacing: 0) {
+            ForEach(Array(shown.enumerated()), id: \.element.id) { i, s in
+                SessionRow(session: s, onOpen: { onOpen(s) },
+                           rowBackground: AnyView(DayPiece(first: i == 0, last: i == shown.count - 1).padding(.horizontal, -16)),
+                           quiet: true)
+            }
+        }
     }
 }
 

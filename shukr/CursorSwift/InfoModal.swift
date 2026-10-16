@@ -104,7 +104,7 @@ struct InfoModal<Content: View>: View {
                 HStack(alignment: .center, spacing: 12) {
                     Image(systemName: symbol)
                         .font(.system(size: 20, weight: .light))
-                        .foregroundStyle(Color.sage)
+                        .foregroundStyle(tint)   // sage in Settings; grey on the Salah page's cards (Frank: it was ignored)
                         .frame(width: 28)
                     Text(title)
                         .font(.system(.title3, design: .rounded, weight: .semibold))

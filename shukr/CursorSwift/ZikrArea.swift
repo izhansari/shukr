@@ -107,62 +107,6 @@ struct ZikrAreaPage: View {
     }
 }
 
-/// One prayer day's sessions, from the day page's Zikr row (the day page merge, owner 2026-10-15: "the same view, but
-/// without the hero card and without being able to filter for some other days"): History's day rows alone — no month
-/// card, no search, no filter, no Select — with a session's page on tap. A zikr's sheet from a row stays (its "See in
-/// History" is that zikr's, not another day's).
-struct ZikrDaySessionsPage: View {
-    let date: Date
-    @Environment(\.modelContext) private var context
-    @Namespace private var zoom
-    @State private var sessions: [SessionDataModel] = []
-    @State private var open: Dest?
-    @State private var sessionToOpen: SessionDataModel?
-    @State private var sessionToDelete: SessionDataModel?
-
-    var body: some View {
-        List {
-            if sessions.isEmpty {
-                // The last one deleted: say so, not a blank page.
-                Text("No zikr that day.")
-                    .font(.system(size: 15, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .bareRow(top: 24)
-            }
-            DayRows(days: byDay(sessions),
-                    onOpen: { sessionToOpen = $0 },
-                    onZikr: { s in if let m = s.mantra { open = .zikr(m, source: "s-\(s.id)") } },
-                    onDelete: { sessionToDelete = $0 })
-            Color.clear.frame(height: 20).bareRow()
-        }
-        .softList()
-        .navigationTitle(date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-        .navigationBarTitleDisplayMode(.inline)
-        .fontDesign(.rounded)
-        .zikrSheets($open, zoom: zoom)
-        .sheet(item: $sessionToOpen) { s in
-            SessionPage(session: s, onOpenZikr: s.mantra.map { m in {
-                sessionToOpen = nil
-                Task { @MainActor in try? await Task.sleep(for: .seconds(0.45)); open = .zikr(m, source: "s-\(s.id)") }
-            } })
-        }
-        .modifier(DeleteSessionAlert(session: $sessionToDelete))
-        .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
-        .task { load() }
-        .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in load() }
-        // A session deleted here: the list drops it at once (a deleted model left in `sessions` is read no more).
-        .onReceive(NotificationCenter.default.publisher(for: SessionDeletion.changed)) { _ in load() }
-    }
-
-    /// The sessions whose prayer day is this one, newest first (as History lists a day).
-    private func load() {
-        let from = date.addingTimeInterval(-86_400), to = date.addingTimeInterval(2 * 86_400)
-        let near = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= from && $0.startTime < to }))) ?? []
-        sessions = near.filter { PrayerDay.start(for: $0.startTime) == date }.sorted { $0.startTime > $1.startTime }
-    }
-}
-
 #if DEBUG
 private struct ZikrScreenshotRoot: View {
     @Query private var zikrs: [MantraModel]
@@ -796,7 +740,8 @@ private struct DayRows: View {
 /// A day's sessions sit in their own flat card (owner: the day headers got lost among flat rows): each row draws its
 /// piece — rounded on top for the first, at the bottom for the last — a soft lighter panel, no shadow, a faint line
 /// between rows.
-private struct DayPiece: View {
+/// A session row's piece of its day's card (History; the day page's Zikr card too).
+struct DayPiece: View {
     let first: Bool
     let last: Bool
     var body: some View {

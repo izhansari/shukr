@@ -1626,9 +1626,6 @@ struct PrayerTimesView: View {
             // The day page's Photos row opens that day's pile and leaves with it (DayBackCard).
             MemoriesPage(openPile: MemoriesPresenter.shared.openPile, leaveWithPile: MemoriesPresenter.shared.openPile != nil)
         }
-        // The day page's Zikr row: that day's sessions alone (ZikrDaySessionsPage).
-        .navigationDestination(item: Binding(get: { DayPageState.shared.zikrDay },
-                                             set: { DayPageState.shared.zikrDay = $0 })) { ZikrDaySessionsPage(date: $0) }
         // Journey (Journey.swift), from ☰ or the day page's "Journey ›".
         .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.open },
                                                     set: { JourneyPresenter.shared.open = $0 })) { JourneyPage() }
@@ -2778,6 +2775,10 @@ struct TodaysPrayerListView: View {
     @State private var dayPageShown = false
     @State private var placesTick = 0   // bumps as place names arrive
     @State private var showDayMap = false
+    /// The back's Notes and Zikr: the frosted ⓘ card (owner); a session tapped there opens its page.
+    @State private var notesShown = false
+    @State private var sessionsShown = false
+    @State private var sessionToOpen: SessionDataModel?
 
     private func reloadFacts(_ dayPage: Bool) {
         dayPageShown = dayPage
@@ -2958,13 +2959,13 @@ struct TodaysPrayerListView: View {
                     // The back (DayBackCard): its doors — that day's pile in Moments, the day's pins, the day's zikr.
                     if dayPage {
                         DayBackCard(facts: facts,
-                                    notesOpen: Binding(get: { dayState.notesOpen }, set: { dayState.notesOpen = $0 }),
+                                    onNotes: { notesShown = true },
                                     onPhotos: {
                                         MemoriesPresenter.shared.openPile = facts.photoKeys.first
                                         MemoriesPresenter.shared.open = true
                                     },
                                     onMap: { showDayMap = true },
-                                    onZikr: { dayState.zikrDay = PrayerDay.start() })
+                                    onZikr: { sessionsShown = true })
                             .modifier(SalahLookCard(raised: true))
                     }
                 }
@@ -3023,6 +3024,16 @@ struct TodaysPrayerListView: View {
         .sheet(isPresented: $showDayMap) {
             JourneyDayMapSheet(title: "Today", pins: facts.pins).stageCover("dayMap")
         }
+        .infoModal(isPresented: $notesShown, title: facts.notes.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
+            DayNotesInfo(notes: facts.notes)
+        }
+        .infoModal(isPresented: $sessionsShown, title: "Zikr today", symbol: "circle.hexagonpath", tint: .secondary) {
+            DaySessionsInfo(sessions: facts.sessions) { s in
+                sessionsShown = false
+                Task { @MainActor in try? await Task.sleep(for: .seconds(0.25)); sessionToOpen = s }
+            }
+        }
+        .sheet(item: $sessionToOpen) { s in SessionPage(session: s).stageCover("daySession") }
     }
 
 }

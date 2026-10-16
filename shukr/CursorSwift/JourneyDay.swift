@@ -20,7 +20,9 @@ struct JourneyDayPage: View {
     @State private var noteRow: PrayerModel?
     @State private var placeSheet: PrayerModel?
     @State private var mapPins: [JourneyDayPin]?
-    @State private var zikrDay: Date?
+    @State private var notes: [DayFacts.Note]?
+    @State private var sessions: [SessionDataModel]?
+    @State private var sessionToOpen: SessionDataModel?
     @State private var showMakeUp = false
     /// A photo's day pile, opened over Moments (owner: a photo here opens the pile for that day).
     @State private var pile: JourneyPileRoute?
@@ -122,7 +124,6 @@ struct JourneyDayPage: View {
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .principal) { heading } }
-        .navigationDestination(item: $zikrDay) { ZikrDaySessionsPage(date: $0) }
         // Pushed without a slide: the pile fades in over the page and, closed, takes Moments with it.
         .navigationDestination(item: $pile) { MemoriesPage(openPile: $0.key, leaveWithPile: true) }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(date)) }
@@ -140,6 +141,19 @@ struct JourneyDayPage: View {
                                     place: DayFacts.place(row) ?? "", spot: spot, score: row.numberScore, atMasjid: row.atMasjid)
             }
         }
+        // The back's Notes and Zikr in the frosted ⓘ card (owner); a session tapped there opens its page.
+        .infoModal(isPresented: Binding(get: { notes != nil }, set: { if !$0 { notes = nil } }),
+                   title: notes?.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
+            DayNotesInfo(notes: notes ?? [])
+        }
+        .infoModal(isPresented: Binding(get: { sessions != nil }, set: { if !$0 { sessions = nil } }),
+                   title: "Zikr that day", symbol: "circle.hexagonpath", tint: .secondary) {
+            DaySessionsInfo(sessions: sessions ?? []) { s in
+                sessions = nil
+                Task { @MainActor in try? await Task.sleep(for: .seconds(0.25)); sessionToOpen = s }
+            }
+        }
+        .sheet(item: $sessionToOpen) { s in SessionPage(session: s) }
         // The note's card (Settings' ⓘ way, grey).
         .infoModal(isPresented: Binding(get: { noteRow != nil }, set: { if !$0 { noteRow = nil } }),
                    title: noteRow?.displayName ?? "", symbol: prayerIcon(for: noteRow?.name ?? "Fajr"), tint: .secondary) {
@@ -155,7 +169,8 @@ struct JourneyDayPage: View {
             note: { noteRow = $0 },
             place: { placeSheet = $0 },
             map: { mapPins = $0 },
-            zikr: { zikrDay = $0 },
+            notes: { notes = $0 },
+            zikr: { sessions = $0 },
             pile: { key in
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
@@ -270,7 +285,8 @@ struct JourneyDayActions {
     let note: (PrayerModel) -> Void
     let place: (PrayerModel) -> Void
     let map: ([JourneyDayPin]) -> Void
-    let zikr: (Date) -> Void
+    let notes: ([DayFacts.Note]) -> Void
+    let zikr: ([SessionDataModel]) -> Void
     let pile: (String) -> Void
     let makeUp: () -> Void
 }
@@ -290,7 +306,6 @@ struct JourneyDayPane: View {
     @State private var facts = DayFacts()
     @State private var picked: Int?
     @State private var flipped = false
-    @State private var notesOpen = false
     @State private var makeUpCount: Int?
     @State private var places = 0   // bumps as place names arrive
     /// The picked row's band glides between rows in this space (DayPickBandLayer).
@@ -337,7 +352,6 @@ struct JourneyDayPane: View {
             guard !now else { return }
             picked = nil
             flipped = false
-            notesOpen = false
         }
         // A missed prayer picked: how many are owed, for its pill.
         .onChange(of: picked) { _, i in
@@ -420,10 +434,11 @@ struct JourneyDayPane: View {
                 .environment(\.dayPickSpace, pickSpace)
                 .modifier(SalahLookCard(raised: true))
         } back: {
-            DayBackCard(facts: facts, notesOpen: $notesOpen,
+            DayBackCard(facts: facts,
+                        onNotes: { actions.notes(facts.notes) },
                         onPhotos: { if let first = facts.photoKeys.first { actions.pile(first) } },
                         onMap: { actions.map(facts.pins) },
-                        onZikr: { actions.zikr(date) })
+                        onZikr: { actions.zikr(facts.sessions) })
                 .modifier(SalahLookCard(raised: true))
         }
         .modifier(SalahLookListFrame())   // the Salah list's width (290 in the soft looks): one card shape on both pages

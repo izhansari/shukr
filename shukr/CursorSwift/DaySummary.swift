@@ -38,12 +38,8 @@ extension DayPrayer {
     var flipped = false {
         didSet { if flipped { picked = nil } }
     }
-    /// The back's Notes row unfolded (the back scrolls only then).
-    var notesOpen = false
     /// The back has something (DayFacts): the chrome shows the flip pill; empty, it shows "Journey ›" as before.
     var backHasContent = false
-    /// The back's Zikr row: that day's sessions, pushed by PrayerTimesView (ZikrDaySessionsPage).
-    var zikrDay: Date?
 
     /// No pick while the back is up: the ring's photo would sit beside the back's pile (Bradley's review).
     func togglePick(_ i: Int) {
@@ -94,7 +90,6 @@ extension DayPrayer {
     func leaveDay() {
         picked = nil
         flipped = false
-        notesOpen = false
     }
 }
 
