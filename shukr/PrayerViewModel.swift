@@ -39,6 +39,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         self.subscribeToChanges()
         PrayerViewModel.current = self
         #if DEBUG
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoStreakExcused") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoStreakExcused() }
+        }
+        #endif
         if ProcessInfo.processInfo.arguments.contains("-demoStreakBackfill") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoStreakBackfill() }
         }
@@ -980,12 +985,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         guard let todayPrayers = getTodaysPrayersFromContext() else{ return }
         let validPrayersToday = todayPrayers.filter { gradingCriteria(for: $0) }.count
         self.validPrayersToday = validPrayersToday
-        // An excused day (Excused.swift) not prayed in full neither adds to the streaks nor takes from them (once counted,
-        // an unmark still takes it back below).
-        if validPrayersToday < 5, lastStreakDateStart != todayStart, Excused.Days().excludes(todayStart) { return }
-        let decrementStreak = validPrayersToday < 5 && lastStreakDateStart == todayStart
+        // Today counts once every prayer she isn't excused from is prayed (Excused.streakDay): all five, or the ones
+        // before / after an excused stretch. A day excused in full adds nothing; an unmark still takes a counted day back.
+        let ranges = Excused.ranges
+        let todayCounts = Excused.streakDay(todayPrayers, ok: gradingCriteria, ranges: ranges,
+                                            touched: Excused.Days(ranges).excludes(todayStart)) == .counts
+        let decrementStreak = !todayCounts && lastStreakDateStart == todayStart
 
-        if validPrayersToday == 5 {
+        if todayCounts {
             // A day continues the streak once. This runs on every mark, time edit and widget
             // reconcile, and used to add 1 each time once all five were in (2026-09-24).
             if lastStreakDateStart != todayStart {
@@ -1006,7 +1013,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             dateOfMaxPrayerStreak = now
         }
 
-        updateDayMilestones(todayPrayers: todayPrayers, todayStart: todayStart, now: now)
+        updateDayMilestones(todayPrayers: todayPrayers, todayStart: todayStart, now: now, ranges: ranges)
         
         func getTodaysPrayersFromContext() -> [PrayerModel]? {
             // Fetch prayers for today (2.8.0: by prayer day key)
@@ -1035,7 +1042,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// The in-time days streak (all five within their windows: no Qaza, none missed) and the
     /// perfect day (all five Early), each counted once a day like the main streak. Posted after the main
     /// streak's notification so the top bar can play them in order.
-    private func updateDayMilestones(todayPrayers: [PrayerModel], todayStart: Date, now: Date) {
+    private func updateDayMilestones(todayPrayers: [PrayerModel], todayStart: Date, now: Date, ranges: [ExcusedRange]) {
         func doneNames(minScore: Double) -> Set<String> {
             Set(todayPrayers.filter { $0.isCompleted && ($0.numberScore ?? 0) >= minScore - 0.0001 }.map(\.name))
         }
@@ -1044,8 +1051,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         // In-time days (owner, 2026-09-25: "days where there was no qaza"). The days before today
         // were just recounted from the rows (refreshStreaksFromHistory, via checkToResetStreak);
         // only today is added / taken back here, which is also where its celebration fires.
+        // Excused prayers count as done here too (Excused.streakDay), like the day streak.
         let lastOnTime = PrayerDay.start(for: Date(timeIntervalSince1970: lastOnTimeStreakDate_TI))
-        if doneNames(minScore: PrayerScoring.inWindowFloor).count == 5 {
+        let inTimeToday = Excused.streakDay(todayPrayers, ok: { ($0.numberScore ?? 0) >= PrayerScoring.inWindowFloor - 0.0001 },
+                                            ranges: ranges, touched: Excused.Days(ranges).excludes(todayStart)) == .counts
+        if inTimeToday {
             if lastOnTime != todayStart {
                 onTimeStreak += 1
                 lastOnTimeStreakDate_TI = now.timeIntervalSince1970
@@ -1100,14 +1110,19 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         var streakAlive = true, inTimeAlive = true
         var batchEnd = todayStart                     // exclusive
         var day = yesterdayStart
-        let excused = Excused.Days()                  // excused days not prayed in full are stepped over: they never break a run
+        // Excused days by Excused.streakDay: a partly excused day with the rest prayed adds to a run, a fully excused one is
+        // stepped over, a miss breaks it (owner, 2026-10-16).
+        let ranges = Excused.ranges
+        let excused = Excused.Days(ranges)
         batches: for _ in 0..<150 {                   // ≤ ~1000 days
             guard let batchStart = calendar.date(byAdding: .day, value: -7, to: batchEnd) else { break }
             // 2.8.0: a day's Isha can start after midnight, so fetch 6 h past the batch and group rows by their own
             // prayer day; rows whose day lies before this batch wait for the next one (it fetches them).
+            // Unmarked rows too when Excused is in use: they say which prayers were excused (their windows).
             let fetchEnd = batchEnd.addingTimeInterval(6 * 3600)
+            let all = !ranges.isEmpty
             let descriptor = FetchDescriptor<PrayerModel>(
-                predicate: #Predicate<PrayerModel> { $0.startTime >= batchStart && $0.startTime < fetchEnd && $0.isCompleted }
+                predicate: #Predicate<PrayerModel> { $0.startTime >= batchStart && $0.startTime < fetchEnd && (all || $0.isCompleted) }
             )
             guard let rows = try? context.fetch(descriptor) else { return }
             var byDay: [Date: [PrayerModel]] = [:]
@@ -1117,12 +1132,20 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             }
             while day >= batchStart {
                 let dayRows = byDay[day] ?? []
-                let skippable = excused.excludes(day)
+                let touched = excused.excludes(day)
                 if streakAlive {
-                    if five.isSubset(of: Set(dayRows.filter { self.gradingCriteria(for: $0) }.map(\.name))) { streakRun += 1 } else if !skippable { streakAlive = false }
+                    switch Excused.streakDay(dayRows, ok: { self.gradingCriteria(for: $0) }, ranges: ranges, touched: touched) {
+                    case .counts: streakRun += 1
+                    case .skip: break
+                    case .breaks: streakAlive = false
+                    }
                 }
                 if inTimeAlive {
-                    if five.isSubset(of: Set(dayRows.filter(inWindow).map(\.name))) { inTimeRun += 1 } else if !skippable { inTimeAlive = false }
+                    switch Excused.streakDay(dayRows, ok: inWindow, ranges: ranges, touched: touched) {
+                    case .counts: inTimeRun += 1
+                    case .skip: break
+                    case .breaks: inTimeAlive = false
+                    }
                 }
                 if !streakAlive && !inTimeAlive { break batches }
                 guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break batches }
@@ -1622,6 +1645,71 @@ extension PrayerViewModel {
     /// `-demoStreakBackfill` (simulator only; writes rows): the two prayer days before today get all
     /// five marked on time, the streak is set as if the last counted day was three days ago (what a
     /// late mark left behind), then the recount runs twice. Logs STREAKBACKFILL before / after.
+    #if DEBUG
+    /// `-demoStreakExcused` (simulator only; writes, then removes, its own rows and ranges): the owner's case, 2026-10-16.
+    /// 12 days back: four days in full, the 5th excused from Maghrib, the 6th–9th excused, the 10th back at Asr, then two
+    /// in full. Expected run 8 (the 5th and 10th count, the 6th–9th are stepped over); with Dhuhr missed on the 5th, 3.
+    func demoStreakExcused() {
+        #if targetEnvironment(simulator)
+        let calendar = Calendar.current
+        let todayStart = PrayerDay.start(for: Date())
+        let savedRanges = Excused.ranges
+        let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+        func run(dhuhrMissedOnFifth: Bool) -> (Int, Int) {
+            var made: [PrayerModel] = []
+            var maghribOfFifth = Date(), asrOfTenth = Date()
+            // Clear the 13 days first (a day's row range reaches into the next morning: clearing as we go took the
+            // newer day's Fajr with it).
+            if let oldest = calendar.date(byAdding: .day, value: -13, to: todayStart) {
+                let from = PrayerDay.rowRange(forDayStarting: oldest).start, to = todayStart
+                let old = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.startTime >= from && $0.startTime < to }))) ?? []
+                old.forEach { context.delete($0) }
+            }
+            for back in 1...12 {   // the 13th stays empty: a break before the run
+                guard let day = calendar.date(byAdding: .day, value: -back, to: todayStart) else { continue }
+                let n = 13 - back                     // 1 … 12, oldest first
+                for (i, name) in names.enumerated() {
+                    let s = day.addingTimeInterval(Double(5 + i * 3) * 3600)
+                    let r = PrayerModel(name: name, startTime: s, endTime: s.addingTimeInterval(7200))
+                    if n == 5 && name == "Maghrib" { maghribOfFifth = s }
+                    if n == 10 && name == "Asr" { asrOfTenth = s }
+                    let prayed: Bool
+                    switch n {
+                    case 5: prayed = i < 3 && !(dhuhrMissedOnFifth && name == "Dhuhr")
+                    case 6...9: prayed = false
+                    case 10: prayed = i >= 2
+                    default: prayed = true
+                    }
+                    if prayed { r.isCompleted = true; r.timeAtComplete = s.addingTimeInterval(600); r.numberScore = 1 }
+                    context.insert(r); made.append(r)
+                }
+            }
+            try? context.save()
+            Excused.save([ExcusedRange(kind: .haid, start: maghribOfFifth.addingTimeInterval(-60), expectedEnd: asrOfTenth,
+                                       end: asrOfTenth.addingTimeInterval(-60), pauseZikr: false)])
+            let ranges = Excused.ranges, days = Excused.Days(ranges)
+            let all = (try? context.fetch(FetchDescriptor<PrayerModel>())) ?? []
+            for back in 1...13 {
+                guard let day = calendar.date(byAdding: .day, value: -back, to: todayStart) else { continue }
+                let rows = all.filter { $0.dayStart == day }
+                print("STREAKEXCUSED day -\(back): \(rows.count) rows, \(rows.filter(\.isCompleted).count) prayed → \(Excused.streakDay(rows, ok: { self.gradingCriteria(for: $0) }, ranges: ranges, touched: days.excludes(day)))")
+            }
+            refreshStreaksFromHistory()
+            let out = (prayerStreak, onTimeStreak)
+            made.forEach { context.delete($0) }
+            try? context.save()
+            return out
+        }
+        let a = run(dhuhrMissedOnFifth: false)
+        print("STREAKEXCUSED owner's case: streak=\(a.0) inTime=\(a.1) (expected 8 / 8, today not counted)")
+        let b = run(dhuhrMissedOnFifth: true)
+        print("STREAKEXCUSED Dhuhr missed before the excuse: streak=\(b.0) inTime=\(b.1) (expected 3 / 3)")
+        Excused.save(savedRanges)
+        refreshStreaksFromHistory()
+        #endif
+    }
+    #endif
+
     func demoStreakBackfill() {
         let calendar = Calendar.current
         let todayStart = PrayerDay.start(for: Date())

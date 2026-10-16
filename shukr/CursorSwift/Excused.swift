@@ -40,6 +40,29 @@ extension Excused {
     /// is never taken away — review), else only when no excused range touches it.
     static func counts(day dayStart: Date, fullyPrayed: Bool, in days: Days) -> Bool { fullyPrayed || !days.excludes(dayStart) }
 
+    /// A prayer day for the streaks (owner, 2026-10-16: "any partial days that are excused (so long as every other prayer
+    /// was prayed up until the excused point) … count towards the streak … The excused days do not break the streak, but
+    /// they don't add to the streak"). `counts`: every prayer she wasn't excused from was prayed (`ok`), at least one;
+    /// `skip`: all five excused, or no rows on a day an excused range touches (the app wasn't opened); `breaks`: anything
+    /// else, so a miss before the excuse began still ends the run. Your journey's card counts the same way
+    /// (`YourJourneyStats.kind`). Before, any day a range touched was stepped over: no +1, and no break even with a miss.
+    enum StreakDay { case counts, skip, breaks }
+
+    static func streakDay(_ rows: [PrayerModel], ok: (PrayerModel) -> Bool, ranges: [ExcusedRange], touched: Bool) -> StreakDay {
+        var prayed = 0, excused = 0
+        for name in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"] {
+            let mine = rows.filter { $0.name == name }
+            if mine.contains(where: { $0.isCompleted && ok($0) }) {
+                prayed += 1
+            } else if !ranges.isEmpty, mine.contains(where: { !$0.isCompleted && covers(start: $0.startTime, end: $0.endTime, in: ranges) }) {
+                excused += 1
+            }
+        }
+        if prayed > 0 && prayed + excused == 5 { return .counts }
+        if prayed == 0 && (excused == 5 || (rows.isEmpty && touched)) { return .skip }
+        return .breaks
+    }
+
     /// The rows of the prayer days that count (grouped by each row's own prayer day).
     static func countedRows(_ rows: [PrayerModel], in days: Days = Days()) -> [PrayerModel] {
         guard !days.spans.isEmpty else { return rows }
