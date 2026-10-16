@@ -88,6 +88,9 @@ struct MemoriesPage: View {
     var openPile: String? = nil
     /// Closing that pile leaves Moments too, straight back to the page that opened it.
     var leaveWithPile = false
+    /// One prayer's photos only, on the Prayers level (Prayer scores' "N photos ›" — Frank's check: it opened on every
+    /// prayer's photos, 114, under a row that said 9). Nil: every photo.
+    var onlyPrayer: String? = nil
     @Environment(\.dismiss) private var dismissPage
     /// Read as the page is made (a directory listing), so its bars are right on the push's first frame — loaded in
     /// `.task`, the bottom bar arrived mid-push and was lost (owner's video).
@@ -180,7 +183,10 @@ struct MemoriesPage: View {
     }
 
     /// What the levels and the pile show: everything, or the matches while searching.
-    private var visible: [MemoryPhoto] { filtering ? photos.filter(matches) : photos }
+    private var visible: [MemoryPhoto] {
+        let base = onlyPrayer.map { name in photos.filter { $0.name == name } } ?? photos
+        return filtering ? base.filter(matches) : base
+    }
 
     private func matches(_ photo: MemoryPhoto) -> Bool {
         let entry = searchIndex[photo.key]
@@ -507,6 +513,7 @@ struct MemoriesPage: View {
             }
         )
         .safeAreaInset(edge: .bottom) { if hasPhotos { bottomBar } }
+        .onAppear { if onlyPrayer != nil, level != .prayers { level = .prayers } }
         .sensoryFeedback(.selection, trigger: level)
         .navigationTitle("Moments")
         .navigationBarTitleDisplayMode(.inline)

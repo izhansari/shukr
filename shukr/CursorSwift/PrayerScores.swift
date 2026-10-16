@@ -37,6 +37,8 @@ struct PrayerScores {
         let name: String
         /// The average score of the prayers prayed, 0…100 (misses left out): "how well, when you pray it".
         var prayedScore: Int?
+        /// The same, unrounded: it orders a tie of the rounded numbers.
+        var prayedRaw: Double?
         /// The average score of the prayers due, a miss counting 0: the rows' rank.
         var lifeScore = 0
         var prayed = 0, due = 0, missed = 0
@@ -72,7 +74,7 @@ struct PrayerScores {
     static let names = JourneyLog.names
     /// Best → worst by the score when prayed — one score everywhere (owner, 2026-10-16: "just make it always be for the
     /// ones that we prayed"; Frank's check: the ring said 77 over a row saying 59 for the same prayer). Nothing prayed: last.
-    var ranked: [String] { Self.names.sorted { (prayers[$0]?.prayedScore ?? -1) > (prayers[$1]?.prayedScore ?? -1) } }
+    var ranked: [String] { Self.names.sorted { (prayers[$0]?.prayedRaw ?? -1) > (prayers[$1]?.prayedRaw ?? -1) } }
 
     @MainActor static var last: PrayerScores?
 
@@ -100,6 +102,8 @@ struct PrayerScores {
             }
         }
 
+        // Photos as Moments lists them (one source, so "N photos ›" and the page it opens agree).
+        let photoNames = PrayerPhotos.all().map(\.name)
         var allScores: [Double] = []
         for (i, name) in names.enumerated() {
             var p = Prayer(name: name)
@@ -129,7 +133,7 @@ struct PrayerScores {
                     }
                     if mark.inTime { streak += 1; p.bestStreak = max(p.bestStreak, streak) } else { streak = 0 }
                     let photoKey = PrayerPhotos.key(dayKey: day.key, name: name)
-                    if PrayerPhotos.has(photoKey) { p.photos += 1 }
+                    _ = photoKey
                     if PrayerPhotos.note(photoKey) != nil { p.notes += 1 }
                     if let place = places[day.key + name] {
                         if let m = place.mosque { p.masjid += 1; mosques[m, default: 0] += 1 }
@@ -143,8 +147,10 @@ struct PrayerScores {
                     break   // never due; doesn't break a streak
                 }
             }
+            p.photos = photoNames.filter { $0 == name }.count
             p.due = dueScores.count
-            p.prayedScore = scores.isEmpty ? nil : Int((scores.reduce(0, +) / Double(scores.count) * 100).rounded())
+            p.prayedRaw = scores.isEmpty ? nil : scores.reduce(0, +) / Double(scores.count)
+            p.prayedScore = p.prayedRaw.map { Int(($0 * 100).rounded()) }
             p.lifeScore = dueScores.isEmpty ? 0 : Int((dueScores.reduce(0, +) / Double(dueScores.count) * 100).rounded())
             p.topMasjid = mosques.max { $0.value < $1.value }.map { ($0.key, $0.value) }
             if let window = median(windows), window > 0 {
@@ -299,8 +305,10 @@ struct PrayerScoresPage: View {
         .fontDesign(.rounded)
         .navigationTitle("Prayer scores")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(PrayerDay.start())) }
-        .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
+        .navigationDestination(isPresented: $showMakeUp) {
+            JourneyMakeUpPage(month: JourneyLog.monthStart(PrayerDay.start()), startOnly: shown)
+        }
+        .navigationDestination(isPresented: $showMoments) { MemoriesPage(onlyPrayer: shown) }
         .sheet(isPresented: $showMap) {
             if let s = shown, let p = data.prayers[s] { PrayerScoresMap(name: s, pins: p.pins) }
         }
@@ -345,18 +353,17 @@ struct PrayerScoresPage: View {
                 othersFaded = true
                 linesFaded = true
             }
-            await beat(0.18)
+            await beat(0.22)   // fully out before anything swaps
             // 2 · the others fold away; the picked row rises into the top slot. The ring's words swap while they're out.
             withAnimation(motion(.smooth(duration: 0.45))) {
                 shown = name
                 folded = true
             }
-            await beat(0.34)
-            // 3 · the ring's words come back, then its page fades in under it, top to bottom.
-            withAnimation(motion(.easeOut(duration: 0.3))) {
-                linesFaded = false
-                detailShown = true
-            }
+            // 3 · the ring's words come back as the row lands (the ring sat empty ~0.8 s — Frank), then its page under it.
+            await beat(0.18)
+            withAnimation(motion(.easeOut(duration: 0.25))) { linesFaded = false }
+            await beat(0.14)
+            withAnimation(motion(.easeOut(duration: 0.3))) { detailShown = true }
             await beat(0.4)
             busy = false
         }
@@ -371,7 +378,7 @@ struct PrayerScoresPage: View {
                 detailShown = false
                 linesFaded = true
             }
-            await beat(0.18)
+            await beat(0.22)   // fully out before the words swap (one faint frame read "Asr · 75" — Frank)
             focus = nil
             withAnimation(motion(.smooth(duration: 0.45))) {
                 shown = nil

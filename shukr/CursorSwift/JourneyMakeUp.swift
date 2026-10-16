@@ -13,6 +13,11 @@ import SwiftData
 struct JourneyMakeUpPage: View {
     /// The month Journey was showing (the switch's left side).
     let month: Date
+    /// Opened from Prayer scores' "N to make up ›": that prayer only, over all months (Frank's check: it opened on the
+    /// month with "1 prayer" while the row said 103). Shown so for this visit, the stored switch untouched.
+    var startOnly: String? = nil
+    @State private var started = false
+    @State private var allThisVisit = false
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @EnvironmentObject private var viewModel: PrayerViewModel
@@ -70,7 +75,8 @@ struct JourneyMakeUpPage: View {
 
     // MARK: What's shown
 
-    private func inScope(_ e: Entry) -> Bool { showAll || e.month == month }
+    private var all: Bool { showAll || allThisVisit }
+    private func inScope(_ e: Entry) -> Bool { all || e.month == month }
     private func isSettling(_ e: Entry) -> Bool { settling[e.id] != nil }
     /// Open in the switch's scope (just-made-up ones included, in place).
     private var scopedOpen: [Entry] { open.filter(inScope) }
@@ -138,6 +144,11 @@ struct JourneyMakeUpPage: View {
                 .environment(\.circleTheme, theme)
         }
         .onChange(of: showAll) { only = nil }
+        .onAppear {
+            guard !started else { return }
+            started = true
+            if let startOnly { only = startOnly; allThisVisit = true }
+        }
         .task { await reload() }
     }
 
@@ -150,7 +161,7 @@ struct JourneyMakeUpPage: View {
 
     private var caughtUpLine: String {
         if let only { return "No \(only) left to make up." }
-        return showAll ? "Every prayer on the days you used shukr is marked." : "Nothing left from \(monthName(month))."
+        return all ? "Every prayer on the days you used shukr is marked." : "Nothing left from \(monthName(month))."
     }
 
     // MARK: The top: the total, each prayer's count, the switch
@@ -196,7 +207,7 @@ struct JourneyMakeUpPage: View {
                 .accessibilityLabel(showMade ? "Hide the \(made) made up" : "Show the \(made) made up")
             }
             JourneySwitch(options: [(monthName(month), "month"), ("All months", "all")],
-                          selection: Binding(get: { showAll ? "all" : "month" }, set: { showAll = $0 == "all" }))
+                          selection: Binding(get: { all ? "all" : "month" }, set: { showAll = $0 == "all"; allThisVisit = false; only = nil }))
                 .frame(maxWidth: .infinity)
                 .padding(.top, 16)
             if counts.count > 1 || only != nil {
