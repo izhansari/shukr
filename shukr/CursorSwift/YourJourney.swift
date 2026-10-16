@@ -198,7 +198,9 @@ struct JourneyMonthsList: View {
     let rows: [YourJourneyStats.MonthRow]
     let onMonth: (Date) -> Void
     @State private var all = false
-    static let shown = 5
+    /// The first three months with a bar, then "Show more" (owner, 2026-10-16: "it spans really long … cap it to the first 3
+    /// month items with a bar and with show more at the bottom").
+    static let shown = 3
 
     var body: some View {
         let monthCount = rows.filter { $0.rate != nil }.count
@@ -223,7 +225,7 @@ struct JourneyMonthsList: View {
                         triggerSomeVibration(type: .light)
                         withAnimation(.easeOut(duration: CircleMotion.quick)) { all = true }
                     } label: {
-                        Text("All \(monthCount) months ›")
+                        Text("Show more")
                             .font(.system(size: 15, weight: .light, design: .rounded))
                             .foregroundStyle(Color.sage)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -453,7 +455,9 @@ struct JourneyMilestone: Identifiable, Equatable {
 
     /// Days all in time in a row worth a milestone (DayInsight's own list).
     static let runs: [Int] = [7, 14, 21, 30, 40, 50, 60, 90, 100, 150, 200, 250, 300, 365]
-    static let totals: [Int] = [100, 500, 1000]
+    /// Every hundred prayers (owner, 2026-10-16: "yeah, sure, that's fine"); the list keeps the 100th, the 500th, every
+    /// thousandth and only the latest of the rest, so it reads as achievements, not a counter.
+    static func keepsTotal(_ n: Int) -> Bool { n == 100 || n == 500 || n % 1000 == 0 }
     static let perPrayer: [Int] = [100, 500]
 
     static func earned(log: JourneyLog, today: Date) -> [JourneyMilestone] {
@@ -513,7 +517,7 @@ struct JourneyMilestone: Identifiable, Equatable {
                 for i in 0..<5 where d.marks[i].done {
                     total += 1
                     perName[i] += 1
-                    if Self.totals.contains(total) { add("total.\(total)", "\(ordinal(total)) prayer", date, .count) }
+                    if total % 100 == 0 { add("total.\(total)", "\(ordinal(total)) prayer", date, .count) }
                     if Self.perPrayer.contains(perName[i]) {
                         add("\(JourneyLog.names[i]).\(perName[i])", "\(ordinal(perName[i])) \(JourneyLog.names[i])", date, .count)
                     }
@@ -556,6 +560,13 @@ struct JourneyMilestone: Identifiable, Equatable {
         }
         closeRun()
 
+        // Every hundred prayers: the round ones stay, of the rest only the latest.
+        let latestTotal = out.last(where: { $0.id.hasPrefix("total.") })?.id
+        out.removeAll { m in
+            guard m.id.hasPrefix("total."), m.id != latestTotal, let n = Int(m.id.dropFirst(6)) else { return false }
+            return !Self.keepsTotal(n)
+        }
+
         // One Welcome back, the latest return (Frank's check on the owner's data: one per break read as a log of breaks, not
         // achievements; spec: "earned once, dated"). Each return still gets its moment (its own id) when it happens.
         if let latest = out.last(where: { $0.id.hasPrefix("back.") })?.id {
@@ -589,6 +600,10 @@ struct JourneyMilestone: Identifiable, Equatable {
 @MainActor @Observable final class MilestoneCelebration {
     static let shared = MilestoneCelebration()
     static let seenKey = "journey.milestones.seen"
+    static let seenVersionKey = "journey.milestones.seenVersion"
+    /// Bumped when a kind of milestone is added (2: every hundred prayers): the first check after an update records what's
+    /// already earned of it without a word — never a run of "200th … 800th" celebrations (Sami's trap, acceptance-2 2b).
+    static let seenVersion = 2
     private(set) var showing: JourneyMilestone?
     @ObservationIgnored private var queue: [JourneyMilestone] = []
     @ObservationIgnored private var checking = false
@@ -608,10 +623,14 @@ struct JourneyMilestone: Identifiable, Equatable {
             // `-demoMilestoneCelebration`: the newest milestone left unseen, so the next check celebrates it (the pictures).
             if ProcessInfo.processInfo.arguments.contains("-demoMilestoneCelebration") {
                 defaults.set(Array(ids.dropFirst()), forKey: Self.seenKey)
+                defaults.set(Self.seenVersion, forKey: Self.seenVersionKey)
             }
             #endif
-            guard let seen = defaults.stringArray(forKey: Self.seenKey) else {
-                defaults.set(ids, forKey: Self.seenKey)
+            guard let seen = defaults.stringArray(forKey: Self.seenKey),
+                  defaults.integer(forKey: Self.seenVersionKey) >= Self.seenVersion else {
+                let before = defaults.stringArray(forKey: Self.seenKey) ?? []
+                defaults.set(Array(Set(before + ids)), forKey: Self.seenKey)
+                defaults.set(Self.seenVersion, forKey: Self.seenVersionKey)
                 return
             }
             let new = earned.filter { !seen.contains($0.id) }
