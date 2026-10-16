@@ -20,6 +20,10 @@ enum ZikrAreaStart {
     case azkar, history
     /// History filtered to one prayer day (Journey's day page, its zikr row).
     case day(Date)
+    /// History locked to one prayer day: no month card, no search or filter (the day page's Zikr row — owner, 2026-10-16:
+    /// "push to the page for the zikr history and show it without the hero card and lock the filter so that it only shows
+    /// that day").
+    case dayOnly(Date)
 }
 
 /// The wheel's hold menu (owner, with his screenshot): Edit goal · Open zikr (the new page, not
@@ -101,6 +105,7 @@ struct ZikrAreaPage: View {
             case .azkar: YourAzkarPage()
             case .history: ZikrHistoryHome()
             case .day(let date): ZikrHistoryHome(initial: .day(date))
+            case .dayOnly(let date): ZikrHistoryHome(initial: .day(date), locked: true)
             }
         }
         .fontDesign(.rounded)
@@ -740,8 +745,7 @@ private struct DayRows: View {
 /// A day's sessions sit in their own flat card (owner: the day headers got lost among flat rows): each row draws its
 /// piece — rounded on top for the first, at the bottom for the last — a soft lighter panel, no shadow, a faint line
 /// between rows.
-/// A session row's piece of its day's card (History; the day page's Zikr card too).
-struct DayPiece: View {
+private struct DayPiece: View {
     let first: Bool
     let last: Bool
     var body: some View {
@@ -2048,6 +2052,8 @@ private struct ZikrHistoryHome: View {
     /// Opened filtered: a goal's or a zikr's page shows its sessions here (owner: "make the history page filtered to show
     /// the same stuff it would show here").
     var initial: Filter? = nil
+    /// Locked to `initial` (the day page's Zikr row): no month card, no search or filter, its title's line is that day's.
+    var locked = false
     @Environment(\.modelContext) private var context
     @Query(sort: \SessionDataModel.startTime, order: .reverse) private var sessions: [SessionDataModel]
     @Query private var zikrs: [MantraModel]
@@ -2110,7 +2116,7 @@ private struct ZikrHistoryHome: View {
     }
     private var shown: [SessionDataModel] {
         let q = state.historyQuery.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return filtered }
+        guard !q.isEmpty, !locked else { return filtered }
         return filtered.filter { s in
             [s.mantra?.name ?? "Freestyle", s.task?.title ?? "", s.mantra?.notes ?? "",
              s.startTime.formatted(.dateTime.weekday(.wide)), s.startTime.formatted(.dateTime.month(.wide))]
@@ -2128,9 +2134,9 @@ private struct ZikrHistoryHome: View {
                 // Select is a mode on this same page (owner, as Photos / Mail): the title and the card stay put, only the
                 // edges change — circles on the rows, Delete in the glass bar, Done / Cancel in the bar.
                 Soft.title(active.map { $0.title } ?? "History",
-                           "All time: \(ZikrFmt.count(base.count)) sessions · \(ZikrFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(ZikrFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
+                           "\(locked ? "That day" : "All time"): \(ZikrFmt.count(base.count)) session\(base.count == 1 ? "" : "s") · \(ZikrFmt.count(base.reduce(0) { $0 + $1.totalCount })) counted · \(ZikrFmt.hours(base.reduce(0) { $0 + $1.secondsPassed }))")
                     .bareRow(top: 0)
-                if state.historyQuery.isEmpty { MonthHero(s: story).bareRow(top: 8, bottom: 4) }
+                if state.historyQuery.isEmpty && !locked { MonthHero(s: story).bareRow(top: 8, bottom: 4) }
             }
             DayRows(days: byDay(Array(shown.prefix(150))), tappable: !selecting,
                     selection: $selection, zoom: zoom,
@@ -2155,7 +2161,7 @@ private struct ZikrHistoryHome: View {
                     .buttonStyle(.plain)
                     .barGlass(Capsule())
                     .disabled(selection.isEmpty)
-                } else {
+                } else if !locked {
                     Soft.search("A zikr, a task, \"Friday\"", Binding(get: { state.historyQuery }, set: { state.historyQuery = $0 }))
                     filterMenu
                 }
@@ -2177,7 +2183,7 @@ private struct ZikrHistoryHome: View {
             }
         }
         .navigationBarBackButtonHidden(selecting)
-        .zikrSheets($open, zoom: zoom, onHistory: { f in withAnimation(.snappy) { active = f } })
+        .zikrSheets($open, zoom: zoom, onHistory: { f in if !locked { withAnimation(.snappy) { active = f } } })
         .sheet(item: $sessionToOpen) { s in
             SessionPage(session: s, onOpenZikr: s.mantra.map { m in {
                 sessionToOpen = nil

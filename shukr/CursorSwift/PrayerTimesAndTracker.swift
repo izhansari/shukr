@@ -1509,7 +1509,12 @@ struct PrayerTimesView: View {
                                  "Asr": "asr on top of the mountain today and it was really nice i enjoyed praying with beautiful views sA",
                                  "Maghrib": "love praying maghrib early. especially because its one of the prayers with a short window and towards the night as a wind down i love it."]
                     for prayer in viewModel.todaysPrayers where prayer.isCompleted {
-                        if let text = notes[prayer.name] { PrayerPhotos.setNote(PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name), text) }
+                        // `-demoLongNotes`: each note six times over (the notes card's scrolling).
+                        let long = ProcessInfo.processInfo.arguments.contains("-demoLongNotes")
+                        if let text = notes[prayer.name] {
+                            PrayerPhotos.setNote(PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name),
+                                                 long ? Array(repeating: text, count: 6).joined(separator: " ") : text)
+                        }
                         if ["Dhuhr", "Asr", "Maghrib"].contains(prayer.name), prayer.latPrayedAt == nil {
                             prayer.latPrayedAt = 35.79 + (prayer.name == "Asr" ? 0.02 : 0)
                             prayer.longPrayedAt = -78.78 - (prayer.name == "Maghrib" ? 0.03 : 0)
@@ -1626,6 +1631,9 @@ struct PrayerTimesView: View {
             // The day page's Photos row opens that day's pile and leaves with it (DayBackCard).
             MemoriesPage(openPile: MemoriesPresenter.shared.openPile, leaveWithPile: MemoriesPresenter.shared.openPile != nil)
         }
+        // The day page's Zikr row: History locked to today.
+        .navigationDestination(item: Binding(get: { DayPageState.shared.zikrDay },
+                                             set: { DayPageState.shared.zikrDay = $0 })) { ZikrAreaPage(start: .dayOnly($0)) }
         // Journey (Journey.swift), from ☰ or the day page's "Journey ›".
         .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.open },
                                                     set: { JourneyPresenter.shared.open = $0 })) { JourneyPage() }
@@ -2775,10 +2783,8 @@ struct TodaysPrayerListView: View {
     @State private var dayPageShown = false
     @State private var placesTick = 0   // bumps as place names arrive
     @State private var showDayMap = false
-    /// The back's Notes and Zikr: the frosted ⓘ card (owner); a session tapped there opens its page.
+    /// The back's Notes: the frosted ⓘ card (owner).
     @State private var notesShown = false
-    @State private var sessionsShown = false
-    @State private var sessionToOpen: SessionDataModel?
 
     private func reloadFacts(_ dayPage: Bool) {
         dayPageShown = dayPage
@@ -2965,7 +2971,7 @@ struct TodaysPrayerListView: View {
                                         MemoriesPresenter.shared.open = true
                                     },
                                     onMap: { showDayMap = true },
-                                    onZikr: { sessionsShown = true })
+                                    onZikr: { dayState.zikrDay = PrayerDay.start() })
                             .modifier(SalahLookCard(raised: true))
                     }
                 }
@@ -3027,13 +3033,7 @@ struct TodaysPrayerListView: View {
         .infoModal(isPresented: $notesShown, title: facts.notes.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
             DayNotesInfo(notes: facts.notes)
         }
-        .infoModal(isPresented: $sessionsShown, title: "Zikr today", symbol: "circle.hexagonpath", tint: .secondary) {
-            DaySessionsInfo(sessions: facts.sessions) { s in
-                sessionsShown = false
-                Task { @MainActor in try? await Task.sleep(for: .seconds(0.25)); sessionToOpen = s }
-            }
-        }
-        .sheet(item: $sessionToOpen) { s in SessionPage(session: s).stageCover("daySession") }
+
     }
 
 }

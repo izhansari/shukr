@@ -21,8 +21,7 @@ struct JourneyDayPage: View {
     @State private var placeSheet: PrayerModel?
     @State private var mapPins: [JourneyDayPin]?
     @State private var notes: [DayFacts.Note]?
-    @State private var sessions: [SessionDataModel]?
-    @State private var sessionToOpen: SessionDataModel?
+    @State private var zikrDay: Date?
     @State private var showMakeUp = false
     /// A photo's day pile, opened over Moments (owner: a photo here opens the pile for that day).
     @State private var pile: JourneyPileRoute?
@@ -141,19 +140,13 @@ struct JourneyDayPage: View {
                                     place: DayFacts.place(row) ?? "", spot: spot, score: row.numberScore, atMasjid: row.atMasjid)
             }
         }
-        // The back's Notes and Zikr in the frosted ⓘ card (owner); a session tapped there opens its page.
+        // The back's Notes in the frosted ⓘ card (owner).
         .infoModal(isPresented: Binding(get: { notes != nil }, set: { if !$0 { notes = nil } }),
                    title: notes?.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
             DayNotesInfo(notes: notes ?? [])
         }
-        .infoModal(isPresented: Binding(get: { sessions != nil }, set: { if !$0 { sessions = nil } }),
-                   title: "Zikr that day", symbol: "circle.hexagonpath", tint: .secondary) {
-            DaySessionsInfo(sessions: sessions ?? []) { s in
-                sessions = nil
-                Task { @MainActor in try? await Task.sleep(for: .seconds(0.25)); sessionToOpen = s }
-            }
-        }
-        .sheet(item: $sessionToOpen) { s in SessionPage(session: s) }
+        // The back's Zikr: History locked to that day (owner).
+        .navigationDestination(item: $zikrDay) { ZikrAreaPage(start: .dayOnly($0)) }
         // The note's card (Settings' ⓘ way, grey).
         .infoModal(isPresented: Binding(get: { noteRow != nil }, set: { if !$0 { noteRow = nil } }),
                    title: noteRow?.displayName ?? "", symbol: prayerIcon(for: noteRow?.name ?? "Fajr"), tint: .secondary) {
@@ -170,7 +163,7 @@ struct JourneyDayPage: View {
             place: { placeSheet = $0 },
             map: { mapPins = $0 },
             notes: { notes = $0 },
-            zikr: { sessions = $0 },
+            zikr: { zikrDay = $0 },
             pile: { key in
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
@@ -286,7 +279,7 @@ struct JourneyDayActions {
     let place: (PrayerModel) -> Void
     let map: ([JourneyDayPin]) -> Void
     let notes: ([DayFacts.Note]) -> Void
-    let zikr: ([SessionDataModel]) -> Void
+    let zikr: (Date) -> Void
     let pile: (String) -> Void
     let makeUp: () -> Void
 }
@@ -438,7 +431,7 @@ struct JourneyDayPane: View {
                         onNotes: { actions.notes(facts.notes) },
                         onPhotos: { if let first = facts.photoKeys.first { actions.pile(first) } },
                         onMap: { actions.map(facts.pins) },
-                        onZikr: { actions.zikr(facts.sessions) })
+                        onZikr: { actions.zikr(date) })
                 .modifier(SalahLookCard(raised: true))
         }
         .modifier(SalahLookListFrame())   // the Salah list's width (290 in the soft looks): one card shape on both pages

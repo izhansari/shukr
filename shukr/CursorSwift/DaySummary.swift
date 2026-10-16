@@ -40,6 +40,8 @@ extension DayPrayer {
     }
     /// The back has something (DayFacts): the chrome shows the flip pill; empty, it shows "Journey ›" as before.
     var backHasContent = false
+    /// The back's Zikr row: History locked to that day, pushed by PrayerTimesView (ZikrAreaPage .dayOnly).
+    var zikrDay: Date?
 
     /// No pick while the back is up: the ring's photo would sit beside the back's pile (Bradley's review).
     func togglePick(_ i: Int) {

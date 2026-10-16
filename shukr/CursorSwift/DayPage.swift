@@ -312,7 +312,7 @@ struct DayBackCard: View {
 
     var body: some View {
         // Always the four rows, in their places (owner, 2026-10-16: "we have an empty row at the bottom … it might be cleaner to
-        // always show the four rows. And if there's no items for it, then we just say no items"): an empty one greyed, "None",
+        // always show the four rows. And if there's no items for it, then we just say no items"): an empty one says "None",
         // no chevron, nothing to open.
         VStack(spacing: 0) {
             if facts.notes.isEmpty {
@@ -350,14 +350,15 @@ struct DayBackCard: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    /// A row with nothing that day: in its place, greyed, "None", no chevron.
+    /// A row with nothing that day: in its place, the regular type (owner: "you don't need to gray it out"), "None", no
+    /// chevron (nothing to open).
     private func emptyRow(symbol: String, title: String) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: symbol).font(.system(size: 20, weight: .light)).foregroundStyle(.tertiary)
+            Image(systemName: symbol).font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
                 .frame(width: 40, alignment: .leading)
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.system(size: 16, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                Text("None").font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.tertiary)
+                Text(title).font(.system(size: 16, weight: .light, design: .rounded))
+                Text("None").font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
         }
@@ -415,24 +416,6 @@ struct DayNotesInfo: View {
                         .foregroundStyle(.primary.opacity(0.8))
                         .lineSpacing(3)
                 }
-            }
-        }
-    }
-}
-
-/// The day's zikr sessions in the frosted ⓘ card, each drawn with History's own row (SessionRow in its day-card piece),
-/// so a change to that row shows here too (owner, 2026-10-16: "use the list item object so that its easy to manage and if
-/// we change that list item then it updates and stays consistent here too"). A tap opens the session's page.
-struct DaySessionsInfo: View {
-    let sessions: [SessionDataModel]
-    let onOpen: (SessionDataModel) -> Void
-    var body: some View {
-        let shown = sessions.sorted { $0.startTime > $1.startTime }
-        VStack(spacing: 0) {
-            ForEach(Array(shown.enumerated()), id: \.element.id) { i, s in
-                SessionRow(session: s, onOpen: { onOpen(s) },
-                           rowBackground: AnyView(DayPiece(first: i == 0, last: i == shown.count - 1).padding(.horizontal, -16)),
-                           quiet: true)
             }
         }
     }
