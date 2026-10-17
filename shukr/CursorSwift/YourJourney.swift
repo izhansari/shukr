@@ -31,6 +31,9 @@ struct JourneyHomeCard: View {
     var opens: (Date) -> Bool = { _ in false }
     var onMonth: (Date) -> Void = { _ in }
     @State private var picked: Date?
+    /// "best streak" tapped: its days lit, the grid at them (owner, 2026-10-17: "clicking this takes us to the area that
+    /// shows those days with best streak") — the month's way with its numbers. Again, or a tile, lets it go.
+    @State private var streakShown = false
     /// A finger on the tiles (not observed: nothing redraws from it).
     @State private var scrub = JourneyCardScrub()
     /// What the grid shows: the first week row in view, how many fit, and whether it rests at today.
@@ -98,8 +101,15 @@ struct JourneyHomeCard: View {
 
     private var grid: some View {
         ScrollView(.vertical, showsIndicators: false) {
+            ScrollViewReader { proxy in
             LazyVStack(spacing: 3) {
-                ForEach(stats.weeks) { week in row(week) }
+                ForEach(stats.weeks) { week in row(week).id(week.id) }
+            }
+            .onChange(of: streakShown) { _, on in
+                guard on, let days = stats.bestStreakDays else { return }
+                let mid = days.lowerBound.addingTimeInterval(days.upperBound.timeIntervalSince(days.lowerBound) / 2)
+                guard let week = stats.weeks.last(where: { $0.start <= mid }) else { return }
+                withAnimation(.easeInOut(duration: 0.45)) { proxy.scrollTo(week.id, anchor: .center) }
             }
             // A finger resting 0.3 s on the tiles picks under it as it moves, across rows (owner, 2026-10-17: "if I hold
             // down on a tile, I can move my finger to select other tiles nearby as I drag"; "not just a row … anything").
@@ -113,6 +123,7 @@ struct JourneyHomeCard: View {
             // Room for a picked tile's ring (drawn 3 pt outside its bar) on the right and below: the grid's clip cut it
             // (owner, 2026-10-17). The grid reaches 4 pt into the card's margin, so the bars stay where they were.
             .padding(.trailing, Self.ringRoom).padding(.bottom, Self.ringRoom)
+            }
         }
         .padding(.trailing, -Self.ringRoom)
         .defaultScrollAnchor(.bottom)
@@ -179,6 +190,7 @@ struct JourneyHomeCard: View {
                 .overlay {
                     if day.kind == .none { shape.strokeBorder(JourneyTileColor.outline(dark: scheme == .dark), lineWidth: JourneyTileColor.outlineWidth) }
                 }
+                .opacity(streakShown && !(stats.bestStreakDays?.contains(day.date) ?? false) ? 0.22 : 1)
                 .frame(maxWidth: .infinity)
                 .frame(height: 11)
                 .journeyFlightTile(day.date)
@@ -205,7 +217,7 @@ struct JourneyHomeCard: View {
             scrub.scrubbing = p.x > Self.nameColumn
             guard scrub.scrubbing else { return }
             triggerSomeVibration(type: .medium)
-            if let d = day(at: p) { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d.date } }
+            if let d = day(at: p) { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d.date; streakShown = false } }
         case .changed:
             guard scrub.scrubbing, let d = day(at: p), d.date != picked else { return }
             triggerSomeVibration(type: .soft)
@@ -217,7 +229,7 @@ struct JourneyHomeCard: View {
 
     private func tap(_ date: Date) {
         triggerSomeVibration(type: .light)
-        withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == date ? nil : date }
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == date ? nil : date; streakShown = false }
     }
 
     /// The day under a point in the rows' space (rows `pitch` apart, the bars after the name column; nil: a blank slot).
@@ -244,9 +256,19 @@ struct JourneyHomeCard: View {
                     dayLine(day).transition(.opacity)
                 } else {
                     HStack(alignment: .top, spacing: 0) {
-                        figure("\(stats.prayersMarked)", "prayers marked")
-                        figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days")
-                        figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days", "best streak")
+                        figure("\(stats.prayersMarked)", "prayers marked").opacity(streakShown ? 0.35 : 1)
+                        figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days").opacity(streakShown ? 0.35 : 1)
+                        Button {
+                            guard stats.bestStreakDays != nil else { return }
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.easeInOut(duration: 0.3)) { streakShown.toggle() }
+                        } label: {
+                            figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days",
+                                   streakShown ? streakSpan : "best streak")
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Shows those days")
                     }
                     .transition(.opacity)
                 }
@@ -259,6 +281,17 @@ struct JourneyHomeCard: View {
 
     private func dayLine(_ d: YourJourneyStats.GridDay) -> some View {
         JourneyDayLine(day: d, log: log, canOpen: d.prayed > 0 && opens(d.date)) { onDay(d.date) }
+    }
+
+    /// The best streak's dates: "Sep 3 – 10", "Aug 28 – Sep 4", with the year when it isn't this one.
+    private var streakSpan: String {
+        guard let r = stats.bestStreakDays else { return "best streak" }
+        let cal = Calendar.current
+        let thisYear = cal.component(.year, from: r.upperBound) == cal.component(.year, from: Date())
+        let sameMonth = cal.isDate(r.lowerBound, equalTo: r.upperBound, toGranularity: .month)
+        let a = r.lowerBound.formatted(.dateTime.month(.abbreviated).day())
+        let b = sameMonth ? r.upperBound.formatted(.dateTime.day()) : r.upperBound.formatted(.dateTime.month(.abbreviated).day())
+        return "\(a) – \(b)" + (thisYear ? "" : ", \(cal.component(.year, from: r.upperBound))")
     }
 
     private func figure(_ value: String, _ caption: String) -> some View {
@@ -548,6 +581,8 @@ struct YourJourneyStats {
     var inTimeRate: Int?
     /// The longest run of days with every prayer in time (excused days skip, today waits until it's over).
     var bestStreak = 0
+    /// The best streak's first and last day (the latest of equal ones; its excused days inside it).
+    var bestStreakDays: ClosedRange<Date>?
     /// The last 84 prayer days, oldest first, today last.
     /// A day on the card: its color and its line.
     struct GridDay {
@@ -725,14 +760,16 @@ struct YourJourneyStats {
         if let first = log.firstDay {
             buildMonths(log: log, first: cal.startOfDay(for: first), today: today, excused: excused)
             var run = 0
+            var runStart: Date?
             var date = cal.startOfDay(for: first)
             while date <= today {
                 let d = log.day(date)
                 if Self.excusedAll(d, on: date, in: log, excused) {
                     // An excused day neither counts nor breaks.
                 } else if Self.kind(d) == .allInTime {
+                    if run == 0 { runStart = date }
                     run += 1
-                    bestStreak = max(bestStreak, run)
+                    if run >= bestStreak, let s = runStart { bestStreak = run; bestStreakDays = s...date }
                 } else if !(date == today && d.marks.contains(.toCome)) {
                     run = 0
                 }
