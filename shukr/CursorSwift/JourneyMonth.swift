@@ -73,7 +73,7 @@ struct JourneyMonthPage: View {
                     withAnimation(Self.zoom) { start = month; showYear = false }
                 }, onSpread: {
                     withAnimation(Self.zoom) { showYear = false }   // a spread elsewhere: back into the month
-                })
+                }, onDay: { open($0) })
                 .transition(.opacity.combined(with: .scale(scale: 1.08)))
             } else {
                 // Never a scroll (it took the up/down drag: a six-week month on a 17 Pro didn't fit and the page scrolled

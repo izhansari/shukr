@@ -183,29 +183,8 @@ struct JourneyHomeCard: View {
         .padding(.top, tight ? 10 : 12)
     }
 
-    /// "Fri, Sep 25 · 5 of 5 · all in time · Open ›": a tap opens the day (when it can open).
     private func dayLine(_ d: YourJourneyStats.GridDay) -> some View {
-        let date = d.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
-        let what: String = d.prayed == 0 ? (d.excused ? "Excused" : "No prayers marked")
-            : d.prayed == 5 && d.inTime == 5 ? "5 of 5 · all in time"
-            : "\(d.prayed) of 5 · \(d.inTime) in time"
-        let canOpen = d.prayed > 0 && opens(d.date)
-        return Button {
-            guard canOpen else { return }
-            triggerSomeVibration(type: .light)
-            onDay(d.date)
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(date) · \(what)").foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.85)
-                Spacer(minLength: 4)
-                if canOpen { Text("Open ›").foregroundStyle(Color.sage) }
-            }
-            .font(.system(size: 14, weight: .light, design: .rounded))
-            .padding(.top, 8)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(date), \(what)")
+        JourneyDayLine(day: d, canOpen: d.prayed > 0 && opens(d.date)) { onDay(d.date) }
     }
 
     private func figure(_ value: String, _ caption: String) -> some View {
@@ -255,6 +234,38 @@ enum ThisMonthMeasure: String, CaseIterable, Identifiable {
         case .perfect: "\(m.perfect)%"
         case .average: "\(m.average)"
         }
+    }
+}
+
+/// A picked day's line — the card's, and the year's (owner, 2026-10-16: "when the year is shown, let's make it work the
+/// same way that the card works, where tapping a tile shows that day information at the bottom, which we can then open
+/// into"): "Fri, Sep 25 · 5 of 5 · all in time · Open ›"; a tap opens the day when it can.
+struct JourneyDayLine: View {
+    let day: YourJourneyStats.GridDay
+    let canOpen: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        let date = day.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let what: String = day.prayed == 0 ? (day.excused ? "Excused" : "No prayers marked")
+            : day.prayed == 5 && day.inTime == 5 ? "5 of 5 · all in time"
+            : "\(day.prayed) of 5 · \(day.inTime) in time"
+        return Button {
+            guard canOpen else { return }
+            triggerSomeVibration(type: .light)
+            onOpen()
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(date) · \(what)").foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.85)
+                Spacer(minLength: 4)
+                if canOpen { Text("Open ›").foregroundStyle(Color.sage) }
+            }
+            .font(.system(size: 14, weight: .light, design: .rounded))
+            .padding(.top, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(date), \(what)")
     }
 }
 
@@ -423,7 +434,15 @@ struct YourJourneyStats {
     var bestStreak = 0
     /// The last 84 prayer days, oldest first, today last.
     /// A day on the card: its color and its line.
-    struct GridDay { let date: Date; let kind: Kind; let prayed: Int; let inTime: Int; let excused: Bool }
+    struct GridDay {
+        let date: Date; let kind: Kind; let prayed: Int; let inTime: Int; let excused: Bool
+        /// A day from the log (the year's squares build theirs here).
+        static func of(_ log: JourneyLog, _ date: Date) -> GridDay {
+            let d = log.day(date)
+            return GridDay(date: date, kind: YourJourneyStats.kind(d), prayed: d.prayed, inTime: d.inTime,
+                           excused: d.marks.contains(.excused))
+        }
+    }
     /// A week a row, from the week of the first day to today's (nil: before the first day, or still to come); the week
     /// holding a month's 1st (or the first day) carries that month's name — "Jan’26" on January and on the first month.
     struct Week: Identifiable {

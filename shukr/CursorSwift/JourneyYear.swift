@@ -29,6 +29,11 @@ struct JourneyYearView: View {
     let onPick: (Date) -> Void
     /// A spread not over a month with prayers: back into the month the page was showing.
     var onSpread: () -> Void = {}
+    /// A picked day's "Open ›": its day page.
+    var onDay: (Date) -> Void = { _ in }
+    /// A day's square tapped (owner, 2026-10-16: "make it work the same way that the card works, where tapping a tile shows
+    /// that day information at the bottom, which we can then open into"): marked, its line at the bottom; again, cleared.
+    @State private var picked: Date?
     @Environment(\.colorScheme) private var scheme
     /// Each small month's frame on screen, for a spread over it (build-plan C: "spread on a small month → that month").
     @State private var frames: [Date: CGRect] = [:]
@@ -51,6 +56,9 @@ struct JourneyYearView: View {
             .padding(.horizontal, 20)
             .padding(.top, 8)
             .padding(.bottom, 24)
+            // A tap anywhere that isn't a square or a month's name lets the picked day go.
+            .contentShape(Rectangle())
+            .onTapGesture { if picked != nil { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil } } }
         }
         .defaultScrollAnchor(.bottom)   // opens on this year; earlier years above
         .scrollIndicators(.hidden)
@@ -66,6 +74,20 @@ struct JourneyYearView: View {
         })
         // Years scrolling up fade out under the back button instead of running into it.
         .mask { VStack(spacing: 0) { LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 28); Color.black } }
+        // The picked day's line at the bottom, above Month | Year — the card's own line.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if let date = picked {
+                VStack(spacing: 0) {
+                    Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+                    let day = YourJourneyStats.GridDay.of(log, date)
+                    JourneyDayLine(day: day, canOpen: day.prayed > 0 && (date < today || log.day(date).allFive)) { onDay(date) }
+                        .padding(.bottom, 10)
+                }
+                .padding(.horizontal, 20)
+                .id(date)
+                .transition(.opacity)
+            }
+        }
     }
 
     private var key: some View {
@@ -111,35 +133,44 @@ struct JourneyYearView: View {
         let line = future || before ? " " : Self.line(numbers)
         let lead = ((cal.component(.weekday, from: start) - cal.firstWeekday) + 7) % 7
         let days = JourneyLog.daysOf(month: start)
-        return Button {
-            if numbers.activeDays > 0 { onPick(start) }
-        } label: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(start.formatted(.dateTime.month(.abbreviated)))
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(thisMonth ? Color.sage : numbers.activeDays == 0 && !future && !before ? Color.secondary : Color.primary)
-                Text(line).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2.5), count: 7), spacing: 2.5) {
-                    ForEach(0..<lead, id: \.self) { _ in Color.clear.aspectRatio(1, contentMode: .fit) }
-                    ForEach(days, id: \.self) { day in square(day) }
-                    // Every small month six weeks tall, so the names in a row line up.
-                    ForEach(0..<max(0, 42 - lead - days.count), id: \.self) { _ in Color.clear.aspectRatio(1, contentMode: .fit) }
+        return VStack(alignment: .leading, spacing: 3) {
+            // The name (and its line) opens the month; the squares are taps of their own.
+            Button {
+                if numbers.activeDays > 0 { onPick(start) }
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(start.formatted(.dateTime.month(.abbreviated)))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(thisMonth ? Color.sage : numbers.activeDays == 0 && !future && !before ? Color.secondary : Color.primary)
+                    Text(line).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .padding(.top, 3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(6)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames[start] = $0 }
-            .overlay {
-                if start == current {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.sage.opacity(0.55), lineWidth: 2)
-                }
+            .buttonStyle(.plain)
+            .disabled(numbers.activeDays == 0)
+            .accessibilityLabel("\(start.formatted(.dateTime.month(.wide).year())), \(line)")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Self.gap), count: 7), spacing: Self.gap) {
+                ForEach(0..<lead, id: \.self) { _ in Color.clear.aspectRatio(1, contentMode: .fit) }
+                ForEach(days, id: \.self) { day in square(day) }
+                // Every small month six weeks tall, so the names in a row line up.
+                ForEach(0..<max(0, 42 - lead - days.count), id: \.self) { _ in Color.clear.aspectRatio(1, contentMode: .fit) }
             }
-            .contentShape(Rectangle())
+            .padding(.top, 3)
         }
-        .buttonStyle(.plain)
-        .disabled(numbers.activeDays == 0)
-        .accessibilityLabel("\(start.formatted(.dateTime.month(.wide).year())), \(line)")
+        .padding(6)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames[start] = $0 }
+        .overlay {
+            if start == current {
+                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.sage.opacity(0.55), lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
     }
+
+    /// The squares' spacing: a square's tap covers half the gap each side, so it fills its grid cell and never reaches the
+    /// next day.
+    private static let gap: CGFloat = 2.5
 
     /// "9 days · 84%" (in time, of the prayers due on those days) or "Away" for a month with nothing marked.
     private static func line(_ m: JourneyLog.Month) -> String {
@@ -154,11 +185,28 @@ struct JourneyYearView: View {
         let future = day > today
         let before = log.firstDay.map { day < $0 } ?? true
         let fill: Color = future || before ? Color.primary.opacity(future ? 0.04 : 0) : JourneyTileColor.of(YourJourneyStats.kind(log.day(day)), dark: scheme == .dark)
+        let on = picked == day
         return RoundedRectangle(cornerRadius: 2.5, style: .continuous)
             .fill(fill)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 if day == today { RoundedRectangle(cornerRadius: 2.5, style: .continuous).strokeBorder(Color.primary.opacity(0.8), lineWidth: 1.2) }
             }
+            // Picked: the card's mark, a ring round the square.
+            .overlay {
+                if on {
+                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.3)
+                        .padding(-2)
+                }
+            }
+            .zIndex(on ? 1 : 0)
+            .contentShape(Rectangle().inset(by: -Self.gap / 2))
+            .onTapGesture {
+                guard !future, !before else { return }
+                triggerSomeVibration(type: .light)
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = on ? nil : day }
+            }
+            .accessibilityAddTraits(.isButton)
     }
 }
