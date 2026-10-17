@@ -5,19 +5,46 @@ import SwiftUI
 // squares ("the card is essentially a mini year view in the layout of a traditional calendar"), each with its name and one
 // quiet line; a small month with prayers opens it. Reached from the month's title, Month | Year, or a pinch.
 
-/// The card's and the year's tiles in the month's own fills (owner, 2026-10-16, on the organizer's option B, "the card
-/// takes the month's colors": "id rather this. and the year page can follow."): all five in time the ring's green fill, all
-/// five with a Qaza the ring's grey fill, some fainter than that, none the faintest — so a tile reads as the day it opens.
+/// The card's and the year's tiles (owner, 2026-10-17, tuned in his tile sheet; board/mocks/journey-v6/tile-colors-handoff.md):
+/// in time a green, all five with a Qaza a grey-green, incomplete a grey, none the faintest — each a heat map of the day's
+/// score on this user's own scale (`JourneyLog.tileRank`): their lowest day of a kind draws at `faintest`, their best full.
+/// A kind never fades into the one below it (a weak Qaza day read as incomplete): its floor stays 0.06 above that kind.
+/// The month's rings keep their own fills (JourneyDayRing).
 enum JourneyTileColor {
-    static func of(_ kind: YourJourneyStats.Kind, dark: Bool) -> Color {
-        switch kind {
-        case .allInTime: JourneyDayRing.green(dark).opacity(0.24)
-        case .allFive: JourneyDayRing.greyFill(dark)
-        // Tuned on the card (organizer's ask; Bradley found these fills faint): none still shows as a slot, some sits
-        // halfway between it and all five.
-        case .some: dark ? Color.white.opacity(0.072) : Color.black.opacity(0.09)
-        case .none: dark ? Color.white.opacity(0.045) : Color.black.opacity(0.05)
-        }
+    private static func rgba(_ r: Double, _ g: Double, _ b: Double, _ a: Double) -> (Color, Double) {
+        (Color(.sRGB, red: r / 255, green: g / 255, blue: b / 255, opacity: 1), a)
+    }
+    /// In time, With Qaza, Incomplete, None: each kind's color and its full strength.
+    private static let light = [rgba(40, 167, 69, 0.80), rgba(104, 140, 110, 0.36), rgba(35, 38, 44, 0.23), rgba(35, 38, 44, 0.00)]
+    private static let dark = [rgba(64, 200, 110, 0.85), rgba(120, 160, 128, 0.50), rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.06)]
+    /// The weakest a heat-mapped tile gets, of its kind's full strength (his "Faintest").
+    private static let faintest = 0.41
+
+    private static func index(_ kind: YourJourneyStats.Kind) -> Int {
+        switch kind { case .allInTime: 0; case .allFive: 1; case .some: 2; case .none: 3 }
+    }
+    /// Per look, per kind: the least share of its strength a tile may fade to (the floor above the next kind down).
+    private static let floors: [Bool: [Double]] = [false: bands(light), true: bands(dark)]
+    private static func bands(_ c: [(Color, Double)]) -> [Double] {
+        (0..<4).map { i in i == 3 || c[i].1 == 0 ? 1 : max(faintest, min(1, (c[i + 1].1 + 0.06) / c[i].1)) }
+    }
+
+    /// A kind at full strength (the year's key, and where nothing ranks it).
+    static func of(_ kind: YourJourneyStats.Kind, dark isDark: Bool) -> Color {
+        let (c, a) = (isDark ? dark : light)[index(kind)]
+        return c.opacity(a)
+    }
+    /// A day's tile: its kind, as strong as its place on this user's scale (0 their lowest … 1 their best).
+    static func of(_ kind: YourJourneyStats.Kind, rank: Double, dark isDark: Bool) -> Color {
+        let i = index(kind)
+        let (c, a) = (isDark ? dark : light)[i]
+        guard kind != .none else { return c.opacity(a) }
+        let low = floors[isDark]?[i] ?? 1
+        return c.opacity(a * (low + (1 - low) * min(max(rank, 0), 1)))
+    }
+    /// A day from the log, as its tile draws.
+    static func of(_ d: JourneyLog.Day, in log: JourneyLog, dark isDark: Bool) -> Color {
+        of(d.tileKind, rank: log.tileRank(d), dark: isDark)
     }
 }
 
@@ -124,11 +151,10 @@ struct JourneyYearView: View {
         }
     }
 
-    /// A small month: its name (sage when it's this month), one quiet line, its days as squares.
+    /// A small month: its name, one quiet line, its days as squares (no sage on Journey — owner, 2026-10-17).
     private func mini(_ start: Date) -> some View {
         let cal = Calendar.current
         let numbers = log.month(start)
-        let thisMonth = start == JourneyLog.monthStart(today)
         let future = start > today
         let before = log.firstDay.map { start < JourneyLog.monthStart($0) } ?? true
         let line = future || before ? " " : Self.line(numbers)
@@ -142,7 +168,7 @@ struct JourneyYearView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(start.formatted(.dateTime.month(.abbreviated)))
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(thisMonth ? Color.sage : numbers.activeDays == 0 && !future && !before ? Color.secondary : Color.primary)
+                        .foregroundStyle(numbers.activeDays == 0 && !future && !before ? Color.secondary : Color.primary)
                         .journeyFlightYearName(start)
                         .journeyFlightWords(.page)
                     Text(line).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
@@ -167,7 +193,7 @@ struct JourneyYearView: View {
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames[start] = $0 }
         .overlay {
             if start == current {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.sage.opacity(0.55), lineWidth: 2)
+                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.3), lineWidth: 2)
                     .allowsHitTesting(false)
             }
         }
@@ -189,7 +215,7 @@ struct JourneyYearView: View {
     private func square(_ day: Date) -> some View {
         let future = day > today
         let before = log.firstDay.map { day < $0 } ?? true
-        let fill: Color = future || before ? Color.primary.opacity(future ? 0.04 : 0) : JourneyTileColor.of(YourJourneyStats.kind(log.day(day)), dark: scheme == .dark)
+        let fill: Color = future || before ? Color.primary.opacity(future ? 0.04 : 0) : JourneyTileColor.of(log.day(day), in: log, dark: scheme == .dark)
         let on = picked == day
         return RoundedRectangle(cornerRadius: 2.5, style: .continuous)
             .fill(fill)

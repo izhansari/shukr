@@ -255,9 +255,9 @@ final class shukrUITests: XCTestCase {
     }
 
     /// Drags inside an element, by a fraction of its height (positive: down).
-    private func drag(_ e: XCUIElement, _ by: CGFloat) {
-        let from = e.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: by > 0 ? 0.25 : 0.75))
-        from.press(forDuration: 0.02, thenDragTo: e.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: (by > 0 ? 0.25 : 0.75) + by)),
+    private func drag(_ e: XCUIElement, _ by: CGFloat, x: CGFloat = 0.6) {
+        let from = e.coordinate(withNormalizedOffset: CGVector(dx: x, dy: by > 0 ? 0.25 : 0.75))
+        from.press(forDuration: 0.02, thenDragTo: e.coordinate(withNormalizedOffset: CGVector(dx: x, dy: (by > 0 ? 0.25 : 0.75) + by)),
                    withVelocity: .default, thenHoldForDuration: 0)
         usleep(800_000)
     }
@@ -274,7 +274,7 @@ final class shukrUITests: XCTestCase {
     private func calendarPass(_ app: XCUIApplication) {
         let window = app.windows.firstMatch
         let weeks = app.descendants(matching: .any)["Your weeks, a week a row"].firstMatch   // a ScrollView, not an "other"
-        if weeks.exists { drag(weeks, 0.5); drag(weeks, -0.5) }                       // the card's weeks, back and forth
+        if weeks.exists { drag(weeks, 0.5, x: 0.04); drag(weeks, -0.5, x: 0.04) }   // from the month column: the tiles don't scroll                       // the card's weeks, back and forth
         let tile = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Friday'")).allElementsBoundByIndex
             .filter { inView($0, weeks) }.last                                // a Friday in view (the latest)
         if let tile { tile.tap(); usleep(700_000); tile.tap(); usleep(700_000) }       // a tile's line, then the numbers

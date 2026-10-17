@@ -16,7 +16,7 @@ import SwiftData
 
 /// The card (Journey on one screen, D's card — owner, 2026-10-16, board/mocks/journey-v6/build-plan.md "A"): days you
 /// marked a prayer; the grid a week a row (seven rounded bars, the card's colors), today's week at the bottom, scrolling up
-/// to the first day with a fade at its top; month names in sage beside the week holding the 1st open that month; the
+/// to the first day with a fade at its top; month names (grey; no sage on Journey — owner, 2026-10-17) beside the week holding the 1st open that month; the
 /// label says what's in view ("THE LAST 18 WEEKS", or the months once scrolled back). A tile's tap puts its day in the
 /// three numbers' place; again, the numbers. Before the first mark: "0 days so far" and the line that says what will fill it.
 struct JourneyHomeCard: View {
@@ -35,6 +35,10 @@ struct JourneyHomeCard: View {
 
     /// A week row's pitch: an 11 pt bar and 3 pt between (the canvas).
     static let pitch: CGFloat = 14
+    /// Room inside the grid's clip for a picked tile's ring.
+    static let ringRoom: CGFloat = 4
+    /// The month names' column, wide enough for "May’26" (it ran into the first tile at 34).
+    static let nameColumn: CGFloat = 40
     /// The grid's least height: 12 weeks and its top room.
     static let minGrid: CGFloat = 12 * pitch + 12
 
@@ -91,11 +95,15 @@ struct JourneyHomeCard: View {
                 ForEach(stats.weeks) { week in row(week) }
             }
             .padding(.top, 12)
+            // Room for a picked tile's ring (drawn 3 pt outside its bar) on the right and below: the grid's clip cut it
+            // (owner, 2026-10-17). The grid reaches 4 pt into the card's margin, so the bars stay where they were.
+            .padding(.trailing, Self.ringRoom).padding(.bottom, Self.ringRoom)
         }
+        .padding(.trailing, -Self.ringRoom)
         .defaultScrollAnchor(.bottom)
         .scrollBounceBehavior(.basedOnSize)
         .onScrollGeometryChange(for: [Int].self) { geo in
-            let count = max(1, Int((geo.containerSize.height - 12) / Self.pitch))
+            let count = max(1, Int((geo.containerSize.height - 12 - Self.ringRoom) / Self.pitch))
             let first = max(0, Int(((geo.contentOffset.y + geo.contentInsets.top) - 12) / Self.pitch))
             let atEnd = geo.contentSize.height - (geo.contentOffset.y + geo.contentInsets.top) - geo.containerSize.height < 4
             return [first, count, atEnd ? 1 : 0]
@@ -108,6 +116,7 @@ struct JourneyHomeCard: View {
                 LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: 16)
                 Color.black
             }
+            .padding(.trailing, -Self.ringRoom)   // over the ring's room too
         }
         // 12 weeks is its natural height (what Journey's fit test measures), and it grows into any room that's left.
         .frame(minHeight: Self.minGrid, idealHeight: Self.minGrid, maxHeight: .infinity)
@@ -124,8 +133,9 @@ struct JourneyHomeCard: View {
                         triggerSomeVibration(type: .light)
                         onMonth(m.start)
                     } label: {
-                        Text(m.label).font(.system(size: 12.5, weight: .regular, design: .rounded)).foregroundStyle(Color.sage)
-                            .lineLimit(1).fixedSize()
+                        // Never past its column into the first tile ("Jul’26" ran over it — owner, 2026-10-17).
+                        Text(m.label).font(.system(size: 12.5, weight: .regular, design: .rounded)).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.75)
                             .journeyFlightMonthName(m.start)
                     }
                     .buttonStyle(.plain)
@@ -134,10 +144,16 @@ struct JourneyHomeCard: View {
                     Color.clear
                 }
             }
-            .frame(width: 34, height: 11, alignment: .leading)
-            ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
-                bar(day)
+            .frame(width: Self.nameColumn, height: 11, alignment: .leading)
+            HStack(spacing: 6) {
+                ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
+                    bar(day)
+                }
             }
+            // The card scrolls only from the month column (owner, 2026-10-17): a drag that starts on the tiles is theirs
+            // and goes nowhere; a tap is still a tap.
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 6))
         }
     }
 
@@ -145,7 +161,7 @@ struct JourneyHomeCard: View {
         let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
         if let day {
             let on = picked == day.date
-            shape.fill(color(day.kind))
+            shape.fill(color(day))
                 .frame(maxWidth: .infinity)
                 .frame(height: 11)
                 .journeyFlightTile(day.date)
@@ -212,7 +228,7 @@ struct JourneyHomeCard: View {
 
     /// The card's colors by amount (owner: "make colors of the 12 week grid match your mockup") — one copy, shared with the
     /// year's small months (JourneyTileColor, JourneyYear.swift).
-    private func color(_ kind: YourJourneyStats.Kind) -> Color { JourneyTileColor.of(kind, dark: scheme == .dark) }
+    private func color(_ day: YourJourneyStats.GridDay) -> Color { JourneyTileColor.of(day.kind, rank: day.rank, dark: scheme == .dark) }
 }
 
 /// The This month row's measure (build-plan "B", canvas v6): touch and hold the row to choose; the choice sticks
@@ -250,7 +266,7 @@ enum ThisMonthMeasure: String, CaseIterable, Identifiable {
 
 /// A picked day's line — the card's, and the year's (owner, 2026-10-16: "when the year is shown, let's make it work the
 /// same way that the card works, where tapping a tile shows that day information at the bottom, which we can then open
-/// into"): "Fri, Sep 25 · 5 of 5 · all in time · Open ›"; a tap opens the day when it can.
+/// into"): "Fri, Sep 25 · Complete · score 96 · Open ›"; a tap opens the day when it can.
 struct JourneyDayLine: View {
     let day: YourJourneyStats.GridDay
     let canOpen: Bool
@@ -258,9 +274,12 @@ struct JourneyDayLine: View {
 
     var body: some View {
         let date = day.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        // The kind in his words (owner, 2026-10-17: "Complete · With Qaza · Incomplete"), and the day page's own score.
         let what: String = day.prayed == 0 ? (day.excused ? "Excused" : "No prayers marked")
-            : day.prayed == 5 && day.inTime == 5 ? "5 of 5 · all in time"
-            : "\(day.prayed) of 5 · \(day.inTime) in time"
+            : day.unfinished ? "\(day.prayed) of 5 so far · score \(day.score)"
+            : day.kind == .allInTime ? "Complete · score \(day.score)"
+            : day.kind == .allFive ? "With Qaza · score \(day.score)"
+            : "Incomplete · \(day.prayed) of 5 · score \(day.score)"
         return Button {
             guard canOpen else { return }
             triggerSomeVibration(type: .light)
@@ -269,7 +288,7 @@ struct JourneyDayLine: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("\(date) · \(what)").foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.85)
                 Spacer(minLength: 4)
-                if canOpen { Text("Open ›").foregroundStyle(Color.sage) }
+                if canOpen { Text("Open ›").foregroundStyle(.primary) }
             }
             .font(.system(size: 14, weight: .light, design: .rounded))
             .padding(.top, 8)
@@ -447,11 +466,19 @@ struct YourJourneyStats {
     /// A day on the card: its color and its line.
     struct GridDay {
         let date: Date; let kind: Kind; let prayed: Int; let inTime: Int; let excused: Bool
-        /// A day from the log (the year's squares build theirs here).
+        /// Its place on this user's scale of its kind (the tile's shade, JourneyTileColor).
+        var rank: Double = 1
+        /// The day page's number (the five ÷ 5): the picked day's line shows it, so the two always agree.
+        var score: Int = 0
+        /// Today before its last prayer.
+        var unfinished = false
+        /// A day from the log (the card's and the year's squares build theirs here).
         static func of(_ log: JourneyLog, _ date: Date) -> GridDay {
-            let d = log.day(date)
-            return GridDay(date: date, kind: YourJourneyStats.kind(d), prayed: d.prayed, inTime: d.inTime,
-                           excused: d.marks.contains(.excused))
+            of(log, log.day(date), date)
+        }
+        static func of(_ log: JourneyLog, _ d: JourneyLog.Day, _ date: Date) -> GridDay {
+            GridDay(date: date, kind: d.tileKind, prayed: d.prayed, inTime: d.inTime, excused: d.marks.contains(.excused),
+                    rank: log.tileRank(d), score: d.dayScore, unfinished: d.unfinished)
         }
     }
     /// A week a row, from the week of the first day to today's (nil: before the first day, or still to come); the week
@@ -577,9 +604,7 @@ struct YourJourneyStats {
                         labelled = true
                     }
                     guard date >= firstDay, date <= today else { days.append(nil); continue }
-                    let d = log.day(date)
-                    days.append(GridDay(date: date, kind: Self.kind(d), prayed: d.prayed, inTime: d.inTime,
-                                        excused: d.marks.contains(.excused)))
+                    days.append(GridDay.of(log, date))
                 }
                 weeks.append(Week(start: weekStart, days: days, month: month))
                 guard let next = cal.date(byAdding: .day, value: 7, to: weekStart) else { break }
@@ -655,7 +680,7 @@ struct JourneyMilestoneCard: View {
                 Button { triggerSomeVibration(type: .light); onDay() } label: {
                     Text("See that day ›")
                         .font(.system(size: 15, weight: .regular, design: .rounded))
-                        .foregroundStyle(Color.sage)
+                        .foregroundStyle(.primary)
                         .padding(.top, 2)
                 }
                 .buttonStyle(.plain)

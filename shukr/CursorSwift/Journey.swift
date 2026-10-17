@@ -53,6 +53,25 @@ struct JourneyLog {
         var allInTime: Bool { active && inTime + excused == 5 }
         /// Every prayer not prayed was excused (the pause badge instead of dots).
         var excusedDay: Bool { marks.contains(.excused) && marks.allSatisfy { $0 == .excused || $0.done } && !allFive }
+
+        /// Today before its last prayer (its tile's shade can still move, so it never sets anyone's range).
+        var unfinished: Bool { marks.contains(.toCome) }
+        /// A tile's strength, 0…100: the mean score of the prayers that were due — a missed one 0, an excused one or one
+        /// still to come not counted. Not the day page's number (that's `dayScore`, the five ÷ 5).
+        var tileScore: Int {
+            guard due > 0 else { return 0 }
+            return Int((marks.reduce(0) { $0 + ($1.score ?? 0) } / Double(due) * 100).rounded())
+        }
+        /// The kind a tile draws: a finished day's own; today, before its last prayer, by what's been due so far — one
+        /// still to come is neither missed nor late (owner, 2026-10-16: "make it so that the current day tile doesn't look
+        /// gray").
+        var tileKind: YourJourneyStats.Kind {
+            guard unfinished, active else { return YourJourneyStats.kind(self) }
+            let open = marks.filter { $0 == .toCome }.count
+            if inTime + excused + open == 5 { return .allInTime }
+            if prayed + excused + open == 5 { return .allFive }
+            return .some
+        }
     }
 
     struct Slot {
@@ -127,6 +146,7 @@ struct JourneyLog {
             log.months[start] = log.monthFromDays(start)
             m = Calendar.current.date(byAdding: .month, value: 1, to: start)
         }
+        log.tileRanks = ranks(log.days.values)
         return log
     }
 
@@ -148,6 +168,37 @@ struct JourneyLog {
     private var months: [Date: Month] = [:]
 
     func month(_ start: Date) -> Month { months[start] ?? monthFromDays(start) }
+
+    /// Per tile kind, each score 0…100's place among this user's own finished days of that kind (0 their lowest, 1 their
+    /// best; equal scores share it) — the heat map's scale, over the whole history so a day has one shade on the card and
+    /// in the year (owner, 2026-10-17, his tuner: "Your ranks"; "It shouldn't be a totalitarian, everyone, whoever gets an
+    /// 80 gets this color shade"). Built once with the log; a tile reads one entry.
+    private var tileRanks: [YourJourneyStats.Kind: [Double]] = [:]
+
+    /// A tile's place on its kind's scale, 0…1 (1 with nothing to compare against yet).
+    func tileRank(_ d: Day) -> Double {
+        tileRanks[d.tileKind]?[min(max(d.tileScore, 0), 100)] ?? 1
+    }
+
+    private static func ranks(_ days: Dictionary<String, Day>.Values) -> [YourJourneyStats.Kind: [Double]] {
+        var scores: [YourJourneyStats.Kind: [Int]] = [:]
+        for d in days where d.active && !d.unfinished { scores[YourJourneyStats.kind(d), default: []].append(d.tileScore) }
+        return scores.mapValues { list in
+            let mine = list.sorted()
+            var table = [Double](repeating: 1, count: 101)
+            // Your days below this score out of every day below your best: not a mid-rank (that put a best day many
+            // share at ~70 %).
+            let top = mine.last ?? 0
+            let underTop = mine.prefix { $0 < top }.count
+            guard underTop > 0 else { return table }
+            var i = 0
+            for s in 0...100 {
+                while i < mine.count, mine[i] < s { i += 1 }
+                table[s] = min(1, Double(i) / Double(underTop))
+            }
+            return table
+        }
+    }
 
     private func monthFromDays(_ start: Date) -> Month {
         var m = Month()

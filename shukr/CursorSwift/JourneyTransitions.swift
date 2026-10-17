@@ -171,15 +171,16 @@ enum JourneyMotion {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) { [weak self] in self?.whenYearReady(month, tries: tries + 1, go) }
     }
 
-    /// Where a day's bar is on the card now, from the card's row layout (JourneyHomeCard.row: a 34 pt name column, then
-    /// seven bars 11 pt tall with 6 pt between; rows `pitch` apart under 12 pt of top room).
+    /// Where a day's bar is on the card now, from the card's row layout (JourneyHomeCard.row: a `nameColumn` pt name column,
+    /// then seven bars 11 pt tall with 6 pt between; rows `pitch` apart under 12 pt of top room).
     func tile(_ date: Date) -> CGRect? {
         guard grid.width > 0, let row = weekStarts.lastIndex(where: { $0 <= date }) else { return nil }
         let col = Calendar.current.dateComponents([.day], from: weekStarts[row], to: date).day ?? 0
         guard (0..<7).contains(col) else { return nil }
-        let barW = (grid.width - 34 - 6 * 7) / 7
+        let name = JourneyHomeCard.nameColumn
+        let barW = (grid.width - name - 6 * 7) / 7   // the grid's frame, not the ring's room past it
         let y = grid.minY + 12 + CGFloat(row) * JourneyHomeCard.pitch - gridOffset
-        return CGRect(x: grid.minX + 34 + 6 + CGFloat(col) * (barW + 6), y: y, width: barW, height: 11)
+        return CGRect(x: grid.minX + name + 6 + CGFloat(col) * (barW + 6), y: y, width: barW, height: 11)
     }
 
     /// Every piece's place from its anchor, in screen terms (JourneyMonthHost's resolver). Replaced wholesale, so a row the
@@ -256,6 +257,8 @@ struct JourneyFlightTile: Equatable {
     let fill: Fill
     /// Its corner where it starts: the card's bar 5, the year's square 2.5.
     var corner: CGFloat = 5
+    /// Its shade where it starts (the card's and the year's heat map, JourneyTileColor).
+    var rank: Double = 1
 }
 
 /// A month opening from the card: which, and the card's geometry frozen at the tap.
@@ -265,9 +268,9 @@ struct JourneyMonthFlight: Equatable {
     /// The month's name on the card, if it was in view.
     let label: CGRect?
     let card: CGRect
-    /// The name where it starts: the card's 12.5 pt sage, or the year's 15 pt (sage only on this month).
+    /// The name where it starts: the card's 12.5 pt grey, or the year's 15 pt ink (no sage on Journey — owner, 2026-10-17).
     var labelSize: CGFloat = 12.5
-    var labelSage = true
+    var labelGrey = true
 
     /// The flight for `start` from (or back to) its small month in the year: its squares where they are on screen now,
     /// worked out from its squares area (JourneyYearView: seven columns, 2.5 pt apart, square), and its name.
@@ -282,15 +285,15 @@ struct JourneyMonthFlight: Equatable {
         for (i, date) in JourneyLog.daysOf(month: start).enumerated() {
             guard let first = log.firstDay, date >= first, date <= today else { continue }
             let d = log.day(date)
-            let kind = YourJourneyStats.kind(d)
+            let kind = d.tileKind
             let fill: JourneyFlightTile.Fill = d.allFive && date != today ? (d.allInTime ? .green : .grey) : .none
             let at = lead + i
             let r = CGRect(x: grid.minX + CGFloat(at % 7) * (side + gap), y: grid.minY + CGFloat(at / 7) * (side + gap), width: side, height: side)
             let from: CGRect? = grid.width > 0 && r.maxY > 60 && r.minY < screen.height - 40 ? r : nil
-            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill, corner: 2.5)
+            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill, corner: 2.5, rank: log.tileRank(d))
         }
         return JourneyMonthFlight(start: start, tiles: tiles, label: g.yearNames[start], card: .zero,
-                                  labelSize: 15, labelSage: start == JourneyLog.monthStart(today))
+                                  labelSize: 15, labelGrey: false)
     }
 
     /// The flight for `start` from where the card's pieces are now.
@@ -301,11 +304,11 @@ struct JourneyMonthFlight: Equatable {
         for date in JourneyLog.daysOf(month: start) {
             guard let first = log.firstDay, date >= first, date <= today else { continue }
             let d = log.day(date)
-            let kind: YourJourneyStats.Kind = d.allInTime ? .allInTime : d.allFive ? .allFive : d.active ? .some : .none
+            let kind = d.tileKind
             let fill: JourneyFlightTile.Fill = d.allFive && date != today ? (d.allInTime ? .green : .grey) : .none
             // A tile partly under the grid's top fade or outside its clip doesn't fly (it would appear outside the card).
             let from = g.tile(date).flatMap { r in r.minY >= visible.minY + 8 && r.maxY <= visible.maxY ? r : nil }
-            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill)
+            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill, rank: log.tileRank(d))
         }
         let label = g.names[start].flatMap { r in visible.insetBy(dx: 0, dy: -2).contains(CGPoint(x: r.midX, y: r.midY)) ? r : nil }
         return JourneyMonthFlight(start: start, tiles: tiles, label: label, card: g.card)
@@ -429,7 +432,7 @@ extension View {
     }
     /// A day's tile on the card: hidden while its month is open (it's flying). It reports nothing (see `tile(_:)`).
     func journeyFlightTile(_ date: Date) -> some View { modifier(JourneyFlightHide(part: .tile(date))) }
-    /// A month's sage name on the card: reports where it is, hidden while that month is open (it became the title).
+    /// A month's name on the card: reports where it is, hidden while that month is open (it became the title).
     func journeyFlightMonthName(_ start: Date) -> some View {
         background { JourneyFlightReport { JourneyFlightGeometry.shared.names[start] = $0 } }
             .modifier(JourneyFlightHide(part: .name(start)))
@@ -474,7 +477,7 @@ struct JourneyFlightHide: ViewModifier {
 // MARK: - The month's pieces (JourneyMonth.swift)
 
 extension View {
-    /// The month's title: "Sep" on the card grows into it (scale, place, sage to ink, the rest of the name unrolling).
+    /// The month's title: "Sep" on the card grows into it (scale, place, grey to ink, the rest of the name unrolling).
     func journeyFlightTitle(_ shown: Date) -> some View { modifier(JourneyFlightTitle(shown: shown)) }
     /// One day of the calendar (after its scale): tells the cell how much of its ring, number and fill to draw
     /// (JourneyCellDraw).
@@ -510,7 +513,7 @@ struct JourneyFlightTitle: ViewModifier {
             .overlay(alignment: .leading) {
                 content
                     .foregroundStyle(e == nil ? Color.primary
-                                     : ((open?.flight.labelSage ?? true) ? Color.sage : Color.primary).mix(with: Color.primary, by: Double(z)))
+                                     : ((open?.flight.labelGrey ?? true) ? Color.secondary : Color.primary).mix(with: Color.primary, by: Double(z)))
                     // Scaled, not sized: a mask whose frame changed every frame re-laid the page out every frame.
                     .mask(alignment: .leading) {
                         Rectangle().frame(width: slot?.width ?? 400)
@@ -593,7 +596,7 @@ struct JourneyFlyingTiles: View {
                         let start = tile.from ?? end.insetBy(dx: disc * 0.2, dy: disc * 0.2)
                         let r = JourneyMotion.lerp(start, end, z).offsetBy(dx: -o.x, dy: -o.y)
                         let corner = JourneyMotion.lerp(tile.corner, disc / 2, z)
-                        let from = JourneyTileColor.of(tile.kind, dark: dark)
+                        let from = JourneyTileColor.of(tile.kind, rank: tile.rank, dark: dark)
                         let color: Color = switch tile.fill {
                         case .green: from.mix(with: JourneyDayRing.green(dark).opacity(0.24), by: Double(tint))
                         case .grey: from.mix(with: JourneyDayRing.greyFill(dark), by: Double(tint))
