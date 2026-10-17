@@ -599,8 +599,9 @@ struct JourneyFlyingTiles: View {
                         guard let cell = cells[date] else {
                             if let start = tile.from {
                                 ctx.opacity = 1
-                                ctx.fill(Path(roundedRect: start.offsetBy(dx: -o.x, dy: -o.y), cornerRadius: tile.corner, style: .continuous),
-                                         with: .color(from))
+                                let path = Path(roundedRect: start.offsetBy(dx: -o.x, dy: -o.y), cornerRadius: tile.corner, style: .continuous)
+                                ctx.fill(path, with: .color(from))
+                                if tile.kind == .none { outline(ctx, path, dark: dark, fade: 0) }
                             }
                             continue
                         }
@@ -616,12 +617,24 @@ struct JourneyFlyingTiles: View {
                         case .none: from.opacity(Double(1 - tint))
                         }
                         ctx.opacity = tile.from == nil ? Double(z) : 1
-                        ctx.fill(Path(roundedRect: r, cornerRadius: corner, style: .continuous), with: .color(color))
+                        let path = Path(roundedRect: r, cornerRadius: corner, style: .continuous)
+                        ctx.fill(path, with: .color(color))
+                        // An unmarked day is its hairline outline on the card (and in the year); the month draws nothing
+                        // for it, so the outline flies with the others and fades as theirs turn to their fills — it used
+                        // to vanish at the start and pop back at the end (owner, 2026-10-17: "the borders of those tiles,
+                        // they just disappear and reappear when changing between the views").
+                        if tile.kind == .none { outline(ctx, path, dark: dark, fade: tint) }
                     }
                 }
             }
         }
     }
+}
+
+/// An unmarked tile's hairline (JourneyTileColor.outline), `fade` 0 (full) … 1 (gone).
+private func outline(_ ctx: GraphicsContext, _ path: Path, dark: Bool, fade: CGFloat) {
+    guard fade < 1 else { return }
+    ctx.stroke(path, with: .color(JourneyTileColor.outline(dark: dark).opacity(Double(1 - fade))), lineWidth: JourneyTileColor.outlineWidth)
 }
 
 struct JourneyFlightMonthSurface: ViewModifier {

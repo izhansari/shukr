@@ -197,12 +197,8 @@ struct JourneyYearView: View {
         }
         .padding(6)
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames[start] = $0 }
-        .overlay {
-            if start == current {
-                RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.3), lineWidth: 2)
-                    .allowsHitTesting(false)
-            }
-        }
+        // No outline round the month you came from (owner, 2026-10-17: "there's like an outline on the month that we came
+        // from … I think we can just get rid of that outline … It doesn't really do anything for us").
     }
 
     /// The squares' spacing: a square's tap covers half the gap each side, so it fills its grid cell and never reaches the
