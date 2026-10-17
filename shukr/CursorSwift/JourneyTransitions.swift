@@ -458,16 +458,20 @@ struct JourneyFlightFade: ViewModifier {
 }
 
 struct JourneyFlightHide: ViewModifier {
-    enum Part: Equatable { case cardSurface, tile(Date), name(Date) }
+    enum Part: Equatable { case cardSurface, tile(Date), name(Date), squares(Date) }
     let part: Part
     @Environment(\.journeyMonthOpen) private var e
+    @Environment(\.journeyMonthDial) private var dial
     func body(content: Content) -> some View {
         let hidden: Bool = {
             guard let e else { return false }
             switch part {
             case .cardSurface: return true
             case .tile(let d): return JourneyLog.monthStart(d) == e.flight.start
-            case .name(let m): return m == e.flight.start
+            case .squares(let m): return m == e.flight.start
+            // A name stays until the dial moves: the title that grows out of it is placed a frame after the month opens,
+            // and hidden at once the name went missing for that frame.
+            case .name(let m): return m == e.flight.start && (dial?.dial ?? 1) > 0
             }
         }()
         content.opacity(hidden ? 0 : 1)
@@ -589,14 +593,23 @@ struct JourneyFlyingTiles: View {
                 Canvas { ctx, _ in
                     guard t < 1 else { return }
                     for (date, tile) in open.flight.tiles where open.hiddenDay != date {
-                        guard let cell = cells[date] else { continue }
+                        let from = JourneyTileColor.of(tile.kind, rank: tile.rank, dark: dark)
+                        // Its landing cell isn't placed yet (the month's first frame): it sits on its card bar, where it
+                        // starts — drawn there, not skipped (skipped, the month's tiles left the card a frame early).
+                        guard let cell = cells[date] else {
+                            if let start = tile.from {
+                                ctx.opacity = 1
+                                ctx.fill(Path(roundedRect: start.offsetBy(dx: -o.x, dy: -o.y), cornerRadius: tile.corner, style: .continuous),
+                                         with: .color(from))
+                            }
+                            continue
+                        }
                         let scale = cell.height / JourneyDayRing.size
                         let disc = JourneyDayRing.fill * 2 * scale
                         let end = CGRect(x: cell.midX - disc / 2, y: cell.midY - disc / 2, width: disc, height: disc)
                         let start = tile.from ?? end.insetBy(dx: disc * 0.2, dy: disc * 0.2)
                         let r = JourneyMotion.lerp(start, end, z).offsetBy(dx: -o.x, dy: -o.y)
                         let corner = JourneyMotion.lerp(tile.corner, disc / 2, z)
-                        let from = JourneyTileColor.of(tile.kind, rank: tile.rank, dark: dark)
                         let color: Color = switch tile.fill {
                         case .green: from.mix(with: JourneyDayRing.green(dark).opacity(0.24), by: Double(tint))
                         case .grey: from.mix(with: JourneyDayRing.greyFill(dark), by: Double(tint))
@@ -623,7 +636,7 @@ extension View {
     /// and fades with the year's other months.
     func journeyFlightYearSquares(_ start: Date) -> some View {
         background { JourneyFlightReport { JourneyFlightGeometry.shared.yearGrids[start] = $0 } }
-            .modifier(JourneyFlightHide(part: .name(start)))
+            .modifier(JourneyFlightHide(part: .squares(start)))
             .modifier(JourneyFlightFade(part: .grid))
     }
     /// A small month's name in the year: reports where it is, hidden while the month's title flies from or back to it.
