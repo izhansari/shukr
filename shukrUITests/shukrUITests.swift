@@ -273,7 +273,7 @@ final class shukrUITests: XCTestCase {
 
     private func calendarPass(_ app: XCUIApplication) {
         let window = app.windows.firstMatch
-        let weeks = app.otherElements["Your weeks, a week a row"].firstMatch
+        let weeks = app.descendants(matching: .any)["Your weeks, a week a row"].firstMatch   // a ScrollView, not an "other"
         if weeks.exists { drag(weeks, 0.5); drag(weeks, -0.5) }                       // the card's weeks, back and forth
         let tile = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Friday'")).allElementsBoundByIndex
             .filter { inView($0, weeks) }.last                                // a Friday in view (the latest)
