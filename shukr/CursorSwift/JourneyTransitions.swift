@@ -68,8 +68,12 @@ enum JourneyMotion {
     private var observer: CFRunLoopObserver?
     private var wokeAt: CFTimeInterval = 0
     private var longestBusy: CFTimeInterval = 0
+    /// Which run is being logged: an animation that ends after a new run began (a spring-back under the next swipe) doesn't
+    /// stop the new one.
+    private(set) var run = 0
 
-    func start(_ name: String) {
+    @discardableResult func start(_ name: String) -> Int {
+        run += 1
         link?.invalidate()
         self.name = name
         began = CACurrentMediaTime(); last = began
@@ -90,6 +94,7 @@ enum JourneyMotion {
             CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
             observer = o
         }
+        return run
     }
 
     @objc private func tick(_ l: CADisplayLink) {
@@ -104,8 +109,8 @@ enum JourneyMotion {
         last = now
     }
 
-    func stop(_ how: String = "") {
-        guard let l = link else { return }
+    func stop(_ how: String = "", run: Int? = nil) {
+        guard let l = link, run == nil || run == self.run else { return }
         l.invalidate(); link = nil
         let ms = (CACurrentMediaTime() - began) * 1000
         let line = String(format: "%@ %@%@: %.0f ms, %d frames at %.0f Hz, worst %.1f ms, %d late, main busy ≤ %.0f ms",
@@ -646,9 +651,9 @@ struct JourneyMonthHost: ViewModifier {
     private func runMonth(to target: CGFloat, how: String = "") {
         let remaining = abs(target - monthDial)
         guard remaining > 0.001 else { if target == 0 { close() }; return }
-        JourneyFrameLog.shared.start(target == 1 ? "card → month" : "month → card")
+        let run = JourneyFrameLog.shared.start(target == 1 ? "card → month" : "month → card")
         withAnimation(.linear(duration: JourneyMotion.monthDuration * remaining)) { monthDial = target } completion: {
-            JourneyFrameLog.shared.stop(how)
+            JourneyFrameLog.shared.stop(how, run: run)
             if target == 0 { close() }
         }
     }
@@ -699,9 +704,9 @@ struct JourneyMonthHost: ViewModifier {
     private func runDay(to target: CGFloat, how: String = "") {
         let remaining = abs(target - dayDial)
         guard remaining > 0.001 else { if target == 0 { day = nil }; return }
-        JourneyFrameLog.shared.start(target == 1 ? "month → day" : "day → month")
+        let run = JourneyFrameLog.shared.start(target == 1 ? "month → day" : "day → month")
         withAnimation(.linear(duration: JourneyMotion.dayDuration * remaining)) { dayDial = target } completion: {
-            JourneyFrameLog.shared.stop(how)
+            JourneyFrameLog.shared.stop(how, run: run)
             if target == 0 { day = nil }
         }
     }
