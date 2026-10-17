@@ -449,13 +449,24 @@ private struct DayBento: View {
     let day: [PrayerModel]
     @ObservedObject var viewModel: LocationViewModel
     @Environment(\.modelContext) private var context
-    @State private var address: String?
+    /// Each place's name, as it's found (a masjid's own, else the street).
+    @State private var names: [Int: String] = [:]
     @State private var history: (count: Int, since: Date?)?
+    /// The place picked from the chevron's menu (nil: where most of the day was prayed).
+    @State private var picked: Int?
 
-    /// Where most of the day was prayed.
-    private var main: [PrayerModel]? { places.max { $0.count < $1.count } }
+    /// The place the tiles are about: the one picked, else where most of the day was prayed (of equals, the first the day
+    /// reached — owner, 2026-10-17: "Why are we only showing one address and which one do we choose to show? … Maybe we
+    /// put like a little up and down chevron to change the location").
+    private var shown: Int? {
+        if let picked, places.indices.contains(picked) { return picked }
+        return places.indices.max { places[$0].count < places[$1].count || (places[$0].count == places[$1].count && $0 > $1) }
+    }
+    private var main: [PrayerModel]? { shown.map { places[$0] } }
     private var mainSpot: CLLocationCoordinate2D? { main?.first.flatMap(DayFacts.spot) }
-    private var masjid: String? { main?.first.flatMap { $0.atMasjid ? $0.mosqueName : nil }.flatMap { $0.isEmpty ? nil : $0 } }
+    private func masjid(_ i: Int) -> String? {
+        places[i].first.flatMap { $0.atMasjid ? $0.mosqueName : nil }.flatMap { $0.isEmpty ? nil : $0 }
+    }
     private var marked: Int { day.count }
 
     var body: some View {
@@ -466,12 +477,36 @@ private struct DayBento: View {
                     triggerSomeVibration(type: .light)
                     viewModel.present(PrayerSpotSelection(prayers: main, coordinate: c))
                 } label: {
-                    tile("Where", masjid ?? address ?? "Finding the place…",
+                    tile("Where", shown.flatMap { names[$0] } ?? "Finding the place…",
                          main.count == marked ? (marked == 1 ? "Prayed here" : "All \(marked) prayed here")
-                         : "\(main.count) of \(marked) here · \(places.count - 1) other \(places.count == 2 ? "place" : "places")",
+                         : "\(main.map(\.displayName).joined(separator: " · ")) · \(places.count - 1) other \(places.count == 2 ? "place" : "places")",
                          big: true)
                 }
                 .buttonStyle(.plain)
+                // The day's other places: the month title's up-down chevron, a menu of them.
+                .overlay(alignment: .topTrailing) {
+                    if places.count > 1 {
+                        Menu {
+                            ForEach(places.indices, id: \.self) { i in
+                                Button {
+                                    triggerSomeVibration(type: .light)
+                                    picked = i
+                                } label: {
+                                    Text(names[i] ?? "Finding the place…")
+                                    Text(places[i].map(\.displayName).joined(separator: " · "))
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .tint(.secondary)   // grey, as the month title's chevron (a menu takes the app's tint)
+                        .accessibilityLabel("Other places that day")
+                    }
+                }
             }
             // One row of three (owner: the masjid, how much moved and "how many times you prayed here" stay; the first and
             // last times go — "I don't really agree with the time differential thing").
@@ -483,10 +518,8 @@ private struct DayBento: View {
                 tile("Moved", moved.value, moved.detail)
             }
         }
-        .task(id: mainSpot.map { "\($0.latitude),\($0.longitude)" }) {
-            await loadAddress()
-            loadHistory()
-        }
+        .task(id: shown) { loadHistory() }
+        .task(id: places.count) { await loadNames() }
     }
 
     // MARK: The tiles' words
@@ -535,22 +568,25 @@ private struct DayBento: View {
             return CLLocation(latitude: s.latitude, longitude: s.longitude).distance(from: here)
         }
         var near = rows.filter { distance($0) <= 100 }
-        if let m = masjid { near += rows.filter { $0.mosqueName == m && distance($0) <= 1_000 } }
+        if let i = shown, let m = masjid(i) { near += rows.filter { $0.mosqueName == m && distance($0) <= 1_000 } }
         var seen = Set<String>()
         let unique = near.filter { seen.insert("\($0.dayKey)|\($0.name)").inserted }
         history = (unique.count, unique.map { $0.timeAtComplete ?? $0.startTime }.min())
     }
 
-    /// Street + city, as a pin's page finds it (shared cache on the view model).
-    private func loadAddress() async {
-        guard masjid == nil, let c = mainSpot else { return }
-        let key = String(format: "%.4f,%.4f", c.latitude, c.longitude)
-        if let cached = viewModel.addressCache[key] { address = cached; return }
-        let placemark = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: c.latitude, longitude: c.longitude)).first
-        let street = [placemark?.subThoroughfare, placemark?.thoroughfare].compactMap { $0 }.joined(separator: " ")
-        let place = [street.isEmpty ? placemark?.name : street, placemark?.locality].compactMap { $0 }.joined(separator: ", ")
-        guard !place.isEmpty else { return }
-        viewModel.addressCache[key] = place
-        address = place
+    /// Every place's name: a masjid's own, else street + city as a pin's page finds it (shared cache on the view model).
+    private func loadNames() async {
+        for i in places.indices {
+            if let m = masjid(i) { names[i] = m; continue }
+            guard let c = places[i].first.flatMap(DayFacts.spot) else { continue }
+            let key = String(format: "%.4f,%.4f", c.latitude, c.longitude)
+            if let cached = viewModel.addressCache[key] { names[i] = cached; continue }
+            let placemark = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: c.latitude, longitude: c.longitude)).first
+            let street = [placemark?.subThoroughfare, placemark?.thoroughfare].compactMap { $0 }.joined(separator: " ")
+            let place = [street.isEmpty ? placemark?.name : street, placemark?.locality].compactMap { $0 }.joined(separator: ", ")
+            guard !place.isEmpty else { continue }
+            viewModel.addressCache[key] = place
+            names[i] = place
+        }
     }
 }
