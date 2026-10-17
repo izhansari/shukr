@@ -241,6 +241,65 @@ final class shukrUITests: XCTestCase {
         measure(metrics: [XCTHitchMetric(application: app)], options: perfOptions()) { journeyPass(app) }
     }
 
+    // MARK: Journey on one screen + the calendar (2026-10-16, build-plan.md): the card's weeks, a tile, a month name → the
+    // month, months up and down, the title → the year, the year scrolled, a small month, back. Run on Laraib's 15 Pro.
+
+    private func back(_ app: XCUIApplication) {
+        let b = app.navigationBars.buttons.firstMatch
+        if b.exists { b.tap() } else {
+            let w = app.windows.firstMatch
+            w.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: w.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)))
+        }
+        usleep(1_200_000)
+    }
+
+    /// Drags inside an element, by a fraction of its height (positive: down).
+    private func drag(_ e: XCUIElement, _ by: CGFloat) {
+        let from = e.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: by > 0 ? 0.25 : 0.75))
+        from.press(forDuration: 0.02, thenDragTo: e.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: (by > 0 ? 0.25 : 0.75) + by)),
+                   withVelocity: .default, thenHoldForDuration: 0)
+        usleep(800_000)
+    }
+
+    private func calendarPass(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        let weeks = app.otherElements["Your weeks, a week a row"].firstMatch
+        if weeks.exists { drag(weeks, 0.5); drag(weeks, -0.5) }                       // the card's weeks, back and forth
+        let tile = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Friday'")).allElementsBoundByIndex
+            .filter { $0.exists && $0.isHittable }.last                                // a Friday in view (the latest)
+        if let tile { tile.tap(); usleep(700_000); tile.tap(); usleep(700_000) }       // a tile's line, then the numbers
+        // the latest month name in view (the card shows today's weeks; older names sit scrolled away)
+        let month = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open '")).allElementsBoundByIndex
+            .filter { $0.exists && $0.isHittable }.max { $0.frame.minY < $1.frame.minY }
+        guard let month else { return }
+        month.tap(); usleep(1_400_000)                                                 // a month name → the month
+        for by in [0.35, 0.35, -0.35, -0.35] as [CGFloat] { drag(window, by) }         // months up and down
+        let title = app.buttons.matching(NSPredicate(format: "label MATCHES '^[A-Z][a-z]+ [0-9]{4}$'")).firstMatch
+        if title.exists { title.tap(); usleep(1_200_000) }                             // the title → the year
+        window.swipeDown(velocity: .default); usleep(900_000)                          // earlier years
+        window.swipeUp(velocity: .default); usleep(900_000)
+        let small = app.buttons.matching(NSPredicate(format: "label CONTAINS ' days · '")).allElementsBoundByIndex
+            .filter { $0.exists && $0.isHittable }.last
+        if let small { small.tap(); usleep(1_200_000) }                                // a small month → that month
+        back(app)                                                                      // back to Journey
+    }
+
+    @available(iOS 26.0, *)
+    func testJourneyCalendarHitches() throws {
+        let app = launchForPerf()
+        openJourney(app)
+        measure(metrics: [XCTHitchMetric(application: app), XCTCPUMetric(application: app), XCTMemoryMetric(application: app)],
+                options: perfOptions()) { calendarPass(app) }
+    }
+
+    /// The same moves with no metrics, for an Instruments recording (or frames.log) alongside.
+    func testJourneyCalendarSwipesOnly() throws {
+        let app = launchForPerf()
+        openJourney(app)
+        for _ in 0..<3 { calendarPass(app) }
+    }
+
     /// The same moves with no metrics (an Instruments recording alongside), then JOURNEY_IDLE seconds still on Journey.
     func testJourneySwipesOnly() throws {
         let app = launchForPerf()
