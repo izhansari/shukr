@@ -3590,7 +3590,7 @@ struct LAIslandTime: View {
     }
 }
 
-/// The folded island's left side: the small ring with the prayer's symbol (its right side is `LACompactTrailing`).
+/// The folded island's left side: the small ring (its right side is `LACompactTrailing`).
 struct LACompactLeading: View {
     let state: PrayerWindowAttributes.ContentState
     let stale: Bool
@@ -3599,9 +3599,24 @@ struct LACompactLeading: View {
         // Room round the ring inside LAEnds' masks (each is exactly its content's box): the band, the arc and the glow are
         // stroked on the ring's edge and half of them was cut off (owner: "looks broken in bottom and left side"). The
         // negative padding gives the room back, so the island lays it out at 22 pt as before.
-        LAEnds(state: state, stale: stale) { e in LARing(state: state, ended: e, size: 22, onIsland: true, t: t).padding(6) }
+        // The ring alone, no prayer symbol inside (owner, 2026-10-16: "get rid of the symbol when it's in the collapsed
+        // dynamic island"; it didn't draw on her 15 Pro at the smaller ring).
+        LAEnds(state: state, stale: stale) { e in LAFoldedRing(state: state, ended: e, t: t).padding(6) }
             .padding(-6)
-            .overlay { Image(systemName: state.symbol).font(.system(size: 8, weight: .medium)) }
+    }
+}
+
+/// The folded island's ring (and the minimal one beside another app's): smaller than its 22 pt slot and drawn thicker
+/// (owner, 2026-10-16: it was clipped against the pill's rounded end on her 15 Pro — "make the radius smaller and the
+/// ring / progress a little thicker"). The slot stays 22 pt so the island keeps its width; the band is plain (no shadows).
+struct LAFoldedRing: View {
+    let state: PrayerWindowAttributes.ContentState
+    let ended: Bool
+    let t: LATuning
+    static let slot = 22.0, ring = 18.0, lineScale = 2.9   // band ≈ 3.1 pt, arc ≈ 2 pt (were 1.3 / 0.9)
+    var body: some View {
+        LARing(state: state, ended: ended, size: Self.ring, onIsland: true, lineScale: Self.lineScale, t: t)
+            .frame(width: Self.slot, height: Self.slot)
     }
 }
 
@@ -3833,9 +3848,13 @@ struct LASoftBand: View {
     /// The lifted band (owner, 2026-10-14: "more apparent on the lock screen"); the island keeps the flat one (each of
     /// its regions clips, so no drop or glow there — island-rules.md).
     var lifted = true
+    /// No shadows at all: the folded island's thick band (its shadows grew with it into a grey halo at the region's edge).
+    var plain = false
     @Environment(\.colorScheme) private var scheme
     var body: some View {
-        if lifted && surface == nil {
+        if plain {
+            Circle().stroke(surface ?? LASoft.surface(t, scheme), lineWidth: width)
+        } else if lifted && surface == nil {
             LiftedSoftBand(width: width, surface: LASoft.surface(t, scheme), shade: LASoft.shade(scheme), light: LASoft.light(scheme))
         } else {
             Circle()
@@ -3945,11 +3964,14 @@ struct LARing: View {
     let ended: Bool
     let size: Double
     var onIsland = false
+    /// The band, the arc and the ended dashes this many times their design width: at the folded island's size the card's
+    /// widths scale to hairlines (owner, 2026-10-16: "make the radius smaller and the ring / progress a little thicker").
+    var lineScale: Double = 1
     let t: LATuning
     var body: some View {
-        let band = t.ringBandWidth, arc = t.ringArcWidth
+        let band = t.ringBandWidth * lineScale, arc = t.ringArcWidth * lineScale
         ZStack {
-            LASoftBand(width: band, t: t, surface: onIsland ? LASoft.island : nil)
+            LASoftBand(width: band, t: t, surface: onIsland ? LASoft.island : nil, plain: lineScale > 1)
             if let at = state.markedAt {
                 let c = PrayerScoring.color(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: at))
                 Circle().stroke(c, style: StrokeStyle(lineWidth: arc, lineCap: .round))
@@ -3957,7 +3979,7 @@ struct LARing: View {
             } else if ended {
                 let step = CGFloat.pi * 90 / max(t.endedDashCount.rounded(), 1)
                 Circle().stroke(Color.secondary.opacity(t.endedDashOpacity),
-                                style: StrokeStyle(lineWidth: t.endedDashWidth, lineCap: .round, dash: [step * t.endedDashShare, step * (1 - t.endedDashShare)]))
+                                style: StrokeStyle(lineWidth: t.endedDashWidth * lineScale, lineCap: .round, dash: [step * t.endedDashShare, step * (1 - t.endedDashShare)]))
                     .rotationEffect(.degrees(-90))
             } else {
                 ForEach(Array(LAGrades.spans(state).enumerated()), id: \.offset) { _, span in

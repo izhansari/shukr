@@ -118,7 +118,7 @@ struct PrayerWindowLiveActivity: Widget {
             } compactTrailing: {
                 LAEnds(state: s, stale: stale) { e in LACompactTrailing(state: s, ended: e) }.environment(\.laInstantGates, true)
             } minimal: {
-                LAEnds(state: s, stale: stale) { e in LARing(state: s, ended: e, size: 22, onIsland: true, t: t) }
+                LAEnds(state: s, stale: stale) { e in LAFoldedRing(state: s, ended: e, t: t) }
                     .environment(\.laInstantGates, true)
             }
         }
