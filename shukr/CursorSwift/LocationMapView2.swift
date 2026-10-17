@@ -840,7 +840,7 @@ struct MapView: UIViewRepresentable {
                 return mapView.dequeueReusableAnnotationView(withIdentifier: "MeccaAnnotationView", for: annotation)
             }
             if let focus = annotation as? FocusPrayerAnnotation {
-                // Like a selected pin: its score colour, bigger, a green glow, above everything.
+                // Like a selected pin: its score colour, bigger, above everything (no glow — owner, 2026-10-17).
                 let view = MKMarkerAnnotationView(annotation: focus, reuseIdentifier: "focusPrayer")
                 view.markerTintColor = LocationViewModel.markerColor(for: focus.prayer)
                 view.glyphImage = UIImage(systemName: focus.prayer.atMasjid ? "building.columns.fill" : "hands.and.sparkles.fill")
@@ -850,10 +850,6 @@ struct MapView: UIViewRepresentable {
                 view.canShowCallout = false
                 view.isEnabled = false
                 view.transform = CGAffineTransform(scaleX: 1.35, y: 1.35)
-                view.layer.shadowColor = UIColor.systemGreen.cgColor
-                view.layer.shadowOpacity = 0.9
-                view.layer.shadowRadius = 10
-                view.layer.shadowOffset = .zero
                 return view
             }
             if let cluster = annotation as? MKClusterAnnotation {
@@ -921,15 +917,12 @@ struct MapView: UIViewRepresentable {
             } else if let prayer = (annotation as? CustomPrayerAnnotation)?.prayer {
                 prayers = [prayer]
             } else { return }
-            // Highlight: bigger, a green glow, on top of its neighbours. The pin keeps its score
-            // colour (turning it green read as "Optimal").
+            // Highlight: bigger, on top of its neighbours. The pin keeps its score colour (turning it green read as
+            // "Optimal"). No green glow round it (owner, 2026-10-17: "tapping on pins in map that gets shown have a
+            // glow.... dont love that").
             UIView.animate(withDuration: 0.2) {
                 view.transform = CGAffineTransform(scaleX: 1.35, y: 1.35)
             }
-            view.layer.shadowColor = UIColor.systemGreen.cgColor
-            view.layer.shadowOpacity = 0.9
-            view.layer.shadowRadius = 10
-            view.layer.shadowOffset = .zero
             view.zPriority = .max
             let selection = PrayerSpotSelection(prayers: prayers, coordinate: annotation.coordinate)
             parent.viewModel.present(selection)
