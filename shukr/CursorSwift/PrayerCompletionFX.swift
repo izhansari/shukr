@@ -148,7 +148,9 @@ struct CompletionFlourish: View {
                         .font(.subheadline)
                         .fontDesign(.rounded)
                         .fontWeight(.thin)
-                        .foregroundStyle(color)
+                        // The grade's colour only for Perfect; every other grade in plain ink (owner, 2026-10-17: "that
+                        // yellow color is really hard to read … we only show the color if it's in the Perfect window").
+                        .foregroundStyle(PrayerScoring.grade(for: event.score) == .perfect ? color : .primary)
                         // Inside the ring: "Jumu'ah at Islamic Center of Morrisville" ran out past both sides of it
                         // (owner, 2026-10-02). Two centred lines at most, a touch smaller if it must.
                         .multilineTextAlignment(.center)
