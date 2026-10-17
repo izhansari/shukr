@@ -180,7 +180,11 @@ struct JourneyMonthPage: View {
             ForEach(panes, id: \.month) { pane in
                 let place = calendarPlace(pane.k, height: height)
                 JourneyCalendar(log: log, month: pane.month, today: today, scale: scale,
-                                highlight: pane.k == 0 ? focus : nil) { open($0) }
+                                highlight: pane.k == 0 ? focus : nil,
+                                onKey: { kind in
+                                    triggerSomeVibration(type: .light)
+                                    withAnimation(.easeOut(duration: CircleMotion.quick)) { focus = focus == kind ? nil : kind }
+                                }) { open($0) }
                     .frame(height: height, alignment: .top)
                     .animation(.easeInOut(duration: 0.3), value: focus)
                     .modifier(DayPaneMotion(away: place.away))
@@ -299,6 +303,8 @@ private struct JourneyCalendar: View {
     /// The days' size (1 = JourneyDayRing.size): smaller where the page wouldn't fit (an SE; a six-week month on a 17 Pro).
     var scale: CGFloat = 1
     let highlight: JourneyHighlight?
+    /// A legend item tapped: light only its days (again, all).
+    var onKey: (JourneyHighlight) -> Void = { _ in }
     let onDay: (Date) -> Void
 
     /// Its height for a scale: the weekday letters, six weeks of days, the key (worked out, not measured, so the page's
@@ -344,9 +350,10 @@ private struct JourneyCalendar: View {
                 ForEach(0..<max(0, 42 - lead - days.count), id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
             }
             HStack(spacing: 16) {
-                key(keyRing(inTime: true), "All five in time")
-                key(keyRing(inTime: false), "All five")
-                key(keyFifths, "Incomplete")
+                // Owner, 2026-10-16: "change it to say in time with kaza and complete. And tapping any one focuses those rings."
+                key(keyRing(inTime: true), "In time", .allInTime)
+                key(keyRing(inTime: false), "With Qaza", .withQaza)
+                key(keyFifths, "Incomplete", .incomplete)
                 if hasExcused { key(ExcusedDayBadge(size: 10), "Excused") }
             }
             .font(.system(size: 11, weight: .light, design: .rounded))
@@ -386,8 +393,20 @@ private struct JourneyCalendar: View {
         }
     }
 
-    private func key<V: View>(_ swatch: V, _ title: String) -> some View {
-        HStack(spacing: 5) { swatch.frame(width: 12, height: 12); Text(title) }
+    /// A legend item: a tap lights its days on the calendar; while another one (or a number) is on, it steps back.
+    private func key<V: View>(_ swatch: V, _ title: String, _ kind: JourneyHighlight? = nil) -> some View {
+        let on = kind != nil && highlight == kind
+        return Button { if let kind { onKey(kind) } } label: {
+            // A bigger hit area without growing the legend: the calendar's height is worked out (JourneyCalendar.height),
+            // and padding here pushed the key under its clip (the owner saw it cut in half).
+            HStack(spacing: 5) { swatch.frame(width: 12, height: 12); Text(title) }
+                .contentShape(Rectangle().inset(by: -8))
+        }
+        .buttonStyle(.plain)
+        .disabled(kind == nil)   // Excused: a label only
+        .opacity(highlight == nil || on ? 1 : 0.4)
+        .accessibilityAddTraits(on ? .isSelected : [])
+        .accessibilityHint(kind == nil ? "" : on ? "Shows every day again" : "Lights these days on the calendar")
     }
 }
 

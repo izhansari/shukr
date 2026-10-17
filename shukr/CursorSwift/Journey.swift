@@ -176,12 +176,17 @@ struct JourneyLog {
 /// The card's two day counts light their days up and dim the rest (as Insights did — owner: it helps most in the grid).
 enum JourneyHighlight: Equatable {
     case allInTime, allFive
+    /// The month's legend (owner, 2026-10-16: "In time · With Qaza · Incomplete … tapping any one focuses those rings"):
+    /// all five with a Qaza among them; a day with prayers that isn't finished.
+    case withQaza, incomplete
     /// The month's best-scored day(s): every day with that score, a tie lighting each (a tap on the average score — owner).
     case bestScore(Int)
     func matches(_ d: JourneyLog.Day) -> Bool {
         switch self {
         case .allInTime: d.allInTime
         case .allFive: d.allFive
+        case .withQaza: d.allFive && !d.allInTime
+        case .incomplete: d.active && !d.allFive
         case .bestScore(let score): d.active && d.dayScore == score
         }
     }
