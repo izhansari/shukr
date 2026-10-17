@@ -48,6 +48,12 @@ enum JourneyMotion {
     /// card lands 80-odd days, and by day of the month the last ones' rings ran past the dial's end.
     static func ring(_ t: CGFloat, at p: CGFloat) -> CGFloat { let a = 0.6 + p * 0.18; return io(seg(t, a, a + 0.2)) }
     static func number(_ t: CGFloat, at p: CGFloat) -> CGFloat { let a = 0.6 + p * 0.18; return out(seg(t, a + 0.02, a + 0.2)) }
+    /// Going back to the card, ring by ring (owner, 2026-10-17, his pick: "going back, the rings undraw ring by ring over a
+    /// longer stretch (t 1.0 to 0.6) so it's about 20 a frame instead of 50 — same look, smoother start"): each ring a short
+    /// window, the last drawn first, spread over the whole stretch. The forward windows overlap, so run backwards ~50 rings
+    /// un-drew in each of the back's first frames (the ~35 ms start on his 13 Pro Max).
+    static func ringBack(_ t: CGFloat, at p: CGFloat) -> CGFloat { let a = 0.6 + p * 0.32; return io(seg(t, a, a + 0.08)) }
+    static func numberBack(_ t: CGFloat, at p: CGFloat) -> CGFloat { let a = 0.6 + p * 0.32; return out(seg(t, a + 0.01, a + 0.08)) }
     /// A card month name landing on its label: the label's own name takes over as the flying one goes.
     static func nameLand(_ t: CGFloat) -> CGFloat { out(seg(t, 0.72, 0.9)) }
     /// The month fading as a day opens (Bradley: "it fades out as the ring starts to grow").
@@ -462,14 +468,27 @@ struct JourneyMonthOpen: Equatable {
 @MainActor enum JourneyFlights {
     private(set) static var running = 0
     private static var waiting: [() -> Void] = []
-    /// Now if nothing's flying, else once every flight has landed (in order).
+    private static var drained = 0
+    /// Now if nothing's flying, else once every flight has landed (in order) — or after 2 s at the latest: no flight runs
+    /// that long, so by then a count was lost somewhere, and a reload must never wait on it for good.
     static func whenIdle(_ go: @escaping () -> Void) {
-        if running == 0 { go() } else { waiting.append(go) }
+        guard running > 0 else { go(); return }
+        waiting.append(go)
+        let round = drained
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            guard drained == round, !waiting.isEmpty else { return }
+            running = 0
+            drain()
+        }
     }
     fileprivate static func began() { running += 1 }
     fileprivate static func ended() {
         running = max(running - 1, 0)
-        guard running == 0, !waiting.isEmpty else { return }
+        if running == 0 { drain() }
+    }
+    private static func drain() {
+        guard !waiting.isEmpty else { return }
+        drained += 1
         let w = waiting
         waiting = []
         w.forEach { $0() }
@@ -489,6 +508,13 @@ struct JourneyMonthOpen: Equatable {
     enum Key { case month, day }
     @ObservationIgnored private var runs: [Key: (from: CGFloat, to: CGFloat, start: CFTimeInterval, duration: Double, done: () -> Void)] = [:]
     @ObservationIgnored private var ticker: JourneyDialTicker?
+    /// Whether this trip began at the page (1 → 0): the back's own ring timing (JourneyMotion.ringBack). Only a dial that
+    /// `staggersBack` (the host's: expanded → card); kept for the whole trip, so a finger turning round mid-swipe never
+    /// jumps between the two timings.
+    @ObservationIgnored private(set) var backward = false
+    @ObservationIgnored private let staggersBack: Bool
+
+    init(staggersBack: Bool = false) { self.staggersBack = staggersBack }
 
     func value(_ k: Key) -> CGFloat { k == .month ? dial : dayDial }
 
@@ -515,6 +541,9 @@ struct JourneyMonthOpen: Equatable {
     }
 
     private func write(_ k: Key, _ v: CGFloat) {
+        if k == .month, staggersBack {
+            if dial >= 1, v < 1 { backward = true } else if dial <= 0, v > 0 { backward = false }
+        }
         if k == .month { if dial != v { dial = v } } else { if dayDial != v { dayDial = v } }
     }
 
@@ -562,7 +591,9 @@ struct JourneyDayOpener: Equatable {
 }
 
 /// One calendar day's share of the entrance: its ring drawn so far (each fifth from its start, or the closed ring from the
-/// top) and its number's opacity. JourneyDayCell reads it; 1 / 1 without a transition.
+/// top) and its number's opacity. JourneyDayCell's pieces read it as three values, each only its own (`journeyCellRing`,
+/// `…Number`, `…Fill`): one value read whole redrew every flying ring when only the fills turned off at the back's first
+/// frame (~150 ring bodies in its first 0.1 s, sim); 1 / 1 / 1 without a transition.
 struct JourneyCellDraw: Equatable {
     var ring: CGFloat = 1
     var number: Double = 1
@@ -574,7 +605,9 @@ struct JourneyCellDraw: Equatable {
 extension EnvironmentValues {
     @Entry var journeyMonthOpen: JourneyMonthOpen? = nil
     @Entry var journeyMonthDial: JourneyMonthDial? = nil
-    @Entry var journeyCellDraw: JourneyCellDraw = .full
+    @Entry var journeyCellRing: CGFloat = 1
+    @Entry var journeyCellNumber: Double = 1
+    @Entry var journeyCellFill: Double = 1
     /// Set by the host: a day tapped on the month opens through it (the ring grows) instead of a push.
     @Entry var journeyDayOpener: JourneyDayOpener? = nil
     /// The day whose top ring is flying to the day page (its own ring draws none).
@@ -685,8 +718,10 @@ private struct JourneyFlightCellDraw: ViewModifier {
 
     func body(content: Content) -> some View {
         let t = e?.dial ?? 1
+        let back = e?.backward == true
         let draw: JourneyCellDraw = if let at {
-            JourneyCellDraw(ring: hidden ? 0 : JourneyMotion.ring(t, at: at), number: Double(JourneyMotion.number(t, at: at)),
+            JourneyCellDraw(ring: hidden ? 0 : back ? JourneyMotion.ringBack(t, at: at) : JourneyMotion.ring(t, at: at),
+                            number: Double(back ? JourneyMotion.numberBack(t, at: at) : JourneyMotion.number(t, at: at)),
                             fill: hidden || t < 1 ? 0 : 1)
         } else if hidden {
             JourneyCellDraw(ring: 0, number: 1, fill: 0)
@@ -694,7 +729,9 @@ private struct JourneyFlightCellDraw: ViewModifier {
             .full
         }
         content
-            .environment(\.journeyCellDraw, draw)
+            .environment(\.journeyCellRing, draw.ring)
+            .environment(\.journeyCellNumber, draw.number)
+            .environment(\.journeyCellFill, draw.fill)
             .opacity(flying && at == nil ? Double(JourneyMotion.monthWords(t)) : 1)
     }
 }
@@ -974,7 +1011,7 @@ struct JourneyMonthHost: ViewModifier {
     /// The dials (one object all flight; the leaf pieces read it). Taps wait for a flight to land through a leaf gate that
     /// reads them (JourneyHitGate): a settled flag here redrew the host — and rebuilt the month page — on the first frame of
     /// every flight back (a ~60 ms start on his 13 Pro Max).
-    @State private var dials = JourneyMonthDial()
+    @State private var dials = JourneyMonthDial(staggersBack: true)
     /// The edge swipe: which dial and where it was when the finger came down.
     @State private var backDrag: (day: Bool, from: CGFloat)?
     /// The edge swipe claims only a drag that starts sideways; one that starts up or down is the month's paging, left alone.

@@ -60,7 +60,7 @@ struct JourneyDayCell: View {
                 if day.allFive && !isToday {
                     Circle().fill(day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
                         .frame(width: JourneyDayRing.fill * 2, height: JourneyDayRing.fill * 2)
-                        .modifier(JourneyCellDrawFade(part: .fill))
+                        .modifier(JourneyCellFillFade())
                     JourneyCellRing(closed: day.allInTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark),
                                     fifths: [])
                 } else {
@@ -72,14 +72,14 @@ struct JourneyDayCell: View {
                 .monospacedDigit()
                 .foregroundStyle(future ? Color.secondary.opacity(0.55) : drawn || isToday ? Color.primary : Color.secondary.opacity(0.85))
                 .offset(y: isToday ? -2.2 * JourneyDayRing.k : 0)
-                .modifier(JourneyCellDrawFade(part: .number))
+                .modifier(JourneyCellNumberFade())
             if isToday {
                 Circle().fill(Color.primary).frame(width: 3 * JourneyDayRing.k, height: 3 * JourneyDayRing.k)
                     .offset(y: 7.6 * JourneyDayRing.k)
-                    .modifier(JourneyCellDrawFade(part: .number))
+                    .modifier(JourneyCellNumberFade())
             } else if excusedAllDay {
                 ExcusedDayBadge(size: 9.2 * JourneyDayRing.k).offset(y: 13 * JourneyDayRing.k)
-                    .modifier(JourneyCellDrawFade(part: .number))
+                    .modifier(JourneyCellNumberFade())
             }
         }
         .frame(width: JourneyDayRing.size, height: JourneyDayRing.size)
@@ -103,15 +103,14 @@ struct JourneyDayCell: View {
     }
 }
 
-/// A day cell's ring — one closed ring, or its fifths — drawn as far as the flight has it (JourneyCellDraw.ring).
+/// A day cell's ring — one closed ring, or its fifths — drawn as far as the flight has it (`journeyCellRing`).
 private struct JourneyCellRing: View {
     let closed: Color?
     let fifths: [Color?]
-    @Environment(\.journeyCellDraw) private var cellDraw
+    @Environment(\.journeyCellRing) private var drawn
 
     var body: some View {
         let _ = JourneyPerf.body("cellRing")
-        let drawn = cellDraw.ring
         ZStack {
             if let closed {
                 Circle().trim(from: 0, to: drawn)
@@ -132,10 +131,14 @@ private struct JourneyCellRing: View {
     }
 }
 
-/// A day cell's fill or number, faded as far as the flight has it (JourneyCellDraw.fill / .number).
-private struct JourneyCellDrawFade: ViewModifier {
-    enum Part { case fill, number }
-    let part: Part
-    @Environment(\.journeyCellDraw) private var cellDraw
-    func body(content: Content) -> some View { content.opacity(part == .fill ? cellDraw.fill : cellDraw.number) }
+/// A day cell's fill, faded as far as the flight has it (`journeyCellFill`).
+private struct JourneyCellFillFade: ViewModifier {
+    @Environment(\.journeyCellFill) private var fill
+    func body(content: Content) -> some View { content.opacity(fill) }
+}
+
+/// A day cell's number (and its dot or badge), faded as far as the flight has it (`journeyCellNumber`).
+private struct JourneyCellNumberFade: ViewModifier {
+    @Environment(\.journeyCellNumber) private var number
+    func body(content: Content) -> some View { content.opacity(number) }
 }
