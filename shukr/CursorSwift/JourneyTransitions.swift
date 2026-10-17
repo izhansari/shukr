@@ -917,6 +917,12 @@ struct JourneyMonthHost: ViewModifier {
     /// back → back — for the frame log on a phone in Release (the real pages, not a stand-in).
     private func autoRun() async {
         let args = ProcessInfo.processInfo.arguments
+        if args.contains("-demoJourneyTurnRun") {
+            // The month page turns itself (JourneyMonthPage.turnRun): this month, opened from the card.
+            try? await Task.sleep(for: .seconds(3))
+            month = JourneyMonthRoute(month: JourneyLog.monthStart(today))
+            return
+        }
         guard let i = args.firstIndex(of: "-demoJourneyFlightRun") else { return }
         let n = args.indices.contains(i + 1) ? Int(args[i + 1]) ?? 5 : 5
         func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }

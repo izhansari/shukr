@@ -173,6 +173,27 @@ struct JourneyMonthPage: View {
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
+        .task { await turnRun() }
+    }
+
+    /// `-demoJourneyTurnRun [N]`: the month turned with no finger, N times (default 3) back three months and forward three,
+    /// 1.2 s apart — each turn's own window in the perf log, with no XCTest reading the screen between turns (its ~70 ms
+    /// read sat in every turn's window). Release too, like `-demoJourneyFlightRun`; Journey's host opens this month for it.
+    @MainActor private static var turnRunDone = false
+    private func turnRun() async {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-demoJourneyTurnRun"), !Self.turnRunDone else { return }
+        Self.turnRunDone = true
+        let n = args.indices.contains(i + 1) ? Int(args[i + 1]) ?? 3 : 3
+        func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
+        await wait(JourneyMotion.monthDuration + 1.5)   // the month landed and settled
+        for _ in 0..<n {
+            for by in [-1, -1, -1, 1, 1, 1] {
+                turn(by, scale: dayScale)
+                await wait(1.2)
+            }
+        }
+        print("🎞️ journey turn run done")
     }
 
     /// Out to the year: the year laid out under the month, the month's days go home into its small month there, the year's
