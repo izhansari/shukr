@@ -865,7 +865,7 @@ struct PrayerPhotoViewer: View {
                 Rectangle().fill(.ultraThinMaterial)
                     .overlay(Color.black.opacity(0.25))
                     .ignoresSafeArea()
-                    .opacity(shown ? 1 - min(dragDistance / 400, 0.6) : 0)
+                    .opacity(fading ? 0 : shown ? 1 - min(dragDistance / 400, 0.6) : 0)
                     // A tap on the page around it: with the share options up it puts them away; else it closes (owner).
                     .onTapGesture { if sharing { setSharing(false) } else { close() } }
                 VStack(spacing: 22) {
@@ -896,6 +896,10 @@ struct PrayerPhotoViewer: View {
                     }
                     .opacity(dragDistance > 10 || !shown ? 0 : 1)
                 }
+                // Fading out (`fadeOut`), the pile goes as one picture: each card faded on its own, their overlap stayed
+                // darker than the edges (owner, 2026-10-17: "fade the pile out as one continuous thing").
+                .compositingGroup()
+                .opacity(fading ? 0 : 1)
                 // Room for the share options under it.
                 .offset(y: sharing ? -110 : 0)
                 .offset(closeDrag)
@@ -938,7 +942,6 @@ struct PrayerPhotoViewer: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .opacity(fading ? 0 : 1)
         }
         .onAppear {
             #if DEBUG
