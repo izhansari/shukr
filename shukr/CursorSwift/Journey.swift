@@ -446,23 +446,29 @@ struct JourneyPage: View {
         let container = context.container
         let ranges = Excused.ranges
         let day = today
+        // The log once: the card's, and Prayer scores' row from the same one (it built its own — every prayer row read three
+        // times off the main thread per open, perf sweep). To make up's count reads its rows alongside.
         Task {
-            let t = JourneyPerf.now
-            let built = await JourneyLog.load(container: container, ranges: ranges)
+            let t = JourneyPerf.now, now = Date()   // one moment for all three (a Fajr turn mid-load can't split them)
+            let built = await JourneyLog.load(container: container, ranges: ranges, now: now)
             JourneyPerf.took("log.load", since: t)
             guard token == loadToken else { return }
             log = built
             JourneyLog.last = built
             stats = JourneyPerf.time("stats") { YourJourneyStats(log: built, today: day) }
-        }
-        Task {
-            let t = JourneyPerf.now
-            let s = await PrayerScores.load(container: container, ranges: ranges)
-            let open = await JourneyMakeUpPage.openCount(container: container)
-            JourneyPerf.took("scores+makeUp.load", since: t)
+            let t2 = JourneyPerf.now
+            let (s, open) = await Task.detached(priority: .userInitiated) {
+                let context = ModelContext(container)
+                return (PrayerScores.build(log: built, context: context, now: now),
+                        JourneyMakeUpPage.entries(in: context, ranges: ranges, now: now).open.count)
+            }.value
+            JourneyPerf.took("scores+makeUp.load", since: t2)
             guard token == loadToken else { return }
             scores = (s.prayedScore, s.prayed > 0 ? s.ranked.first : nil)
             makeUpTotal = open
+            // Prayer scores opens on these at once (its own load then refreshes them).
+            PrayerScores.lastBySpan[.all] = s
+            PrayerScores.last = s
         }
     }
     #if DEBUG
