@@ -729,10 +729,10 @@ struct JourneyMonthHost: ViewModifier {
     let log: JourneyLog
     @State private var flight: JourneyMonthFlight?
     @State private var day: JourneyDayFlight?
-    /// The dials (one object all flight; the leaf pieces read it), and whether each flight has landed (taps wait for it).
+    /// The dials (one object all flight; the leaf pieces read it). Taps wait for a flight to land through a leaf gate that
+    /// reads them (JourneyHitGate): a settled flag here redrew the host — and rebuilt the month page — on the first frame of
+    /// every flight back (a ~60 ms start on his 13 Pro Max).
     @State private var dials = JourneyMonthDial()
-    @State private var monthSettled = false
-    @State private var daySettled = false
     /// The edge swipe: which dial and where it was when the finger came down.
     @State private var backDrag: (day: Bool, from: CGFloat)?
     /// The edge swipe claims only a drag that starts sideways; one that starts up or down is the month's paging, left alone.
@@ -757,7 +757,7 @@ struct JourneyMonthHost: ViewModifier {
                 JourneyMonthPage(log: log, start: flight.start)
                     .modifier(JourneyMonthAway())
                     .environment(\.journeyDayOpener, JourneyDayOpener(id: openerID, open: { openDay($0) }))
-                    .allowsHitTesting(day == nil && monthSettled && !fadingOut)
+                    .modifier(JourneyHitGate(dials: dials, key: .month, open: day == nil && !fadingOut))
                     .opacity(1 - outFade)
             }
             if flight != nil && day == nil { edgeStrip }
@@ -775,7 +775,7 @@ struct JourneyMonthHost: ViewModifier {
             if let day {
                 ZStack {
                     JourneyDayPage(date: day.date, firstDay: log.firstDay)
-                        .allowsHitTesting(daySettled)
+                        .modifier(JourneyHitGate(dials: dials, key: .day, open: true))
                     if let to = day.to { JourneyFlyingDayRing(flight: day, to: to, log: log) }
                 }
             }
@@ -840,7 +840,6 @@ struct JourneyMonthHost: ViewModifier {
         let geo = JourneyFlightGeometry.shared
         geo.title = nil
         dials.set(.month, 0)
-        monthSettled = false
         flight = JourneyMonthFlight.make(start, log: log, today: today)
         // The dial runs once the month's title is laid out (the title flies to it).
         geo.onTitle = { runMonth(to: 1) }
@@ -848,12 +847,11 @@ struct JourneyMonthHost: ViewModifier {
 
     private func runMonth(to target: CGFloat, how: String = "") {
         let remaining = abs(target - dials.dial)
-        guard remaining > 0.001 else { if target == 0 { close() } else { monthSettled = true }; return }
-        monthSettled = false
+        guard remaining > 0.001 else { if target == 0 { close() }; return }
         let run = JourneyFrameLog.shared.start(target == 1 ? "card → month" : "month → card")
         dials.animate(.month, to: target, duration: JourneyMotion.monthDuration * Double(remaining)) {
             JourneyFrameLog.shared.stop(how, run: run)
-            if target == 0 { close() } else { monthSettled = true }
+            if target == 0 { close() }
         }
     }
 
@@ -897,7 +895,6 @@ struct JourneyMonthHost: ViewModifier {
         guard day == nil, date <= today, log.day(date).active, date < today || log.day(date).allFive else { return }
         triggerSomeVibration(type: .light)
         dials.set(.day, 0)
-        daySettled = false
         day = JourneyDayFlight(date: date, from: JourneyFlightGeometry.shared.cells[date], to: nil)
         // The dial runs once the day page has laid out its disc (where to land) and read its rows (its heavy first moment:
         // Bradley's check of the lab — a real tap logged a 177 ms stall while the page loaded mid-flight).
@@ -923,12 +920,11 @@ struct JourneyMonthHost: ViewModifier {
 
     private func runDay(to target: CGFloat, how: String = "") {
         let remaining = abs(target - dials.dayDial)
-        guard remaining > 0.001 else { if target == 0 { day = nil } else { daySettled = true }; return }
-        daySettled = false
+        guard remaining > 0.001 else { if target == 0 { day = nil }; return }
         let run = JourneyFrameLog.shared.start(target == 1 ? "month → day" : "day → month")
         dials.animate(.day, to: target, duration: JourneyMotion.dayDuration * Double(remaining)) {
             JourneyFrameLog.shared.stop(how, run: run)
-            if target == 0 { day = nil; dials.set(.day, 0) } else { daySettled = true }
+            if target == 0 { day = nil; dials.set(.day, 0) }
         }
     }
 
@@ -966,7 +962,6 @@ struct JourneyMonthHost: ViewModifier {
                     let onDay = day != nil
                     if onDay { retargetDayForBack() } else { retargetMonthForBack() }
                     backDrag = (onDay, onDay ? dials.dayDial : dials.dial)
-                    if onDay { daySettled = false } else { monthSettled = false }
                     JourneyFrameLog.shared.start(onDay ? "day → month (finger)" : "month → card (finger)")
                 }
                 guard let drag = backDrag else { return }
@@ -1001,6 +996,14 @@ struct JourneyFlightStill: ViewModifier {
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
+}
+
+/// Taps through only once a flight has landed — read from the live dial here, so the host never redraws for it.
+private struct JourneyHitGate: ViewModifier {
+    let dials: JourneyMonthDial
+    let key: JourneyMonthDial.Key
+    let open: Bool
+    func body(content: Content) -> some View { content.allowsHitTesting(open && dials.value(key) >= 1) }
 }
 
 /// Journey's page as at rest: no month open as far as its pieces know (the back from the year).
