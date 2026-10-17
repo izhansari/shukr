@@ -39,6 +39,8 @@ struct JourneyHomeCard: View {
     /// "best streak" tapped: its days lit, the grid at them (owner, 2026-10-17: "clicking this takes us to the area that
     /// shows those days with best streak") — the month's way with its numbers. Again, or a tile, lets it go.
     @State private var streakShown = false
+    /// The grid's place (today's week at the bottom to start; `toToday`).
+    @State private var position = ScrollPosition(edge: .bottom)
     /// Where the grid was when the streak lit (its top row; nil: resting at today), and whether to go back there.
     @State private var beforeStreak: (week: Date?, back: Bool) = (nil, false)
     /// A finger on the tiles (not observed: nothing redraws from it).
@@ -169,9 +171,9 @@ struct JourneyHomeCard: View {
             }
             // Journey opens on today's week at the bottom (owner, 2026-10-17: "opening journey page should show card
             // scrolled to bottom instead of how it opens with the furthest date at the top"): defaultScrollAnchor only
-            // sets the first layout's offset, and the weeks often arrive after it (the log is read off the main thread).
-            .onAppear { toToday(proxy) }
-            .onChange(of: stats.weeks.count) { toToday(proxy) }
+            // sets the first layout's offset, and the weeks arrive after it — so the grid stays pinned to today while
+            // they do (`scrub.pinned`, the scroll geometry below).
+            .onAppear { scrub.pinned = true; toToday() }
             .onChange(of: streakShown) { _, on in
                 if !on {
                     // Turned off by its own tap: back to where you were (owner, 2026-10-17: "if I deselect it, I want to
@@ -205,11 +207,13 @@ struct JourneyHomeCard: View {
         }
         .padding(.trailing, -Self.ringRoom)
         .defaultScrollAnchor(.bottom)
+        .scrollPosition($position)
         .scrollBounceBehavior(.basedOnSize)
         // A finger scrolling the grid lets a picked tile and a lit streak go (owner, 2026-10-17: "if a tile is selected,
         // but we start scrolling, it deselects that tile. Same for if we scroll away while the best streak is selected").
         // Only the finger's scroll: the streak's own scroll to its days is .animating, not .interacting.
         .onScrollPhaseChange { _, phase in
+            if phase == .interacting { scrub.pinned = false }   // the finger's now: no more snapping to today
             guard phase == .interacting, picked != nil || streakShown else { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
         }
@@ -220,6 +224,9 @@ struct JourneyHomeCard: View {
             return [first, count, atEnd ? 1 : 0]
         } action: { _, v in
             view = (v[0], v[1], v[2] == 1)
+            // Pinned to today and the weeks grew under it (they arrive after the first layout; on a return to Journey into
+            // a copy of the page that started empty — logged on the sim, it settled at the first weeks): back to the end.
+            if v[2] == 0, scrub.pinned, picked == nil, !streakShown { toToday() }
         }
         // A fade at the top: there are earlier weeks up there.
         .mask {
@@ -268,9 +275,9 @@ struct JourneyHomeCard: View {
             .contentShape(Rectangle())
             .contentShape(Rectangle().inset(by: -1.5))   // the gaps between rows too
             .onTapGesture(coordinateSpace: .named(Self.rowsSpace)) { p in
-                // A tap near the picked tile (its bar and 12 pt across, 9 pt up and down — "increase the tap dismiss tile area some more") lets it go (owner, 2026-10-17: "the
+                // A tap near the picked tile (its bar and a few points round it) lets it go (owner, 2026-10-17: "the
                 // intention of deselecting is very hard since user has to tap exactly on that tile").
-                if let on = picked, let r = rect(of: on), r.insetBy(dx: -12, dy: -9).contains(p) { tap(on); return }
+                if let on = picked, let r = rect(of: on), r.insetBy(dx: -5, dy: -4).contains(p) { tap(on); return }
                 // This row's own week: never the row a y ÷ pitch guesses.
                 if let d = week.days[column(p.x)] { tap(d.date) }
             }
@@ -328,11 +335,11 @@ struct JourneyHomeCard: View {
     }
 
     /// The grid at today's week, at once — not while a tile is picked or the streak is lit.
-    private func toToday(_ proxy: ScrollViewProxy) {
+    private func toToday() {
         guard picked == nil, !streakShown, !stats.weeks.isEmpty else { return }
         var quiet = Transaction()
         quiet.disablesAnimations = true
-        withTransaction(quiet) { proxy.scrollTo(Self.end, anchor: .bottom) }
+        withTransaction(quiet) { position.scrollTo(edge: .bottom) }
     }
 
     // Rows are found by where the stack put them, never by index × pitch: a LazyVStack only estimates the rows it hasn't
@@ -386,6 +393,7 @@ struct JourneyHomeCard: View {
                             if streakShown {
                                 beforeStreak.back = true
                             } else {
+                                scrub.pinned = false
                                 let top = stats.weeks.indices.contains(view.first) ? stats.weeks[view.first].id : nil
                                 beforeStreak = (view.atEnd ? nil : top, false)
                             }
@@ -848,6 +856,9 @@ enum JourneyExtraTap {
 @MainActor final class JourneyCardScrub {
     var scrubbing = false
     var width: CGFloat = 0
+    /// The grid stays at today until a finger scrolls it or the streak takes it elsewhere (Journey opening on today:
+    /// "exiting the page and coming back still opens with the top most tiles in view").
+    var pinned = true
     /// The photos count's place on screen (the day's pile opens out of it).
     var photosFrame: CGRect = .zero
     var rowTops: [Date: CGFloat] = [:]

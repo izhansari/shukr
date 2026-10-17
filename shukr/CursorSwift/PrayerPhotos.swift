@@ -791,18 +791,13 @@ struct PrayerPhotoViewer: View {
     var pile: [String] = []
     /// The small photo it was opened from: the card zooms out of it and back into it (one view, scaled and moved).
     var from: CGRect? = nil
-    /// No small photo to grow from: the pile rises from the page's bottom and goes back out of it, the page behind fading
-    /// in place (Journey's card — owner, 2026-10-17: "i like how pile comes up from bottom of page... make it exit same way
-    /// out the bottom. and dont move the background overlay with it").
-    var rise = false
     let onClose: () -> Void
     @State private var images: (back: UIImage?, front: UIImage?)
     /// The card's own place, measured once; until then it isn't drawn (it would flash full size).
     @State private var cardFrame: CGRect?
 
-    init(key: String, pile: [String] = [], from: CGRect? = nil, rise: Bool = false,
-         initial: (back: UIImage?, front: UIImage?) = (nil, nil), onClose: @escaping () -> Void) {
-        self.rise = rise
+    init(key: String, pile: [String] = [], from: CGRect? = nil, initial: (back: UIImage?, front: UIImage?) = (nil, nil),
+         onClose: @escaping () -> Void) {
         self.key = key
         self.pile = pile
         let top = pile.count > 1 ? pile.count - 1 : 0
@@ -898,9 +893,8 @@ struct PrayerPhotoViewer: View {
                 .offset(closeDrag)
                 .scaleEffect(1 - min(dragDistance / 1400, 0.22))
                 // Opened from a small photo: the card zooms (above); else the old spring-in.
-                .scaleEffect(from == nil && !rise && !shown ? 0.86 : 1)
-                .opacity(from == nil && !rise && !shown ? 0 : 1)
-                .offset(y: rise && !shown ? geo.size.height : 0)
+                .scaleEffect(from == nil && !shown ? 0.86 : 1)
+                .opacity(from == nil && !shown ? 0 : 1)
                 .gesture(DragGesture()
                     .onChanged { value in
                         guard !sharing else { return }
@@ -943,7 +937,7 @@ struct PrayerPhotoViewer: View {
             #endif
             PrayerPhotoViewing.shared.opened()
             if from == nil {
-                withAnimation(.spring(response: 0.42, dampingFraction: rise ? 0.9 : 0.78)) { shown = true } completion: {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true } completion: {
                     withAnimation(.easeOut(duration: 0.2)) { settled = true }
                 }
             }
@@ -1107,10 +1101,8 @@ struct PrayerPhotoViewer: View {
             } completion: { onClose() }
             return
         }
-        // Risen from the bottom: back out of it, a little longer, the page behind fading where it is.
-        let out = rise ? 0.32 : 0.2
-        withAnimation(.easeIn(duration: out)) { shown = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + out) { onClose() }
+        withAnimation(.easeIn(duration: 0.2)) { shown = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onClose() }
     }
 
 }

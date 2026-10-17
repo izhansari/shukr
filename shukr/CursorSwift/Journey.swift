@@ -346,7 +346,10 @@ struct JourneyPage: View {
             DayNotesInfo(notes: dayNotes ?? [])
         }
         .fullScreenCover(item: $dayPile) { route in
-            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, rise: true) {
+            // Grows out of the photos count from a screen below it — what the cover's own slide and the zoom made together
+            // (owner liked it: "i like how pile comes up from bottom of page") — and goes back the same way out of the
+            // bottom, while its blurred page fades in place ("dont move the background overlay with it").
+            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from.offsetBy(dx: 0, dy: UIScreen.main.bounds.height)) {
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
                 withTransaction(quiet) { dayPile = nil }
@@ -449,7 +452,7 @@ struct JourneyPage: View {
                                        switch tap {
                                        case .notes(let n): dayNotes = n
                                        case .photos(let keys, let from):
-                                           // No system slide: the pile rises on its own, the page behind fading in place.
+                                           // No system slide: the pile rises on its own (from), the page behind fading in place.
                                            var quiet = Transaction()
                                            quiet.disablesAnimations = true
                                            withTransaction(quiet) { dayPile = DayPileRoute(keys: keys, from: from) }
