@@ -245,7 +245,9 @@ struct JourneyMonthPage: View {
                     .id(focus.map { if case .bestScore = $0 { true } else { false } } ?? false)
                     .transition(CircleMotion.dayPickSwap)
                 }
-                .padding(.vertical, 16)
+                // Close under its top line (owner, 2026-10-17: "a lot of space between the header's gray line and the
+                // beginning of the legends stuff"; was 16 both ways).
+                .padding(.top, 9).padding(.bottom, 13)
                 .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
                 .padding(.top, 22)
@@ -280,7 +282,7 @@ struct JourneyMonthPage: View {
     /// Room on the right for the month rail.
     static let railGutter: CGFloat = 30
     /// Between one month's last week and the next one's name.
-    static let monthGap: CGFloat = 18
+    static let monthGap: CGFloat = 26
     /// The window's top and bottom fade: never over the month in the middle, which the window always has room for.
     static let edge: CGFloat = 24
 
@@ -341,6 +343,16 @@ struct JourneyMonthPage: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    // A faded neighbour's tap turns to it, as a swipe would (owner, 2026-10-17: "if I click on the faded
+                    // out neighbors, it scrolls me to that month"). One catcher for the window, by where the tap lands: a
+                    // catcher on each neighbour stayed where the pane was laid out, not where its offset drew it (a tap on
+                    // September went to August; one below did nothing). The middle month's days keep their own taps.
+                    .contentShape(Rectangle())
+                    .onTapGesture { p in
+                        guard let pane = panes(scale: scale).first(where: { $0.k != 0 && p.y >= $0.y && p.y <= $0.y + $0.height })
+                        else { return }
+                        turn(pane.k, scale: scale)
+                    }
                     .padding(.trailing, Self.railGutter)
                     .clipped()
                     .mask {
@@ -497,7 +509,7 @@ private struct JourneyCalendar: View {
     let highlight: JourneyHighlight?
     let onDay: (Date) -> Void
 
-    static let nameHeight: CGFloat = 24
+    static let nameHeight: CGFloat = 21
 
     static func weeks(_ month: Date) -> Int {
         let cal = Calendar.current
@@ -507,7 +519,7 @@ private struct JourneyCalendar: View {
 
     /// Its height (worked out, not measured, so the page's fit test never feeds on itself): the name and its weeks.
     static func height(weeks: Int, scale: CGFloat) -> CGFloat {
-        nameHeight + CGFloat(weeks) * JourneyDayRing.size * scale + CGFloat(max(weeks - 1, 0)) * 2
+        nameHeight + 3 + CGFloat(weeks) * JourneyDayRing.size * scale + CGFloat(max(weeks - 1, 0)) * 2
     }
     static func height(month: Date, scale: CGFloat) -> CGFloat { height(weeks: weeks(month), scale: scale) }
 
@@ -524,10 +536,21 @@ private struct JourneyCalendar: View {
             date < today && log.days[PrayerNotificationID.dayKey(date)] == nil && excused.excludes(date)
         }
         VStack(alignment: .leading, spacing: 0) {
-            Text(name)
-                .font(.system(size: 11, weight: .medium, design: .rounded)).tracking(0.8)
-                .foregroundStyle(current ? Color.primary : Color.secondary)
-                .frame(height: Self.nameHeight, alignment: .topLeading)
+            // The name sits just over its own days, the gap above it between months (owner, 2026-10-17: "make the label
+            // come a little closer to its respective calendar … a little more breathing room between the two months"); a
+            // neighbour's says how it went, as the year's small months do ("on the labels for these, let's also add some
+            // sort of information").
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(name)
+                    .font(.system(size: 11, weight: .medium, design: .rounded)).tracking(0.8)
+                    .foregroundStyle(current ? Color.primary : Color.secondary)
+                if !current, let line = Self.line(log.month(month)) {
+                    Text(line).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                }
+            }
+            .lineLimit(1)
+            .frame(height: Self.nameHeight, alignment: .bottomLeading)
+            .padding(.bottom, 3)
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
                 ForEach(days, id: \.self) { date in
@@ -545,6 +568,13 @@ private struct JourneyCalendar: View {
             }
             .journeyFlightDays(month, scale: scale)   // where its days are, for the transitions (JourneyTransitions.swift)
         }
+    }
+
+    /// "22 days · score 88" (the year's small months' line).
+    static func line(_ m: JourneyLog.Month) -> String? {
+        guard m.activeDays > 0 else { return nil }
+        let days = m.activeDays == 1 ? "1 day" : "\(m.activeDays) days"
+        return m.averageScore.map { "· \(days) · score \($0)" } ?? "· \(days)"
     }
 
     /// "SEPTEMBER", with the year when it isn't this one.
