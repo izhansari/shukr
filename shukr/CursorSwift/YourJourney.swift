@@ -41,7 +41,7 @@ struct JourneyHomeCard: View {
     static let ringRoom: CGFloat = 4
     /// The month names' column, wide enough for "May’26" (it ran into the first tile at 34).
     static let nameColumn: CGFloat = 40
-    /// How long a finger rests on a tile before moving it picks tiles (a tap is shorter).
+    /// How long a finger rests on the tiles before moving it picks them (a tap is shorter; a drag before it scrolls).
     static let holdTime = 0.3
     private static let rowsSpace = "journeyCardRows"
     /// The grid's least height: 12 weeks and its top room.
@@ -99,7 +99,13 @@ struct JourneyHomeCard: View {
             LazyVStack(spacing: 3) {
                 ForEach(stats.weeks) { week in row(week) }
             }
-            .coordinateSpace(.named(Self.rowsSpace))   // a held finger's place, the first row at 0
+            // A finger resting 0.3 s on the tiles picks under it as it moves, across rows (owner, 2026-10-17: "if I hold
+            // down on a tile, I can move my finger to select other tiles nearby as I drag"; "not just a row … anything").
+            // UIKit's long press, not a SwiftUI drag: a quick drag moves first, fails the press, and the grid scrolls as
+            // ever; once the press has begun the drag is the pick's ("being able to drag and select the tiles freely, but
+            // also scroll in that area").
+            .gesture(JourneyHoldPick(hold: Self.holdTime) { state, p in held(state, p) })
+            .coordinateSpace(.named(Self.rowsSpace))   // the first row at 0
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { scrub.width = $0 }
             .padding(.top, 12)
             // Room for a picked tile's ring (drawn 3 pt outside its bar) on the right and below: the grid's clip cut it
@@ -157,11 +163,9 @@ struct JourneyHomeCard: View {
                     bar(day)
                 }
             }
-            // The card scrolls only from the month column (owner, 2026-10-17); on the tiles a tap picks a day, and a hold
-            // then a drag picks whichever tile the finger is on ("if I hold down on a tile, I can move my finger to select
-            // other tiles nearby as I drag"). A drag without the hold goes nowhere.
+            // A tap picks its tile (or lets it go); a hold then a drag is the rows' (JourneyHoldPick).
             .contentShape(Rectangle())
-            .gesture(tiles)
+            .onTapGesture(coordinateSpace: .named(Self.rowsSpace)) { p in if let d = day(at: p) { tap(d.date) } }
         }
     }
 
@@ -191,41 +195,22 @@ struct JourneyHomeCard: View {
         }
     }
 
-    /// The tiles' one gesture (a row's; the place is the rows' space, so a held finger crosses rows): a tap, or a hold that
-    /// then picks under the finger. Starts at once (it's what keeps a drag on the tiles from scrolling the card).
-    private var tiles: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.rowsSpace))
-            .onChanged { v in
-                let s = scrub
-                s.last = v.location
-                if s.began == nil {
-                    s.began = v.startLocation
-                    s.hold?.cancel()
-                    s.hold = Task { @MainActor in
-                        try? await Task.sleep(for: .seconds(Self.holdTime))
-                        guard !Task.isCancelled, s.began != nil, !s.moved else { return }
-                        s.scrubbing = true
-                        triggerSomeVibration(type: .medium)
-                        if let d = day(at: s.last) { picked = d.date }
-                    }
-                    return
-                }
-                if s.scrubbing {
-                    if let d = day(at: v.location), d.date != picked {
-                        triggerSomeVibration(type: .soft)
-                        picked = d.date
-                    }
-                } else if hypot(v.location.x - v.startLocation.x, v.location.y - v.startLocation.y) > 10 {
-                    s.moved = true   // a plain drag: nothing (the card scrolls from the left column only)
-                    s.hold?.cancel()
-                }
-            }
-            .onEnded { v in
-                let s = scrub
-                defer { s.hold?.cancel(); s.hold = nil; s.began = nil; s.moved = false; s.scrubbing = false }
-                guard !s.scrubbing, !s.moved, let d = day(at: v.startLocation) else { return }
-                tap(d.date)
-            }
+    /// The hold-and-drag pick: began — a firm tick, the tile under the finger; changed — each new tile, a soft tick. On the
+    /// month column it does nothing (the names are buttons; the column is where a drag always scrolls).
+    private func held(_ state: UIGestureRecognizer.State, _ p: CGPoint) {
+        switch state {
+        case .began:
+            scrub.scrubbing = p.x > Self.nameColumn
+            guard scrub.scrubbing else { return }
+            triggerSomeVibration(type: .medium)
+            if let d = day(at: p) { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d.date } }
+        case .changed:
+            guard scrub.scrubbing, let d = day(at: p), d.date != picked else { return }
+            triggerSomeVibration(type: .soft)
+            picked = d.date
+        default:
+            scrub.scrubbing = false
+        }
     }
 
     private func tap(_ date: Date) {
@@ -512,15 +497,28 @@ struct JourneyMilestonesList: View {
     }
 }
 
-/// A finger on the card's tiles: where it started and is, whether it moved before the hold, whether it's picking.
+/// A finger on the card's tiles: whether a hold is picking, and the rows' width (the bars' slots come from it).
 @MainActor final class JourneyCardScrub {
-    var began: CGPoint?
-    var last: CGPoint = .zero
-    var moved = false
     var scrubbing = false
-    var hold: Task<Void, Never>?
-    /// The rows' width (the bars' slots come from it).
     var width: CGFloat = 0
+}
+
+/// iOS's long press as a SwiftUI gesture, reporting the finger in the view's own space: it begins after `hold` seconds with
+/// the finger still (within 10 pt), then follows it. A finger that moves first fails it, so a scroll view around it scrolls.
+struct JourneyHoldPick: UIGestureRecognizerRepresentable {
+    let hold: Double
+    let onChange: (UIGestureRecognizer.State, CGPoint) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let g = UILongPressGestureRecognizer()
+        g.minimumPressDuration = hold
+        g.allowableMovement = 10
+        return g
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        onChange(recognizer.state, context.converter.location(in: .local))
+    }
 }
 
 /// Everything Your journey shows, from Journey's log (prayer days; excused prayers never missed, never in a rate).
