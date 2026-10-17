@@ -43,11 +43,12 @@ struct JourneyDayCell: View {
     /// No rows, but an excused range covers it: excused all day.
     var excusedNoRows = false
     @Environment(\.colorScheme) private var scheme
-    /// The transitions (JourneyTransitions.swift): how much of its ring, number and fill to draw while the month opens or
-    /// a day's ring flies from it; all of it otherwise.
-    @Environment(\.journeyCellDraw) private var cellDraw
 
+    // The transitions' share (JourneyCellDraw: how much of its ring, number and fill to draw while a flight runs) is read
+    // only by the small pieces below, never here: read here, a flight rebuilt every flying day's whole cell each frame
+    // (~84 a frame, ~700 a flight back to the card on the sim).
     var body: some View {
+        let _ = JourneyPerf.body("dayCell")
         let future = date > today
         let before = first.map { date < $0 } ?? true
         let isToday = date == today
@@ -59,13 +60,11 @@ struct JourneyDayCell: View {
                 if day.allFive && !isToday {
                     Circle().fill(day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
                         .frame(width: JourneyDayRing.fill * 2, height: JourneyDayRing.fill * 2)
-                        .opacity(cellDraw.fill)
-                    Circle().trim(from: 0, to: cellDraw.ring)
-                        .stroke(day.allInTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark), lineWidth: JourneyDayRing.band)
-                        .rotationEffect(.degrees(-90))   // drawn closed from the top (the transitions)
-                        .frame(width: JourneyDayRing.radius * 2, height: JourneyDayRing.radius * 2)
+                        .modifier(JourneyCellDrawFade(part: .fill))
+                    JourneyCellRing(closed: day.allInTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark),
+                                    fifths: [])
                 } else {
-                    ForEach(0..<5, id: \.self) { i in fifth(i, today: isToday, dark: dark) }
+                    JourneyCellRing(closed: nil, fifths: (0..<5).map { fifthColor($0, today: isToday, dark: dark) })
                 }
             }
             Text("\(Calendar.current.component(.day, from: date))")
@@ -73,13 +72,14 @@ struct JourneyDayCell: View {
                 .monospacedDigit()
                 .foregroundStyle(future ? Color.secondary.opacity(0.55) : drawn || isToday ? Color.primary : Color.secondary.opacity(0.85))
                 .offset(y: isToday ? -2.2 * JourneyDayRing.k : 0)
-                .opacity(cellDraw.number)
+                .modifier(JourneyCellDrawFade(part: .number))
             if isToday {
                 Circle().fill(Color.primary).frame(width: 3 * JourneyDayRing.k, height: 3 * JourneyDayRing.k)
                     .offset(y: 7.6 * JourneyDayRing.k)
-                    .opacity(cellDraw.number)
+                    .modifier(JourneyCellDrawFade(part: .number))
             } else if excusedAllDay {
-                ExcusedDayBadge(size: 9.2 * JourneyDayRing.k).offset(y: 13 * JourneyDayRing.k).opacity(cellDraw.number)
+                ExcusedDayBadge(size: 9.2 * JourneyDayRing.k).offset(y: 13 * JourneyDayRing.k)
+                    .modifier(JourneyCellDrawFade(part: .number))
             }
         }
         .frame(width: JourneyDayRing.size, height: JourneyDayRing.size)
@@ -88,19 +88,11 @@ struct JourneyDayCell: View {
     }
 
     /// A prayer's fifth: prayed (or excused) soft — today's a little stronger — missed a faint track; nothing for one to come.
-    @ViewBuilder private func fifth(_ i: Int, today: Bool, dark: Bool) -> some View {
-        let mark = day.marks[i]
-        let color: Color? = switch mark {
+    private func fifthColor(_ i: Int, today: Bool, dark: Bool) -> Color? {
+        switch day.marks[i] {
         case .done, .excused: today ? JourneyDayRing.strong(dark) : JourneyDayRing.soft(dark)
         case .missed: JourneyDayRing.track(dark)
         case .toCome, .none: nil
-        }
-        if let color {
-            let arc = JourneyDayRing.fifth(i)
-            Circle().trim(from: arc.from, to: arc.from + (arc.to - arc.from) * cellDraw.ring)
-                .stroke(color, style: StrokeStyle(lineWidth: JourneyDayRing.band, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .frame(width: JourneyDayRing.radius * 2, height: JourneyDayRing.radius * 2)
         }
     }
 
@@ -109,4 +101,41 @@ struct JourneyDayCell: View {
         guard day.active else { return d }
         return "\(d): \(day.prayed) of 5 prayed" + (day.allInTime ? ", all in time" : "")
     }
+}
+
+/// A day cell's ring — one closed ring, or its fifths — drawn as far as the flight has it (JourneyCellDraw.ring).
+private struct JourneyCellRing: View {
+    let closed: Color?
+    let fifths: [Color?]
+    @Environment(\.journeyCellDraw) private var cellDraw
+
+    var body: some View {
+        let _ = JourneyPerf.body("cellRing")
+        let drawn = cellDraw.ring
+        ZStack {
+            if let closed {
+                Circle().trim(from: 0, to: drawn)
+                    .stroke(closed, lineWidth: JourneyDayRing.band)
+                    .rotationEffect(.degrees(-90))   // drawn closed from the top (the transitions)
+            } else {
+                ForEach(0..<5, id: \.self) { i in
+                    if let color = fifths[i] {
+                        let arc = JourneyDayRing.fifth(i)
+                        Circle().trim(from: arc.from, to: arc.from + (arc.to - arc.from) * drawn)
+                            .stroke(color, style: StrokeStyle(lineWidth: JourneyDayRing.band, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                }
+            }
+        }
+        .frame(width: JourneyDayRing.radius * 2, height: JourneyDayRing.radius * 2)
+    }
+}
+
+/// A day cell's fill or number, faded as far as the flight has it (JourneyCellDraw.fill / .number).
+private struct JourneyCellDrawFade: ViewModifier {
+    enum Part { case fill, number }
+    let part: Part
+    @Environment(\.journeyCellDraw) private var cellDraw
+    func body(content: Content) -> some View { content.opacity(part == .fill ? cellDraw.fill : cellDraw.number) }
 }

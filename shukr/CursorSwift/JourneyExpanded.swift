@@ -104,6 +104,7 @@ struct JourneyExpandedPage: View {
         .background(theme.surface.journeyFlightMonthSurface().ignoresSafeArea())   // clear while it opens over Journey
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
+        .task { await yearRun() }
     }
 
     private var hairline: some View {
@@ -378,6 +379,25 @@ struct JourneyExpandedPage: View {
         .opacity(dayUp ? 0 : 1)
         .allowsHitTesting(!dayUp)
         .animation(.easeInOut(duration: 0.3), value: dayUp)
+    }
+
+    /// `-demoJourneyYearRun [N]`: weeks → year → weeks N times with no finger (default 6), 2.5 s apart — the frame log per
+    /// flight, for the creep across repeated toggles (the organizer's ask). Release too (with the flag).
+    @MainActor private static var yearRunDone = false
+    private func yearRun() async {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-demoJourneyYearRun"), !Self.yearRunDone else { return }
+        Self.yearRunDone = true
+        let n = args.indices.contains(i + 1) ? Int(args[i + 1]) ?? 6 : 6
+        func wait(_ s: Double) async -> Bool { try? await Task.sleep(for: .seconds(s)); return !Task.isCancelled }
+        guard await wait(2) else { return }
+        for _ in 0..<n {
+            toYear()
+            guard await wait(2.5) else { return }
+            fromYear(to: nil)
+            guard await wait(2.5) else { return }
+        }
+        print("🎞️ journey year run done")
     }
 
     /// The month a weeks ↔ year flight carries: the one in focus, else the one in the middle of the weeks.

@@ -84,7 +84,7 @@ enum JourneyMotion {
         return true
         #else
         let args = ProcessInfo.processInfo.arguments
-        return args.contains("-journeyFrameLog") || args.contains("-demoJourneyFlightRun")
+        return args.contains("-journeyFrameLog") || args.contains("-demoJourneyFlightRun") || args.contains("-demoJourneyYearRun")
         #endif
     }()
 
@@ -551,49 +551,37 @@ struct JourneyFlightCellModifier: ViewModifier {
     let scale: CGFloat
     @Environment(\.journeyMonthOpen) private var open
 
+    // One shape for every cell, whatever flight is open (or none): only the values change. Branching between a flying
+    // day's modifier, an arriving one's and none gave each a new identity when the flight changed — every laid-out cell
+    // was rebuilt at once (138 day bodies at a tap back from the year, sim).
     func body(content: Content) -> some View {
-        let hidden = open?.hiddenDay == date
-        if let open {
-            // A day that flew draws its ring in by its place; one that didn't arrives with the words.
-            if open.flight.tiles[date] != nil {
-                content.modifier(JourneyFlightCellDial(hidden: hidden, at: open.flight.order[date] ?? 0))
-            } else {
-                content.modifier(JourneyFlightCellArrive(hidden: hidden))
-            }
+        content.modifier(JourneyFlightCellDraw(hidden: open?.hiddenDay == date,
+                                               at: open.flatMap { $0.flight.tiles[date] == nil ? nil : ($0.flight.order[date] ?? 0) },
+                                               flying: open != nil))
+    }
+}
+
+/// A cell's share of a flight: a flying day draws its ring in by its place (`at`); one that didn't fly arrives with the
+/// words; with no flight, all drawn. It reads the dial — every frame of a flight, for the cells it changes.
+private struct JourneyFlightCellDraw: ViewModifier {
+    let hidden: Bool
+    let at: CGFloat?
+    let flying: Bool
+    @Environment(\.journeyMonthDial) private var e
+
+    func body(content: Content) -> some View {
+        let t = e?.dial ?? 1
+        let draw: JourneyCellDraw = if let at {
+            JourneyCellDraw(ring: hidden ? 0 : JourneyMotion.ring(t, at: at), number: Double(JourneyMotion.number(t, at: at)),
+                            fill: hidden || t < 1 ? 0 : 1)
+        } else if hidden {
+            JourneyCellDraw(ring: 0, number: 1, fill: 0)
         } else {
-            content.environment(\.journeyCellDraw, .full)
+            .full
         }
-    }
-}
-
-/// A flying day's own cell: it reads the dial, every frame of the flight.
-private struct JourneyFlightCellDial: ViewModifier {
-    let hidden: Bool
-    /// Its place among the flying days (0 the first … 1 the last).
-    let at: CGFloat
-    @Environment(\.journeyMonthDial) private var e
-
-    func body(content: Content) -> some View {
-        let t = e?.dial ?? 1
-        let ring = JourneyMotion.ring(t, at: at)
-        let number = JourneyMotion.number(t, at: at)
-        let draw = JourneyCellDraw(ring: hidden ? 0 : ring,
-                                   number: Double(number),
-                                   fill: hidden || t < 1 ? 0 : 1)
-        content.environment(\.journeyCellDraw, draw)
-    }
-
-}
-
-/// A day of the expanded card the card didn't show: drawn whole, arriving with the page's words.
-private struct JourneyFlightCellArrive: ViewModifier {
-    let hidden: Bool
-    @Environment(\.journeyMonthDial) private var e
-    func body(content: Content) -> some View {
-        let t = e?.dial ?? 1
         content
-            .environment(\.journeyCellDraw, hidden ? JourneyCellDraw(ring: 0, number: 1, fill: 0) : .full)
-            .opacity(Double(JourneyMotion.monthWords(t)))
+            .environment(\.journeyCellDraw, draw)
+            .opacity(flying && at == nil ? Double(JourneyMotion.monthWords(t)) : 1)
     }
 }
 
@@ -961,6 +949,12 @@ struct JourneyMonthHost: ViewModifier {
     /// back → back — for the frame log on a phone in Release (the real pages, not a stand-in).
     private func autoRun() async {
         let args = ProcessInfo.processInfo.arguments
+        if args.contains("-demoJourneyYearRun") {
+            // The expanded card toggles its year itself (JourneyExpandedPage.yearRun); the host only opens it.
+            try? await Task.sleep(for: .seconds(3))
+            month = JourneyMonthRoute(month: JourneyLog.monthStart(today), focus: false)
+            return
+        }
         guard let i = args.firstIndex(of: "-demoJourneyFlightRun") else { return }
         let n = args.indices.contains(i + 1) ? Int(args[i + 1]) ?? 5 : 5
         func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
