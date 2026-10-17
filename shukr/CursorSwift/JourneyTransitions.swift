@@ -1015,7 +1015,8 @@ struct JourneyMonthHost: ViewModifier {
         let log = JourneyLog.last ?? log   // the auto run's copy of the host was taken before the log loaded
         guard day == nil, date <= today, log.day(date).active, date < today || log.day(date).allFive else { return }
         JourneyPerf.began("day opens")   // the day page's build and load: its own window (the flight's begins once it's in)
-        triggerSomeVibration(type: .light)
+        // No tick here: every way in (the card's and the month's top, the year's day line) is a button that already ticked —
+        // two light ticks for one tap read as a glitch (the organizer's check of d79f2837).
         dials.set(.day, 0)
         day = JourneyDayFlight(date: date, from: from(date, top: fromTop), to: nil, fromTop: fromTop)
         // The dial runs once the day page has laid out its disc (where to land) and read its rows (its heavy first moment:

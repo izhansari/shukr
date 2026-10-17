@@ -580,7 +580,7 @@ struct JourneyMonthPage: View {
         guard date < today || log.day(date).allFive else { return }
         // Opened from the card: the day's ring grows into the day page (JourneyTransitions.swift); else a push.
         if let dayOpener { dayOpener.open(date); return }
-        triggerSomeVibration(type: .light)
+        // No tick: its callers (the day's top, the year's day line) are buttons that already ticked.
         openDay = JourneyDayRoute(date: date)
     }
 }
