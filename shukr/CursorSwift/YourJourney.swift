@@ -196,7 +196,10 @@ struct JourneyHomeCard: View {
             // UIKit's long press, not a SwiftUI drag: a quick drag moves first, fails the press, and the grid scrolls as
             // ever; once the press has begun the drag is the pick's ("being able to drag and select the tiles freely, but
             // also scroll in that area").
-            .gesture(JourneyHoldPick(hold: Self.holdTime) { state, p in held(state, p) })
+            .gesture(JourneyHoldPick(hold: Self.holdTime) { state, p, named, global in
+                JourneyTapLog.hold(state, local: p, named: named, global: global, card: self)
+                held(state, p)
+            })
             .coordinateSpace(.named(Self.rowsSpace))   // rows placed by the stack (`scrub.rowTops`), not at index × pitch
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { scrub.width = $0 }
             .padding(.top, 12)
@@ -212,7 +215,8 @@ struct JourneyHomeCard: View {
         // A finger scrolling the grid lets a picked tile and a lit streak go (owner, 2026-10-17: "if a tile is selected,
         // but we start scrolling, it deselects that tile. Same for if we scroll away while the best streak is selected").
         // Only the finger's scroll: the streak's own scroll to its days is .animating, not .interacting.
-        .onScrollPhaseChange { _, phase in
+        .onScrollPhaseChange { old, phase in
+            JourneyTapLog.write("scroll \(old) → \(phase) holding=\(scrub.scrubbing) picked=\(picked.map(JourneyTapLog.day) ?? "–")")
             if phase == .interacting { scrub.pinned = false }   // the finger's now: no more snapping to today
             guard phase == .interacting, picked != nil || streakShown else { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
@@ -275,6 +279,7 @@ struct JourneyHomeCard: View {
             .contentShape(Rectangle())
             .contentShape(Rectangle().inset(by: -1.5))   // the gaps between rows too
             .onTapGesture(coordinateSpace: .named(Self.rowsSpace)) { p in
+                JourneyTapLog.write("tap row=\(JourneyTapLog.day(week.id)) at=\(JourneyTapLog.pt(p)) col=\(column(p.x)) rowTop=\(scrub.rowTops[week.id].map { String(Int($0)) } ?? "–") picked=\(picked.map(JourneyTapLog.day) ?? "–")")
                 // A tap near the picked tile (its bar and a few points round it) lets it go (owner, 2026-10-17: "the
                 // intention of deselecting is very hard since user has to tap exactly on that tile").
                 if let on = picked, let r = rect(of: on), r.insetBy(dx: -5, dy: -4).contains(p) { tap(on); return }
@@ -365,6 +370,12 @@ struct JourneyHomeCard: View {
 
     /// The day under a point in the rows' space: the built row nearest it (each row's band reaches halfway to the next; a
     /// held finger can run a little wide), then its column (nil: a blank slot).
+    fileprivate func logDay(at p: CGPoint) -> String {
+        let near = scrub.rowTops.min(by: { abs($0.value + 5.5 - p.y) < abs($1.value + 5.5 - p.y) })
+        let tops = scrub.rowTops.values
+        return "nearRow=\(near.map { JourneyTapLog.day($0.key) + "@" + String(Int($0.value)) } ?? "–") col=\(column(p.x)) → \(day(at: p).map { JourneyTapLog.day($0.date) } ?? "–") rows=\(tops.count) [\(tops.min().map { String(Int($0)) } ?? "–")…\(tops.max().map { String(Int($0)) } ?? "–")] width=\(Int(scrub.width)) scrubbing=\(scrub.scrubbing) pinned=\(scrub.pinned)"
+    }
+
     private func day(at p: CGPoint) -> YourJourneyStats.GridDay? {
         guard let id = scrub.rowTops.min(by: { abs($0.value + 5.5 - p.y) < abs($1.value + 5.5 - p.y) })?.key,
               let week = stats.weeks.last(where: { $0.id == id }) else { return nil }
@@ -843,6 +854,43 @@ struct JourneyDayExtras {
     }
 }
 
+/// The card's taps, holds and scrolls, for finding the misses on his phone (owner, 2026-10-17: "put a log on my phone so
+/// you can catch these bugs … Sometimes it doesn't do it. Sometimes it puts my finger higher than it really is. Sometimes
+/// it locks me from being able to drag and select tiles like I'm hitting a wall"). DEBUG builds only:
+/// Library/Caches/journey-taps.log.
+enum JourneyTapLog {
+    #if DEBUG
+    private static let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+        .appendingPathComponent("journey-taps.log")
+    private static let stamp: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm:ss.SSS"; return f }()
+    private static let dayFormat: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMM d"; return f }()
+    #endif
+    static func write(_ line: String) {
+        #if DEBUG
+        guard let url else { return }
+        let data = Data((stamp.string(from: Date()) + " " + line + "\n").utf8)
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() } else { try? data.write(to: url) }
+        #endif
+    }
+    static func day(_ d: Date) -> String {
+        #if DEBUG
+        return dayFormat.string(from: d)
+        #else
+        return ""
+        #endif
+    }
+    static func pt(_ p: CGPoint) -> String { "(\(Int(p.x)),\(Int(p.y)))" }
+    @MainActor static func hold(_ state: UIGestureRecognizer.State, local: CGPoint, named: CGPoint, global: CGPoint, card: JourneyHomeCard) {
+        #if DEBUG
+        let name = switch state {
+        case .began: "began"; case .changed: "changed"; case .ended: "ended"; case .cancelled: "CANCELLED"; case .failed: "FAILED"
+        default: "state\(state.rawValue)"
+        }
+        write("hold \(name) local=\(pt(local)) named=\(pt(named)) screen=\(pt(global)) \(card.logDay(at: local))")
+        #endif
+    }
+}
+
 /// One of a picked day's things, tapped on the card.
 enum JourneyExtraTap {
     case notes([DayFacts.Note])
@@ -868,7 +916,8 @@ enum JourneyExtraTap {
 /// the finger still (within 10 pt), then follows it. A finger that moves first fails it, so a scroll view around it scrolls.
 struct JourneyHoldPick: UIGestureRecognizerRepresentable {
     let hold: Double
-    let onChange: (UIGestureRecognizer.State, CGPoint) -> Void
+    /// The finger in the view's own space, and (for the log) in the rows' named space and the window's.
+    let onChange: (UIGestureRecognizer.State, CGPoint, CGPoint, CGPoint) -> Void
 
     func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
         let g = UILongPressGestureRecognizer()
@@ -878,7 +927,8 @@ struct JourneyHoldPick: UIGestureRecognizerRepresentable {
     }
 
     func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
-        onChange(recognizer.state, context.converter.location(in: .local))
+        onChange(recognizer.state, context.converter.location(in: .local),
+                 context.converter.location(in: .named("journeyCardRows")), context.converter.location(in: .global))
     }
 }
 
