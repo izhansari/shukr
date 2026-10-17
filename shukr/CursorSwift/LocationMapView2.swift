@@ -70,6 +70,18 @@ final class LocationViewModel: ObservableObject {
     var dayTabs = false
     static let tabRow: CGFloat = 62
     var small: PresentationDetent { dayTabs ? .height(84 + Self.tabRow) : Self.sheetSmall }
+    /// The one-day map's middle height: its day and tiles, not half the screen (owner, 2026-10-17: "maybe the sheet
+    /// doesn't have to be as big as it is right now. It's like coming up halfway on the page"). It stands in for
+    /// .medium everywhere on that map — the detents, "up through" (which silently turns off without its detent in the set)
+    /// and where the sheet opens.
+    static let dayFit: PresentationDetent = .height(400)
+    var mid: PresentationDetent { dayTabs ? Self.dayFit : .medium }
+    /// The one-day map: tabs, and the sheet at its fitted height.
+    func useDayTabs() {
+        dayTabs = true
+        browseDetent = Self.dayFit
+        sheetDetent = Self.dayFit
+    }
     /// Where the sheet actually is on screen (for the controls above it and centring pins).
     let sheet = SheetMetrics()
     /// The height to return to after editing a prayer.
@@ -367,7 +379,7 @@ final class LocationViewModel: ObservableObject {
     static let pickHeight: CGFloat = 190
     var spotDetents: Set<PresentationDetent> {
         var set: Set<PresentationDetent> = switch spotMode {
-        case .browse: [small, .medium, .large]
+        case .browse: [small, mid, .large]
         case .editTime: [pageDetent]
         case .pickSpot: [pageDetent, .large]          // .large while typing an address
         }
@@ -378,7 +390,7 @@ final class LocationViewModel: ObservableObject {
     /// map is the picker); editing the time dims it. "Up through" needs its detent in the set.
     var spotBackground: PresentationBackgroundInteraction {
         switch spotMode {
-        case .browse: .enabled(upThrough: .medium)
+        case .browse: .enabled(upThrough: mid)
         case .editTime: .disabled
         case .pickSpot: .enabled(upThrough: pageDetent)
         }
@@ -1236,7 +1248,7 @@ struct LocationMapContentView: View {
                 .ignoresSafeArea()
                 .onAppear {
                     viewModel.prayers = shownPrayers
-                    viewModel.dayTabs = dayMode
+                    if dayMode { viewModel.useDayTabs() }
                     if dayMode { setMode(prayers: true, mosques: false) }
                 }
                 .onChange(of: prayers.count) { _, _ in viewModel.prayers = shownPrayers }

@@ -367,7 +367,17 @@ struct PrayerSpotsHome: View {
                 // No prayer count: the ring's fifths show it (owner: "get rid of how many prayers there are").
                 let line = [log?.dayNumber(dayOnly).map { "Day \($0)" },
                             n == 0 ? nil : places == 1 ? "1 place" : "\(places) places"].compactMap { $0 }.joined(separator: " · ")
-                MapSheetHeader(title: dayTitle(dayOnly), subtitle: line) {
+                // The date is the biggest thing on the sheet (owner: "the date should be the biggest text on the page").
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(dayTitle(dayOnly))
+                            .font(.system(size: 30, weight: .light, design: .rounded))
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                        Text(line)
+                            .font(.system(size: 14, weight: .light, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     if let day, day.active {
                         JourneyDayFifths(day: day, center: "\(day.dayScore)", colored: true).frame(width: 58, height: 58)
                     }
@@ -430,8 +440,8 @@ struct PrayerSpotsHome: View {
 /// The one-day map's sheet: a bento of what the map knows that Journey doesn't (owner, 2026-10-17: "what would it look
 /// like if … all the prayers are done at home? … some chips or sections, like a bento box, showing different stats for
 /// that day … in the shortcuts, we have the logic for showing how many times we've prayed in an area … Just do whatever
-/// you want"). Where (the day's main place, a tap flies there) · prayed here, ever (the "prayed here" shortcut's rule:
-/// 100 m, or the same masjid) · at the masjid · moved · Fajr → Isha.
+/// you want"). Where (the day's main place, a tap flies there), then one row: prayed here, ever (the "prayed here"
+/// shortcut's rule: 100 m, or the same masjid) · masjid · moved.
 private struct DayBento: View {
     /// The day's places, the order the day reached them (PrayerSpotsHome.dayPlaces).
     let places: [[PrayerModel]]
@@ -463,15 +473,14 @@ private struct DayBento: View {
                 }
                 .buttonStyle(.plain)
             }
-            HStack(spacing: 10) {
+            // One row of three (owner: the masjid, how much moved and "how many times you prayed here" stay; the first and
+            // last times go — "I don't really agree with the time differential thing").
+            HStack(spacing: 8) {
                 tile("Prayed here", history.map { "\($0.count)" } ?? "–",
                      history?.since.map { "since \($0.formatted(.dateTime.month(.abbreviated).year()))" } ?? "ever")
                 let atMasjid = day.filter(\.atMasjid).count
-                tile("At the masjid", atMasjid == 0 ? "None" : "\(atMasjid)", atMasjid == 0 ? "that day" : "of \(marked) prayers")
-            }
-            HStack(spacing: 10) {
+                tile("Masjid", atMasjid == 0 ? "None" : "\(atMasjid) of \(marked)", atMasjid == 0 ? "that day" : "prayers")
                 tile("Moved", moved.value, moved.detail)
-                tile(spanTitle, span.value, span.detail)
             }
         }
         .task(id: mainSpot.map { "\($0.latitude),\($0.longitude)" }) {
@@ -487,23 +496,9 @@ private struct DayBento: View {
         let spots = places.compactMap { $0.first.flatMap(DayFacts.spot) }.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
         var far = 0.0
         for a in spots { for b in spots { far = max(far, a.distance(from: b)) } }
-        guard spots.count > 1, far > 75 else { return ("One place", "all day") }
+        guard spots.count > 1, far > 75 else { return ("Stayed", "one place") }
         let d = Measurement(value: far, unit: UnitLength.meters).formatted(.measurement(width: .abbreviated, usage: .road))
         return (d, "between \(places.count) places")
-    }
-
-    private var spanTitle: String {
-        let names = sortedDay.map(\.displayName)
-        guard let a = names.first, let b = names.last, a != b else { return "Prayed" }
-        return "\(a) → \(b)"
-    }
-    private var sortedDay: [PrayerModel] { day.sorted { ($0.timeAtComplete ?? $0.startTime) < ($1.timeAtComplete ?? $1.startTime) } }
-    /// The day's first and last marks.
-    private var span: (value: String, detail: String) {
-        let times = sortedDay.compactMap(\.timeAtComplete)
-        guard let a = times.first, let b = times.last else { return ("–", "") }
-        let f: (Date) -> String = { $0.formatted(date: .omitted, time: .shortened) }
-        return a == b ? (f(a), "one prayer") : (f(a), "to \(f(b))")
     }
 
     private func tile(_ title: String, _ value: String, _ detail: String, big: Bool = false) -> some View {
@@ -513,7 +508,7 @@ private struct DayBento: View {
                 .tracking(1.2).textCase(.uppercase)
                 .foregroundStyle(.tertiary)
             Text(value)
-                .font(.system(size: big ? 24 : 22, weight: .light, design: .rounded))
+                .font(.system(size: big ? 22 : 19, weight: .light, design: .rounded))
                 .lineLimit(big ? 2 : 1).minimumScaleFactor(0.75)
                 .monospacedDigit()
             Text(detail)
@@ -522,7 +517,7 @@ private struct DayBento: View {
                 .lineLimit(1).minimumScaleFactor(0.85)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(big ? 14 : 12)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
         .contentShape(Rectangle())
     }
