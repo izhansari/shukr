@@ -393,6 +393,18 @@ final class shukrUITests: XCTestCase {
         sleep(3)   // the last window's quiet spell, so it's written
     }
 
+    /// The month's turns with no finger and no screen reads (-demoJourneyTurnRun: back 3, forward 3, N rounds): the app's own
+    /// perf log is the measure. The test only brings the app up and waits.
+    func testJourneyTurnRun() throws {
+        let app = XCUIApplication()
+        // -demoJourney is DEBUG-only: in Release Journey is opened the way he does (☰ → Journey); the run starts with its host.
+        app.launchArguments += ["-demoPerfRun", "-demoJourneyTurnRun", "3", "-journeyPerf"]
+        app.launch(); sleep(4); app.terminate()   // demo flags miss on the first launch after an install
+        app.launch(); sleep(3)
+        openJourney(app)
+        sleep(50)
+    }
+
     /// The same moves with no metrics (an Instruments recording alongside), then JOURNEY_IDLE seconds still on Journey.
     func testJourneySwipesOnly() throws {
         let app = launchForPerf()
