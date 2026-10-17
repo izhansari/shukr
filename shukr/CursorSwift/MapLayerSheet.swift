@@ -315,14 +315,24 @@ struct PrayerSpotsHome: View {
         .buttonStyle(.plain)
     }
 
+    /// "Tuesday, Oct 6" ("Today", "Yesterday"); the year when it isn't this one.
+    private func dayTitle(_ d: Date) -> String {
+        if let word = PrayerDay.todayWord(d) { return word }
+        let thisYear = Calendar.current.isDate(d, equalTo: Date(), toGranularity: .year)
+        return thisYear ? d.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+                        : d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
+    }
+
     @ViewBuilder private var header: some View {
         if dayOnly != nil {
-            // Collapsed, the day's line stands in for the header; open, the day section's own label is the heading.
-            if collapsed {
-                Text(viewModel.prayers.count == 1 ? "1 prayer on the map" : "\(viewModel.prayers.count) prayers on the map")
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            // Collapsed, the day itself in the sheet's own title look, as "Prayer spots" is (owner, 2026-10-17: "it should
+            // say the date when it's folded. And it should say it nicely, like how the text looks when the sheet is folded
+            // in the regular maps"); open, the day section's own label is the heading.
+            if collapsed, let dayOnly {
+                let n = viewModel.prayers.count
+                MapSheetHeader(title: dayTitle(dayOnly), subtitle: n == 1 ? "1 prayer on the map" : "\(n) prayers on the map") {
+                    EmptyView()
+                }
             }
         } else {
             MapSheetHeader(title: "Prayer spots", subtitle: subtitle) {
