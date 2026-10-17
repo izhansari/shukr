@@ -296,82 +296,27 @@ struct JourneyHomeCard: View {
         .accessibilityLabel("Your weeks, a week a row")
     }
 
+    /// A week's row (JourneyCardRow): redrawn only when its own days, its picked day, the streak's light or the look change —
+    /// a pick, a scroll or the rail used to rebuild every row the lazy stack held (his phone, 2026-10-17: ~3,400 row bodies
+    /// in one 3 s rail drag, 29 for one tap — perf #4). Its gestures call back here, where the state is.
     private func row(_ week: YourJourneyStats.Week, index i: Int) -> some View {
-        JourneyPerf.body("row")
-        return HStack(spacing: 6) {
-            Group {
-                if let m = week.month {
-                    Button {
-                        guard rail == nil, !scrub.railJustEnded else { return }
-                        triggerSomeVibration(type: .light)
-                        onMonth(m.start)
-                    } label: {
-                        // Never past its column into the first tile ("Jul’26" ran over it — owner, 2026-10-17).
-                        Text(m.label).font(.system(size: 12.5, weight: .regular, design: .rounded)).foregroundStyle(.secondary)
-                            .lineLimit(1).minimumScaleFactor(0.75)
-                            .journeyFlightMonthName(m.start)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open \(m.start.formatted(.dateTime.month(.wide).year()))")
-                } else {
-                    Color.clear
-                }
-            }
-            // The names against the tiles (owner: "push the text so that it's right leaning"), the edge the scroll bar's.
-            .frame(width: Self.nameColumn, height: 11, alignment: .trailing)
-            HStack(spacing: 6) {
-                ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
-                    bar(day)
-                }
-            }
-            .contentShape(Rectangle())
-            .contentShape(Rectangle().inset(by: -1.5))   // the gaps between rows too
-            // Every place is measured from the row the finger landed on, in its own space — never from where the lazy stack
-            // says rows are: those reports came only when a row moved within the stack, so on his phone the card often
-            // knew none or half the rows on screen ("Sometimes it doesn't do it … puts my finger higher … like I'm hitting
-            // a wall" — journey-taps.log, 2026-10-17: rows=0 after opening, 8 of ~14 after a scroll).
-            .onTapGesture { p in
-                // A tap near the picked tile (its bar and a few points round it) lets it go (owner, 2026-10-17: "the
-                // intention of deselecting is very hard since user has to tap exactly on that tile").
-                if let on = picked, let r = rect(of: on, fromRow: i), r.insetBy(dx: -5, dy: -4).contains(p) { tap(on); return }
-                if let d = week.days[column(p.x)] { tap(d.date) }
-            }
-            // A finger resting 0.3 s picks under it as it moves, across rows (owner, 2026-10-17: "if I hold down on a tile,
-            // I can move my finger to select other tiles nearby as I drag"; "not just a row … anything"). UIKit's long press:
-            // a quick drag moves first, fails it, and the grid scrolls; once begun, the drag is the pick's. Each row has its
-            // own and keeps the finger until it lifts — rows on screen are exactly `pitch` apart, so the row under the finger
-            // is this one plus its offset.
-            .gesture(JourneyHoldPick(hold: Self.holdTime) { state, p, global in
-                held(state, p, fromRow: i)
-            })
-        }
-    }
-
-    @ViewBuilder private func bar(_ day: YourJourneyStats.GridDay?) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-        if let day {
-            let on = picked == day.date
-            shape.fill(color(day))
-                .overlay {
-                    if day.kind == .none { shape.strokeBorder(JourneyTileColor.outline(dark: scheme == .dark), lineWidth: JourneyTileColor.outlineWidth) }
-                }
-                .opacity(streakShown && !(stats.bestStreakDays?.contains(day.date) ?? false) ? 0.22 : 1)
-                .frame(maxWidth: .infinity)
-                .frame(height: 11)
-                .journeyFlightTile(day.date)
-                .overlay {
-                    if on {
-                        RoundedRectangle(cornerRadius: Self.corner + 2.5, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
-                            .padding(-3)
-                    }
-                }
-                .accessibilityLabel(day.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction { tap(day.date) }   // the row's gesture takes the finger's taps
-        } else {
-            Color.clear.frame(maxWidth: .infinity).frame(height: 11)   // before the first day, or still to come
-        }
+        let shownPick = picked.flatMap { p in week.days.contains { $0?.date == p } ? p : nil }
+        return JourneyCardRow(week: week, index: i, weeks: stats.weeks.count, logVersion: log.version, picked: shownPick,
+                              streakShown: streakShown, streak: stats.bestStreakDays, dark: scheme == .dark,
+                              onName: { start in
+                                  guard rail == nil, !scrub.railJustEnded else { return }
+                                  triggerSomeVibration(type: .light)
+                                  onMonth(start)
+                              },
+                              onTap: { p in
+                                  // A tap near the picked tile (its bar and a few points round it) lets it go (owner, 2026-10-17:
+                                  // "the intention of deselecting is very hard since user has to tap exactly on that tile").
+                                  if let on = picked, let r = rect(of: on, fromRow: i), r.insetBy(dx: -5, dy: -4).contains(p) { tap(on); return }
+                                  if let d = stats.weeks.indices.contains(i) ? stats.weeks[i].days[column(p.x)] : nil { tap(d.date) }
+                              },
+                              onDay: { tap($0) },
+                              onHold: { state, p in held(state, p, fromRow: i) })
+            .equatable()
     }
 
     /// The hold-and-drag pick: began — a firm tick, the tile under the finger; changed — each new tile, a soft tick. On the
@@ -582,9 +527,103 @@ struct JourneyHomeCard: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// The card's colors by amount (owner: "make colors of the 12 week grid match your mockup") — one copy, shared with the
-    /// year's small months (JourneyTileColor, JourneyYear.swift).
-    private func color(_ day: YourJourneyStats.GridDay) -> Color { JourneyTileColor.of(day.kind, rank: day.rank, dark: scheme == .dark) }
+}
+
+/// One week of the card: its month's name (a button into the month), then its seven bars — each the day's tile color by
+/// kind and rank, an unmarked day its hairline, the picked one ringed, the others dimmed while the best streak is lit. Equal
+/// rows aren't redrawn (perf #4); the gestures are the card's, called back with the point in this row's bars' space.
+struct JourneyCardRow: View, Equatable {
+    let week: YourJourneyStats.Week
+    let index: Int
+    /// How many weeks the card has: a row's place among them (its callbacks work from it) changes with it.
+    let weeks: Int
+    /// The log the card was built from: a new one redraws every row once, so no row's taps work from an old copy of the
+    /// card (an equal row keeps the closures it was built with — the helper's check).
+    let logVersion: UUID
+    /// The picked day, if it's in this week.
+    let picked: Date?
+    let streakShown: Bool
+    let streak: ClosedRange<Date>?
+    let dark: Bool
+    let onName: (Date) -> Void
+    let onTap: (CGPoint) -> Void
+    /// A day's accessibility action (the row's gesture takes the finger's taps).
+    let onDay: (Date) -> Void
+    let onHold: (UIGestureRecognizer.State, CGPoint) -> Void
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.index == b.index && a.weeks == b.weeks && a.logVersion == b.logVersion && a.picked == b.picked && a.dark == b.dark
+            && a.streakShown == b.streakShown && (!a.streakShown || a.streak == b.streak)
+            && a.week.start == b.week.start && a.week.days == b.week.days && a.week.month?.label == b.week.month?.label
+    }
+
+    var body: some View {
+        let _ = JourneyPerf.body("row")
+        HStack(spacing: 6) {
+            Group {
+                if let m = week.month {
+                    Button { onName(m.start) } label: {
+                        // Never past its column into the first tile ("Jul’26" ran over it — owner, 2026-10-17).
+                        Text(m.label).font(.system(size: 12.5, weight: .regular, design: .rounded)).foregroundStyle(.secondary)
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                            .journeyFlightMonthName(m.start)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open \(m.start.formatted(.dateTime.month(.wide).year()))")
+                } else {
+                    Color.clear
+                }
+            }
+            // The names against the tiles (owner: "push the text so that it's right leaning"), the edge the scroll bar's.
+            .frame(width: JourneyHomeCard.nameColumn, height: 11, alignment: .trailing)
+            HStack(spacing: 6) {
+                ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
+                    bar(day)
+                }
+            }
+            .contentShape(Rectangle())
+            .contentShape(Rectangle().inset(by: -1.5))   // the gaps between rows too
+            // Every place is measured from the row the finger landed on, in its own space — never from where the lazy stack
+            // says rows are: those reports came only when a row moved within the stack, so on his phone the card often
+            // knew none or half the rows on screen ("Sometimes it doesn't do it … puts my finger higher … like I'm hitting
+            // a wall" — journey-taps.log, 2026-10-17: rows=0 after opening, 8 of ~14 after a scroll).
+            .onTapGesture { p in onTap(p) }
+            // A finger resting 0.3 s picks under it as it moves, across rows (owner, 2026-10-17: "if I hold down on a tile,
+            // I can move my finger to select other tiles nearby as I drag"; "not just a row … anything"). UIKit's long press:
+            // a quick drag moves first, fails it, and the grid scrolls; once begun, the drag is the pick's. Each row has its
+            // own and keeps the finger until it lifts — rows on screen are exactly `pitch` apart, so the row under the finger
+            // is this one plus its offset.
+            .gesture(JourneyHoldPick(hold: JourneyHomeCard.holdTime) { state, p, _ in onHold(state, p) })
+        }
+    }
+
+    @ViewBuilder private func bar(_ day: YourJourneyStats.GridDay?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: JourneyHomeCard.corner, style: .continuous)
+        if let day {
+            // The card's colors by amount (owner: "make colors of the 12 week grid match your mockup") — one copy, shared
+            // with the year's small months (JourneyTileColor, JourneyYear.swift).
+            shape.fill(JourneyTileColor.of(day.kind, rank: day.rank, dark: dark))
+                .overlay {
+                    if day.kind == .none { shape.strokeBorder(JourneyTileColor.outline(dark: dark), lineWidth: JourneyTileColor.outlineWidth) }
+                }
+                .opacity(streakShown && !(streak?.contains(day.date) ?? false) ? 0.22 : 1)
+                .frame(maxWidth: .infinity)
+                .frame(height: 11)
+                .journeyFlightTile(day.date)
+                .overlay {
+                    if picked == day.date {
+                        RoundedRectangle(cornerRadius: JourneyHomeCard.corner + 2.5, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
+                            .padding(-3)
+                    }
+                }
+                .accessibilityLabel(day.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { onDay(day.date) }
+        } else {
+            Color.clear.frame(maxWidth: .infinity).frame(height: 11)   // before the first day, or still to come
+        }
+    }
 }
 
 /// The This month row's measure (build-plan "B", canvas v6): touch and hold the row to choose; the choice sticks
@@ -1124,7 +1163,7 @@ struct YourJourneyStats {
     var bestStreakDays: ClosedRange<Date>?
     /// The last 84 prayer days, oldest first, today last.
     /// A day on the card: its color and its line.
-    struct GridDay {
+    struct GridDay: Equatable {
         let date: Date; let kind: Kind; let prayed: Int; let inTime: Int; let excused: Bool
         /// Its place on this user's scale of its kind (the tile's shade, JourneyTileColor).
         var rank: Double = 1
