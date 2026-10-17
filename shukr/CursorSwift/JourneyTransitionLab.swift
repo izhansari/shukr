@@ -176,10 +176,10 @@ struct JourneyTransitionLab: View {
             if let d = days.last {
                 openDay(d)
                 await wait(JourneyMotion.dayDuration + 1.6)
-                back()
+                backNow()
                 await wait(JourneyMotion.dayDuration + 1)
             }
-            back()
+            backNow()
             await wait(JourneyMotion.monthDuration + 1.2)
         }
         print("🎞️ auto run done")
@@ -364,6 +364,11 @@ struct JourneyTransitionLab: View {
     // MARK: Back
 
     private func back() {
+        // Outside the toolbar button's transaction (see JourneyMonthHost.back).
+        DispatchQueue.main.async { backNow() }
+    }
+
+    private func backNow() {
         if day != nil { retargetDayForBack(); runDay(to: 0, how: "button") }
         else if month != nil { aimAtCard(); runMonth(to: 0, how: "button") }
         else if showYear { withAnimation(.easeOut(duration: CircleMotion.standard)) { showYear = false } }

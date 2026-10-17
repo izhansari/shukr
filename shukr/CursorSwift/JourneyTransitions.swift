@@ -587,7 +587,9 @@ struct JourneyMonthHost: ViewModifier {
         ZStack(alignment: .topLeading) {
             content
                 .allowsHitTesting(flight == nil)
-                .background { if let flight { JourneyGrowingSurface(card: flight.card) } }
+            // Over Journey's page (its own background is opaque — under it, the card had no shadow all flight and it popped
+            // back on the last frame: Sami's check of 7174d7c7), drawn only outside the card's shape.
+            if let flight { JourneyGrowingSurface(card: flight.card) }
             if let flight {
                 JourneyMonthPage(log: log, start: flight.start)
                     .modifier(JourneyMonthAway())
@@ -727,9 +729,14 @@ struct JourneyMonthHost: ViewModifier {
 
     // MARK: Back
 
+    /// The ‹: on the next turn of the run loop, outside the toolbar button's own transaction — a tap near the edge of its
+    /// circle ran the action with animations off and the month cut straight to Journey (Sami's check of 7174d7c7: the same
+    /// spot flew or cut from run to run).
     private func back() {
-        if day != nil { retargetDayForBack(); runDay(to: 0, how: "button") }
-        else if flight != nil { retargetMonthForBack(); runMonth(to: 0, how: "button") }
+        DispatchQueue.main.async {
+            if day != nil { retargetDayForBack(); runDay(to: 0, how: "button") }
+            else if flight != nil { retargetMonthForBack(); runMonth(to: 0, how: "button") }
+        }
     }
 
     private var edgeBack: some Gesture {
@@ -804,10 +811,20 @@ private struct JourneyGrowingSurface: View {
         if z < 0.15 {
             JourneyGlobalCanvas { o in
                 let r = JourneyMotion.lerp(card, UIScreen.main.bounds, z)
-                NeuRaised(shape: RoundedRectangle(cornerRadius: JourneyMotion.lerp(26, 56, z), style: .continuous))
+                let shape = RoundedRectangle(cornerRadius: JourneyMotion.lerp(26, 56, z), style: .continuous)
+                NeuRaised(shape: shape)
                     .frame(width: r.width, height: r.height)
                     .position(x: r.midX - o.x, y: r.midY - o.y)
                     .opacity(Double(1 - JourneyMotion.seg(z, 0, 0.15)))
+                    // Only its shadow: the card's own words and weeks show through where the surface is.
+                    .mask {
+                        ZStack {
+                            Rectangle()
+                            shape.frame(width: r.width, height: r.height).position(x: r.midX - o.x, y: r.midY - o.y)
+                                .blendMode(.destinationOut)
+                        }
+                        .compositingGroup()
+                    }
             }
         }
     }
