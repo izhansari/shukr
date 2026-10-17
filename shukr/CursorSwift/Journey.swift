@@ -346,7 +346,7 @@ struct JourneyPage: View {
             DayNotesInfo(notes: dayNotes ?? [])
         }
         .fullScreenCover(item: $dayPile) { route in
-            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from) {
+            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, rise: true) {
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
                 withTransaction(quiet) { dayPile = nil }
@@ -448,7 +448,11 @@ struct JourneyPage: View {
                                    onExtra: { tap in
                                        switch tap {
                                        case .notes(let n): dayNotes = n
-                                       case .photos(let keys, let from): dayPile = DayPileRoute(keys: keys, from: from)
+                                       case .photos(let keys, let from):
+                                           // No system slide: the pile rises on its own, the page behind fading in place.
+                                           var quiet = Transaction()
+                                           quiet.disablesAnimations = true
+                                           withTransaction(quiet) { dayPile = DayPileRoute(keys: keys, from: from) }
                                        case .map(let d): mapDay = d
                                        case .zikr(let d): zikrDay = d
                                        }

@@ -268,9 +268,9 @@ struct JourneyHomeCard: View {
             .contentShape(Rectangle())
             .contentShape(Rectangle().inset(by: -1.5))   // the gaps between rows too
             .onTapGesture(coordinateSpace: .named(Self.rowsSpace)) { p in
-                // A tap near the picked tile (its bar and a few points round it) lets it go (owner, 2026-10-17: "the
+                // A tap near the picked tile (its bar and 12 pt across, 9 pt up and down — "increase the tap dismiss tile area some more") lets it go (owner, 2026-10-17: "the
                 // intention of deselecting is very hard since user has to tap exactly on that tile").
-                if let on = picked, let r = rect(of: on), r.insetBy(dx: -5, dy: -4).contains(p) { tap(on); return }
+                if let on = picked, let r = rect(of: on), r.insetBy(dx: -12, dy: -9).contains(p) { tap(on); return }
                 // This row's own week: never the row a y ÷ pitch guesses.
                 if let d = week.days[column(p.x)] { tap(d.date) }
             }
