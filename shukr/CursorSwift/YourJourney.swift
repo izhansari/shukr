@@ -128,6 +128,13 @@ struct JourneyHomeCard: View {
         .padding(.trailing, -Self.ringRoom)
         .defaultScrollAnchor(.bottom)
         .scrollBounceBehavior(.basedOnSize)
+        // A finger scrolling the grid lets a picked tile and a lit streak go (owner, 2026-10-17: "if a tile is selected,
+        // but we start scrolling, it deselects that tile. Same for if we scroll away while the best streak is selected").
+        // Only the finger's scroll: the streak's own scroll to its days is .animating, not .interacting.
+        .onScrollPhaseChange { _, phase in
+            guard phase == .interacting, picked != nil || streakShown else { return }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
+        }
         .onScrollGeometryChange(for: [Int].self) { geo in
             let count = max(1, Int((geo.containerSize.height - 12 - Self.ringRoom) / Self.pitch))
             let first = max(0, Int(((geo.contentOffset.y + geo.contentInsets.top) - 12) / Self.pitch))
