@@ -43,8 +43,15 @@ struct JourneyMonthPage: View {
     /// The year laid out but its flight not set yet (a frame or two): the month stays up and the year hidden — without it the
     /// whole year showed for a frame first.
     @State private var yearWaiting = false
-    /// The days' size the page shows (1 / 0.9 / 0.8 / 0.7), picked by the still copy below.
-    @State private var dayScale: CGFloat = 1
+    /// The days' size the page shows (1 / 0.9 / 0.8 / 0.7): the largest whose page fits the room (`fitScale`). Starts on the
+    /// last one picked, so a page opened again is at its size from the first frame.
+    @State private var dayScale: CGFloat = JourneyMonthPage.lastScale
+    @MainActor private static var lastScale: CGFloat = 1
+    /// The room the page has, and the shown page's own height (the calendar window's grows into the room; the rest is
+    /// fixed) — measured, not built: the size used to be picked by four hidden copies of the page, built again with every
+    /// redraw (each month turn built the page ten times, eight of them the copies — perf sweep 6b).
+    @State private var room: CGFloat = 0
+    @State private var pageHeight: CGFloat = 0
     /// A day picked on the calendar: its top in place of the month's numbers, its things at the bottom — the card's way
     /// (owner, 2026-10-17: "make this month calendar view be an extension of the card view … clicking on … a ring, shows us
     /// that same top area information and bottom area information").
@@ -123,14 +130,10 @@ struct JourneyMonthPage: View {
                 // all four sizes on every frame of a transition and rebuilt the three calendars each time (~75 rebuilds an
                 // opening; his 13 Pro Max ran card → month at ~40 of 70 frames).
                 ZStack(alignment: .top) {
-                    ViewThatFits(in: .vertical) {
-                        page(scale: 1, live: false).onAppear { dayScale = 1 }
-                        page(scale: 0.9, live: false).onAppear { dayScale = 0.9 }
-                        page(scale: 0.8, live: false).onAppear { dayScale = 0.8 }
-                        page(scale: 0.7, live: false).onAppear { dayScale = 0.7 }
-                    }
-                    .modifier(JourneyFlightStill())
+                    Color.clear
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { room = $0; fitScale() }
                     page(scale: dayScale)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageHeight = $0; fitScale() }
                 }
                 .simultaneousGesture(MagnifyGesture().onEnded { v in
                     if v.magnification < 0.85 { toYear() }   // pinch in: the year
@@ -261,9 +264,7 @@ struct JourneyMonthPage: View {
         }
     }
 
-    /// `live`: the page on screen. The still copy that picks the size (`dayScale`) lays out the same frame with no months in
-    /// its window and measures nothing.
-    private func page(scale: CGFloat, live: Bool = true) -> some View {
+    private func page(scale: CGFloat) -> some View {
         JourneyPerf.body("monthPage")
         let shown = shownMonth
         let numbers = log.month(shown)
@@ -351,7 +352,7 @@ struct JourneyMonthPage: View {
             .padding(.trailing, Self.railGutter)
             .padding(.top, 18 * scale)
             .journeyFlightWords(.month)
-            calendars(scale: scale, live: live).padding(.top, 4)
+            calendars(scale: scale).padding(.top, 4)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 12)
@@ -380,6 +381,18 @@ struct JourneyMonthPage: View {
     /// The window needs this month at its tallest (six weeks) and a little room above and below; the neighbours show in
     /// whatever is left (a sliver on an SE — asking for more pushed the page's title under the back button there, and with
     /// the picked day's 58 pt row at the bottom it cut that row's words off the screen).
+    /// ViewThatFits' choice, worked out: the page at size `s` needs its fixed part (the title, the numbers, the weekday
+    /// letters — the shown page less its window and the letters' 18·scale gap) plus 18·s plus the window `s` needs; the
+    /// largest size that fits, else the smallest. Rerun only when the room or the page's own height changes — never on a turn.
+    private func fitScale() {
+        guard room > 0, pageHeight > 0, windowHeight > 0 else { return }
+        let fixed = pageHeight - windowHeight - 18 * dayScale
+        let s = Self.scales.first { fixed + 18 * $0 + Self.windowNeeds(scale: $0) <= room + 0.5 } ?? Self.scales.last ?? 0.7
+        Self.lastScale = s
+        if s != dayScale { dayScale = s }
+    }
+    private static let scales: [CGFloat] = [1, 0.9, 0.8, 0.7]
+
     static func windowNeeds(scale: CGFloat) -> CGFloat {
         JourneyCalendar.height(weeks: 6, scale: scale) + 2 * room
     }
@@ -418,53 +431,51 @@ struct JourneyMonthPage: View {
         return ((window - pane.height) / 2).rounded() - pane.y
     }
 
-    private func calendars(scale: CGFloat, live: Bool) -> some View {
+    private func calendars(scale: CGFloat) -> some View {
         Color.clear
             .frame(minHeight: Self.windowNeeds(scale: scale), maxHeight: .infinity)
             .padding(.trailing, Self.railGutter)
             .overlay(alignment: .top) {
-                if live {
-                    ZStack(alignment: .top) {
-                        ForEach(panes(scale: scale), id: \.month) { pane in
-                            JourneyCalendar(log: log, month: pane.month, today: today, scale: scale,
-                                            current: pane.k == 0, highlight: pane.k == 0 ? focus : nil,
-                                            picked: pane.k == 0 ? picked : nil) { pick($0) }
-                                .frame(height: pane.height, alignment: .top)
-                                .animation(.easeInOut(duration: 0.3), value: focus)
-                                .modifier(JourneyMonthPaneSlot(drag: drag, y: pane.y, height: pane.height, window: windowHeight))
-                                .allowsHitTesting(pane.k == 0)
-                        }
+                ZStack(alignment: .top) {
+                    ForEach(panes(scale: scale), id: \.month) { pane in
+                        JourneyCalendar(log: log, month: pane.month, today: today, scale: scale,
+                                        current: pane.k == 0, highlight: pane.k == 0 ? focus : nil,
+                                        picked: pane.k == 0 ? picked : nil) { pick($0) }
+                            .frame(height: pane.height, alignment: .top)
+                            .animation(.easeInOut(duration: 0.3), value: focus)
+                            .modifier(JourneyMonthPaneSlot(drag: drag, y: pane.y, height: pane.height, window: windowHeight))
+                            .allowsHitTesting(pane.k == 0)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    // A faded neighbour's tap turns to it, as a swipe would (owner, 2026-10-17: "if I click on the faded
-                    // out neighbors, it scrolls me to that month"). One catcher for the window, by where the tap lands: a
-                    // catcher on each neighbour stayed where the pane was laid out, not where its offset drew it (a tap on
-                    // September went to August; one below did nothing). The middle month's days keep their own taps.
-                    .contentShape(Rectangle())
-                    .onTapGesture { p in
-                        guard let pane = panes(scale: scale).first(where: { $0.k != 0 && p.y >= $0.y && p.y <= $0.y + $0.height })
-                        else { return }
-                        turn(pane.k, scale: scale)
-                    }
-                    .padding(.trailing, Self.railGutter)
-                    .clipped()
-                    .mask {
-                        VStack(spacing: 0) {
-                            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: Self.edge)
-                            Color.black
-                            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: Self.edge)
-                        }
-                    }
-                    .journeyFlightWords(.month)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                // A faded neighbour's tap turns to it, as a swipe would (owner, 2026-10-17: "if I click on the faded
+                // out neighbors, it scrolls me to that month"). One catcher for the window, by where the tap lands: a
+                // catcher on each neighbour stayed where the pane was laid out, not where its offset drew it (a tap on
+                // September went to August; one below did nothing). The middle month's days keep their own taps.
+                .contentShape(Rectangle())
+                .onTapGesture { p in
+                    guard let pane = panes(scale: scale).first(where: { $0.k != 0 && p.y >= $0.y && p.y <= $0.y + $0.height })
+                    else { return }
+                    turn(pane.k, scale: scale)
+                }
+                .padding(.trailing, Self.railGutter)
+                .clipped()
+                .mask {
+                    VStack(spacing: 0) {
+                        LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: Self.edge)
+                        Color.black
+                        LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: Self.edge)
+                    }
+                }
+                .journeyFlightWords(.month)
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-                if live, abs(h - windowHeight) > 0.5 { windowHeight = h }
+                if abs(h - windowHeight) > 0.5 { windowHeight = h; fitScale() }
             }
             .contentShape(Rectangle())
             .gesture(swipe(scale: scale))
             .overlay(alignment: .trailing) {
-                if live && months.count > 1 {
+                if months.count > 1 {
                     // The month rail (owner, 2026-10-17: "Yeah, I like A … we should definitely keep that somewhere"):
                     // a dot per month with marks, older above, as To make up's scrubber.
                     JourneyMonthRail(months: months, current: shownMonth, height: windowHeight) { month in

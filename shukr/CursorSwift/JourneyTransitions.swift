@@ -1122,19 +1122,6 @@ struct JourneyMonthHost: ViewModifier {
     }
 }
 
-/// A hidden copy that only measures (the month page's size picker): never animates, never reports a place, takes no taps.
-struct JourneyFlightStill: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .environment(\.journeyMonthOpen, nil)
-            .environment(\.journeyMonthDial, nil)
-            .transformPreference(JourneyFlightAnchors.self) { $0 = [:] }
-            .hidden()
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-}
-
 /// Taps through only once a flight has landed — read from the live dial here, so the host never redraws for it.
 private struct JourneyHitGate: ViewModifier {
     let dials: JourneyMonthDial
