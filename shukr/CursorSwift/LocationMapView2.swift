@@ -66,6 +66,10 @@ final class LocationViewModel: ObservableObject {
     @Published var sheetDetent: PresentationDetent = .medium
     static let sheetSmall: PresentationDetent = .height(84)
     static let browseDetents: Set<PresentationDetent> = [sheetSmall, .medium, .large]
+    /// The one-day map: its sheet also holds the prayer tabs at its foot, so its small height takes their row too.
+    var dayTabs = false
+    static let tabRow: CGFloat = 62
+    var small: PresentationDetent { dayTabs ? .height(84 + Self.tabRow) : Self.sheetSmall }
     /// Where the sheet actually is on screen (for the controls above it and centring pins).
     let sheet = SheetMetrics()
     /// The height to return to after editing a prayer.
@@ -363,7 +367,7 @@ final class LocationViewModel: ObservableObject {
     static let pickHeight: CGFloat = 190
     var spotDetents: Set<PresentationDetent> {
         var set: Set<PresentationDetent> = switch spotMode {
-        case .browse: Self.browseDetents
+        case .browse: [small, .medium, .large]
         case .editTime: [pageDetent]
         case .pickSpot: [pageDetent, .large]          // .large while typing an address
         }
@@ -1138,11 +1142,51 @@ struct LocationMapContentView: View {
 
     /// A layer is on: its sheet is up.
     private var layerSheetUp: Bool { viewModel.showPrayers || viewModel.showMosques }
-    private var sheetSmall: Bool { viewModel.sheetDetent == LocationViewModel.sheetSmall }
+    private var sheetSmall: Bool { viewModel.sheetDetent == viewModel.small }
     /// The verse shows on the prayers' home with the sheet at its small height (nothing open, nothing being moved).
     private var showsPrayerVerse: Bool {
         viewModel.showPrayers && !viewModel.showMosques && sheetSmall && viewModel.spotMode == .browse
             && viewModel.selection == nil && viewModel.movingPrayer == nil && !viewModel.focusDrifted
+    }
+
+    /// The one-day map's tabs, one a prayer (owner, 2026-10-17: Find My's tabs at the bottom, "one for each prayer. And
+    /// then when tapped, it opens up its respective page. And goes to its respective pin on the map"): a tab opens that
+    /// prayer's page and flies to its pin (the list's own way in, `open`); the open one again, back to the day's list. A
+    /// prayer that isn't on the map (not marked, or marked with no place) is a dimmed tab.
+    private var dayTabs: some View {
+        let shown = viewModel.selection.flatMap { $0.focus ?? ($0.prayers.count == 1 ? $0.prayers[0] : nil) }
+        return HStack(spacing: 0) {
+            ForEach(JourneyLog.names, id: \.self) { name in
+                let row = viewModel.prayers.first { $0.name == name && $0.isCompleted && $0.latPrayedAt != nil && $0.longPrayedAt != nil }
+                let on = row != nil && shown?.name == name
+                Button {
+                    guard let row else { return }
+                    triggerSomeVibration(type: .light)
+                    if on { viewModel.closeSpot() } else { viewModel.open(row) }
+                } label: {
+                    VStack(spacing: 3) {
+                        Image(systemName: prayerIcon(for: name))
+                            .font(.system(size: 17, weight: on ? .semibold : .regular))
+                        Text(row?.displayName ?? name)
+                            .font(.system(size: 10.5, weight: on ? .semibold : .regular, design: .rounded))
+                            .lineLimit(1).minimumScaleFactor(0.8)
+                    }
+                    .foregroundStyle(on ? Color.primary : Color.secondary)
+                    .opacity(row == nil ? 0.35 : 1)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(row == nil)
+                .accessibilityLabel(row == nil ? "\(name), not on the map" : "\(row?.displayName ?? name)")
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+        .frame(height: LocationViewModel.tabRow)
+        .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5) }
     }
 
     /// What the one sheet shows: the layer's home (the list) or one pin's page, swapped in place.
@@ -1192,6 +1236,7 @@ struct LocationMapContentView: View {
                 .ignoresSafeArea()
                 .onAppear {
                     viewModel.prayers = shownPrayers
+                    viewModel.dayTabs = dayMode
                     if dayMode { setMode(prayers: true, mosques: false) }
                 }
                 .onChange(of: prayers.count) { _, _ in viewModel.prayers = shownPrayers }
@@ -1424,6 +1469,10 @@ struct LocationMapContentView: View {
         // (small is its header), its pages swapping in place.
         .sheet(isPresented: Binding(get: { layerSheetUp }, set: { _ in })) {
             layerSheet
+                // The one-day map's prayer tabs, Find My's way: at the sheet's foot at every height.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if dayMode && viewModel.spotMode == .browse { dayTabs }
+                }
                 .environment(\.mapSheetCollapsed, sheetSmall && viewModel.spotMode == .browse)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewModel.sheet.height = $0 }
                 .debugMapFrame("sheet")
@@ -1510,7 +1559,7 @@ struct LocationMapContentView: View {
                 }
                 if let d = UserDefaults.standard.string(forKey: "demoMapDetent") {
                     try? await Task.sleep(for: .seconds(1))
-                    viewModel.sheetDetent = d == "small" ? LocationViewModel.sheetSmall : d == "large" ? .large : .medium
+                    viewModel.sheetDetent = d == "small" ? viewModel.small : d == "large" ? .large : .medium
                     if UserDefaults.standard.bool(forKey: "logMapFrames") {
                         try? await Task.sleep(for: .seconds(4))
                         print("MAPFRAME safe bottom=\(viewModel.mapView?.safeAreaInsets.bottom ?? -1) screen=\(UIScreen.main.bounds.height)")
