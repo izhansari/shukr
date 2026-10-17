@@ -156,12 +156,23 @@ clock_epoch() {
   if [[ $clock == *-*-*" "*:* ]]; then date -j -f "%Y-%m-%d %H:%M" "$clock" +%s
   else date -j -f "%Y-%m-%d %H:%M" "$(date +%Y-%m-%d) $clock" +%s; fi
 }
+# terminate returns before the app is gone; a write it made on the way out landed after a restore (the store's WAL
+# was newer than the restore, 2026-10-17). Wait until its process is gone (at most 5 s).
+quit_app() {
+  xcrun simctl terminate $sim $BUNDLE 2>/dev/null || true
+  local i
+  for i in {1..25}; do
+    xcrun simctl spawn $sim launchctl list 2>/dev/null | grep -qE "^[0-9]+.*UIKitApplication:$BUNDLE\[" || return 0
+    sleep 0.2
+  done
+  return 0
+}
 group_dir() { xcrun simctl get_app_container $sim $BUNDLE groups 2>/dev/null | awk '/shukrWidget/ {print $2}' }
 STORE_SNAP=""
 snapshot_store() {
   local g=$(group_dir); [[ -n $g ]] || die "install shukr on the simulator once first"
   STORE_SNAP=$OUT/store-$$; rm -rf $STORE_SNAP; mkdir -p $STORE_SNAP
-  xcrun simctl terminate $sim $BUNDLE 2>/dev/null || true
+  quit_app
   cp -p $g/shukr.store* $STORE_SNAP/ 2>/dev/null || true
   [[ -d $g/.shukr_SUPPORT ]] && cp -Rp $g/.shukr_SUPPORT $STORE_SNAP/
 }
@@ -177,7 +188,7 @@ fixtures_on() {
   snapshot_store
 }
 fixtures_off() {
-  xcrun simctl terminate $sim $BUNDLE 2>/dev/null || true
+  quit_app
   [[ -n $STORE_SNAP ]] && { restore_store; rm -rf $STORE_SNAP; STORE_SNAP="" }
   xcrun simctl status_bar $sim clear >/dev/null 2>&1 || true
   [[ -n $textsize ]] && xcrun simctl ui $sim content_size large
@@ -204,7 +215,7 @@ state_args() {
 # launch <look> <mode> <extra args…>: the app, fresh, clock pinned, store restored
 launch() {
   local look=$1 mode=$2; shift 2
-  xcrun simctl terminate $sim $BUNDLE 2>/dev/null || true
+  quit_app
   restore_store
   xcrun simctl ui $sim appearance $mode
   local dark=$([[ $mode == dark ]] && print 1 || print 0)
@@ -321,7 +332,7 @@ cmd_strip() {
   local look=${looks[1]} mode=${modes[1]}
   local name=$moment-$look-$mode-$(date +%H%M%S) dir=$OUT/strips; mkdir -p $dir
   fixtures_on
-  xcrun simctl terminate $sim $BUNDLE 2>/dev/null || true
+  quit_app
   xcrun simctl io $sim recordVideo --codec=h264 --force $dir/$name.mp4 >/dev/null 2>&1 &
   local rec=$!
   sleep 1.5                         # the recorder needs a moment; the app must be in front when it starts
