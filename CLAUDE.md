@@ -69,7 +69,8 @@ upload). Written only by `scripts/whatsnew.py`; the page and tool in full: `docs
 - Written when the first build of it goes to his phone (or at the sprint's end if none did). Each later install round
   replaces it: `add` a fresh one with the same `--ask`, then `status --entry <old> --set replaced` (committed entries
   can't be edited); the new one carries the old one's "Tried and dropped:" line and any words he added since.
-- It holds: a fresh shot of the latest state (`whatsnew.py shot <png> <name>`); how it works in 2–3 lines (`--title`); a
+- Lean (owner, 2026-10-17: "we can keep it lean"): skip it when another session's entry already covers the item; a shot only
+  if one was taken while testing (`whatsnew.py shot <png> <name>`) — never relaunch a sim just for the picture. It holds: how it works in 2–3 lines (`--title`); a
   `--try`; `--ask <slug> --ask-words "<his words, verbatim>"`; "Tried and dropped: …" and what was / wasn't checked in
   `--notes`. A new feature adds `--area <one of AREAS> --topic-title …`.
 - Wrapping up an item = the entry matches what's on his phone → commit → push → `queue.sh done`.

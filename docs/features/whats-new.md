@@ -67,7 +67,8 @@ it's the team's record, with pictures, of what changed and why, so anyone can lo
   that started it; one "Tried and dropped:" line and what was / wasn't checked (`--notes`).
 - Wrapping up an item = the entry matches what's on his phone → commit → push → `queue.sh done`.
 How:
-1. Screenshot in the sim → `scripts/whatsnew.py shot <png> <name>` (≤ 600 px, 20–40 KB), fresh.
+1. A screenshot only if one was taken while testing (lean — owner 2026-10-17; never a sim run just for it) →
+   `scripts/whatsnew.py shot <png> <name>` (≤ 600 px, 20–40 KB). First check WhatsNew.jsonl: skip an item another entry covers.
 2. `scripts/whatsnew.py add --topic <id> --headline "<≤ 40 chars>" --title "<one line>" --try "…" [--try "…"]
    --shot wn-<name>.jpg [--ask <slug> [--ask-words "<his words>"] | --ask-note <feedback id>] [--notes "#17"]`
    - **--ask**: the ask this answers. Bradley's brief gives the slug and, for a new chat ask, his exact words
