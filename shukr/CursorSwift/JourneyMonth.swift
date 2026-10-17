@@ -188,12 +188,14 @@ struct JourneyMonthPage: View {
         guard let i = args.firstIndex(of: "-demoJourneyTurnRun"), !Self.turnRunDone else { return }
         Self.turnRunDone = true
         let n = args.indices.contains(i + 1) ? Int(args[i + 1]) ?? 3 : 3
-        func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
-        await wait(JourneyMotion.monthDuration + 1.5)   // the month landed and settled
+        // A cancelled sleep returns at once: once the page's task is cancelled (the page left), stop — it raced through
+        // every turn in a second on his phone.
+        func wait(_ s: Double) async -> Bool { try? await Task.sleep(for: .seconds(s)); return !Task.isCancelled }
+        guard await wait(JourneyMotion.monthDuration + 1.5) else { return }   // the month landed and settled
         for _ in 0..<n {
             for by in [-1, -1, -1, 1, 1, 1] {
                 turn(by, scale: dayScale)
-                await wait(1.2)
+                guard await wait(1.2) else { return }
             }
         }
         print("🎞️ journey turn run done")
@@ -441,6 +443,7 @@ struct JourneyMonthPage: View {
                         JourneyCalendar(log: log, month: pane.month, today: today, scale: scale,
                                         current: pane.k == 0, highlight: pane.k == 0 ? focus : nil,
                                         picked: pane.k == 0 ? picked : nil) { pick($0) }
+                            .equatable()   // a turn redraws only the panes whose part changed (perf sweep 6c)
                             .frame(height: pane.height, alignment: .top)
                             .animation(.easeInOut(duration: 0.3), value: focus)
                             .modifier(JourneyMonthPaneSlot(drag: drag, y: pane.y, height: pane.height, window: windowHeight))
@@ -621,7 +624,7 @@ struct JourneyMonthPage: View {
 
 /// The month as a calendar of rings, one per day (JourneyDayRing; spec month-fifths): its name over its own weeks only (a
 /// neighbour's last week sits right under its name, in view above or below the month in the middle).
-private struct JourneyCalendar: View {
+private struct JourneyCalendar: View, Equatable {
     let log: JourneyLog
     let month: Date
     let today: Date
@@ -635,6 +638,14 @@ private struct JourneyCalendar: View {
     let onDay: (Date) -> Void
 
     static let nameHeight: CGFloat = 21
+
+    /// Its own inputs only (the log by its build, not its days; the tap isn't compared — it only picks): a turn rebuilt
+    /// every pane in the window, 7–10 calendars, when only the two swapping middle and neighbour, and the one coming in,
+    /// changed (his 13 Pro Max, perf sweep 6c).
+    static func == (a: Self, b: Self) -> Bool {
+        a.month == b.month && a.today == b.today && a.scale == b.scale && a.current == b.current
+            && a.highlight == b.highlight && a.picked == b.picked && a.log.version == b.log.version
+    }
 
     static func weeks(_ month: Date) -> Int {
         let cal = Calendar.current
