@@ -148,6 +148,9 @@ struct JourneyLog {
         }
         log.tileRanks = ranks(log.days.values)
         for (n, d) in log.days.values.filter(\.active).sorted(by: { $0.date < $1.date }).enumerated() { log.dayNumbers[d.key] = n + 1 }
+        let ranked = log.days.values.filter { $0.active && !$0.unfinished }.map { ($0.key, $0.dayScore) }.sorted { $0.1 > $1.1 }
+        log.rankedDays = ranked.count
+        for (i, r) in ranked.enumerated() { log.dayRanks[r.0] = i > 0 && ranked[i - 1].1 == r.1 ? log.dayRanks[ranked[i - 1].0] : i + 1 }
         return log
     }
 
@@ -179,6 +182,13 @@ struct JourneyLog {
     /// Which day of the journey it was: the nth day with a mark (nil: nothing marked that day).
     private var dayNumbers: [String: Int] = [:]
     func dayNumber(_ date: Date) -> Int? { dayNumbers[PrayerNotificationID.dayKey(date)] }
+
+    /// Where a day ranks among the finished days with a mark, by the day page's score (owner, 2026-10-17: "the rank of that
+    /// day across all of our days … rank number 105 out of 280"): equal scores share a rank (two 100s are both 1st). Today
+    /// before its last prayer isn't ranked (its score is still climbing).
+    private var dayRanks: [String: Int] = [:]
+    private(set) var rankedDays = 0
+    func dayRank(_ date: Date) -> Int? { dayRanks[PrayerNotificationID.dayKey(date)] }
 
     /// A tile's place on its kind's scale, 0…1 (1 with nothing to compare against yet).
     func tileRank(_ d: Day) -> Double {

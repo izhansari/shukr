@@ -31,6 +31,9 @@ struct JourneyHomeCard: View {
     var opens: (Date) -> Bool = { _ in false }
     var onMonth: (Date) -> Void = { _ in }
     @State private var picked: Date?
+    /// The picked day's notes, photos, places and zikr (JourneyDayExtras), counted once it settles.
+    @State private var extras = JourneyDayExtras()
+    @Environment(\.modelContext) private var context
     /// "best streak" tapped: its days lit, the grid at them (owner, 2026-10-17: "clicking this takes us to the area that
     /// shows those days with best streak") — the month's way with its numbers. Again, or a tile, lets it go.
     @State private var streakShown = false
@@ -59,7 +62,12 @@ struct JourneyHomeCard: View {
 
     var body: some View {
         let empty = stats.activeDays == 0
+        let shown = picked.flatMap { stats.day(on: $0) }
         VStack(alignment: .leading, spacing: 0) {
+            // A picked day takes the top (owner, 2026-10-17: "all the stuff that's in the bottom can move to the top"): its
+            // ring with the score, the date, which day of the journey and its rank, its kind. The count stays underneath,
+            // unseen, so the card never changes height.
+            ZStack(alignment: .topLeading) {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("\(stats.activeDays)").font(.system(size: compact ? 42 : 54, weight: .thin, design: .rounded))
                     .foregroundStyle(empty ? .secondary : .primary)
@@ -69,6 +77,9 @@ struct JourneyHomeCard: View {
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
             .padding(.trailing, empty ? 0 : 28)   // room for the expand button
+            .opacity(shown == nil ? 1 : 0)
+                if let d = shown { dayTop(d).transition(.opacity) }
+            }
             .journeyFlightWords(.card)   // the transitions: fades as a month opens (JourneyTransitions.swift)
             HStack {
                 Text(rangeLabel)
@@ -362,7 +373,7 @@ struct JourneyHomeCard: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                 } else if let date = picked, let day = stats.day(on: date) {
-                    dayLine(day).transition(.opacity)
+                    dayExtras(day).transition(.opacity)
                 } else {
                     HStack(alignment: .top, spacing: 0) {
                         figure("\(stats.prayersMarked)", "prayers marked").opacity(streakShown ? 0.35 : 1)
@@ -394,8 +405,91 @@ struct JourneyHomeCard: View {
         .padding(.top, tight ? 10 : 12)
     }
 
-    private func dayLine(_ d: YourJourneyStats.GridDay) -> some View {
-        JourneyDayLine(day: d, log: log, canOpen: d.prayed > 0 && opens(d.date)) { onDay(d.date) }
+    /// The picked day at the top: its ring (prayed fifths, no color; the score inside), the date, "Day 225 · 105th of 280",
+    /// its kind. A tap opens the day.
+    private func dayTop(_ d: YourJourneyStats.GridDay) -> some View {
+        let can = d.prayed > 0 && opens(d.date)
+        let date = d.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+        let number = log.dayNumber(d.date).map { "Day \($0)" }
+        let rank = log.dayRank(d.date).map { "\(Self.ordinal($0)) of \(log.rankedDays)" }
+        let second = d.unfinished ? [number, "today, so far"] : [number, rank]
+        let kind = d.prayed == 0 ? (d.excused ? "Excused" : "No prayers marked")
+            : d.unfinished ? "Still going" : d.kind == .allInTime ? "Complete" : d.kind == .allFive ? "With Qaza" : "Incomplete"
+        let ring: CGFloat = compact ? 46 : 54
+        return Button {
+            guard can else { return }
+            triggerSomeVibration(type: .light)
+            onDay(d.date)
+        } label: {
+            HStack(alignment: .center, spacing: 14) {
+                JourneyDayFifths(day: log.day(d.date), center: d.prayed > 0 ? "\(d.score)" : "–")
+                    .frame(width: ring, height: ring)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(date).font(.system(size: compact ? 15 : 17, weight: .regular, design: .rounded))
+                    Text(second.compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: compact ? 12.5 : 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    Text(kind).font(.system(size: compact ? 12.5 : 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                }
+                .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .padding(.trailing, 28)   // the expand button's room
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(can ? "Opens that day" : "")
+    }
+
+    /// 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st.
+    static func ordinal(_ n: Int) -> String {
+        let tens = n % 100, ones = n % 10
+        let suffix = (11...13).contains(tens) ? "th" : ones == 1 ? "st" : ones == 2 ? "nd" : ones == 3 ? "rd" : "th"
+        return "\(n)\(suffix)"
+    }
+
+    /// The picked day at the bottom: what else it holds — notes, photos, places on the map, zikr — every one, a 0 too, so
+    /// an empty one reads as none rather than missing (owner, 2026-10-17: "show them all so the user knows for certain they
+    /// didnt do zikr that day and its not a bug"). Counted when the pick settles; a tap opens the day.
+    private func dayExtras(_ d: YourJourneyStats.GridDay) -> some View {
+        let e = extras.date == d.date ? extras : nil
+        let can = d.prayed > 0 && opens(d.date)
+        return Button {
+            guard can else { return }
+            triggerSomeVibration(type: .light)
+            onDay(d.date)
+        } label: {
+            HStack(alignment: .top, spacing: 0) {
+                extra("text.quote", e.map { "\($0.notes)" }, e?.notes == 1 ? "note" : "notes", e?.notes ?? 0 > 0)
+                extra("photo.on.rectangle", e.map { "\($0.photos)" }, e?.photos == 1 ? "photo" : "photos", e?.photos ?? 0 > 0)
+                extra("map", e.map { "\($0.places)" }, "on the map", e?.places ?? 0 > 0)
+                extra("circle.hexagonpath", e.map { $0.zikrMinutes }, "min of zikr", e?.zikrSeconds ?? 0 > 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .task(id: d.date) {
+            // A held finger crossing tiles doesn't count every one it passes.
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            extras = JourneyDayExtras.load(d.date, in: context)
+        }
+    }
+
+    private func extra(_ symbol: String, _ value: String?, _ caption: String, _ has: Bool) -> some View {
+        VStack(spacing: 2) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol).font(.system(size: 13, weight: .light))
+                Text(value ?? " ").font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
+            }
+            Text(caption)
+                .font(.system(size: 11, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.75)
+        }
+        .foregroundStyle(has ? Color.primary : Color.secondary)
+        .opacity(has ? 1 : 0.55)
+        .frame(maxWidth: .infinity)
     }
 
     /// The best streak's dates: "Sep 3 – 10", "Aug 28 – Sep 4", with the year when it isn't this one.
@@ -478,10 +572,10 @@ struct JourneyDayLine: View {
         // The kind in his words (owner, 2026-10-17: "Complete · With Qaza · Incomplete"), and the day page's own score.
         let what: String = day.prayed == 0 ? (day.excused ? "Excused" : "No prayers marked")
             // No "3 of 5": the ring beside it says which (owner: "you'll know which prayer it was that you didn't complete").
-            : day.unfinished ? "So far · score \(day.score)"
-            : day.kind == .allInTime ? "Complete · score \(day.score)"
-            : day.kind == .allFive ? "With Qaza · score \(day.score)"
-            : "Incomplete · score \(day.score)"
+            : day.unfinished ? "So far"
+            : day.kind == .allInTime ? "Complete"
+            : day.kind == .allFive ? "With Qaza"
+            : "Incomplete"   // the score is in the ring
         let number = log.dayNumber(day.date)
         // The whole line opens the day (owner, 2026-10-17: "Clicking the whole bottom row should open the selected
         // prayers day ring page").
@@ -499,7 +593,7 @@ struct JourneyDayLine: View {
                 }
                 .lineLimit(1).minimumScaleFactor(0.85)
                 Spacer(minLength: 4)
-                JourneyDayFifths(day: log.day(day.date), date: day.date)
+                JourneyDayFifths(day: log.day(day.date), center: day.prayed > 0 ? "\(day.score)" : "–")
                     .frame(width: Self.ring, height: Self.ring)
                     .opacity(canOpen ? 1 : 0.45)   // a day that doesn't open (nothing marked, today still going): quiet
             }
@@ -516,7 +610,8 @@ struct JourneyDayLine: View {
 /// of that day. And we won't use color here"): prayed (or excused) drawn, the rest a faint track; its date's number inside.
 struct JourneyDayFifths: View {
     let day: JourneyLog.Day
-    let date: Date
+    /// What sits inside: the day's score (not its date — the date is right beside it, owner 2026-10-17).
+    let center: String
     var body: some View {
         GeometryReader { g in
             let side = min(g.size.width, g.size.height)
@@ -531,8 +626,8 @@ struct JourneyDayFifths: View {
                         .rotationEffect(.degrees(-90))
                         .frame(width: JourneyDayRing.radius * 2 * k, height: JourneyDayRing.radius * 2 * k)
                 }
-                Text("\(Calendar.current.component(.day, from: date))")
-                    .font(.system(size: JourneyDayRing.number * k, weight: .regular, design: .rounded)).monospacedDigit()
+                Text(center)
+                    .font(.system(size: JourneyDayRing.number * k * 1.25, weight: .light, design: .rounded)).monospacedDigit()
             }
             .frame(width: g.size.width, height: g.size.height)
         }
@@ -690,6 +785,37 @@ struct JourneyMilestonesList: View {
                 }
             }
         }
+    }
+}
+
+/// A day's other things, as counts: notes, photos, prayers with a place (the map), zikr time — the day page's own rules
+/// (DayFacts), without its place-name lookups.
+struct JourneyDayExtras: Equatable {
+    var date: Date?
+    var notes = 0, photos = 0, places = 0
+    var zikrSeconds: TimeInterval = 0
+    /// Whole minutes ("<1" for a little).
+    var zikrMinutes: String {
+        let m = Int((zikrSeconds / 60).rounded())
+        return zikrSeconds > 0 && m < 1 ? "<1" : "\(m)"
+    }
+
+    @MainActor static func load(_ date: Date, in context: ModelContext) -> JourneyDayExtras {
+        var e = JourneyDayExtras(date: date)
+        let key = PrayerNotificationID.dayKey(date)
+        let all = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: date)))) ?? []
+        var kept: [String: PrayerModel] = [:]   // one per prayer, a completed row winning (the day page's)
+        for row in all where row.dayKey == key && JourneyLog.names.contains(row.name) && (!(kept[row.name]?.isCompleted ?? false) || row.isCompleted) {
+            kept[row.name] = row
+        }
+        let done = kept.values.filter(\.isCompleted)
+        e.notes = done.filter { DayFacts.note($0) != nil }.count
+        e.photos = done.filter { PrayerPhotos.has(PrayerPhotos.key(dayKey: $0.dayKey, name: $0.name)) }.count
+        e.places = done.filter { DayFacts.spot($0) != nil }.count
+        let from = date.addingTimeInterval(-86_400), to = date.addingTimeInterval(2 * 86_400)
+        let near = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= from && $0.startTime < to }))) ?? []
+        e.zikrSeconds = near.filter { PrayerDay.start(for: $0.startTime) == date }.reduce(0) { $0 + $1.secondsPassed }
+        return e
     }
 }
 
