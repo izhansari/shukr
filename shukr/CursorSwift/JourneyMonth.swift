@@ -48,7 +48,20 @@ struct JourneyMonthPage: View {
         months = Self.monthsWithMarks(log)
     }
 
-    private static func monthsWithMarks(_ log: JourneyLog) -> [Date] {
+    /// The last list and the log it came from (a page is rebuilt whenever Journey's host redraws — at the start of every
+    /// flight back — and this ran each time: ~75 ms on his 13 Pro Max).
+    @MainActor private static var monthsCache: (key: [AnyHashable], months: [Date])?
+
+    @MainActor private static func monthsWithMarks(_ log: JourneyLog) -> [Date] {
+        let today = PrayerDay.start()
+        let key: [AnyHashable] = [log.firstDay, log.days.count, today, log.month(JourneyLog.monthStart(today)).activeDays]
+        if let c = monthsCache, c.key == key { return c.months }
+        let months = computeMonths(log)
+        monthsCache = (key, months)
+        return months
+    }
+
+    private static func computeMonths(_ log: JourneyLog) -> [Date] {
         guard let first = log.firstDay else { return [] }
         var out: [Date] = []
         var m = JourneyLog.monthStart(first)
