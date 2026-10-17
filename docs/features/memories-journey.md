@@ -91,65 +91,56 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - ☰ → Journey (`JourneyPresenter.open`, pushed on the root stack) replaces Insights and the Moments row; the day page's pill
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
   link "journey" ("insights" too). InsightsView is kept in code, unreached. iOS 26's back button shows no page name.
-- Journey on one screen (owner 2026-10-16, board/mocks/journey-v6/build-plan.md "A"/"B", canvas v7): `JourneyPage`
-  doesn't scroll — "Journey" (38 regular) + "Since <weekday, date>" / "It starts with your first prayer"; the card
-  (`JourneyHomeCard`): days you marked a prayer (54 pt, 42 on an SE); "THE LAST N WEEKS" (or the months in view once
-  scrolled, "JUL – SEP 2026") · "a week a row"; the grid a week a row (`YourJourneyStats.weeks`, the week holding the
-  first day to today's): seven rounded bars (11 pt, 3 apart, radius 5; the month's fills via `JourneyTileColor` — the ring's green
-  fill all five in time, its grey fill all five, fainter some, faintest none; the year's squares the same), a 34 pt column of sage month names by the week holding the 1st ("Jan’26" on January and
-  the first month) that open the month, today's week at the bottom, scrolling up to the first day under a top fade; its
-  natural height 12 weeks, growing into the room left (`ViewThatFits`; where five rows don't fit under 12 weeks — a 6.3"
-  phone by a row, an SE, large text — the rows scroll in their own area with a bottom fade). A tile's tap puts its day
-  in the three numbers' place ("Tue, Sep 1 · 5 of 5 · all in time · Open ›"); again, the numbers. Five rows
-  (`JourneyHomeRow`, 58 / 52 pt): This month ("<measure>, so far", → the current month; hold → `ThisMonthMeasure`: in
-  their window · on time or better (default) · Perfect · average score, each with its value and what it counts, stored as
-  `journey.thisMonth`) · Prayer scores · To make up · Moments · Milestones ("Latest: <milestone>, <date>" →
-  `JourneyMilestonesPage`: the list, its frosted cards, "See that day ›"). A month page: JourneyMonth.swift (Frank).
-- The month (`JourneyMonthPage`, JourneyMonth.swift): the title "September 2026" with an up-down symbol — a tap zooms out
-  to the year; "N days you marked a prayer"; days all in time · days with Qaza · average score, the first two with the
-  key's ring beside them (a tap lights those days; there is no legend line — owner 2026-10-17, option 1); the weekday
-  letters fixed over a window of months: this month in the middle, its neighbours' edges faded above and below, each month
-  its own weeks under its name (the calendar of rings, `JourneyDayRing`, spec board/mocks/month-fifths/spec.md: complete →
-  closed ring + fill, green all in time, soft + grey with a Qaza; otherwise F2 fifths at 1.8; today its fifths + a dot;
-  excused all day → the badge). Drag up / down moves them all 1:1, settles past a quarter or a flick (months with marks
-  only). The month rail down the right edge (`JourneyMonthRail`, To make up's scrubber): a dot per month, older above, the
-  one on show named, a year's first month carrying the year; a finger runs through the months. Month | Year at the bottom;
-  a pinch in → the year (it opens on the shown month's year), spread → back. No grade colors.
-- The year (`JourneyYearView`, JourneyYear.swift): every year from the first, opening on this one (earlier above, a fade
-  under the back button); twelve small months of square tiles in the card's colors (`JourneyTileColor`), each six weeks
-  tall, its name (sage = this month) and one line ("9 days · 84%" in time of due, or "Away"); the month you came from
-  outlined, today outlined; a tap on a month with prayers opens it.
-- Prayer scores (`PrayerScoresPage`, PrayerScores.swift; Bradley; spec board/mocks/journey/spec.md "Prayer scores,
-  lifetime" … "One score everywhere", mock board/mocks/journey-phase3 v9): lifetime only (owner: "no 7 days, 30 days, 12
-  months … it just keeps aggregating"). Ring = the score when prayed (misses left out; `prayedScore`, one score everywhere —
-  `lifeScore`, misses as 0, is shown nowhere), the grade word, "average score"; "848 of 1,333 prayed · since Nov 2024";
-  "Last 7 days ↑22 · last 30 days ↑43" (each part vs the same number of active days before it, shown only with ≥ 5 days on
-  both sides, under 3 points = "steady"); one sentence (top row "strongest", most missed "needs you most", the latest
-  "is your latest when you pray it", grey). Rows ranked by `prayedRaw` (ties by the raw value): "77 · 76% prayed" + its
-  lifetime dots (`PrayerScoresChart`, a Canvas: 14 slots across the window, one dot = N prayers shared by every row, Qaza
-  its own block past the end). **Tap a row:** the others fade (0.18 s), fold to height 0, the row rises to the top as the
-  same view, then its page fades in top to bottom — timed beats (`Task.sleep`), never spring completions; back = tap the
-  row; taps ignored while moving. No colour or weight change on the picked name (either dropped it mid-rise); numbers
-  `.contentTransition(.identity)` out, then in (`.numericText` drew both digits). **A prayer's page:** ring name · score ·
-  grade; "Lately, usually N minutes after it starts" + its trend; the big chart ("1 dot = N prayers"); "164 prayed since …
-  · 103 missed"; four grade chips (a tap focuses that grade's stretch, again clears); one insight row with a symbol (not a
-  link: best-timed → steady streak → masjid → mostly Perfect → most prayed → best streak); "N to make up ›" →
-  `JourneyMakeUpPage(startOnly:)` (All months, that prayer's chip on); "N photos ›" (`PrayerPhotos.all()`, the list Moments
-  shows) → `MemoriesPage(onlyPrayer:)`; "Where you pray it ›" → `PrayerScoresMap` (framed on the median cluster,
-  `usualArea`). Thin data: a trend part hidden under 5 days a side; "Not enough yet to say when you usually pray it." under
-  5 marks; no insight under 5 prayed; a row with nothing due "Not enough yet". Excused prayers never break a prayer's
-  streak. Loads off the main thread (`PrayerScores.load`: `JourneyLog.build` + the completed rows' masjid / spot). DEBUG
-  `-demoJourney -demoPrayerScores [Name]`.
+- Journey on one screen (owner 2026-10-16, board/mocks/journey-v6/build-plan.md): `JourneyPage` doesn't scroll — "Journey"
+  + "Since <date>"; the card (`JourneyHomeCard`, YourJourney.swift); five rows (`JourneyHomeRow`): This month (hold →
+  `ThisMonthMeasure`, `journey.thisMonth`) · Prayer scores · To make up · Moments · Milestones (→ `JourneyMilestonesPage`).
+  One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
+  scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
+- The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in
+  view) · the current streak ("N-day streak" / "Start a streak today"), the expand button top right → the month. The grid a
+  week a row (`JourneyCardRow`, Equatable: a row redraws only for its own days / pick / streak light / look / log version):
+  a 40 pt right-aligned column of grey month names (tap → that month), seven 11 pt bars (corner 4) in `JourneyTileColor`
+  (kind × the user's own heat rank; unmarked = a hairline only). Opens on today's week (pinned until a finger scrolls).
+  A tap picks a tile (ringed; a tap near it lets it go; a scroll lets it go); hold 0.3 s and move to pick across rows
+  (`JourneyHoldPick`, UIKit, per row; a quick drag scrolls). The month rail: hold the names 0.22 s, then the finger's height
+  is the month (a pill names it, a tick each, the grid follows; a slim scroll bar at rest). "best streak" tapped lights its
+  days and scrolls there; again, back to where you were. A picked day: the top is `JourneyDayTop` (fifths ring with the
+  score, date, "Day N · Rth of M", its kind; the ring flies into the day page), the bottom `JourneyDayExtrasRow` (notes ·
+  photos · on the map · min of zikr → the day page back card's destinations; the photo pile rises, fades out).
+- The month (`JourneyMonthPage`, JourneyMonth.swift): the title with an up-down symbol (tap → the year); Month | Year in the
+  top bar (it fades while a day is open); the numbers with the key's rings (a tap lights those days); a window of months:
+  this one in the middle, its neighbours faded above and below with "· N days · score N" (a tap on one turns to it), a drag
+  turns past a quarter or a flick; the month rail down the right edge; the rings (`JourneyDayRing`). A ring's tap picks the
+  day: its top (`JourneyDayTop`, a line under it) and its bottom (`JourneyDayExtrasRow`, a line over it); the top's ring
+  flies into the day page. Day size 1 / 0.9 / 0.8 / 0.7 worked out from the room (`fitScale`); a turn redraws only the
+  calendars whose part changed (Equatable). Pinch in → the year.
+- The year (`JourneyYearView`, JourneyYear.swift): every year from the first, opening on this one; twelve small months
+  (`JourneyYearMonth`, Equatable) each with its name, "N days · score N" (the month's average score) or "Away", and its days
+  as one picture (`JourneyYearSquares`, a Canvas: tile colors, unmarked hairline, future faint, today outlined; the picked
+  ring drawn over it); a square's tap picks it (its line at the bottom, → the day); a name opens its month; ‹ and the edge
+  swipe go back to the month it came from (`JourneyFlightGeometry.yearBack`), not the card.
+- Prayer scores (`PrayerScoresPage`, PrayerScores.swift): All time · 30 days · 7 days under the header (`PrayerScores.build(span:)`);
+  the ring = the score when prayed; rows "97 · 98% prayed" + their dots (`PrayerScoresChart`: 14 slots across the window +
+  a Qaza block). A row's (or a fifth's) tap: its symbol, name and line rise over the switch into the header (the "97 · "
+  folds away), the rest after it lands; ‹ in the bar or a left-edge swipe sinks it back; another fifth switches straight to
+  that prayer. A prayer's page: "Lately, usually…" + its trend, the big chart — tap or hold-drag a slot → "N prayers (P%) ·
+  A–B min after it starts · <grade>" (Qaza: "made up as Qaza") in those lines' place; grade chips, insight, To make up,
+  photos, Where you pray it. Thin data: "Not enough yet" (kept steady through the rise).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.
-- Off the main thread (Frank's trace 2026-10-15: the log 71–80 ms on every open, To make up's entries 108–130 ms on open,
-  Made up and Undo): `JourneyLog.load(container:ranges:)` and `JourneyMakeUpPage.entries(container:)` read on a detached
-  task with their own `ModelContext` and return plain values (`JourneyLog`; `Entry` is a value snapshot of the row — its
-  `PrayerModel` is looked up by id only for an action, `model(_:)`); the last result is kept (`JourneyLog.last`,
-  `JourneyMakeUpPage.last`) so a page never opens blank. JourneyPage reloads only while on screen (`dirty` until its
-  return); To make up's reloads come after the read, the animation wrapping only the state change (Made up's leave 3 s
-  later, Undo, the sheet's close). A newer load drops an older result (`loadToken`).
+- Off the main thread: `JourneyLog.load` and `JourneyMakeUpPage.entries` read on a detached task with their own
+  `ModelContext` and return values; Journey reads the log once per open and builds Prayer scores' row from it (one `now`,
+  one set of excused ranges); the last results are kept (`JourneyLog.last`, `PrayerScores.lastBySpan`) so pages never open
+  blank; a newer load drops an older one (`loadToken`); a page under another reloads on its return (`dirty`).
+- Transitions (JourneyTransitions.swift, the host `journeyMonthHost`): card ↔ month (tiles fly into rings, the month name
+  becomes the title), month ↔ year (days fly to their squares), a ring → its day page (from a month cell or the card's top
+  ring; ‹ / edge swipe fly back). `JourneyFrameLog` (journey-transitions.log) only in DEBUG or with -journeyFrameLog.
+- Perf log (`JourneyPerf`, JourneyPerf.swift; DEBUG, or Release with -journeyPerf): each move opens a window — frames, late,
+  hitch, worst gap, main busy, body counts, timed loads — in Library/Caches/journey-perf.log. Phone runs:
+  `PERF_ARGS="-journeyPerf" zsh scripts/perf-paging.sh <label> testJourneyPerfPass` (a scripted pass) or `testJourneyTurnRun`
+  (month turns, no screen reads; `-demoJourneyTurnRun N`). Rules it taught: no hidden sizing copies of a page, rows / months
+  as Equatable views keyed on `JourneyLog.version`, many small shapes → one Canvas.
 - The day page (`JourneyDayPage`, on the Salah tab's day page pieces — the day page merge, owner 2026-10-15, DayPage.swift;
   the full behaviour in salah.md "The day page merge"): the date centred on top ("Thursday, October 15" / "Today · Jumada I 4"),
   `DayRing` + `DayCentre` on a raised 222 pt disc, the picked prayer's note and place under it (`DayPickLines`), the list card
