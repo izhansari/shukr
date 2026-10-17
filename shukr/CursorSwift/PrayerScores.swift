@@ -291,9 +291,6 @@ struct PrayerScoresPage: View {
         ScrollView {
             VStack(spacing: 0) {
                 header.padding(.top, 4)
-                // The overview's two grey lines went (owner: "We can get rid of the two gray lines … keep it with just the
-                // ring. And the one-liner"); an open prayer keeps its own.
-                if shown != nil { lines.padding(.top, 14) }
                 rows.padding(.top, folded ? 10 : 18)
                 if selected != nil { detail }
                 footnote
@@ -304,6 +301,9 @@ struct PrayerScoresPage: View {
         .scrollIndicators(.hidden)
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
+        // An open prayer takes the page's title: "Prayer scores" waits in the bar (owner, 2026-10-17: "maybe the title
+        // prayer scores goes in the top bar").
+        .navigationTitle(shown != nil ? "Prayer scores" : "")
         .navigationBarTitleDisplayMode(.inline)
         // A prayer opens in place, not as a page: while one is open, ‹ closes it back to Prayer scores (owner,
         // 2026-10-17: "clicking the back chevron is kind of annoying because it takes us back to the card page instead
@@ -428,11 +428,6 @@ struct PrayerScoresPage: View {
                 if selected == nil { open(name) } else { close() }
             }
             VStack(spacing: 1) {
-                if shown != nil {
-                    Text(shown ?? " ")
-                        .font(.system(size: 20, weight: .regular, design: .rounded))
-                        .opacity(linesFaded ? 0 : 1)
-                }
                 Text(ringScore.map { "\($0)" } ?? "–")
                     .font(.system(size: 58, weight: .thin, design: .rounded)).monospacedDigit()
                     .contentTransition(.identity)
@@ -466,7 +461,7 @@ struct PrayerScoresPage: View {
 
     /// Two lines under the ring, on both pages: what it covers / when you usually pray it, then the 7 / 30 day trend.
     private var lines: some View {
-        VStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 5) {
             if let s = shown, let p = data.prayers[s] {
                 Text(p.usual.map { $0.replacingOccurrences(of: "Usually", with: "Lately, usually") }
                      ?? "Not enough yet to say when you usually pray it.")
@@ -477,23 +472,21 @@ struct PrayerScoresPage: View {
             }
             trendLine(shown ?? "all")
         }
-        .multilineTextAlignment(.center)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
         .opacity(linesFaded ? 0 : 1)
     }
 
     private var sinceWords: String? { data.since?.formatted(.dateTime.month(.abbreviated).year()) }
 
+    /// "Last 7 days ↑3 · last 30 days steady" as one text, so it wraps beside the ring.
     @ViewBuilder private func trendLine(_ key: String) -> some View {
         let parts = [("Last 7 days", data.trend7[key]), ("last 30 days", data.trend30[key])].compactMap { label, t in t.map { (label, $0) } }
         if !parts.isEmpty {
-            HStack(spacing: 6) {
-                ForEach(Array(parts.enumerated()), id: \.offset) { i, part in
-                    if i > 0 { Text("·").foregroundStyle(.secondary) }
-                    HStack(spacing: 4) {
-                        Text(part.0).foregroundStyle(.secondary)
-                        Text(Self.change(part.1.change)).foregroundStyle(.primary)
-                    }
-                }
+            parts.enumerated().reduce(Text("")) { line, item in
+                let (i, part) = item
+                return line + Text(i > 0 ? " · " : "").foregroundStyle(.secondary)
+                    + Text("\(part.0) ").foregroundStyle(.secondary) + Text(Self.change(part.1.change)).foregroundStyle(.primary)
             }
             .font(.system(size: 14, weight: .light, design: .rounded))
         }
@@ -509,10 +502,18 @@ struct PrayerScoresPage: View {
         let scale: CGFloat = 0.7
         return HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Prayer scores")
+                // Open, the prayer's name is the title and its lines are the grey ones (owner, 2026-10-17: "instead of it
+                // just saying prayer scores, like when a prayer is tapped, it instead says that prayer's name … same for
+                // its secondary lines, we'll move that in there underneath it").
+                Text(shown ?? "Prayer scores")
                     .font(.system(size: 34, weight: .light, design: .rounded))
                     .lineLimit(2).minimumScaleFactor(0.8)
-                if let s = data.sentence {
+                    .id(shown ?? "")
+                    .transition(.opacity)
+                    .opacity(linesFaded ? 0 : 1)
+                if shown != nil {
+                    lines
+                } else if let s = data.sentence {
                     Text(s.line)
                         .font(.system(size: 15, weight: .light, design: .rounded))
                         .foregroundStyle(.secondary)
@@ -535,10 +536,11 @@ struct PrayerScoresPage: View {
             ForEach(data.ranked, id: \.self) { name in
                 let isPicked = selected == name
                 let hidden = selected != nil && !isPicked
+                // Folded, the picked row goes too: its name is the title now (owner: "we don't need to show it twice").
                 row(name, per: per, picked: isPicked)
-                    .frame(height: hidden && folded ? 0 : Self.rowHeight, alignment: .top)
+                    .frame(height: folded && (hidden || isPicked) ? 0 : Self.rowHeight, alignment: .top)
                     .clipped()
-                    .opacity(hidden && othersFaded ? 0 : 1)
+                    .opacity((hidden && othersFaded) || (isPicked && folded) ? 0 : 1)
                     .allowsHitTesting(!hidden)
             }
         }
