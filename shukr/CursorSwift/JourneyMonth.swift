@@ -335,10 +335,15 @@ struct JourneyMonthPage: View {
     /// The window's top and bottom fade: never over the month in the middle, which the window always has room for.
     static let edge: CGFloat = 24
 
-    /// The window needs this month at its tallest (six weeks) and room for the fade above and below; the neighbours show
-    /// in whatever is left (a sliver on an SE — asking for more pushed the page's title under the back button there).
+    /// The least room above and below the month in the middle. Less than the fade: on an SE the fade only brushes the
+    /// month's small name, never a week.
+    static let room: CGFloat = 16
+
+    /// The window needs this month at its tallest (six weeks) and a little room above and below; the neighbours show in
+    /// whatever is left (a sliver on an SE — asking for more pushed the page's title under the back button there, and with
+    /// the picked day's 58 pt row at the bottom it cut that row's words off the screen).
     static func windowNeeds(scale: CGFloat) -> CGFloat {
-        JourneyCalendar.height(weeks: 6, scale: scale) + 2 * edge
+        JourneyCalendar.height(weeks: 6, scale: scale) + 2 * room
     }
 
     /// The months around this one, in place: this one in the middle of the window, its neighbours a gap above and below
