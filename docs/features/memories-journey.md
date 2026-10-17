@@ -106,12 +106,15 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   `journey.thisMonth`) · Prayer scores · To make up · Moments · Milestones ("Latest: <milestone>, <date>" →
   `JourneyMilestonesPage`: the list, its frosted cards, "See that day ›"). A month page: JourneyMonth.swift (Frank).
 - The month (`JourneyMonthPage`, JourneyMonth.swift): the title "September 2026" with an up-down symbol — a tap zooms out
-  to the year; "N days you marked a prayer"; days all in time · days with all five · average score (a tap lights those
-  days); the calendar of rings (`JourneyDayRing`, spec board/mocks/month-fifths/spec.md: complete → closed ring + fill,
-  green all in time, soft + grey with a Qaza; otherwise F2 fifths at 1.8; today its fifths + a dot; excused all day → the
-  badge). Months page up and down (drag down → the month before, 1:1, settles past a quarter or a flick; months with marks
-  only; each month clipped to its own height). Month | Year at the bottom (`JourneySwitch`); a pinch in → the year, spread →
-  back. No ‹ ›, no grade colors. "All five" counts excused prayers as done on a day with a mark.
+  to the year; "N days you marked a prayer"; days all in time · days with Qaza · average score, the first two with the
+  key's ring beside them (a tap lights those days; there is no legend line — owner 2026-10-17, option 1); the weekday
+  letters fixed over a window of months: this month in the middle, its neighbours' edges faded above and below, each month
+  its own weeks under its name (the calendar of rings, `JourneyDayRing`, spec board/mocks/month-fifths/spec.md: complete →
+  closed ring + fill, green all in time, soft + grey with a Qaza; otherwise F2 fifths at 1.8; today its fifths + a dot;
+  excused all day → the badge). Drag up / down moves them all 1:1, settles past a quarter or a flick (months with marks
+  only). The month rail down the right edge (`JourneyMonthRail`, To make up's scrubber): a dot per month, older above, the
+  one on show named, a year's first month carrying the year; a finger runs through the months. Month | Year at the bottom;
+  a pinch in → the year (it opens on the shown month's year), spread → back. No grade colors.
 - The year (`JourneyYearView`, JourneyYear.swift): every year from the first, opening on this one (earlier above, a fade
   under the back button); twelve small months of square tiles in the card's colors (`JourneyTileColor`), each six weeks
   tall, its name (sage = this month) and one line ("9 days · 84%" in time of due, or "Away"); the month you came from

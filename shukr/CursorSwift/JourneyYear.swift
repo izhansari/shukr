@@ -81,10 +81,11 @@ struct JourneyYearView: View {
     private static let space = "journeyYear"
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
                 key.journeyFlightWords(.page)   // the transitions: arrive as a month goes home (JourneyTransitions.swift)
-                ForEach(years, id: \.self) { year($0) }
+                ForEach(years, id: \.self) { year($0).id($0) }
             }
             .padding(.horizontal, 20)
             .padding(.top, 8)
@@ -94,6 +95,12 @@ struct JourneyYearView: View {
             .onTapGesture { if picked != nil { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil } } }
         }
         .defaultScrollAnchor(.bottom)   // opens on this year; earlier years above
+        // From a month in an earlier year (the month rail reaches one in a move), on that year: its small month is where
+        // the month's days fly home — off screen they had nowhere to land.
+        .onAppear {
+            let y = Calendar.current.component(.year, from: current)
+            if y != years.last { proxy.scrollTo(y, anchor: .top) }
+        }
         .scrollIndicators(.hidden)
         .coordinateSpace(.named(Self.space))
         // Spread two fingers: the small month they started on opens (one with prayers); anywhere else, back to the month.
@@ -120,6 +127,7 @@ struct JourneyYearView: View {
                 .id(date)
                 .transition(.opacity)
             }
+        }
         }
     }
 

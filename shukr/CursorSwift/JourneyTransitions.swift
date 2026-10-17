@@ -518,10 +518,12 @@ struct JourneyFlightTitle: ViewModifier {
                 content
                     .foregroundStyle(e == nil ? Color.primary
                                      : ((open?.flight.labelGrey ?? true) ? Color.secondary : Color.primary).mix(with: Color.primary, by: Double(z)))
-                    // Scaled, not sized: a mask whose frame changed every frame re-laid the page out every frame.
+                    // Scaled, not sized: a mask whose frame changed every frame re-laid the page out every frame. Landed (or
+                    // pushed) nothing is masked: the slot is the last title's, so a wider month's name lost its ⌃⌄ (March after
+                    // April, scrubbing the month rail).
                     .mask(alignment: .leading) {
-                        Rectangle().frame(width: slot?.width ?? 400)
-                            .scaleEffect(x: e == nil ? 1 : min(max(width, 1) / max(slot?.width ?? 400, 1), 1), anchor: .leading)
+                        Rectangle().frame(width: t >= 1 ? 10_000 : slot?.width ?? 400)
+                            .scaleEffect(x: t >= 1 ? 1 : min(max(width, 1) / max(slot?.width ?? 400, 1), 1), anchor: .leading)
                     }
                     .scaleEffect(k, anchor: .leading)
                     .offset(x: (1 - z) * dx, y: (1 - z) * dy)

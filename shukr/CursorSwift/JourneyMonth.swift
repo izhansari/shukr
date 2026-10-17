@@ -26,9 +26,14 @@ struct JourneyMonthPage: View {
     /// thing we used to have earlier"): only its days lit on the calendar; again, off; one at a time; a new month clears it.
     @State private var focus: JourneyHighlight?
     /// The finger's travel up or down on the calendar (owner, 2026-10-16: months page up and down — Sami's sideways swipe
-    /// turned 90°): the month before rides in from the top 1:1, this one leaves at 90 %.
-    @State private var dragOffset: CGFloat = 0
+    /// turned 90°): every month in the window moves with it 1:1. Kept off the page's state, so a drag frame moves the
+    /// months and redraws none of them.
+    @State private var drag = JourneyMonthDrag()
     @State private var dragVertical: Bool?
+    /// The month the title and numbers name while a drag has another month nearer the middle (nil: `start`).
+    @State private var shownOverride: Date?
+    /// The window's height (the room between the numbers and Month | Year).
+    @State private var windowHeight: CGFloat = 0
     /// The year, in place of the month (the title, Month | Year, or a pinch).
     @State private var showYear = false
     /// Month ↔ year (owner, 2026-10-16: "i didnt see the transition for month to year"): the month's days fly home into its
@@ -87,11 +92,7 @@ struct JourneyMonthPage: View {
         return list[at + by]
     }
     /// The month the title and numbers name: the neighbour once it's more than half in.
-    private var shownMonth: Date {
-        if dragOffset < -travel / 2, let next = neighbour(1) { return next }
-        if dragOffset > travel / 2, let previous = neighbour(-1) { return previous }
-        return start
-    }
+    private var shownMonth: Date { shownOverride ?? start }
 
     var body: some View {
         ZStack {
@@ -116,10 +117,10 @@ struct JourneyMonthPage: View {
                 // opening; his 13 Pro Max ran card → month at ~40 of 70 frames).
                 ZStack(alignment: .top) {
                     ViewThatFits(in: .vertical) {
-                        page(scale: 1).onAppear { dayScale = 1 }
-                        page(scale: 0.9).onAppear { dayScale = 0.9 }
-                        page(scale: 0.8).onAppear { dayScale = 0.8 }
-                        page(scale: 0.7).onAppear { dayScale = 0.7 }
+                        page(scale: 1, live: false).onAppear { dayScale = 1 }
+                        page(scale: 0.9, live: false).onAppear { dayScale = 0.9 }
+                        page(scale: 0.8, live: false).onAppear { dayScale = 0.8 }
+                        page(scale: 0.7, live: false).onAppear { dayScale = 0.7 }
                     }
                     .modifier(JourneyFlightStill())
                     page(scale: dayScale)
@@ -192,9 +193,12 @@ struct JourneyMonthPage: View {
         }
     }
 
-    private func page(scale: CGFloat) -> some View {
+    /// `live`: the page on screen. The still copy that picks the size (`dayScale`) lays out the same frame with no months in
+    /// its window and measures nothing.
+    private func page(scale: CGFloat, live: Bool = true) -> some View {
         let shown = shownMonth
         let numbers = log.month(shown)
+        let withQaza = JourneyLog.daysOf(month: shown).filter { JourneyHighlight.withQaza.matches(log.day($0)) }.count
         return VStack(alignment: .leading, spacing: 0) {
             // The month's name says it can be tapped (owner: "an updown sf symbol"): a tap zooms out to the year.
             Button {
@@ -220,19 +224,22 @@ struct JourneyMonthPage: View {
                     .font(.system(size: 16, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
+                // The numbers carry the key's rings (owner, 2026-10-17, option 1: "I like that a lot"): the legend line under
+                // the calendar went, its room to the months around this one. The middle number is the grey ring's days —
+                // all five with a Qaza among them (it counted every day with all five).
                 HStack(alignment: .top, spacing: 0) {
-                    fact("\(numbers.allInTimeDays)", "days all in time", .allInTime)
-                    fact("\(numbers.allFiveDays)", "days with all five", .allFive)
+                    fact("\(numbers.allInTimeDays)", "days all in time", .allInTime) { keyRing(inTime: true) }
+                    fact("\(withQaza)", "days with Qaza", .withQaza) { keyRing(inTime: false) }
                     // The best day's score and date in its place while it's lit (as Journey's card did) — out, then in: a
                     // crossfade drew "96" and "100" over each other (Bradley's check).
                     Group {
                         if case .bestScore(let best) = focus {
                             let days = JourneyLog.daysOf(month: shown).filter { focus?.matches(log.day($0)) == true }
                             fact("\(best)", days.count == 1 ? "best · \(days[0].formatted(.dateTime.month(.abbreviated).day()))"
-                                                          : "best · \(days.count) days", focus)
+                                                          : "best · \(days.count) days", focus) { EmptyView() }
                         } else {
                             fact(numbers.averageScore.map { "\($0)" } ?? "–", "average score",
-                                 numbers.bestDay.map { .bestScore($0.score) })
+                                 numbers.bestDay.map { .bestScore($0.score) }) { EmptyView() }
                         }
                     }
                     .id(focus.map { if case .bestScore = $0 { true } else { false } } ?? false)
@@ -246,59 +253,132 @@ struct JourneyMonthPage: View {
             .id(shown)
             .transition(CircleMotion.dayPickSwap)
             .journeyFlightWords(.month)
-            calendars(scale: scale).padding(.top, 24 * scale)
+            // The weekday letters stay put over the window; the months move under them.
+            HStack(spacing: 0) {
+                ForEach(Array(Self.weekdayLetters.enumerated()), id: \.offset) { _, letter in
+                    Text(letter).font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary).frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.trailing, Self.railGutter)
+            .padding(.top, 18 * scale)
+            .journeyFlightWords(.month)
+            calendars(scale: scale, live: live).padding(.top, 4)
         }
         .padding(.horizontal, 20)
-        .padding(.bottom, 24)
+        .padding(.bottom, 12)
         .onChange(of: shown) { focus = nil }   // another month: its own days
-
     }
 
-    /// The month's calendar between its neighbours, a page apart, moving with the finger (Journey's day pager: the one
-    /// coming in rides 1:1, the one going out at 90 %, each fading and shrinking a little with its distance — never overlapping).
-    private func calendars(scale: CGFloat) -> some View {
-        let panes: [(k: Int, month: Date)] = [-1, 0, 1].compactMap { k in k == 0 ? (0, start) : neighbour(k).map { (k, $0) } }
-        let height = JourneyCalendar.height(scale: scale)
-        return ZStack(alignment: .top) {
-            ForEach(panes, id: \.month) { pane in
-                let place = calendarPlace(pane.k, height: height)
-                JourneyCalendar(log: log, month: pane.month, today: today, scale: scale,
-                                highlight: pane.k == 0 ? focus : nil,
-                                onKey: { kind in
-                                    triggerSomeVibration(type: .light)
-                                    withAnimation(.easeOut(duration: CircleMotion.quick)) { focus = focus == kind ? nil : kind }
-                                }) { open($0) }
-                    .frame(height: height, alignment: .top)
-                    .animation(.easeInOut(duration: 0.3), value: focus)
-                    .modifier(DayPaneMotion(away: place.away))
-                    .offset(y: place.y)
-                    .allowsHitTesting(pane.k == 0)
+    static var weekdayLetters: [String] {
+        let symbols = Calendar.current.veryShortStandaloneWeekdaySymbols
+        let first = Calendar.current.firstWeekday - 1
+        return Array(symbols[first...] + symbols[..<first])
+    }
+
+    // MARK: The months in their window
+
+    /// Room on the right for the month rail.
+    static let railGutter: CGFloat = 30
+    /// Between one month's last week and the next one's name.
+    static let monthGap: CGFloat = 18
+    /// The window's top and bottom fade: never over the month in the middle, which the window always has room for.
+    static let edge: CGFloat = 24
+
+    /// The window needs this month at its tallest (six weeks) and room for the fade above and below; the neighbours show
+    /// in whatever is left (a sliver on an SE — asking for more pushed the page's title under the back button there).
+    static func windowNeeds(scale: CGFloat) -> CGFloat {
+        JourneyCalendar.height(weeks: 6, scale: scale) + 2 * edge
+    }
+
+    /// The months around this one, in place: this one in the middle of the window, its neighbours a gap above and below
+    /// — their edges show, faded (owner, 2026-10-17: "I also want it so that the neighboring months are like kind of in
+    /// view and faded out") — two each way so a turn never pops one in. The finger moves them all 1:1 (JourneyMonthDrag:
+    /// only the panes' places read it, so a drag frame redraws no calendar).
+    private func panes(scale: CGFloat) -> [(k: Int, month: Date, y: CGFloat, height: CGFloat)] {
+        let window = windowHeight
+        var out: [(k: Int, month: Date, y: CGFloat, height: CGFloat)] = []
+        let h0 = JourneyCalendar.height(month: start, scale: scale)
+        let y0 = ((window - h0) / 2).rounded()
+        out.append((0, start, y0, h0))
+        var y = y0 + h0
+        for k in [1, 2] {
+            guard let m = neighbour(k) else { break }
+            let h = JourneyCalendar.height(month: m, scale: scale)
+            out.append((k, m, y + Self.monthGap, h))
+            y += Self.monthGap + h
+        }
+        y = y0
+        for k in [-1, -2] {
+            guard let m = neighbour(k) else { break }
+            let h = JourneyCalendar.height(month: m, scale: scale)
+            y -= Self.monthGap + h
+            out.append((k, m, y, h))
+        }
+        return out
+    }
+
+    /// How far the months move to bring `k`'s month to the middle (where this one sits at rest).
+    private func distance(to k: Int, scale: CGFloat) -> CGFloat? {
+        guard let pane = panes(scale: scale).first(where: { $0.k == k }) else { return nil }
+        let window = windowHeight
+        return ((window - pane.height) / 2).rounded() - pane.y
+    }
+
+    private func calendars(scale: CGFloat, live: Bool) -> some View {
+        Color.clear
+            .frame(minHeight: Self.windowNeeds(scale: scale), maxHeight: .infinity)
+            .padding(.trailing, Self.railGutter)
+            .overlay(alignment: .top) {
+                if live {
+                    ZStack(alignment: .top) {
+                        ForEach(panes(scale: scale), id: \.month) { pane in
+                            JourneyCalendar(log: log, month: pane.month, today: today, scale: scale,
+                                            current: pane.k == 0, highlight: pane.k == 0 ? focus : nil) { open($0) }
+                                .frame(height: pane.height, alignment: .top)
+                                .animation(.easeInOut(duration: 0.3), value: focus)
+                                .modifier(JourneyMonthPaneSlot(drag: drag, y: pane.y, height: pane.height, window: windowHeight))
+                                .allowsHitTesting(pane.k == 0)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.trailing, Self.railGutter)
+                    .clipped()
+                    .mask {
+                        VStack(spacing: 0) {
+                            LinearGradient(colors: [.clear, .black], startPoint: .top, endPoint: .bottom).frame(height: Self.edge)
+                            Color.black
+                            LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: Self.edge)
+                        }
+                    }
+                    .journeyFlightWords(.month)
+                }
             }
-        }
-        // Every month six weeks tall (as the year's small months): the page never changes height as a month swaps in.
-        .frame(height: height, alignment: .top)
-        .clipped()   // this month's own height: the neighbours wait a travel above and below, out of sight
-        .contentShape(Rectangle())
-        .gesture(swipe)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                if live, abs(h - windowHeight) > 0.5 { windowHeight = h }
+            }
+            .contentShape(Rectangle())
+            .gesture(swipe(scale: scale))
+            .overlay(alignment: .trailing) {
+                if live && months.count > 1 {
+                    // The month rail (owner, 2026-10-17: "Yeah, I like A … we should definitely keep that somewhere"):
+                    // a dot per month with marks, older above, as To make up's scrubber.
+                    JourneyMonthRail(months: months, current: shownMonth, height: windowHeight) { month in
+                        guard month != start else { return }
+                        var quiet = Transaction()
+                        quiet.disablesAnimations = true
+                        withTransaction(quiet) {
+                            drag.offset = 0
+                            shownOverride = nil
+                            start = month
+                        }
+                    }
+                    .padding(.trailing, -12)
+                    .journeyFlightWords(.month)
+                }
+            }
     }
 
-    /// How far a neighbour waits: the calendar's height and some room, out of sight above and below.
-    private var travel: CGFloat { JourneyCalendar.height(scale: 1) + 60 }
-
-    /// One travel at every scale (the drag's turn settles at `travel`), so the month coming in lands exactly in place.
-    private func calendarPlace(_ k: Int, height: CGFloat) -> (y: CGFloat, away: CGFloat) {
-        let h = travel
-        let y: CGFloat
-        if k == 0 {
-            y = dragOffset * 0.9
-        } else {
-            let incoming = (k > 0 && dragOffset < 0) || (k < 0 && dragOffset > 0)
-            y = CGFloat(k) * h + (incoming ? dragOffset : 0)
-        }
-        return (y, min(abs(y) / h, 1))
-    }
-
-    private var swipe: some Gesture {
+    private func swipe(scale: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { v in
                 if dragVertical == nil {
@@ -307,37 +387,58 @@ struct JourneyMonthPage: View {
                 }
                 guard dragVertical == true else { return }
                 let h = v.translation.height
-                dragOffset = neighbour(h < 0 ? 1 : -1) != nil ? h : h * 0.15   // nothing that way: a little give
+                drag.offset = neighbour(h < 0 ? 1 : -1) != nil ? h : h * 0.15   // nothing that way: a little give
+                // The title and numbers follow the month nearest the middle (once a neighbour is more than half in).
+                let near: Date? = {
+                    if h < 0, let d = distance(to: 1, scale: scale), -h > -d / 2 { return neighbour(1) }
+                    if h > 0, let d = distance(to: -1, scale: scale), h > d / 2 { return neighbour(-1) }
+                    return nil
+                }()
+                if near != shownOverride { shownOverride = near }
             }
             .onEnded { v in
                 defer { dragVertical = nil }
                 guard dragVertical == true else { return }
                 let h = v.translation.height, projected = v.predictedEndTranslation.height
                 let by = h < 0 ? 1 : -1   // drag up: the next month; down: the one before
-                guard neighbour(by) != nil, abs(h) > travel / 4 || abs(projected) > travel / 2 else {
-                    withAnimation(CircleMotion.daySlideIn) { dragOffset = 0 }
+                guard let d = distance(to: by, scale: scale), abs(h) > abs(d) / 4 || abs(projected) > abs(d) / 2 else {
+                    withAnimation(CircleMotion.daySlideIn) { drag.offset = 0 }
+                    shownOverride = nil
                     return
                 }
-                turn(by)
+                turn(by, scale: scale)
             }
     }
 
-    /// The neighbour settles in on the spring, then becomes this page's month (its calendar stays — no reload).
-    private func turn(_ by: Int) {
-        guard let month = neighbour(by) else { return }
+    /// The neighbour settles into the middle on the spring, then becomes this page's month (its calendar stays — no reload).
+    private func turn(_ by: Int, scale: CGFloat) {
+        guard let month = neighbour(by), let d = distance(to: by, scale: scale) else { return }
         triggerSomeVibration(type: .light)
-        withAnimation(CircleMotion.daySlideIn) { dragOffset = by > 0 ? -travel : travel } completion: {
+        shownOverride = month
+        withAnimation(CircleMotion.daySlideIn) { drag.offset = d } completion: {
             var quiet = Transaction()
             quiet.disablesAnimations = true
             withTransaction(quiet) {
                 start = month
-                dragOffset = 0
+                drag.offset = 0
+                shownOverride = nil
             }
         }
     }
 
+    @Environment(\.colorScheme) private var scheme
+    /// A number's ring (the key's swatch): a closed day ring in small, green all in time, soft with a grey fill with a Qaza.
+    private func keyRing(inTime: Bool) -> some View {
+        let dark = scheme == .dark
+        return Circle().fill(inTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
+            .padding(1.6)
+            .overlay(Circle().stroke(inTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark), lineWidth: 1.1))
+            .frame(width: 10, height: 10)
+    }
+
     /// A number; a tap lights its days (`kind`; nil: nothing to light). While another is on, it steps back.
-    private func fact(_ value: String, _ caption: String, _ kind: JourneyHighlight?) -> some View {
+    private func fact<G: View>(_ value: String, _ caption: String, _ kind: JourneyHighlight?,
+                               @ViewBuilder glyph: () -> G) -> some View {
         let on: Bool = {
             switch (focus, kind) {
             case (.bestScore?, .bestScore?): true
@@ -354,8 +455,11 @@ struct JourneyMonthPage: View {
                 Text(value).font(.system(size: 30, weight: .thin, design: .rounded)).monospacedDigit()
                 // One size every month (a scale factor shrank September's and not August's, and the divider jumped while
                 // paging — Bradley's check): 11 pt fits "days with all five" in a third of an SE.
-                Text(caption).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    glyph()
+                    Text(caption).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity)
             .opacity(focus == nil || on ? 1 : 0.4)
@@ -380,24 +484,32 @@ struct JourneyMonthPage: View {
 
 // MARK: - The calendar
 
-/// The month as a calendar of rings, one per day (JourneyDayRing; spec month-fifths).
+/// The month as a calendar of rings, one per day (JourneyDayRing; spec month-fifths): its name over its own weeks only (a
+/// neighbour's last week sits right under its name, in view above or below the month in the middle).
 private struct JourneyCalendar: View {
     let log: JourneyLog
     let month: Date
     let today: Date
     /// The days' size (1 = JourneyDayRing.size): smaller where the page wouldn't fit (an SE; a six-week month on a 17 Pro).
     var scale: CGFloat = 1
+    /// The month in the middle (its name in ink; the neighbours' in grey).
+    var current = true
     let highlight: JourneyHighlight?
-    /// A legend item tapped: light only its days (again, all).
-    var onKey: (JourneyHighlight) -> Void = { _ in }
     let onDay: (Date) -> Void
 
-    /// Its height for a scale: the weekday letters, six weeks of days, the key (worked out, not measured, so the page's
-    /// fit test never feeds on itself).
-    static func height(scale: CGFloat) -> CGFloat {
-        let letters: CGFloat = 14, rows = 6 * JourneyDayRing.size * scale + 5 * 2, key: CGFloat = 14 + 14
-        return letters + 6 + rows + 6 + key
+    static let nameHeight: CGFloat = 24
+
+    static func weeks(_ month: Date) -> Int {
+        let cal = Calendar.current
+        let lead = ((cal.component(.weekday, from: month) - cal.firstWeekday) + 7) % 7
+        return (lead + JourneyLog.daysOf(month: month).count + 6) / 7
     }
+
+    /// Its height (worked out, not measured, so the page's fit test never feeds on itself): the name and its weeks.
+    static func height(weeks: Int, scale: CGFloat) -> CGFloat {
+        nameHeight + CGFloat(weeks) * JourneyDayRing.size * scale + CGFloat(max(weeks - 1, 0)) * 2
+    }
+    static func height(month: Date, scale: CGFloat) -> CGFloat { height(weeks: weeks(month), scale: scale) }
 
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 0), count: 7) }
 
@@ -411,14 +523,11 @@ private struct JourneyCalendar: View {
         let excusedNoRows: (Date) -> Bool = { date in
             date < today && log.days[PrayerNotificationID.dayKey(date)] == nil && excused.excludes(date)
         }
-        let hasExcused = days.contains { (log.usesExcused && log.day($0).marks.contains(.excused)) || excusedNoRows($0) }
-        VStack(spacing: 6) {
-            LazyVGrid(columns: columns, spacing: 0) {
-                ForEach(Array(weekdayLetters.enumerated()), id: \.offset) { _, letter in
-                    Text(letter).font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
-                }
-            }
-            .journeyFlightWords(.month)
+        VStack(alignment: .leading, spacing: 0) {
+            Text(name)
+                .font(.system(size: 11, weight: .medium, design: .rounded)).tracking(0.8)
+                .foregroundStyle(current ? Color.primary : Color.secondary)
+                .frame(height: Self.nameHeight, alignment: .topLeading)
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
                 ForEach(days, id: \.self) { date in
@@ -433,69 +542,121 @@ private struct JourneyCalendar: View {
                         .contentShape(Rectangle())
                         .onTapGesture { onDay(date) }
                 }
-                // Six weeks always, so every month is the same height and the key never moves.
-                ForEach(0..<max(0, 42 - lead - days.count), id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
             }
             .journeyFlightDays(month, scale: scale)   // where its days are, for the transitions (JourneyTransitions.swift)
-            HStack(spacing: 16) {
-                // Owner, 2026-10-16: "change it to say in time with kaza and complete. And tapping any one focuses those rings."
-                key(keyRing(inTime: true), "In time", .allInTime)
-                key(keyRing(inTime: false), "With Qaza", .withQaza)
-                key(keyFifths, "Incomplete", .incomplete)
-                if hasExcused { key(ExcusedDayBadge(size: 10), "Excused") }
+        }
+    }
+
+    /// "SEPTEMBER", with the year when it isn't this one.
+    private var name: String {
+        let sameYear = Calendar.current.isDate(month, equalTo: today, toGranularity: .year)
+        return (sameYear ? month.formatted(.dateTime.month(.wide)) : month.formatted(.dateTime.month(.wide).year())).uppercased()
+    }
+}
+
+/// The finger's travel on the month window: only the panes' places read it.
+@Observable final class JourneyMonthDrag {
+    var offset: CGFloat = 0
+}
+
+/// A month's place in the window as the finger moves it: its rest place plus the drag, dimmer the further it sits from the
+/// middle (the month in the middle full, a neighbour's edge at about 40 %).
+private struct JourneyMonthPaneSlot: ViewModifier {
+    let drag: JourneyMonthDrag
+    let y: CGFloat
+    let height: CGFloat
+    let window: CGFloat
+
+    func body(content: Content) -> some View {
+        let at = y + drag.offset
+        let off = abs(at + height / 2 - window / 2) / max(window / 2, 1)
+        content
+            .opacity(1 - 0.6 * min(off, 1))
+            .offset(y: at)
+    }
+}
+
+/// The month rail (To make up's scrubber, turned for months: owner, 2026-10-17, option A): a dot per month with marks down
+/// the window's right edge, older above (where they come from), the month on show bigger and named at rest, a year's first
+/// month carrying its year; a finger on it runs through the months, a tick each, a pill naming the month under it.
+private struct JourneyMonthRail: View {
+    /// Oldest first.
+    let months: [Date]
+    let current: Date
+    let height: CGFloat
+    let pick: (Date) -> Void
+    @State private var scrubbing: Date?
+
+    private let pad: CGFloat = 10
+    private var slot: CGFloat { min(14, max(4, (height - 2 * pad) / CGFloat(max(months.count, 1)))) }
+
+    var body: some View {
+        let here = scrubbing ?? current
+        VStack(spacing: 0) {
+            ForEach(months.indices, id: \.self) { i in
+                let m = months[i]
+                let on = m == here
+                Circle()
+                    .fill(Color.primary.opacity(on ? 0.55 : 0.18))
+                    .frame(width: on ? 7 : 5, height: on ? 7 : 5)
+                    .frame(width: 24, height: slot)
+                    .overlay(alignment: .trailing) {
+                        if scrubbing == nil, let mark = mark(i, on: on) {
+                            Text(mark)
+                                .font(.system(size: 10, weight: on ? .regular : .light, design: .rounded))
+                                .foregroundStyle(on ? .primary : .secondary)
+                                .fixedSize()
+                                .offset(x: -19)
+                                .transition(.opacity)
+                                .allowsHitTesting(false)
+                        }
+                    }
             }
-            .font(.system(size: 11, weight: .light, design: .rounded))
-            .foregroundStyle(.secondary)
-            .padding(.top, 14)   // ~20 pt under the calendar with the stack's 6 (the canvas; Frank's check)
-            .frame(maxWidth: .infinity)
-            .journeyFlightWords(.month)
         }
-    }
-
-    private var weekdayLetters: [String] {
-        let symbols = Calendar.current.veryShortStandaloneWeekdaySymbols
-        let first = Calendar.current.firstWeekday - 1
-        return Array(symbols[first...] + symbols[..<first])
-    }
-
-    @Environment(\.colorScheme) private var scheme
-    /// The key's swatch: a closed day ring in small (green all in time; soft with a grey fill when one was a Qaza).
-    private func keyRing(inTime: Bool) -> some View {
-        let dark = scheme == .dark
-        return Circle().fill(inTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
-            .padding(1.6)
-            .overlay(Circle().stroke(inTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark), lineWidth: 1.1))
-    }
-
-    /// The key's "Incomplete": a ring of five fifths, the same size as the other two rings and in a prayed fifth's color
-    /// (owner, 2026-10-16: "in the legend add the fifths as a ring saying "incomplete"", then on his phone: "this is hard
-    /// to see and ring looks smaller than the others. copy the size of the outer rings … just use a color thats the same
-    /// as a filled fifth"). The calendar's own unfinished days keep Bradley's strengths.
-    private var keyFifths: some View {
-        ZStack {
-            ForEach(0..<5, id: \.self) { i in
-                let arc = JourneyDayRing.fifth(i)
-                Circle().trim(from: arc.from, to: arc.to)
-                    .stroke(JourneyDayRing.soft(scheme == .dark), style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
+        .padding(.vertical, pad)
+        .background(Capsule().fill(Color.primary.opacity(scrubbing != nil ? 0.07 : 0)))
+        .scaleEffect(scrubbing != nil ? 1.15 : 1, anchor: .trailing)
+        .overlay(alignment: .topTrailing) {
+            if let scrubbing, let index = months.firstIndex(of: scrubbing) {
+                Text(scrubbing.formatted(.dateTime.month(.wide).year()))
+                    .font(.subheadline)
+                    .fontDesign(.rounded)
+                    .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(.regularMaterial))
+                    .shadow(color: .black.opacity(0.1), radius: 6, y: 3)
+                    .fixedSize()
+                    .offset(x: -40, y: pad + slot * CGFloat(index) + slot / 2 - 15)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
             }
         }
+        .contentShape(Rectangle().inset(by: -12))
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    let index = min(max(Int((value.location.y - pad) / slot), 0), months.count - 1)
+                    guard months[index] != scrubbing else { return }
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.snappy(duration: CircleMotion.quick)) { scrubbing = months[index] }
+                    pick(months[index])
+                }
+                .onEnded { _ in withAnimation(.snappy(duration: CircleMotion.quick)) { scrubbing = nil } }
+        )
+        .animation(.snappy(duration: CircleMotion.quick), value: here)
+        .accessibilityHidden(true)
     }
 
-    /// A legend item: a tap lights its days on the calendar; while another one (or a number) is on, it steps back.
-    private func key<V: View>(_ swatch: V, _ title: String, _ kind: JourneyHighlight? = nil) -> some View {
-        let on = kind != nil && highlight == kind
-        return Button { if let kind { onKey(kind) } } label: {
-            // A bigger hit area without growing the legend: the calendar's height is worked out (JourneyCalendar.height),
-            // and padding here pushed the key under its clip (the owner saw it cut in half).
-            HStack(spacing: 5) { swatch.frame(width: 12, height: 12); Text(title) }
-                .contentShape(Rectangle().inset(by: -8))
-        }
-        .buttonStyle(.plain)
-        .disabled(kind == nil)   // Excused: a label only
-        .opacity(highlight == nil || on ? 1 : 0.4)
-        .accessibilityAddTraits(on ? .isSelected : [])
-        .accessibilityHint(kind == nil ? "" : on ? "Shows every day again" : "Lights these days on the calendar")
+    /// Beside a dot at rest: the month on show ("Sep"), else the year where one starts ("2025": a year's first month with
+    /// marks, and the oldest when it isn't this year).
+    private func mark(_ i: Int, on: Bool) -> String? {
+        let m = months[i]
+        if on { return m.formatted(.dateTime.month(.abbreviated)) }
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: m)
+        let before = i == 0 ? calendar.component(.year, from: Date()) : calendar.component(.year, from: months[i - 1])
+        return year != before ? String(year) : nil
     }
 }
 
