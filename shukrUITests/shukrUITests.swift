@@ -262,16 +262,25 @@ final class shukrUITests: XCTestCase {
         usleep(800_000)
     }
 
+    /// On screen: its centre inside the area (the card, or the window) up and down. Not isHittable — that throws on a tile scrolled out of the card ("Failed
+    /// to determine hittability of "Friday, April 4"", his 13 Pro Max, 2026-10-16).
+    private func inView(_ e: XCUIElement, _ area: XCUIElement) -> Bool {
+        guard e.exists, area.exists else { return false }
+        let f = e.frame
+        let a = area.frame.insetBy(dx: 0, dy: 8)          // up and down only: the month names sit beside the card's grid
+        return !f.isEmpty && f.midY > a.minY && f.midY < a.maxY
+    }
+
     private func calendarPass(_ app: XCUIApplication) {
         let window = app.windows.firstMatch
         let weeks = app.otherElements["Your weeks, a week a row"].firstMatch
         if weeks.exists { drag(weeks, 0.5); drag(weeks, -0.5) }                       // the card's weeks, back and forth
         let tile = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Friday'")).allElementsBoundByIndex
-            .filter { $0.exists && $0.isHittable }.last                                // a Friday in view (the latest)
+            .filter { inView($0, weeks) }.last                                // a Friday in view (the latest)
         if let tile { tile.tap(); usleep(700_000); tile.tap(); usleep(700_000) }       // a tile's line, then the numbers
         // the latest month name in view (the card shows today's weeks; older names sit scrolled away)
         let month = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Open '")).allElementsBoundByIndex
-            .filter { $0.exists && $0.isHittable }.max { $0.frame.minY < $1.frame.minY }
+            .filter { inView($0, weeks) }.max { $0.frame.minY < $1.frame.minY }
         guard let month else { return }
         month.tap(); usleep(1_400_000)                                                 // a month name → the month
         for by in [0.35, 0.35, -0.35, -0.35] as [CGFloat] { drag(window, by) }         // months up and down
@@ -280,7 +289,7 @@ final class shukrUITests: XCTestCase {
         window.swipeDown(velocity: .default); usleep(900_000)                          // earlier years
         window.swipeUp(velocity: .default); usleep(900_000)
         let small = app.buttons.matching(NSPredicate(format: "label CONTAINS ' days · '")).allElementsBoundByIndex
-            .filter { $0.exists && $0.isHittable }.last
+            .filter { inView($0, window) }.last
         if let small { small.tap(); usleep(1_200_000) }                                // a small month → that month
         back(app)                                                                      // back to Journey
     }
