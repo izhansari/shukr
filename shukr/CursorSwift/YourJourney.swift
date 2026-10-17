@@ -30,6 +30,8 @@ struct JourneyHomeCard: View {
     var onDay: (Date) -> Void = { _ in }
     var opens: (Date) -> Bool = { _ in false }
     var onMonth: (Date) -> Void = { _ in }
+    /// The ↗: the card expands (JourneyExpanded.swift) on the weeks it shows, no month in focus.
+    var onExpand: (Date) -> Void = { _ in }
     /// One of the picked day's things tapped at the bottom (Journey opens it as the day page's back card does).
     var onExtra: (JourneyExtraTap) -> Void = { _ in }
     @State private var picked: Date?
@@ -110,7 +112,7 @@ struct JourneyHomeCard: View {
                 Button {
                     guard let m = monthInView else { return }
                     triggerSomeVibration(type: .light)
-                    onMonth(m)
+                    onExpand(m)
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .font(.system(size: 14, weight: .medium))

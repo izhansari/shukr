@@ -6,6 +6,8 @@ import SwiftUI
 
 struct JourneyMonthRoute: Hashable, Identifiable {
     let month: Date
+    /// Opened on this month in focus (a month's name, This month); else the card's ↗ — the weeks it showed, no focus.
+    var focus = true
     var id: Date { month }
 }
 

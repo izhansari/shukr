@@ -353,7 +353,7 @@ struct JourneyPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
         // A month opens in place from the card (or This month), its days grow into the day page (JourneyTransitions.swift).
-        .journeyMonthHost(month: $openMonth, log: log)
+        .journeyMonthHost(month: $openMonth, log: log, stats: stats)
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(today)) }
         .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
@@ -486,6 +486,7 @@ struct JourneyPage: View {
         let card = JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
                                    onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
                                    onMonth: { openMonth = JourneyMonthRoute(month: $0) },
+                                   onExpand: { openMonth = JourneyMonthRoute(month: $0, focus: false) },
                                    onExtra: { extraTap = $0 })
         return VStack(alignment: .leading, spacing: 0) {
             header

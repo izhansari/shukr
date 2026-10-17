@@ -224,6 +224,14 @@ enum JourneyMotion {
                     let cy = r.minY + CGFloat(at / 7) * (side + 2) + side / 2
                     cells[d] = CGRect(x: cx - side / 2, y: cy - side / 2, width: side, height: side)
                 }
+            case .week(let start):
+                // The expanded card's week row (JourneyExpanded.swift): its seven rings across the rect, one ring tall.
+                let side = JourneyDayRing.size * a.scale, colW = r.width / 7
+                for i in 0..<7 {
+                    guard let d = Calendar.current.date(byAdding: .day, value: i, to: start) else { continue }
+                    let cx = r.minX + (CGFloat(i) + 0.5) * colW
+                    cells[d] = CGRect(x: cx - side / 2, y: r.midY - side / 2, width: side, height: side)
+                }
             case .title(let m): title = r; shown = m
             }
         }
@@ -234,7 +242,7 @@ enum JourneyMotion {
 }
 
 /// What reports its place: the card and its grid, a tile, a month's name, a calendar day, the month's title.
-enum JourneyFlightPart: Hashable { case days(Date), title(Date) }
+enum JourneyFlightPart: Hashable { case days(Date), week(Date), title(Date) }
 struct JourneyFlightAnchor { let anchor: Anchor<CGRect>; var scale: CGFloat = 1 }
 
 /// The card's pieces write their place as they're laid out: a GeometryReader behind them writing into the unobserved store,
@@ -264,6 +272,10 @@ extension View {
     fileprivate func journeyFlightPlace(_ part: JourneyFlightPart, scale: CGFloat = 1) -> some View {
         anchorPreference(key: JourneyFlightAnchors.self, value: .bounds) { [part: JourneyFlightAnchor(anchor: $0, scale: scale)] }
     }
+    /// The expanded card's week row: one place for its seven days (each ring's square is worked out from it).
+    func journeyFlightWeek(_ start: Date, scale: CGFloat) -> some View { journeyFlightPlace(.week(start), scale: scale) }
+    /// Where the expanded card's words land: laid out, the host's flight runs (as a month page's title did).
+    func journeyFlightTitleSlot(_ month: Date) -> some View { journeyFlightPlace(.title(month)) }
 }
 
 // MARK: - What a running transition knows
@@ -826,14 +838,16 @@ private struct JourneyFlightTopRing: ViewModifier {
 extension View {
     /// Journey's page shows its months and their days through here: a month opened from the card (or This month) opens in
     /// place on the dial, a day on that month grows from its ring, and the left edge turns either back.
-    func journeyMonthHost(month: Binding<JourneyMonthRoute?>, log: JourneyLog) -> some View {
-        modifier(JourneyMonthHost(month: month, log: log))
+    func journeyMonthHost(month: Binding<JourneyMonthRoute?>, log: JourneyLog, stats: YourJourneyStats?) -> some View {
+        modifier(JourneyMonthHost(month: month, log: log, stats: stats))
     }
 }
 
 struct JourneyMonthHost: ViewModifier {
     @Binding var month: JourneyMonthRoute?
     let log: JourneyLog
+    /// Journey's numbers (the expanded card's top and bottom, its weeks).
+    let stats: YourJourneyStats?
     @State private var flight: JourneyMonthFlight?
     @State private var day: JourneyDayFlight?
     /// The dials (one object all flight; the leaf pieces read it). Taps wait for a flight to land through a leaf gate that
@@ -866,7 +880,9 @@ struct JourneyMonthHost: ViewModifier {
             // back on the last frame: Sami's check of 7174d7c7), drawn only outside the card's shape.
             if let flight { JourneyGrowingSurface(card: flight.card) }
             if let flight {
-                JourneyMonthPage(log: log, start: flight.start)
+                // The card, expanded (JourneyExpanded.swift; owner, 2026-10-17): it took the month page's place.
+                JourneyExpandedPage(log: log, stats: stats ?? YourJourneyStats(log: JourneyLog(), today: today),
+                                    opened: flight.start, focusOnOpen: month?.focus ?? true)
                     .modifier(JourneyMonthAway())
                     .environment(\.journeyDayOpener, JourneyDayOpener(id: openerID, open: { openDay($0) }))
                     .modifier(JourneyHitGate(dials: dials, key: .month, open: day == nil && !fadingOut))
