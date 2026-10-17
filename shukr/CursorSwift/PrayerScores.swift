@@ -415,25 +415,20 @@ struct PrayerScoresPage: View {
 
     private var ringScore: Int? { shown.flatMap { data.prayers[$0]?.prayedScore } ?? (shown == nil ? data.prayedScore : nil) }
 
-    /// The five prayers as fifths, Fajr at the top going round, each in its own average's grade colour, the score in the
-    /// middle (owner, 2026-10-17, from Frank's mock: "I like your fifth string idea, but I only want to use what I just
-    /// sent you, that picture for the top"). A prayer open: its fifth stays, the others fade, its name over its score. A
-    /// tap on a fifth is a tap on that prayer's row ("clicking on any one of the fifths is the same as if we clicked on the
-    /// list item").
+    /// The five prayers on the day page's own ring (owner, 2026-10-17: "make it look like the day ring" — its soft disc,
+    /// its band, the dot "that indicates the prayer time relative to … its window"): each fifth in its prayer's average
+    /// grade, its dot where that prayer usually lands in its window (the middle of its marks), the score in the middle with
+    /// what it is under it. A tap on a fifth is a tap on that prayer's row ("clicking on any one of the fifths is the same
+    /// as if we clicked on the list item"); open, its fifth stays and the rest fade, its name over its score.
     private var ring: some View {
-        let size: CGFloat = 192, band: CGFloat = 9
-        return ZStack {
-            ForEach(0..<5, id: \.self) { i in
-                let name = JourneyLog.names[i]
-                let arc = JourneyDayRing.fifth(i)
-                let score = data.prayers[name]?.prayedScore
-                Circle().trim(from: arc.from, to: arc.to)
-                    .stroke(score.map { PrayerScoring.color(for: Double($0) / 100) } ?? Color.primary.opacity(0.12),
-                            style: StrokeStyle(lineWidth: band, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .opacity(shown == nil || shown == name ? 1 : 0.18)
+        ZStack {
+            NeuRaised(shape: Circle(), radius: 9, offset: 4.5)
+                .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
+            DayRing(day: ringPrayers, picked: shown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
+                let name = DayRing.order[i]
+                guard data.prayers[name]?.prayedScore != nil else { return }
+                if selected == nil { open(name) } else { close() }
             }
-            .padding(band)
             VStack(spacing: 1) {
                 if shown != nil {
                     Text(shown ?? " ")
@@ -444,20 +439,29 @@ struct PrayerScoresPage: View {
                     .font(.system(size: 54, weight: .thin, design: .rounded)).monospacedDigit()
                     .contentTransition(.identity)
                     .opacity(linesFaded ? 0 : 1)
+                // What the number is (owner: "a little subtitle … saying like average lifetime score").
+                Text("average lifetime score")
+                    .font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    .opacity(linesFaded ? 0 : 1)
             }
+            .allowsHitTesting(false)
         }
-        .frame(width: size, height: size)
-        .contentShape(Circle())
-        .gesture(SpatialTapGesture().onEnded { tap in
-            // The fifth under the finger: its angle from the top, clockwise.
-            let dx = tap.location.x - size / 2, dy = tap.location.y - size / 2
-            var angle = atan2(dx, -dy) * 180 / .pi
-            if angle < 0 { angle += 360 }
-            let name = JourneyLog.names[min(Int(angle / 72), 4)]
-            guard data.prayers[name] != nil else { return }
-            if selected == nil { open(name) } else { close() }
-        })
-        .accessibilityElement(children: .combine)
+        .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
+    }
+
+    /// Each prayer as the day ring draws a day's: its average as the score, its usual place in its window (the middle of
+    /// its marks, 0 the start … 1 the end, a Qaza past it) as when it was marked, on a stand-in window.
+    private var ringPrayers: [DayPrayer] {
+        let start = Date(timeIntervalSinceReferenceDate: 0), length: TimeInterval = 1_000
+        return DayRing.order.map { name in
+            let p = data.prayers[name]
+            let sorted = (p?.positions ?? []).sorted()
+            let middle = sorted.isEmpty ? nil : sorted[sorted.count / 2]
+            let score = p?.prayedScore.map { Double($0) / 100 }
+            return DayPrayer(name: name, start: start, end: start.addingTimeInterval(length),
+                             markedAt: score == nil ? nil : start.addingTimeInterval(length * min(middle ?? 0.5, 1)),
+                             score: score)
+        }
     }
 
     /// Two lines under the ring, on both pages: what it covers / when you usually pray it, then the 7 / 30 day trend.
@@ -578,8 +582,11 @@ struct PrayerScoresPage: View {
                         Text("1 dot = \(per) prayer\(per == 1 ? "" : "s")")
                             .font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
-                    PrayerScoresChart(prayer: p, per: PrayerScoresChart.perDot([p], big: true), big: true, focus: focus)
-                        .frame(height: 150)
+                    let per = PrayerScoresChart.perDot([p], big: true)
+                    PrayerScoresChart(prayer: p, per: per, big: true, focus: focus)
+                        // As tall as its own tallest column, up to 150: short columns left an empty band under "1 dot =
+                        // 1 prayer" (owner, 2026-10-17: "a lot of empty space between the histogram and the priors label").
+                        .frame(height: PrayerScoresChart.fittedHeight(p, per: per, big: true))
                 }
                 .stagger(detailShown, 0)
                 chartLine(p).padding(.top, 10).stagger(detailShown, 1)
@@ -738,6 +745,29 @@ struct PrayerScoresChart: View {
             fullest = max(fullest, counts.max() ?? 0)
         }
         return max(1, Int((Double(fullest) / Double(wide * tall)).rounded(.up)))
+    }
+
+    /// The height that holds this prayer's tallest column of dots (or its Qaza block) and the bar and labels under it —
+    /// no more than `cap`. Measured on the same nominal width perDot uses; a wider screen only leaves a dot's room spare.
+    static func fittedHeight(_ prayer: PrayerScores.Prayer, per: Int, big: Bool, cap: CGFloat = 150) -> CGFloat {
+        let m = Metrics(big: big)
+        let w: CGFloat = big ? 354 : 190
+        let slotW = (w * 0.74 - 2) / CGFloat(slots)
+        let wide = max(1, Int((slotW - 1) / m.step))
+        let tall = max(1, Int((cap - m.labels - m.bandH - 6) / m.step))
+        var counts = Array(repeating: 0, count: slots)
+        var qaza = 0
+        for v in prayer.positions {
+            if v > 1 { qaza += 1 } else { counts[min(slots - 1, max(0, Int(v * Double(slots))))] += 1 }
+        }
+        let column = counts.map { n -> Int in
+            guard n > 0 else { return 0 }
+            let dots = min(wide * tall, max(1, Int((Double(n) / Double(per)).rounded())))
+            return (dots + wide - 1) / wide
+        }.max() ?? 0
+        let qazaRows = qaza > 0 ? min(tall, max(1, Int((Double(qaza) / Double(per)).rounded()))) : 0
+        let rows = max(column, qazaRows, 1)
+        return min(cap, CGFloat(rows) * m.step + m.labels + m.bandH + 10)
     }
 
     var body: some View {
