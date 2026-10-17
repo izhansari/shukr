@@ -377,6 +377,12 @@ final class shukrUITests: XCTestCase {
             if close.exists { close.tap(); usleep(1_800_000) }
         }
         back(app)
+        // A banner over the bar can take a tap (one opened the mail app on his phone): back into shukr's Journey.
+        if !app.descendants(matching: .any)["Your weeks, a week a row"].firstMatch.waitForExistence(timeout: 2) {
+            app.activate(); usleep(1_000_000)
+            if app.buttons["Back to Prayer scores"].firstMatch.exists { app.buttons["Back to Prayer scores"].firstMatch.tap(); usleep(1_500_000) }
+            if !app.descendants(matching: .any)["Your weeks, a week a row"].firstMatch.exists { back(app) }
+        }
     }
 
     /// `xcodebuild test … -only-testing:shukrUITests/shukrUITests/testJourneyPerfPass` on his phone, then pull journey-perf.log.
