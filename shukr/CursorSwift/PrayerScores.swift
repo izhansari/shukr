@@ -290,11 +290,10 @@ struct PrayerScoresPage: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                ring.padding(.top, 12)
+                header.padding(.top, 4)
                 // The overview's two grey lines went (owner: "We can get rid of the two gray lines … keep it with just the
                 // ring. And the one-liner"); an open prayer keeps its own.
                 if shown != nil { lines.padding(.top, 14) }
-                sentence
                 rows.padding(.top, folded ? 10 : 18)
                 if selected != nil { detail }
                 footnote
@@ -305,7 +304,6 @@ struct PrayerScoresPage: View {
         .scrollIndicators(.hidden)
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
-        .navigationTitle("Prayer scores")
         .navigationBarTitleDisplayMode(.inline)
         // A prayer opens in place, not as a page: while one is open, ‹ closes it back to Prayer scores (owner,
         // 2026-10-17: "clicking the back chevron is kind of annoying because it takes us back to the card page instead
@@ -432,16 +430,18 @@ struct PrayerScoresPage: View {
             VStack(spacing: 1) {
                 if shown != nil {
                     Text(shown ?? " ")
-                        .font(.system(size: 16, weight: .regular, design: .rounded))
+                        .font(.system(size: 20, weight: .regular, design: .rounded))
                         .opacity(linesFaded ? 0 : 1)
                 }
                 Text(ringScore.map { "\($0)" } ?? "–")
-                    .font(.system(size: 54, weight: .thin, design: .rounded)).monospacedDigit()
+                    .font(.system(size: 58, weight: .thin, design: .rounded)).monospacedDigit()
                     .contentTransition(.identity)
                     .opacity(linesFaded ? 0 : 1)
-                // What the number is (owner: "a little subtitle … saying like average lifetime score").
-                Text("average lifetime score")
-                    .font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                // What the number is (owner: "a little subtitle … saying like average lifetime score"); sized for the ring
+                // drawn at 70 % beside the title.
+                Text("average\nlifetime score")
+                    .font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
                     .opacity(linesFaded ? 0 : 1)
             }
             .allowsHitTesting(false)
@@ -501,18 +501,30 @@ struct PrayerScoresPage: View {
 
     static func change(_ d: Int) -> String { abs(d) < 3 ? "steady" : d > 0 ? "↑\(d)" : "↓\(-d)" }
 
-    @ViewBuilder private var sentence: some View {
-        if let s = data.sentence {
-            VStack(spacing: 3) {
-                Text(s.line).font(.system(size: 17, weight: .light, design: .rounded))
-                if let sub = s.sub { Text(sub).font(.system(size: 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary) }
+    /// The page's own title, as Journey's other pages have theirs ("To make up" over its grey line) — the one-liner its
+    /// grey line — with the ring beside it, sharing the top (owner, 2026-10-17: "make the title of the page look more like
+    /// the titles of our other journey pages … shift the ring to the side a little bit … so the main title, header, and its
+    /// secondary line share kind of the same area that the main ring shares").
+    private var header: some View {
+        let scale: CGFloat = 0.7
+        return HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Prayer scores")
+                    .font(.system(size: 34, weight: .light, design: .rounded))
+                    .lineLimit(2).minimumScaleFactor(0.8)
+                if let s = data.sentence {
+                    Text(s.line)
+                        .font(.system(size: 15, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(othersFaded || linesFaded ? 0 : 1)   // fades with the rows, both ways
+                }
             }
-            .multilineTextAlignment(.center)
-            .padding(.top, 14)
-            .opacity(othersFaded || linesFaded ? 0 : 1)   // fades with the rows, both ways
-            .frame(height: folded ? 0 : nil, alignment: .top)
-            .clipped()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            ring.scaleEffect(scale)
+                .frame(width: CircleMotion.dayDiscDiameter * scale, height: CircleMotion.dayDiscDiameter * scale)
         }
+        .padding(.leading, 4)
     }
 
     // MARK: The rows
