@@ -315,6 +315,46 @@ struct PrayerSpotsHome: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: The one-day map: where you prayed (owner, 2026-10-17, option A: "the day grouped by place")
+
+    /// The day's prayers on the map, Fajr → Isha.
+    private var onMap: [PrayerModel] {
+        viewModel.prayers.filter { $0.isCompleted && DayFacts.spot($0) != nil }
+            .sorted { (JourneyLog.names.firstIndex(of: $0.name) ?? 9) < (JourneyLog.names.firstIndex(of: $1.name) ?? 9) }
+    }
+
+    /// The day's places, in the order the day reached them: a masjid by its name, else prayers within ~75 m of each
+    /// other as one spot.
+    private var dayPlaces: [[PrayerModel]] {
+        var groups: [[PrayerModel]] = []
+        for p in onMap {
+            guard let c = DayFacts.spot(p) else { continue }
+            let here = CLLocation(latitude: c.latitude, longitude: c.longitude)
+            if let i = groups.firstIndex(where: { g in
+                guard let first = g.first, let f = DayFacts.spot(first) else { return false }
+                if let m = p.mosqueName, !m.isEmpty, p.atMasjid { return first.atMasjid && first.mosqueName == m }
+                return !first.atMasjid && CLLocation(latitude: f.latitude, longitude: f.longitude).distance(from: here) < 75
+            }) {
+                groups[i].append(p)
+            } else {
+                groups.append([p])
+            }
+        }
+        return groups
+    }
+
+    private var placesSection: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(dayPlaces.enumerated()), id: \.offset) { i, group in
+                DayPlaceRow(prayers: group, viewModel: viewModel)
+                if i < dayPlaces.count - 1 {
+                    Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 0.5).padding(.leading, 52)
+                }
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.primary.opacity(0.045)))
+    }
+
     /// "Tuesday, Oct 6" ("Today", "Yesterday"); the year when it isn't this one.
     private func dayTitle(_ d: Date) -> String {
         if let word = PrayerDay.todayWord(d) { return word }
@@ -328,10 +368,20 @@ struct PrayerSpotsHome: View {
             // Collapsed, the day itself in the sheet's own title look, as "Prayer spots" is (owner, 2026-10-17: "it should
             // say the date when it's folded. And it should say it nicely, like how the text looks when the sheet is folded
             // in the regular maps"); open, the day section's own label is the heading.
-            if collapsed, let dayOnly {
-                let n = viewModel.prayers.count
-                MapSheetHeader(title: dayTitle(dayOnly), subtitle: n == 1 ? "1 prayer on the map" : "\(n) prayers on the map") {
-                    EmptyView()
+            // Folded or open, the day's own header: its date; "Day 623 · 2 places · 4 prayers"; its score in the fifths
+            // ring, top right (owner, 2026-10-17: "show the day's score. On the right side of the sheet, top right. In a
+            // ring. Using our fifths. And also in the second line leading it, let's put like day number").
+            if let dayOnly {
+                let log = JourneyLog.last
+                let day = log?.day(dayOnly)
+                let n = onMap.count, places = dayPlaces.count
+                let line = [log?.dayNumber(dayOnly).map { "Day \($0)" },
+                            places == 1 ? "1 place" : "\(places) places",
+                            n == 1 ? "1 prayer" : "\(n) prayers"].compactMap { $0 }.joined(separator: " · ")
+                MapSheetHeader(title: dayTitle(dayOnly), subtitle: line) {
+                    if let day, day.active {
+                        JourneyDayFifths(day: day, center: "\(day.dayScore)").frame(width: 46, height: 46)
+                    }
                 }
             }
         } else {
@@ -369,8 +419,12 @@ struct PrayerSpotsHome: View {
                             .multilineTextAlignment(.center)
                             .padding(.vertical, 24)
                     }
-                    ForEach(days, id: \.date) { day in
-                        daySection(day.date, day.prayers)
+                    if dayOnly != nil {
+                        placesSection
+                    } else {
+                        ForEach(days, id: \.date) { day in
+                            daySection(day.date, day.prayers)
+                        }
                     }
                     }
                 }
@@ -380,5 +434,55 @@ struct PrayerSpotsHome: View {
             }
         }
         .fontDesign(.rounded)
+    }
+}
+
+
+/// One place on the one-day map: the masjid's name or the street, the prayers prayed there; a tap opens them there (the
+/// map flies to it), as a pin of theirs does.
+private struct DayPlaceRow: View {
+    let prayers: [PrayerModel]
+    @ObservedObject var viewModel: LocationViewModel
+    @State private var address: String?
+
+    private var coordinate: CLLocationCoordinate2D? { prayers.first.flatMap(DayFacts.spot) }
+    private var masjid: String? { prayers.first.flatMap { $0.atMasjid ? $0.mosqueName : nil }.flatMap { $0.isEmpty ? nil : $0 } }
+
+    var body: some View {
+        Button {
+            guard let c = coordinate else { return }
+            triggerSomeVibration(type: .light)
+            viewModel.present(PrayerSpotSelection(prayers: prayers, coordinate: c))
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: masjid != nil ? "building.columns" : "mappin.and.ellipse")
+                    .font(.title3).frame(width: 28).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(masjid ?? address ?? "Finding the address…")
+                        .font(.body.weight(.medium)).lineLimit(1)
+                    Text(prayers.map(\.displayName).joined(separator: " · "))
+                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .task { await loadAddress() }
+    }
+
+    /// Street + city, as a pin's page finds it (shared cache on the view model).
+    private func loadAddress() async {
+        guard masjid == nil, let c = coordinate else { return }
+        let key = String(format: "%.4f,%.4f", c.latitude, c.longitude)
+        if let cached = viewModel.addressCache[key] { address = cached; return }
+        let placemark = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: c.latitude, longitude: c.longitude)).first
+        let street = [placemark?.subThoroughfare, placemark?.thoroughfare].compactMap { $0 }.joined(separator: " ")
+        let place = [street.isEmpty ? placemark?.name : street, placemark?.locality].compactMap { $0 }.joined(separator: ", ")
+        guard !place.isEmpty else { return }
+        viewModel.addressCache[key] = place
+        address = place
     }
 }
