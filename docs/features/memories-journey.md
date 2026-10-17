@@ -121,8 +121,11 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   as one picture (`JourneyYearSquares`, a Canvas: tile colors, unmarked hairline, future faint, today outlined; the picked
   ring drawn over it); a square's tap picks it (its line at the bottom, → the day); a name flies back into the expanded
   weeks with that month focused; ‹, the edge swipe and the toggle go back to the weeks (`JourneyFlightGeometry.yearBack`).
-- Prayer scores (`PrayerScoresPage`, PrayerScores.swift): All time · 30 days · 7 days under the header (`PrayerScores.build(span:)`);
-  the ring = the score when prayed; rows "97 · 98% prayed" + their dots (`PrayerScoresChart`: 14 slots across the window +
+- Prayer scores (`PrayerScoresPage`, PrayerScores.swift): its title + the one-liner beside the day page's own ring at 70 %
+  (`DayRing` on the raised disc: each prayer's fifth in its average grade, its dot at its usual place in the window; under the
+  number "average lifetime score" / "… last 30 days"); All time · 30 days · 7 days under the header (`PrayerScores.build(span:)`,
+  kept in `prayerScores.span`; a span's trend reads against the span before). The one-liner never names the strongest as the
+  one that "needs you most" (a tie → the lowest score). The ring = the score when prayed; rows "97 · 98% prayed" + their dots (`PrayerScoresChart`: 14 slots across the window +
   a Qaza block). A row's (or a fifth's) tap: its symbol, name and line rise over the switch into the header (the "97 · "
   folds away), the rest after it lands; ‹ in the bar or a left-edge swipe sinks it back; another fifth switches straight to
   that prayer. A prayer's page: "Lately, usually…" + its trend, the big chart — tap or hold-drag a slot → "N prayers (P%) ·
@@ -171,9 +174,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   `unmarkFromJourney`; edits through `editPrayerTime` / `movePrayer` (recorded time / spot kept). `.journeyChanged` reloads
   the pages.
 - To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused; Made up = Qaza now. From
-  Prayer scores (`startOnly:`) it opens on All months with that prayer's chip on (`allThisVisit`; the switch clears it). Top: the
-  count, "<month> | All months" (`journey.makeUpAll`), then each prayer's count (a tap shows only it — owner: under the
-  switch); months newest first as pinned headings with "N left · N made up"; the month scrubber on the right edge is the
+  Prayer scores (`startOnly:`) it opens with that prayer's tile on. Always all months (owner, 2026-10-17: no "<month> | All
+  months"). Top: the total missed, made up · % left, the bar, then five raised prayer tiles — Prayer scores' grade tiles,
+  each prayer's count over its name (a tap shows only it; the one on pressed in; none left faint); months newest first as pinned headings with "N left · N made up"; the month scrubber on the right edge is the
   Zikr wheel's dots (owner: not the soft look; > 3 months; the top month's dot bigger, a cleared month sage, a pill naming
   the month while dragging, a tick each). Made up keeps the row in place as "✓ Made up · Undo" for 3 s (`settling`; Undo = unmark; decision
   makeup-made-feedback A), then it leaves the list (made up = marked on a later prayer day); a month with nothing left drops

@@ -55,11 +55,13 @@ keywords, "What's New" and screenshot captions.
   one-tap prayer filters, drive / walk times, and each pin's page — tap pin after pin and it swaps in place.
 - Every prayer you've marked, pinned where you prayed it, coloured by score; tap a pin or a
   cluster for the prayers there; filter by prayer and date range.
+- A single day on the map: one tab per prayer to fly to where you prayed it, where you prayed most that day, how often
+  you've prayed there, and how far you moved.
 
 **Journey — your prayer log**
 - Every prayer you've marked, a week a row on one card, and each month as a calendar of rings: a
   ring closes on a day you prayed all five, green when all five were in time. Zoom out to the year.
-- Prayer scores: your average score for each prayer over your whole journey, which is strongest
+- Prayer scores: your average score for each prayer — all time, the last 30 days or the last week — which is strongest
   and which needs you most, when you usually pray it, and every prayer you've prayed as a dot.
 - The month's ring, your streak and your in-time streak, and the days all in time.
 - A page for any day: its ring, each prayer's time, place, grade and photo, your notes, and that
