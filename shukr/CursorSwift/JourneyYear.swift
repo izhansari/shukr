@@ -213,13 +213,14 @@ struct JourneyYearView: View {
     /// next day.
     private static let gap: CGFloat = 2.5
 
-    /// "9 days · 84%" (in time, of the prayers due on those days) or "Away" for a month with nothing marked.
+    /// "9 days · score 83" (its average score) or "Away" for a month with nothing marked.
     private static func line(_ m: JourneyLog.Month) -> String {
         guard m.activeDays > 0 else { return "Away" }
         let days = m.activeDays == 1 ? "1 day" : "\(m.activeDays) days"
-        guard m.due > 0 else { return days }
-        let pct = Int((Double(m.inTime) / Double(m.due) * 100).rounded())
-        return "\(days) · \(pct)%"
+        // The month's average score, the month page's own (owner, 2026-10-17: "change that to the month score … average
+        // score of that month"; was the in-time %).
+        guard let score = m.averageScore else { return days }
+        return "\(days) · score \(score)"
     }
 
     private func square(_ day: Date) -> some View {
