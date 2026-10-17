@@ -63,6 +63,8 @@ enum JourneyMotion {
     private var last: CFTimeInterval = 0
     private var frames = 0
     private var worst: CFTimeInterval = 0
+    /// When in the run the worst gap ended (ms from the start): the start's one-off build, or the motion itself.
+    private var worstAt: CFTimeInterval = 0
     private var late = 0
     private var expected: CFTimeInterval = 1 / 60.0
     private var observer: CFRunLoopObserver?
@@ -77,7 +79,7 @@ enum JourneyMotion {
         link?.invalidate()
         self.name = name
         began = CACurrentMediaTime(); last = began
-        frames = 0; worst = 0; late = 0
+        frames = 0; worst = 0; worstAt = 0; late = 0
         let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
         l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         l.add(to: .main, forMode: .common)
@@ -102,7 +104,7 @@ enum JourneyMotion {
         expected = max(l.targetTimestamp - l.timestamp, 1 / 120.0)
         if frames > 0 {
             let gap = now - last
-            worst = max(worst, gap)
+            if gap > worst { worst = gap; worstAt = now - began }
             if gap > expected * 1.5 { late += 1 }
         }
         frames += 1
@@ -113,9 +115,9 @@ enum JourneyMotion {
         guard let l = link, run == nil || run == self.run else { return }
         l.invalidate(); link = nil
         let ms = (CACurrentMediaTime() - began) * 1000
-        let line = String(format: "%@ %@%@: %.0f ms, %d frames at %.0f Hz, worst %.1f ms, %d late, main busy ≤ %.0f ms",
-                          Date().formatted(.iso8601), name, how.isEmpty ? "" : " (\(how))", ms, frames, 1 / expected, worst * 1000, late,
-                          longestBusy * 1000)
+        let line = String(format: "%@ %@%@: %.0f ms, %d frames at %.0f Hz, worst %.1f ms (ending %.0f ms in), %d late, main busy ≤ %.0f ms",
+                          Date().formatted(.iso8601), name, how.isEmpty ? "" : " (\(how))", ms, frames, 1 / expected, worst * 1000,
+                          worstAt * 1000, late, longestBusy * 1000)
         print("🎞️ \(line)")
         guard let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
         let url = dir.appendingPathComponent("journey-transitions.log")
@@ -752,6 +754,7 @@ struct JourneyMonthHost: ViewModifier {
         await wait(3)
         let latest = JourneyLog.monthStart(today)
         let previous = Calendar.current.date(byAdding: .month, value: -1, to: latest) ?? latest
+        let log = JourneyLog.last ?? log   // the task's copy of the host was taken before the log loaded
         let m = log.month(latest).activeDays >= 14 ? latest : previous
         for _ in 0..<n {
             month = JourneyMonthRoute(month: m)
@@ -833,6 +836,7 @@ struct JourneyMonthHost: ViewModifier {
     // MARK: Month → day
 
     private func openDay(_ date: Date) {
+        let log = JourneyLog.last ?? log   // the auto run's copy of the host was taken before the log loaded
         guard day == nil, date <= today, log.day(date).active, date < today || log.day(date).allFive else { return }
         triggerSomeVibration(type: .light)
         dayDial = 0
