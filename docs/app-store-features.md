@@ -14,7 +14,8 @@ keywords, "What's New" and screenshot captions.
   done prayers fold away, all five come back with a "perfect day" flourish.
 - Edit when you prayed with a custom time wheel that won't let you pick an impossible time.
 - The prayer day runs Fajr to Fajr, so a late Isha after midnight still counts for its day.
-- Streaks: the day streak, "in-time days" (no Qaza), best streaks, with celebrations.
+- Streaks: the day streak, "in-time days" (no Qaza), best streaks, with celebrations. Excused days
+  never break a streak.
 - Notifications at each prayer with "I already prayed" / "nudge me in 5 / 10 min" actions,
   per-prayer on / off / nudge settings, and an optional daily Fajr alarm.
 - Home-screen widget: the current prayer's ring and time, mark it prayed right from the
@@ -56,8 +57,10 @@ keywords, "What's New" and screenshot captions.
   cluster for the prayers there; filter by prayer and date range.
 
 **Journey — your prayer log**
-- Every prayer you've marked on one calendar: five dots a day, the days you prayed all five in
-  time lit up, or the month as a grid of grades.
+- Every prayer you've marked, a week a row on one card, and each month as a calendar of rings: a
+  ring closes on a day you prayed all five, green when all five were in time. Zoom out to the year.
+- Prayer scores: your average score for each prayer over your whole journey, which is strongest
+  and which needs you most, when you usually pray it, and every prayer you've prayed as a dot.
 - The month's ring, your streak and your in-time streak, and the days all in time.
 - A page for any day: its ring, each prayer's time, place, grade and photo, your notes, and that
   day's zikr. Your prayer photos (Moments) are one tap away.

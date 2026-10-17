@@ -41,8 +41,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   every day from the first photo to today (days without photos faint; a rest on one moves on to the nearest photo day),
   the number + weekday; the centred day is the pile's — bigger and full, the rest shrink and fade by distance
   (`visualEffect` in `.scrollView` space); `viewAligned` + `contentMargins` centre it and `scrollPosition(id:)` has NO
-  anchor (`.center` with the margins landed 4 days off); its days are built in `init`; it's positioned by us — `ScrollPosition.scrollTo(x: index × cell)` from
-  its measured width (the id binding left a short strip, three days, on the wrong day). The pile moves the strip; dragging the strip moves the pile live, day by day under the finger (`onScrub`,
+  anchor (`.center` with the margins landed 4 days off); its days are built in `init`; it's positioned by us with
+  `ScrollPosition.scrollTo(x:)` (the id binding left a short strip, three days, on the wrong day) — measured 2026-10-16
+  (d1f85f3): an animated scrollTo counts from the content's start (x = index × cell), an INSTANT one sets the content offset
+  itself (x = index × cell − margin), so the opening scroll subtracts the margin and waits until the margins are in
+  (`openOnPileDay`); before, the strip opened 4 days past the pile's day, and on iOS 27 the scroll and the snap fought every
+  frame (100 % CPU, the pile frozen part-way). Measure the offsets before changing it. The pile moves the strip; dragging the strip moves the pile live, day by day under the finger (`onScrub`,
   the centred index from `onScrollGeometryChange` contentOffset + insets — the position binding only caught up at rest;
   photo days only), and at rest — only after a finger moved it (`touched`; the strip's own scrolls also came to rest, and one at its start sent the pile to the first day) — an empty day snaps the strip and pile to the nearest photo day (`onRest`); a tap jumps; a tick per day. Month name + "N photos" over each 1st; the month of the earliest
   visible day (`onScrollTargetVisibilityChange`) is pinned at the left edge and pushed out by the next month's 1st
@@ -77,7 +81,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   grouped once per change (`FrameBook.months`); piles under 60 pt get a 2 pt shadow. "On this day" cards (earlier years, today's date) under today's month (DEBUG `-demoOnThisDay` with
   `-demoMemories`). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
   calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number; up to today only)
-  · Months (a stack per month). No pinch and no flying squares (owner: dropped with the zoom); **One pushed screen** (owner 2026-10-08: swipe-back first, then pinch with flying squares, then search on a tap): pushed (`navigationDestination`, system back = swipe back); the three levels swapped in place in ONE view so `matchedGeometryEffect` in `pinch` flies the squares into their stacks — from a pinch (`MagnifyGesture` < 0.8 up, > 1.25 down) or the switch (`go`, a spring). The bottom bar is the page's own `safeAreaInset` (`bottomBar`: `levelSwitch` — buttons + a sliding `levelPill` — and a magnifier; searching, our TextField + ✕), glass from `barGlass` (`glassEffect(.regular.interactive())`, material before 26) — NOT the system toolbar (its shared glass left ghost circles / dead taps on his phone) and NOT a TabView (a tab bar's search needs a full screen: no swipe-back; pushed, its field never appeared — 3 ways tried). XCUITest's pinch-in never reaches the gesture (pinch out does): test pinches with the simulator tool's two-finger path. Prayers rows: five squares share the width. the levels change from the bar; a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month on screen; `tops` / `pinned`). Each level has its own ScrollView, swapped whole. DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`, `-demoShareScore 0.86` (a score, a place and both share options on for stand-ins), `-heicSelfTest` (encode + decode
+  · Months (a stack per month). **One prayer** (`MemoriesPage(onlyPrayer:)`, from Prayer scores' "N photos ›"; owner
+  2026-10-16: "Just make it look like the Photos app on Apple"): `onePrayerGrid` — four square columns, oldest top-left,
+  opening at the bottom on the newest, titled with the prayer, no level switch (search stays); a tap opens that prayer's pile. No pinch and no flying squares (owner: dropped with the zoom); **One pushed screen** (owner 2026-10-08: swipe-back first, then pinch with flying squares, then search on a tap): pushed (`navigationDestination`, system back = swipe back); the three levels swapped in place in ONE view so `matchedGeometryEffect` in `pinch` flies the squares into their stacks — from a pinch (`MagnifyGesture` < 0.8 up, > 1.25 down) or the switch (`go`, a spring). The bottom bar is the page's own `safeAreaInset` (`bottomBar`: `levelSwitch` — buttons + a sliding `levelPill` — and a magnifier; searching, our TextField + ✕), glass from `barGlass` (`glassEffect(.regular.interactive())`, material before 26) — NOT the system toolbar (its shared glass left ghost circles / dead taps on his phone) and NOT a TabView (a tab bar's search needs a full screen: no swipe-back; pushed, its field never appeared — 3 ways tried). XCUITest's pinch-in never reaches the gesture (pinch out does): test pinches with the simulator tool's two-finger path. Prayers rows: five squares share the width. the levels change from the bar; a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month on screen; `tops` / `pinned`). Each level has its own ScrollView, swapped whole. DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`, `-demoShareScore 0.86` (a score, a place and both share options on for stand-ins), `-heicSelfTest` (encode + decode
   times, run on a phone with `devicectl … process launch --console`). **Sim trap:** the simulator hangs decoding HEIC
   (never returns, starving the task pool so even JPEGs stop loading), so `encoded` writes JPEG there; phones decode it in ~30 ms.
 
@@ -110,6 +116,27 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   under the back button); twelve small months of square tiles in the card's colors (`JourneyTileColor`), each six weeks
   tall, its name (sage = this month) and one line ("9 days · 84%" in time of due, or "Away"); the month you came from
   outlined, today outlined; a tap on a month with prayers opens it.
+- Prayer scores (`PrayerScoresPage`, PrayerScores.swift; Bradley; spec board/mocks/journey/spec.md "Prayer scores,
+  lifetime" … "One score everywhere", mock board/mocks/journey-phase3 v9): lifetime only (owner: "no 7 days, 30 days, 12
+  months … it just keeps aggregating"). Ring = the score when prayed (misses left out; `prayedScore`, one score everywhere —
+  `lifeScore`, misses as 0, is shown nowhere), the grade word, "average score"; "848 of 1,333 prayed · since Nov 2024";
+  "Last 7 days ↑22 · last 30 days ↑43" (each part vs the same number of active days before it, shown only with ≥ 5 days on
+  both sides, under 3 points = "steady"); one sentence (top row "strongest", most missed "needs you most", the latest
+  "is your latest when you pray it", grey). Rows ranked by `prayedRaw` (ties by the raw value): "77 · 76% prayed" + its
+  lifetime dots (`PrayerScoresChart`, a Canvas: 14 slots across the window, one dot = N prayers shared by every row, Qaza
+  its own block past the end). **Tap a row:** the others fade (0.18 s), fold to height 0, the row rises to the top as the
+  same view, then its page fades in top to bottom — timed beats (`Task.sleep`), never spring completions; back = tap the
+  row; taps ignored while moving. No colour or weight change on the picked name (either dropped it mid-rise); numbers
+  `.contentTransition(.identity)` out, then in (`.numericText` drew both digits). **A prayer's page:** ring name · score ·
+  grade; "Lately, usually N minutes after it starts" + its trend; the big chart ("1 dot = N prayers"); "164 prayed since …
+  · 103 missed"; four grade chips (a tap focuses that grade's stretch, again clears); one insight row with a symbol (not a
+  link: best-timed → steady streak → masjid → mostly Perfect → most prayed → best streak); "N to make up ›" →
+  `JourneyMakeUpPage(startOnly:)` (All months, that prayer's chip on); "N photos ›" (`PrayerPhotos.all()`, the list Moments
+  shows) → `MemoriesPage(onlyPrayer:)`; "Where you pray it ›" → `PrayerScoresMap` (framed on the median cluster,
+  `usualArea`). Thin data: a trend part hidden under 5 days a side; "Not enough yet to say when you usually pray it." under
+  5 marks; no insight under 5 prayed; a row with nothing due "Not enough yet". Excused prayers never break a prayer's
+  streak. Loads off the main thread (`PrayerScores.load`: `JourneyLog.build` + the completed rows' masjid / spot). DEBUG
+  `-demoJourney -demoPrayerScores [Name]`.
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
   badges and keys only once `Excused.ranges` isn't empty.
@@ -146,7 +173,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   picked time, no spot, `mosqueName = ""`, streaks / day score / DayHistory / widgets / Live Activities) and
   `unmarkFromJourney`; edits through `editPrayerTime` / `movePrayer` (recorded time / spot kept). `.journeyChanged` reloads
   the pages.
-- To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused; Made up = Qaza now. Top: the
+- To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused; Made up = Qaza now. From
+  Prayer scores (`startOnly:`) it opens on All months with that prayer's chip on (`allThisVisit`; the switch clears it). Top: the
   count, "<month> | All months" (`journey.makeUpAll`), then each prayer's count (a tap shows only it — owner: under the
   switch); months newest first as pinned headings with "N left · N made up"; the month scrubber on the right edge is the
   Zikr wheel's dots (owner: not the soft look; > 3 months; the top month's dot bigger, a cleared month sage, a pill naming
