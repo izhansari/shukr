@@ -9,19 +9,19 @@ import SwiftData
 // as "✓ Made up · Undo" for 3 s (decision makeup-made-feedback A), then it leaves the list — made-up prayers are out of the
 // way like Reminders' completed ones: "✓ N made up · Show" under the total puts them back in their months, greyed (owner,
 // round 3: not folded under each month); a month with nothing left drops out; a cleared list says "All caught up".
+// Round 4 (owner, 2026-10-17): always all months (no "October | All months"); the top stays in view as the list scrolls —
+// the total missed, "✓ N made up · Show" with the share left at its end, a bar of made up over missed, the prayers' chips.
 
 struct JourneyMakeUpPage: View {
-    /// The month Journey was showing (the switch's left side).
+    /// The month Journey was showing (the caught-up line's; the page always shows every month).
     let month: Date
     /// Opened from Prayer scores' "N to make up ›": that prayer only, over all months (Frank's check: it opened on the
-    /// month with "1 prayer" while the row said 103). Shown so for this visit, the stored switch untouched.
+    /// month with "1 prayer" while the row said 103).
     var startOnly: String? = nil
     @State private var started = false
-    @State private var allThisVisit = false
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @EnvironmentObject private var viewModel: PrayerViewModel
-    @AppStorage("journey.makeUpAll") private var showAll = false
     @State private var open: [Entry] = JourneyMakeUpPage.last?.open ?? []
     @State private var madeUp: [Entry] = JourneyMakeUpPage.last?.madeUp ?? []
     /// One prayer only (a tap on its count).
@@ -75,7 +75,8 @@ struct JourneyMakeUpPage: View {
 
     // MARK: What's shown
 
-    private var all: Bool { showAll || allThisVisit }
+    /// Every month, always (owner, 2026-10-17: "Get rid of the switcher … and just always display all months").
+    private let all = true
     private func inScope(_ e: Entry) -> Bool { all || e.month == month }
     private func isSettling(_ e: Entry) -> Bool { settling[e.id] != nil }
     /// Open in the switch's scope (just-made-up ones included, in place).
@@ -92,10 +93,17 @@ struct JourneyMakeUpPage: View {
         let shownLeft = shownOpen.filter { !isSettling($0) }
         let months = months
         let scrubber = months.count > 3
+        // The top stays put and the list scrolls under it (owner, 2026-10-17: "Make this top area always stay in view as
+        // user scrolls so it doesnt get pushed out of view").
+        VStack(spacing: 0) {
+        summary(left)
+            .padding(.horizontal, 20)
+            .background(theme.surface)
+            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+            .zIndex(1)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    summary(left)
                     if shownLeft.isEmpty && !shownOpen.contains(where: isSettling) {
                         JourneyCaughtUp(cleared: cleared, line: caughtUpLine)
                             .frame(maxWidth: .infinity)
@@ -133,6 +141,7 @@ struct JourneyMakeUpPage: View {
                 if scrubber { monthScrubber(months, proxy: proxy).padding(.trailing, 4) }
             }
         }
+        }
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
@@ -143,11 +152,10 @@ struct JourneyMakeUpPage: View {
                 .environmentObject(viewModel)
                 .environment(\.circleTheme, theme)
         }
-        .onChange(of: showAll) { only = nil }
         .onAppear {
             guard !started else { return }
             started = true
-            if let startOnly { only = startOnly; allThisVisit = true }
+            if let startOnly { only = startOnly }
         }
         .task { await reload() }
     }
@@ -168,48 +176,72 @@ struct JourneyMakeUpPage: View {
 
     private func summary(_ left: [Entry]) -> some View {
         let counts = JourneyLog.names.map { name in (name, left.filter { $0.name == name }.count) }.filter { $0.1 > 0 }
+        // Following the chip that's on: its prayer's numbers. A just-made-up one (still showing Undo) counts as made up.
+        let leftHere = left.filter { only == nil || $0.name == only }.count
+        let made = shownMade.count + shownOpen.filter(isSettling).count
+        let missed = leftHere + made
+        let share = missed == 0 ? 0 : Double(made) / Double(missed)
+        let leftPct = missed == 0 ? 0 : Int(((1 - share) * 100).rounded())
         return VStack(alignment: .leading, spacing: 0) {
             Text("To make up").font(.system(size: 34, weight: .light, design: .rounded))
             Text("Prayers left unmarked on days you used shukr.")
                 .font(.system(size: 15, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
                 .padding(.top, 4)
+            // Everything missed: made up so far and what's left.
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(left.count)")
+                Text("\(missed)")
                     .font(.system(size: 44, weight: .thin, design: .rounded)).monospacedDigit()
-                    .contentTransition(.numericText(value: Double(left.count)))
-                Text(left.count == 1 ? "prayer" : "prayers")
+                    .contentTransition(.numericText(value: Double(missed)))
+                Text(missed == 1 ? "\(only ?? "prayer") missed" : "\(only.map { "\($0)s" } ?? "prayers") missed")
                     .font(.system(size: 16, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
             }
             .padding(.top, 14)
-            .animation(.snappy, value: left.count)
-            let made = madeUp.filter(inScope).count
-            if made > 0 {
-                Button {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(.easeInOut(duration: 0.3)) { showMade.toggle() }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .light))
-                        Text("\(made) made up")
-                            .contentTransition(.numericText(value: Double(made)))
-                        Text("·")
-                        Text(showMade ? "Hide" : "Show").foregroundStyle(.primary)
+            .animation(.snappy, value: missed)
+            // "✓ N made up · Show" and, at its end, the share still to make up.
+            HStack(alignment: .firstTextBaseline) {
+                if made > 0 {
+                    Button {
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.easeInOut(duration: 0.3)) { showMade.toggle() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .light))
+                            Text("\(made) made up")
+                                .contentTransition(.numericText(value: Double(made)))
+                            Text("·")
+                            Text(showMade ? "Hide" : "Show").foregroundStyle(.primary)
+                        }
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
                     }
-                    .font(.system(size: 14, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showMade ? "Hide the \(made) made up" : "Show the \(made) made up")
+                } else {
+                    Text("None made up yet").padding(.vertical, 4)
                 }
-                .buttonStyle(.plain)
-                .animation(.snappy, value: made)
-                .accessibilityLabel(showMade ? "Hide the \(made) made up" : "Show the \(made) made up")
+                Spacer(minLength: 8)
+                Text(missed == 0 ? "" : "\(leftPct)% left")
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(leftPct)))
             }
-            JourneySwitch(options: [(monthName(month), "month"), ("All months", "all")],
-                          selection: Binding(get: { all ? "all" : "month" }, set: { showAll = $0 == "all"; allThisVisit = false; only = nil }))
-                .frame(maxWidth: .infinity)
-                .padding(.top, 16)
+            .font(.system(size: 14, weight: .light, design: .rounded))
+            .foregroundStyle(.secondary)
+            .padding(.top, 8)
+            .animation(.snappy, value: made)
+            // Made up over missed.
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.08))
+                    Capsule().fill(Color.primary.opacity(0.55)).frame(width: max(share > 0 ? 6 : 0, g.size.width * share))
+                }
+            }
+            .frame(height: 6)
+            .padding(.top, 6)
+            .animation(.easeInOut(duration: 0.35), value: share)
+            .accessibilityElement()
+            .accessibilityLabel("\(made) of \(missed) made up")
             if counts.count > 1 || only != nil {
                 // Each prayer's count; a tap shows only that prayer ("work through my Fajrs").
                 ScrollView(.horizontal, showsIndicators: false) {
