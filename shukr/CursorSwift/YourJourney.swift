@@ -447,11 +447,14 @@ struct JourneyHomeCard: View {
         return min(Int(f * CGFloat(n)), n - 1)
     }
 
+    /// The month's first week (the row with its name) comes to the grid's middle — at the top the fade hid the name
+    /// (owner, 2026-10-17: "if I go to January 2026, I don't even see it in the column … make it so that the label
+    /// comes into the middle").
     private func railTo(_ m: Int, lifting: Bool) {
         let months = monthWeeks
         guard months.indices.contains(m) else { return }
         if lifting { withAnimation(.snappy(duration: CircleMotion.quick)) { rail = m } } else { rail = m }
-        withAnimation(CircleMotion.wheelScrub) { position.scrollTo(id: months[m], anchor: .top) }
+        withAnimation(CircleMotion.wheelScrub) { position.scrollTo(id: months[m], anchor: .center) }
         // Again once it's landed: a far month's rows weren't built, so the first scroll went by the lazy stack's estimate
         // and stopped a month or so short (sim: the pill said October, the grid's top was November); now they're there.
         let r = scrub
@@ -459,7 +462,7 @@ struct JourneyHomeCard: View {
         r.railSettle = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(220))
             guard !Task.isCancelled, rail == m || rail == nil else { return }
-            withAnimation(.easeOut(duration: 0.15)) { position.scrollTo(id: months[m], anchor: .top) }
+            withAnimation(.easeOut(duration: 0.15)) { position.scrollTo(id: months[m], anchor: .center) }
         }
     }
 
