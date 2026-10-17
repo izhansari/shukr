@@ -192,6 +192,7 @@ struct JourneyMonthPage: View {
 
     private func toYear() {
         guard !showYear, yearFlight == nil else { return }
+        JourneyPerf.began("year opens")   // the year's build: its own window (the flight's begins once it's ready)
         picked = nil   // the year has its own picks
         triggerSomeVibration(type: .light)
         let month = shownMonth
@@ -222,6 +223,7 @@ struct JourneyMonthPage: View {
     /// Into a month from the year: its small month's squares grow into its days, as from the card.
     private func toMonth(_ month: Date) {
         guard showYear, yearFlight == nil else { return }
+        JourneyPerf.began("month from year")   // the month's build: its own window (the flight's begins at its title)
         var quiet = Transaction()
         quiet.disablesAnimations = true
         yearDials.set(.month, 0)
@@ -466,6 +468,7 @@ struct JourneyMonthPage: View {
                 if dragVertical == nil {
                     // Up or down only; the left edge stays the system's back swipe.
                     dragVertical = v.startLocation.x > 20 && abs(v.translation.height) > abs(v.translation.width)
+                    if dragVertical == true { JourneyPerf.began("month drag") }
                 }
                 guard dragVertical == true else { return }
                 let h = v.translation.height
@@ -763,6 +766,7 @@ private struct JourneyMonthRail: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
+                    if scrubbing == nil { JourneyPerf.began("month rail") }
                     let index = min(max(Int((value.location.y - pad) / slot), 0), months.count - 1)
                     guard months[index] != scrubbing else { return }
                     triggerSomeVibration(type: .light)

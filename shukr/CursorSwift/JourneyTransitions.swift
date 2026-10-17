@@ -950,6 +950,7 @@ struct JourneyMonthHost: ViewModifier {
     // MARK: Card → month
 
     private func openMonth(_ start: Date) {
+        JourneyPerf.began("month opens")   // the month's build: its own window (the flight's begins at its title)
         triggerSomeVibration(type: .light)
         let geo = JourneyFlightGeometry.shared
         geo.title = nil
@@ -1013,6 +1014,7 @@ struct JourneyMonthHost: ViewModifier {
     private func openDay(_ date: Date, fromTop: Bool = false) {
         let log = JourneyLog.last ?? log   // the auto run's copy of the host was taken before the log loaded
         guard day == nil, date <= today, log.day(date).active, date < today || log.day(date).allFive else { return }
+        JourneyPerf.began("day opens")   // the day page's build and load: its own window (the flight's begins once it's in)
         triggerSomeVibration(type: .light)
         dials.set(.day, 0)
         day = JourneyDayFlight(date: date, from: from(date, top: fromTop), to: nil, fromTop: fromTop)
