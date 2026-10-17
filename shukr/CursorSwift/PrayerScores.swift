@@ -302,6 +302,8 @@ struct PrayerScoresPage: View {
     @State private var othersFaded = false
     @State private var folded = false
     @State private var linesFaded = false
+    /// The ring's number and its label (they come back as the row lands; the lines under the title wait for it to land).
+    @State private var ringFaded = false
     @State private var detailShown = false
     @State private var busy = false
     @State private var focus: PrayerScores.Grade?
@@ -401,10 +403,14 @@ struct PrayerScoresPage: View {
         triggerSomeVibration(type: .light)
         selected = name
         Task { @MainActor in
+            // 0 · the tap builds the prayer's page below (hidden) and the bar's ‹: a beat for that frame to land before
+            // anything moves (built in the fade's first frame, it was the open's worst gap — 49 ms on the sim).
+            try? await Task.sleep(for: .milliseconds(30))
             // 1 · the other rows, the picked row's small chart, the ring's words and the lines fade where they are.
             withAnimation(motion(.easeOut(duration: 0.18))) {
                 othersFaded = true
                 linesFaded = true
+                ringFaded = true
             }
             await beat(0.22)   // fully out before anything swaps
             // 2 · the others fold away; the picked row rises into the top slot. The ring's words swap while they're out.
@@ -412,12 +418,16 @@ struct PrayerScoresPage: View {
                 shown = name
                 folded = true
             }
-            // 3 · the ring's words come back as the row lands (the ring sat empty ~0.8 s — Frank), then its page under it.
+            // 3 · the ring's words come back as the row lands (the ring sat empty ~0.8 s — Frank); the lines under the title
+            // once the name and its line have landed over them (in with them, they ran through the line still flying up),
+            // then its page under it.
             await beat(0.18)
+            withAnimation(motion(.easeOut(duration: 0.25))) { ringFaded = false }
+            await beat(0.2)
             withAnimation(motion(.easeOut(duration: 0.25))) { linesFaded = false }
-            await beat(0.14)
+            await beat(0.1)
             withAnimation(motion(.easeOut(duration: 0.3))) { detailShown = true }
-            await beat(0.4)
+            await beat(0.3)
             busy = false
         }
     }
@@ -431,6 +441,7 @@ struct PrayerScoresPage: View {
             withAnimation(motion(.easeIn(duration: 0.18))) {
                 detailShown = false
                 linesFaded = true
+                ringFaded = true
             }
             await beat(0.22)   // fully out before the words swap (one faint frame read "Asr · 75" — Frank)
             focus = nil
@@ -442,6 +453,7 @@ struct PrayerScoresPage: View {
             withAnimation(motion(.easeOut(duration: 0.22))) {
                 othersFaded = false
                 linesFaded = false
+                ringFaded = false
             }
             await beat(0.24)
             selected = nil
@@ -471,13 +483,13 @@ struct PrayerScoresPage: View {
                 Text(ringScore.map { "\($0)" } ?? "–")
                     .font(.system(size: 58, weight: .thin, design: .rounded)).monospacedDigit()
                     .contentTransition(.identity)
-                    .opacity(linesFaded ? 0 : 1)
+                    .opacity(ringFaded ? 0 : 1)
                 // What the number is (owner: "a little subtitle … saying like average lifetime score"); sized for the ring
                 // drawn at 70 % beside the title.
                 Text(span.ringLabel)
                     .font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .opacity(linesFaded ? 0 : 1)
+                    .opacity(ringFaded ? 0 : 1)
             }
             .allowsHitTesting(false)
         }
@@ -584,7 +596,15 @@ struct PrayerScoresPage: View {
                     if let name = selected {
                         // No score here: the ring has it, large (owner, 2026-10-17: "get rid of the score here … because we
                         // already show it in the ring").
-                        Text(prayedLine(name))
+                        // It starts as the row's own line ("84 · 49% prayed"): the score part fades and folds away as it rises,
+                        // and grows back as it sinks — swapped at the tap, the line jumped from one text to the other.
+                        HStack(spacing: 0) {
+                            PrayerScoresCollapse(open: folded ? 0 : 1) {
+                                Text(scorePart(name)).opacity(folded ? 0 : 1)
+                            }
+                            .clipped()
+                            Text(prayedLine(name))
+                        }
                             .modifier(PrayerScoresHeroFont(size: folded ? 15 : 12.5))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -612,6 +632,11 @@ struct PrayerScoresPage: View {
     private func prayedLine(_ name: String) -> String {
         guard let p = data.prayers[name], p.due > 0 else { return " " }
         return "\(Int((Double(p.prayed) / Double(p.due) * 100).rounded()))% prayed"
+    }
+
+    /// "97 · " (a row's line before its "% prayed"), or nothing without a score.
+    private func scorePart(_ name: String) -> String {
+        data.prayers[name]?.prayedScore.map { "\($0) · " } ?? ""
     }
 
     /// "97 · 98% prayed" (a row's line).
@@ -995,6 +1020,23 @@ private struct PrayerScoresMap: View {
     }
 }
 
+
+/// Its one child at its own size, as wide as `open` of that (1 all, 0 none): the open prayer's score part folding out of
+/// its line as it rises (an animatable layout — a frame can't animate between its own width and zero).
+private struct PrayerScoresCollapse: Layout {
+    var open: CGFloat
+    var animatableData: CGFloat {
+        get { open }
+        set { open = newValue }
+    }
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let s = subviews.first?.sizeThatFits(.unspecified) ?? .zero
+        return CGSize(width: s.width * max(open, 0), height: s.height)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: .unspecified)
+    }
+}
 
 /// A font size that animates (a plain `.font` jumps between sizes): the picked prayer's name and line growing into the
 /// header as they rise.
