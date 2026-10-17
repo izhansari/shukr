@@ -442,6 +442,7 @@ private struct JourneyCalendar: View {
                 // Six weeks always, so every month is the same height and the key never moves.
                 ForEach(0..<max(0, 42 - lead - days.count), id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
             }
+            .journeyFlightDays(month, scale: scale)   // where its days are, for the transitions (JourneyTransitions.swift)
             HStack(spacing: 16) {
                 // Owner, 2026-10-16: "change it to say in time with kaza and complete. And tapping any one focuses those rings."
                 key(keyRing(inTime: true), "In time", .allInTime)

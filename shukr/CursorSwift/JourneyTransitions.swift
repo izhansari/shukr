@@ -2,7 +2,7 @@ import SwiftUI
 import QuartzCore
 
 // Journey's two transitions (owner, 2026-10-16, after trying them on his phone: "1a. … 2a looks alright for the most
-// part"), moved out of the test screen (JourneyTransitionLab.swift):
+// part"), first built on a test screen (removed 2026-10-16; owner: "lets test on the real thing from now on"):
 // 1A, transition D — the card's month opens in place on one dial: the month's tiles fly to their days and land as each
 // day's fill, its name grows into the title, the card's surface grows into the page, the rings close day by day.
 // 2A, Bradley's plan — a day's ring grows from its cell into the day page's ring, soft, then the grade colours draw in.
@@ -191,10 +191,18 @@ enum JourneyMotion {
         for (part, a) in anchors {
             let r = proxy[a.anchor].offsetBy(dx: o.x, dy: o.y)
             switch part {
-            case .cell(let d):
-                // The ring's own square at the page's scale (the cell is laid out at 46 pt and scaled).
-                let s = JourneyDayRing.size * a.scale
-                cells[d] = CGRect(x: r.midX - s / 2, y: r.midY - s / 2, width: s, height: s)
+            case .days(let month):
+                // The month's day grid (JourneyCalendar: seven equal columns, rows a day tall at the page's scale, 2 pt
+                // apart, after the week's lead) → each day's ring square.
+                let cal = Calendar.current
+                let lead = ((cal.component(.weekday, from: month) - cal.firstWeekday) + 7) % 7
+                let side = JourneyDayRing.size * a.scale, colW = r.width / 7
+                for (i, d) in JourneyLog.daysOf(month: month).enumerated() {
+                    let at = lead + i
+                    let cx = r.minX + (CGFloat(at % 7) + 0.5) * colW
+                    let cy = r.minY + CGFloat(at / 7) * (side + 2) + side / 2
+                    cells[d] = CGRect(x: cx - side / 2, y: cy - side / 2, width: side, height: side)
+                }
             case .title(let m): title = r; shown = m
             }
         }
@@ -205,7 +213,7 @@ enum JourneyMotion {
 }
 
 /// What reports its place: the card and its grid, a tile, a month's name, a calendar day, the month's title.
-enum JourneyFlightPart: Hashable { case cell(Date), title(Date) }
+enum JourneyFlightPart: Hashable { case days(Date), title(Date) }
 struct JourneyFlightAnchor { let anchor: Anchor<CGRect>; var scale: CGFloat = 1 }
 
 /// The card's pieces write their place as they're laid out: a GeometryReader behind them writing into the unobserved store,
@@ -468,11 +476,14 @@ struct JourneyFlightHide: ViewModifier {
 extension View {
     /// The month's title: "Sep" on the card grows into it (scale, place, sage to ink, the rest of the name unrolling).
     func journeyFlightTitle(_ shown: Date) -> some View { modifier(JourneyFlightTitle(shown: shown)) }
-    /// One day of the calendar (after its scale): reports its ring's square, draws its tile landing behind it, and tells the
-    /// cell how much of its ring and number to draw (JourneyCellDraw).
+    /// One day of the calendar (after its scale): tells the cell how much of its ring, number and fill to draw
+    /// (JourneyCellDraw).
     func journeyFlightCell(_ date: Date, scale: CGFloat) -> some View { modifier(JourneyFlightCellModifier(date: date, scale: scale)) }
     /// The month page's surface: clear while it opens over Journey, the page's own once it's open.
     func journeyFlightMonthSurface() -> some View { modifier(JourneyFlightMonthSurface()) }
+    /// A month's grid of days: one place for all of them (each day's square is worked out from it). One anchor a calendar,
+    /// not one a day: the anchors' merging was ~42 ms of every year open on his 13 Pro Max (the organizer's trace).
+    func journeyFlightDays(_ month: Date, scale: CGFloat) -> some View { journeyFlightPlace(.days(month), scale: scale) }
 }
 
 struct JourneyFlightTitle: ViewModifier {
@@ -530,7 +541,7 @@ struct JourneyFlightCellModifier: ViewModifier {
                 content.environment(\.journeyCellDraw, hidden ? JourneyCellDraw(ring: 0, number: 1, fill: 0) : .full)
             }
         }
-        .journeyFlightPlace(.cell(date), scale: scale)
+
     }
 }
 
@@ -803,7 +814,7 @@ struct JourneyMonthHost: ViewModifier {
     }
 
     /// `-demoJourneyFlightRun [N]`: the real Journey's flights N times with no finger (default 5) — card → month → a day →
-    /// back → back — for the frame log on a phone in Release (the test screen's runs measure the lab, not these pages).
+    /// back → back — for the frame log on a phone in Release (the real pages, not a stand-in).
     private func autoRun() async {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-demoJourneyFlightRun") else { return }

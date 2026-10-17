@@ -285,7 +285,7 @@ struct JourneyDayPage: View {
 }
 
 /// The day page's vertical gaps (JourneyDayPage.layout).
-/// A Journey transition landing on the day page or leaving it (JourneyTransitionLab, 2026-10-16): how far the page's own
+/// A Journey transition landing on the day page or leaving it (JourneyTransitions.swift, 2026-10-16): how far the page's own
 /// pieces are in, each 0…1. Nil (the default) is the page as always. The grown ring hands over to `disc` and `drawn`.
 struct JourneyDayEntrance: Equatable {
     /// Journey's live dials (JourneyTransitions.swift): the values below follow its day dial as they're read, so only the
