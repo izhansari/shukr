@@ -346,6 +346,7 @@ private struct JourneyCalendar: View {
             HStack(spacing: 16) {
                 key(keyRing(inTime: true), "All five in time")
                 key(keyRing(inTime: false), "All five")
+                key(keyFifths, "Incomplete")
                 if hasExcused { key(ExcusedDayBadge(size: 10), "Excused") }
             }
             .font(.system(size: 11, weight: .light, design: .rounded))
@@ -368,6 +369,20 @@ private struct JourneyCalendar: View {
         return Circle().fill(inTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
             .padding(1.6)
             .overlay(Circle().stroke(inTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark), lineWidth: 1.1))
+    }
+
+    /// The key's "Incomplete": a ring of five fifths, all faint (owner, 2026-10-16: "in the legend add the fifths as a ring
+    /// saying "incomplete". all fifths faint."). The calendar's own unfinished days keep Bradley's strengths.
+    private var keyFifths: some View {
+        ZStack {
+            ForEach(0..<5, id: \.self) { i in
+                let arc = JourneyDayRing.fifth(i)
+                Circle().trim(from: arc.from, to: arc.to)
+                    .stroke(JourneyDayRing.track(scheme == .dark), style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+        }
+        .padding(0.55)
     }
 
     private func key<V: View>(_ swatch: V, _ title: String) -> some View {
