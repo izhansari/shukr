@@ -75,9 +75,21 @@ enum JourneyMotion {
     /// stop the new one.
     private(set) var run = 0
 
+    /// On in DEBUG builds, or with `-journeyFrameLog` / `-demoJourneyFlightRun` (a Release measurement on his phone): never in
+    /// what ships — a 120 Hz link and a file write per run, and a run-loop observer on every wake of the app while it runs.
+    static let on: Bool = {
+        #if DEBUG
+        return true
+        #else
+        let args = ProcessInfo.processInfo.arguments
+        return args.contains("-journeyFrameLog") || args.contains("-demoJourneyFlightRun")
+        #endif
+    }()
+
     @discardableResult func start(_ name: String) -> Int {
         JourneyPerf.began(name)   // the perf log's window too (JourneyPerf.swift)
         run += 1
+        guard Self.on else { return run }
         link?.invalidate()
         self.name = name
         began = CACurrentMediaTime(); last = began
@@ -116,6 +128,8 @@ enum JourneyMotion {
     func stop(_ how: String = "", run: Int? = nil) {
         guard let l = link, run == nil || run == self.run else { return }
         l.invalidate(); link = nil
+        // The observer only watches a run: left on, it woke with every turn of the main run loop for good.
+        if let o = observer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), o, .commonModes); observer = nil }
         let ms = (CACurrentMediaTime() - began) * 1000
         let line = String(format: "%@ %@%@: %.0f ms, %d frames at %.0f Hz, worst %.1f ms (ending %.0f ms in), %d late, main busy ≤ %.0f ms",
                           Date().formatted(.iso8601), name, how.isEmpty ? "" : " (\(how))", ms, frames, 1 / expected, worst * 1000,
@@ -146,10 +160,15 @@ enum JourneyMotion {
     /// The year's small months: each one's squares area and its name (global), written as they're laid out.
     var yearGrids: [Date: CGRect] = [:]
     var yearNames: [Date: CGRect] = [:]
-    /// The month page is showing its year (the host's ‹ then fades back to Journey: no days on screen to fly).
+    /// The month page is showing its year: the host's ‹ and edge swipe then go back to the month (`yearBack`, the month
+    /// page's own year → month flight; owner, 2026-10-17: "this back chevron from the year page. It should go back to the
+    /// month page"), and only without one fade back to Journey.
     var yearShowing = false
+    var yearBack: (() -> Void)?
     /// The month's day rings (global, the ring's own square at the page's scale).
     var cells: [Date: CGRect] = [:]
+    /// A picked day's ring at the top (JourneyDayTop, global): the card's day flies from it.
+    var topRing: (date: Date, frame: CGRect)?
     /// The month title's slot, and the month it names (the page may have been paged since it opened).
     var title: CGRect?
     var shownMonth: Date?
@@ -408,6 +427,8 @@ extension EnvironmentValues {
     @Entry var journeyCellDraw: JourneyCellDraw = .full
     /// Set by the host: a day tapped on the month opens through it (the ring grows) instead of a push.
     @Entry var journeyDayOpener: JourneyDayOpener? = nil
+    /// The day whose top ring is flying to the day page (its own ring draws none).
+    @Entry var journeyTopRingFlying: Date? = nil
 }
 
 // MARK: - The card's pieces (YourJourney.swift, Journey.swift)
@@ -431,6 +452,8 @@ extension View {
             .onChange(of: weekStarts) { _, w in JourneyFlightGeometry.shared.weekStarts = w }
             .modifier(JourneyFlightFade(part: .grid))
     }
+    /// A picked day's ring at the top (JourneyDayTop): reports where it is, hidden while it's flying to the day page.
+    func journeyFlightTopRing(_ date: Date) -> some View { modifier(JourneyFlightTopRing(date: date)) }
     /// A day's tile on the card: hidden while its month is open (it's flying). It reports nothing (see `tile(_:)`).
     func journeyFlightTile(_ date: Date) -> some View { modifier(JourneyFlightHide(part: .tile(date))) }
     /// A month's name on the card: reports where it is, hidden while that month is open (it became the title).
@@ -688,6 +711,13 @@ struct JourneyFlightRingSpec {
     var closedColor: Color = .clear
     var closedOpacity: Double = 1
 
+    /// The picked day's top ring (JourneyDayFifths on the card): each prayed fifth in ink, the rest a faint track.
+    static func top(day: JourneyLog.Day) -> JourneyFlightRingSpec {
+        JourneyFlightRingSpec(fifths: day.marks.map { mark in
+            mark.done ? Color.primary.opacity(0.72) : mark == .excused ? Color.primary.opacity(0.3) : Color.primary.opacity(0.12)
+        }, closed: false)
+    }
+
     /// The month's F2 look for a day (JourneyDayCell): closed and green / soft, or its fifths.
     static func month(day: JourneyLog.Day, today: Bool, dark: Bool) -> JourneyFlightRingSpec {
         if day.allFive && !today {
@@ -760,6 +790,37 @@ struct JourneyDayFlight: Equatable {
     var date: Date
     var from: CGRect?
     var to: CGRect?
+    /// From the card's picked day (its top ring), not a month's cell.
+    var fromTop = false
+}
+
+/// The picked day's top ring: where it is, and its fifths cut out while its day's ring flies — the score inside stays with
+/// the card (hiding the whole ring popped the number back a frame after the ring landed).
+private struct JourneyFlightTopRing: ViewModifier {
+    let date: Date
+    @Environment(\.journeyTopRingFlying) private var flying
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                JourneyFlightGeometry.shared.topRing = (date, $0)
+            }
+            .mask {
+                GeometryReader { g in
+                    // JourneyDayFifths' ring at this size.
+                    let k = min(g.size.width, g.size.height) / JourneyDayRing.size
+                    let r = JourneyDayRing.radius * k
+                    ZStack {
+                        Rectangle()
+                        Circle().stroke(lineWidth: JourneyDayRing.band * k * 1.15 + 1.5)
+                            .frame(width: r * 2, height: r * 2)
+                            .position(x: g.size.width / 2, y: g.size.height / 2)
+                            .blendMode(.destinationOut)
+                            .opacity(flying == date ? 1 : 0)
+                    }
+                    .compositingGroup()
+                }
+            }
+    }
 }
 
 extension View {
@@ -784,6 +845,7 @@ struct JourneyMonthHost: ViewModifier {
     /// The edge swipe claims only a drag that starts sideways; one that starts up or down is the month's paging, left alone.
     @State private var edgeSideways: Bool?
     @State private var openerID = UUID()
+    @State private var cardOpenerID = UUID()
     /// Back from the year: Journey shown at rest under the month layer, which fades out over it.
     @State private var fadingOut = false
     @State private var outFade: CGFloat = 0
@@ -794,8 +856,12 @@ struct JourneyMonthHost: ViewModifier {
     func body(content: Content) -> some View {
         ZStack(alignment: .topLeading) {
             content
-                .allowsHitTesting(flight == nil)
+                .allowsHitTesting(flight == nil && day == nil)
                 .modifier(JourneyFlightClear(active: fadingOut))
+                // The card's picked day opens here too: its top ring grows into the day page (owner, 2026-10-17: the
+                // card's top → day "a ring flight instead of the plain push"), as a month's day does from its cell.
+                .environment(\.journeyDayOpener, JourneyDayOpener(id: cardOpenerID, open: { openDay($0, fromTop: true) }))
+                .environment(\.journeyTopRingFlying, day?.fromTop == true && day?.to != nil ? day?.date : nil)
             // Over Journey's page (its own background is opaque — under it, the card had no shadow all flight and it popped
             // back on the last frame: Sami's check of 7174d7c7), drawn only outside the card's shape.
             if let flight { JourneyGrowingSurface(card: flight.card) }
@@ -824,15 +890,17 @@ struct JourneyMonthHost: ViewModifier {
                         .modifier(JourneyHitGate(dials: dials, key: .day, open: true))
                     if let to = day.to { JourneyFlyingDayRing(flight: day, to: to, log: log) }
                 }
+                // Its own dials: from the card no month is open, and the host's environment has none then.
+                .environment(\.journeyMonthDial, dials)
             }
         }
         .overlay(alignment: .leading) { if day != nil { edgeStrip } }
         .environment(\.journeyMonthDial, flight == nil ? nil : dials)
         .environment(\.journeyDayEntrance, day == nil ? nil : JourneyDayEntrance(source: dials))
         .environment(\.journeyMonthOpen, flight.map { JourneyMonthOpen(flight: $0, hiddenDay: day?.to == nil ? nil : day?.date) })
-        .navigationBarBackButtonHidden(flight != nil)
+        .navigationBarBackButtonHidden(flight != nil || day != nil)
         .toolbar {
-            if flight != nil {
+            if flight != nil || day != nil {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { back() } label: { Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold)) }
                         .accessibilityLabel("Back")
@@ -905,9 +973,15 @@ struct JourneyMonthHost: ViewModifier {
         flight = nil
         month = nil
         JourneyFlightGeometry.shared.yearShowing = false
+        JourneyFlightGeometry.shared.yearBack = nil
     }
 
-    /// Back while the month page shows its year: Journey at rest underneath, the month layer fading out over it (no days on
+    /// Back while the month page shows its year: into the month it came from (its own flight), else Journey.
+    private func fromYear() {
+        if let back = JourneyFlightGeometry.shared.yearBack { back() } else { fadeFromYear() }
+    }
+
+    /// Back while the month page shows its year and can't fly into a month: Journey at rest underneath, the month layer fading out over it (no days on
     /// screen to fly). A plain removal transition dropped the year in one frame and faded only Journey in.
     private func fadeFromYear() {
         guard !fadingOut else { return }
@@ -936,12 +1010,12 @@ struct JourneyMonthHost: ViewModifier {
 
     // MARK: Month → day
 
-    private func openDay(_ date: Date) {
+    private func openDay(_ date: Date, fromTop: Bool = false) {
         let log = JourneyLog.last ?? log   // the auto run's copy of the host was taken before the log loaded
         guard day == nil, date <= today, log.day(date).active, date < today || log.day(date).allFive else { return }
         triggerSomeVibration(type: .light)
         dials.set(.day, 0)
-        day = JourneyDayFlight(date: date, from: JourneyFlightGeometry.shared.cells[date], to: nil)
+        day = JourneyDayFlight(date: date, from: from(date, top: fromTop), to: nil, fromTop: fromTop)
         // The dial runs once the day page has laid out its disc (where to land) and read its rows (its heavy first moment:
         // Bradley's check of the lab — a real tap logged a 177 ms stall while the page loaded mid-flight).
         let spot = JourneyDayRingSpot.shared
@@ -964,10 +1038,18 @@ struct JourneyMonthHost: ViewModifier {
         }
     }
 
+    /// Where a day's ring flies from: the month's cell, or the card's top ring if it shows that day (nil: it only fades).
+    private func from(_ date: Date, top: Bool) -> CGRect? {
+        let geo = JourneyFlightGeometry.shared
+        guard top else { return geo.cells[date] }
+        return geo.topRing?.date == date ? geo.topRing?.frame : nil
+    }
+
     private func runDay(to target: CGFloat, how: String = "") {
         let remaining = abs(target - dials.dayDial)
         guard remaining > 0.001 else { if target == 0 { day = nil }; return }
-        let run = JourneyFrameLog.shared.start(target == 1 ? "month → day" : "day → month")
+        let what = day?.fromTop == true ? "card" : "month"
+        let run = JourneyFrameLog.shared.start(target == 1 ? "\(what) → day" : "day → \(what)")
         dials.animate(.day, to: target, duration: JourneyMotion.dayDuration * Double(remaining)) {
             JourneyFrameLog.shared.stop(how, run: run)
             if target == 0 { day = nil; dials.set(.day, 0) }
@@ -979,7 +1061,7 @@ struct JourneyMonthHost: ViewModifier {
         let spot = JourneyDayRingSpot.shared
         guard var d = day, let date = spot.date else { return }
         d.date = date
-        d.from = JourneyFlightGeometry.shared.cells[date]
+        d.from = from(date, top: d.fromTop)
         d.to = spot.frame
         var quiet = Transaction()
         quiet.disablesAnimations = true
@@ -994,7 +1076,7 @@ struct JourneyMonthHost: ViewModifier {
     private func back() {
         DispatchQueue.main.async {
             if day != nil { retargetDayForBack(); runDay(to: 0, how: "button") }
-            else if flight != nil && JourneyFlightGeometry.shared.yearShowing { fadeFromYear() }
+            else if flight != nil && JourneyFlightGeometry.shared.yearShowing { fromYear() }
             else if flight != nil { retargetMonthForBack(); runMonth(to: 0, how: "button") }
         }
     }
@@ -1018,7 +1100,7 @@ struct JourneyMonthHost: ViewModifier {
                 defer { edgeSideways = nil }
                 if backDrag == nil, edgeSideways == true, day == nil, JourneyFlightGeometry.shared.yearShowing,
                    v.translation.width > width / 3 || v.predictedEndTranslation.width > width / 2 {
-                    fadeFromYear()   // the year: a swipe from the edge fades back to Journey
+                    fromYear()   // the year: a swipe from the edge goes back to its month
                     return
                 }
                 guard let drag = backDrag else { return }
@@ -1124,15 +1206,17 @@ private struct JourneyFlyingDayRing: View {
         let dark = scheme == .dark
         let day = log.day(flight.date)
         // Today flies as the month draws it: strong fifths, never closed (Bradley's check).
-        let spec = JourneyFlightRingSpec.month(day: day, today: flight.date == PrayerDay.start(), dark: dark)
-        // From its cell's size (the month page draws days at 1 / 0.9 / 0.8 / 0.7).
+        let spec = flight.fromTop ? .top(day: day)
+            : JourneyFlightRingSpec.month(day: day, today: flight.date == PrayerDay.start(), dark: dark)
+        // From its cell's size (the month page draws days at 1 / 0.9 / 0.8 / 0.7), or the top ring's (46 / 54).
         let cell = (flight.from?.height ?? JourneyDayRing.size) / JourneyDayRing.size
+        let startBand = JourneyDayRing.band * cell * (flight.fromTop ? 1.15 : 1)   // JourneyDayFifths' band
         let fromCentre = flight.from.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: to.midX, y: to.midY)
         let centre = JourneyMotion.lerp(fromCentre, CGPoint(x: to.midX, y: to.midY), z)
         // From a day not on the month (paged to another month): it only fades, at the page's size.
         let k = flight.from == nil ? 1 : z
         let radius = JourneyMotion.lerp(JourneyDayRing.radius * cell, 100, k)
-        let band = JourneyMotion.lerp(JourneyDayRing.band * cell, theme.arc.width * 0.5, k)
+        let band = JourneyMotion.lerp(startBand, theme.arc.width * 0.5, k)
         let gap = JourneyMotion.lerp(7.0 / 360, 0.014, k)
         let closedGap = JourneyMotion.lerp(0, 0.014, JourneyMotion.seg(k, 0.5, 1))
         let disc = JourneyMotion.lerp(JourneyDayRing.fill * 2 * cell, CircleMotion.dayDiscDiameter, k)

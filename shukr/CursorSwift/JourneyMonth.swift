@@ -199,6 +199,7 @@ struct JourneyMonthPage: View {
         JourneyFlightGeometry.shared.yearGrids = [:]
         JourneyFlightGeometry.shared.yearNames = [:]
         JourneyFlightGeometry.shared.yearShowing = true
+        JourneyFlightGeometry.shared.yearBack = { toMonth(start) }   // the host's ‹ and edge swipe: back into this month
         yearWaiting = true
         showYear = true
         JourneyFlightGeometry.shared.whenYearReady(month) {
@@ -232,6 +233,7 @@ struct JourneyMonthPage: View {
                 showYear = false
                 yearFlight = nil
                 JourneyFlightGeometry.shared.yearShowing = false
+                JourneyFlightGeometry.shared.yearBack = nil
             }
         }
     }
