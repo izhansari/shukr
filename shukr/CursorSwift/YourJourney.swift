@@ -48,6 +48,7 @@ struct JourneyHomeCard: View {
     /// What the grid shows: the first week row in view, how many fit, and whether it rests at today.
     @State private var view = (first: 0, count: 12, atEnd: true)
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.journeyDayOpener) private var dayOpener
 
     /// A week row's pitch: an 11 pt bar and 3 pt between (the canvas).
     static let pitch: CGFloat = 14
@@ -495,7 +496,10 @@ struct JourneyHomeCard: View {
 
     /// The picked day at the top (JourneyDayTop, shared with the month page); a tap opens the day.
     private func dayTop(_ d: YourJourneyStats.GridDay) -> some View {
-        JourneyDayTop(day: d, log: log, compact: compact, canOpen: d.prayed > 0 && opens(d.date)) { onDay(d.date) }
+        JourneyDayTop(day: d, log: log, compact: compact, canOpen: d.prayed > 0 && opens(d.date)) {
+            // Its ring grows into the day page (Journey's host); a push without one.
+            if let dayOpener { dayOpener.open(d.date) } else { onDay(d.date) }
+        }
             .padding(.trailing, 28)   // the expand button's room
     }
 
@@ -958,6 +962,7 @@ struct JourneyDayTop: View {
             HStack(alignment: .center, spacing: 14) {
                 JourneyDayFifths(day: log.day(d.date), center: d.prayed > 0 ? "\(d.score)" : "–")
                     .frame(width: ring, height: ring)
+                    .journeyFlightTopRing(d.date)   // the card's day flies from it (JourneyTransitions.swift)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(date).font(.system(size: compact ? 15 : 17, weight: .regular, design: .rounded))
                     Text(second.compactMap { $0 }.joined(separator: " · "))

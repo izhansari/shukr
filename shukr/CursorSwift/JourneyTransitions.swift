@@ -1227,7 +1227,8 @@ private struct JourneyFlyingDayRing: View {
             if !landed {
                 NeuRaised(shape: Circle(), radius: 9 * k, offset: 4.5 * k)
                     .frame(width: disc, height: disc)
-                    .opacity(Double(JourneyMotion.out(JourneyMotion.seg(k, 0.05, 0.6))))
+                    // The card's top ring has no disc: near it the disc is gone (a grey one sat behind the ring as it landed).
+                    .opacity(Double(JourneyMotion.out(JourneyMotion.seg(k, flight.fromTop ? 0.35 : 0.05, 0.6))))
             }
             if let fill {
                 Circle().fill(fill).frame(width: disc, height: disc).opacity(Double(1 - JourneyMotion.seg(k, 0, 0.6)))
