@@ -2859,7 +2859,7 @@ struct PrayerPlaceMapSheet: View {
                 // The app map's capsule: map style, then back to the pin.
                 VStack(spacing: 0) {
                     Button { satellite.toggle() } label: {
-                        Image(systemName: MapModes.globeSymbol(longitude: spot.longitude)).mapControlIcon()
+                        Image(systemName: MapModes.styleSymbol).mapControlIcon()
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(satellite ? "Standard map" : "Satellite map")

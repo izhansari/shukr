@@ -1114,7 +1114,18 @@ struct LocationMapContentView: View {
         let target = inQiblaMode ? MapView.Coordinator.qiblaSpan : MapView.Coordinator.closeSpan
         let zoomedOut = current.latitudeDelta > target.latitudeDelta * 1.5 || current.longitudeDelta > target.longitudeDelta * 1.5
         let span = zoomedOut ? target : current
-        mapView.setRegion(MKCoordinateRegion(center: here, span: span), animated: true)
+        // You land in the middle of the map the sheet leaves open — below the top controls, above the sheet — as a tapped
+        // pin does (keepInView), not the screen's middle, behind the sheet (owner, 2026-10-17: "it was using the full
+        // screen as the open area and putting my location in the center of that"). The centre goes south by the gap.
+        let bounds = mapView.bounds
+        let top: CGFloat = 130
+        let bottom = bounds.height - viewModel.shownSheetHeight - 40
+        let lift = bottom > top ? bounds.midY - (top + bottom) / 2 : 0
+        // The span MapKit will really show (it stretches one to fit the tall view), so a point is the right distance.
+        let shown = mapView.regionThatFits(MKCoordinateRegion(center: here, span: span)).span
+        let latPerPoint = shown.latitudeDelta / max(bounds.height, 1)
+        let centre = CLLocationCoordinate2D(latitude: here.latitude - lift * latPerPoint, longitude: here.longitude)
+        mapView.setRegion(MKCoordinateRegion(center: centre, span: span), animated: true)
     }
 
     /// The compass pill: aligned, or which way and how far to turn.
@@ -1295,7 +1306,7 @@ struct LocationMapContentView: View {
                             VStack(spacing: 0) {
                                 // Standard ⇄ Satellite.
                                 Button { satellite.toggle() } label: {
-                                    Image(systemName: MapModes.globeSymbol(longitude: envLocation.userLocation?.coordinate.longitude))
+                                    Image(systemName: MapModes.styleSymbol)
                                         .mapControlIcon()
                                 }
                                 .buttonStyle(.plain)

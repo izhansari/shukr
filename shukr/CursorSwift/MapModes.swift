@@ -19,11 +19,7 @@ enum MapModes {
         satellite ? MKHybridMapConfiguration() : MKStandardMapConfiguration()
     }
 
-    /// Apple swaps the globe by region; we go by where the user is.
-    static func globeSymbol(longitude: Double?) -> String {
-        guard let lon = longitude else { return "globe.americas.fill" }
-        if lon < -25 { return "globe.americas.fill" }
-        if lon < 65 { return "globe.europe.africa.fill" }
-        return "globe.asia.australia.fill"
-    }
+    /// The map-style button's symbol: a map, as Find My's (owner, 2026-10-17: "instead of the globe SF symbol, we should
+    /// probably use the map SF symbol the same way they do in the Find My iOS app"; was the region's globe).
+    static let styleSymbol = "map"
 }

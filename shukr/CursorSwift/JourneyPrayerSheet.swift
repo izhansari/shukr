@@ -546,7 +546,7 @@ struct JourneyPlaceMap: View {
             if interactive {
                 VStack(spacing: 0) {
                     Button { satellite.toggle() } label: {
-                        Image(systemName: MapModes.globeSymbol(longitude: spot.longitude)).mapControlIcon()
+                        Image(systemName: MapModes.styleSymbol).mapControlIcon()
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(satellite ? "Standard map" : "Satellite map")
