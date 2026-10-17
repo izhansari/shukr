@@ -255,8 +255,8 @@ struct JourneyFlightTile: Equatable {
     let from: CGRect?
     let kind: YourJourneyStats.Kind
     let fill: Fill
-    /// Its corner where it starts: the card's bar 5, the year's square 2.5.
-    var corner: CGFloat = 5
+    /// Its corner where it starts: the card's bar (JourneyHomeCard.corner), the year's square 2.5.
+    var corner: CGFloat = JourneyHomeCard.corner
     /// Its shade where it starts (the card's and the year's heat map, JourneyTileColor).
     var rank: Double = 1
 }

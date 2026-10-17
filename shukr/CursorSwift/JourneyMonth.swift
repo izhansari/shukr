@@ -133,7 +133,7 @@ struct JourneyMonthPage: View {
         .modifier(JourneyYearFlightDriver(dials: yearDials, flight: yearFlight, clearWhenIdle: false))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .safeAreaInset(edge: .bottom) {
-            JourneySwitch(options: [("Month", "month"), ("Year", "year")],
+            JourneySwitch(options: [("Month", "month"), ("Year", "year")], large: true,
                           selection: Binding(get: { showYear ? "year" : "month" },
                                              set: { v in if v == "year" { toYear() } else { toMonth(start) } }))
                 .padding(.bottom, 6)
@@ -247,12 +247,6 @@ struct JourneyMonthPage: View {
             .transition(CircleMotion.dayPickSwap)
             .journeyFlightWords(.month)
             calendars(scale: scale).padding(.top, 24 * scale)
-            Text("Tap a day to open it.")
-                .font(.system(size: 13, weight: .light, design: .rounded))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 20)
-                .journeyFlightWords(.month)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)

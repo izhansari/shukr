@@ -34,6 +34,8 @@ struct JourneyHomeCard: View {
     /// "best streak" tapped: its days lit, the grid at them (owner, 2026-10-17: "clicking this takes us to the area that
     /// shows those days with best streak") — the month's way with its numbers. Again, or a tile, lets it go.
     @State private var streakShown = false
+    /// Where the grid was when the streak lit (its top row; nil: resting at today), and whether to go back there.
+    @State private var beforeStreak: (week: Date?, back: Bool) = (nil, false)
     /// A finger on the tiles (not observed: nothing redraws from it).
     @State private var scrub = JourneyCardScrub()
     /// What the grid shows: the first week row in view, how many fit, and whether it rests at today.
@@ -44,6 +46,8 @@ struct JourneyHomeCard: View {
     static let pitch: CGFloat = 14
     /// Room inside the grid's clip for a picked tile's ring.
     static let ringRoom: CGFloat = 4
+    /// A bar's corner (owner, 2026-10-17: "decrease the corner rounding a little bit, like very little"; was 5).
+    static let corner: CGFloat = 4
     /// The month names' column, wide enough for "May’26" (it ran into the first tile at 34).
     static let nameColumn: CGFloat = 40
     /// How long a finger rests on the tiles before moving it picks them (a tap is shorter; a drag before it scrolls).
@@ -61,7 +65,9 @@ struct JourneyHomeCard: View {
                 Text(empty ? "days so far" : stats.activeDays == 1 ? "day you marked a prayer" : "days you marked a prayer")
                     .font(.system(size: compact ? 15 : 17, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
             }
+            .padding(.trailing, empty ? 0 : 28)   // room for the expand button
             .journeyFlightWords(.card)   // the transitions: fades as a month opens (JourneyTransitions.swift)
             HStack {
                 Text(rangeLabel)
@@ -77,8 +83,48 @@ struct JourneyHomeCard: View {
             foot.journeyFlightWords(.card)
         }
         .padding(.top, tight ? 14 : 18).padding(.horizontal, 18).padding(.bottom, tight ? 10 : 14)
+        // The way into the month, plain to see (owner, 2026-10-17: "a button in the top right of the card … diagonal
+        // arrows, indicating expand … opens the tiles into the calendar month view"): the picked day's month, else the
+        // month at the bottom of the grid's view (the latest with marks at or before it).
+        .overlay(alignment: .topTrailing) {
+            if !empty {
+                Button {
+                    guard let m = monthInView else { return }
+                    triggerSomeVibration(type: .light)
+                    onMonth(m)
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, tight ? 6 : 10).padding(.trailing, 8)
+                .accessibilityLabel("Open the month")
+                .journeyFlightWords(.card)
+            }
+        }
         .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)).journeyFlightCardSurface())
         .journeyFlightCard()
+    }
+
+    /// The month the expand button opens: the picked day's, else the bottom row in view's — stepping back to one with marks.
+    private var monthInView: Date? {
+        let cal = Calendar.current
+        var date: Date
+        if let p = picked { date = p } else {
+            guard !stats.weeks.isEmpty else { return nil }
+            let i = min(max(view.first + view.count - 1, 0), stats.weeks.count - 1)
+            date = min(cal.date(byAdding: .day, value: 6, to: stats.weeks[i].start) ?? stats.weeks[i].start, PrayerDay.start())
+        }
+        var m = JourneyLog.monthStart(date)
+        for _ in 0..<36 {
+            if log.month(m).activeDays > 0 { return m }
+            guard let earlier = cal.date(byAdding: .month, value: -1, to: m) else { break }
+            m = earlier
+        }
+        return nil
     }
 
     /// "THE LAST 18 WEEKS" at rest; once scrolled back, the months in view ("JUN – SEP 2026").
@@ -106,7 +152,18 @@ struct JourneyHomeCard: View {
                 ForEach(stats.weeks) { week in row(week).id(week.id) }
             }
             .onChange(of: streakShown) { _, on in
-                guard on, let days = stats.bestStreakDays else { return }
+                if !on {
+                    // Turned off by its own tap: back to where you were (owner, 2026-10-17: "if I deselect it, I want to
+                    // scroll back to the initial time period I was looking at"). Not after a scroll or a tile let it go.
+                    guard beforeStreak.back else { return }
+                    beforeStreak.back = false
+                    withAnimation(.easeInOut(duration: 0.45)) {
+                        if let w = beforeStreak.week { proxy.scrollTo(w, anchor: .top) }
+                        else if let last = stats.weeks.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
+                    return
+                }
+                guard let days = stats.bestStreakDays else { return }
                 let mid = days.lowerBound.addingTimeInterval(days.upperBound.timeIntervalSince(days.lowerBound) / 2)
                 guard let week = stats.weeks.last(where: { $0.start <= mid }) else { return }
                 withAnimation(.easeInOut(duration: 0.45)) { proxy.scrollTo(week.id, anchor: .center) }
@@ -185,12 +242,18 @@ struct JourneyHomeCard: View {
             }
             // A tap picks its tile (or lets it go); a hold then a drag is the rows' (JourneyHoldPick).
             .contentShape(Rectangle())
-            .onTapGesture(coordinateSpace: .named(Self.rowsSpace)) { p in if let d = day(at: p) { tap(d.date) } }
+            .contentShape(Rectangle().inset(by: -1.5))   // the gaps between rows too
+            .onTapGesture(coordinateSpace: .named(Self.rowsSpace)) { p in
+                // A tap near the picked tile (its bar and a few points round it) lets it go (owner, 2026-10-17: "the
+                // intention of deselecting is very hard since user has to tap exactly on that tile").
+                if let on = picked, let r = rect(of: on), r.insetBy(dx: -5, dy: -4).contains(p) { tap(on); return }
+                if let d = day(at: p) { tap(d.date) }
+            }
         }
     }
 
     @ViewBuilder private func bar(_ day: YourJourneyStats.GridDay?) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 5, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
         if let day {
             let on = picked == day.date
             shape.fill(color(day))
@@ -203,7 +266,7 @@ struct JourneyHomeCard: View {
                 .journeyFlightTile(day.date)
                 .overlay {
                     if on {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: Self.corner + 2.5, style: .continuous)
                             .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
                             .padding(-3)
                     }
@@ -239,6 +302,15 @@ struct JourneyHomeCard: View {
         withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == date ? nil : date; streakShown = false }
     }
 
+    /// A day's bar in the rows' space (nil: not on the card).
+    private func rect(of date: Date) -> CGRect? {
+        guard scrub.width > 0, let row = stats.weeks.lastIndex(where: { $0.start <= date }) else { return nil }
+        let col = Calendar.current.dateComponents([.day], from: stats.weeks[row].start, to: date).day ?? 0
+        guard (0..<7).contains(col) else { return nil }
+        let slot = (scrub.width - Self.nameColumn) / 7
+        return CGRect(x: Self.nameColumn + 6 + CGFloat(col) * slot, y: CGFloat(row) * Self.pitch, width: slot - 6, height: 11)
+    }
+
     /// The day under a point in the rows' space (rows `pitch` apart, the bars after the name column; nil: a blank slot).
     /// Past the first or last row, or the end bars, the nearest one — a held finger can run a little wide.
     private func day(at p: CGPoint) -> YourJourneyStats.GridDay? {
@@ -268,6 +340,12 @@ struct JourneyHomeCard: View {
                         Button {
                             guard stats.bestStreakDays != nil else { return }
                             triggerSomeVibration(type: .light)
+                            if streakShown {
+                                beforeStreak.back = true
+                            } else {
+                                let top = stats.weeks.indices.contains(view.first) ? stats.weeks[view.first].id : nil
+                                beforeStreak = (view.atEnd ? nil : top, false)
+                            }
                             withAnimation(.easeInOut(duration: 0.3)) { streakShown.toggle() }
                         } label: {
                             figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days",
@@ -374,30 +452,61 @@ struct JourneyDayLine: View {
             : day.kind == .allInTime ? "Complete · score \(day.score)"
             : day.kind == .allFive ? "With Qaza · score \(day.score)"
             : "Incomplete · score \(day.score)"
-        return HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(date).font(.system(size: 15, weight: .regular, design: .rounded)).foregroundStyle(.primary)
-                Text(what).font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-            }
-            .lineLimit(1).minimumScaleFactor(0.85)
-            .accessibilityElement(children: .combine)
-            Spacer(minLength: 4)
-            Button {
-                triggerSomeVibration(type: .light)
-                onOpen()
-            } label: {
-                JourneyDayCell(day: log.day(day.date), date: day.date, today: PrayerDay.start(), first: log.firstDay,
-                               usesExcused: log.usesExcused)
-                    .scaleEffect(Self.ring / JourneyDayRing.size)
+        let number = log.dayNumber(day.date)
+        // The whole line opens the day (owner, 2026-10-17: "Clicking the whole bottom row should open the selected
+        // prayers day ring page").
+        return Button {
+            guard canOpen else { return }
+            triggerSomeVibration(type: .light)
+            onOpen()
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 1) {
+                    // Which day of the journey it was (owner: "this is day number 225"), beside the card's "325 days".
+                    Text(number.map { "\(date) · day \($0)" } ?? date)
+                        .font(.system(size: 15, weight: .regular, design: .rounded)).foregroundStyle(.primary)
+                    Text(what).font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                }
+                .lineLimit(1).minimumScaleFactor(0.85)
+                Spacer(minLength: 4)
+                JourneyDayFifths(day: log.day(day.date), date: day.date)
                     .frame(width: Self.ring, height: Self.ring)
-                    .contentShape(Circle().inset(by: -6))
+                    .opacity(canOpen ? 1 : 0.45)   // a day that doesn't open (nothing marked, today still going): quiet
             }
-            .buttonStyle(.plain)
-            .disabled(!canOpen)
-            .opacity(canOpen ? 1 : 0.45)   // a day that doesn't open (nothing marked, today still going): its ring, quiet
-            .accessibilityLabel("Open \(date)")
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(canOpen ? "Opens that day" : "")
         .padding(.top, 4)
+    }
+}
+
+/// A day's five prayers as fifths, no color (owner, 2026-10-17: "show the fifths. That way they can clearly see the makeup
+/// of that day. And we won't use color here"): prayed (or excused) drawn, the rest a faint track; its date's number inside.
+struct JourneyDayFifths: View {
+    let day: JourneyLog.Day
+    let date: Date
+    var body: some View {
+        GeometryReader { g in
+            let side = min(g.size.width, g.size.height)
+            let k = side / JourneyDayRing.size
+            ZStack {
+                ForEach(0..<5, id: \.self) { i in
+                    let arc = JourneyDayRing.fifth(i)
+                    let mark = day.marks[i]
+                    Circle().trim(from: arc.from, to: arc.to)
+                        .stroke(mark.done ? Color.primary.opacity(0.72) : mark == .excused ? Color.primary.opacity(0.3) : Color.primary.opacity(0.12),
+                                style: StrokeStyle(lineWidth: JourneyDayRing.band * k * 1.15, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: JourneyDayRing.radius * 2 * k, height: JourneyDayRing.radius * 2 * k)
+                }
+                Text("\(Calendar.current.component(.day, from: date))")
+                    .font(.system(size: JourneyDayRing.number * k, weight: .regular, design: .rounded)).monospacedDigit()
+            }
+            .frame(width: g.size.width, height: g.size.height)
+        }
+        .accessibilityHidden(true)
     }
 }
 

@@ -147,6 +147,7 @@ struct JourneyLog {
             m = Calendar.current.date(byAdding: .month, value: 1, to: start)
         }
         log.tileRanks = ranks(log.days.values)
+        for (n, d) in log.days.values.filter(\.active).sorted(by: { $0.date < $1.date }).enumerated() { log.dayNumbers[d.key] = n + 1 }
         return log
     }
 
@@ -174,6 +175,10 @@ struct JourneyLog {
     /// in the year (owner, 2026-10-17, his tuner: "Your ranks"; "It shouldn't be a totalitarian, everyone, whoever gets an
     /// 80 gets this color shade"). Built once with the log; a tile reads one entry.
     private var tileRanks: [YourJourneyStats.Kind: [Double]] = [:]
+
+    /// Which day of the journey it was: the nth day with a mark (nil: nothing marked that day).
+    private var dayNumbers: [String: Int] = [:]
+    func dayNumber(_ date: Date) -> Int? { dayNumbers[PrayerNotificationID.dayKey(date)] }
 
     /// A tile's place on its kind's scale, 0…1 (1 with nothing to compare against yet).
     func tileRank(_ d: Day) -> Double {
@@ -518,6 +523,8 @@ struct JourneyDayRoute: Hashable, Identifiable {
 /// Calendar | Grid (and To make up's <month> | All): a pressed capsule with the picked side raised (the soft look's switch).
 struct JourneySwitch: View {
     let options: [(title: String, id: String)]
+    /// The month and year's (owner, 2026-10-17: "the month and year switcher on this page looks really small").
+    var large = false
     @Binding var selection: String
     @Namespace private var pill
 
@@ -527,7 +534,7 @@ struct JourneySwitch: View {
         }
         .padding(3)
         .background(NeuPressed(shape: Capsule(), radius: 3, offset: 2))
-        .frame(height: 34)
+        .frame(height: large ? 44 : 34)
     }
 
     private func side(_ title: String, _ id: String) -> some View {
@@ -537,9 +544,9 @@ struct JourneySwitch: View {
             withAnimation(.easeOut(duration: 0.22)) { selection = id }
         } label: {
             Text(title)
-                .font(.system(size: 13, weight: selection == id ? .regular : .light, design: .rounded))
+                .font(.system(size: large ? 16 : 13, weight: selection == id ? .regular : .light, design: .rounded))
                 .foregroundStyle(selection == id ? .primary : .secondary)
-                .padding(.horizontal, 12)
+                .padding(.horizontal, large ? 22 : 12)
                 .frame(maxHeight: .infinity)
                 .background {
                     if selection == id { NeuRaised(shape: Capsule(), radius: 2.5, offset: 1.2).matchedGeometryEffect(id: "pill", in: pill) }
