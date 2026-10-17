@@ -29,6 +29,8 @@ struct JourneyHomeCard: View {
     var opens: (Date) -> Bool = { _ in false }
     var onMonth: (Date) -> Void = { _ in }
     @State private var picked: Date?
+    /// A finger on the tiles (not observed: nothing redraws from it).
+    @State private var scrub = JourneyCardScrub()
     /// What the grid shows: the first week row in view, how many fit, and whether it rests at today.
     @State private var view = (first: 0, count: 12, atEnd: true)
     @Environment(\.colorScheme) private var scheme
@@ -39,6 +41,9 @@ struct JourneyHomeCard: View {
     static let ringRoom: CGFloat = 4
     /// The month names' column, wide enough for "May’26" (it ran into the first tile at 34).
     static let nameColumn: CGFloat = 40
+    /// How long a finger rests on a tile before moving it picks tiles (a tap is shorter).
+    static let holdTime = 0.3
+    private static let rowsSpace = "journeyCardRows"
     /// The grid's least height: 12 weeks and its top room.
     static let minGrid: CGFloat = 12 * pitch + 12
 
@@ -94,6 +99,8 @@ struct JourneyHomeCard: View {
             LazyVStack(spacing: 3) {
                 ForEach(stats.weeks) { week in row(week) }
             }
+            .coordinateSpace(.named(Self.rowsSpace))   // a held finger's place, the first row at 0
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { scrub.width = $0 }
             .padding(.top, 12)
             // Room for a picked tile's ring (drawn 3 pt outside its bar) on the right and below: the grid's clip cut it
             // (owner, 2026-10-17). The grid reaches 4 pt into the card's margin, so the bars stay where they were.
@@ -150,10 +157,11 @@ struct JourneyHomeCard: View {
                     bar(day)
                 }
             }
-            // The card scrolls only from the month column (owner, 2026-10-17): a drag that starts on the tiles is theirs
-            // and goes nowhere; a tap is still a tap.
+            // The card scrolls only from the month column (owner, 2026-10-17); on the tiles a tap picks a day, and a hold
+            // then a drag picks whichever tile the finger is on ("if I hold down on a tile, I can move my finger to select
+            // other tiles nearby as I drag"). A drag without the hold goes nowhere.
             .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 6))
+            .gesture(tiles)
         }
     }
 
@@ -162,6 +170,9 @@ struct JourneyHomeCard: View {
         if let day {
             let on = picked == day.date
             shape.fill(color(day))
+                .overlay {
+                    if day.kind == .none { shape.strokeBorder(JourneyTileColor.outline(dark: scheme == .dark), lineWidth: JourneyTileColor.outlineWidth) }
+                }
                 .frame(maxWidth: .infinity)
                 .frame(height: 11)
                 .journeyFlightTile(day.date)
@@ -172,15 +183,64 @@ struct JourneyHomeCard: View {
                             .padding(-3)
                     }
                 }
-                .contentShape(Rectangle().inset(by: -2))
-                .onTapGesture {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = on ? nil : day.date }
-                }
                 .accessibilityLabel(day.date.formatted(.dateTime.weekday(.wide).month(.wide).day()))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { tap(day.date) }   // the row's gesture takes the finger's taps
         } else {
             Color.clear.frame(maxWidth: .infinity).frame(height: 11)   // before the first day, or still to come
         }
+    }
+
+    /// The tiles' one gesture (a row's; the place is the rows' space, so a held finger crosses rows): a tap, or a hold that
+    /// then picks under the finger. Starts at once (it's what keeps a drag on the tiles from scrolling the card).
+    private var tiles: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named(Self.rowsSpace))
+            .onChanged { v in
+                let s = scrub
+                s.last = v.location
+                if s.began == nil {
+                    s.began = v.startLocation
+                    s.hold?.cancel()
+                    s.hold = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(Self.holdTime))
+                        guard !Task.isCancelled, s.began != nil, !s.moved else { return }
+                        s.scrubbing = true
+                        triggerSomeVibration(type: .medium)
+                        if let d = day(at: s.last) { picked = d.date }
+                    }
+                    return
+                }
+                if s.scrubbing {
+                    if let d = day(at: v.location), d.date != picked {
+                        triggerSomeVibration(type: .soft)
+                        picked = d.date
+                    }
+                } else if hypot(v.location.x - v.startLocation.x, v.location.y - v.startLocation.y) > 10 {
+                    s.moved = true   // a plain drag: nothing (the card scrolls from the left column only)
+                    s.hold?.cancel()
+                }
+            }
+            .onEnded { v in
+                let s = scrub
+                defer { s.hold?.cancel(); s.hold = nil; s.began = nil; s.moved = false; s.scrubbing = false }
+                guard !s.scrubbing, !s.moved, let d = day(at: v.startLocation) else { return }
+                tap(d.date)
+            }
+    }
+
+    private func tap(_ date: Date) {
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == date ? nil : date }
+    }
+
+    /// The day under a point in the rows' space (rows `pitch` apart, the bars after the name column; nil: a blank slot).
+    /// Past the first or last row, or the end bars, the nearest one — a held finger can run a little wide.
+    private func day(at p: CGPoint) -> YourJourneyStats.GridDay? {
+        guard !stats.weeks.isEmpty, scrub.width > 0 else { return nil }
+        let row = min(max(Int(((p.y + 1.5) / Self.pitch).rounded(.down)), 0), stats.weeks.count - 1)
+        let slot = (scrub.width - Self.nameColumn - 6 + 6) / 7
+        let col = min(max(Int(((p.x - Self.nameColumn - 6 + 3) / slot).rounded(.down)), 0), 6)
+        return stats.weeks[row].days[col]
     }
 
     /// Under the grid: the three numbers, or the picked day's line in their place (the card never grows).
@@ -450,6 +510,17 @@ struct JourneyMilestonesList: View {
             }
         }
     }
+}
+
+/// A finger on the card's tiles: where it started and is, whether it moved before the hold, whether it's picking.
+@MainActor final class JourneyCardScrub {
+    var began: CGPoint?
+    var last: CGPoint = .zero
+    var moved = false
+    var scrubbing = false
+    var hold: Task<Void, Never>?
+    /// The rows' width (the bars' slots come from it).
+    var width: CGFloat = 0
 }
 
 /// Everything Your journey shows, from Journey's log (prayer days; excused prayers never missed, never in a rate).

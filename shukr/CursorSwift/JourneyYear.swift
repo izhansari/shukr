@@ -16,7 +16,7 @@ enum JourneyTileColor {
     }
     /// In time, With Qaza, Incomplete, None: each kind's color and its full strength.
     private static let light = [rgba(40, 167, 69, 0.80), rgba(104, 140, 110, 0.36), rgba(35, 38, 44, 0.23), rgba(35, 38, 44, 0.00)]
-    private static let dark = [rgba(64, 200, 110, 0.85), rgba(120, 160, 128, 0.50), rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.06)]
+    private static let dark = [rgba(64, 200, 110, 0.85), rgba(120, 160, 128, 0.50), rgba(255, 255, 255, 0.20), rgba(255, 255, 255, 0.00)]
     /// The weakest a heat-mapped tile gets, of its kind's full strength (his "Faintest").
     private static let faintest = 0.41
 
@@ -28,6 +28,12 @@ enum JourneyTileColor {
     private static func bands(_ c: [(Color, Double)]) -> [Double] {
         (0..<4).map { i in i == 3 || c[i].1 == 0 ? 1 : max(faintest, min(1, (c[i + 1].1 + 0.06) / c[i].1)) }
     }
+
+    /// An unmarked day draws no fill, only this hairline, in both looks — so a long break still shows its slots and the card
+    /// never looks unrendered (owner, 2026-10-17: "i want unmarked days to be invisible on both light and dark. maybe we use
+    /// a very thin faint border so if someone is away for a while, their card doesnt look broken").
+    static func outline(dark isDark: Bool) -> Color { isDark ? Color.white.opacity(0.13) : Color.black.opacity(0.11) }
+    static let outlineWidth: CGFloat = 0.75
 
     /// A kind at full strength (the year's key, and where nothing ranks it).
     static func of(_ kind: YourJourneyStats.Kind, dark isDark: Bool) -> Color {
@@ -217,9 +223,16 @@ struct JourneyYearView: View {
         let before = log.firstDay.map { day < $0 } ?? true
         let fill: Color = future || before ? Color.primary.opacity(future ? 0.04 : 0) : JourneyTileColor.of(log.day(day), in: log, dark: scheme == .dark)
         let on = picked == day
+        let unmarked = !future && !before && !log.day(day).active
         return RoundedRectangle(cornerRadius: 2.5, style: .continuous)
             .fill(fill)
             .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if unmarked {
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .strokeBorder(JourneyTileColor.outline(dark: scheme == .dark), lineWidth: JourneyTileColor.outlineWidth)
+                }
+            }
             .overlay {
                 if day == today { RoundedRectangle(cornerRadius: 2.5, style: .continuous).strokeBorder(Color.primary.opacity(0.8), lineWidth: 1.2) }
             }
