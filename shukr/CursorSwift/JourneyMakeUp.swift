@@ -2,8 +2,7 @@ import SwiftUI
 import SwiftData
 
 // To make up (Journey phase 2; spec screen 8, mock-up Missed5; decision journey-past-marks A): the prayers left unmarked
-// on days shukr was used — an active day, one with a mark — so a break never lists its prayers. Made up = Qaza now. A row
-// opens its prayer sheet (prayed it in time after all? set the time there; decision makeup-row-tap: kept for now).
+// on days shukr was used — an active day, one with a mark — so a break never lists its prayers. Made up = Qaza now.
 // Round 2 (owner, 484 of them): the total and each prayer's count on top (a prayer filters the list), months as pinned
 // headings with their totals ("12 left · 3 made up"), a month scrubber down the right edge; Made up keeps the row in place
 // as "✓ Made up · Undo" for 3 s (decision makeup-made-feedback A), then it leaves the list — made-up prayers are out of the
@@ -11,6 +10,10 @@ import SwiftData
 // round 3: not folded under each month); a month with nothing left drops out; a cleared list says "All caught up".
 // Round 4 (owner, 2026-10-17): always all months (no "October | All months"); the top stays in view as the list scrolls —
 // the total missed, "✓ N made up · Show" with the share left at its end, a bar of made up over missed, the prayers' chips.
+// Round 5 (owner, 2026-10-17, from Frank's visual audit): a row's dot is its control, like a to-do (no "Made up" capsule
+// on every row, no sage); a row no longer opens its prayer sheet ("lets just get rid of that functionality here"), so the
+// hint about it is gone too; the five chips fit across in equal columns, name over count; the scrubber names the month on
+// top and marks where a year starts, a cleared month's dot in Journey's green.
 
 struct JourneyMakeUpPage: View {
     /// The month Journey was showing (the caught-up line's; the page always shows every month).
@@ -30,7 +33,6 @@ struct JourneyMakeUpPage: View {
     @AppStorage("journey.showMadeUp") private var showMade = false
     /// Just made up: still in place with Undo until its 3 s run out (the token tells a later tap from this one).
     @State private var settling: [PersistentIdentifier: UUID] = [:]
-    @State private var sheetRow: PrayerModel?
     /// Bumps when the last one is cleared here (the "All caught up" moment plays).
     @State private var cleared = 0
     /// The month at the top of the list, for the scrubber only: the page itself never reads it, so a scroll redraws nothing
@@ -166,17 +168,10 @@ struct JourneyMakeUpPage: View {
                                 .onDisappear { [scroll] in scroll.forget(m) }
                         }
                     }
-                    if shown.left > 0 {
-                        Text("Prayed on time but forgot to mark? Tap the prayer and set the time.")
-                            .font(.system(size: 13, weight: .light, design: .rounded))
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 24)
-                    }
                 }
                 .padding(.leading, 20)
-                .padding(.trailing, scrubber ? 34 : 20)
+                // The scrubber's gutter: its dots and, beside them, the month on top and the year marks.
+                .padding(.trailing, scrubber ? 56 : 20)
                 .padding(.bottom, 30)
             }
             .coordinateSpace(.named("makeUp"))
@@ -192,13 +187,6 @@ struct JourneyMakeUpPage: View {
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
-        // The reload is read off the main thread first, then animated in (it ran inside the animation: a stall as the
-        // sheet closed).
-        .sheet(item: $sheetRow, onDismiss: { Task { await reload(celebrate: true, animation: .easeInOut(duration: 0.35)) } }) { row in
-            JourneyPrayerSheet(prayer: row)
-                .environmentObject(viewModel)
-                .environment(\.circleTheme, theme)
-        }
         .onAppear {
             guard !started else { return }
             started = true
@@ -282,38 +270,53 @@ struct JourneyMakeUpPage: View {
             .accessibilityElement()
             .accessibilityLabel("\(made) of \(missed) made up")
             if counts.count > 1 || only != nil {
-                // Each prayer's count; a tap shows only that prayer ("work through my Fajrs").
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(counts, id: \.0) { name, n in
-                            Button {
-                                triggerSomeVibration(type: .light)
-                                withAnimation(.easeInOut(duration: 0.25)) { only = only == name ? nil : name }
-                            } label: {
-                                HStack(spacing: 5) {
-                                    Text(name)
-                                    Text("\(n)").monospacedDigit().foregroundStyle(.secondary)
-                                }
-                                .font(.system(size: 14, weight: only == name ? .regular : .light, design: .rounded))
-                                .padding(.horizontal, 12).frame(height: 32)
-                                .background {
-                                    if only == name {
-                                        NeuPressed(shape: Capsule(), radius: 3, offset: 2)
-                                    } else {
-                                        Capsule().fill(Color.primary.opacity(0.05))
-                                    }
-                                }
-                                .contentShape(Capsule())
+                // Each prayer's count; a tap shows only that prayer ("work through my Fajrs"). Five equal columns across,
+                // name over count (owner, 2026-10-17: Isha was cut off at the edge); one with none left stays, faint.
+                let left = Dictionary(uniqueKeysWithValues: counts)
+                HStack(spacing: 6) {
+                    ForEach(JourneyLog.names, id: \.self) { name in
+                        let n = left[name] ?? 0
+                        let on = only == name
+                        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        Button {
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.easeInOut(duration: 0.25)) { only = on ? nil : name }
+                        } label: {
+                            VStack(spacing: 1) {
+                                Text(name)
+                                    .font(.system(size: 13, weight: on ? .regular : .light, design: .rounded))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                Text("\(n)")
+                                    .font(.system(size: 13, weight: .light, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(.secondary)
+                                    .contentTransition(.numericText(value: Double(n)))
                             }
-                            .buttonStyle(.plain)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+                            .background {
+                                if on {
+                                    NeuPressed(shape: shape, radius: 3, offset: 2)
+                                } else {
+                                    shape.fill(Color.primary.opacity(0.05))
+                                }
+                            }
+                            .contentShape(shape)
                         }
+                        .buttonStyle(.plain)
+                        .disabled(n == 0 && !on)
+                        .opacity(n == 0 && !on ? 0.4 : 1)
+                        .accessibilityLabel("\(name), \(n) left")
+                        .accessibilityAddTraits(on ? .isSelected : [])
                     }
                 }
-                .scrollClipDisabled()
-                .padding(.top, 12)
+                .animation(.snappy, value: counts.map(\.1))
+                .padding(.top, 14)
             }
         }
-        .padding(.bottom, 6)
+        // Room under the chips before the line (owner: "theyre like kissing it rn").
+        .padding(.bottom, 16)
     }
 
     // MARK: A month
@@ -336,66 +339,50 @@ struct JourneyMakeUpPage: View {
         .animation(.snappy, value: totals)
     }
 
+    /// A prayer left: its dot is the control, like a to-do (owner, 2026-10-17: "yeah lets do this") — a tap fills it with a
+    /// ✓ and the row says "Made up · Undo" for 3 s (a tap on the filled dot undoes it too), then it leaves. The row itself
+    /// no longer opens the prayer's sheet (owner: "lets just get rid of that functionality here").
     @ViewBuilder private func row(_ entry: Entry) -> some View {
         let justMade = isSettling(entry)
         HStack(spacing: 12) {
             Button {
-                triggerSomeVibration(type: .light)
-                sheetRow = model(entry)
-            } label: {
-                HStack(spacing: 12) {
-                    Group {
-                        if justMade {
-                            Circle().fill(PrayerScoring.color(for: entry.numberScore))
-                        } else {
-                            Circle().strokeBorder(Color.secondary.opacity(0.7), lineWidth: 1.3)
-                        }
-                    }
-                    .frame(width: 8, height: 8)
-                    nameAndDay(entry).opacity(justMade ? 0.55 : 1)
-                    Spacer(minLength: 8)
+                if justMade {
+                    undo(entry)
+                } else {
+                    triggerSomeVibration(type: .light)
+                    makeUp(entry)
                 }
-                .contentShape(Rectangle())
+            } label: {
+                JourneyMakeUpCheck(done: justMade)
+                    .padding(11)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .padding(.leading, -11)
+            .padding(.trailing, -11)
+            .accessibilityLabel(justMade ? "Made up. Undo" : "Make up \(entry.displayName), \(entry.dayLine)")
+            .accessibilityHint(justMade ? "" : "Marks it as made up now: Qaza")
+            nameAndDay(entry).opacity(justMade ? 0.55 : 1)
+            Spacer(minLength: 8)
             if justMade {
                 // In place for 3 s: what happened, and the way back (owner: "where did it go?").
-                HStack(spacing: 10) {
-                    Label("Made up", systemImage: "checkmark")
-                        .font(.system(size: 14, weight: .regular, design: .rounded))
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text("Made up").foregroundStyle(.secondary)
+                    Text("·").foregroundStyle(.secondary)
                     Button {
                         undo(entry)
                     } label: {
-                        Text("Undo")
-                            .font(.system(size: 14, weight: .regular, design: .rounded))
-                            .padding(.horizontal, 12)
-                            .frame(height: 30)
-                            .background(Capsule().strokeBorder(Color.primary.opacity(0.25), lineWidth: 1))
-                            .contentShape(Capsule())
+                        Text("Undo").padding(.vertical, 8).contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
-                .transition(.opacity)
-            } else {
-                Button {
-                    makeUp(entry)
-                } label: {
-                    Text("Made up")
-                        .font(.system(size: 14, weight: .regular, design: .rounded))
-                        .foregroundStyle(Color.sage)
-                        .padding(.horizontal, 14)
-                        .frame(height: 34)
-                        .background(Capsule().strokeBorder(Color.sage, lineWidth: 1.2))
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint("Marks \(entry.displayName) as made up now: Qaza")
+                .font(.system(size: 14, weight: .light, design: .rounded))
                 .transition(.opacity)
             }
         }
         .padding(.vertical, 11)
         .padding(.horizontal, 2)
+        .frame(minHeight: 64)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
     }
 
@@ -408,26 +395,22 @@ struct JourneyMakeUpPage: View {
         }
     }
 
-    /// A made-up prayer among what's left (while shown): greyed, its dot filled, when it was made up. Opens its sheet.
+    /// A made-up prayer among what's left (while shown): greyed, its dot filled, when it was made up.
     private func madeRow(_ entry: Entry) -> some View {
-        Button {
-            triggerSomeVibration(type: .light)
-            sheetRow = model(entry)
-        } label: {
-            HStack(spacing: 12) {
-                Circle().fill(PrayerScoring.color(for: entry.numberScore)).frame(width: 8, height: 8)
-                nameAndDay(entry).opacity(0.55)
-                Spacer(minLength: 8)
-                Label(madeUpWhen(entry), systemImage: "checkmark")
-                    .font(.system(size: 13, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 11)
-            .padding(.horizontal, 2)
-            .contentShape(Rectangle())
+        HStack(spacing: 12) {
+            JourneyMakeUpCheck(done: true)
+            nameAndDay(entry)
+            Spacer(minLength: 8)
+            Text(madeUpWhen(entry))
+                .font(.system(size: 13, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
+        .opacity(0.55)
+        .padding(.vertical, 11)
+        .padding(.horizontal, 2)
+        .frame(minHeight: 64)
         .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+        .accessibilityElement(children: .combine)
     }
 
     /// "Qaza · today" / "Qaza · Oct 12".
@@ -579,8 +562,10 @@ struct JourneyMakeUpPage: View {
 }
 
 /// The Zikr wheel's scrubber (owner: copy it, not the soft look): one dot per month down the right edge, the month at
-/// the top of the list bigger, a month with nothing left sage; a finger on them drags through the months (a tick
-/// each), a pill beside it naming the month. Its own view, so a drag redraws the dots and not the page.
+/// the top of the list bigger, a month with nothing left in Journey's green (owner, 2026-10-17: "make it a green dot"); a
+/// finger on them drags through the months (a tick each), a pill beside it naming the month. At rest the month on top is
+/// named beside its dot ("Sep") and a year's first dot carries the year ("2025"). Its own view, so a drag redraws the dots
+/// and not the page.
 private struct JourneyMakeUpScrubber: View {
     let months: [Date]
     /// Months with nothing left.
@@ -589,6 +574,7 @@ private struct JourneyMakeUpScrubber: View {
     let proxy: ScrollViewProxy
     /// The month under the finger (its name shows beside it).
     @State private var scrubbing: Date?
+    @Environment(\.colorScheme) private var scheme
 
     private let dotSlot: CGFloat = 14
     private let scrubberPad: CGFloat = 10
@@ -596,12 +582,25 @@ private struct JourneyMakeUpScrubber: View {
     var body: some View {
         let current = scrubbing ?? scroll.top ?? months.first
         VStack(spacing: 0) {
-            ForEach(months, id: \.self) { m in
+            ForEach(months.indices, id: \.self) { i in
+                let m = months[i]
                 let here = m == current
                 Circle()
-                    .fill(cleared.contains(m) ? Color.sage : Color.primary.opacity(here ? 0.55 : 0.18))
+                    .fill(cleared.contains(m) ? JourneyTileColor.of(.allInTime, dark: scheme == .dark)
+                          : Color.primary.opacity(here ? 0.55 : 0.18))
                     .frame(width: here ? 7 : 5, height: here ? 7 : 5)
                     .frame(width: 24, height: dotSlot)
+                    .overlay(alignment: .trailing) {
+                        if scrubbing == nil, let mark = mark(i, here: here) {
+                            Text(mark)
+                                .font(.system(size: 10, weight: here ? .regular : .light, design: .rounded))
+                                .foregroundStyle(here ? .primary : .secondary)
+                                .fixedSize()
+                                .offset(x: -19)
+                                .transition(.opacity)
+                                .allowsHitTesting(false)
+                        }
+                    }
             }
         }
         .padding(.vertical, scrubberPad)
@@ -638,10 +637,43 @@ private struct JourneyMakeUpScrubber: View {
         .animation(.snappy(duration: CircleMotion.quick), value: current)
         .accessibilityHidden(true)
     }
+
+    /// Beside a dot at rest: the month on top ("Sep"), else the year where one starts ("2025"; the newest month's year
+    /// only when it isn't this one).
+    private func mark(_ i: Int, here: Bool) -> String? {
+        let m = months[i]
+        if here { return m.formatted(.dateTime.month(.abbreviated)) }
+        let calendar = Calendar.current
+        let year = calendar.component(.year, from: m)
+        let newer = i == 0 ? calendar.component(.year, from: Date()) : calendar.component(.year, from: months[i - 1])
+        return year != newer ? String(year) : nil
+    }
 }
 
-/// The list cleared: a sage check that draws itself in, "All caught up", one line. Plays again each time the last one is
-/// cleared here (`cleared` bumps); opening an already-empty list shows it at rest.
+/// A row's control: an empty ring to tap; made up, it fills in ink with a ✓ (no sage on Journey).
+private struct JourneyMakeUpCheck: View {
+    let done: Bool
+    @Environment(\.circleTheme) private var theme
+
+    var body: some View {
+        ZStack {
+            Circle().strokeBorder(Color.primary.opacity(done ? 0 : 0.35), lineWidth: 1.3)
+            Circle().fill(Color.primary.opacity(0.8))
+                .scaleEffect(done ? 1 : 0.4)
+                .opacity(done ? 1 : 0)
+            Image(systemName: "checkmark")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(theme.surface)
+                .scaleEffect(done ? 1 : 0.5)
+                .opacity(done ? 1 : 0)
+        }
+        .frame(width: 22, height: 22)
+        .animation(.snappy(duration: 0.25), value: done)
+    }
+}
+
+/// The list cleared: an ink check (no sage on Journey) that draws itself in, "All caught up", one line. Plays again each
+/// time the last one is cleared here (`cleared` bumps); opening an already-empty list shows it at rest.
 private struct JourneyCaughtUp: View {
     let cleared: Int
     let line: String
@@ -651,12 +683,12 @@ private struct JourneyCaughtUp: View {
     var body: some View {
         VStack(spacing: 10) {
             ZStack {
-                Circle().stroke(Color.sage.opacity(0.25), lineWidth: 2)
-                Circle().trim(from: 0, to: drawn).stroke(Color.sage, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                Circle().stroke(Color.primary.opacity(0.15), lineWidth: 2)
+                Circle().trim(from: 0, to: drawn).stroke(Color.primary.opacity(0.8), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Image(systemName: "checkmark")
                     .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(Color.sage)
+                    .foregroundStyle(Color.primary.opacity(0.8))
                     .opacity(drawn)
             }
             .frame(width: 58, height: 58)
