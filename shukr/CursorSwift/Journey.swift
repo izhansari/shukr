@@ -86,6 +86,8 @@ struct JourneyLog {
     static let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
     var days: [String: Day] = [:]
+    /// Which build this is (each load makes a new one): views that draw from the log compare this, not its days.
+    var version = UUID()
     /// The first day with a mark: Journey starts there.
     var firstDay: Date?
     /// Someone who has used Excused Mode sees its key and badges (spec: only for users of it).
@@ -303,6 +305,17 @@ struct JourneyPage: View {
     @State private var rowsMore = true
     /// The This month row's measure (a hold on the row chooses it).
     @AppStorage(ThisMonthMeasure.key) private var measureRaw = ThisMonthMeasure.onTime.rawValue
+    /// Which of the page's four layouts is shown (`Self.fits`), and the room it was chosen for: the loosest whose content
+    /// fits, found by stepping from the loosest while the shown one's content is taller than the room — one page built, not
+    /// the four ViewThatFits built and measured on every update (perf #2). Kept per room, so a return to Journey (and the
+    /// next one in this launch) opens on it at once.
+    @State private var fit = 0
+    @State private var fitRoom: CGFloat = 0
+    @State private var fitted = false
+    /// The shown layout's content height, last measured.
+    @State private var needed: CGFloat = 0
+    @MainActor private static var fitFor: [String: Int] = [:]
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var today: Date { PrayerDay.start() }
 
@@ -320,16 +333,21 @@ struct JourneyPage: View {
         // One screen (owner, 2026-10-16: "ideally, the journey page is a one-page item that doesn't move"): nothing scrolls
         // but the card's grid, which takes the room that's left. Where the rows don't fit under a 12-week card (an SE,
         // larger text), they scroll in their own area under it.
-        ViewThatFits(in: .vertical) {
-            // All five rows under a growing card; then the same a little tighter (Frank's mock fit five 56 pt rows and 13
-            // weeks at 402 × 874 — Bradley's check: a 17 Pro showed four); then the SE's 52 pt rows; only then rows that
-            // scroll under a 12-week card.
-            home(rowHeight: small ? 52 : 58, tight: false, rowsScroll: false)
-            home(rowHeight: 56, tight: true, rowsScroll: false)
-            home(rowHeight: 52, tight: true, rowsScroll: false)
-            home(rowHeight: 52, tight: true, rowsScroll: true)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        let f = Self.fits[min(fit, Self.fits.count - 1)]
+        // The room is read from what can't grow (an empty view takes exactly what it's offered; the page's own flexible frame
+        // took its content's height when that was taller, so nothing ever looked too tall — the helper's check). The page
+        // is offered the whole room, as ViewThatFits offered the one it chose: the card's grid grows into what's left.
+        Color.clear
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { room in
+                guard abs(room - fitRoom) > 0.5 else { return }
+                fitRoom = room
+                refit()
+            }
+            .overlay(alignment: .top) {
+                home(rowHeight: f.row ?? (small ? 52 : 58), tight: f.tight, rowsScroll: f.scroll)
+                    .opacity(fitted ? 1 : 0)   // the first time for this room, until the one that fits is found (a frame or two)
+            }
+            .onChange(of: typeSize) { _, _ in refit() }
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
@@ -390,6 +408,34 @@ struct JourneyPage: View {
             }
         }
         #endif
+    }
+
+    /// All five rows under a growing card; then the same a little tighter (Frank's mock fit five 56 pt rows and 13 weeks at
+    /// 402 × 874 — Bradley's check: a 17 Pro showed four); then the SE's 52 pt rows; only then rows that scroll under a
+    /// 12-week card. (`row` nil: 58 pt, 52 on a small phone.)
+    private static let fits: [(row: CGFloat?, tight: Bool, scroll: Bool)] = [(nil, false, false), (56, true, false), (52, true, false), (52, true, true)]
+    private var fitKey: String { "\(Int(fitRoom))·\(typeSize)" }
+
+    /// The shown layout's content is `height` tall in the page's `fitRoom`: taller, the next tighter one; fitting, that's the
+    /// one (remembered for this room). Never back to a looser one but on a new room — no flip-flopping.
+    private func checkFit(_ height: CGFloat) {
+        needed = height
+        guard fitRoom > 0, height > 0 else { return }
+        if height > fitRoom + 0.5, fit < Self.fits.count - 1, Self.fitFor[fitKey] == nil {
+            fit += 1
+        } else if !fitted || Self.fitFor[fitKey] == nil {
+            Self.fitFor[fitKey] = fit
+            fitted = true
+        }
+    }
+
+    /// A new room (or text size): the one remembered for it, else from the loosest again. The content's height only reports
+    /// when it changes, so an unchanged layout is checked here against the last one.
+    private func refit() {
+        let known = Self.fitFor[fitKey]
+        let next = known ?? 0
+        fitted = known != nil
+        if next != fit { fit = next } else { checkFit(needed) }
     }
 
     private func reload() {
@@ -461,6 +507,9 @@ struct JourneyPage: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, tight ? 0 : 6)
+        // Its content's own height, before the frame that would take it: the grid never shrinks below 12 weeks, so a
+        // layout that doesn't fit is taller than the room (ViewThatFits' test); one that fits fills it exactly.
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { checkFit($0) }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
