@@ -34,7 +34,7 @@ struct JourneyMonthPage: View {
     /// Month ↔ year (owner, 2026-10-16: "i didnt see the transition for month to year"): the month's days fly home into its
     /// small month in the year and back, on this dial (1 = the month) — JourneyTransitions.swift's flight, aimed at the year.
     @State private var yearFlight: JourneyMonthFlight?
-    @State private var yearDial: CGFloat = 1
+    @State private var yearDials = JourneyMonthDial()
     /// The year laid out but its flight not set yet (a frame or two): the month stays up and the year hidden — without it the
     /// whole year showed for a frame first.
     @State private var yearWaiting = false
@@ -45,15 +45,14 @@ struct JourneyMonthPage: View {
     init(log: JourneyLog, start: Date) {
         self.log = log
         _start = State(initialValue: start)
+        months = Self.monthsWithMarks(log)
     }
 
-    private var today: Date { PrayerDay.start() }
-    /// The months with a marked day, oldest first (‹ › skip the empty ones — a break's months).
-    private var months: [Date] {
+    private static func monthsWithMarks(_ log: JourneyLog) -> [Date] {
         guard let first = log.firstDay else { return [] }
         var out: [Date] = []
         var m = JourneyLog.monthStart(first)
-        let last = JourneyLog.monthStart(today)
+        let last = JourneyLog.monthStart(PrayerDay.start())
         while m <= last {
             if log.month(m).activeDays > 0 { out.append(m) }
             guard let next = Calendar.current.date(byAdding: .month, value: 1, to: m) else { break }
@@ -61,6 +60,12 @@ struct JourneyMonthPage: View {
         }
         return out
     }
+
+    private var today: Date { PrayerDay.start() }
+    /// The months with a marked day, oldest first (‹ › skip the empty ones — a break's months). Worked out once per page: as
+    /// a computed property it ran every month since the first day through `log.month` each time it was read (a Time Profiler
+    /// trace on his 13 Pro Max: the month page's biggest cost of its own).
+    private let months: [Date]
 
     /// The month `by` away among the months with marks (nil: none that way).
     private func neighbour(_ by: Int) -> Date? {
@@ -85,7 +90,7 @@ struct JourneyMonthPage: View {
                     toMonth(start)   // a spread elsewhere: back into the month
                 }, onDay: { open($0) })
                 // Idle, the year sees no flight (a card's or a day's never fades it); in a month ↔ year flight, this one.
-                .modifier(JourneyYearFlightDriver(dial: yearDial, flight: yearFlight, clearWhenIdle: true))
+                .modifier(JourneyYearFlightDriver(dials: yearDials, flight: yearFlight, clearWhenIdle: true))
                 .opacity(yearWaiting ? 0 : 1)
             }
             // The open month's tiles landing (from the card or the year), under its rings and numbers.
@@ -112,7 +117,7 @@ struct JourneyMonthPage: View {
                 .allowsHitTesting(yearFlight == nil)
             }
         }
-        .modifier(JourneyYearFlightDriver(dial: yearDial, flight: yearFlight, clearWhenIdle: false))
+        .modifier(JourneyYearFlightDriver(dials: yearDials, flight: yearFlight, clearWhenIdle: false))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .safeAreaInset(edge: .bottom) {
             JourneySwitch(options: [("Month", "month"), ("Year", "year")],
@@ -142,13 +147,16 @@ struct JourneyMonthPage: View {
         JourneyFlightGeometry.shared.whenYearReady(month) {
             var quiet = Transaction()
             quiet.disablesAnimations = true
+            yearDials.set(.month, 1)
             withTransaction(quiet) {
-                start = month; yearFlight = .fromYear(month, log: log, today: today); yearDial = 1; yearWaiting = false
+                start = month; yearFlight = .fromYear(month, log: log, today: today); yearWaiting = false
             }
-            JourneyFrameLog.shared.start("month → year")
-            withAnimation(.linear(duration: JourneyMotion.monthDuration)) { yearDial = 0 } completion: {
-                JourneyFrameLog.shared.stop()
-                yearFlight = nil
+            let run = JourneyFrameLog.shared.start("month → year")
+            yearDials.animate(.month, to: 0, duration: JourneyMotion.monthDuration) {
+                JourneyFrameLog.shared.stop(run: run)
+                // The month's pages come down a beat after the days have landed, when nothing moves: at the landing frame
+                // their teardown held the last frame for ~230 ms (sim).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { yearFlight = nil }
             }
         }
     }
@@ -158,11 +166,12 @@ struct JourneyMonthPage: View {
         guard showYear, yearFlight == nil else { return }
         var quiet = Transaction()
         quiet.disablesAnimations = true
-        withTransaction(quiet) { start = month; yearFlight = .fromYear(month, log: log, today: today); yearDial = 0 }
+        yearDials.set(.month, 0)
+        withTransaction(quiet) { start = month; yearFlight = .fromYear(month, log: log, today: today) }
         JourneyFlightGeometry.shared.afterTitle {
-            JourneyFrameLog.shared.start("year → month")
-            withAnimation(.linear(duration: JourneyMotion.monthDuration)) { yearDial = 1 } completion: {
-                JourneyFrameLog.shared.stop()
+            let run = JourneyFrameLog.shared.start("year → month")
+            yearDials.animate(.month, to: 1, duration: JourneyMotion.monthDuration) {
+                JourneyFrameLog.shared.stop(run: run)
                 showYear = false
                 yearFlight = nil
                 JourneyFlightGeometry.shared.yearShowing = false

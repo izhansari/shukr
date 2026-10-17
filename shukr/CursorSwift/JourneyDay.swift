@@ -288,14 +288,27 @@ struct JourneyDayPage: View {
 /// A Journey transition landing on the day page or leaving it (JourneyTransitionLab, 2026-10-16): how far the page's own
 /// pieces are in, each 0…1. Nil (the default) is the page as always. The grown ring hands over to `disc` and `drawn`.
 struct JourneyDayEntrance: Equatable {
+    /// Journey's live dials (JourneyTransitions.swift): the values below follow its day dial as they're read, so only the
+    /// pieces that read them redraw per frame (a value set in the environment each frame made SwiftUI walk the whole page).
+    var source: JourneyMonthDial?
+    private var fixed: (page: Double, disc: Double, drawn: CGFloat, rest: Double) = (1, 1, 1, 1)
+
+    init(source: JourneyMonthDial) { self.source = source }
+    init(page: Double = 1, disc: Double = 1, drawn: CGFloat = 1, rest: Double = 1) { fixed = (page, disc, drawn, rest) }
+
+    @MainActor private var t: CGFloat? { source?.dayDial }
     /// The page's surface (it covers what's under it).
-    var page: Double = 1
-    /// The raised disc behind the ring.
-    var disc: Double = 1
+    @MainActor var page: Double { t.map { Double(JourneyMotion.out(JourneyMotion.seg($0, 0, 0.3))) } ?? fixed.page }
+    /// The raised disc behind the ring (the grown one hands over to it as it lands).
+    @MainActor var disc: Double { t.map { $0 >= JourneyMotion.dayLand ? 1 : 0 } ?? fixed.disc }
     /// DayRing's draw-in: its grade colours, fifth by fifth.
-    var drawn: CGFloat = 1
+    @MainActor var drawn: CGFloat { t.map { JourneyMotion.io(JourneyMotion.seg($0, JourneyMotion.dayLand - 0.05, 1)) } ?? fixed.drawn }
     /// Everything else: the centre, the lines, the card, the pill, the chevrons, the heading.
-    var rest: Double = 1
+    @MainActor var rest: Double { t.map { Double(JourneyMotion.out(JourneyMotion.seg($0, 0.7, 1))) } ?? fixed.rest }
+
+    static func == (a: JourneyDayEntrance, b: JourneyDayEntrance) -> Bool {
+        a.source === b.source && a.fixed == b.fixed
+    }
 }
 
 extension EnvironmentValues {
