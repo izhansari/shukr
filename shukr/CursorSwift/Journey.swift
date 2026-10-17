@@ -298,10 +298,7 @@ struct JourneyPage: View {
     @State private var showMilestones = false
     /// The picked day's notes, photos, map and zikr, opened from the card's bottom — where the day page's back card opens
     /// them (owner, 2026-10-17: "we can use the same tap destinations as we do in the day ring's page for the flipped card").
-    @State private var dayNotes: [DayFacts.Note]?
-    @State private var dayPile: DayPileRoute?
-    @State private var mapDay: Date?
-    @State private var zikrDay: Date?
+    @State private var extraTap: JourneyExtraTap?
     /// The rows scroll (no room for five) and there's more below: the fade shows.
     @State private var rowsMore = true
     /// The This month row's measure (a hold on the row chooses it).
@@ -341,26 +338,7 @@ struct JourneyPage: View {
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(today)) }
         .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
-        .infoModal(isPresented: Binding(get: { dayNotes != nil }, set: { if !$0 { dayNotes = nil } }),
-                   title: dayNotes?.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
-            DayNotesInfo(notes: dayNotes ?? [])
-        }
-        .fullScreenCover(item: $dayPile) { route in
-            // Grows out of the photos count from a screen below it — what the cover's own slide and the zoom made together
-            // (owner liked it: "i like how pile comes up from bottom of page"), its blurred page fading in place ("dont move
-            // the background overlay with it"). It leaves by a plain fade, card and page together — the fly back into the
-            // count didn't leave "beautifully at all" (owner, 2026-10-17: "just make it be a simple fade out").
-            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from.offsetBy(dx: 0, dy: UIScreen.main.bounds.height), fadeOut: true) {
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { dayPile = nil }
-            }
-            .presentationBackground(.clear)
-        }
-        .fullScreenCover(isPresented: Binding(get: { mapDay != nil }, set: { if !$0 { mapDay = nil } })) {
-            LocationMapContentView(dayOnly: mapDay ?? today)
-        }
-        .navigationDestination(item: $zikrDay) { ZikrAreaPage(start: .dayOnly($0)) }
+        .modifier(JourneyExtrasPresenter(tap: $extraTap))
         .navigationDestination(isPresented: $showMilestones) {
             JourneyMilestonesPage(milestones: stats?.milestones ?? [], firstDay: log.firstDay, opens: { opens($0) })
         }
@@ -449,18 +427,7 @@ struct JourneyPage: View {
         let card = JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
                                    onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
                                    onMonth: { openMonth = JourneyMonthRoute(month: $0) },
-                                   onExtra: { tap in
-                                       switch tap {
-                                       case .notes(let n): dayNotes = n
-                                       case .photos(let keys, let from):
-                                           // No system slide: the pile rises on its own (from), the page behind fading in place.
-                                           var quiet = Transaction()
-                                           quiet.disablesAnimations = true
-                                           withTransaction(quiet) { dayPile = DayPileRoute(keys: keys, from: from) }
-                                       case .map(let d): mapDay = d
-                                       case .zikr(let d): zikrDay = d
-                                       }
-                                   })
+                                   onExtra: { extraTap = $0 })
         return VStack(alignment: .leading, spacing: 0) {
             header
             if rowsScroll {

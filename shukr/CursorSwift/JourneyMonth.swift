@@ -45,7 +45,14 @@ struct JourneyMonthPage: View {
     @State private var yearWaiting = false
     /// The days' size the page shows (1 / 0.9 / 0.8 / 0.7), picked by the still copy below.
     @State private var dayScale: CGFloat = 1
+    /// A day picked on the calendar: its top in place of the month's numbers, its things at the bottom — the card's way
+    /// (owner, 2026-10-17: "make this month calendar view be an extension of the card view … clicking on … a ring, shows us
+    /// that same top area information and bottom area information").
+    @State private var picked: Date?
+    @State private var extraTap: JourneyExtraTap?
     @Environment(\.journeyDayOpener) private var dayOpener
+    /// A day open over the month (its ring flew to the day page): the toolbar is the day's then.
+    @Environment(\.journeyMonthOpen) private var monthOpen
 
     init(log: JourneyLog, start: Date) {
         self.log = log
@@ -133,13 +140,34 @@ struct JourneyMonthPage: View {
         }
         .modifier(JourneyYearFlightDriver(dials: yearDials, flight: yearFlight, clearWhenIdle: false))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        // The bottom is the picked day's things (the card's bottom); room kept for it, so nothing moves as a day is picked.
         .safeAreaInset(edge: .bottom) {
-            JourneySwitch(options: [("Month", "month"), ("Year", "year")], large: true,
-                          selection: Binding(get: { showYear ? "year" : "month" },
-                                             set: { v in if v == "year" { toYear() } else { toMonth(start) } }))
-                .padding(.bottom, 6)
-                .journeyFlightWords(.month)
+            ZStack {
+                if let p = picked, !showYear {
+                    JourneyDayExtrasRow(date: p) { extraTap = $0 }
+                        .id(p)
+                        .transition(.opacity)
+                }
+            }
+            .frame(height: 46)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 6)
+            .journeyFlightWords(.month)
         }
+        // Month | Year up on the back button's row, out of the bottom's way ("maybe we move the month and year switcher to
+        // the top right in the top bar. To make space for a bottom area").
+        .toolbar {
+            // Not over a day opened from here (it opens in place, so this toolbar would stay on its page).
+            if monthOpen?.hiddenDay == nil {
+            ToolbarItem(placement: .topBarTrailing) {
+                JourneySwitch(options: [("Month", "month"), ("Year", "year")],
+                              selection: Binding(get: { showYear ? "year" : "month" },
+                                                 set: { v in if v == "year" { toYear() } else { toMonth(start) } }))
+                    .journeyFlightWords(.month)
+            }
+            }
+        }
+        .modifier(JourneyExtrasPresenter(tap: $extraTap))
         .background(theme.surface.journeyFlightMonthSurface().ignoresSafeArea())   // clear while it opens over Journey
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
@@ -150,6 +178,7 @@ struct JourneyMonthPage: View {
     /// words and other months arrive (the card's opening, run backwards from the year).
     private func toYear() {
         guard !showYear, yearFlight == nil else { return }
+        picked = nil   // the year has its own picks
         triggerSomeVibration(type: .light)
         let month = shownMonth
         // Fresh places for the year (the last time's may be stale), and the host's ‹ fades from here.
@@ -219,6 +248,8 @@ struct JourneyMonthPage: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("Shows the year")
+            let dayShown = picked.map { YourJourneyStats.GridDay.of(log, $0) }
+            ZStack(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 0) {
                 Text(numbers.activeDays == 1 ? "1 day you marked a prayer" : "\(numbers.activeDays) days you marked a prayer")
                     .font(.system(size: 16, weight: .light, design: .rounded))
@@ -252,6 +283,17 @@ struct JourneyMonthPage: View {
                 .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
                 .padding(.top, 22)
             }
+            // A picked day takes this place (the card's top): the month's line and numbers stay underneath, unseen, so the
+            // calendar never moves.
+            .opacity(dayShown == nil ? 1 : 0)
+            .allowsHitTesting(dayShown == nil)
+                if let d = dayShown {
+                    JourneyDayTop(day: d, log: log, canOpen: d.prayed > 0 && opens(d.date)) { open(d.date) }
+                        .padding(.top, 14)
+                        .id(d.date)
+                        .transition(.opacity)
+                }
+            }
             .id(shown)
             .transition(CircleMotion.dayPickSwap)
             .journeyFlightWords(.month)
@@ -268,7 +310,7 @@ struct JourneyMonthPage: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 12)
-        .onChange(of: shown) { focus = nil }   // another month: its own days
+        .onChange(of: shown) { focus = nil; picked = nil }   // another month: its own days   // another month: its own days
     }
 
     static var weekdayLetters: [String] {
@@ -335,7 +377,8 @@ struct JourneyMonthPage: View {
                     ZStack(alignment: .top) {
                         ForEach(panes(scale: scale), id: \.month) { pane in
                             JourneyCalendar(log: log, month: pane.month, today: today, scale: scale,
-                                            current: pane.k == 0, highlight: pane.k == 0 ? focus : nil) { open($0) }
+                                            current: pane.k == 0, highlight: pane.k == 0 ? focus : nil,
+                                            picked: pane.k == 0 ? picked : nil) { pick($0) }
                                 .frame(height: pane.height, alignment: .top)
                                 .animation(.easeInOut(duration: 0.3), value: focus)
                                 .modifier(JourneyMonthPaneSlot(drag: drag, y: pane.y, height: pane.height, window: windowHeight))
@@ -482,6 +525,22 @@ struct JourneyMonthPage: View {
         .accessibilityHint(kind == nil ? "" : on ? "Shows every day again" : "Lights these days on the calendar")
     }
 
+    /// A day tapped on the calendar: picked (its top and things show), again let go — as a card tile. Its top opens it.
+    private func pick(_ date: Date) {
+        guard let first = log.firstDay, date >= first, date <= today else { return }
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeOut(duration: CircleMotion.quick)) {
+            picked = picked == date ? nil : date
+            focus = nil
+        }
+    }
+
+    /// A day page opens for a day that's over, or today once all five are marked.
+    private func opens(_ date: Date) -> Bool {
+        guard let first = log.firstDay, date >= first, date <= today else { return false }
+        return date < today || log.day(date).allFive
+    }
+
     private func open(_ date: Date) {
         guard let first = log.firstDay, date >= first, date <= today else { return }
         // Today opens only once it's over — all five marked (owner, 2026-10-15: the day page "doesn't show up in journey
@@ -507,6 +566,8 @@ private struct JourneyCalendar: View {
     /// The month in the middle (its name in ink; the neighbours' in grey).
     var current = true
     let highlight: JourneyHighlight?
+    /// The day picked on the page (a ring round it, as the card's picked tile).
+    var picked: Date? = nil
     let onDay: (Date) -> Void
 
     static let nameHeight: CGFloat = 21
@@ -561,6 +622,12 @@ private struct JourneyCalendar: View {
                         .frame(height: JourneyDayRing.size * scale)
                         .journeyFlightCell(date, scale: scale)   // the transitions (JourneyTransitions.swift)
                         .opacity(highlight.map { $0.matches(day) ? 1 : 0.22 } ?? 1)
+                        .overlay {
+                            if picked == date {
+                                Circle().strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
+                                    .frame(width: JourneyDayRing.size * scale + 2, height: JourneyDayRing.size * scale + 2)
+                            }
+                        }
                         .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
                         .onTapGesture { onDay(date) }

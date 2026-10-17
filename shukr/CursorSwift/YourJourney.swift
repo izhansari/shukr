@@ -33,9 +33,6 @@ struct JourneyHomeCard: View {
     /// One of the picked day's things tapped at the bottom (Journey opens it as the day page's back card does).
     var onExtra: (JourneyExtraTap) -> Void = { _ in }
     @State private var picked: Date?
-    /// The picked day's notes, photos, places and zikr (JourneyDayExtras), counted once it settles.
-    @State private var extras = JourneyDayExtras()
-    @Environment(\.modelContext) private var context
     /// "best streak" tapped: its days lit, the grid at them (owner, 2026-10-17: "clicking this takes us to the area that
     /// shows those days with best streak") — the month's way with its numbers. Again, or a tile, lets it go.
     @State private var streakShown = false
@@ -545,103 +542,15 @@ struct JourneyHomeCard: View {
         .padding(.top, tight ? 10 : 12)
     }
 
-    /// The picked day at the top: its ring (prayed fifths, no color; the score inside), the date, "Day 225 · 105th of 280",
-    /// its kind. A tap opens the day.
+    /// The picked day at the top (JourneyDayTop, shared with the month page); a tap opens the day.
     private func dayTop(_ d: YourJourneyStats.GridDay) -> some View {
-        let can = d.prayed > 0 && opens(d.date)
-        let date = d.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-        let number = log.dayNumber(d.date).map { "Day \($0)" }
-        let rank = log.dayRank(d.date).map { "\(Self.ordinal($0)) of \(log.rankedDays)" }
-        let second = d.unfinished ? [number, "today, so far"] : [number, rank]
-        let kind = d.prayed == 0 ? (d.excused ? "Excused" : "No prayers marked")
-            : d.unfinished ? "Still going" : d.kind == .allInTime ? "Complete" : d.kind == .allFive ? "With Qaza" : "Incomplete"
-        let ring: CGFloat = compact ? 46 : 54
-        return Button {
-            guard can else { return }
-            triggerSomeVibration(type: .light)
-            onDay(d.date)
-        } label: {
-            HStack(alignment: .center, spacing: 14) {
-                JourneyDayFifths(day: log.day(d.date), center: d.prayed > 0 ? "\(d.score)" : "–")
-                    .frame(width: ring, height: ring)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(date).font(.system(size: compact ? 15 : 17, weight: .regular, design: .rounded))
-                    Text(second.compactMap { $0 }.joined(separator: " · "))
-                        .font(.system(size: compact ? 12.5 : 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    Text(kind).font(.system(size: compact ? 12.5 : 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                }
-                .lineLimit(1).minimumScaleFactor(0.8)
-            }
+        JourneyDayTop(day: d, log: log, compact: compact, canOpen: d.prayed > 0 && opens(d.date)) { onDay(d.date) }
             .padding(.trailing, 28)   // the expand button's room
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(can ? "Opens that day" : "")
     }
 
-    /// 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st.
-    static func ordinal(_ n: Int) -> String {
-        let tens = n % 100, ones = n % 10
-        let suffix = (11...13).contains(tens) ? "th" : ones == 1 ? "st" : ones == 2 ? "nd" : ones == 3 ? "rd" : "th"
-        return "\(n)\(suffix)"
-    }
-
-    /// The picked day at the bottom: what else it holds — notes, photos, places on the map, zikr — every one, a 0 too, so
-    /// an empty one reads as none rather than missing (owner, 2026-10-17: "show them all so the user knows for certain they
-    /// didnt do zikr that day and its not a bug"). Counted when the pick settles; a tap opens the day.
+    /// The picked day at the bottom (JourneyDayExtrasRow, shared with the month page).
     private func dayExtras(_ d: YourJourneyStats.GridDay) -> some View {
-        let e = extras.date == d.date ? extras : nil
-        // Each one opens itself, where the day page's back card opens it (owner, 2026-10-17: "tapping the bottom area
-        // should show the tapped item"); a 0 opens nothing, as there.
-        return HStack(alignment: .top, spacing: 0) {
-            extra("text.quote", e.map { "\($0.notes.count)" }, e?.notes.count == 1 ? "note" : "notes", !(e?.notes.isEmpty ?? true)) {
-                if let n = e?.notes, !n.isEmpty { onExtra(.notes(n)) }
-            }
-            extra("photo.on.rectangle", e.map { "\($0.photoKeys.count)" }, e?.photoKeys.count == 1 ? "photo" : "photos",
-                  !(e?.photoKeys.isEmpty ?? true)) {
-                if let k = e?.photoKeys, !k.isEmpty { onExtra(.photos(k, scrub.photosFrame)) }
-            }
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { scrub.photosFrame = $0 }
-            extra("map", e.map { "\($0.places)" }, "on the map", e?.places ?? 0 > 0) {
-                if e?.places ?? 0 > 0 { onExtra(.map(d.date)) }
-            }
-            extra("circle.hexagonpath", e.map { $0.zikrMinutes }, "min of zikr", e?.zikrSeconds ?? 0 > 0) {
-                if e?.zikrSeconds ?? 0 > 0 { onExtra(.zikr(d.date)) }
-            }
-        }
-        .task(id: d.date) {
-            // A held finger crossing tiles doesn't count every one it passes.
-            try? await Task.sleep(for: .milliseconds(120))
-            guard !Task.isCancelled else { return }
-            extras = JourneyDayExtras.load(d.date, in: context)
-        }
-    }
-
-    private func extra(_ symbol: String, _ value: String?, _ caption: String, _ has: Bool, _ open: @escaping () -> Void) -> some View {
-        Button {
-            guard has else { return }
-            triggerSomeVibration(type: .light)
-            open()
-        } label: {
-        VStack(spacing: 2) {
-            HStack(spacing: 5) {
-                Image(systemName: symbol).font(.system(size: 13, weight: .light))
-                Text(value ?? " ").font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
-            }
-            Text(caption)
-                .font(.system(size: 11, weight: .light, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1).minimumScaleFactor(0.75)
-        }
-        .foregroundStyle(has ? Color.primary : Color.secondary)
-        .opacity(has ? 1 : 0.55)
-        .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(!has)
+        JourneyDayExtrasRow(date: d.date, onExtra: onExtra)
     }
 
     /// The best streak's dates: "Sep 3 – 10", "Aug 28 – Sep 4", with the year when it isn't this one.
@@ -974,6 +883,171 @@ struct JourneyDayExtras {
         let near = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= from && $0.startTime < to }))) ?? []
         e.zikrSeconds = near.filter { PrayerDay.start(for: $0.startTime) == date }.reduce(0) { $0 + $1.secondsPassed }
         return e
+    }
+}
+
+/// A picked day's top — the card's, and the month page's (owner, 2026-10-17: the month "should be the same way here now"):
+/// its ring (prayed fifths, no color; the score inside), the date, "Day 225 · 105th of 280", its kind. A tap opens the day.
+struct JourneyDayTop: View {
+    let day: YourJourneyStats.GridDay
+    let log: JourneyLog
+    var compact = false
+    let canOpen: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        let d = day
+        let date = d.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
+        let number = log.dayNumber(d.date).map { "Day \($0)" }
+        let rank = log.dayRank(d.date).map { "\(Self.ordinal($0)) of \(log.rankedDays)" }
+        let second = d.unfinished ? [number, "today, so far"] : [number, rank]
+        let kind = d.prayed == 0 ? (d.excused ? "Excused" : "No prayers marked")
+            : d.unfinished ? "Still going" : d.kind == .allInTime ? "Complete" : d.kind == .allFive ? "With Qaza" : "Incomplete"
+        let ring: CGFloat = compact ? 46 : 54
+        return Button {
+            guard canOpen else { return }
+            triggerSomeVibration(type: .light)
+            onOpen()
+        } label: {
+            HStack(alignment: .center, spacing: 14) {
+                JourneyDayFifths(day: log.day(d.date), center: d.prayed > 0 ? "\(d.score)" : "–")
+                    .frame(width: ring, height: ring)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(date).font(.system(size: compact ? 15 : 17, weight: .regular, design: .rounded))
+                    Text(second.compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: compact ? 12.5 : 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    Text(kind).font(.system(size: compact ? 12.5 : 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                }
+                .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(canOpen ? "Opens that day" : "")
+    }
+
+    /// 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st.
+    static func ordinal(_ n: Int) -> String {
+        let tens = n % 100, ones = n % 10
+        let suffix = (11...13).contains(tens) ? "th" : ones == 1 ? "st" : ones == 2 ? "nd" : ones == 3 ? "rd" : "th"
+        return "\(n)\(suffix)"
+    }
+}
+
+/// A picked day's other things — notes, photos, places on the map, zikr — every one, a 0 too, so an empty one reads as
+/// none rather than missing (owner, 2026-10-17: "show them all so the user knows for certain they didnt do zikr that day
+/// and its not a bug"). Counted once the pick settles; each opens itself where the day page's back card opens it ("tapping
+/// the bottom area should show the tapped item"); a 0 opens nothing. The card's bottom and the month page's.
+struct JourneyDayExtrasRow: View {
+    let date: Date
+    let onExtra: (JourneyExtraTap) -> Void
+    @State private var extras = JourneyDayExtras()
+    @State private var photos = JourneyFrameBox()
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        let e = extras.date == date ? extras : nil
+        HStack(alignment: .top, spacing: 0) {
+            extra("text.quote", e.map { "\($0.notes.count)" }, e?.notes.count == 1 ? "note" : "notes", !(e?.notes.isEmpty ?? true)) {
+                if let n = e?.notes, !n.isEmpty { onExtra(.notes(n)) }
+            }
+            extra("photo.on.rectangle", e.map { "\($0.photoKeys.count)" }, e?.photoKeys.count == 1 ? "photo" : "photos",
+                  !(e?.photoKeys.isEmpty ?? true)) {
+                if let k = e?.photoKeys, !k.isEmpty { onExtra(.photos(k, photos.frame)) }
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { photos.frame = $0 }
+            extra("map", e.map { "\($0.places)" }, "on the map", e?.places ?? 0 > 0) {
+                if e?.places ?? 0 > 0 { onExtra(.map(date)) }
+            }
+            extra("circle.hexagonpath", e.map { $0.zikrMinutes }, "min of zikr", e?.zikrSeconds ?? 0 > 0) {
+                if e?.zikrSeconds ?? 0 > 0 { onExtra(.zikr(date)) }
+            }
+        }
+        .task(id: date) {
+            // A held finger crossing days doesn't count every one it passes.
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled else { return }
+            extras = JourneyDayExtras.load(date, in: context)
+        }
+    }
+
+    private func extra(_ symbol: String, _ value: String?, _ caption: String, _ has: Bool, _ open: @escaping () -> Void) -> some View {
+        Button {
+            guard has else { return }
+            triggerSomeVibration(type: .light)
+            open()
+        } label: {
+            VStack(spacing: 2) {
+                HStack(spacing: 5) {
+                    Image(systemName: symbol).font(.system(size: 13, weight: .light))
+                    Text(value ?? " ").font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
+                }
+                Text(caption)
+                    .font(.system(size: 11, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.75)
+            }
+            .foregroundStyle(has ? Color.primary : Color.secondary)
+            .opacity(has ? 1 : 0.55)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!has)
+    }
+}
+
+/// A place on screen kept without redrawing anything (the photos count's: the pile opens out of it).
+final class JourneyFrameBox { var frame: CGRect = .zero }
+
+/// Opens a picked day's things where the day page's back card opens them: notes in the frosted notes card, photos the
+/// day's pile (rising out of the count, fading away), on the map the day's map, zikr History locked to that day. Set
+/// `tap` and it opens. Journey's page and the month page each carry one.
+struct JourneyExtrasPresenter: ViewModifier {
+    @Binding var tap: JourneyExtraTap?
+    @State private var dayNotes: [DayFacts.Note]?
+    @State private var dayPile: DayPileRoute?
+    @State private var mapDay: Date?
+    @State private var zikrDay: Date?
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: tap == nil) {
+                guard let t = tap else { return }
+                tap = nil
+                switch t {
+                case .notes(let n): dayNotes = n
+                case .photos(let keys, let from):
+                    // No system slide: the pile rises on its own (from), the page behind fading in place.
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { dayPile = DayPileRoute(keys: keys, from: from) }
+                case .map(let d): mapDay = d
+                case .zikr(let d): zikrDay = d
+                }
+            }
+            .infoModal(isPresented: Binding(get: { dayNotes != nil }, set: { if !$0 { dayNotes = nil } }),
+                       title: dayNotes?.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
+                DayNotesInfo(notes: dayNotes ?? [])
+            }
+            // Grows out of the photos count from a screen below it (owner: "i like how pile comes up from bottom of
+            // page"), its blurred page fading in place; it leaves by a plain fade, card and page together ("just make it
+            // be a simple fade out").
+            .fullScreenCover(item: $dayPile) { route in
+                PrayerPhotoViewer(key: route.keys[0], pile: route.keys,
+                                  from: route.from.offsetBy(dx: 0, dy: UIScreen.main.bounds.height), fadeOut: true) {
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { dayPile = nil }
+                }
+                .presentationBackground(.clear)
+            }
+            .fullScreenCover(isPresented: Binding(get: { mapDay != nil }, set: { if !$0 { mapDay = nil } })) {
+                LocationMapContentView(dayOnly: mapDay ?? PrayerDay.start())
+            }
+            .navigationDestination(item: $zikrDay) { ZikrAreaPage(start: .dayOnly($0)) }
     }
 }
 
