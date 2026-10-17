@@ -587,6 +587,7 @@ struct JourneyCardRow: View, Equatable {
                     bar(day)
                 }
             }
+            .journeyFlightCardWeek(week.start)   // where its bars are, for the card's flights (JourneyTransitions.swift)
             .contentShape(Rectangle())
             .contentShape(Rectangle().inset(by: -1.5))   // the gaps between rows too
             // Every place is measured from the row the finger landed on, in its own space — never from where the lazy stack

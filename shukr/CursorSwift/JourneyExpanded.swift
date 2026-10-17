@@ -29,6 +29,11 @@ struct JourneyExpandedPage: View {
     /// The month rail (hold the names' column, as on the card): the month the finger's on.
     @State private var rail: Int?
     @State private var scrub = JourneyCardScrub()
+    /// Pinched in: the card's tiles in place of the rings, rows the card's pitch, so many more weeks show (owner, 2026-10-17:
+    /// "we can still pinch it to make ting smaller into tiles on this expanded view"); spread, the rings again.
+    @State private var tiles = false
+    /// The week in the middle of the view (what a pinch keeps in place).
+    @State private var middleWeek: Date?
     @Environment(\.journeyDayOpener) private var dayOpener
     @Environment(\.journeyMonthOpen) private var monthOpen
     @Environment(\.circleTheme) private var theme
@@ -49,10 +54,9 @@ struct JourneyExpandedPage: View {
     /// Rows this far apart beyond the ring itself.
     static let rowGap: CGFloat = 2
     /// A ring's side at this width: seven across what the names leave, never larger than the month page's.
-    private var cell: CGFloat {
-        let w = gridWidth > 0 ? gridWidth : UIScreen.main.bounds.width - 40
-        return min(((w - Self.labelColumn) / 7).rounded(.down), JourneyDayRing.size)
-    }
+    private var cell: CGFloat { min((cellsWidth / 7).rounded(.down), JourneyDayRing.size) }
+    /// The days' width in a row (the row less the names' column).
+    private var cellsWidth: CGFloat { (gridWidth > 0 ? gridWidth : UIScreen.main.bounds.width - 40) - Self.labelColumn }
 
     var body: some View {
         let _ = JourneyPerf.body("expanded")
@@ -117,8 +121,6 @@ struct JourneyExpandedPage: View {
         .padding(.horizontal, 20)
         .padding(.top, 6)
         .journeyFlightWords(.month)
-        // Where the card's flight lands its words (the host runs once this is laid out).
-        .journeyFlightTitleSlot(opened)
     }
 
     private var count: some View {
@@ -141,12 +143,15 @@ struct JourneyExpandedPage: View {
     private var grid: some View {
         let cell = cell
         let monthWeeks = stats.weeks.compactMap { $0.month == nil ? nil : $0.id }
+        let labels = Self.labelRows(stats.weeks)
         return ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: Self.rowGap) {
-                ForEach(stats.weeks) { week in
-                    JourneyExpandedRow(week: week, log: log, today: today, cell: cell,
+            LazyVStack(spacing: tiles ? JourneyHomeCard.pitch - 11 : Self.rowGap) {
+                ForEach(Array(stats.weeks.enumerated()), id: \.element.id) { i, week in
+                    JourneyExpandedRow(week: week, index: i, log: log, today: today, cell: cell, tiles: tiles,
+                                       labelMonth: labels[week.id]?.month, labelBetween: labels[week.id]?.between ?? false,
                                        focus: focus, picked: picked.flatMap { p in week.days.contains { $0?.date == p } ? p : nil },
-                                       onDay: { pick($0) }, onMonth: { focusMonth($0) })
+                                       onDay: { pick($0) }, onMonth: { focusMonth($0) },
+                                       onHold: { state, p in held(state, p, fromRow: i) })
                         .equatable()
                         .id(week.id)
                 }
@@ -157,6 +162,14 @@ struct JourneyExpandedPage: View {
         .defaultScrollAnchor(.bottom)
         .scrollPosition($position)
         .scrollDisabled(rail != nil)
+        .onScrollTargetVisibilityChange(idType: Date.self, threshold: 0.5) { ids in
+            let sorted = ids.sorted()
+            if !sorted.isEmpty { middleWeek = sorted[sorted.count / 2] }
+        }
+        // Pinch in: tiles; spread: rings — the week in the middle stays where it is through the morph.
+        .simultaneousGesture(MagnifyGesture().onEnded { v in
+            if v.magnification < 0.85, !tiles { setTiles(true) } else if v.magnification > 1.15, tiles { setTiles(false) }
+        })
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }   // inside its padding: = the guess
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrub.gridHeight = $0 }
         .padding(.horizontal, 20)
@@ -182,6 +195,39 @@ struct JourneyExpandedPage: View {
             }
         }
         .onAppear { arrive() }
+    }
+
+    /// Which row carries each month's name: the middle of the rows the month's days fill (owner, 2026-10-17: "make it so the
+    /// month labels rest in the middle of their month grids … aligned with the vertical center"), between the two middle rows
+    /// when there's an even number. Keyed by the row's week.
+    static func labelRows(_ weeks: [YourJourneyStats.Week]) -> [Date: (month: Date, between: Bool)] {
+        let cal = Calendar.current
+        var out: [Date: (month: Date, between: Bool)] = [:]
+        for (first, week) in weeks.enumerated() {
+            guard let m = week.month?.start,
+                  let last = cal.date(byAdding: DateComponents(month: 1, day: -1), to: m) else { continue }
+            // The row holding its last day (or the latest row: this month, still going).
+            let end = weeks[first...].firstIndex { cal.date(byAdding: .day, value: 6, to: $0.start).map { $0 >= last } ?? false }
+                ?? weeks.count - 1
+            let rows = end - first + 1
+            out[weeks[first + (rows - 1) / 2].id] = (m, rows % 2 == 0)
+        }
+        return out
+    }
+
+    private func setTiles(_ on: Bool) {
+        JourneyPerf.began(on ? "expanded → tiles" : "expanded → rings")
+        triggerSomeVibration(type: .light)
+        let keep = middleWeek
+        withAnimation(.smooth(duration: 0.45)) {
+            tiles = on
+            if let keep { position.scrollTo(id: keep, anchor: .center) }
+        } completion: {
+            // The rows changed size under that scroll and the lazy stack went by its estimates (a spread from tiles landed
+            // months early — the helper's check): again, now they're built at their new size.
+            guard let keep else { return }
+            withAnimation(.easeOut(duration: 0.2)) { position.scrollTo(id: keep, anchor: .center) }
+        }
     }
 
     /// Opened on a month (a name, This month): that month in the middle; from the ↗, today's week at the bottom (the card's).
@@ -240,6 +286,43 @@ struct JourneyExpandedPage: View {
         withAnimation(.easeOut(duration: CircleMotion.quick)) {
             if picked == date { picked = nil; focus = nil } else { picked = date; focus = JourneyLog.monthStart(date) }
         }
+    }
+
+    /// Hold, then move: each day under the finger picked, across rows (owner, 2026-10-17: "you know how in the compacted card
+    /// we can drag around in the tiles and select a few tiles with the drag? I want to do the same thing when we're in the
+    /// expanded view, whether it's in rings or tile fashion") — the card's way: a firm tick to begin, a soft one per new day,
+    /// its month in focus with it. `p` is in row `i`'s days' space; rows on screen are exactly a pitch apart.
+    private func held(_ state: UIGestureRecognizer.State, _ p: CGPoint, fromRow i: Int) {
+        switch state {
+        case .began:
+            JourneyPerf.began("expanded hold")
+            scrub.scrubbing = true
+            triggerSomeVibration(type: .medium)
+            if let d = day(at: p, fromRow: i) {
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d; focus = JourneyLog.monthStart(d) }
+            }
+        case .changed:
+            guard scrub.scrubbing, let d = day(at: p, fromRow: i), d != picked else { return }
+            triggerSomeVibration(type: .soft)
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d; focus = JourneyLog.monthStart(d) }
+        default:
+            scrub.scrubbing = false
+        }
+    }
+
+    /// The day under a point in row `i`'s days' space (rows a pitch apart, each band reaching halfway to the next; the
+    /// nearest column), if it's one that can be picked.
+    private func day(at p: CGPoint, fromRow i: Int) -> Date? {
+        guard !stats.weeks.isEmpty else { return nil }
+        let height: CGFloat = tiles ? 11 : cell
+        let gap: CGFloat = tiles ? JourneyHomeCard.pitch - 11 : Self.rowGap
+        let spacing: CGFloat = tiles ? 6 : 0
+        let row = min(max(i + Int(((p.y + gap / 2) / (height + gap)).rounded(.down)), 0), stats.weeks.count - 1)
+        let slot = (cellsWidth + spacing) / 7
+        let col = min(max(Int(((p.x + spacing / 2) / slot).rounded(.down)), 0), 6)
+        guard let date = Calendar.current.date(byAdding: .day, value: col, to: stats.weeks[row].start),
+              let first = log.firstDay, date >= first, date <= today else { return nil }
+        return date
     }
 
     /// A month's name: that month in focus, no day (its numbers at the top); again, let go.
@@ -397,20 +480,30 @@ struct JourneyExpandedPage: View {
 /// month page's). Equal rows aren't redrawn (the card's rows' way): its days, its pick, whether the focus touches it, its size.
 struct JourneyExpandedRow: View, Equatable {
     let week: YourJourneyStats.Week
+    /// Its place among the weeks (a hold reaches rows above and below from it).
+    let index: Int
     let log: JourneyLog
     let today: Date
     let cell: CGFloat
+    /// The card's tiles in place of the rings (pinched in).
+    let tiles: Bool
+    /// The month whose name sits on this row (its middle row), and whether it sits halfway down to the next (an even number
+    /// of rows).
+    let labelMonth: Date?
+    let labelBetween: Bool
     let focus: Date?
     /// The picked day, if it's in this week.
     let picked: Date?
     let onDay: (Date) -> Void
     let onMonth: (Date) -> Void
+    /// A hold on its days, then the finger's moves (in its days' space).
+    let onHold: (UIGestureRecognizer.State, CGPoint) -> Void
 
     /// What the focus does to this row: nothing (-1, none), else which of its days are in it (bits 0–6) and whether its name
     /// is the focused month's (bit 7) — a focus moving between two other months leaves it as it was.
     private var focusMask: Int {
         guard let f = focus else { return -1 }
-        var mask = week.month?.start == f ? 1 << 7 : 0
+        var mask = labelMonth == f ? 1 << 7 : 0
         for i in 0..<7 where JourneyLog.monthStart(Calendar.current.date(byAdding: .day, value: i, to: week.start) ?? week.start) == f {
             mask |= 1 << i
         }
@@ -418,56 +511,99 @@ struct JourneyExpandedRow: View, Equatable {
     }
 
     static func == (a: Self, b: Self) -> Bool {
-        a.week.start == b.week.start && a.log.version == b.log.version && a.today == b.today && a.cell == b.cell
+        a.week.start == b.week.start && a.index == b.index && a.log.version == b.log.version && a.today == b.today && a.cell == b.cell
+            && a.tiles == b.tiles && a.labelMonth == b.labelMonth && a.labelBetween == b.labelBetween
             && a.picked == b.picked && a.focusMask == b.focusMask
     }
+
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let _ = JourneyPerf.body("expandedRow")
         let cal = Calendar.current
         let scale = cell / JourneyDayRing.size
+        let height = tiles ? 11 : cell
         let excused = Excused.Days()
         HStack(spacing: 0) {
             label
-                .frame(width: JourneyExpandedPage.labelColumn - 8, height: cell, alignment: .topTrailing)
+                // Centred on its row, or on the gap below it when the month's rows are even.
+                .offset(y: labelBetween ? (height + (tiles ? JourneyHomeCard.pitch - 11 : JourneyExpandedPage.rowGap)) / 2 : 0)
+                .frame(width: JourneyExpandedPage.labelColumn - 8, height: height, alignment: .trailing)
                 .padding(.trailing, 8)
-            HStack(spacing: 0) {
+            HStack(spacing: tiles ? 6 : 0) {
                 ForEach(0..<7, id: \.self) { i in
                     let date = cal.date(byAdding: .day, value: i, to: week.start) ?? week.start
                     let day = log.day(date)
                     let noRows = date < today && log.days[PrayerNotificationID.dayKey(date)] == nil && excused.excludes(date)
-                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, usesExcused: log.usesExcused,
-                                   excusedNoRows: noRows)
-                        .scaleEffect(scale)
-                        .frame(width: cell, height: cell)
-                        .journeyFlightCell(date, scale: scale)   // the card's tiles land on it (JourneyTransitions.swift)
-                        .opacity(focus.map { JourneyLog.monthStart(date) == $0 ? 1 : 0.22 } ?? 1)
-                        .overlay {
-                            if picked == date {
+                    // The ring and the card's tile, one over the other: a pinch fades one into the other as the row
+                    // resizes — the tiles of the compact card, grown, and back.
+                    ZStack {
+                        JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, usesExcused: log.usesExcused,
+                                       excusedNoRows: noRows)
+                            .scaleEffect(scale * (tiles ? 0.4 : 1))
+                            // A scale isn't layout: unframed, each ring kept its 46 pt and the 7th column ran off a 17 Pro
+                            // (the helper's check); in tiles mode it takes no room at all.
+                            .frame(width: tiles ? 0 : cell, height: tiles ? 0 : cell)
+                            .opacity(tiles ? 0 : 1)
+                        tile(week.days[i])
+                            .opacity(tiles ? 1 : 0)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                    .journeyFlightCell(date, scale: scale)   // the card's tiles land on it (JourneyTransitions.swift)
+                    .opacity(focus.map { JourneyLog.monthStart(date) == $0 ? 1 : 0.22 } ?? 1)
+                    .overlay {
+                        if picked == date {
+                            if tiles {
+                                RoundedRectangle(cornerRadius: JourneyHomeCard.corner + 2.5, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
+                                    .padding(-3)
+                            } else {
                                 Circle().strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
                                     .frame(width: cell + 2, height: cell + 2)
                             }
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture { onDay(date) }
+                    }
+                    .contentShape(Rectangle().inset(by: tiles ? -1.5 : 0))
+                    .onTapGesture { onDay(date) }
                 }
             }
+            // A finger resting on the days picks under it as it moves, across rows (the card's JourneyHoldPick: a quick drag
+            // moves first, fails it, and the weeks scroll).
+            .gesture(JourneyHoldPick(hold: JourneyHomeCard.holdTime) { state, p, _ in onHold(state, p) })
             .journeyFlightWeek(week.start, scale: scale)   // one place for its seven days (the flights work them out)
         }
     }
 
-    /// The month's name on the week holding its 1st, and how it went (owner: "the column label maybe gets some more data like
+    /// The card's tile for a day (JourneyCardRow's bar): its kind and heat, an unmarked day its hairline; nothing outside the
+    /// journey.
+    @ViewBuilder private func tile(_ day: YourJourneyStats.GridDay?) -> some View {
+        let shape = RoundedRectangle(cornerRadius: JourneyHomeCard.corner, style: .continuous)
+        if let day {
+            let dark = scheme == .dark
+            shape.fill(JourneyTileColor.of(day.kind, rank: day.rank, dark: dark))
+                .overlay {
+                    if day.kind == .none { shape.strokeBorder(JourneyTileColor.outline(dark: dark), lineWidth: JourneyTileColor.outlineWidth) }
+                }
+                .frame(height: 11)
+        } else {
+            Color.clear.frame(height: 11)
+        }
+    }
+
+    /// The month's name on its middle row, and how it went (owner: "the column label maybe gets some more data like
     /// what the year view labels for the months show"); marked while its month is in focus.
     @ViewBuilder private var label: some View {
-        if let m = week.month {
-            let on = focus == m.start
-            let numbers = log.month(m.start)
-            Button { onMonth(m.start) } label: {
+        if let start = labelMonth {
+            let on = focus == start
+            let numbers = log.month(start)
+            Button { onMonth(start) } label: {
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(name(m.start))
+                    Text(name(start))
                         .font(.system(size: 13, weight: on ? .semibold : .regular, design: .rounded))
                         .foregroundStyle(on ? Color.primary : Color.secondary)
-                    if numbers.activeDays > 0 {
+                        .journeyFlightLabel(start)   // the card's name lands here (JourneyTransitions.swift)
+                    if numbers.activeDays > 0, !tiles {
                         Text(numbers.activeDays == 1 ? "1 day" : "\(numbers.activeDays) days")
                         if let score = numbers.averageScore { Text("score \(score)") }
                     }
@@ -479,7 +615,7 @@ struct JourneyExpandedRow: View, Equatable {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(m.start.formatted(.dateTime.month(.wide).year())), \(numbers.activeDays) days")
+            .accessibilityLabel("\(start.formatted(.dateTime.month(.wide).year())), \(numbers.activeDays) days")
             .journeyFlightWords(.month)
         } else {
             Color.clear
