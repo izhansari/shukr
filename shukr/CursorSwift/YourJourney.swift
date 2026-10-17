@@ -269,7 +269,7 @@ struct JourneyDayLine: View {
     }
 }
 
-/// A plain row (the canvas's list row): a symbol, a title over a grey line, a value, and a sage ›.
+/// A plain row (the canvas's list row): a symbol, a title over a grey line, a value, and a neutral ›.
 struct JourneyHomeRow<Symbol: View, Value: View>: View {
     let title: String
     let line: String
@@ -301,7 +301,7 @@ struct JourneyHomeRow<Symbol: View, Value: View>: View {
                     .font(.system(size: 17, weight: .light, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
-                Text("›").font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(Color.sage)
+                Text("›").font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(.tertiary)   // neutral, not sage (owner, 2026-10-16)
             }
             .padding(.vertical, height == nil ? 13 : 0)
             .frame(height: height)
