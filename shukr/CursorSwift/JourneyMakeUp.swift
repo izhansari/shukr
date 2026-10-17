@@ -304,35 +304,41 @@ struct JourneyMakeUpPage: View {
                 // Each prayer's count; a tap shows only that prayer ("work through my Fajrs"). Five equal columns across,
                 // name over count (owner, 2026-10-17: Isha was cut off at the edge); one with none left stays, faint.
                 let left = Dictionary(uniqueKeysWithValues: counts)
-                HStack(spacing: 6) {
+                HStack(spacing: 7) {
                     ForEach(JourneyLog.names, id: \.self) { name in
                         let n = left[name] ?? 0
                         let on = only == name
-                        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        // Prayer scores' grade tiles (owner, 2026-10-17: "those are the perfect kind of buttons that we could
+                        // use for the makeup page to replace the prayer selector"): raised, the count large over the name;
+                        // the one on pressed in, the rest stepping back. The prayer's symbol where those have a grade dot.
+                        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
                         Button {
                             triggerSomeVibration(type: .light)
                             withAnimation(.easeInOut(duration: 0.25)) { only = on ? nil : name }
                         } label: {
-                            VStack(spacing: 1) {
+                            VStack(spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: prayerIcon(for: name))
+                                        .font(.system(size: 11, weight: .regular))
+                                        .foregroundStyle(.secondary)
+                                    Text("\(n)")
+                                        .font(.system(size: 18, weight: .light, design: .rounded))
+                                        .monospacedDigit()
+                                        .contentTransition(.numericText(value: Double(n)))
+                                        .lineLimit(1).minimumScaleFactor(0.7)
+                                }
                                 Text(name)
-                                    .font(.system(size: 13, weight: on ? .regular : .light, design: .rounded))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                Text("\(n)")
-                                    .font(.system(size: 13, weight: .light, design: .rounded))
-                                    .monospacedDigit()
+                                    .font(.system(size: 12, weight: .light, design: .rounded))
                                     .foregroundStyle(.secondary)
-                                    .contentTransition(.numericText(value: Double(n)))
+                                    .lineLimit(1).minimumScaleFactor(0.8)
                             }
                             .frame(maxWidth: .infinity)
-                            .frame(height: 46)
+                            .frame(height: 58)
                             .background {
-                                if on {
-                                    NeuPressed(shape: shape, radius: 3, offset: 2)
-                                } else {
-                                    shape.fill(Color.primary.opacity(0.05))
-                                }
+                                if on { NeuPressed(shape: shape, radius: 3, offset: 2) }
+                                else { NeuRaised(shape: shape, radius: 3.5, offset: 1.8) }
                             }
+                            .opacity(only != nil && !on ? 0.55 : 1)
                             .contentShape(shape)
                         }
                         .buttonStyle(.plain)
