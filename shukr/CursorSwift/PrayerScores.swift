@@ -291,7 +291,9 @@ struct PrayerScoresPage: View {
         ScrollView {
             VStack(spacing: 0) {
                 ring.padding(.top, 12)
-                lines.padding(.top, 14)
+                // The overview's two grey lines went (owner: "We can get rid of the two gray lines … keep it with just the
+                // ring. And the one-liner"); an open prayer keeps its own.
+                if shown != nil { lines.padding(.top, 14) }
                 sentence
                 rows.padding(.top, folded ? 10 : 18)
                 if selected != nil { detail }
@@ -413,30 +415,48 @@ struct PrayerScoresPage: View {
 
     private var ringScore: Int? { shown.flatMap { data.prayers[$0]?.prayedScore } ?? (shown == nil ? data.prayedScore : nil) }
 
+    /// The five prayers as fifths, Fajr at the top going round, each in its own average's grade colour, the score in the
+    /// middle (owner, 2026-10-17, from Frank's mock: "I like your fifth string idea, but I only want to use what I just
+    /// sent you, that picture for the top"). A prayer open: its fifth stays, the others fade, its name over its score. A
+    /// tap on a fifth is a tap on that prayer's row ("clicking on any one of the fifths is the same as if we clicked on the
+    /// list item").
     private var ring: some View {
-        let score = ringScore ?? 0
+        let size: CGFloat = 192, band: CGFloat = 9
         return ZStack {
-            NeuRaised(shape: Circle(), radius: 9, offset: 4.5)
-            Circle().trim(from: 0, to: CGFloat(score) / 100)
-                .stroke(Color.primary.opacity(0.72), style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .padding(12)
+            ForEach(0..<5, id: \.self) { i in
+                let name = JourneyLog.names[i]
+                let arc = JourneyDayRing.fifth(i)
+                let score = data.prayers[name]?.prayedScore
+                Circle().trim(from: arc.from, to: arc.to)
+                    .stroke(score.map { PrayerScoring.color(for: Double($0) / 100) } ?? Color.primary.opacity(0.12),
+                            style: StrokeStyle(lineWidth: band, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .opacity(shown == nil || shown == name ? 1 : 0.18)
+            }
+            .padding(band)
             VStack(spacing: 1) {
-                Text(shown ?? " ")
-                    .font(.system(size: 16, weight: .regular, design: .rounded))
-                    .opacity(shown == nil || linesFaded ? 0 : 1)
+                if shown != nil {
+                    Text(shown ?? " ")
+                        .font(.system(size: 16, weight: .regular, design: .rounded))
+                        .opacity(linesFaded ? 0 : 1)
+                }
                 Text(ringScore.map { "\($0)" } ?? "–")
                     .font(.system(size: 54, weight: .thin, design: .rounded)).monospacedDigit()
                     .contentTransition(.identity)
                     .opacity(linesFaded ? 0 : 1)
-                Text(ringScore.map { PrayerScoring.grade(for: Double($0) / 100).rawValue } ?? " ")
-                    .font(.system(size: 14, weight: .light, design: .rounded))
-                    .opacity(linesFaded ? 0 : 1)
-                Text("average score")
-                    .font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
         }
-        .frame(width: 192, height: 192)
+        .frame(width: size, height: size)
+        .contentShape(Circle())
+        .gesture(SpatialTapGesture().onEnded { tap in
+            // The fifth under the finger: its angle from the top, clockwise.
+            let dx = tap.location.x - size / 2, dy = tap.location.y - size / 2
+            var angle = atan2(dx, -dy) * 180 / .pi
+            if angle < 0 { angle += 360 }
+            let name = JourneyLog.names[min(Int(angle / 72), 4)]
+            guard data.prayers[name] != nil else { return }
+            if selected == nil { open(name) } else { close() }
+        })
         .accessibilityElement(children: .combine)
     }
 
