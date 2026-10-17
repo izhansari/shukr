@@ -42,7 +42,8 @@ struct JourneyHomeCard: View {
     /// The grid's place (today's week at the bottom to start; `toToday`).
     @State private var position = ScrollPosition(edge: .bottom)
     /// A month scrub under way: the month it started from and the one it's at (indexes into `monthWeeks`).
-    @State private var scrubbing: (from: Int, at: Int)?
+    /// The month rail under way: the month the finger's on (an index into `monthWeeks`).
+    @State private var rail: Int?
     /// Where the grid was when the streak lit (its top row; nil: resting at today), and whether to go back there.
     @State private var beforeStreak: (week: Date?, back: Bool) = (nil, false)
     /// A finger on the tiles (not observed: nothing redraws from it).
@@ -204,19 +205,41 @@ struct JourneyHomeCard: View {
         .defaultScrollAnchor(.bottom)
         .scrollPosition($position)
         .scrollBounceBehavior(.basedOnSize)
-        // The month column scrubs the months (owner, 2026-10-17: "use that left column to scrub the months. Like fast
-        // scrub … it looks exactly the same until it's scrubbed. Then you feel it clicking … to each month … the whole
-        // tile scroll area, you see it move down or up"): a drag that starts there steps a month every `scrubStep`
-        // (down = earlier, as a scroll), a click each, the grid gliding to that month's first week. Hung on the grid, not
-        // a row (a row scrolled far off is let go by the lazy stack, and its gesture with it); the grid's own scroll holds
-        // still meanwhile. Taps on the names still open their month; the tiles still scroll.
-        .scrollDisabled(scrubbing != nil)
-        .simultaneousGesture(DragGesture(minimumDistance: 4)
-            .onChanged { v in monthScrub(v) }
-            .onEnded { _ in
-                if scrubbing != nil { scrubbing = nil }
-            })
-        .sensoryFeedback(.selection, trigger: scrubbing?.at)
+        // The month column is a rail, the Zikr wheel's way (owner, 2026-10-17, with a recording of it: "if I hold it and
+        // start dragging up, it moves the tile grid up as well. kind of like how it works here with the same kind of
+        // API"): a finger held still on it a moment lifts it (a faint track, a pill naming the month), then where the
+        // finger is along it is the month — the top your first, the bottom this one, as a scroll bar — a click each,
+        // the grid following; let go, it's as it was. Hung on the grid, not a row (a row scrolled far off is let go by
+        // the lazy stack, and its gesture with it); the grid's own scroll holds still meanwhile. A tap on a name still
+        // opens its month, a quick drag there still scrolls, the tiles are theirs.
+        .scrollDisabled(rail != nil)
+        .simultaneousGesture(DragGesture(minimumDistance: 0)
+            .onChanged { v in railChanged(v) }
+            .onEnded { _ in railEnded() })
+        .sensoryFeedback(.selection, trigger: rail)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrub.gridHeight = $0 }
+        .background(alignment: .leading) {
+            // The lifted rail: a faint track down the column.
+            Capsule().fill(Color.primary.opacity(rail != nil ? 0.07 : 0))
+                .frame(width: Self.nameColumn + 10)
+                .padding(.leading, -7)
+                .scaleEffect(rail != nil ? 1 : 0.96, anchor: .leading)
+        }
+        .overlay(alignment: .topLeading) {
+            if let m = rail, monthWeeks.indices.contains(m), let start = stats.weeks.first(where: { $0.id == monthWeeks[m] })?.month?.start {
+                let h = max(scrub.gridHeight, 1)
+                Text(start.formatted(.dateTime.month(.wide).year()))
+                    .font(.subheadline).fontDesign(.rounded)
+                    .lineLimit(1)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Capsule().fill(.regularMaterial))
+                    .shadow(color: .black.opacity(0.1), radius: 6, y: 3)
+                    .fixedSize()
+                    .offset(x: Self.nameColumn + 10, y: min(max((CGFloat(m) + 0.5) / CGFloat(monthWeeks.count) * h - 15, 0), h - 30))
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
         // A finger scrolling the grid lets a picked tile and a lit streak go (owner, 2026-10-17: "if a tile is selected,
         // but we start scrolling, it deselects that tile. Same for if we scroll away while the best streak is selected").
         // Only the finger's scroll: the streak's own scroll to its days is .animating, not .interacting.
@@ -261,6 +284,7 @@ struct JourneyHomeCard: View {
             Group {
                 if let m = week.month {
                     Button {
+                        guard rail == nil, !scrub.railJustEnded else { return }
                         triggerSomeVibration(type: .light)
                         onMonth(m.start)
                     } label: {
@@ -355,27 +379,71 @@ struct JourneyHomeCard: View {
 
     /// The months on the card, oldest first: each one's first week (the row with its name).
     private var monthWeeks: [Date] { stats.weeks.compactMap { $0.month == nil ? nil : $0.id } }
-    /// A finger's travel per month on the column.
-    private static let scrubStep: CGFloat = 18
+    /// How long a finger rests on the column before it's the rail (a tap, or a drag before it, isn't).
+    private static let railHold = 0.22
 
-    private func monthScrub(_ v: DragGesture.Value) {
-        let months = monthWeeks
-        guard !months.isEmpty else { return }
-        if scrubbing == nil {
-            // Only a drag that starts on the column, and runs up or down.
-            guard v.startLocation.x < Self.nameColumn + 4, abs(v.translation.height) > abs(v.translation.width) else { return }
-            // From the month at the top of the view.
-            let top = stats.weeks.indices.contains(view.first) ? stats.weeks[view.first].id : months.last!
-            let from = months.lastIndex(where: { $0 <= top }) ?? 0
-            scrub.pinned = false
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
-            scrubbing = (from, from)
+    private func railChanged(_ v: DragGesture.Value) {
+        let r = scrub
+        r.railLast = v.location
+        if r.railStart == nil {
+            r.railStart = v.startLocation
+            r.railMoved = false
+            // The column only (the tiles have their own hold); and a month to go to.
+            r.railOff = v.startLocation.x > Self.nameColumn + 6 || monthWeeks.isEmpty
+            guard !r.railOff else { return }
+            r.railHoldTask?.cancel()
+            r.railHoldTask = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(Self.railHold))
+                guard !Task.isCancelled, r.railStart != nil, !r.railMoved else { return }
+                r.pinned = false
+                triggerSomeVibration(type: .medium)
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
+                railTo(railIndex(r.railLast.y), lifting: true)
+            }
+            return
         }
-        guard let s = scrubbing else { return }
-        let at = min(max(s.from - Int((v.translation.height / Self.scrubStep).rounded(.towardZero)), 0), months.count - 1)
-        guard at != s.at else { return }
-        scrubbing = (s.from, at)
-        withAnimation(.easeOut(duration: 0.18)) { position.scrollTo(id: months[at], anchor: .top) }
+        guard !r.railOff else { return }
+        guard rail != nil else {
+            // Moved before the hold: a scroll, the grid's.
+            if hypot(v.location.x - v.startLocation.x, v.location.y - v.startLocation.y) > 10 { r.railMoved = true; r.railHoldTask?.cancel() }
+            return
+        }
+        let m = railIndex(v.location.y)
+        if m != rail { railTo(m, lifting: false) }
+    }
+
+    private func railEnded() {
+        let r = scrub
+        r.railHoldTask?.cancel()
+        r.railStart = nil
+        guard rail != nil else { return }
+        // A month name under the finger as it lifts mustn't open its month.
+        r.railJustEnded = true
+        Task { @MainActor in try? await Task.sleep(for: .milliseconds(350)); r.railJustEnded = false }
+        withAnimation(.snappy(duration: CircleMotion.quick)) { rail = nil }
+    }
+
+    /// The month at a height on the rail: the grid's height shared out among the months, oldest at the top.
+    private func railIndex(_ y: CGFloat) -> Int {
+        let n = monthWeeks.count
+        let f = min(max(y / max(scrub.gridHeight, 1), 0), 0.999)
+        return min(Int(f * CGFloat(n)), n - 1)
+    }
+
+    private func railTo(_ m: Int, lifting: Bool) {
+        let months = monthWeeks
+        guard months.indices.contains(m) else { return }
+        if lifting { withAnimation(.snappy(duration: CircleMotion.quick)) { rail = m } } else { rail = m }
+        withAnimation(CircleMotion.wheelScrub) { position.scrollTo(id: months[m], anchor: .top) }
+        // Again once it's landed: a far month's rows weren't built, so the first scroll went by the lazy stack's estimate
+        // and stopped a month or so short (sim: the pill said October, the grid's top was November); now they're there.
+        let r = scrub
+        r.railSettle?.cancel()
+        r.railSettle = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
+            guard !Task.isCancelled, rail == m || rail == nil else { return }
+            withAnimation(.easeOut(duration: 0.15)) { position.scrollTo(id: months[m], anchor: .top) }
+        }
     }
 
     /// The grid at today's week, at once — not while a tile is picked or the streak is lit.
@@ -896,6 +964,16 @@ enum JourneyExtraTap {
 @MainActor final class JourneyCardScrub {
     var scrubbing = false
     var width: CGFloat = 0
+    /// The month rail: where the finger came down and is, whether it moved before the hold, whether it started off the
+    /// column, the hold's timer, a lift just now (a name under it mustn't open), the grid's height (the rail's length).
+    var railStart: CGPoint?
+    var railLast: CGPoint = .zero
+    var railMoved = false
+    var railOff = false
+    var railHoldTask: Task<Void, Never>?
+    var railSettle: Task<Void, Never>?
+    var railJustEnded = false
+    var gridHeight: CGFloat = 0
     /// The grid stays at today until a finger scrolls it or the streak takes it elsewhere (Journey opening on today:
     /// "exiting the page and coming back still opens with the top most tiles in view").
     var pinned = true
