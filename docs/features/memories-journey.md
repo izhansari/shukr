@@ -107,18 +107,20 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   days and scrolls there; again, back to where you were. A picked day: the top is `JourneyDayTop` (fifths ring with the
   score, date, "Day N · Rth of M", its kind; the ring flies into the day page), the bottom `JourneyDayExtrasRow` (notes ·
   photos · on the map · min of zikr → the day page back card's destinations; the photo pile rises, fades out).
-- The month (`JourneyMonthPage`, JourneyMonth.swift): the title with an up-down symbol (tap → the year); Month | Year in the
-  top bar (it fades while a day is open); the numbers with the key's rings (a tap lights those days); a window of months:
-  this one in the middle, its neighbours faded above and below with "· N days · score N" (a tap on one turns to it), a drag
-  turns past a quarter or a flick; the month rail down the right edge; the rings (`JourneyDayRing`). A ring's tap picks the
-  day: its top (`JourneyDayTop`, a line under it) and its bottom (`JourneyDayExtrasRow`, a line over it); a tap on the top
-  opens the day, its ring flying from its cell in the calendar. Day size 1 / 0.9 / 0.8 / 0.7 worked out from the room (`fitScale`); a turn redraws only the
-  calendars whose part changed (Equatable). Pinch in → the year.
+- The expanded card (`JourneyExpandedPage`, JourneyExpanded.swift; owner 2026-10-17, board/journey-expand-plan.md): the card's ↗
+  (a month name / This month: that month focused and centred) grows the card to the whole screen in Journey's host — its top
+  (the count · a picked day's JourneyDayTop · a focused month's numbers) and bottom (the three numbers · the day's extras),
+  between them the same continuous weeks as rings (`JourneyExpandedRow`, Equatable; JourneyDayCell), each month's name with
+  "N days" / "score N" centred on its month's rows ("Feb ’25" outside this year). Focus only by a tap: a ring (picks its day
+  too) or a name (its numbers at the top); a finger scroll lets both go. Hold 0.3 s and drag: picks across rows. Hold the
+  names: the month rail. Pinch in: the card's tiles (more weeks), spread: rings (the middle week kept). The toggle top right
+  (square.grid.3x3 ↔ calendar) flies the focused / middle month into the year and a small month's name back. The old
+  month page (window of months, neighbours, month rail) is gone.
 - The year (`JourneyYearView`, JourneyYear.swift): every year from the first, opening on this one; twelve small months
   (`JourneyYearMonth`, Equatable) each with its name, "N days · score N" (the month's average score) or "Away", and its days
   as one picture (`JourneyYearSquares`, a Canvas: tile colors, unmarked hairline, future faint, today outlined; the picked
-  ring drawn over it); a square's tap picks it (its line at the bottom, → the day); a name opens its month; ‹ and the edge
-  swipe go back to the month it came from (`JourneyFlightGeometry.yearBack`), not the card.
+  ring drawn over it); a square's tap picks it (its line at the bottom, → the day); a name flies back into the expanded
+  weeks with that month focused; ‹, the edge swipe and the toggle go back to the weeks (`JourneyFlightGeometry.yearBack`).
 - Prayer scores (`PrayerScoresPage`, PrayerScores.swift): All time · 30 days · 7 days under the header (`PrayerScores.build(span:)`);
   the ring = the score when prayed; rows "97 · 98% prayed" + their dots (`PrayerScoresChart`: 14 slots across the window +
   a Qaza block). A row's (or a fifth's) tap: its symbol, name and line rise over the switch into the header (the "97 · "
@@ -133,13 +135,14 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   `ModelContext` and return values; Journey reads the log once per open and builds Prayer scores' row from it (one `now`,
   one set of excused ranges); the last results are kept (`JourneyLog.last`, `PrayerScores.lastBySpan`) so pages never open
   blank; a newer load drops an older one (`loadToken`); a page under another reloads on its return (`dirty`).
-- Transitions (JourneyTransitions.swift, the host `journeyMonthHost`): card ↔ month (tiles fly into rings, the month name
-  becomes the title), month ↔ year (days fly to their squares), a ring → its day page (from a month cell or the card's top
-  ring; ‹ / edge swipe fly back). `JourneyFrameLog` (journey-transitions.log) only in DEBUG or with -journeyFrameLog or -demoJourneyFlightRun.
+- Transitions (JourneyTransitions.swift, the host `journeyMonthHost`): card ↔ expanded (every tile in view flies into its ring
+  by its place, the card's month names to their labels; the card's rows report their own place — `.cardWeek`; the page
+  comes down 0.35 s after the flight back lands), expanded ↔ year (a month's days fly to their squares), a ring → its day page (from its ring in the expanded weeks or
+  the card's top ring; ‹ / edge swipe fly back). `JourneyFrameLog` (journey-transitions.log) only in DEBUG or with -journeyFrameLog or -demoJourneyFlightRun.
 - Perf log (`JourneyPerf`, JourneyPerf.swift; DEBUG, or Release with -journeyPerf): each move opens a window — frames, late,
   hitch, worst gap, main busy, body counts, timed loads — in Library/Caches/journey-perf.log. Phone runs:
-  `PERF_ARGS="-journeyPerf" zsh scripts/perf-paging.sh <label> testJourneyPerfPass` (a scripted pass) or `testJourneyTurnRun`
-  (month turns, no screen reads; `-demoJourneyTurnRun N`). Rules it taught: no hidden sizing copies of a page, rows / months
+  `PERF_ARGS="-journeyPerf" zsh scripts/perf-paging.sh <label> testJourneyPerfPass` (a scripted pass; its month steps
+  predate the expanded card). Rules it taught: no hidden sizing copies of a page, rows / months
   as Equatable views keyed on `JourneyLog.version`, many small shapes → one Canvas.
 - The day page (`JourneyDayPage`, on the Salah tab's day page pieces — the day page merge, owner 2026-10-15, DayPage.swift;
   the full behaviour in salah.md "The day page merge"): the date centred on top ("Thursday, October 15" / "Today · Jumada I 4"),
