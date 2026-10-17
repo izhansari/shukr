@@ -182,7 +182,7 @@ struct JourneyHomeCard: View {
             // ever; once the press has begun the drag is the pick's ("being able to drag and select the tiles freely, but
             // also scroll in that area").
             .gesture(JourneyHoldPick(hold: Self.holdTime) { state, p in held(state, p) })
-            .coordinateSpace(.named(Self.rowsSpace))   // the first row at 0
+            .coordinateSpace(.named(Self.rowsSpace))   // rows placed by the stack (`scrub.rowTops`), not at index × pitch
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { scrub.width = $0 }
             .padding(.top, 12)
             // Room for a picked tile's ring (drawn 3 pt outside its bar) on the right and below: the grid's clip cut it
@@ -248,6 +248,9 @@ struct JourneyHomeCard: View {
                     bar(day)
                 }
             }
+            // Where the stack really put this row, while it's built (the hold and the picked tile's rect read it).
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.rowsSpace)).minY } action: { scrub.rowTops[week.id] = $0 }
+            .onDisappear { scrub.rowTops[week.id] = nil }
             // A tap picks its tile (or lets it go); a hold then a drag is the rows' (JourneyHoldPick).
             .contentShape(Rectangle())
             .contentShape(Rectangle().inset(by: -1.5))   // the gaps between rows too
@@ -255,7 +258,8 @@ struct JourneyHomeCard: View {
                 // A tap near the picked tile (its bar and a few points round it) lets it go (owner, 2026-10-17: "the
                 // intention of deselecting is very hard since user has to tap exactly on that tile").
                 if let on = picked, let r = rect(of: on), r.insetBy(dx: -5, dy: -4).contains(p) { tap(on); return }
-                if let d = day(at: p) { tap(d.date) }
+                // This row's own week: never the row a y ÷ pitch guesses.
+                if let d = week.days[column(p.x)] { tap(d.date) }
             }
         }
     }
@@ -318,23 +322,33 @@ struct JourneyHomeCard: View {
         withTransaction(quiet) { proxy.scrollTo(Self.end, anchor: .bottom) }
     }
 
-    /// A day's bar in the rows' space (nil: not on the card).
+    // Rows are found by where the stack put them, never by index × pitch: a LazyVStack only estimates the rows it hasn't
+    // built, so with a long history scrolled to today the rows' space doesn't start at row 0 (owner, 2026-10-17: "it lands
+    // higher than that. Like almost seven tiles higher" — with 115 weeks the last row sat at 1481, not 114 × 14 = 1596).
+
+    /// A day's bar in the rows' space (nil: not on the card, or its row isn't built — then it's nowhere near a finger).
     private func rect(of date: Date) -> CGRect? {
-        guard scrub.width > 0, let row = stats.weeks.lastIndex(where: { $0.start <= date }) else { return nil }
-        let col = Calendar.current.dateComponents([.day], from: stats.weeks[row].start, to: date).day ?? 0
+        guard scrub.width > 0, let week = stats.weeks.last(where: { $0.start <= date }),
+              let top = scrub.rowTops[week.id] else { return nil }
+        let col = Calendar.current.dateComponents([.day], from: week.start, to: date).day ?? 0
         guard (0..<7).contains(col) else { return nil }
         let slot = (scrub.width - Self.nameColumn) / 7
-        return CGRect(x: Self.nameColumn + 6 + CGFloat(col) * slot, y: CGFloat(row) * Self.pitch, width: slot - 6, height: 11)
+        return CGRect(x: Self.nameColumn + 6 + CGFloat(col) * slot, y: top, width: slot - 6, height: 11)
     }
 
-    /// The day under a point in the rows' space (rows `pitch` apart, the bars after the name column; nil: a blank slot).
-    /// Past the first or last row, or the end bars, the nearest one — a held finger can run a little wide.
-    private func day(at p: CGPoint) -> YourJourneyStats.GridDay? {
-        guard !stats.weeks.isEmpty, scrub.width > 0 else { return nil }
-        let row = min(max(Int(((p.y + 1.5) / Self.pitch).rounded(.down)), 0), stats.weeks.count - 1)
+    /// The bar column under x in the rows' space (the bars after the name column; past the end bars, the nearest).
+    private func column(_ x: CGFloat) -> Int {
+        guard scrub.width > 0 else { return 0 }
         let slot = (scrub.width - Self.nameColumn - 6 + 6) / 7
-        let col = min(max(Int(((p.x - Self.nameColumn - 6 + 3) / slot).rounded(.down)), 0), 6)
-        return stats.weeks[row].days[col]
+        return min(max(Int(((x - Self.nameColumn - 6 + 3) / slot).rounded(.down)), 0), 6)
+    }
+
+    /// The day under a point in the rows' space: the built row nearest it (each row's band reaches halfway to the next; a
+    /// held finger can run a little wide), then its column (nil: a blank slot).
+    private func day(at p: CGPoint) -> YourJourneyStats.GridDay? {
+        guard let id = scrub.rowTops.min(by: { abs($0.value + 5.5 - p.y) < abs($1.value + 5.5 - p.y) })?.key,
+              let week = stats.weeks.last(where: { $0.id == id }) else { return nil }
+        return week.days[column(p.x)]
     }
 
     /// Under the grid: the three numbers, or the picked day's line in their place (the card never grows).
@@ -679,10 +693,12 @@ struct JourneyMilestonesList: View {
     }
 }
 
-/// A finger on the card's tiles: whether a hold is picking, and the rows' width (the bars' slots come from it).
+/// A finger on the card's tiles: whether a hold is picking, the rows' width (the bars' slots come from it), and each built
+/// row's top in the rows' space, by week.
 @MainActor final class JourneyCardScrub {
     var scrubbing = false
     var width: CGFloat = 0
+    var rowTops: [Date: CGFloat] = [:]
 }
 
 /// iOS's long press as a SwiftUI gesture, reporting the finger in the view's own space: it begins after `hold` seconds with
