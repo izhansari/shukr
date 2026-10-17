@@ -66,7 +66,12 @@ struct JourneyHomeCard: View {
 
     /// "THE LAST 18 WEEKS" at rest; once scrolled back, the months in view ("JUN – SEP 2026").
     private var rangeLabel: String {
-        if view.atEnd || stats.weeks.isEmpty { return "THE LAST \(min(view.count, max(stats.weeks.count, 1))) WEEKS" }
+        // Before the log is in (no weeks yet) the card says what it will show, never "THE LAST 1 WEEKS" (Frank's catch).
+        if stats.weeks.isEmpty { return "THE LAST 12 WEEKS" }
+        if view.atEnd {
+            let n = min(view.count, stats.weeks.count)
+            return n == 1 ? "THIS WEEK" : "THE LAST \(n) WEEKS"
+        }
         let rows = stats.weeks
         let a = rows[min(max(view.first, 0), rows.count - 1)].start
         let lastRow = min(rows.count - 1, view.first + view.count - 1)
