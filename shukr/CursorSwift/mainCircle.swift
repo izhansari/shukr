@@ -1104,7 +1104,7 @@ struct summaryCircle: View, Equatable {
         line = DayInsight.line(input)
         // A full day glows once (per prayer day), the first time its page is shown.
         let key = input.dayKey
-        if showsScore, shownDay.count == 5, shownDay.allSatisfy(\.inTime),
+        if showsScore, !Self.stillForCheck, shownDay.count == 5, shownDay.allSatisfy(\.inTime),
            UserDefaults.standard.string(forKey: "daySummary.glowed") != key {
             UserDefaults.standard.set(key, forKey: "daySummary.glowed")
             withAnimation(.easeOut(duration: 0.8)) { glow = true }
@@ -1123,7 +1123,7 @@ struct summaryCircle: View, Equatable {
         drawToken += 1
         let token = drawToken
         guard drawn != target || ringFade < 1 else { return }
-        if reduceMotion { drawn = target; ringFade = 1; countedScore = nil; return }
+        if reduceMotion || Self.stillForCheck { drawn = target; ringFade = 1; countedScore = nil; return }
         var quiet = Transaction()
         quiet.disablesAnimations = true
         guard target == 1 else {
@@ -1175,6 +1175,13 @@ struct summaryCircle: View, Equatable {
     }
     /// The day the slow first draw played (once a day).
     static let firstDrawKey = "daySummary.firstDrawn"
+    /// circle-check.sh's shots (`-demoCircleCheck still`, DEBUG): the ring and its score whole at once — no draw-in, no
+    /// count-up, no glow — so a shot never catches them mid-way. Strips pass `YES` and keep the motion.
+    #if DEBUG
+    static let stillForCheck = UserDefaults.standard.string(forKey: "demoCircleCheck") == "still"
+    #else
+    static let stillForCheck = false
+    #endif
 
     /// When the Fajr alarm rings for this Fajr — the rule from Settings (before / after Fajr or sunrise, by the offset);
     /// nil when it's off or excused (it won't ring).
