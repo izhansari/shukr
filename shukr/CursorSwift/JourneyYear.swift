@@ -132,6 +132,9 @@ struct JourneyYearView: View {
                 .padding(.horizontal, 20)
                 .id(date)
                 .transition(.opacity)
+                // Goes with the year's words as a month flies out of it (the year dial): it sat over the weeks' numbers
+                // for the flight's first frames (the organizer's check of E4).
+                .journeyFlightWords(.page)
             }
         }
         }
