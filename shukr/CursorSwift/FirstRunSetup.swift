@@ -3998,7 +3998,7 @@ private struct ReviewStep: View {
         guard alarmOn else { return FajrAlarms.supported ? "Off" : "Needs iOS 26.1" }
         return PrayerUtils.alarmRuleText(offset: alarmOffset, isBefore: alarmBefore, isStart: alarmFajr)
     }
-    /// The prayers that get a card: "Dhuhr, Asr, Maghrib" (the default), "All five", "Off"; before iOS 26, that it needs it.
+    /// The prayers that get a card: "All five" (the default), "Dhuhr, Asr", "Off"; before iOS 26, that it needs it.
     private var liveActivityValue: String {
         let s = liveActivityState
         if !s.supported { return "Needs iOS 26" }
@@ -4010,11 +4010,11 @@ private struct ReviewStep: View {
         #if DEBUG
         switch UserDefaults.standard.string(forKey: "demoReviewLA") {
         case "old": return (false, false, [])
-        case "iosOff": return (true, false, ["Dhuhr", "Asr", "Maghrib"])
+        case "iosOff": return (true, false, LiveActivityPrefs.prayers)
         case "off": return (true, true, [])
         case "one": return (true, true, ["Asr"])
         case "all": return (true, true, LiveActivityPrefs.prayers)
-        case "default": return (true, true, ["Dhuhr", "Asr", "Maghrib"])
+        case "default": return (true, true, LiveActivityPrefs.prayers)
         default: break
         }
         #endif

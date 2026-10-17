@@ -111,13 +111,15 @@ struct PrayerWindowLiveActivity: Widget {
                         }
                         .padding(.horizontal, 24)   // iOS's own bottom margin: at 6 pt it cut the bar off
                     }
+                    .environment(\.laInstantGates, true)
                 }
             } compactLeading: {
-                LACompactLeading(state: s, stale: stale, t: t)
+                LACompactLeading(state: s, stale: stale, t: t).environment(\.laInstantGates, true)
             } compactTrailing: {
-                LAEnds(state: s, stale: stale) { e in LACompactTrailing(state: s, ended: e) }
+                LAEnds(state: s, stale: stale) { e in LACompactTrailing(state: s, ended: e) }.environment(\.laInstantGates, true)
             } minimal: {
                 LAEnds(state: s, stale: stale) { e in LARing(state: s, ended: e, size: 22, onIsland: true, t: t) }
+                    .environment(\.laInstantGates, true)
             }
         }
     }

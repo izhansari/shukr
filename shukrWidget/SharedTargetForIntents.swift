@@ -3242,6 +3242,9 @@ extension EnvironmentValues {
     /// A picture of the card (the setup page and Settings' Card look play a window in seconds): its "ends" line keeps
     /// this time instead of the moving window's (owner: "the end time would stay fixed"). Never set on the real card.
     @Entry var laShownEnd: Date? = nil
+    /// The Dynamic Island's views: their timed changes flip instead of fading (LAGate). On an island iPhone iOS archives
+    /// them with the Lock Screen card, under one ~2 MB limit, and they were half of it (2026-10-16); the card keeps its fade.
+    @Entry var laInstantGates = false
 }
 
 struct LALockCard: View {
@@ -3420,10 +3423,10 @@ struct LANameLines: View {
                 let lastHalf = LAGate.lastHalf(of: state.end)
                 Group {
                 ZStack(alignment: .leading) {
-                    LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.primary)
+                    LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard, part: .early).foregroundStyle(.primary)
                         .mask { LAGate(from: nil, until: lastHalf) }
                     // Real semibold (owner: "rather have it bold in red than avoid the doubling"; the fade is short enough).
-                    LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard).foregroundStyle(.red).fontWeight(.semibold)
+                    LATimeLeft(end: state.end, style: t.timeLeftFormat ?? LATimeLeft.standard, part: .late).foregroundStyle(.red).fontWeight(.semibold)
                         .mask { LAGate(from: lastHalf, until: nil) }
                 }
                 .font(.system(size: line))
@@ -3444,6 +3447,9 @@ struct LATimeLeft: View {
     let end: Date
     var style = 0
     var suffix = true
+    /// Which stretch this copy is ever seen in (the card's white copy is hidden from the last half hour, its red copy
+    /// before it): a layer it can never show isn't drawn (`shown(…, never:)`).
+    var part = LATimePart.all
     private var left: String { suffix ? " left" : "" }
     static let styles = ["1 hour, 39 minutes", "1 hr, 39 min · 19 min, 56 sec", "timer to the minute (iOS writes it in words)", "1:39:12", "1 hr, 39 min · 59 minutes"]
     /// What the tuner offers: 2 reads the same as 0 (iOS writes a minute-precision timer in words).
@@ -3455,10 +3461,12 @@ struct LATimeLeft: View {
             // Relative drops to "19 min, 56 sec" under an hour and ticks; offset, minutes only, floors to "0 minutes" in the
             // last one — so three layers, each shown only in its own stretch (the sim: 1 hr, 0 min → 59 minutes on time).
             let hour = end.addingTimeInterval(-3600), minute = end.addingTimeInterval(-60)
+            // Before the last half hour: over an hour, or 31–59 minutes. In it: under 31 minutes.
             ZStack(alignment: .leading) {
-                Text("\(Text(end, style: .relative))\(left)").mask { LAGate(from: nil, until: hour) }
-                LAMinuteWords(end: end, left: left).mask { LAGate(from: hour, until: minute) }
-                Text("under a minute\(left)").mask { LAGate(from: minute, until: nil) }
+                Text("\(Text(end, style: .relative))\(left)").shown(from: nil, until: hour, never: part == .late)
+                LAMinuteWords(end: end, left: left, part: part)
+                    .shown(from: part == .late ? nil : hour, until: part == .early ? nil : minute)
+                Text("under a minute\(left)").shown(from: minute, until: nil, never: part == .early)
             }
         case 1: Text("\(Text(end, style: .relative))\(left)")
         case 2: Text("\(Text(.currentDate, format: .timer(countingDownIn: Date.now..<max(end, .now), maxPrecision: .seconds(60))))\(left)")
@@ -3506,12 +3514,13 @@ struct LACompactTrailing: View {
 struct LAMinuteWords: View {
     let end: Date
     var left = " left"
+    var part = LATimePart.all
     var body: some View {
         let ten = end.addingTimeInterval(-10 * 60), two = end.addingTimeInterval(-2 * 60)
         ZStack(alignment: .leading) {
-            words(room: "00").mask { LAGate(from: nil, until: ten) }
-            words(room: "0").mask { LAGate(from: ten, until: two) }
-            Text("1 minute\(left)").mask { LAGate(from: two, until: nil) }
+            words(room: "00").shown(from: nil, until: part == .early ? nil : ten)
+            words(room: "0").shown(from: ten, until: two, never: part == .early)
+            Text("1 minute\(left)").shown(from: two, until: nil, never: part == .early)
         }
         .monospacedDigit()
     }
@@ -3953,13 +3962,27 @@ struct LARing: View {
             } else {
                 ForEach(Array(LAGrades.spans(state).enumerated()), id: \.offset) { _, span in
                     LALiveArc(start: state.start, end: state.end, color: span.color, width: arc)
-                        .mask { LAGate(from: span.from, until: span.until).frame(width: 110, height: 110) }
+                        // The window's end needs no edge of its own: every ring sits in LAEnds, whose live copy goes then.
+                        .mask { LAGate(from: span.from, until: span.until == state.end ? nil : span.until).frame(width: 110, height: 110) }
                 }
             }
         }
         .frame(width: 90, height: 90)
         .scaleEffect(size / 90)
         .frame(width: size, height: size)
+    }
+}
+
+/// The stretch of a window a copy of the time left is ever seen in: before the last half hour, in it, or both.
+enum LATimePart { case all, early, late }
+
+extension View {
+    /// Shown from `from` until `until` (LAGate) — or, `never`, not drawn at all (the other copy of the time left draws
+    /// it, so the line's room is the same). iOS ends a card whose archive passes ~2 MB, and every edge still to come
+    /// (five timer bars) adds to it; on an island iPhone the island's views count too: a fresh card was 2.3 MB and iOS
+    /// removed it within 2 s (chronod: archiveTooLarge, 2026-10-16). Draw and gate only what can show.
+    @ViewBuilder func shown(from: Date?, until: Date?, never: Bool = false) -> some View {
+        if !never { mask { LAGate(from: from, until: until) } }
     }
 }
 
@@ -3979,6 +4002,8 @@ struct LAGate: View {
     }
     private static let steps = 5
     private static let fadeLength: TimeInterval = 0.15   // owner: 0.15 s (1.5, 0.5, 0.25 read as lag)
+    /// The island's views flip (`laInstantGates`): fewer timer bars in the card's archive.
+    @Environment(\.laInstantGates) private var instant
 
     /// When the last half hour's red begins: 1 s after the time left turns "30" (owner: white "30" fades to red "30").
     /// The words under an hour come from the per-second countdown (LAMinuteWords), which reads "30" from end − 30:59, so
@@ -3989,7 +4014,7 @@ struct LAGate: View {
         // An edge already passed when this is drawn is drawn solid: its stock bar re-filled on every update, sweeping a
         // look across the card (owner). Only edges still to come are bars (empty until then, so nothing moves).
         let now = Date()
-        let style = Self.style
+        let style = instant ? 1 : Self.style
         Group {
             if let from, from > now {
                 if style == 2 { fadeIn(from, now: now) } else { edge(from, fill: .white, ground: .black, lift: -0.35, span: style == 1 ? 0.05 : 1) }

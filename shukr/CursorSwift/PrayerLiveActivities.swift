@@ -561,6 +561,7 @@ enum PrayerLiveActivities {
                 let start = Date().addingTimeInterval(-ago * 60), end = start.addingTimeInterval((arg("-laLength") ?? 90) * 60)
                 _ = try? Activity.request(attributes: PrayerWindowAttributes(n: 99),
                                           content: .init(state: .init(label: "Asr", start: start, end: end, symbol: prayerIcon(for: "Asr"),
+                                                                      dark: dark(for: "Asr"),   // the card look, as a real card's
                                                                       last: args.contains("-laLast") ? true : nil,
                                                                       toppedUp: args.contains("-laToppedUp") ? "4" : nil), staleDate: end),
                                           pushType: nil)
