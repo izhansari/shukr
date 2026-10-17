@@ -48,6 +48,13 @@ struct MainCircleView: View {
     /// removal transition never animated, so the full ring cut out in one frame and the arc faded in from nothing — a
     /// blink at the end of every mark (Sami's audit, 2026-10-02, finding 1; his verified fix).
     @State private var flourishOut = false
+    /// Today's prayers as the mark left them: the day ring the flourish folds into (CompletionFlourish).
+    @State private var flourishDay: [DayPrayer] = []
+    /// A tap on the circle while a mark's flourish holds: it goes now (out, then the next face in).
+    @State private var flourishSkipped = false
+    /// The day's page comes next (the fifth of the five, the list up): the flourish's ring stays while the page's own,
+    /// already whole, comes in under it, then goes unseen.
+    @State private var flourishLands = false
     private var contentHidden: Bool { flourish != nil && !flourishOut }
     /// The face the circle is showing (CircleMoments.swift): changed only by a moment, so the data changing (a mark,
     /// an unmark, a window ending) never swaps the words in place — they go out, then the new ones come in. nil = not
@@ -394,10 +401,11 @@ struct MainCircleView: View {
             }
 
             if let flourish {
-                CompletionFlourish(event: flourish)
+                CompletionFlourish(event: flourish, day: flourishDay)
                     .id(flourishID)
-                    .opacity(flourishOut ? 0 : 1)
+                    .opacity(flourishSkipped || (flourishOut && !flourishLands) ? 0 : 1)
                     .animation(.easeInOut(duration: CircleMotion.flourishOutDuration), value: flourishOut)
+                    .animation(.easeOut(duration: CircleMomentTiming.out), value: flourishSkipped)
                     // In at once (its arc takes over from the prayer's in place), out with a fade.
                     .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
@@ -818,13 +826,28 @@ struct MainCircleView: View {
         run(.marking, settle: {
             flourish = nil
             flourishOut = false
+            flourishSkipped = false
+            flourishLands = false
             displayedFace = derivedFace
             CircleStage.shared.holdRow(nil)
         }) {
             flourishID += 1
             flourishOut = false
+            flourishSkipped = false
+            flourishLands = false
+            flourishDay = viewModel.todaysPrayers.map(DayPrayer.init)
             withAnimation(.easeOut(duration: CircleMotion.flourishCoverDuration)) { flourish = event }
-            guard await CircleGate.pause(CompletionFlourish.duration) else { return }
+            // Its length, or until a tap on the circle: then it goes first (out, then in — never two words at once).
+            let ends = Uptime.now + CompletionFlourish.duration
+            while Uptime.now < ends, !flourishSkipped {
+                guard await CircleGate.pause(1.0 / 30) else { return }
+            }
+            if flourishSkipped { guard await CircleGate.pause(CircleMomentTiming.outDone) else { return } }
+            // The day's page next, its ring whole at once: the flourish's ring is the same ring, so it hands over in place.
+            if case .summary = derivedFace, summaryShowsScore ?? summaryWantsScore, !flourishSkipped {
+                flourishLands = true
+                DayRingHandoff.mark()
+            }
             // The next prayer / the summary goes in while the words are still hidden, with no animation (the name and
             // icon morphed Maghrib → Isha as they faded in), then fades in.
             quietly { displayedFace = derivedFace }
@@ -840,7 +863,7 @@ struct MainCircleView: View {
                 live?.postSalahNudge = event.name
             }
             guard await CircleGate.pause(0.5) else { return }
-            quietly { flourish = nil; flourishOut = false }
+            quietly { flourish = nil; flourishOut = false; flourishSkipped = false; flourishLands = false }
         }
     }
 
@@ -922,6 +945,8 @@ struct MainCircleView: View {
     
     private func handleTap() {
         TourRuntime.shared.event(.circleTapped)   // the tour's first step ends on this tap
+        // A mark's flourish holding the day ring: a tap moves on to the next prayer.
+        if flourish != nil, !flourishOut, !flourishSkipped { flourishSkipped = true; return }
         if excusedShown != nil { NotificationCenter.default.post(name: Excused.openSheet, object: nil); return }
         guard morningShown == nil, lostShown == nil else { return }
         // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
@@ -952,6 +977,18 @@ struct MainCircleView: View {
 }
 
 
+
+/// A mark's flourish folded into the day ring and the day's page comes next: it shows its ring whole at once instead of
+/// drawing it again (`playMarking` → `summaryCircle.drawTo`). Taken once, within a moment of being set.
+@MainActor enum DayRingHandoff {
+    private static var at: TimeInterval?
+    static func mark() { at = Uptime.now }
+    static func take() -> Bool {
+        defer { at = nil }
+        guard let at else { return false }
+        return Uptime.now - at < 1.5
+    }
+}
 
 struct summaryCircle: View, Equatable {
     static func == (a: summaryCircle, b: summaryCircle) -> Bool {
@@ -1104,6 +1141,22 @@ struct summaryCircle: View, Equatable {
         if ringFade < 1 { withTransaction(quiet) { drawn = 0; ringFade = 1 } }
         let today = PrayerNotificationID.dayKey(PrayerDay.date())
         let first = UserDefaults.standard.string(forKey: Self.firstDrawKey) != today && !TourRuntime.shared.active
+        // Straight from the last mark's flourish, which drew this ring already: whole at once; a first showing still
+        // counts its score up.
+        if DayRingHandoff.take() {
+            withTransaction(quiet) { drawn = 1 }
+            guard first else { return }
+            UserDefaults.standard.set(today, forKey: Self.firstDrawKey)
+            withTransaction(quiet) { countedScore = 0 }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(CircleMotion.flourishUncoverDuration))
+                guard countedScore != nil else { return }
+                withAnimation(CircleMotion.dayScoreCount) { countedScore = shownScore }
+                try? await Task.sleep(for: .seconds(0.8))
+                countedScore = nil
+            }
+            return
+        }
         guard first else {
             withAnimation(CircleMotion.dayRingDraw) { drawn = 1 }
             return

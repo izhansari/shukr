@@ -104,6 +104,8 @@ struct DayRing: View, Animatable {
     let day: [DayPrayer]
     let picked: Int?
     var drawn: CGFloat = 1
+    /// A fifth not drawn here: a mark's moment draws its own over this ring as it folds in (CompletionFlourish).
+    var hidden: Int? = nil
     let onPick: (Int) -> Void
     var animatableData: CGFloat {
         get { drawn }
@@ -115,7 +117,7 @@ struct DayRing: View, Animatable {
     @Environment(\.circleTheme) private var theme
 
     static let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-    private static let gap = 0.014
+    static let gap = 0.014
 
     var body: some View {
         // Half the prayer arc's band: the five grade colours together are loud, so thin (owner, 2026-10-15).
@@ -153,7 +155,7 @@ struct DayRing: View, Animatable {
                             .stroke(Color.secondary.opacity(0.18), style: StrokeStyle(lineWidth: theme.arc.width * 0.5, lineCap: .round, dash: [1, 7]))
                     }
                 }
-                .opacity(share < 0.001 ? 0 : (on ? 1 : 0.25))   // undrawn: nothing (a zero trim still drew a cap)
+                .opacity(share < 0.001 || hidden == i ? 0 : (on ? 1 : 0.25))   // undrawn: nothing (a zero trim still drew a cap)
             }
         }
         .rotationEffect(.degrees(-90))

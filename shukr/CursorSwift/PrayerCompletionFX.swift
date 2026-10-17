@@ -7,8 +7,9 @@
 //  - `PrayerViewModel.togglePrayerCompletion` posts `.prayerCompleted` with a
 //    `PrayerCompletionEvent` and plays `PrayerCompletionHaptics`.
 //  - The main circle (`MainCircleView`) overlays `CompletionFlourish`: the progress arc sweeps
-//    closed in the score's colour, the ring glows, "Asr · Middle · 88" shows, then the next
-//    prayer blurs in.
+//    closed in the score's colour with a dot where it was marked, the ring glows, "Asr · Middle · 88"
+//    shows, the ring folds into its fifth of the day ring and the day so far draws in round it, then
+//    the next prayer blurs in.
 //  - The prayer list (`TodaysPrayerListView`) pops the row's dot with a ripple
 //    (`CompletionDotPop`), then folds the row away; done prayers come back when all five are.
 //  - Perfect day = all five Early: the dots pop in turn and "✦ perfect day" shows.
@@ -104,98 +105,164 @@ enum PrayerCompletionHaptics {
 /// Drawn over the main circle for `duration` after a completion. Underneath, `MainCircleView` keeps showing the face it
 /// had (the prayer just marked) and fades its words out as this comes in — the arcs are the same size and colour, so the
 /// sweep carries on from where the prayer's arc was. The next face comes in as this fades (the runner, `playMarking`).
-/// One keyframe animation from its appearance (the sweep, the words, the glow): it was three delayed animations and a
-/// timer, with look-dependent timings (audit A).
+///
+/// The fold into the day (owner, 2026-10-17: "You complete a prayer, and then you see the circle appear on the current
+/// time on that ring. Then that whole ring goes to the fifth that it's going to be in when we look at the day ring at the
+/// end of the day. And then you see a preview of what your day ring is going to look like"; "we just put the dot on the
+/// ring during the sweep in a nice micro-animation. After sweeping, it smoothly glides it into the fifth"):
+/// the arc sweeps closed and the day ring's hollow dot pops in where it was marked; the whole ring then folds along
+/// itself into the prayer's fifth (its ends slide to the fifth's, the dot rides along, the band thins to the day ring's);
+/// the other fifths draw in round it (`DayRing`, marked in their colours, the rest faint dashes) with "N of 5 today"
+/// under the words; it holds, then the next prayer comes in. One dial, `t` in seconds, with every beat eased on its own
+/// stretch of it (Journey's way, JourneyMotion): one keyframe track, no delayed animations.
 struct CompletionFlourish: View {
     let event: PrayerCompletionEvent
-    static let duration: Double = 1.8
+    /// Today's prayers after the mark (the day ring's preview); empty = the sweep only, no fold.
+    var day: [DayPrayer] = []
+    static let duration: Double = 3.2
 
     /// The arc's width is the theme's (`theme.arc`: the soft ring's 6 pt, Today's 4) — a look, not a timing.
     @Environment(\.circleTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var color: Color { PrayerScoring.color(for: event.score) }
-
-    private struct Frame {
-        var sweep: Double
-        var glow: Double = 0
-        var words: Double = 0
+    /// The prayer's fifth on the day ring (Fajr at the top); nil = no fold.
+    private var fifth: Int? {
+        guard !day.isEmpty else { return nil }
+        return DayRing.order.firstIndex(of: event.prayerName ?? event.name)
     }
+    private var tally: Int { day.filter(\.done).count }
+
     /// Flipped as it appears: the keyframes play from it (`KeyframeAnimator(repeating: false)` drew their end at once).
     @State private var started = false
 
     var body: some View {
-        let start = min(max(event.progress, 0.02), 1)
         ZStack {}
-        .keyframeAnimator(initialValue: Frame(sweep: start), trigger: started) { _, f in
-            ZStack {
-                // The arc closes from where the prayer was to a full ring.
-                Circle()
-                    .trim(from: 0, to: f.sweep)
-                    .stroke(color, style: StrokeStyle(lineWidth: theme.arc.width, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 200, height: 200)
-                    .shadow(color: color.opacity(0.6 * f.glow), radius: 12 * f.glow)
-                    .shadow(color: color.opacity(0.35 * f.glow), radius: 24 * f.glow)
-
-                VStack(spacing: 4) {
-                    HStack(alignment: .center, spacing: 8) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 22, weight: .light))
-                        Text(event.name)
-                            .font(.system(size: 32, weight: .light, design: .rounded))
-                    }
-                    Text(event.summary ?? PrayerScoring.summary(for: event.score))
-                        .font(.subheadline)
-                        .fontDesign(.rounded)
-                        .fontWeight(.thin)
-                        // The grade's colour only for Perfect; every other grade in plain ink (owner, 2026-10-17: "that
-                        // yellow color is really hard to read … we only show the color if it's in the Perfect window").
-                        .foregroundStyle(PrayerScoring.grade(for: event.score) == .perfect ? color : .primary)
-                        // Inside the ring: "Jumu'ah at Islamic Center of Morrisville" ran out past both sides of it
-                        // (owner, 2026-10-02). Two centred lines at most, a touch smaller if it must.
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.8)
-                        .frame(maxWidth: 150)
-                }
-                .opacity(f.words)
-                .blur(radius: reduceMotion ? 0 : 4 * (1 - f.words))
-            }
+        .keyframeAnimator(initialValue: 0.0, trigger: started) { _, clock in
+            face(at: reduceMotion ? Self.restAt : clock)
         } keyframes: { _ in
-            KeyframeTrack(\.sweep) {
-                CubicKeyframe(1, duration: Self.sweepDuration)
-            }
-            // In just after the sweep starts; out so it's gone just as the next face starts in (at `duration`):
-            // earlier, the circle sat empty for a beat between "✓ Maghrib" and "NEXT Isha" (owner, 2026-10-02).
-            KeyframeTrack(\.words) {
-                LinearKeyframe(0, duration: Self.wordsInDelay)
-                CubicKeyframe(1, duration: Self.wordsInDuration)
-                LinearKeyframe(1, duration: Self.duration - Self.wordsInDelay - Self.wordsInDuration - Self.wordsOutLead)
-                CubicKeyframe(0, duration: Self.wordsOutDuration)
-            }
-            KeyframeTrack(\.glow) {
-                LinearKeyframe(0, duration: Self.glowDelay)
-                CubicKeyframe(1, duration: Self.glowInDuration)
-                LinearKeyframe(1, duration: Self.glowHold)
-                CubicKeyframe(0, duration: Self.glowOutDuration)
-            }
+            LinearKeyframe(Self.duration, duration: Self.duration)
         }
         .onAppear { started = true }
         .allowsHitTesting(false)
     }
 
-    // Its phases (the same in every look).
-    private static let sweepDuration: Double = 0.55
+    private func face(at t: Double) -> some View {
+        let start = min(max(event.progress, 0.02), 1)
+        let mark = min(max(event.progress, 0), 1)
+        let folds = fifth != nil
+        // The beats.
+        let sweep = start + (1 - start) * Double(M.out(M.seg(CGFloat(t), 0, Self.sweepEnd)))
+        let dotIn = Double(M.seg(CGFloat(t), Self.dotAt, Self.dotAt + Self.dotDuration))
+        let glow = Double(M.out(M.seg(CGFloat(t), 0.3, 0.55)) * (1 - M.io(M.seg(CGFloat(t), 0.6, 1.0))))
+        let glide = folds ? Double(M.io(M.seg(CGFloat(t), Self.glideAt, Self.glideAt + Self.glideDuration))) : 0
+        let others = folds ? M.io(M.seg(CGFloat(t), Self.othersAt, Self.othersAt + Self.othersDuration)) : 0
+        let wordsOut = Double(M.io(M.seg(CGFloat(t), Self.duration - Self.wordsOutLead, Self.duration - Self.wordsOutLead + Self.wordsOutDuration)))
+        let words = Double(M.io(M.seg(CGFloat(t), Self.wordsInAt, Self.wordsInAt + Self.wordsInDuration))) * (1 - wordsOut)
+        let tallyIn = folds ? Double(M.io(M.seg(CGFloat(t), Self.tallyAt, Self.tallyAt + 0.35))) * (1 - wordsOut) : 0
+        // Where the fifth is (DayRing's own sums), and the ring folding into it.
+        let i = Double(fifth ?? 0)
+        let from = i / 5 + DayRing.gap, full = (i + 1) / 5 - DayRing.gap
+        let lo = glide * from, hi = sweep + (full - sweep) * glide
+        let dotTurn = mark + (from + (full - from) * mark - mark) * glide
+        let width = theme.arc.width * (1 - 0.5 * glide)
+        return ZStack {
+            ZStack {
+                // The other four fifths, drawn in round it.
+                if folds, others > 0 {
+                    DayRing(day: day, picked: nil, drawn: others, hidden: fifth, onPick: { _ in })
+                }
+                ZStack {
+                    // The arc closes from where the prayer was to a full ring, then folds into the fifth.
+                    Circle()
+                        .trim(from: lo, to: hi)
+                        .stroke(color.opacity(1 - 0.28 * glide), style: StrokeStyle(lineWidth: width, lineCap: theme.arc.cap))
+                    // When it was prayed: the day ring's hollow dot, popped in on the arc during the sweep.
+                    if folds {
+                        Circle().fill(theme.surface)
+                            .overlay(Circle().strokeBorder(color, lineWidth: 2.4))
+                            .frame(width: 12, height: 12)
+                            .scaleEffect(reduceMotion ? 1 : Self.pop(dotIn))
+                            .opacity(min(dotIn * 3, 1))
+                            .offset(x: 100)
+                            .rotationEffect(.degrees(360 * dotTurn))
+                    }
+                }
+                .rotationEffect(.degrees(-90))
+                .frame(width: 200, height: 200)
+                .shadow(color: color.opacity(0.6 * glow), radius: 12 * glow)
+                .shadow(color: color.opacity(0.35 * glow), radius: 24 * glow)
+            }
+            // Faded as one when it goes (over the next prayer's ring coming in).
+            .compositingGroup()
+
+            VStack(spacing: 4) {
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 22, weight: .light))
+                    Text(event.name)
+                        .font(.system(size: 32, weight: .light, design: .rounded))
+                }
+                Text(event.summary ?? PrayerScoring.summary(for: event.score))
+                    .font(.subheadline)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
+                    // The grade's colour only for Perfect; every other grade in plain ink (owner, 2026-10-17: "that
+                    // yellow color is really hard to read … we only show the color if it's in the Perfect window").
+                    .foregroundStyle(PrayerScoring.grade(for: event.score) == .perfect ? color : .primary)
+                    // Inside the ring: "Jumu'ah at Islamic Center of Morrisville" ran out past both sides of it
+                    // (owner, 2026-10-02). Two centred lines at most, a touch smaller if it must.
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: 150)
+                if folds {
+                    // The day so far, the grey line (laid out from the start, so nothing above it moves).
+                    Text("\(tally) of 5 today")
+                        .font(.footnote).fontWeight(.light).fontDesign(.rounded)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 2)
+                        .opacity(tallyIn)
+                }
+            }
+            .opacity(words)
+            .blur(radius: reduceMotion ? 0 : 4 * (1 - words))
+        }
+    }
+
+    // The dial's eases (JourneyMotion's): a beat's share of its stretch, eased in-out or out.
+    private enum M {
+        static func seg(_ t: CGFloat, _ a: CGFloat, _ b: CGFloat) -> CGFloat { min(max((t - a) / (b - a), 0), 1) }
+        static func io(_ x: CGFloat) -> CGFloat { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
+        static func out(_ x: CGFloat) -> CGFloat { 1 - pow(1 - x, 3) }
+    }
+
+    /// The dot's pop: up a touch past its size, then back (back-out ease).
+    private static func pop(_ x: Double) -> Double {
+        let c1 = 1.6, c3 = c1 + 1
+        return x <= 0 ? 0 : 1 + c3 * pow(x - 1, 3) + c1 * pow(x - 1, 2)
+    }
+
+    // Its beats, in seconds from the mark (the same in every look).
+    private static let sweepEnd: Double = 0.55
+    /// The dot lands just after the sweep sets off, where the arc was.
+    private static let dotAt: Double = 0.08
+    private static let dotDuration: Double = 0.4
     /// In once the circle's own words have gone (CircleMotion.flourishCoverDuration): never two texts at once (rule 3).
-    private static let wordsInDelay: Double = CircleMotion.flourishCoverDuration
+    private static let wordsInAt: Double = CircleMotion.flourishCoverDuration
     private static let wordsInDuration: Double = 0.3
-    /// The words start going this long before `duration`, over `wordsOutDuration`.
+    /// The fold, once the sweep has closed and the glow has eased.
+    private static let glideAt: Double = 0.8
+    private static let glideDuration: Double = 0.9
+    /// The other fifths draw in as the fold lands.
+    private static let othersAt: Double = 1.35
+    private static let othersDuration: Double = 1.0
+    private static let tallyAt: Double = 1.7
+    /// The words start going this long before `duration`, over `wordsOutDuration`: gone just as the next face starts in
+    /// (earlier, the circle sat empty for a beat between "✓ Maghrib" and "NEXT Isha" — owner, 2026-10-02).
     private static let wordsOutLead: Double = 0.24
     private static let wordsOutDuration: Double = 0.26
-    private static let glowDelay: Double = 0.5
-    private static let glowInDuration: Double = 0.3
-    private static let glowHold: Double = 0.05
-    private static let glowOutDuration: Double = 0.8
+    /// Reduce Motion: the folded day, at once.
+    private static let restAt: Double = 2.6
 }
 
 // MARK: - Row dot pop

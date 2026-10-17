@@ -320,16 +320,8 @@ enum WatchZikrSync {
         }
         if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, at] }
         UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
-        // On screen, and about today's prayer day: the app's own completion moment, as for a mark
-        // made here. (Yesterday's Isha delivered after Fajr must not play on today's circle.)
-        if UIApplication.shared.applicationState == .active,
-           Calendar.current.isDate(startDate, inSameDayAs: PrayerDay.date()) {
-            let window = endDate.timeIntervalSince(startDate)
-            let progress = window > 0 ? tapped.timeIntervalSince(startDate) / window : 1
-            NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
-                name: prayer.displayName, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1),
-                summary: prayer.scoreSummary, prayerName: prayer.name))   // the circle holds that row under the flourish
-        }
+        // No completion moment on the phone for a watch mark: it was made elsewhere, so the circle just moves on, as for
+        // a widget or notification mark (owner, 2026-10-17, the mark's fold into the day ring).
         NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
         WidgetCenter.shared.reloadAllTimelines()
         scheduleSend()

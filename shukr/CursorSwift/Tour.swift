@@ -2613,7 +2613,7 @@ struct BubbleShape: Shape {
                 run += 1
                 let thisRun = run
                 Task {
-                    try? await Task.sleep(for: .seconds(2.4))   // after the mark's own flourish
+                    try? await Task.sleep(for: .seconds(CompletionFlourish.duration + 0.6))   // after the mark's own flourish
                     guard run == thisRun, self.step == nil else { return }
                     withAnimation(.easeOut(duration: CircleMotion.quick)) { self.step = .celebrate }
                 }
