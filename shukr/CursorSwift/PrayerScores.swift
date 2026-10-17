@@ -64,6 +64,17 @@ struct PrayerScores {
         var change: Int { now - before }
     }
 
+    /// The days the page covers (owner, 2026-10-17: "toggles it from an all-time view to a 30-day view or a seven-day
+    /// view"; "we can do all time, 30 days, 7 days").
+    enum Span: String, CaseIterable {
+        case all, days30 = "30", days7 = "7"
+        var days: Int? { switch self { case .all: nil; case .days30: 30; case .days7: 7 } }
+        var title: String { switch self { case .all: "All time"; case .days30: "30 days"; case .days7: "7 days" } }
+        /// Under the ring's number.
+        var ringLabel: String { switch self { case .all: "average\nlifetime score"; case .days30: "average score\nlast 30 days"; case .days7: "average score\nlast 7 days" } }
+    }
+    var span = Span.all
+
     var prayers: [String: Prayer] = [:]
     var since: Date?
     var prayedScore: Int?
@@ -77,20 +88,26 @@ struct PrayerScores {
     var ranked: [String] { Self.names.sorted { (prayers[$0]?.prayedRaw ?? -1) > (prayers[$1]?.prayedRaw ?? -1) } }
 
     @MainActor static var last: PrayerScores?
+    /// The page's last build for each span (all time is `last`), shown at once while a fresh one is read.
+    @MainActor static var lastBySpan: [Span: PrayerScores] = [:]
 
-    static func load(container: ModelContainer, ranges: [ExcusedRange], now: Date = Date()) async -> PrayerScores {
+    static func load(container: ModelContainer, ranges: [ExcusedRange], now: Date = Date(), span: Span = .all) async -> PrayerScores {
         await Task.detached(priority: .userInitiated) {
             let context = ModelContext(container)
             let log = JourneyLog.build(in: context, ranges: ranges, now: now)
-            return build(log: log, context: context, now: now)
+            return build(log: log, context: context, now: now, span: span)
         }.value
     }
 
-    static func build(log: JourneyLog, context: ModelContext, now: Date) -> PrayerScores {
+    static func build(log: JourneyLog, context: ModelContext, now: Date, span: Span = .all) -> PrayerScores {
         var out = PrayerScores()
-        let days = log.days.values.filter(\.active).sorted { $0.date < $1.date }
-        out.since = days.first?.date
+        out.span = span
         let today = Calendar.current.startOfDay(for: now)
+        let allDays = log.days.values.filter(\.active).sorted { $0.date < $1.date }
+        // The span's days only (the trends below still compare across all of them).
+        let from = span.days.flatMap { Calendar.current.date(byAdding: .day, value: -($0 - 1), to: today) }
+        let days = from.map { f in allDays.filter { $0.date >= f } } ?? allDays
+        out.since = days.first?.date
         let recent30 = Calendar.current.date(byAdding: .day, value: -30, to: today) ?? today
 
         // Places: the completed rows' masjid names and spots, one per prayer per day.
@@ -164,8 +181,8 @@ struct PrayerScores {
             out.due += p.due
         }
         out.prayedScore = allScores.isEmpty ? nil : Int((allScores.reduce(0, +) / Double(allScores.count) * 100).rounded())
-        out.trend7 = trends(days: days, last: 7, today: today)
-        out.trend30 = trends(days: days, last: 30, today: today)
+        out.trend7 = trends(days: allDays, last: 7, today: today)
+        out.trend30 = trends(days: allDays, last: 30, today: today)
         return out
     }
 
@@ -223,7 +240,11 @@ struct PrayerScores {
         let order = ranked.filter { (prayers[$0]?.prayed ?? 0) >= 5 }
         guard let top = order.first, let bottom = order.last, order.count >= 2 else { return nil }
         let share = { (n: String) -> Double in let p = prayers[n]; return Double(p?.prayed ?? 0) / Double(max(1, p?.due ?? 0)) }
-        guard let needs = order.min(by: { share($0) < share($1) }) else { return nil }
+        // The least prayed needs you most; when they're all prayed as often (a clean week), the lowest score does — never
+        // the strongest one twice ("Maghrib is your strongest. Maghrib needs you most." on a 7-day view).
+        guard let leastPrayed = order.min(by: { share($0) < share($1) }) else { return nil }
+        let needs = share(leastPrayed) < share(top) ? leastPrayed : bottom
+        guard needs != top else { return ("\(top) is your strongest.", nil) }
         let sub = bottom == needs || bottom == top ? nil : "\(bottom) is your latest when you pray it"
         return ("\(top) is your strongest. \(needs) needs you most.", sub)
     }
@@ -263,7 +284,10 @@ struct PrayerScoresPage: View {
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var data = PrayerScores.last ?? PrayerScores()
+    @AppStorage("prayerScores.span") private var spanRaw = PrayerScores.Span.all.rawValue
+    private var span: PrayerScores.Span { PrayerScores.Span(rawValue: spanRaw) ?? .all }
+    @State private var data = PrayerScores.lastBySpan[PrayerScores.Span(rawValue: UserDefaults.standard.string(forKey: "prayerScores.span") ?? "") ?? .all]
+        ?? PrayerScores.last ?? PrayerScores()
     @State private var loadToken = 0
 
     // The transition's state (A = all five, B = one prayer). The picked row is one view the whole way: the others fade, then
@@ -294,6 +318,7 @@ struct PrayerScoresPage: View {
         ScrollView {
             VStack(spacing: 0) {
                 header.padding(.top, 4)
+                spanSwitch.padding(.top, 10)
                 rows.padding(.top, folded ? 10 : 18)
                 if selected != nil { detail }
                 footnote
@@ -330,6 +355,10 @@ struct PrayerScoresPage: View {
             if let s = shown, let p = data.prayers[s] { PrayerScoresMap(name: s, pins: p.pins) }
         }
         .task { reload() }
+        .onChange(of: spanRaw) {
+            if let cached = PrayerScores.lastBySpan[span] { data = cached }
+            reload()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
         #if DEBUG
         .task {
@@ -345,10 +374,12 @@ struct PrayerScoresPage: View {
         loadToken += 1
         let token = loadToken, container = context.container, ranges = Excused.ranges
         Task {
-            let built = await PrayerScores.load(container: container, ranges: ranges)
+            let span = self.span
+            let built = await PrayerScores.load(container: container, ranges: ranges, span: span)
             guard token == loadToken else { return }
             data = built
-            PrayerScores.last = built
+            PrayerScores.lastBySpan[span] = built
+            if span == .all { PrayerScores.last = built }
         }
     }
 
@@ -437,7 +468,7 @@ struct PrayerScoresPage: View {
                     .opacity(linesFaded ? 0 : 1)
                 // What the number is (owner: "a little subtitle … saying like average lifetime score"); sized for the ring
                 // drawn at 70 % beside the title.
-                Text("average\nlifetime score")
+                Text(span.ringLabel)
                     .font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .opacity(linesFaded ? 0 : 1)
@@ -470,7 +501,7 @@ struct PrayerScoresPage: View {
                      ?? "Not enough yet to say when you usually pray it.")
                     .font(.system(size: 14, weight: .light, design: .rounded))
             } else {
-                Text("\(data.prayed.formatted()) of \(data.due.formatted()) prayed\(sinceWords.map { " · since \($0)" } ?? "")")
+                Text("\(data.prayed.formatted()) of \(data.due.formatted()) prayed\(sinceWords.map { " · \($0)" } ?? "")")
                     .font(.system(size: 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
             trendLine(shown ?? "all")
@@ -480,11 +511,23 @@ struct PrayerScoresPage: View {
         .opacity(linesFaded ? 0 : 1)
     }
 
-    private var sinceWords: String? { data.since?.formatted(.dateTime.month(.abbreviated).year()) }
+    /// "since Jul 2026", or the span's own words.
+    private var sinceWords: String? {
+        switch span {
+        case .all: data.since.map { "since \($0.formatted(.dateTime.month(.abbreviated).year()))" }
+        case .days30: "in the last 30 days"
+        case .days7: "in the last 7 days"
+        }
+    }
 
     /// "Last 7 days ↑3 · last 30 days steady" as one text, so it wraps beside the ring.
     @ViewBuilder private func trendLine(_ key: String) -> some View {
-        let parts = [("Last 7 days", data.trend7[key]), ("last 30 days", data.trend30[key])].compactMap { label, t in t.map { (label, $0) } }
+        // All time: the last week and month; a span: against the same span just before it.
+        let parts: [(String, PrayerScores.Trend)] = switch span {
+        case .all: [("Last 7 days", data.trend7[key]), ("last 30 days", data.trend30[key])].compactMap { label, t in t.map { (label, $0) } }
+        case .days30: [("Vs the 30 days before", data.trend30[key])].compactMap { label, t in t.map { (label, $0) } }
+        case .days7: [("Vs the week before", data.trend7[key])].compactMap { label, t in t.map { (label, $0) } }
+        }
         if !parts.isEmpty {
             parts.enumerated().reduce(Text("")) { line, item in
                 let (i, part) = item
@@ -533,7 +576,9 @@ struct PrayerScoresPage: View {
                             .opacity(othersFaded || linesFaded ? 0 : 1)   // fades with the rows, both ways
                     }
                     if let name = selected {
-                        Text(statLine(name))
+                        // No score here: the ring has it, large (owner, 2026-10-17: "get rid of the score here … because we
+                        // already show it in the ring").
+                        Text(prayedLine(name))
                             .modifier(PrayerScoresHeroFont(size: folded ? 15 : 12.5))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -549,7 +594,21 @@ struct PrayerScoresPage: View {
         .padding(.leading, 4)
     }
 
-    /// "97 · 98% prayed" (a row's line, and an open prayer's under its name).
+    /// All time | 30 days | 7 days, under the header (owner: "we have a lot of space where the header is"); the choice
+    /// stays.
+    private var spanSwitch: some View {
+        JourneySwitch(options: PrayerScores.Span.allCases.map { ($0.title, $0.rawValue) }, selection: $spanRaw)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 4)
+    }
+
+    /// "98% prayed" (an open prayer's line under its name).
+    private func prayedLine(_ name: String) -> String {
+        guard let p = data.prayers[name], p.due > 0 else { return " " }
+        return "\(Int((Double(p.prayed) / Double(p.due) * 100).rounded()))% prayed"
+    }
+
+    /// "97 · 98% prayed" (a row's line).
     private func statLine(_ name: String) -> String {
         guard let p = data.prayers[name] else { return " " }
         return p.prayedScore.map { "\($0) · \(Int((Double(p.prayed) / Double(max(1, p.due)) * 100).rounded()))% prayed" } ?? "Not enough yet"
@@ -670,7 +729,7 @@ struct PrayerScoresPage: View {
                 + Text(" of \(p.prayed) prayed").foregroundStyle(.secondary)
             } else {
                 Text("\(p.prayed) prayed").foregroundStyle(.primary)
-                + Text("\(sinceWords.map { " since \($0)" } ?? "") · \(p.missed) missed").foregroundStyle(.secondary)
+                + Text("\(sinceWords.map { " \($0)" } ?? "") · \(p.missed) missed").foregroundStyle(.secondary)
             }
         }
         .font(.system(size: 15, weight: .light, design: .rounded))
