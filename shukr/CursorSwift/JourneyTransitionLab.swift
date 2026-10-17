@@ -479,19 +479,9 @@ private struct LabCard: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// JourneyHomeCard's colours.
-    static func color(_ kind: YourJourneyStats.Kind, dark: Bool) -> Color {
-        switch kind {
-        case .none: return dark ? Color(red: 0x2E / 255, green: 0x30 / 255, blue: 0x35 / 255)
-                                : Color(red: 126 / 255, green: 132 / 255, blue: 143 / 255).opacity(0.14)
-        case .some: return dark ? Color(red: 0x55 / 255, green: 0x57 / 255, blue: 0x5D / 255)
-                                : Color(red: 35 / 255, green: 38 / 255, blue: 44 / 255).opacity(0.30)
-        case .allFive: return dark ? Color(red: 0xA9 / 255, green: 0xAB / 255, blue: 0xB1 / 255)
-                                   : Color(red: 35 / 255, green: 38 / 255, blue: 44 / 255).opacity(0.62)
-        case .allInTime: return dark ? Color(red: 0x4C / 255, green: 0x8E / 255, blue: 0x62 / 255)
-                                     : Color(red: 52 / 255, green: 199 / 255, blue: 89 / 255).opacity(0.55)
-        }
-    }
+    /// The card's colours: the shared ones (JourneyTileColor), so the lab and Journey always match (owner, 2026-10-16: "the
+    /// card takes the month's colors").
+    static func color(_ kind: YourJourneyStats.Kind, dark: Bool) -> Color { JourneyTileColor.of(kind, dark: dark) }
 }
 
 private struct LabRow: View {

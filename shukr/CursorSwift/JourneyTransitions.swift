@@ -576,6 +576,8 @@ struct JourneyMonthHost: ViewModifier {
     @State private var dayDial: CGFloat = 0
     /// The edge swipe: which dial and where it was when the finger came down.
     @State private var backDrag: (day: Bool, from: CGFloat)?
+    /// The edge swipe claims only a drag that starts sideways; one that starts up or down is the month's paging, left alone.
+    @State private var edgeSideways: Bool?
     @State private var openerID = UUID()
 
     private var today: Date { PrayerDay.start() }
@@ -733,6 +735,8 @@ struct JourneyMonthHost: ViewModifier {
     private var edgeBack: some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
             .onChanged { v in
+                if edgeSideways == nil { edgeSideways = abs(v.translation.width) >= abs(v.translation.height) }
+                guard edgeSideways == true else { return }
                 if backDrag == nil {
                     let onDay = day != nil
                     if onDay { retargetDayForBack() } else { retargetMonthForBack() }
@@ -746,6 +750,7 @@ struct JourneyMonthHost: ViewModifier {
                 withTransaction(quiet) { if drag.day { dayDial = dial } else { monthDial = dial } }
             }
             .onEnded { v in
+                defer { edgeSideways = nil }
                 guard let drag = backDrag else { return }
                 backDrag = nil
                 JourneyFrameLog.shared.stop()
