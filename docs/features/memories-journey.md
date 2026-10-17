@@ -111,8 +111,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   top bar (it fades while a day is open); the numbers with the key's rings (a tap lights those days); a window of months:
   this one in the middle, its neighbours faded above and below with "· N days · score N" (a tap on one turns to it), a drag
   turns past a quarter or a flick; the month rail down the right edge; the rings (`JourneyDayRing`). A ring's tap picks the
-  day: its top (`JourneyDayTop`, a line under it) and its bottom (`JourneyDayExtrasRow`, a line over it); the top's ring
-  flies into the day page. Day size 1 / 0.9 / 0.8 / 0.7 worked out from the room (`fitScale`); a turn redraws only the
+  day: its top (`JourneyDayTop`, a line under it) and its bottom (`JourneyDayExtrasRow`, a line over it); a tap on the top
+  opens the day, its ring flying from its cell in the calendar. Day size 1 / 0.9 / 0.8 / 0.7 worked out from the room (`fitScale`); a turn redraws only the
   calendars whose part changed (Equatable). Pinch in → the year.
 - The year (`JourneyYearView`, JourneyYear.swift): every year from the first, opening on this one; twelve small months
   (`JourneyYearMonth`, Equatable) each with its name, "N days · score N" (the month's average score) or "Away", and its days
@@ -135,7 +135,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   blank; a newer load drops an older one (`loadToken`); a page under another reloads on its return (`dirty`).
 - Transitions (JourneyTransitions.swift, the host `journeyMonthHost`): card ↔ month (tiles fly into rings, the month name
   becomes the title), month ↔ year (days fly to their squares), a ring → its day page (from a month cell or the card's top
-  ring; ‹ / edge swipe fly back). `JourneyFrameLog` (journey-transitions.log) only in DEBUG or with -journeyFrameLog.
+  ring; ‹ / edge swipe fly back). `JourneyFrameLog` (journey-transitions.log) only in DEBUG or with -journeyFrameLog or -demoJourneyFlightRun.
 - Perf log (`JourneyPerf`, JourneyPerf.swift; DEBUG, or Release with -journeyPerf): each move opens a window — frames, late,
   hitch, worst gap, main busy, body counts, timed loads — in Library/Caches/journey-perf.log. Phone runs:
   `PERF_ARGS="-journeyPerf" zsh scripts/perf-paging.sh <label> testJourneyPerfPass` (a scripted pass) or `testJourneyTurnRun`
