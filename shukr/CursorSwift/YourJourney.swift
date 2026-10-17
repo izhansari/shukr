@@ -179,7 +179,10 @@ struct JourneyHomeCard: View {
             // scrolled to bottom instead of how it opens with the furthest date at the top"): defaultScrollAnchor only
             // sets the first layout's offset, and the weeks arrive after it — so the grid stays pinned to today while
             // they do (`scrub.pinned`, the scroll geometry below).
-            .onAppear { scrub.pinned = true; toToday() }
+            .onAppear {
+                scrub.pinned = true; toToday()
+                JourneyFlightGeometry.shared.cardShow = { show($0, pick: $1) }
+            }
             .onChange(of: streakShown) { _, on in
                 if !on {
                     // Turned off by its own tap: back to where you were (owner, 2026-10-17: "if I deselect it, I want to
@@ -417,6 +420,44 @@ struct JourneyHomeCard: View {
             guard !Task.isCancelled, rail == m || rail == nil else { return }
             withAnimation(.easeOut(duration: 0.15)) { position.scrollTo(id: months[m], anchor: .center) }
         }
+    }
+
+    /// The expanded card's weeks (JourneyFlightGeometry.follow): the grid brought to them at once, under the expanded page,
+    /// so the flight back has their tiles to land in — and it stays there after, as your own scroll would leave it (no pick,
+    /// no streak, pinned to today only when they reach it). Their middle week (or the picked day's) in the middle; left as
+    /// it is (false) when it already shows them all, or — more than it holds, pinched to tiles — that week near its middle.
+    private func show(_ weeks: [Date], pick: Date?) -> Bool {
+        // The weeks as the grid reports them now — this is called from a closure set at its first appearance, whose copy of
+        // `stats` is the empty one from before the log was in.
+        let geo = JourneyFlightGeometry.shared, all = geo.weekStarts
+        guard let lo = weeks.first, let hi = weeks.last else { return false }
+        let week = pick ?? weeks[weeks.count / 2]
+        guard let i = all.firstIndex(of: week) else { return false }
+        let shown = geo.cardWeeksInView()
+        if let a = shown.first, let b = shown.last {
+            if lo >= a, hi <= b { return false }
+            if weeks.count > shown.count, let m = shown.firstIndex(of: week), abs(m - shown.count / 2) <= 1 { return false }
+        }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            picked = nil
+            streakShown = false
+            beforeStreak = (nil, false)
+        }
+        // Down to today's week: the grid at rest there, as it opens.
+        if hi == all.last || i >= all.count - max(shown.count / 2, 1) {
+            scrub.pinned = true
+            withTransaction(quiet) { position.scrollTo(edge: .bottom) }
+            return true
+        }
+        scrub.pinned = false
+        withTransaction(quiet) { position.scrollTo(id: week, anchor: .center) }
+        // Again a beat later: a far week's rows weren't built, and the lazy stack's estimate lands short (the rail's way).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            withTransaction(quiet) { position.scrollTo(id: week, anchor: .center) }
+        }
+        return true
     }
 
     /// The grid at today's week, at once — not while a tile is picked or the streak is lit.

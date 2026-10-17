@@ -179,6 +179,9 @@ struct JourneyExpandedPage: View {
         .onScrollTargetVisibilityChange(idType: Date.self, threshold: 0.5) { ids in
             let sorted = ids.sorted()
             if !sorted.isEmpty { middleWeek = sorted[sorted.count / 2] }
+            // The card under the page follows these weeks (E6, JourneyFlightGeometry.follow): the way back lands in them.
+            JourneyFlightGeometry.shared.expandedWeeks = sorted
+            JourneyFlightGeometry.shared.follow()
         }
         // Pinch in: tiles; spread: rings — the week in the middle stays where it is through the morph.
         .simultaneousGesture(MagnifyGesture().onEnded { v in
@@ -209,6 +212,10 @@ struct JourneyExpandedPage: View {
             }
         }
         .onAppear { arrive() }
+        .onChange(of: picked) { _, p in
+            JourneyFlightGeometry.shared.expandedPick = p.flatMap { p in stats.weeks.last { $0.start <= p }?.id }
+            JourneyFlightGeometry.shared.follow()
+        }
     }
 
     /// Which row carries each month's name: the middle of the rows the month's days fill (owner, 2026-10-17: "make it so the
@@ -244,9 +251,11 @@ struct JourneyExpandedPage: View {
         }
     }
 
-    /// Opened on a month (a name, This month): that month in the middle; from the ↗, today's week at the bottom (the card's).
+    /// Opened on a month (a name, This month): that month in the middle; from the ↗, the card's weeks — its middle week in the
+    /// middle, or today's week at the bottom when the card rests at today — so its tiles have rings to fly to.
     private func arrive() {
-        guard focusOnOpen, let week = stats.weeks.first(where: { $0.month?.start == opened })?.id else { return }
+        let target = focusOnOpen ? stats.weeks.first(where: { $0.month?.start == opened })?.id : JourneyFlightGeometry.shared.cardMiddle()
+        guard let week = target else { return }
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { position.scrollTo(id: week, anchor: .center) }

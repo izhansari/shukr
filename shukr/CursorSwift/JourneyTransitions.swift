@@ -188,6 +188,84 @@ enum JourneyMotion {
         }
     }
 
+    // The card follows the expanded card's weeks (E6; owner, 2026-10-17, back from weeks scrolled far from today: "it just
+    // kind of faded everything out and then faded everything in"): the card under the page is quietly scrolled to the week
+    // in the middle of the expanded view (or its picked day's), and the host's flight takes its tiles from there — so the
+    // way back always has tiles to morph into, and the card stays on those weeks after, as a scroll of yours would leave it.
+    // Done once the expanded view has been still a moment, never per scroll frame: the way back starts at once.
+
+    /// The card's grid quietly brought to the expanded view's weeks (JourneyHomeCard sets it); true if it moved.
+    var cardShow: ((_ weeks: [Date], _ pick: Date?) -> Bool)?
+    /// The host's side: the card to the weeks, then the flight's tiles from it; `done` after (JourneyMonthHost sets it).
+    var onFollow: ((_ done: @escaping () -> Void) -> Void)?
+    /// The expanded view's weeks on screen (oldest first) and its picked day's week, as it last reported them.
+    var expandedWeeks: [Date] = []
+    var expandedPick: Date?
+    private var followWork: DispatchWorkItem?
+    private var wanted = false
+    private var flushes: [() -> Void] = []
+    private var following = false
+
+    /// The expanded view's weeks or pick changed: the card follows once they've been still a moment.
+    func follow() {
+        wanted = true
+        followWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.runFollow() }
+        followWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    /// Before a flight back: a follow still waiting runs now, then `go` (at once if none is).
+    func flushFollow(_ go: @escaping () -> Void) {
+        guard wanted || following else { go(); return }
+        flushes.append(go)
+        guard !following else { return }
+        followWork?.cancel()
+        runFollow()
+    }
+
+    /// Whether a flight back must wait for a follow (the edge swipe holds its dial at the page until it's done).
+    var followPending: Bool { wanted || following }
+
+    private func runFollow() {
+        followWork = nil
+        guard wanted, let onFollow else { wanted = false; finishFollow(); return }
+        wanted = false
+        following = true
+        onFollow { [weak self] in self?.finishFollow() }
+    }
+
+    private func finishFollow() {
+        following = false
+        // A newer week came in meanwhile: a waiting flight back takes that one too.
+        if wanted, !flushes.isEmpty { runFollow(); return }
+        let f = flushes
+        flushes = []
+        f.forEach { $0() }
+    }
+
+    /// The page closed: nothing left to follow.
+    func cancelFollow() {
+        followWork?.cancel()
+        followWork = nil
+        wanted = false
+        expandedWeeks = []
+        expandedPick = nil
+    }
+
+    /// The card's week rows on screen now (oldest first): laid out and inside its grid, clear of the fade at its top — by
+    /// the rows' own reports (the grid's visibility callback can lag: on a fresh launch its range read Nov – Feb over Aug – Oct).
+    func cardWeeksInView() -> [Date] {
+        cardRows.filter { $0.value.minY >= grid.minY + 8 && $0.value.maxY <= grid.maxY + 1 }.keys.sorted()
+    }
+
+    /// The card's middle week while it isn't resting at today (the ↗ opens the expanded view there); nil at today.
+    func cardMiddle() -> Date? {
+        let shown = cardWeeksInView()
+        guard !shown.isEmpty, let last = weekStarts.last, !shown.contains(last) else { return nil }
+        return shown[shown.count / 2]
+    }
+
     /// Runs `go` once the year has laid out `month`'s small month (a frame or two after it's shown).
     func whenYearReady(_ month: Date, tries: Int = 0, _ go: @escaping () -> Void) {
         guard yearGrids[month] == nil, tries < 12 else { go(); return }
@@ -379,6 +457,25 @@ struct JourneyMonthOpen: Equatable {
     var hiddenDay: Date?
 }
 
+/// Whether any Journey flight is running (a dial animating): a reload that lands mid-flight waits for it (his phone,
+/// 2026-10-17: back from the background, the new log rebuilt the page during a weeks → year flight — 14 late, 131 ms).
+@MainActor enum JourneyFlights {
+    private(set) static var running = 0
+    private static var waiting: [() -> Void] = []
+    /// Now if nothing's flying, else once every flight has landed (in order).
+    static func whenIdle(_ go: @escaping () -> Void) {
+        if running == 0 { go() } else { waiting.append(go) }
+    }
+    fileprivate static func began() { running += 1 }
+    fileprivate static func ended() {
+        running = max(running - 1, 0)
+        guard running == 0, !waiting.isEmpty else { return }
+        let w = waiting
+        waiting = []
+        w.forEach { $0() }
+    }
+}
+
 /// The dials: read only by the few pieces that move (the open month's own cells, the fades, the title, the flying ring).
 /// An observable object put in the environment once per flight, advanced by a display link — not a value set in the
 /// environment every frame: that made SwiftUI walk all of Journey, the month and its calendars every frame (his 13 Pro Max,
@@ -404,7 +501,17 @@ struct JourneyMonthOpen: Equatable {
     /// Linearly to `to` over `duration` (the beats ease on their own stretches), then `done`.
     func animate(_ k: Key, to target: CGFloat, duration: Double, done: @escaping () -> Void) {
         runs[k] = (value(k), target, CACurrentMediaTime(), max(duration, 0.001), done)
-        if ticker == nil { ticker = JourneyDialTicker { [weak self] now in self?.tick(now) } }
+        if ticker == nil {
+            // Its owner gone mid-run (a page torn down during its flight): the link stops and the flight counts as landed —
+            // else the link fired on for good and every reload waited on a flight that would never land (the organizer's
+            // check of the reload deferral).
+            ticker = JourneyDialTicker { [weak self] now in
+                guard let self else { return false }
+                self.tick(now)
+                return true
+            } orphaned: { JourneyFlights.ended() }
+            JourneyFlights.began()
+        }
     }
 
     private func write(_ k: Key, _ v: CGFloat) {
@@ -418,24 +525,31 @@ struct JourneyMonthOpen: Equatable {
             write(k, r.from + (r.to - r.from) * CGFloat(p))
             if p >= 1 { runs[k] = nil; finished.append(r.done) }
         }
-        if runs.isEmpty { ticker?.stop(); ticker = nil }
+        let landed = runs.isEmpty && ticker != nil
+        if landed { ticker?.stop(); ticker = nil }
         finished.forEach { $0() }
+        if landed { JourneyFlights.ended() }   // after the landings' own work (a close, a teardown)
     }
 }
 
 /// The display link behind JourneyMonthDial (120 Hz where the phone can).
 @MainActor final class JourneyDialTicker: NSObject {
     private var link: CADisplayLink?
-    private let onTick: (CFTimeInterval) -> Void
-    init(_ onTick: @escaping (CFTimeInterval) -> Void) {
+    /// Each frame; false: its owner is gone.
+    private let onTick: (CFTimeInterval) -> Bool
+    private let orphaned: () -> Void
+    init(_ onTick: @escaping (CFTimeInterval) -> Bool, orphaned: @escaping () -> Void = {}) {
         self.onTick = onTick
+        self.orphaned = orphaned
         super.init()
         let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
         l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
         l.add(to: .main, forMode: .common)
         link = l
     }
-    @objc private func tick(_ l: CADisplayLink) { onTick(l.targetTimestamp) }
+    @objc private func tick(_ l: CADisplayLink) {
+        guard onTick(l.targetTimestamp) else { stop(); orphaned(); return }
+    }
     func stop() { link?.invalidate(); link = nil }
 }
 
@@ -993,6 +1107,7 @@ struct JourneyMonthHost: ViewModifier {
         let geo = JourneyFlightGeometry.shared
         dials.set(.month, 0)
         flight = JourneyMonthFlight.expanded(start, log: log, today: today, weeks: stats?.weeks ?? [])
+        geo.onFollow = { done in follow(done: done) }
         // The dial runs once the expanded card's weeks are laid out (where the tiles land) — at the latest after a beat.
         geo.afterWeeks { runMonth(to: 1) }
     }
@@ -1007,8 +1122,31 @@ struct JourneyMonthHost: ViewModifier {
         }
     }
 
+    /// The card to the expanded view's week, then the flight's tiles from the card as it now shows (E6,
+    /// JourneyFlightGeometry.follow) — once nothing's in the air (the opening, a year flight), and only while the page is
+    /// open and still. A quiet swap: the page is over the card, nothing on screen moves.
+    private func follow(done: @escaping () -> Void) {
+        JourneyFlights.whenIdle {
+            let geo = JourneyFlightGeometry.shared
+            guard let f = flight, !leaving, day == nil, dials.dial > 0.999,
+                  geo.cardShow?(geo.expandedWeeks, geo.expandedPick) == true else { done(); return }
+            // The card's quiet scroll laid out and its rows reported (a far week is scrolled to twice: the lazy stack's
+            // estimate lands short the first time).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                guard flight?.start == f.start, !leaving, day == nil, dials.dial > 0.999 else { done(); return }
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) {
+                    flight = JourneyMonthFlight.expanded(f.start, log: JourneyLog.last ?? log, today: today, weeks: stats?.weeks ?? [])
+                }
+                done()
+            }
+        }
+    }
+
     private func close() {
         month = nil
+        JourneyFlightGeometry.shared.cancelFollow()
         JourneyFlightGeometry.shared.yearShowing = false
         JourneyFlightGeometry.shared.yearBack = nil
         guard flight != nil, !leaving else { return }
@@ -1121,7 +1259,8 @@ struct JourneyMonthHost: ViewModifier {
         DispatchQueue.main.async {
             if day != nil { retargetDayForBack(); runDay(to: 0, how: "button") }
             else if flight != nil && JourneyFlightGeometry.shared.yearShowing { fromYear() }
-            else if flight != nil { runMonth(to: 0, how: "button") }
+            // A follow still waiting (the page scrolled a moment ago) first: the card to its weeks, the tiles from there.
+            else if flight != nil { JourneyFlightGeometry.shared.flushFollow { runMonth(to: 0, how: "button") } }
         }
     }
 
@@ -1132,11 +1271,13 @@ struct JourneyMonthHost: ViewModifier {
                 guard edgeSideways == true, day != nil || !JourneyFlightGeometry.shared.yearShowing else { return }
                 if backDrag == nil {
                     let onDay = day != nil
-                    if onDay { retargetDayForBack() }
+                    if onDay { retargetDayForBack() } else { JourneyFlightGeometry.shared.flushFollow {} }
                     backDrag = (onDay, onDay ? dials.dayDial : dials.dial)
                     JourneyFrameLog.shared.start(onDay ? "day → weeks (finger)" : "expanded → card (finger)")
                 }
                 guard let drag = backDrag else { return }
+                // The page holds still while a follow finishes (a few frames): the flight's tiles aren't set yet.
+                if !drag.day, JourneyFlightGeometry.shared.followPending { return }
                 let dial = min(max(drag.from - max(v.translation.width, 0) / width, 0), 1)
                 dials.set(drag.day ? .day : .month, dial)
             }
@@ -1152,7 +1293,7 @@ struct JourneyMonthHost: ViewModifier {
                 JourneyFrameLog.shared.stop()
                 let goes = v.translation.width > width / 3 || v.predictedEndTranslation.width > width / 2
                 if drag.day { runDay(to: goes ? 0 : 1, how: goes ? "let go" : "sprang back") }
-                else { runMonth(to: goes ? 0 : 1, how: goes ? "let go" : "sprang back") }
+                else { JourneyFlightGeometry.shared.flushFollow { runMonth(to: goes ? 0 : 1, how: goes ? "let go" : "sprang back") } }
             }
     }
 }

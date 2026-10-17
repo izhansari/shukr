@@ -453,9 +453,13 @@ struct JourneyPage: View {
             let built = await JourneyLog.load(container: container, ranges: ranges, now: now)
             JourneyPerf.took("log.load", since: t)
             guard token == loadToken else { return }
-            log = built
-            JourneyLog.last = built
-            stats = JourneyPerf.time("stats") { YourJourneyStats(log: built, today: day) }
+            // Never mid-flight: a new log redraws the page and the card (JourneyTransitions.swift, JourneyFlights).
+            JourneyFlights.whenIdle {
+                guard token == loadToken else { return }
+                log = built
+                JourneyLog.last = built
+                stats = JourneyPerf.time("stats") { YourJourneyStats(log: built, today: day) }
+            }
             let t2 = JourneyPerf.now
             let (s, open) = await Task.detached(priority: .userInitiated) {
                 let context = ModelContext(container)
@@ -464,11 +468,14 @@ struct JourneyPage: View {
             }.value
             JourneyPerf.took("scores+makeUp.load", since: t2)
             guard token == loadToken else { return }
-            scores = (s.prayedScore, s.prayed > 0 ? s.ranked.first : nil)
-            makeUpTotal = open
-            // Prayer scores opens on these at once (its own load then refreshes them).
-            PrayerScores.lastBySpan[.all] = s
-            PrayerScores.last = s
+            JourneyFlights.whenIdle {
+                guard token == loadToken else { return }
+                scores = (s.prayedScore, s.prayed > 0 ? s.ranked.first : nil)
+                makeUpTotal = open
+                // Prayer scores opens on these at once (its own load then refreshes them).
+                PrayerScores.lastBySpan[.all] = s
+                PrayerScores.last = s
+            }
         }
     }
     #if DEBUG
