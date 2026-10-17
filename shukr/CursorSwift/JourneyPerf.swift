@@ -29,7 +29,7 @@ import QuartzCore
 
     /// A view's body ran (`let _ = JourneyPerf.body("card")`).
     @inline(__always) static func body(_ name: StaticString) {
-        if on { JourneyPerfLog.shared.bodies[name.description, default: 0] += 1 }
+        if on { JourneyPerfLog.shared.body(name.description) }
     }
 
     /// A piece of main-thread work, timed.
@@ -52,7 +52,7 @@ import QuartzCore
 @MainActor final class JourneyPerfLog: NSObject {
     static let shared = JourneyPerfLog()
 
-    fileprivate var bodies: [String: Int] = [:]
+    private var bodies: [String: Int] = [:]
     private var times: [String: (n: Int, total: Double, worst: Double)] = [:]
     private var event = ""
     private var began: CFTimeInterval = 0
@@ -105,6 +105,12 @@ import QuartzCore
         }
     }
 
+    /// A body counts as something happening: a window with views redrawing doesn't go quiet.
+    fileprivate func body(_ name: String) {
+        bodies[name, default: 0] += 1
+        if link != nil { lastActivity = CACurrentMediaTime() }
+    }
+
     func took(_ name: String, _ s: CFTimeInterval) {
         var t = times[name] ?? (0, 0, 0)
         t.n += 1; t.total += s; t.worst = max(t.worst, s)
@@ -145,11 +151,16 @@ import QuartzCore
         event = ""; bodies = [:]; times = [:]
     }
 
+    /// Off the main thread, in order (a write at the tap would land in that move's first frame).
+    private static let disk = DispatchQueue(label: "journey-perf.log", qos: .utility)
+
     private func write(_ line: String) {
         print("⏱️ \(line)")
         guard let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
         let url = dir.appendingPathComponent("journey-perf.log")
         let data = Data((line + "\n").utf8)
-        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() } else { try? data.write(to: url) }
+        Self.disk.async {
+            if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() } else { try? data.write(to: url) }
+        }
     }
 }
