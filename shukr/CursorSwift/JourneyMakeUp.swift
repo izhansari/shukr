@@ -29,10 +29,10 @@ struct JourneyMakeUpPage: View {
     @State private var madeUp: [Entry] = JourneyMakeUpPage.last?.madeUp ?? []
     /// One prayer only (a tap on its count).
     @State private var only: String?
-    /// Made-up prayers shown in their months (Reminders' Show Completed).
-    /// Hidden each time the page opens, so the list works toward empty (owner, 2026-10-17: "default to hide the made up
-    /// prayers in the list so that the list basically works towards inbox zero"); it was remembered between visits.
-    @State private var showMade = false
+    /// The top's folded height and how far it folds (JourneyMakeUpHead measures it): the list's top margin and the
+    /// empty room at its start.
+    @State private var topFolded: CGFloat = 0
+    @State private var foldBy: CGFloat = 0
     @Environment(\.colorScheme) private var scheme
     /// Just made up: still in place with Undo until its 3 s run out (the token tells a later tap from this one).
     @State private var settling: [PersistentIdentifier: UUID] = [:]
@@ -90,10 +90,12 @@ struct JourneyMakeUpPage: View {
     private struct Shown {
         /// Newest first.
         var months: [Date] = []
-        /// A month's rows, newest first: what's left (just-made-up ones in place) and, while shown, the made up.
+        /// A month's rows, newest first: what's left (just-made-up ones in place, with Undo).
         var rows: [Date: [Entry]] = [:]
         var monthLeft: [Date: Int] = [:]
         var monthMade: [Date: Int] = [:]
+        /// The made up, at the bottom: newest made up first, whatever the prayer's own day.
+        var madeRows: [Entry] = []
         /// Each prayer's count left, for the chips (not narrowed by the chip that's on).
         var counts: [(String, Int)] = []
         /// Left under the chip that's on; made up (a just-made-up one, still showing Undo, counts as made up).
@@ -119,36 +121,30 @@ struct JourneyMakeUpPage: View {
                 s.left += 1
             }
         }
-        var mixed: Set<Date> = []
-        for e in madeUp where inScope(e) && (only == nil || e.name == only) {
-            s.monthMade[e.month, default: 0] += 1
-            s.made += 1
-            if showMade {
-                s.rows[e.month, default: []].append(e)
-                mixed.insert(e.month)
-            }
-        }
-        for m in mixed { s.rows[m]?.sort { $0.startTime > $1.startTime } }
+        s.madeRows = madeUp.filter { inScope($0) && (only == nil || $0.name == only) }
+        s.made += s.madeRows.count
         s.months = s.rows.keys.sorted(by: >)
         s.counts = JourneyLog.names.compactMap { name in perPrayer[name].map { (name, $0) } }
         return s
     }
 
+    /// The made-up section's id (for "N made up" to scroll to).
+    private static let madeID = "madeUp"
+
     var body: some View {
         let shown = shown()
         let months = shown.months
         let scrubber = months.count > 3
-        // The top stays put and the list scrolls under it (owner, 2026-10-17: "Make this top area always stay in view as
-        // user scrolls so it doesnt get pushed out of view").
-        VStack(spacing: 0) {
-        summary(shown)
-            .padding(.horizontal, 20)
-            .background(theme.surface)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
-            .zIndex(1)
+        // The top stays in view and the list scrolls under it (owner, 2026-10-17: "Make this top area always stay in view
+        // as user scrolls"), and it folds as the list scrolls (owner, 2026-10-17, option 1: "the top is way too big, but I
+        // really want to keep all of that content"): the title and its line fold away, the number shrinks, the made-up line,
+        // the bar and the chips stay as they are. The list runs under the top from the screen's top; its first `foldBy`
+        // points are empty room the top folds into, so the rows follow the finger 1:1 while it folds.
         ScrollViewReader { proxy in
+        ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                    Color.clear.frame(height: foldBy)
                     if shown.left == 0 && !shown.anySettling {
                         JourneyCaughtUp(cleared: cleared, line: caughtUpLine)
                             .frame(maxWidth: .infinity)
@@ -158,10 +154,8 @@ struct JourneyMakeUpPage: View {
                     ForEach(months, id: \.self) { m in
                         Section {
                             ForEach(shown.rows[m] ?? []) { entry in
-                                Group {
-                                    if entry.isCompleted && !isSettling(entry) { madeRow(entry) } else { row(entry) }
-                                }
-                                .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
+                                row(entry)
+                                    .transition(.asymmetric(insertion: .opacity, removal: .opacity.combined(with: .scale(scale: 0.96, anchor: .top))))
                             }
                         } header: {
                             monthHeader(m, left: shown.monthLeft[m] ?? 0, made: shown.monthMade[m] ?? 0).id(m)
@@ -171,31 +165,68 @@ struct JourneyMakeUpPage: View {
                                 .onDisappear { [scroll] in scroll.forget(m) }
                         }
                     }
+                    // Made up: all at the bottom, newest first, out of their months (owner, 2026-10-17: "if we made it up,
+                    // I just want to move it all the way to the bottom of the page. Then we don't even need to show and
+                    // hide … listed in the order we completed it, with the newest at the top of that section").
+                    if !shown.madeRows.isEmpty {
+                        Section {
+                            ForEach(shown.madeRows) { entry in
+                                madeRow(entry).transition(.opacity)
+                            }
+                        } header: {
+                            madeHeader(shown.madeRows.count).id(Self.madeID)
+                        }
+                    }
                 }
                 .padding(.leading, 20)
                 // The scrubber's gutter: its dots and, beside them, the month on top and the year marks.
                 .padding(.trailing, scrubber ? 56 : 20)
                 .padding(.bottom, 30)
             }
+            .contentMargins(.top, topFolded, for: .scrollContent)
             .coordinateSpace(.named("makeUp"))
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { [scroll] _, y in
+                scroll.scrolled(y)
+            }
             .overlay(alignment: .trailing) {
                 if scrubber {
                     JourneyMakeUpScrubber(months: months, cleared: Set(months.filter { shown.monthLeft[$0] == nil }),
                                           scroll: scroll, proxy: proxy)
                         .padding(.trailing, 4)
+                        .padding(.top, topFolded + foldBy)
                 }
             }
+            summary(shown, proxy: proxy)
+                .padding(.horizontal, 20)
+                .background(theme.surface)
+                .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { [scroll] height in
+                    scroll.topHeight = height
+                    settleTop()
+                }
         }
         }
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) { JourneyMakeUpNavTitle(scroll: scroll) }
+        }
         .onAppear {
             guard !started else { return }
             started = true
             if let startOnly { only = startOnly }
         }
         .task { await reload() }
+    }
+
+    /// The top's folded height, whatever the fold now: the room it takes minus what is still to fold (page state only
+    /// when it really changes — a fold frame leaves it as it is).
+    private func settleTop() {
+        guard scroll.topHeight > 0 else { return }
+        let folded = (scroll.topHeight - foldBy * (1 - scroll.fold)).rounded()
+        if abs(folded - topFolded) > 0.5 { topFolded = folded }
+        scroll.topLine = folded + 24
     }
 
     private var caughtUpLine: String {
@@ -205,49 +236,45 @@ struct JourneyMakeUpPage: View {
 
     // MARK: The top: the total, each prayer's count, the switch
 
-    private func summary(_ shown: Shown) -> some View {
+    private func summary(_ shown: Shown, proxy: ScrollViewProxy) -> some View {
         let counts = shown.counts
         // Following the chip that's on: its prayer's numbers. A just-made-up one (still showing Undo) counts as made up.
         let made = shown.made
         let missed = shown.left + made
         let share = missed == 0 ? 0 : Double(made) / Double(missed)
         let leftPct = missed == 0 ? 0 : Int(((1 - share) * 100).rounded())
+        let green = JourneyTileColor.of(.allInTime, dark: scheme == .dark)
         return VStack(alignment: .leading, spacing: 0) {
-            Text("To make up").font(.system(size: 34, weight: .light, design: .rounded))
-            Text("Prayers left unmarked on days you used shukr.")
-                .font(.system(size: 15, weight: .light, design: .rounded))
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-            // Everything missed: made up so far and what's left.
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(missed)")
-                    .font(.system(size: 44, weight: .thin, design: .rounded)).monospacedDigit()
-                    .contentTransition(.numericText(value: Double(missed)))
-                Text(missed == 1 ? "\(only ?? "prayer") missed" : "\(only.map { "\($0)s" } ?? "prayers") missed")
-                    .font(.system(size: 16, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
+            JourneyMakeUpHead(missed: missed,
+                              words: missed == 1 ? "\(only ?? "prayer") missed" : "\(only.map { "\($0)s" } ?? "prayers") missed",
+                              scroll: scroll) { by in
+                if abs(by - foldBy) > 0.5 {
+                    foldBy = by
+                    scroll.foldDistance = by
+                    settleTop()
+                }
             }
-            .padding(.top, 14)
-            .animation(.snappy, value: missed)
-            // "✓ N made up · Show" and, at its end, the share still to make up.
+            // "✓ N made up" over the bar's green start, in that green (owner, 2026-10-17: "the green that fills that
+            // progress track is related to that text"), and at its end the share still to make up. A tap goes to the made
+            // up at the bottom.
             HStack(alignment: .firstTextBaseline) {
                 if made > 0 {
                     Button {
                         triggerSomeVibration(type: .light)
-                        withAnimation(.easeInOut(duration: 0.3)) { showMade.toggle() }
+                        withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(Self.madeID, anchor: .top) }
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .light))
+                            Image(systemName: "checkmark.circle").font(.system(size: 13, weight: .regular))
                             Text("\(made) made up")
                                 .contentTransition(.numericText(value: Double(made)))
-                            Text("·")
-                            Text(showMade ? "Hide" : "Show").foregroundStyle(.primary)
                         }
+                        .foregroundStyle(green)
                         .padding(.vertical, 4)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(showMade ? "Hide the \(made) made up" : "Show the \(made) made up")
+                    .accessibilityLabel("\(made) made up")
+                    .accessibilityHint("Goes to the made up, at the bottom")
                 } else {
                     Text("None made up yet").padding(.vertical, 4)
                 }
@@ -265,7 +292,7 @@ struct JourneyMakeUpPage: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.08))
                     // Journey's green, as the scrubber's cleared months (owner: "use that same green color").
-                    Capsule().fill(JourneyTileColor.of(.allInTime, dark: scheme == .dark)).frame(width: max(share > 0 ? 6 : 0, g.size.width * share))
+                    Capsule().fill(green).frame(width: max(share > 0 ? 6 : 0, g.size.width * share))
                 }
             }
             .frame(height: 6)
@@ -343,6 +370,23 @@ struct JourneyMakeUpPage: View {
         .animation(.snappy, value: totals)
     }
 
+    /// The made-up section's heading, pinned like a month's: "MADE UP" and how many.
+    private func madeHeader(_ count: Int) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text("MADE UP")
+                .font(.system(size: 12, weight: .medium, design: .rounded)).tracking(0.8)
+            Spacer()
+            Text("\(count)")
+                .font(.system(size: 12, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(count)))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.top, 30).padding(.bottom, 6)
+        .background(theme.surface)
+        .animation(.snappy, value: count)
+    }
+
     /// A prayer left: its dot is the control, like a to-do (owner, 2026-10-17: "yeah lets do this") — a tap fills it with a
     /// ✓ and the row says "Made up · Undo" for 3 s (a tap on the filled dot undoes it too), then it leaves. The row itself
     /// no longer opens the prayer's sheet (owner: "lets just get rid of that functionality here").
@@ -399,7 +443,7 @@ struct JourneyMakeUpPage: View {
         }
     }
 
-    /// A made-up prayer among what's left (while shown): greyed, its dot filled, when it was made up.
+    /// A made-up prayer, in the section at the bottom: greyed, its ring filled, its own day and when it was made up.
     private func madeRow(_ entry: Entry) -> some View {
         HStack(spacing: 12) {
             JourneyMakeUpCheck(done: true)
@@ -545,7 +589,21 @@ struct JourneyMakeUpPage: View {
 @Observable final class JourneyMakeUpScroll {
     /// The month whose heading is at (or pinned to) the top of the list: the scrubber's big dot.
     var top: Date?
+    /// How far the top has folded: 0 open … 1 folded. Only the top's head and the bar's small title read it, so the fold
+    /// redraws those two and nothing else.
+    var fold: CGFloat = 0
+    /// How many points of scrolling fold the top (what it folds by).
+    @ObservationIgnored var foldDistance: CGFloat = 1
+    /// A heading at or above this line (in the list's space) is the one on top: just under the folded top.
+    @ObservationIgnored var topLine: CGFloat = 80
+    /// The top's height now (it shrinks as it folds).
+    @ObservationIgnored var topHeight: CGFloat = 0
     @ObservationIgnored private var y: [Date: CGFloat] = [:]
+
+    func scrolled(_ offset: CGFloat) {
+        let now = min(max(offset / max(foldDistance, 1), 0), 1)
+        if now != fold { fold = now }
+    }
 
     func report(_ month: Date, y value: CGFloat) {
         y[month] = value
@@ -560,8 +618,81 @@ struct JourneyMakeUpPage: View {
     }
 
     private func settle() {
-        let now = y.filter { $0.value <= 80 }.max { $0.value < $1.value }?.key
+        let now = y.filter { $0.value <= topLine }.max { $0.value < $1.value }?.key
         if now != top { top = now }
+    }
+}
+
+/// The top's part that folds (owner, 2026-10-17, option 1): the title and its line fold away and the number shrinks
+/// (44 → 24 pt) as the list scrolls; the made-up line, the bar and the chips under it never move. Everything here folds
+/// in step with the fold, so the top's bottom edge moves up exactly as far as the list scrolls (`by` reports how far).
+private struct JourneyMakeUpHead: View {
+    let missed: Int
+    let words: String
+    let scroll: JourneyMakeUpScroll
+    /// How far it folds, in points: the title block, what the number loses, and the gap above it.
+    let folds: (_ by: CGFloat) -> Void
+    @State private var titles: CGFloat?
+    @State private var number: CGSize?
+
+    private static let size: CGFloat = 44
+    private static let smallest: CGFloat = 24
+    private static let gap: CGFloat = 14
+    private static let gapFolded: CGFloat = 4
+    /// The thin 44 pt number's descent, so the shrunk number keeps "prayers missed" on its baseline.
+    private static let descent = abs(UIFont.systemFont(ofSize: size, weight: .thin).descender)
+
+    var body: some View {
+        let f = scroll.fold
+        let scale = 1 - (1 - Self.smallest / Self.size) * f
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("To make up").font(.system(size: 34, weight: .light, design: .rounded))
+                Text("Prayers left unmarked on days you used shukr.")
+                    .font(.system(size: 15, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 4)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { titles = $0; report() }
+            .opacity(max(0, 1 - f * 1.6))
+            .frame(height: titles.map { $0 * (1 - f) }, alignment: .top)
+            .clipped()
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(missed)")
+                    .font(.system(size: Self.size, weight: .thin, design: .rounded)).monospacedDigit()
+                    .contentTransition(.numericText(value: Double(missed)))
+                    .fixedSize()
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { number = $0; report() }
+                    .scaleEffect(scale, anchor: .bottomLeading)
+                    .frame(width: number.map { $0.width * scale }, height: number.map { $0.height * scale },
+                           alignment: .bottomLeading)
+                    .alignmentGuide(.firstTextBaseline) { d in d.height - Self.descent * scale }
+                Text(words)
+                    .font(.system(size: 16, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, Self.gap - (Self.gap - Self.gapFolded) * f)
+            .animation(.snappy, value: missed)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func report() {
+        guard let titles, let number else { return }
+        folds(titles + number.height * (1 - Self.smallest / Self.size) + Self.gap - Self.gapFolded)
+    }
+}
+
+/// The bar's small "To make up", coming in as the big title folds away.
+private struct JourneyMakeUpNavTitle: View {
+    let scroll: JourneyMakeUpScroll
+
+    var body: some View {
+        Text("To make up")
+            .font(.system(size: 17, weight: .regular, design: .rounded))
+            .opacity(max(0, scroll.fold - 0.5) * 2)
+            .accessibilityHidden(scroll.fold < 0.5)
     }
 }
 
