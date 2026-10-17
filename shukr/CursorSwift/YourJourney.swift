@@ -53,6 +53,7 @@ struct JourneyHomeCard: View {
     /// How long a finger rests on the tiles before moving it picks them (a tap is shorter; a drag before it scrolls).
     static let holdTime = 0.3
     private static let rowsSpace = "journeyCardRows"
+    private static let end = "journeyCardEnd"
     /// The grid's least height: 12 weeks and its top room.
     static let minGrid: CGFloat = 12 * pitch + 12
 
@@ -150,7 +151,14 @@ struct JourneyHomeCard: View {
             ScrollViewReader { proxy in
             LazyVStack(spacing: 3) {
                 ForEach(stats.weeks) { week in row(week).id(week.id) }
+                // The ring's room below the last row, as a row of its own: the grid's true end, to scroll to.
+                Color.clear.frame(height: Self.ringRoom - 3).id(Self.end)
             }
+            // Journey opens on today's week at the bottom (owner, 2026-10-17: "opening journey page should show card
+            // scrolled to bottom instead of how it opens with the furthest date at the top"): defaultScrollAnchor only
+            // sets the first layout's offset, and the weeks often arrive after it (the log is read off the main thread).
+            .onAppear { toToday(proxy) }
+            .onChange(of: stats.weeks.count) { toToday(proxy) }
             .onChange(of: streakShown) { _, on in
                 if !on {
                     // Turned off by its own tap: back to where you were (owner, 2026-10-17: "if I deselect it, I want to
@@ -159,7 +167,7 @@ struct JourneyHomeCard: View {
                     beforeStreak.back = false
                     withAnimation(.easeInOut(duration: 0.45)) {
                         if let w = beforeStreak.week { proxy.scrollTo(w, anchor: .top) }
-                        else if let last = stats.weeks.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                        else { proxy.scrollTo(Self.end, anchor: .bottom) }
                     }
                     return
                 }
@@ -179,7 +187,7 @@ struct JourneyHomeCard: View {
             .padding(.top, 12)
             // Room for a picked tile's ring (drawn 3 pt outside its bar) on the right and below: the grid's clip cut it
             // (owner, 2026-10-17). The grid reaches 4 pt into the card's margin, so the bars stay where they were.
-            .padding(.trailing, Self.ringRoom).padding(.bottom, Self.ringRoom)
+            .padding(.trailing, Self.ringRoom)
             }
         }
         .padding(.trailing, -Self.ringRoom)
@@ -300,6 +308,14 @@ struct JourneyHomeCard: View {
     private func tap(_ date: Date) {
         triggerSomeVibration(type: .light)
         withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == date ? nil : date; streakShown = false }
+    }
+
+    /// The grid at today's week, at once — not while a tile is picked or the streak is lit.
+    private func toToday(_ proxy: ScrollViewProxy) {
+        guard picked == nil, !streakShown, !stats.weeks.isEmpty else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { proxy.scrollTo(Self.end, anchor: .bottom) }
     }
 
     /// A day's bar in the rows' space (nil: not on the card).
