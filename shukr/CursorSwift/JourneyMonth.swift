@@ -142,14 +142,16 @@ struct JourneyMonthPage: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // The bottom is the picked day's things (the card's bottom); room kept for it, so nothing moves as a day is picked.
         .safeAreaInset(edge: .bottom) {
-            ZStack {
+            ZStack(alignment: .top) {
                 if let p = picked, !showYear {
+                    Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1).transition(.opacity)   // its line over it
                     JourneyDayExtrasRow(date: p) { extraTap = $0 }
+                        .padding(.top, 12)
                         .id(p)
                         .transition(.opacity)
                 }
             }
-            .frame(height: 46)
+            .frame(height: 58, alignment: .top)
             .padding(.horizontal, 20)
             .padding(.bottom, 6)
             .journeyFlightWords(.month)
@@ -293,6 +295,11 @@ struct JourneyMonthPage: View {
                         .id(d.date)
                         .transition(.opacity)
                 }
+            }
+            // The day's area ends on a line (owner, 2026-10-17: "let's put like separators or something. So that the top area
+            // and the bottom area have like a dedicated space") — where the numbers' own bottom line sits, so it never moves.
+            .overlay(alignment: .bottom) {
+                if dayShown != nil { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1).transition(.opacity) }
             }
             .id(shown)
             .transition(CircleMotion.dayPickSwap)
