@@ -347,9 +347,10 @@ struct JourneyPage: View {
         }
         .fullScreenCover(item: $dayPile) { route in
             // Grows out of the photos count from a screen below it — what the cover's own slide and the zoom made together
-            // (owner liked it: "i like how pile comes up from bottom of page") — and goes back the same way out of the
-            // bottom, while its blurred page fades in place ("dont move the background overlay with it").
-            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from.offsetBy(dx: 0, dy: UIScreen.main.bounds.height)) {
+            // (owner liked it: "i like how pile comes up from bottom of page"), its blurred page fading in place ("dont move
+            // the background overlay with it"). It leaves by a plain fade, card and page together — the fly back into the
+            // count didn't leave "beautifully at all" (owner, 2026-10-17: "just make it be a simple fade out").
+            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from.offsetBy(dx: 0, dy: UIScreen.main.bounds.height), fadeOut: true) {
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
                 withTransaction(quiet) { dayPile = nil }

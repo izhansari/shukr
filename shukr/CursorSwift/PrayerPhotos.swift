@@ -791,12 +791,17 @@ struct PrayerPhotoViewer: View {
     var pile: [String] = []
     /// The small photo it was opened from: the card zooms out of it and back into it (one view, scaled and moved).
     var from: CGRect? = nil
+    /// Close by fading — the card and the page behind together, where they are — instead of flying back into `from`
+    /// (Journey's card: owner, 2026-10-17: "it comes in beautifully, but it does not leave beautifully at all … If we can't
+    /// get it to animate out the same way that it came in cleanly, then let's just make it be a simple fade out").
+    var fadeOut = false
     let onClose: () -> Void
     @State private var images: (back: UIImage?, front: UIImage?)
     /// The card's own place, measured once; until then it isn't drawn (it would flash full size).
     @State private var cardFrame: CGRect?
 
-    init(key: String, pile: [String] = [], from: CGRect? = nil, initial: (back: UIImage?, front: UIImage?) = (nil, nil),
+    init(key: String, pile: [String] = [], from: CGRect? = nil, fadeOut: Bool = false,
+         initial: (back: UIImage?, front: UIImage?) = (nil, nil),
          onClose: @escaping () -> Void) {
         self.key = key
         self.pile = pile
@@ -807,6 +812,7 @@ struct PrayerPhotoViewer: View {
             ($0, PileLie(dx: .random(in: -22...22), dy: .random(in: -14...14), tilt: .random(in: -9...9)))
         }))
         self.from = from
+        self.fadeOut = fadeOut
         self.onClose = onClose
         _images = State(initialValue: initial)
         _share = State(initialValue: PrayerShareOptions(key: pile.count > 1 ? pile[top] : key))
@@ -837,6 +843,8 @@ struct PrayerPhotoViewer: View {
     @State private var place: String?
     @State private var shown = false
     @State private var closing = false
+    /// Fading out (`fadeOut`).
+    @State private var fading = false
     /// The card follows the finger anywhere (owner: "moving it naturally with my finger, not just rigid down").
     @State private var drag: CGSize = .zero
     /// Share's options, faded up at the bottom over the page (owner: not a new page).
@@ -930,6 +938,7 @@ struct PrayerPhotoViewer: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .opacity(fading ? 0 : 1)
         }
         .onAppear {
             #if DEBUG
@@ -1090,6 +1099,11 @@ struct PrayerPhotoViewer: View {
     private func close() {
         closing = true
         sharing = false
+        if fadeOut {
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeOut(duration: 0.22)) { fading = true } completion: { onClose() }
+            return
+        }
         // Only the top photo goes home: the ones under it go at once (Moments' pile gathers them the same way).
         withAnimation(.easeOut(duration: 0.12)) { settled = false }
         triggerSomeVibration(type: .light)
