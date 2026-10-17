@@ -9,97 +9,6 @@ import QuartzCore
 // finger. Stand-ins for Journey's page and the month (copies of JourneyHomeCard's grid and JourneyMonthPage's layout); the
 // day is the real JourneyDayPage (JourneyDayEntrance, JourneyDayRingSpot). Reached from My Dev Stuff or `-demoTransitionLab`.
 
-// MARK: - Timing
-
-/// The dials' lengths and beats in one place (to move into CircleMotion when this goes into Journey). Each dial runs
-/// linearly; every beat eases on its own stretch of it (the mock's way).
-enum LabMotion {
-    /// Card → month: the mock's whole run at speed 1 (transition-d.html BASE).
-    static let monthDuration: Double = 0.56
-    /// Month → day: the ring's growth, then the grade colours drawing in.
-    static let dayDuration: Double = 1.1
-    /// Where the grown disc hands over to the page's own (day dial).
-    static let dayLand: CGFloat = 0.5
-
-    static func seg(_ t: CGFloat, _ a: CGFloat, _ b: CGFloat) -> CGFloat { min(max((t - a) / (b - a), 0), 1) }
-    static func io(_ x: CGFloat) -> CGFloat { x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2 }
-    static func out(_ x: CGFloat) -> CGFloat { 1 - pow(1 - x, 3) }
-    static func lerp(_ a: CGFloat, _ b: CGFloat, _ t: CGFloat) -> CGFloat { a + (b - a) * t }
-    static func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint { CGPoint(x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t)) }
-    static func lerp(_ a: CGRect, _ b: CGRect, _ t: CGFloat) -> CGRect {
-        CGRect(x: lerp(a.minX, b.minX, t), y: lerp(a.minY, b.minY, t), width: lerp(a.width, b.width, t), height: lerp(a.height, b.height, t))
-    }
-}
-
-// MARK: - Frame log
-
-/// Logs each run's real frame pacing (measure before guessing): how long it took, frames drawn, the worst gap and how many
-/// frames were late. Library/Caches/journey-transitions.log on the phone, and the console.
-@MainActor final class LabFrameLog: NSObject {
-    static let shared = LabFrameLog()
-    private var link: CADisplayLink?
-    private var name = ""
-    private var began: CFTimeInterval = 0
-    private var last: CFTimeInterval = 0
-    private var frames = 0
-    private var worst: CFTimeInterval = 0
-    private var late = 0
-    private var expected: CFTimeInterval = 1 / 60.0
-    /// The main run loop's longest busy spell during the run (main-thread work vs the renderer).
-    private var observer: CFRunLoopObserver?
-    private var wokeAt: CFTimeInterval = 0
-    private var longestBusy: CFTimeInterval = 0
-
-    func start(_ name: String) {
-        link?.invalidate()
-        self.name = name
-        began = CACurrentMediaTime(); last = began
-        frames = 0; worst = 0; late = 0
-        let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
-        l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
-        l.add(to: .main, forMode: .common)
-        link = l
-        longestBusy = 0; wokeAt = CACurrentMediaTime()
-        if observer == nil {
-            let o = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { [weak self] _, activity in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    let now = CACurrentMediaTime()
-                    if activity == .afterWaiting { self.wokeAt = now } else { self.longestBusy = max(self.longestBusy, now - self.wokeAt) }
-                }
-            }
-            CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
-            observer = o
-        }
-    }
-
-    @objc private func tick(_ l: CADisplayLink) {
-        let now = l.timestamp
-        expected = max(l.targetTimestamp - l.timestamp, 1 / 120.0)
-        if frames > 0 {
-            let gap = now - last
-            worst = max(worst, gap)
-            if gap > expected * 1.5 { late += 1 }
-        }
-        frames += 1
-        last = now
-    }
-
-    func stop(_ how: String = "") {
-        guard let l = link else { return }
-        l.invalidate(); link = nil
-        let ms = (CACurrentMediaTime() - began) * 1000
-        let line = String(format: "%@ %@%@: %.0f ms, %d frames at %.0f Hz, worst %.1f ms, %d late, main busy ≤ %.0f ms",
-                          Date().formatted(.iso8601), name, how.isEmpty ? "" : " (\(how))", ms, frames, 1 / expected, worst * 1000, late,
-                          longestBusy * 1000)
-        print("🎞️ \(line)")
-        guard let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
-        let url = dir.appendingPathComponent("journey-transitions.log")
-        let data = Data((line + "\n").utf8)
-        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() } else { try? data.write(to: url) }
-    }
-}
-
 // MARK: - The screen
 
 /// Opens the test screen over the Salah page (`-demoTransitionLab`; My Dev Stuff pushes it from Settings).
@@ -243,16 +152,16 @@ struct JourneyTransitionLab: View {
         let m = log.month(latest).activeDays >= 14 || named.count < 2 ? latest : named[named.count - 2]
         for _ in 0..<times {
             openMonth(m)
-            await wait(LabMotion.monthDuration + 1.2)
+            await wait(JourneyMotion.monthDuration + 1.2)
             let days = JourneyLog.daysOf(month: m).filter { $0 < today && log.day($0).active }
             if let d = days.last {
                 openDay(d)
-                await wait(LabMotion.dayDuration + 1.6)
+                await wait(JourneyMotion.dayDuration + 1.6)
                 back()
-                await wait(LabMotion.dayDuration + 1)
+                await wait(JourneyMotion.dayDuration + 1)
             }
             back()
-            await wait(LabMotion.monthDuration + 1.2)
+            await wait(JourneyMotion.monthDuration + 1.2)
         }
         print("🎞️ auto run done")
     }
@@ -304,9 +213,9 @@ struct JourneyTransitionLab: View {
     private func runMonth(to target: CGFloat, how: String = "") {
         let remaining = abs(target - monthDial)
         guard remaining > 0.001 else { if target == 0 { month = nil }; return }
-        LabFrameLog.shared.start(target == 1 ? "card → month" : "month → card")
-        withAnimation(.linear(duration: LabMotion.monthDuration * remaining)) { monthDial = target } completion: {
-            LabFrameLog.shared.stop(how)
+        JourneyFrameLog.shared.start(target == 1 ? "card → month" : "month → card")
+        withAnimation(.linear(duration: JourneyMotion.monthDuration * remaining)) { monthDial = target } completion: {
+            JourneyFrameLog.shared.stop(how)
             if target == 0 { month = nil }
         }
     }
@@ -347,9 +256,9 @@ struct JourneyTransitionLab: View {
     private func runDay(to target: CGFloat, how: String = "") {
         let remaining = abs(target - dayDial)
         guard remaining > 0.001 else { if target == 0 { day = nil }; return }
-        LabFrameLog.shared.start(target == 1 ? "month → day" : "day → month")
-        withAnimation(.linear(duration: LabMotion.dayDuration * remaining)) { dayDial = target } completion: {
-            LabFrameLog.shared.stop(how)
+        JourneyFrameLog.shared.start(target == 1 ? "month → day" : "day → month")
+        withAnimation(.linear(duration: JourneyMotion.dayDuration * remaining)) { dayDial = target } completion: {
+            JourneyFrameLog.shared.stop(how)
             if target == 0 { day = nil }
         }
     }
@@ -377,7 +286,7 @@ struct JourneyTransitionLab: View {
                     let onDay = day != nil
                     if onDay { retargetDayForBack() }
                     backDrag = (onDay, onDay ? dayDial : monthDial)
-                    LabFrameLog.shared.start(onDay ? "day → month (finger)" : "month → card (finger)")
+                    JourneyFrameLog.shared.start(onDay ? "day → month (finger)" : "month → card (finger)")
                 }
                 guard let drag = backDrag else { return }
                 let dial = min(max(drag.from - max(v.translation.width, 0) / width, 0), 1)
@@ -388,7 +297,7 @@ struct JourneyTransitionLab: View {
             .onEnded { v in
                 guard let drag = backDrag else { return }
                 backDrag = nil
-                LabFrameLog.shared.stop()
+                JourneyFrameLog.shared.stop()
                 let goes = v.translation.width > width / 3 || v.predictedEndTranslation.width > width / 2
                 if drag.day { runDay(to: goes ? 0 : 1, how: goes ? "let go" : "sprang back") }
                 else { runMonth(to: goes ? 0 : 1, how: goes ? "let go" : "sprang back") }
@@ -415,11 +324,11 @@ private struct LabJourneyLayer: View, Animatable {
 
     var body: some View {
         let t = dial
-        let z = LabMotion.io(LabMotion.seg(t, 0.05, 0.75))
-        let jo = LabMotion.out(LabMotion.seg(t, 0, 0.28))
-        let lift = LabMotion.out(LabMotion.seg(t, 0, 0.1))
-        let others = (1 - 0.5 * lift) * (1 - LabMotion.out(LabMotion.seg(t, 0.1, 0.5)))
-        let words = 1 - LabMotion.out(LabMotion.seg(t, 0, 0.2))
+        let z = JourneyMotion.io(JourneyMotion.seg(t, 0.05, 0.75))
+        let jo = JourneyMotion.out(JourneyMotion.seg(t, 0, 0.28))
+        let lift = JourneyMotion.out(JourneyMotion.seg(t, 0, 0.1))
+        let others = (1 - 0.5 * lift) * (1 - JourneyMotion.out(JourneyMotion.seg(t, 0.1, 0.5)))
+        let words = 1 - JourneyMotion.out(JourneyMotion.seg(t, 0, 0.2))
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Journey").font(.system(size: 38, weight: .regular, design: .rounded))
@@ -455,11 +364,11 @@ private struct LabJourneyLayer: View, Animatable {
                 // renderer (sim, first run: 0.4–1.5 s with no frame).
                 if z < 0.15 {
                     GlobalCanvas { o in
-                        let r = LabMotion.lerp(growFrom, UIScreen.main.bounds, z)
-                        NeuRaised(shape: RoundedRectangle(cornerRadius: LabMotion.lerp(26, 56, z), style: .continuous))
+                        let r = JourneyMotion.lerp(growFrom, UIScreen.main.bounds, z)
+                        NeuRaised(shape: RoundedRectangle(cornerRadius: JourneyMotion.lerp(26, 56, z), style: .continuous))
                             .frame(width: r.width, height: r.height)
                             .position(x: r.midX - o.x, y: r.midY - o.y)
-                            .opacity(Double(1 - LabMotion.seg(z, 0, 0.15)))
+                            .opacity(Double(1 - JourneyMotion.seg(z, 0, 0.15)))
                     }
                 }
             }
@@ -647,9 +556,9 @@ private struct LabMonthLayer: View, Animatable {
 
     var body: some View {
         let t = dial
-        let z = LabMotion.io(LabMotion.seg(t, 0.05, 0.75))
-        let words = LabMotion.out(LabMotion.seg(t, 0.55, 0.95))
-        let away = 1 - LabMotion.out(LabMotion.seg(dayDial, 0, 0.3))   // a day opening
+        let z = JourneyMotion.io(JourneyMotion.seg(t, 0.05, 0.75))
+        let words = JourneyMotion.out(JourneyMotion.seg(t, 0.55, 0.95))
+        let away = 1 - JourneyMotion.out(JourneyMotion.seg(dayDial, 0, 0.3))   // a day opening
         let numbers = log.month(flight.start)
         ZStack(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 0) {
@@ -669,7 +578,7 @@ private struct LabMonthLayer: View, Animatable {
                     .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) }
                     .padding(.top, 22)
                 }
-                .opacity(words).offset(y: LabMotion.lerp(8, 0, words))
+                .opacity(words).offset(y: JourneyMotion.lerp(8, 0, words))
                 calendar(t: t, z: z, words: words).padding(.top, 24)
                 Text("Tap a day to open it.")
                     .font(.system(size: 13, weight: .light, design: .rounded))
@@ -692,8 +601,8 @@ private struct LabMonthLayer: View, Animatable {
         let short = flight.start.formatted(.dateTime.month(.abbreviated))
         let shortW = (short as NSString).size(withAttributes: [.font: rounded]).width + 1
         let fullW = (full as NSString).size(withAttributes: [.font: rounded]).width + 2
-        let unroll = LabMotion.out(LabMotion.seg(t, 0.3, 0.75))
-        let k = LabMotion.lerp(12.5 / 30, 1, z)
+        let unroll = JourneyMotion.out(JourneyMotion.seg(t, 0.3, 0.75))
+        let k = JourneyMotion.lerp(12.5 / 30, 1, z)
         let from = flight.label
         let dx = from.flatMap { f in title.map { f.minX - $0.minX } } ?? 0
         let dy = from.flatMap { f in title.map { f.midY - $0.midY } } ?? 0
@@ -711,11 +620,11 @@ private struct LabMonthLayer: View, Animatable {
                     .font(.system(size: 30, weight: .regular, design: .rounded))
                     .foregroundStyle(Color.sage.mix(with: Color.primary, by: Double(z)))
                     .lineLimit(1).fixedSize()
-                    .mask(alignment: .leading) { Rectangle().frame(width: LabMotion.lerp(shortW, fullW, unroll)) }
+                    .mask(alignment: .leading) { Rectangle().frame(width: JourneyMotion.lerp(shortW, fullW, unroll)) }
                     .scaleEffect(k, anchor: .leading)
                     .offset(x: (1 - z) * dx, y: (1 - z) * dy)
                     // No label on screen (scrolled off the card): the title fades in with the words instead.
-                    .opacity(title == nil ? 0 : from == nil ? LabMotion.out(LabMotion.seg(t, 0.3, 0.8)) : 1)
+                    .opacity(title == nil ? 0 : from == nil ? JourneyMotion.out(JourneyMotion.seg(t, 0.3, 0.8)) : 1)
             }
     }
 
@@ -755,10 +664,10 @@ private struct LabMonthLayer: View, Animatable {
                                 let grid = gridDay(date)
                                 LabMonthCell(day: log.day(date), date: date, today: today, first: log.firstDay,
                                              usesExcused: log.usesExcused,
-                                             ring: LabMotion.io(LabMotion.seg(t, a, a + 0.2)),
-                                             number: LabMotion.out(LabMotion.seg(t, a + 0.02, a + 0.2)),
+                                             ring: JourneyMotion.io(JourneyMotion.seg(t, a, a + 0.2)),
+                                             number: JourneyMotion.out(JourneyMotion.seg(t, a + 0.02, a + 0.2)),
                                              tile: grid.map { (from: flight.tiles[date], color: LabCard.color($0.kind, dark: dark)) },
-                                             z: z, tint: LabMotion.seg(t, 0.35, 0.8), hidden: hiddenDay == date)
+                                             z: z, tint: JourneyMotion.seg(t, 0.35, 0.8), hidden: hiddenDay == date)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: JourneyDayRing.size)
                                     .contentShape(Rectangle())
@@ -832,7 +741,7 @@ private struct LabMonthCell: View {
         let fill: Color? = closed ? (day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark)) : nil
         ZStack {
             if drawn && !hidden {
-                LabRing(spec: .month(day: day, today: isToday, dark: dark), drawn: ring)
+                JourneyFlightRing(spec: .month(day: day, today: isToday, dark: dark), drawn: ring)
                     .frame(width: JourneyDayRing.radius * 2, height: JourneyDayRing.radius * 2)
             }
             Text("\(Calendar.current.component(.day, from: date))")
@@ -857,8 +766,8 @@ private struct LabMonthCell: View {
                     let disc = JourneyDayRing.fill * 2
                     let end = CGRect(x: me.midX - disc / 2, y: me.midY - disc / 2, width: disc, height: disc)
                     let start = tile.from ?? end.insetBy(dx: disc * 0.2, dy: disc * 0.2)
-                    let r = LabMotion.lerp(start, end, z)
-                    let corner = LabMotion.lerp(5, disc / 2, z)
+                    let r = JourneyMotion.lerp(start, end, z)
+                    let corner = JourneyMotion.lerp(5, disc / 2, z)
                     let color: Color = fill.map { tile.color.mix(with: $0, by: Double(tint)) } ?? tile.color.opacity(Double(1 - tint))
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .fill(color)
@@ -868,70 +777,6 @@ private struct LabMonthCell: View {
                 }
             }
         }
-    }
-}
-
-// MARK: - A ring that changes size (the month's F2 ring ↔ the day page's)
-
-/// What a ring draws: each fifth's colour (nil: nothing), whether it's one closed ring, and its fill.
-struct LabRingSpec {
-    var fifths: [Color?]
-    var closed: Bool
-    var closedColor: Color = .clear
-    var closedOpacity: Double = 1
-
-    /// The month's F2 look for a day (JourneyDayCell): closed and green / soft, or its fifths.
-    static func month(day: JourneyLog.Day, today: Bool, dark: Bool) -> LabRingSpec {
-        if day.allFive && !today {
-            // A closed ring is one colour drawn at full and faded as a group, so where its fifths meet nothing darkens.
-            return LabRingSpec(fifths: [], closed: true,
-                               closedColor: day.allInTime ? JourneyDayRing.green(dark) : (dark ? .white : .black),
-                               closedOpacity: day.allInTime ? 0.6 : (dark ? 0.40 : 0.36))
-        }
-        let fifths: [Color?] = day.marks.map { mark in
-            switch mark {
-            case .done, .excused: today ? JourneyDayRing.strong(dark) : JourneyDayRing.soft(dark)
-            case .missed: JourneyDayRing.track(dark)
-            case .toCome, .none: nil
-            }
-        }
-        return LabRingSpec(fifths: fifths, closed: false)
-    }
-}
-
-/// Five arcs, Fajr at the top, clockwise. `gap` is each fifth's inset at either end in turns (F2: 7° = 0.0194; DayRing:
-/// 0.014). A closed ring opens from 0. `drawn` trims each fifth from its start (the month's rings closing).
-private struct LabRing: View {
-    let spec: LabRingSpec
-    var drawn: CGFloat = 1
-    var band: CGFloat = JourneyDayRing.band
-    var gap: CGFloat = 7.0 / 360
-    var closedGap: CGFloat = 0
-
-    var body: some View {
-        let style = StrokeStyle(lineWidth: band, lineCap: .round)
-        ZStack {
-            if spec.closed {
-                if closedGap < 0.0005 {
-                    Circle().trim(from: 0, to: drawn).stroke(spec.closedColor, style: style)
-                } else {
-                    ForEach(0..<5, id: \.self) { i in arc(i, gap: closedGap).stroke(spec.closedColor, style: style) }
-                }
-            } else {
-                ForEach(0..<5, id: \.self) { i in
-                    if spec.fifths.indices.contains(i), let c = spec.fifths[i] { arc(i, gap: gap).stroke(c, style: style) }
-                }
-            }
-        }
-        .compositingGroup()
-        .opacity(spec.closed ? spec.closedOpacity : 1)
-        .rotationEffect(.degrees(-90))
-    }
-
-    private func arc(_ i: Int, gap: CGFloat) -> some Shape {
-        let from = CGFloat(i) / 5 + gap
-        let full = CGFloat(i + 1) / 5 - gap
-        return Circle().trim(from: from, to: from + (full - from) * drawn)
     }
 }
 
@@ -951,12 +796,12 @@ private struct LabDayLayer: View, Animatable {
 
     var body: some View {
         let t = dial
-        let land = LabMotion.dayLand
-        let z = LabMotion.io(LabMotion.seg(t, 0, land))
-        let page = LabMotion.out(LabMotion.seg(t, 0, 0.3))
-        let drawn = LabMotion.io(LabMotion.seg(t, land - 0.05, 1))
-        let soft = 1 - LabMotion.seg(t, land, 0.85)
-        let rest = LabMotion.out(LabMotion.seg(t, 0.7, 1))
+        let land = JourneyMotion.dayLand
+        let z = JourneyMotion.io(JourneyMotion.seg(t, 0, land))
+        let page = JourneyMotion.out(JourneyMotion.seg(t, 0, 0.3))
+        let drawn = JourneyMotion.io(JourneyMotion.seg(t, land - 0.05, 1))
+        let soft = 1 - JourneyMotion.seg(t, land, 0.85)
+        let rest = JourneyMotion.out(JourneyMotion.seg(t, 0.7, 1))
         let landed = t >= land
         ZStack {
             JourneyDayPage(date: flight.date, firstDay: log.firstDay)
@@ -971,29 +816,29 @@ private struct LabDayLayer: View, Animatable {
         let dark = scheme == .dark
         let day = log.day(flight.date)
         // Today flies as the month draws it: strong fifths, never closed (Bradley's check).
-        let spec = LabRingSpec.month(day: day, today: flight.date == PrayerDay.start(), dark: dark)
+        let spec = JourneyFlightRingSpec.month(day: day, today: flight.date == PrayerDay.start(), dark: dark)
         // The month's cell may be drawn smaller than 46 pt (the month page's 1 / 0.9 / 0.8 / 0.7, fef10e5): start from its size.
         let cell = (flight.from?.height ?? JourneyDayRing.size) / JourneyDayRing.size   // height: the cell is a column wide
         let fromCentre = flight.from.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: to.midX, y: to.midY)
-        let centre = LabMotion.lerp(fromCentre, CGPoint(x: to.midX, y: to.midY), z)
+        let centre = JourneyMotion.lerp(fromCentre, CGPoint(x: to.midX, y: to.midY), z)
         // From a missing cell (paged to a day of another month) it only fades, at the page's size.
         let k = flight.from == nil ? 1 : z
-        let radius = LabMotion.lerp(JourneyDayRing.radius * cell, 100, k)
-        let band = LabMotion.lerp(JourneyDayRing.band * cell, theme.arc.width * 0.5, k)
-        let gap = LabMotion.lerp(7.0 / 360, 0.014, k)
-        let closedGap = LabMotion.lerp(0, 0.014, LabMotion.seg(k, 0.5, 1))
-        let disc = LabMotion.lerp(JourneyDayRing.fill * 2 * cell, CircleMotion.dayDiscDiameter, k)
+        let radius = JourneyMotion.lerp(JourneyDayRing.radius * cell, 100, k)
+        let band = JourneyMotion.lerp(JourneyDayRing.band * cell, theme.arc.width * 0.5, k)
+        let gap = JourneyMotion.lerp(7.0 / 360, 0.014, k)
+        let closedGap = JourneyMotion.lerp(0, 0.014, JourneyMotion.seg(k, 0.5, 1))
+        let disc = JourneyMotion.lerp(JourneyDayRing.fill * 2 * cell, CircleMotion.dayDiscDiameter, k)
         let fill: Color? = spec.closed ? (day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark)) : nil
         ZStack {
             if !landed {
                 NeuRaised(shape: Circle(), radius: 9 * k, offset: 4.5 * k)
                     .frame(width: disc, height: disc)
-                    .opacity(Double(LabMotion.out(LabMotion.seg(k, 0.05, 0.6))))
+                    .opacity(Double(JourneyMotion.out(JourneyMotion.seg(k, 0.05, 0.6))))
             }
             if let fill {
-                Circle().fill(fill).frame(width: disc, height: disc).opacity(Double(1 - LabMotion.seg(k, 0, 0.6)))
+                Circle().fill(fill).frame(width: disc, height: disc).opacity(Double(1 - JourneyMotion.seg(k, 0, 0.6)))
             }
-            LabRing(spec: spec, band: band, gap: gap, closedGap: closedGap)
+            JourneyFlightRing(spec: spec, band: band, gap: gap, closedGap: closedGap)
                 .frame(width: radius * 2, height: radius * 2)
                 .opacity(Double(soft))
         }

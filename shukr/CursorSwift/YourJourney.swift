@@ -48,6 +48,7 @@ struct JourneyHomeCard: View {
                     .font(.system(size: compact ? 15 : 17, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
             }
+            .journeyFlightWords(.card)   // the transitions: fades as a month opens (JourneyTransitions.swift)
             HStack {
                 Text(rangeLabel)
                 Spacer()
@@ -57,11 +58,13 @@ struct JourneyHomeCard: View {
             .tracking(0.4)
             .foregroundStyle(.secondary)
             .padding(.top, tight ? 12 : 18)
+            .journeyFlightWords(.card)
             grid.padding(.top, 6)
-            foot
+            foot.journeyFlightWords(.card)
         }
         .padding(.top, tight ? 14 : 18).padding(.horizontal, 18).padding(.bottom, tight ? 10 : 14)
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
+        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)).journeyFlightCardSurface())
+        .journeyFlightCard()
     }
 
     /// "THE LAST 18 WEEKS" at rest; once scrolled back, the months in view ("JUN – SEP 2026").
@@ -108,6 +111,7 @@ struct JourneyHomeCard: View {
         }
         // 12 weeks is its natural height (what Journey's fit test measures), and it grows into any room that's left.
         .frame(minHeight: Self.minGrid, idealHeight: Self.minGrid, maxHeight: .infinity)
+        .journeyFlightGrid(weekStarts: stats.weeks.map(\.start))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Your weeks, a week a row")
     }
@@ -122,6 +126,7 @@ struct JourneyHomeCard: View {
                     } label: {
                         Text(m.label).font(.system(size: 12.5, weight: .regular, design: .rounded)).foregroundStyle(Color.sage)
                             .lineLimit(1).fixedSize()
+                            .journeyFlightMonthName(m.start)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Open \(m.start.formatted(.dateTime.month(.wide).year()))")
@@ -143,6 +148,7 @@ struct JourneyHomeCard: View {
             shape.fill(color(day.kind))
                 .frame(maxWidth: .infinity)
                 .frame(height: 11)
+                .journeyFlightTile(day.date)
                 .overlay {
                     if on {
                         RoundedRectangle(cornerRadius: 7, style: .continuous)

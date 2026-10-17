@@ -252,7 +252,8 @@ struct JourneyPage: View {
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
-        .navigationDestination(item: $openMonth) { JourneyMonthPage(log: log, start: $0.month) }
+        // A month opens in place from the card (or This month), its days grow into the day page (JourneyTransitions.swift).
+        .journeyMonthHost(month: $openMonth, log: log)
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(today)) }
         .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
@@ -381,6 +382,7 @@ struct JourneyPage: View {
                 .font(.system(size: 16, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
         }
+        .journeyFlightWords(.page)   // lifts away as a month opens (JourneyTransitions.swift)
     }
 
     private func rows(_ s: YourJourneyStats, height rowHeight: CGFloat) -> some View {
@@ -441,6 +443,7 @@ struct JourneyPage: View {
                 EmptyView()
             } action: { showMilestones = true }
         }
+        .journeyFlightWords(.page)
     }
 }
 

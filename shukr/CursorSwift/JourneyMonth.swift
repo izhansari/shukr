@@ -31,6 +31,7 @@ struct JourneyMonthPage: View {
     @State private var dragVertical: Bool?
     /// The year, in place of the month (the title, Month | Year, or a pinch).
     @State private var showYear = false
+    @Environment(\.journeyDayOpener) private var dayOpener
 
     init(log: JourneyLog, start: Date) {
         self.log = log
@@ -96,8 +97,9 @@ struct JourneyMonthPage: View {
                           selection: Binding(get: { showYear ? "year" : "month" },
                                              set: { v in withAnimation(Self.zoom) { showYear = v == "year" } }))
                 .padding(.bottom, 6)
+                .journeyFlightWords(.month)
         }
-        .background(theme.surface.ignoresSafeArea())
+        .background(theme.surface.journeyFlightMonthSurface().ignoresSafeArea())   // clear while it opens over Journey
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
@@ -126,6 +128,7 @@ struct JourneyMonthPage: View {
                         .foregroundStyle(.secondary)
                 }
                 .contentShape(Rectangle())
+                .journeyFlightTitle(shown)   // "Sep" on the card grows into it (JourneyTransitions.swift)
             }
             .buttonStyle(.plain)
             .accessibilityHint("Shows the year")
@@ -159,12 +162,14 @@ struct JourneyMonthPage: View {
             }
             .id(shown)
             .transition(CircleMotion.dayPickSwap)
+            .journeyFlightWords(.month)
             calendars(scale: scale).padding(.top, 24 * scale)
             Text("Tap a day to open it.")
                 .font(.system(size: 13, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 20)
+                .journeyFlightWords(.month)
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
@@ -288,6 +293,8 @@ struct JourneyMonthPage: View {
         // Today opens only once it's over — all five marked (owner, 2026-10-15: the day page "doesn't show up in journey
         // unless the day is over or all 5 have been marked, so it never shows current prayers").
         guard date < today || log.day(date).allFive else { return }
+        // Opened from the card: the day's ring grows into the day page (JourneyTransitions.swift); else a push.
+        if let dayOpener { dayOpener.open(date); return }
         triggerSomeVibration(type: .light)
         openDay = JourneyDayRoute(date: date)
     }
@@ -333,6 +340,7 @@ private struct JourneyCalendar: View {
                     Text(letter).font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
                 }
             }
+            .journeyFlightWords(.month)
             LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(0..<lead, id: \.self) { _ in Color.clear.frame(height: JourneyDayRing.size * scale) }
                 ForEach(days, id: \.self) { date in
@@ -341,6 +349,7 @@ private struct JourneyCalendar: View {
                                    excusedNoRows: excusedNoRows(date))
                         .scaleEffect(scale)
                         .frame(height: JourneyDayRing.size * scale)
+                        .journeyFlightCell(date, scale: scale)   // the transitions (JourneyTransitions.swift)
                         .opacity(highlight.map { $0.matches(day) ? 1 : 0.22 } ?? 1)
                         .frame(maxWidth: .infinity)
                         .contentShape(Rectangle())
@@ -360,6 +369,7 @@ private struct JourneyCalendar: View {
             .foregroundStyle(.secondary)
             .padding(.top, 14)   // ~20 pt under the calendar with the stack's 6 (the canvas; Frank's check)
             .frame(maxWidth: .infinity)
+            .journeyFlightWords(.month)
         }
     }
 
@@ -437,6 +447,9 @@ private struct JourneyDayCell: View {
     /// No rows, but an excused range covers it: excused all day.
     var excusedNoRows = false
     @Environment(\.colorScheme) private var scheme
+    /// The transitions (JourneyTransitions.swift): how much of its ring, number and fill to draw while the month opens or
+    /// a day's ring flies from it; all of it otherwise.
+    @Environment(\.journeyCellDraw) private var cellDraw
 
     var body: some View {
         let future = date > today
@@ -450,8 +463,10 @@ private struct JourneyDayCell: View {
                 if day.allFive && !isToday {
                     Circle().fill(day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
                         .frame(width: JourneyDayRing.fill * 2, height: JourneyDayRing.fill * 2)
-                    Circle()
+                        .opacity(cellDraw.fill)
+                    Circle().trim(from: 0, to: cellDraw.ring)
                         .stroke(day.allInTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark), lineWidth: JourneyDayRing.band)
+                        .rotationEffect(.degrees(-90))   // drawn closed from the top (the transitions)
                         .frame(width: JourneyDayRing.radius * 2, height: JourneyDayRing.radius * 2)
                 } else {
                     ForEach(0..<5, id: \.self) { i in fifth(i, today: isToday, dark: dark) }
@@ -462,11 +477,13 @@ private struct JourneyDayCell: View {
                 .monospacedDigit()
                 .foregroundStyle(future ? Color.secondary.opacity(0.55) : drawn || isToday ? Color.primary : Color.secondary.opacity(0.85))
                 .offset(y: isToday ? -2.2 * JourneyDayRing.k : 0)
+                .opacity(cellDraw.number)
             if isToday {
                 Circle().fill(Color.primary).frame(width: 3 * JourneyDayRing.k, height: 3 * JourneyDayRing.k)
                     .offset(y: 7.6 * JourneyDayRing.k)
+                    .opacity(cellDraw.number)
             } else if excusedAllDay {
-                ExcusedDayBadge(size: 9.2 * JourneyDayRing.k).offset(y: 13 * JourneyDayRing.k)
+                ExcusedDayBadge(size: 9.2 * JourneyDayRing.k).offset(y: 13 * JourneyDayRing.k).opacity(cellDraw.number)
             }
         }
         .frame(width: JourneyDayRing.size, height: JourneyDayRing.size)
@@ -484,7 +501,7 @@ private struct JourneyDayCell: View {
         }
         if let color {
             let arc = JourneyDayRing.fifth(i)
-            Circle().trim(from: arc.from, to: arc.to)
+            Circle().trim(from: arc.from, to: arc.from + (arc.to - arc.from) * cellDraw.ring)
                 .stroke(color, style: StrokeStyle(lineWidth: JourneyDayRing.band, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .frame(width: JourneyDayRing.radius * 2, height: JourneyDayRing.radius * 2)
