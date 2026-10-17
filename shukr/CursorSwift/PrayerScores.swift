@@ -357,6 +357,7 @@ struct PrayerScoresPage: View {
         }
         .task { reload() }
         .onChange(of: spanRaw) {
+            JourneyPerf.began("scores span")
             if let cached = PrayerScores.lastBySpan[span] { data = cached }
             reload()
         }
@@ -376,7 +377,9 @@ struct PrayerScoresPage: View {
         let token = loadToken, container = context.container, ranges = Excused.ranges
         Task {
             let span = self.span
+            let t = JourneyPerf.now
             let built = await PrayerScores.load(container: container, ranges: ranges, span: span)
+            JourneyPerf.took("scores.load", since: t)
             guard token == loadToken else { return }
             data = built
             PrayerScores.lastBySpan[span] = built

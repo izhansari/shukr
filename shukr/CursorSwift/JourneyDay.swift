@@ -446,6 +446,7 @@ struct JourneyDayPane: View {
         .onReceive(NotificationCenter.default.publisher(for: SessionDeletion.changed)) { _ in load() }   // the back's Zikr row
         // Paged away: nothing picked when it comes back (the flip stays: it's the page's).
         .onChange(of: current) { _, now in
+            if now { JourneyPerf.began("day paged") }
             guard !now else { return }
             picked = nil
         }
@@ -471,7 +472,9 @@ struct JourneyDayPane: View {
 
     // MARK: Data
 
-    private func load() {
+    private func load() { JourneyPerf.time("day.load") { loadNow() } }
+
+    private func loadNow() {
         let key = PrayerNotificationID.dayKey(date)
         let all = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: date)))) ?? []
         let mine = all.filter { $0.dayKey == key && JourneyLog.names.contains($0.name) }

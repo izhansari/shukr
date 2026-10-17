@@ -103,6 +103,10 @@ struct JourneyYearView: View {
             if y != years.last { proxy.scrollTo(y, anchor: .top) }
         }
         .scrollIndicators(.hidden)
+        .onScrollPhaseChange { _, phase in
+            if phase == .interacting { JourneyPerf.began("year scroll") }
+            JourneyPerf.scrolling(phase.isScrolling)
+        }
         .coordinateSpace(.named(Self.space))
         // Spread two fingers: the small month they started on opens (one with prayers); anywhere else, back to the month.
         .simultaneousGesture(MagnifyGesture().onEnded { v in

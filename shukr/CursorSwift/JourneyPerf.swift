@@ -21,6 +21,12 @@ import QuartzCore
         if on { JourneyPerfLog.shared.began(event) }
     }
 
+    /// A scroll is moving (`true` from its first move, `false` once it rests): its window stays open meanwhile, however smooth —
+    /// a quiet spell only ends a window once nothing moves.
+    @inline(__always) static func scrolling(_ moving: Bool) {
+        if on { JourneyPerfLog.shared.scrolling = moving }
+    }
+
     /// A view's body ran (`let _ = JourneyPerf.body("card")`).
     @inline(__always) static func body(_ name: StaticString) {
         if on { JourneyPerfLog.shared.bodies[name.description, default: 0] += 1 }
@@ -62,6 +68,7 @@ import QuartzCore
     private var busy: CFTimeInterval = 0
     /// When the window last saw a late frame or a body (quiet for `idle` s: it's written and the link sleeps).
     private var lastActivity: CFTimeInterval = 0
+    fileprivate var scrolling = false
     private static let idle: CFTimeInterval = 2.5
     private var started = false
 
@@ -73,7 +80,8 @@ import QuartzCore
         }
         event = e
         began = CACurrentMediaTime(); last = began; lastActivity = began
-        frames = 0; late = 0; hitch = 0; worst = 0; busy = 0; wokeAt = began
+        // busy: the main thread's pass under way (this move's own handler is in it) counts for this window, from when it woke.
+        frames = 0; late = 0; hitch = 0; worst = 0; busy = 0
         if link == nil {
             let l = CADisplayLink(target: self, selector: #selector(tick(_:)))
             l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
@@ -90,6 +98,7 @@ import QuartzCore
             }
             CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
             observer = o
+            wokeAt = began
         }
     }
 
@@ -110,6 +119,7 @@ import QuartzCore
         }
         frames += 1
         last = now
+        if scrolling { lastActivity = now }
         if now - lastActivity > Self.idle { flush(); l.invalidate(); link = nil }
     }
 

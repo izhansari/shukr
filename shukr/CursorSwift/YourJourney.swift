@@ -261,6 +261,7 @@ struct JourneyHomeCard: View {
         // Only the finger's scroll: the streak's own scroll to its days is .animating, not .interacting.
         .onScrollPhaseChange { _, phase in
             if phase == .interacting { scrub.pinned = false; JourneyPerf.began("card scroll") }   // the finger's now: no more snapping to today
+            JourneyPerf.scrolling(phase.isScrolling)
             guard phase == .interacting, picked != nil || streakShown else { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
         }
