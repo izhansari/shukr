@@ -305,6 +305,20 @@ struct PrayerScoresPage: View {
         .fontDesign(.rounded)
         .navigationTitle("Prayer scores")
         .navigationBarTitleDisplayMode(.inline)
+        // A prayer opens in place, not as a page: while one is open, ‹ closes it back to Prayer scores (owner,
+        // 2026-10-17: "clicking the back chevron is kind of annoying because it takes us back to the card page instead
+        // of just exiting out of that current prayers page"). The system's ‹ comes back once it's closed.
+        .navigationBarBackButtonHidden(selected != nil)
+        .toolbar {
+            if selected != nil {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { close() } label: {
+                        Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel("Back to Prayer scores")
+                }
+            }
+        }
         .navigationDestination(isPresented: $showMakeUp) {
             JourneyMakeUpPage(month: JourneyLog.monthStart(PrayerDay.start()), startOnly: shown)
         }
