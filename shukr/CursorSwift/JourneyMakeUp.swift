@@ -30,7 +30,10 @@ struct JourneyMakeUpPage: View {
     /// One prayer only (a tap on its count).
     @State private var only: String?
     /// Made-up prayers shown in their months (Reminders' Show Completed).
-    @AppStorage("journey.showMadeUp") private var showMade = false
+    /// Hidden each time the page opens, so the list works toward empty (owner, 2026-10-17: "default to hide the made up
+    /// prayers in the list so that the list basically works towards inbox zero"); it was remembered between visits.
+    @State private var showMade = false
+    @Environment(\.colorScheme) private var scheme
     /// Just made up: still in place with Undo until its 3 s run out (the token tells a later tap from this one).
     @State private var settling: [PersistentIdentifier: UUID] = [:]
     /// Bumps when the last one is cleared here (the "All caught up" moment plays).
@@ -261,7 +264,8 @@ struct JourneyMakeUpPage: View {
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule().fill(Color.primary.opacity(0.55)).frame(width: max(share > 0 ? 6 : 0, g.size.width * share))
+                    // Journey's green, as the scrubber's cleared months (owner: "use that same green color").
+                    Capsule().fill(JourneyTileColor.of(.allInTime, dark: scheme == .dark)).frame(width: max(share > 0 ? 6 : 0, g.size.width * share))
                 }
             }
             .frame(height: 6)
