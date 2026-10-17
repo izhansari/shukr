@@ -1846,7 +1846,7 @@ struct MemoriesDeck: View {
                                 Circle().trim(from: 0, to: max(score, 0.02))
                                     .stroke(PrayerScoring.color(for: score), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                                     .rotationEffect(.degrees(-90))
-                                Text("\(Int((score * 100).rounded()))")
+                                Text("\(PrayerScoring.points(for: score))")
                                     .font(.system(size: 9, weight: .semibold, design: .rounded))
                             }
                             .frame(width: 24, height: 24)
@@ -3040,7 +3040,7 @@ struct MemoriesPileMock: View {
                     Circle().trim(from: 0, to: 0.92).stroke(Color.green, style: StrokeStyle(lineWidth: 3, lineCap: .round)).rotationEffect(.degrees(-90))
                 }
                 .frame(width: 16, height: 16)
-                Text("92 · On time").font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(.green)
+                Text("92 · Middle").font(.system(size: 13, weight: .medium, design: .rounded)).foregroundStyle(.green)
             }
             // The note, on the screen (owner: "whether there are notes or not, the user wouldn't know unless they click
             // it"): up to three lines in a fixed box, a tap to edit; none = "Add a note".

@@ -1160,7 +1160,7 @@ struct PrayerPhotoFramed: View {
                         Circle().trim(from: 0, to: max(score, 0.02))
                             .stroke(PrayerScoring.color(for: score), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                             .rotationEffect(.degrees(-90))
-                        Text("\(Int((score * 100).rounded()))")
+                        Text("\(PrayerScoring.points(for: score))")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                     }
                     .frame(width: 32, height: 32)

@@ -82,7 +82,7 @@ struct DayFacts {
 // MARK: - The rows (one look on both pages)
 
 extension PrayerModel {
-    /// A day page row's second line: "Late · 75"; a Jumu'ah "Jumu'ah · 100" — never "Jumu'ah at <masjid>", which ran the
+    /// A day page row's second line: "Closing · 75"; a Jumu'ah "Jumu'ah · 100" — never "Jumu'ah at <masjid>", which ran the
     /// width of the row (owner, 2026-10-16). The masjid stays as the mark by the name and the place under the ring.
     var dayRowSummary: String {
         guard let s = numberScore else { return "" }
@@ -148,7 +148,7 @@ struct DayPickBandLayer: View {
 }
 
 /// A prayed row's right side on the day page: "@ 7:45 PM" (when it was prayed), the grade and score under it
-/// ("Late · 75"). Both pages (owner, 2026-10-16: "should say '@ 7:45PM' to indicate thats the time we prayed it").
+/// ("Closing · 75"). Both pages (owner, 2026-10-16: "should say '@ 7:45PM' to indicate thats the time we prayed it").
 struct DayRowTime: View {
     let prayedAt: Date
     let summary: String

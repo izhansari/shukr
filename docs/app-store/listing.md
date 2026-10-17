@@ -26,7 +26,7 @@ The current prayer and a live ring of how much of its window is left, coloured b
 flip between "ends at" and time left.
 
 A TRACKER THAT SCORES WHEN YOU PRAYED
-Mark each prayer with a tap. It's scored by when: Perfect in the first 30 minutes, then On time, Late, Qaza or Missed,
+Mark each prayer with a tap. It's scored by when: Perfect in the first 30 minutes, then Middle and Closing as its time runs out, Qaza after it ends, or Missed,
 and each day gets a score. Done prayers fold away; all five bring a perfect-day moment. Prayed earlier? Edit the time
 with a wheel that won't let you pick an impossible one. The day runs Fajr to Fajr, so a late Isha after midnight still
 counts for its day.

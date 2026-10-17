@@ -13,8 +13,17 @@ import MapKit
 /// Everything the page shows, read once off the main thread (`load`). Plain values.
 struct PrayerScores {
     enum Grade: String, CaseIterable, Identifiable {
-        case perfect = "Perfect", onTime = "On time", late = "Late", qaza = "Qaza"
+        case perfect, onTime, late, qaza
         var id: String { rawValue }
+        /// Its word, from PrayerScoring (the one place the grade words live): Perfect · Middle · Closing · Qaza.
+        var word: String {
+            switch self {
+            case .perfect: PrayerScoring.Grade.perfect.rawValue
+            case .onTime: PrayerScoring.Grade.onTime.rawValue
+            case .late: PrayerScoring.Grade.late.rawValue
+            case .qaza: PrayerScoring.Grade.qaza.rawValue
+            }
+        }
         var color: Color {
             switch self {
             case .perfect: PrayerScoring.color(for: 1)
@@ -601,14 +610,14 @@ struct PrayerScoresPage: View {
         .opacity(linesFaded ? 0 : 1)
     }
 
-    /// "38 prayers (12%) · 10–20 min after it starts · On time" (owner, 2026-10-17, his wording), or "· made up as Qaza".
+    /// "38 prayers (12%) · 10–20 min after it starts · Middle" (owner, 2026-10-17, his wording), or "· made up as Qaza".
     private func slotLine(_ p: PrayerScores.Prayer, _ k: Int) -> String {
         let (counts, qaza) = PrayerScoresChart.slotCounts(p)
         let n = k == PrayerScoresChart.qazaSlot ? qaza : (counts.indices.contains(k) ? counts[k] : 0)
         let total = max(1, p.positions.count)
         let head = "\(n) prayer\(n == 1 ? "" : "s") (\(Int((Double(n) / Double(total) * 100).rounded()))%)"
         if k == PrayerScoresChart.qazaSlot { return head + " · made up as Qaza" }
-        let grade = PrayerScoresChart.zone((Double(k) + 0.5) / Double(PrayerScoresChart.slots), p).rawValue
+        let grade = PrayerScoresChart.zone((Double(k) + 0.5) / Double(PrayerScoresChart.slots), p).word
         guard let w = p.window, w > 0 else { return "\(head) · \(grade)" }
         let minutes = w / 60
         let a = Int((Double(k) / Double(PrayerScoresChart.slots) * minutes).rounded())
@@ -907,7 +916,8 @@ struct PrayerScoresPage: View {
     private func chartLine(_ p: PrayerScores.Prayer) -> some View {
         Group {
             if let f = focus {
-                Text("\(p.grades[f] ?? 0) \(f.rawValue)").fontWeight(.regular)
+                // "Closing: 36 of 79 prayed" ("36 Closing of 79 prayed" didn't read once the words were Middle / Closing).
+                Text("\(f.word): \(p.grades[f] ?? 0)").fontWeight(.regular)
                 + Text(" of \(p.prayed) prayed").foregroundStyle(.secondary)
             } else {
                 Text("\(p.prayed) prayed").foregroundStyle(.primary)
@@ -931,7 +941,7 @@ struct PrayerScoresPage: View {
                             Circle().fill(g.color.opacity(0.75)).frame(width: 9, height: 9)
                             Text("\(p.grades[g] ?? 0)").font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
                         }
-                        Text(g.rawValue).font(.system(size: 12, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        Text(g.word).font(.system(size: 12, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 58)
@@ -943,7 +953,7 @@ struct PrayerScoresPage: View {
                     .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("\(p.grades[g] ?? 0) \(g.rawValue)")
+                .accessibilityLabel("\(g.word): \(p.grades[g] ?? 0)")
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
@@ -1089,7 +1099,7 @@ struct PrayerScoresChart: View {
             func dim(_ g: PrayerScores.Grade) -> Double { focus == nil ? 1 : focus == g ? 1 : 0.15 }
             func dim(slot k: Int, _ g: PrayerScores.Grade) -> Double { slot.map { $0 == k ? 1 : 0.15 } ?? dim(g) }
 
-            // The window's colour bar: Perfect · On time · Late, then a dashed stretch for after the end.
+            // The window's colour bar: Perfect · Middle · Closing, then a dashed stretch for after the end.
             let xPerfect = x0 + CGFloat(prayer.bands.perfect) * (end - x0), xLate = x0 + CGFloat(prayer.bands.late) * (end - x0)
             let barY = base + 2
             func bar(_ from: CGFloat, _ to: CGFloat, _ g: PrayerScores.Grade, _ base: Double) {
@@ -1154,7 +1164,7 @@ struct PrayerScoresChart: View {
     }
 
     private var accessibilitySummary: String {
-        let g = PrayerScores.Grade.allCases.map { "\(prayer.grades[$0] ?? 0) \($0.rawValue)" }.joined(separator: ", ")
+        let g = PrayerScores.Grade.allCases.map { "\($0.word): \(prayer.grades[$0] ?? 0)" }.joined(separator: ", ")
         return "\(prayer.name): \(prayer.prayed) prayed. \(g)."
     }
 }

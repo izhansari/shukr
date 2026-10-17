@@ -10,9 +10,12 @@
 //  A prayer's `numberScore` is its points out of 100, stored as 0...1:
 //    Perfect  marked within 30 min of the adhan            100
 //             (called Early until 2026-09-26; owner: "i dont love early")
-//    On time  rest of the window, first half                99 → 80
-//    Late     rest of the window, second half               79 → 60
+//    Middle   rest of the window, first half                99 → 80
+//    Closing  rest of the window, second half               79 → 60
 //    Qaza     marked after the window closed                40
+//  Middle / Closing were "On time" / "Late" until 2026-10-17 (owner: users read "on time" as just being inside the
+//  window and "late" as prayed outside it). Old rows' `englishScore` keeps whichever word was current; the UI reads
+//  `gradeWord`, never the stored string.
 //    Missed   never marked                                  0 (numberScore stays nil)
 //  After the first 30 minutes the points slide evenly from 100 to 60 at the window's end, so
 //  there's no cliff inside the window; the only drop is 60 → 40 when it closes. Qaza still
@@ -33,8 +36,21 @@ enum PrayerScoring {
     static let inWindowFloor = 0.6
     static let qaza = 0.4
 
-    enum Grade: String {
-        case perfect = "Perfect", onTime = "On time", late = "Late", qaza = "Qaza"
+    /// The one place the grade words live: every screen, the setup legend, Siri and the watch's copy read them from here.
+    /// (Case names keep their old meaning — `.onTime` is Middle, `.late` is Closing — so saved keys never change.)
+    enum Grade: String, CaseIterable {
+        case perfect = "Perfect", onTime = "Middle", late = "Closing", qaza = "Qaza"
+
+        /// Spoken after "Asr marked as prayed …" (Siri, VoiceOver): "during the Middle window" (owner: "user marked as
+        /// prayed during the [score text descriptor] window" — one template, plug and play).
+        var spokenWhen: String {
+            self == .qaza ? "after its window, as Qaza" : "during the \(rawValue) window"
+        }
+        /// The highest number this grade may show: the grade is decided on the raw score but the number is rounded,
+        /// so a 0.996 read "On time · 100" next to Perfect's 100.
+        var shownCeiling: Int {
+            switch self { case .perfect: 100; case .onTime: 99; case .late: 79; case .qaza: 40 }
+        }
     }
 
     /// Points (0...1) for a prayer whose window is `start...end`, marked at `markedAt`.
@@ -55,8 +71,8 @@ enum PrayerScoring {
         return .qaza
     }
 
-    /// When a prayer's colour changes on the clock: Perfect → On time (30 min in) and On time →
-    /// Late (halfway through the rest of the window). The Prayers widget adds a timeline entry at
+    /// When a prayer's colour changes on the clock: Perfect → Middle (30 min in) and Middle →
+    /// Closing (halfway through the rest of the window). The Prayers widget adds a timeline entry at
     /// each (the watch has the same rule in `WatchScoring.gradeChanges`).
     static func gradeChanges(start: Date, end: Date) -> [Date] {
         let rest = end.timeIntervalSince(start) - earlyWindow
@@ -65,9 +81,19 @@ enum PrayerScoring {
         return [perfectEnds, perfectEnds.addingTimeInterval(rest / 2)]
     }
 
-    /// "On time · 88"
+    /// The number shown for a score, never above its grade's band ("Middle · 99", not "Middle · 100").
+    static func points(for score: Double) -> Int {
+        min(Int((score * 100).rounded()), grade(for: score).shownCeiling)
+    }
+
+    /// "Middle · 88"
     static func summary(for score: Double) -> String {
-        "\(grade(for: score).rawValue) · \(Int((score * 100).rounded()))"
+        "\(grade(for: score).rawValue) · \(points(for: score))"
+    }
+
+    /// "Asr marked as prayed during the Closing window. Score: 66." — Siri's answer and the Live Activity's VoiceOver.
+    static func spokenMark(_ name: String, score: Double) -> String {
+        "\(name) marked as prayed \(grade(for: score).spokenWhen). Score: \(points(for: score))."
     }
 
     static func color(for score: Double?) -> Color {

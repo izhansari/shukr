@@ -481,7 +481,7 @@ enum InsightsRange: String, CaseIterable, Identifiable {
 }
 
 enum InsightsGrade: String, CaseIterable {
-    case perfect = "Perfect", onTime = "On time", late = "Late", qaza = "Qaza", missed = "Missed"
+    case perfect = "Perfect", onTime = "Middle", late = "Closing", qaza = "Qaza", missed = "Missed"   // the old Insights page (unreachable)
     var color: Color {
         switch self {
         case .perfect: .green
@@ -518,7 +518,7 @@ struct InsightsStats {
         var usuallyAfter: Bool { (usualElapsed ?? 0) > (usualWindow ?? .infinity) }
         /// The colour the live ring would show at the usual moment.
         var usualColor: Color { usualScore.map { PrayerScoring.color(for: $0) } ?? .secondary }
-        /// Its grade word ("Perfect", "On time", "Late", "Qaza").
+        /// Its grade word ("Perfect", "Middle", "Closing", "Qaza").
         var usualGrade: String? { usualScore.map { PrayerScoring.grade(for: $0).rawValue } }
     }
 

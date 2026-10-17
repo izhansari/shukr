@@ -3,7 +3,7 @@
 //  shukr
 //
 //  Long-press a completed prayer → "when did you pray?". The window bar shows where the picked
-//  time lands (green Perfect for the first 30 min, yellow On time, red Late; past the end is
+//  time lands (green Perfect for the first 30 min, yellow Middle, red Closing; past the end is
 //  Qaza), the score updates live, and Cancel / Save sit at the bottom as capsules (2026-09-25:
 //  the old sheet was a bare Form-style stack with a blue Save next to the score). Save is gray
 //  until a different valid time is picked, then a green edge and green text.
@@ -196,7 +196,7 @@ struct PrayerTimeEditSheet: View {
         .onChange(of: draftInYellow, initial: true) { _, now in if tourTip { TourRuntime.shared.editorInYellow = now } }
         .onChange(of: draft, initial: true) { _, now in
             guard tourTip else { return }
-            TourRuntime.shared.editorScore = Int((PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: now) * 100).rounded())
+            TourRuntime.shared.editorScore = PrayerScoring.points(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: now))
         }
         .sheet(isPresented: $pickingSpot) {
             PrayerLocationPicker(prayerName: prayer.displayName, original: shownSpot,
@@ -284,7 +284,7 @@ struct PrayerTimeEditor: View {
 
             if showsScore {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(isValid ? "\(Int((score * 100).rounded()))" : "–")
+                    Text(isValid ? "\(PrayerScoring.points(for: score))" : "–")
                         .font(.system(size: 40, weight: .light, design: .rounded))
                         .contentTransition(.numericText(value: score))
                     Text(isValid ? (prayer.isJumuah ? "Jumu'ah" : grade.rawValue) : "not a valid time")
@@ -366,7 +366,7 @@ struct SaveCancelButtons: View {
     }
 }
 
-/// The prayer's window as a bar: Perfect (first 30 min) green, On time yellow, Late red, with a
+/// The prayer's window as a bar: Perfect (first 30 min) green, Middle yellow, Closing red, with a
 /// marker where the picked time falls. A time after the window (Qaza) parks the marker at the
 /// end, gray, with "qaza" under it — the bar itself only shows the window.
 struct PrayerWindowBar: View {

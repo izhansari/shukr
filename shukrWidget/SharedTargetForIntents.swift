@@ -1786,8 +1786,8 @@ struct PrayerCardSnippet: View {
     /// One line for VoiceOver (the card stacks timer layers that would each be read).
     private var spoken: String {
         if let m = state.markedAt {
-            let grade = PrayerScoring.grade(for: PrayerScoring.score(start: state.start, end: state.end, markedAt: m)).rawValue
-            return "\(state.label), prayed \(shortTimePM(m)), \(grade)"
+            let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: m)
+            return "\(state.label), prayed \(shortTimePM(m)) \(PrayerScoring.grade(for: score).spokenWhen). Score: \(PrayerScoring.points(for: score))."
         }
         return "\(state.label), \(TodaysTimesSnippet.left(until: state.end)), ends \(shortTimePM(state.end))"
     }
@@ -1999,7 +1999,7 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Mark Prayer as Prayed"
     /// Replaced by MarkPrayedNowIntent (iOS 26, with Undo); kept for saved shortcuts.
     static var isDiscoverable: Bool = false
-    static var description = IntentDescription("Marks the prayer whose time it is now as prayed, scored like in shukr. Passes the grade on (Perfect, On time, Late, Qaza).",
+    static var description = IntentDescription("Marks the prayer whose time it is now as prayed, scored like in shukr. Passes the grade on (Perfect, Middle, Closing, Qaza).",
                                                categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "prayed", "mark", "done"],
                                                resultValueName: "Grade")
     static var openAppWhenRun: Bool = false
@@ -2027,7 +2027,7 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
         guard await PrayerMarkNow.mark(c) else { throw PrayerTimeUnavailable() }
         let at = SharedStore.markedTime(of: c.name, start: c.start) ?? now
         let grade = PrayerMarkNow.grade(c, at: at)   // graded at the stored time, as the iOS 26 one
-        return .result(value: grade, dialog: "\(c.name) marked as prayed. \(grade).", view: card(at))
+        return .result(value: grade, dialog: "\(PrayerMarkNow.spoken(c, at: at))", view: card(at))
     }
 }
 
@@ -2287,8 +2287,8 @@ struct MarkPrayerFromControlIntent: LiveActivityIntent {
             return .result(dialog: "\(c.name) is already marked. Change it in shukr.")
         }
         guard await PrayerMarkNow.mark(c) else { throw PrayerTimeUnavailable() }
-        let grade = PrayerMarkNow.grade(c, at: SharedStore.markedTime(of: c.name, start: c.start) ?? Date())
-        return .result(dialog: "\(c.name) marked as prayed. \(grade).")
+        let spoken = PrayerMarkNow.spoken(c, at: SharedStore.markedTime(of: c.name, start: c.start) ?? Date())
+        return .result(dialog: "\(spoken)")
     }
 }
 
@@ -2332,6 +2332,11 @@ enum PrayerMarkNow {
     }
     static func grade(_ c: PrayerWindows.Window, at: Date) -> String {
         PrayerScoring.grade(for: PrayerScoring.score(start: c.start, end: c.end, markedAt: at)).rawValue
+    }
+    /// What Siri says once it's marked: "Asr marked as prayed during the Closing window. Score: 66." (a bare "Closing."
+    /// out loud sounded like something shutting down).
+    static func spoken(_ c: PrayerWindows.Window, at: Date) -> String {
+        PrayerScoring.spokenMark(c.name, score: PrayerScoring.score(start: c.start, end: c.end, markedAt: at))
     }
     /// The prayer's card now: running (with a ✓), or marked (with an Undo when asked for).
     static func card(_ c: PrayerWindows.Window, undo: Bool, scheme: ColorScheme) -> AnyView {
@@ -2478,7 +2483,7 @@ struct PrayedCardIntent: SnippetIntent {
 @available(iOS 26.0, *)
 struct MarkPrayedNowIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Mark Prayer as Prayed"
-    static var description = IntentDescription("Marks the prayer whose time it is now as prayed, scored like in shukr. Passes the grade on (Perfect, On time, Late, Qaza). Undo asks in shukr.",
+    static var description = IntentDescription("Marks the prayer whose time it is now as prayed, scored like in shukr. Passes the grade on (Perfect, Middle, Closing, Qaza). Undo asks in shukr.",
                                                categoryName: "Prayer Times", searchKeywords: ["salah", "namaz", "prayed", "mark", "done"],
                                                resultValueName: "Grade")
     static var openAppWhenRun: Bool = false
@@ -2508,7 +2513,7 @@ struct MarkPrayedNowIntent: LiveActivityIntent {
             }
             throw PrayerTimeUnavailable()
         }
-        return .init(value: grade, dialog: "\(c.name) marked as prayed. \(grade).", card: PrayedCardIntent(c))
+        return .init(value: grade, dialog: "\(PrayerMarkNow.spoken(c, at: at))", card: PrayedCardIntent(c))
     }
 }
 
@@ -3412,7 +3417,7 @@ struct LANameLines: View {
                 Group {
                     Text("Prayed \(at.formatted(date: .omitted, time: .shortened))")
                         .font(.system(size: line)).foregroundStyle(.primary)
-                    Text("\(PrayerScoring.grade(for: score).rawValue) · \(Int((score * 100).rounded()))")
+                    Text(PrayerScoring.summary(for: score))
                         .font(.system(size: small)).foregroundStyle(.secondary)
                 }
                 .transition(LATransitions.line)

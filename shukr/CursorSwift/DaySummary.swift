@@ -173,7 +173,7 @@ struct DayRing: View, Animatable {
     private var accessibilitySummary: String {
         Self.order.map { name in
             guard let p = day.first(where: { $0.name == name }), p.done, let s = p.score else { return "\(name): not marked" }
-            return "\(name): \(PrayerScoring.grade(for: s).rawValue)"
+            return "\(name): \(PrayerScoring.grade(for: s).rawValue), \(PrayerScoring.points(for: s))"
         }.joined(separator: ", ")
     }
 }
@@ -238,7 +238,7 @@ struct DayCentre: View {
     private var caption: String {
         let inTime = day.filter(\.inTime).count
         let words: String
-        if inTime == 5 { words = day.allSatisfy(\.perfect) ? "all five early" : "all five in time" }
+        if inTime == 5 { words = day.allSatisfy(\.perfect) ? "all five Perfect" : "all five in time" }
         else { words = "\(inTime) of 5 in time" }
         return yesterday ? "yesterday · \(words)" : words
     }

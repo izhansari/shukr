@@ -217,7 +217,7 @@ struct JourneyPrayerSheet: View {
                     .rotationEffect(.degrees(-90))
                     .padding(7)
                 VStack(spacing: 0) {
-                    Text(excused ? "–" : "\(Int((score * 100).rounded()))")
+                    Text(excused ? "–" : "\(PrayerScoring.points(for: score))")
                         .font(.system(size: 22, weight: .thin, design: .rounded)).monospacedDigit()
                         .contentTransition(.numericText(value: score))
                     Text(excused ? "excused" : jumuah ? "Jumu'ah" : PrayerScoring.grade(for: score).rawValue)

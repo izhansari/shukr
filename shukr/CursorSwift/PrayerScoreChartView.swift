@@ -97,20 +97,20 @@ struct PrayerScoreChartView: View {
                             }
                         }
                         
-                        RuleMark(y: .value("On time", 80))
+                        RuleMark(y: .value("Middle", 80))
                             .foregroundStyle(Color.green.opacity(0.5))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                             .annotation(position: .leading) {
-                                Text("On time")
+                                Text("Middle")
                                     .font(.caption)
                                     .foregroundColor(.green)
                             }
                         
-                        RuleMark(y: .value("Late", 60))
+                        RuleMark(y: .value("Closing", 60))
                             .foregroundStyle(Color.yellow.opacity(0.5))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                             .annotation(position: .leading) {
-                                Text("Late")
+                                Text("Closing")
                                     .font(.caption)
                                     .foregroundColor(.yellow)
                             }
@@ -491,11 +491,11 @@ import Charts
                     }
                     
                     // Reference lines
-                    RuleMark(y: .value("On time", 80))
+                    RuleMark(y: .value("Middle", 80))
                         .foregroundStyle(Color.green.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
-                    RuleMark(y: .value("Late", 60))
+                    RuleMark(y: .value("Closing", 60))
                         .foregroundStyle(Color.yellow.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
@@ -1040,11 +1040,11 @@ struct ScrollablePrayerScoreView: View {
             } else {
                 Chart {
                     // Reference lines
-                    RuleMark(y: .value("On time", 80))
+                    RuleMark(y: .value("Middle", 80))
                         .foregroundStyle(Color.green.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
-                    RuleMark(y: .value("Late", 60))
+                    RuleMark(y: .value("Closing", 60))
                         .foregroundStyle(Color.yellow.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
@@ -2376,7 +2376,7 @@ struct SimpleDailyScoreView: View {
             // Status icon
             if let prayer = prayer {
                 if prayer.isCompleted {
-                    if let engScore = prayer.englishScore, let score = prayer.numberScore  {
+                    if let engScore = prayer.gradeWord, let score = prayer.numberScore  {   // gradeWord: old rows store "Early" / "On time" / "Late"
                         Text("\(engScore)")
                             .font(.callout)
                             .foregroundColor(PrayerScoring.color(for: score))

@@ -138,7 +138,7 @@ a prayer checks `Excused.covers(start:end:)` (Excused.swift). Read `Excused.rang
 - `makeContainer` backs the store up first (`Library/Backups/shukr.store.before-<v>`). An unopenable store is set aside, never deleted (`recoverFromUnopenableStore`).
 - Built-ins: `isBuiltIn = builtInID != nil`, tagged by exact seeded names; compare zikr names with `BuiltInAzkar.key`; no delete.
 - Delete zikr / task only via `MantraModel.delete(_:in:)` / `TaskModel.delete(_:in:)` (a task left behind makes the data pass recreate its zikr; dismiss the page first). Sessions: `SessionDeletion.delete`.
-- Prayer rows: never `fetchLimit = 5`; one row per name via `onePerPrayer`, a completed row wins. Old rows store "Early": UI reads `gradeWord`.
+- Prayer rows: never `fetchLimit = 5`; one row per name via `onePerPrayer`, a completed row wins. Old rows store "Early" / "On time" / "Late": UI reads `gradeWord`; the grade words live only in `PrayerScoring.Grade` (+ the watch's `WatchScoring.word`).
 
 **Notifications & location**
 - Everything scheduled goes through `NotificationScheduler` (64 budget): diff, remove only owned ids, never `removeAllPending…`. Action handlers call `completionHandler` from inside `UNUserNotificationCenter.add`'s callback.
@@ -165,7 +165,7 @@ a prayer checks `Excused.covers(start:end:)` (Excused.swift). Read `Excused.rang
 - **salah.md** — Salah circle & prayer list (mainCircle.swift, PrayerListLooks.swift: the ring fills with the window in
   the score's colour; marking, the raised list = the public look, the marked row's buttons; the day's page — DayRing,
   DayInsight; the list's drag and motion rules). Scoring, streaks, prayer day (PrayerScoring.swift, PrayerDay.swift:
-  Perfect 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; the day turns at Fajr). Excused Mode (Excused.swift).
+  Perfect 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0; the day turns at Fajr). Excused Mode (Excused.swift).
 - **memories-journey.md** — Prayer photos (PrayerPhotos.swift: front + back after a mark, files only, developing, an
   unmark deletes the photo), Memories (PrayerMemories.swift: levels, the deck's zoom, day strip, search), Journey
   (Journey*.swift).

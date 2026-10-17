@@ -332,7 +332,7 @@ struct WatchPrayerList: View {
     @EnvironmentObject private var session: WatchSession
     @State private var unmarking: WatchPrayer?
     /// Rows whose time is flipped (the phone's PrayerButton `timeTap`): one still to come shows "in 2h 5m", a prayed
-    /// one its grade and score ("On time · 88"); the current and missed ones don't flip. Back by itself after 3 s.
+    /// one its grade and score ("Middle · 88"); the current and missed ones don't flip. Back by itself after 3 s.
     @State private var flipped: Set<String> = []
     @State private var flipTokens: [String: Int] = [:]
     static let flipSeconds: TimeInterval = 3
@@ -475,7 +475,7 @@ struct WatchPrayerList: View {
 /// The phone's main circle, small (owner, 2026-09-27: the watch showed a green sliver draining while
 /// the phone showed a nearly full red ring). Same as the phone: a pale band as the track, a thin arc
 /// that *fills* as the window passes (butt cap), coloured by the score you'd get marking it now
-/// (green Perfect · yellow On time · red Late). A prayer that hasn't started: an empty arc, a dashed
+/// (green Perfect · yellow Middle · red Closing). A prayer that hasn't started: an empty arc, a dashed
 /// track, "NEXT" over a dimmed name. Tap: "ends 5:21 PM" ⇄ "31m left" (before it starts: "at 5:35 AM"
 /// ⇄ "in 1h 51m"), with a click.
 struct WatchPrayerRing: View {

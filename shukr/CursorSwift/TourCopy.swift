@@ -70,7 +70,7 @@ enum TourCopy {
 
         static let coloursStep = "The colors"
         static let coloursLead = "The ring fills as the prayer’s time passes, and its color is the score you’d get if you prayed now:"
-        static let colours = ["First 30 min", "On time", "Late"]   // green, yellow, red
+        static let colours = [PrayerScoring.Grade.perfect, .onTime, .late].map(\.rawValue)   // green, yellow, red (VoiceOver only now)
         static let playAgain = "Play again"
 
         static var todos: [String] { TourFlow.v2 ? [
@@ -147,22 +147,22 @@ enum TourCopy {
             "Prayers you’ve marked fold away to keep the list short.",
             "Upcoming prayers show when they start.",
             "Every marked prayer keeps its score.",
-            "Prayed Fajr on time but marked it late? Fix it.",
+            "Prayed Fajr earlier than you marked it? Fix it.",
         ] : [
             "Your whole day is here, in order.",
             "Prayers you've marked tuck away to keep it tidy.",
             "Every prayer you mark is scored out of 100.",
-            "Marked one late by mistake? Its time can be fixed.",
+            "Marked one at the wrong time? Its time can be fixed.",
         ] }
         static var todoAfters: [String] { TourFlow.v2 ? [
             "Your full day: what you’ve prayed, and what you haven’t yet.",
             "That’s a countdown to when it starts. Tap again for the time.",
             "“Qaza · 40” means it was prayed after its time. Its dot’s color shows it too.",
-            "Saved. Fajr counts as on time now, and your day’s score is updated.",   // Save's own moment; → ends the chapter
+            "Saved. Fajr counts as Middle now, and your day’s score is updated.",   // Save's own moment; → ends the chapter
         ] : [
             "The times follow your location and calculation method, both in Settings.",
             "Tap “done” again to tuck them back away.",
-            "Perfect is 100, on time 80 or more, late 60 or more, Qaza 40.",
+            "Perfect is 100, Middle 80 or more, Closing 60 or more, Qaza 40.",
             "",   // the chapter's own end follows
         ] }
         static var todos: [String] { TourFlow.v2 ? [
@@ -181,12 +181,12 @@ enum TourCopy {
         // The tip inside the time editor (opened by the last to-do).
         static let editorTitle = "When did you really pray?"
         static var editorLine: String { TourFlow.v2 ? "Drag the color bar or turn the wheel. It’s practice — nothing is kept."
-            : "Say you prayed Fajr on time but marked it late: drag the color bar or turn the wheel into the yellow, then save. It’s practice — nothing is kept." }
+            : "Say you prayed Fajr earlier than you marked it: drag the color bar or turn the wheel into the yellow, then save. It’s practice — nothing is kept." }
         static let editorTodo = "Move it into the yellow, then save"
         /// The editor's to-dos in the top panel (owner: the first ticks as soon as it's in the yellow).
         static let editorTodos = ["Move it into the yellow", "Tap Save"]
         /// Held under the first once it's in the yellow (owner: "its own moment"): the score the draft would keep.
-        static func editorInYellow(_ score: Int) -> String { "On time · \(score) — that’s the score it’ll keep." }
+        static func editorInYellow(_ score: Int) -> String { "\(PrayerScoring.Grade.onTime.rawValue) · \(score) — that’s the score it’ll keep." }
     }
 
     // MARK: 3 · Zikr

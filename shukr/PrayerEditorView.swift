@@ -210,7 +210,7 @@ struct PrayerEditorView: View { //prayerstreak_flag main viewer for the streaks.
                     Spacer()
                                         
                     VStack{
-                        if let engScore = prayer.englishScore, let score = prayer.numberScore, let timeAtComp = prayer.timeAtComplete  {
+                        if let engScore = prayer.gradeWord, let score = prayer.numberScore, let timeAtComp = prayer.timeAtComplete  {   // gradeWord, never the stored word
 //                            Text("@\(shortTimePM(timeAtComp))")
 //                                .font(.callout)
                             Text("\(engScore)")

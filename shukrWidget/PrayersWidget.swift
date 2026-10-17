@@ -179,7 +179,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         // The moments the circle changes, for the prayer it shows now AND the one after it (owner,
         // 2026-09-30: the next one's colour changes and last hour used to wait on iOS's next reload).
         // Per prayer: its start and end (the Lock Screen's dashed "next" ring turns live on time), the
-        // colour changes (Perfect → On time → Late; the fill itself runs live), an hour before the end
+        // colour changes (Perfect → Middle → Closing; the fill itself runs live), an hour before the end
         // (the time left), and with "27m" / "27min" an entry each minute of that last hour — iOS can't
         // tick those itself; the countdown style ("27:13") needs none. Only the Lock Screen circle shows
         // those: every other family gets a few entries — the home widget's ~120 per-minute entries made
@@ -288,7 +288,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                 render(open, size: size, phoneDark: phoneDark, "\(px)-list-open-\(phone)")
             }
             // The ring's colour through a prayer's window (Asr, not marked): its start, +31 min
-            // (Perfect → On time), the On time → Late point, and after its end.
+            // (Perfect → Middle), the Middle → Closing point, and after its end.
             if let asr = entry.prayerDict["Asr"] {
                 var open = entry
                 open.completedScores = entry.completedScores.filter { $0.key != "Asr" }
@@ -672,7 +672,7 @@ struct PrayersWidgetView: View {
         }
 
         /// The app's rule (`PrayerScoring`), the colour the prayer would score if marked now:
-        /// Perfect green for the first 30 min, On time yellow for the first half of the rest, Late
+        /// Perfect green for the first 30 min, Middle yellow for the first half of the rest, Closing
         /// red for the second half, grey once the window has ended. The timeline has an entry at
         /// each change (`PrayerScoring.gradeChanges`). It used to be a fraction-of-the-window rule
         /// (green to half, yellow to ¾), so it read green while the app's circle was yellow (owner).

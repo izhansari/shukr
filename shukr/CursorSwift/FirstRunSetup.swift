@@ -1874,7 +1874,7 @@ private struct WelcomeRingDemo: View {
         .opacity(shown ? 1 : 0)
         .offset(y: shown || reduceMotion ? 0 : 14)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("The prayer circle fills as a prayer’s time passes: green is the best time, yellow on time, red almost gone.")
+        .accessibilityLabel("The prayer circle fills as a prayer’s time passes: green is \(PrayerScoring.Grade.perfect.rawValue), yellow \(PrayerScoring.Grade.onTime.rawValue), red \(PrayerScoring.Grade.late.rawValue).")
         .accessibilityAction(named: "Play demo") { run += 1 }
         .task(id: run) {
             typealias T = CircleMotion.Setup
@@ -1905,7 +1905,7 @@ private struct WelcomeRingDemo: View {
 }
 
 /// The window's three parts, as `PrayerScoring` grades a 150-minute window: Perfect for the first 30 minutes (0.2),
-/// On time for the first half of the rest (to 0.6), then Late.
+/// Middle for the first half of the rest (to 0.6), then Closing.
 private enum WelcomeWindow {
     static func part(_ gone: Double) -> Int { gone < 0.2 ? 0 : gone < 0.6 ? 1 : 2 }
     static let colours: [Color] = [.green, .yellow, .red]
@@ -1920,7 +1920,9 @@ private struct WelcomeSweepParts: View, Animatable {
         let part = WelcomeWindow.part(gone)
         let colours: [Color] = [.green, Color(red: 0.83, green: 0.66, blue: 0), .red]
         HStack(spacing: 0) {
-            ForEach(Array(["Best time", "On time", "Almost gone"].enumerated()), id: \.offset) { i, word in
+            // The grade words themselves (owner 2026-10-17: "so that if we ever come back to edit this, then that also gets
+            // contained in the fixes"); was "Best time · On time · Almost gone".
+            ForEach(Array([PrayerScoring.Grade.perfect, .onTime, .late].map(\.rawValue).enumerated()), id: \.offset) { i, word in
                 VStack(spacing: 1) {
                     Text(word)
                         .font(.system(.caption, design: .rounded, weight: part == i ? .semibold : .regular))

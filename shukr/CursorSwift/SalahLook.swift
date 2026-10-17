@@ -38,7 +38,7 @@ enum SalahLook: String, CaseIterable, Identifiable {
     /// behaviour (the score / "@ time" on a tap, the marked row's buttons). The public look.
     case raised
     /// G · F's shape, quieter (owner: not the word "prayed"): prayed rows keep their start time; a tap puts the score
-    /// where the name sits ("On time · 88") and when you prayed where the time sits.
+    /// where the name sits ("Middle · 88") and when you prayed where the time sits.
     case prayedOnTap
 
     var id: String { rawValue }

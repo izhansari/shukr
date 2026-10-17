@@ -540,7 +540,7 @@ private struct PrayerPinsScene: View {
                 }) {
                     Text("TODAY").font(.system(size: 13, weight: .medium)).kerning(1).foregroundStyle(.white.opacity(0.45))
                     row("sun.max", "Dhuhr", "1:24 PM", "1:10 PM – 4:50 PM · 14 min in", 100, "Perfect", .green)
-                    row("sunrise", "Fajr", "5:52 AM", "5:30 AM – 6:50 AM · 22 min in", 88, "On time", .green)
+                    row("sunrise", "Fajr", "5:52 AM", "5:30 AM – 6:50 AM · 22 min in", 88, "Middle", .green)
                 }
             }
         }

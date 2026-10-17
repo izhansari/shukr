@@ -173,7 +173,7 @@ enum WatchPrayerMarker {
 }
 
 /// The phone's completion moment after a mark, and then its post-salah offer.
-/// - moment: the ring's arc sweeps closed in the score colour, "✓ Asr" / "On time · 88", with an
+/// - moment: the ring's arc sweeps closed in the score colour, "✓ Asr" / "Middle · 88", with an
 ///   Undo for 5 s;
 /// - then "Post-salah tasbih?" (the phone's pill) until it's dismissed, started, its 15 s run out
 ///   (`WatchPostSalahPill`), or the next prayer begins.

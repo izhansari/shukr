@@ -631,7 +631,8 @@ struct JourneyCardRow: View, Equatable {
 }
 
 /// The This month row's measure (build-plan "B", canvas v6): touch and hold the row to choose; the choice sticks
-/// (`journey.thisMonth`). Owner: "on time or better" is his pick, so it's the default.
+/// (`journey.thisMonth`). Owner: "on time or better" is his pick, so it's the default — "Perfect or Middle" since the
+/// grades became Perfect · Middle · Closing (2026-10-17); the case keeps its saved name `onTime`.
 enum ThisMonthMeasure: String, CaseIterable, Identifiable {
     case inWindow, onTime, perfect, average
     static let key = "journey.thisMonth"
@@ -639,7 +640,7 @@ enum ThisMonthMeasure: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .inWindow: "In their window"
-        case .onTime: "On time or better"
+        case .onTime: "Perfect or Middle"
         case .perfect: "Perfect"
         case .average: "Average score"
         }
@@ -647,8 +648,8 @@ enum ThisMonthMeasure: String, CaseIterable, Identifiable {
     /// What it counts, in the menu.
     var counts: String {
         switch self {
-        case .inWindow: "Perfect, On time and Late"
-        case .onTime: "Perfect and On time"
+        case .inWindow: "Perfect, Middle and Closing"
+        case .onTime: "Perfect and Middle"
         case .perfect: "Perfect only"
         case .average: "Every prayer by its score; a missed one is 0"
         }
@@ -1523,7 +1524,7 @@ struct JourneyMilestone: Identifiable, Equatable {
                 if !perfectDone, d.marks.allSatisfy({ ($0.score ?? 0) >= 0.9999 }) {
                     perfectDone = true
                     add("perfect", "A perfect day: all five Perfect", date, .inTime, symbol: "star",
-                        about: "All five prayers prayed early in their windows on one day — each scored 100.")
+                        about: "All five prayers prayed in their first 30 minutes on one day, each scored 100.")
                 }
             } else if excusedAll {
                 gap = 0

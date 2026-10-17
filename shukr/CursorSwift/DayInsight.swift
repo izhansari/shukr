@@ -15,7 +15,7 @@ struct DayPrayer {
     var done: Bool { markedAt != nil && score != nil }
     /// Its window over and nothing marked (not excused): the day page offers To make up.
     var missed: Bool { !done && !excused && end < Date() }
-    /// In its window (Perfect, On time or Late) — not Qaza, not missed.
+    /// In its window (Perfect, Middle or Closing) — not Qaza, not missed.
     var inTime: Bool { done && (score ?? 0) >= PrayerScoring.inWindowFloor - 0.0001 }
     var perfect: Bool { done && (score ?? 0) >= 0.9999 }
     /// Where in its window it was prayed: 0 = as it began, 1 = as it ended; past 1 (Qaza) reads 1.
@@ -37,7 +37,7 @@ struct DayPrayer {
 ///    been hard all week it says so, and a Fajr line offers the alarm when it's off.
 /// 2. **A milestone** — 7, 14, 21, 30, 40, 50, 60, 90, 100… days in a row with all five in time. Rare on purpose.
 /// 3. **Something noticed** — rotated so the same one doesn't come back within three days: a prayer's early run, a
-///    personal best, earlier than usual, the day's average, the week's tally, all five early, Jumu'ah tomorrow.
+///    personal best, earlier than usual, the day's average, the week's tally, all five Perfect, Jumu'ah tomorrow.
 /// Then the plain fallback: tomorrow's Fajr. Every line has a few phrasings, picked by the day, so even a repeat reads
 /// differently. One line per prayer day: once picked it's kept for that day (`remember`).
 enum DayInsight {
@@ -113,7 +113,7 @@ enum DayInsight {
         let today = order.compactMap { name in input.today.first { $0.name == name } }
         let week = [input.today] + input.history.prefix(6)
 
-        // 1 · Something to act on: missed, then Qaza, then late — the worst prayer of today.
+        // 1 · Something to act on: missed, then Qaza, then Closing — the worst prayer of today. Middle is never one.
         let missed = today.filter { !$0.done && $0.end < Date() }
         let qaza = today.filter { $0.done && !$0.inTime }
         let late = today.filter { $0.inTime && !$0.perfect && ($0.score ?? 1) < 0.8 }
@@ -140,7 +140,7 @@ enum DayInsight {
                 ], input), offersFajrAlarm: alarm))
             } else if let marked = p.markedAt {
                 out.append(Line(id: "fix.late.\(p.name)", text: phrase([
-                    "\(p.name) came late today, at \(time(marked)).\(tomorrow)",
+                    "\(p.name) came as its time was closing, at \(time(marked)).\(tomorrow)",   // was "came late" (owner 2026-10-17: Late read as outside the window)
                     "\(p.name) was close today: \(time(marked)), its window ended at \(time(p.end)).",
                 ], input), offersFajrAlarm: alarm))
             }
@@ -165,7 +165,7 @@ enum DayInsight {
         if today.count == 5, today.allSatisfy(\.perfect) {
             out.append(Line(id: "notice.allEarly", text: phrase([
                 "All five in their first 30 minutes. Alhamdulillah.",
-                "Every prayer today, early in its time. Alhamdulillah.",
+                "All five Perfect today. Alhamdulillah.",
             ], input), offersFajrAlarm: false))
         }
         for p in today where p.perfect {
@@ -178,7 +178,7 @@ enum DayInsight {
             if run >= 3, !out.contains(where: { $0.id.hasPrefix("notice.run.") }) {
                 out.append(Line(id: "notice.run.\(p.name)", text: phrase([
                     "\(p.name) in its first 30 minutes, \(run) days running.",
-                    "\(run) days of early \(p.name) in a row.",
+                    "\(run) days of Perfect \(p.name) in a row.",
                 ], input), offersFajrAlarm: false))
             }
         }

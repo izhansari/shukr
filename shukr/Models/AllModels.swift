@@ -165,13 +165,13 @@ class PrayerModel {
         name == "Dhuhr" && atMasjid && Calendar.current.component(.weekday, from: startTime) == 6
     }
     var displayName: String { isJumuah ? "Jumu'ah" : name }
-    /// The grade in words: "Perfect", "On time"… — for a Jumu'ah just "Jumu'ah". Read this rather
+    /// The grade in words: "Perfect", "Middle"… — for a Jumu'ah just "Jumu'ah". Read this rather
     /// than the stored `englishScore`, which older rows wrote as "Early".
     var gradeWord: String? {
         guard let s = numberScore else { return nil }
         return isJumuah ? "Jumu'ah" : PrayerScoring.grade(for: s).rawValue
     }
-    /// "On time · 88"; a Jumu'ah says "Jumu'ah" (at its masjid) instead of a grade.
+    /// "Middle · 88"; a Jumu'ah says "Jumu'ah" (at its masjid) instead of a grade.
     var scoreSummary: String? {
         guard let s = numberScore else { return nil }
         guard isJumuah else { return PrayerScoring.summary(for: s) }

@@ -241,8 +241,8 @@ struct MainCircleView: View {
                         let endVal = elapsed / totalDuration
                         return max(endVal, 0)
                     }
-                    /// The score you'd get marking it now (PrayerScoring): green Early, yellow On time,
-                    /// red Late. Was elapsed-time bands (yellow past 50 %) that didn't match the score.
+                    /// The score you'd get marking it now (PrayerScoring): green Perfect, yellow Middle,
+                    /// red Closing. Was elapsed-time bands (yellow past 50 %) that didn't match the score.
                     var progressColor: Color {
                         if progress >= 1 { return .clear }
                         if shownIsPreview && status == .current { return .green }   // the preview's start (a held row is long past)
@@ -1019,7 +1019,7 @@ struct summaryCircle: View, Equatable {
         guard let i = picked, DayRing.order.indices.contains(i), !showingYesterday else { return nil }
         return viewModel.todaysPrayers.first { $0.name == DayRing.order[i] }
     }
-    /// "5:31 PM · On time · 83", under the note on its card.
+    /// "5:31 PM · Middle · 83", under the note on its card.
     private var pickedLine: String {
         guard let row = pickedRow else { return "" }
         return [row.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) }, row.scoreSummary].compactMap { $0 }.joined(separator: " · ")

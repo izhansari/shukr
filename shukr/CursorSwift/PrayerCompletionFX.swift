@@ -7,7 +7,7 @@
 //  - `PrayerViewModel.togglePrayerCompletion` posts `.prayerCompleted` with a
 //    `PrayerCompletionEvent` and plays `PrayerCompletionHaptics`.
 //  - The main circle (`MainCircleView`) overlays `CompletionFlourish`: the progress arc sweeps
-//    closed in the score's colour, the ring glows, "Asr · On time · 88" shows, then the next
+//    closed in the score's colour, the ring glows, "Asr · Middle · 88" shows, then the next
 //    prayer blurs in.
 //  - The prayer list (`TodaysPrayerListView`) pops the row's dot with a ripple
 //    (`CompletionDotPop`), then folds the row away; done prayers come back when all five are.
@@ -43,7 +43,7 @@ struct PrayerCompletionEvent {
     let score: Double
     /// How far through its window the prayer was when marked, 0…1 (1 = at or past the end).
     let progress: Double
-    /// The line under the name; nil = "On time · 88" from the score. A Jumu'ah says "Jumu'ah at …".
+    /// The line under the name; nil = "Middle · 88" from the score. A Jumu'ah says "Jumu'ah at …".
     var summary: String? = nil
     /// The row's own name ("Dhuhr" for a Jumu'ah): the circle holds that prayer while the flourish plays.
     var prayerName: String? = nil
@@ -309,7 +309,7 @@ private struct TrackBand: Shape {
 /// How the Salah list marks a prayed prayer (owner, 2026-09-25: the score-coloured dots are "too
 /// much color" — compared these in Settings → My Dev Stuff → Prayer list dot and picked "faded").
 /// The score itself is
-/// still one tap away (tap the row's time: "On time · 88").
+/// still one tap away (tap the row's time: "Middle · 88").
 enum PrayerDotStyle: String, CaseIterable, Identifiable {
     case color, muted, ring, mono, check, sage
     static let key = "prayerDotStyle"

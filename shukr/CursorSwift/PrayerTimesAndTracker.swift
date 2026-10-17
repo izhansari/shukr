@@ -3325,7 +3325,7 @@ struct PrayerButton: View {
         return prayerObject.startTime...max(prayerObject.startTime, latest)
     }
 
-    /// "On time · 88" (PrayerScoring).
+    /// "Middle · 88" (PrayerScoring).
     /// The start time as shown: the tour's practice clock moves a practice row's (PracticeClock).
     private var shownStart: Date { PracticeClock.shown(calcStartTime, of: prayerObject) }
 

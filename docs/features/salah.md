@@ -19,7 +19,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   The list's well rises into a raised card with the day's page (all five marked and `DayPageState.lifted`, set `CircleMotion.dayCardLiftDelay` after summaryCircle mounts so the rows unfold first; kept in DayPageState because the list rebuilds its card at the swap) (`SalahLookCard(raised:)`, `NeuLiftCard`: one
   animatable `lift`, inner shadows shrink to nothing, then outer ones grow — never a crossfade; decision list-raised-card).
 - **The day page merge** (owner 2026-10-15, spec board/mocks/day-page-merge/spec.md; DayPage.swift, shared with Journey's day
-  page — "build it once and use it twice"): the day page's rows show the time prayed with "On time · 88" under it (no flip); a
+  page — "build it once and use it twice"): the day page's rows show the time prayed with "Middle · 88" under it (no flip); a
   tap on a marked row or its fifth picks the prayer (`DayPageState.picked`, no timer — a second tap, the side swapping
   or a row unmarked clears it): its photo fills the ring (`PrayerPhotoCircle`, the name on a tag that stays over the develop
   veil; the circle's tap layer lets it through, `centreTakesTaps`, a count), else name / "prayed 5:54 PM" / grade; missed →
@@ -34,7 +34,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   card"). DEBUG `-demoDayFacts` (with `-demoMarkAll`).
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
-- One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.
+- One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word. Middle / Closing were On time / Late until 2026-10-17 (owner: users read "on time" as just inside the window and "late" as outside it). The words live only in `PrayerScoring.Grade` (setup's legend and the tour read them there; the watch keeps a copy in `WatchScoring.word`); a shown number never passes its band (`points(for:)`: Middle ≤ 99, Closing ≤ 79). Siri and the Live Activity's VoiceOver say `spokenMark`: "Asr marked as prayed during the Closing window. Score: 66." (Qaza: "after its window, as Qaza"). The "usually Perfect" fact on Prayer scores stays Perfect-only (owner).
 - Streaks: a day counts once; earlier days are recounted from rows (`refreshStreaksFromHistory`); "in-time days" = no Qaza (≥ 60); perfect day = five Perfect. The day turns at Fajr (`PrayerDay.fajr`; no location → 3 AM); Isha ends 11:59 PM; zikr sessions follow the day (`sessionDayStart()`).
 
 **Excused from prayer** (Excused.swift + `ExcusedRange` / `Excused` in SharedTargetForIntents.swift; owner 2026-10-13, plan board/mocks/excused-days, decisions excused-where B · excused-name A · excused-zikr A)

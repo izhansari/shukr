@@ -9,8 +9,8 @@ keywords, "What's New" and screenshot captions.
 - The main circle: the current or next prayer with a live ring of how much of its window is
   left, coloured by the score you'd get right now; tap to flip between "ends at" and time left.
 - Prayer tracker: mark each prayer as prayed; it's scored by *when* — Perfect (first 30 min) ·
-  On time · Late · Qaza (after the window) · Missed — and each day gets a score.
-- A satisfying completion moment (the ring sweeps closed, a haptic, "✓ Asr · On time · 88"),
+  Middle · Closing · Qaza (after the window) · Missed — and each day gets a score.
+- A satisfying completion moment (the ring sweeps closed, a haptic, "✓ Asr · Middle · 88"),
   done prayers fold away, all five come back with a "perfect day" flourish.
 - Edit when you prayed with a custom time wheel that won't let you pick an impossible time.
 - The prayer day runs Fajr to Fajr, so a late Isha after midnight still counts for its day.

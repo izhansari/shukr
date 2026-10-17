@@ -339,9 +339,9 @@ enum WatchPrayers {
     }
 
     /// Moments the complications should redraw: every prayer start and end from now on, plus the
-    /// grade boundaries inside each window (Perfect → On time at +30 min, On time → Late halfway
+    /// grade boundaries inside each window (Perfect → Middle at +30 min, Middle → Closing halfway
     /// through the rest), so the stock timer ring changes colour on time (it can't within an entry).
-    /// Also the next prayer day's (at least its Fajr window: +30 min, On time → Late, sunrise), so
+    /// Also the next prayer day's (at least its Fajr window: +30 min, Middle → Closing, sunrise), so
     /// after Isha the timeline doesn't stop at Fajr and lean on the reload hint (a watch treats it
     /// as a hint only; Fajr could stay green, or still show after sunrise).
     static func boundaries(after now: Date = Date()) -> [Date] {
@@ -370,8 +370,8 @@ enum WatchPrayers {
 
 /// The phone's scoring rule (shukr/Models/PrayerScoring.swift — the source of truth; that file also
 /// holds SwiftData code, so the watch targets can't compile it). Keep the numbers in step:
-/// Perfect ≤ 30 min after the adhan (100), then sliding to 60 at the window's end (On time ≥ 80,
-/// Late below), Qaza after the window.
+/// Perfect ≤ 30 min after the adhan (100), then sliding to 60 at the window's end (Middle ≥ 80,
+/// Closing below), Qaza after the window.
 enum WatchScoring {
     static let earlyWindow: TimeInterval = 30 * 60
     static let inWindowFloor = 0.6
@@ -387,18 +387,21 @@ enum WatchScoring {
         return inWindowFloor + (1 - inWindowFloor) * left
     }
 
-    /// The phone's grade word for a score (PrayerScoring): Perfect · On time · Late · Qaza.
+    /// The phone's grade word for a score (PrayerScoring.Grade): Perfect · Middle · Closing · Qaza (Middle / Closing were
+    /// On time / Late until 2026-10-17). The watch has its own copy: PrayerScoring isn't in the watch target.
     static func word(forScore s: Double) -> String {
         if s >= 0.9999 { return "Perfect" }
-        if s >= 0.8 { return "On time" }
-        if s >= inWindowFloor - 0.0001 { return "Late" }
+        if s >= 0.8 { return "Middle" }
+        if s >= inWindowFloor - 0.0001 { return "Closing" }
         return "Qaza"
     }
 
-    /// "On time · 88", "Qaza" — the completion moment's line, as on the phone.
+    /// "Middle · 88", "Qaza" — the completion moment's line, as on the phone; the number never above its band (a 0.996
+    /// read "On time · 100").
     static func summary(forScore s: Double) -> String {
         let word = word(forScore: s)
-        return word == "Qaza" ? word : "\(word) · \(Int((s * 100).rounded()))"
+        let ceiling = word == "Perfect" ? 100 : word == "Middle" ? 99 : 79
+        return word == "Qaza" ? word : "\(word) · \(min(Int((s * 100).rounded()), ceiling))"
     }
 
     /// A marked prayer's colour from its stored score (the phone's PrayerScoring.color(for:)).
@@ -409,7 +412,7 @@ enum WatchScoring {
         return .gray
     }
 
-    /// Green Perfect, yellow On time, red Late — the phone's circle colours.
+    /// Green Perfect, yellow Middle, red Closing — the phone's circle colours.
     static func color(start: Date, end: Date, at: Date) -> Color {
         let s = score(start: start, end: end, at: at)
         if s >= 0.9999 { return .green }
@@ -418,7 +421,7 @@ enum WatchScoring {
         return .gray
     }
 
-    /// When the colour changes inside a window: +30 min, and the On time → Late point (score 0.8,
+    /// When the colour changes inside a window: +30 min, and the Middle → Closing point (score 0.8,
     /// halfway through the rest of the window).
     static func gradeChanges(start: Date, end: Date) -> [Date] {
         let rest = end.timeIntervalSince(start) - earlyWindow
