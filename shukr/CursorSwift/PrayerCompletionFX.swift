@@ -132,6 +132,8 @@ struct CompletionFlourish: View {
     }
     private var tally: Int { day.filter(\.done).count }
 
+    /// The "N of 5 today" line's drop under the score: its own height and a little air, at any text size.
+    @ScaledMetric(relativeTo: .footnote) private var tallyDrop: CGFloat = 22
     /// Flipped as it appears: the keyframes play from it (`KeyframeAnimator(repeating: false)` drew their end at once).
     @State private var started = false
 
@@ -215,14 +217,20 @@ struct CompletionFlourish: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                     .frame(maxWidth: 150)
-                if folds {
-                    // The day so far, the grey line (laid out from the start, so nothing above it moves).
-                    Text("\(tally) of 5 today")
-                        .font(.footnote).fontWeight(.light).fontDesign(.rounded)
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 2)
-                        .opacity(tallyIn)
-                }
+                    // The day so far, the grey line, hung under the score: it takes no room, so the name and score sit
+                    // where the circle's own two lines were (owner, 2026-10-17: "Notice how the two lines shift up. I
+                    // don't really love that"). Pinned to the score's bottom, then down by its own line (an alignment
+                    // guide here left it on the score line).
+                    .overlay(alignment: .bottom) {
+                        if folds {
+                            Text("\(tally) of 5 today")
+                                .font(.footnote).fontWeight(.light).fontDesign(.rounded)
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                                .offset(y: tallyDrop)
+                                .opacity(tallyIn)
+                        }
+                    }
             }
             .opacity(words)
             .blur(radius: reduceMotion ? 0 : 4 * (1 - words))
