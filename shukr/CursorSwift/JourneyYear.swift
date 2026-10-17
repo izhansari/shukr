@@ -5,19 +5,18 @@ import SwiftUI
 // squares ("the card is essentially a mini year view in the layout of a traditional calendar"), each with its name and one
 // quiet line; a small month with prayers opens it. Reached from the month's title, Month | Year, or a pinch.
 
-/// The card's colours by how much of a day was prayed (YourJourney's grid: monochrome by amount, green only for all five in
-/// time). Kept in step with `JourneyHomeCard`'s own copy.
+/// The card's and the year's tiles in the month's own fills (owner, 2026-10-16, on the organizer's option B, "the card
+/// takes the month's colors": "id rather this. and the year page can follow."): all five in time the ring's green fill, all
+/// five with a Qaza the ring's grey fill, some fainter than that, none the faintest — so a tile reads as the day it opens.
 enum JourneyTileColor {
     static func of(_ kind: YourJourneyStats.Kind, dark: Bool) -> Color {
         switch kind {
-        case .none: dark ? Color(red: 0x2E / 255, green: 0x30 / 255, blue: 0x35 / 255)
-                         : Color(red: 126 / 255, green: 132 / 255, blue: 143 / 255).opacity(0.14)
-        case .some: dark ? Color(red: 0x55 / 255, green: 0x57 / 255, blue: 0x5D / 255)
-                         : Color(red: 35 / 255, green: 38 / 255, blue: 44 / 255).opacity(0.30)
-        case .allFive: dark ? Color(red: 0xA9 / 255, green: 0xAB / 255, blue: 0xB1 / 255)
-                            : Color(red: 35 / 255, green: 38 / 255, blue: 44 / 255).opacity(0.62)
-        case .allInTime: dark ? Color(red: 0x4C / 255, green: 0x8E / 255, blue: 0x62 / 255)
-                              : Color(red: 52 / 255, green: 199 / 255, blue: 89 / 255).opacity(0.55)
+        case .allInTime: JourneyDayRing.green(dark).opacity(0.24)
+        case .allFive: JourneyDayRing.greyFill(dark)
+        // Tuned on the card (organizer's ask; Bradley found these fills faint): none still shows as a slot, some sits
+        // halfway between it and all five.
+        case .some: dark ? Color.white.opacity(0.072) : Color.black.opacity(0.09)
+        case .none: dark ? Color.white.opacity(0.045) : Color.black.opacity(0.05)
         }
     }
 }

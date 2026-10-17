@@ -371,18 +371,19 @@ private struct JourneyCalendar: View {
             .overlay(Circle().stroke(inTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark), lineWidth: 1.1))
     }
 
-    /// The key's "Incomplete": a ring of five fifths, all faint (owner, 2026-10-16: "in the legend add the fifths as a ring
-    /// saying "incomplete". all fifths faint."). The calendar's own unfinished days keep Bradley's strengths.
+    /// The key's "Incomplete": a ring of five fifths, the same size as the other two rings and in a prayed fifth's color
+    /// (owner, 2026-10-16: "in the legend add the fifths as a ring saying "incomplete"", then on his phone: "this is hard
+    /// to see and ring looks smaller than the others. copy the size of the outer rings … just use a color thats the same
+    /// as a filled fifth"). The calendar's own unfinished days keep Bradley's strengths.
     private var keyFifths: some View {
         ZStack {
             ForEach(0..<5, id: \.self) { i in
                 let arc = JourneyDayRing.fifth(i)
                 Circle().trim(from: arc.from, to: arc.to)
-                    .stroke(JourneyDayRing.track(scheme == .dark), style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
+                    .stroke(JourneyDayRing.soft(scheme == .dark), style: StrokeStyle(lineWidth: 1.1, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
         }
-        .padding(0.55)
     }
 
     private func key<V: View>(_ swatch: V, _ title: String) -> some View {

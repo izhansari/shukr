@@ -89,8 +89,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   doesn't scroll — "Journey" (38 regular) + "Since <weekday, date>" / "It starts with your first prayer"; the card
   (`JourneyHomeCard`): days you marked a prayer (54 pt, 42 on an SE); "THE LAST N WEEKS" (or the months in view once
   scrolled, "JUL – SEP 2026") · "a week a row"; the grid a week a row (`YourJourneyStats.weeks`, the week holding the
-  first day to today's): seven rounded bars (11 pt, 3 apart, radius 5; colors by amount — faint none, grey 1–4, dark all
-  five, green all five in time), a 34 pt column of sage month names by the week holding the 1st ("Jan’26" on January and
+  first day to today's): seven rounded bars (11 pt, 3 apart, radius 5; the month's fills via `JourneyTileColor` — the ring's green
+  fill all five in time, its grey fill all five, fainter some, faintest none; the year's squares the same), a 34 pt column of sage month names by the week holding the 1st ("Jan’26" on January and
   the first month) that open the month, today's week at the bottom, scrolling up to the first day under a top fade; its
   natural height 12 weeks, growing into the room left (`ViewThatFits`; where five rows don't fit under 12 weeks — a 6.3"
   phone by a row, an SE, large text — the rows scroll in their own area with a bottom fade). A tile's tap puts its day
