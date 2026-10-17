@@ -25,6 +25,9 @@ import QuartzCore
     var gridOffset: CGFloat = 0
     /// The month calendar's cells (global).
     var cells: [Date: CGRect] = [:]
+    /// The year's small months: each one's squares area and its name (global).
+    var yearGrids: [Date: CGRect] = [:]
+    var yearNames: [Date: CGRect] = [:]
 }
 
 /// A month opening: which, and the card's geometry frozen at the tap.
@@ -36,6 +39,13 @@ struct LabMonthFlight: Equatable {
     let label: CGRect?
     let labelText: String
     let card: CGRect
+    /// Where the month opens from (and goes back to): the card, or its small month in the year.
+    enum Source: Equatable { case card, year }
+    var source: Source = .card
+    /// The tiles' corner where they start (the card's bars 5, the year's squares 2.5) and the name's size and colour there.
+    var tileCorner: CGFloat = 5
+    var labelSize: CGFloat = 12.5
+    var labelSage = true
 }
 
 /// A day opening: which, and where its ring left from.
@@ -63,6 +73,8 @@ struct JourneyTransitionLab: View {
     @Namespace private var zoomSpace
     @State private var zoomMonth: JourneyMonthRoute?
     @State private var zoomSource: CGRect?
+    /// The year, under the month (month ↔ year: owner, 2026-10-16, "i didnt see the transition for month to year").
+    @State private var showYear = false
 
     private var today: Date { PrayerDay.start() }
     private var width: CGFloat { UIScreen.main.bounds.width }
@@ -70,9 +82,15 @@ struct JourneyTransitionLab: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             LabJourneyLayer(dial: monthDial, stats: stats ?? YourJourneyStats(log: JourneyLog(), today: today), log: log,
-                            openMonth: month?.start, growFrom: month?.card, geo: geo, zoom: zoom,
+                            openMonth: month?.start, growFrom: month?.source == .card ? month?.card : nil, geo: geo, zoom: zoom,
                             onStyle: { zoom.toggle() }, onMonth: { openMonth($0) })
-                .allowsHitTesting(month == nil)
+                .opacity(showYear ? 0 : 1)
+                .allowsHitTesting(month == nil && !showYear)
+            if showYear {
+                LabYearLayer(dial: monthDial, log: log, today: today, open: month?.source == .year ? month : nil,
+                             waiting: month != nil && month?.source != .year, geo: geo, onPick: { openFromYear($0) })
+                    .allowsHitTesting(month == nil)
+            }
             // The zoom's source: the tapped month's rows on the card (clear; the system zooms the page out of its frame).
             if let r = zoomSource {
                 GlobalCanvas { o in
@@ -84,7 +102,8 @@ struct JourneyTransitionLab: View {
             }
             if let month {
                 LabMonthLayer(dial: monthDial, dayDial: dayDial, flight: month, log: log, today: today, geo: geo,
-                              hiddenDay: day?.to == nil ? nil : day?.date, onReady: { runMonth(to: 1) }, onDay: { openDay($0) })
+                              hiddenDay: day?.to == nil ? nil : day?.date, onReady: { runMonth(to: 1) }, onDay: { openDay($0) },
+                              onTitle: { toYear() })
                     .allowsHitTesting(day == nil && monthDial == 1)
             }
             // The back swipe: the left edge turns the open dial backwards (the system's is off while one is open).
@@ -116,9 +135,9 @@ struct JourneyTransitionLab: View {
         .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(month != nil)
+        .navigationBarBackButtonHidden(month != nil || showYear)
         .toolbar {
-            if month != nil {
+            if month != nil || showYear {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { back() } label: { Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold)) }
                         .accessibilityLabel("Back")
@@ -177,9 +196,23 @@ struct JourneyTransitionLab: View {
     // MARK: Card → month
 
     private func openMonth(_ start: Date) {
-        guard month == nil, let stats else { return }
+        guard month == nil, stats != nil else { return }
         triggerSomeVibration(type: .light)
-        // The card's geometry now: each of the month's tiles where it shows (inside the grid's clip), and its name.
+        let flight = cardFlight(start)
+        if zoom {
+            let rects = Array(flight.tiles.values) + [flight.label].compactMap { $0 }
+            zoomSource = rects.dropFirst().reduce(rects.first ?? geo.grid) { $0.union($1) }
+            zoomMonth = JourneyMonthRoute(month: start)
+            return
+        }
+        monthDial = 0
+        month = flight
+        // The month layer calls onReady once its title is laid out; then the dial runs.
+    }
+
+    /// The card's geometry now: each of the month's tiles where it shows (inside the grid's clip), and its name.
+    private func cardFlight(_ start: Date) -> LabMonthFlight {
+        guard let stats else { return LabMonthFlight(start: start, tiles: [:], label: nil, labelText: "", card: geo.card) }
         let grid = geo.grid
         let pitch = JourneyHomeCard.pitch
         let barW = (grid.width - 34 - 6 * 7) / 7
@@ -199,21 +232,76 @@ struct JourneyTransitionLab: View {
                 if r.minY >= grid.minY + 8, r.maxY <= grid.maxY + 1 { tiles[d.date] = r }
             }
         }
-        if zoom {
-            let rects = Array(tiles.values) + [label].compactMap { $0 }
-            zoomSource = rects.dropFirst().reduce(rects.first ?? geo.grid) { $0.union($1) }
-            zoomMonth = JourneyMonthRoute(month: start)
-            return
+        return LabMonthFlight(start: start, tiles: tiles, label: label, labelText: labelText, card: geo.card)
+    }
+
+    // MARK: Month ↔ year
+
+    /// The month's small month in the year: its squares where they are on screen now (worked out from its squares area: seven
+    /// columns, 2.5 pt apart, square — JourneyYearView's layout), and its name.
+    private func yearFlight(_ start: Date) -> LabMonthFlight {
+        let cal = Calendar.current
+        let lead = ((cal.component(.weekday, from: start) - cal.firstWeekday) + 7) % 7
+        var tiles: [Date: CGRect] = [:]
+        let screen = UIScreen.main.bounds
+        if let grid = geo.yearGrids[start], grid.width > 0 {
+            let gap: CGFloat = 2.5, side = (grid.width - 6 * gap) / 7
+            for (i, d) in JourneyLog.daysOf(month: start).enumerated() {
+                guard let first = log.firstDay, d >= first, d <= today else { continue }
+                let at = lead + i
+                let r = CGRect(x: grid.minX + CGFloat(at % 7) * (side + gap), y: grid.minY + CGFloat(at / 7) * (side + gap), width: side, height: side)
+                if r.maxY > 60, r.minY < screen.height - 40 { tiles[d] = r }
+            }
         }
+        return LabMonthFlight(start: start, tiles: tiles, label: geo.yearNames[start],
+                              labelText: start.formatted(.dateTime.month(.abbreviated)), card: .zero, source: .year,
+                              tileCorner: 2.5, labelSize: 15, labelSage: start == JourneyLog.monthStart(today))
+    }
+
+    /// The month's title tapped: its days go home into its small month in the year, and the year arrives round them — the
+    /// month's opening from the card, run backwards from the year.
+    private func toYear() {
+        guard let m = month, monthDial == 1, day == nil else { return }
+        triggerSomeVibration(type: .light)
+        showYear = true
+        func go(_ tries: Int) {
+            // Once the year has laid out the month's small month (a frame or two).
+            guard geo.yearGrids[m.start] != nil || tries > 10 else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) { go(tries + 1) }
+                return
+            }
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { month = yearFlight(m.start) }
+            runMonth(to: 0)
+        }
+        go(0)
+    }
+
+    /// A small month tapped in the year: its squares grow into the month's days, as from the card.
+    private func openFromYear(_ start: Date) {
+        guard month == nil, log.month(start).activeDays > 0 else { return }
+        triggerSomeVibration(type: .light)
         monthDial = 0
-        month = LabMonthFlight(start: start, tiles: tiles, label: label, labelText: labelText, card: geo.card)
-        // The month layer calls onReady once its title is laid out; then the dial runs.
+        month = yearFlight(start)
+    }
+
+    /// Back from a month opened from the year still goes to Journey: aim it at the card again.
+    private func aimAtCard() {
+        guard let m = month, m.source == .year else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            showYear = false
+            month = cardFlight(m.start)
+        }
     }
 
     private func runMonth(to target: CGFloat, how: String = "") {
         let remaining = abs(target - monthDial)
         guard remaining > 0.001 else { if target == 0 { month = nil }; return }
-        JourneyFrameLog.shared.start(target == 1 ? "card → month" : "month → card")
+        let from = month?.source == .year ? "year" : "card"
+        JourneyFrameLog.shared.start(target == 1 ? "\(from) → month" : "month → \(from)")
         withAnimation(.linear(duration: JourneyMotion.monthDuration * remaining)) { monthDial = target } completion: {
             JourneyFrameLog.shared.stop(how)
             if target == 0 { month = nil }
@@ -276,7 +364,9 @@ struct JourneyTransitionLab: View {
     // MARK: Back
 
     private func back() {
-        if day != nil { retargetDayForBack(); runDay(to: 0, how: "button") } else if month != nil { runMonth(to: 0, how: "button") }
+        if day != nil { retargetDayForBack(); runDay(to: 0, how: "button") }
+        else if month != nil { aimAtCard(); runMonth(to: 0, how: "button") }
+        else if showYear { withAnimation(.easeOut(duration: CircleMotion.standard)) { showYear = false } }
     }
 
     private var edgeBack: some Gesture {
@@ -284,7 +374,7 @@ struct JourneyTransitionLab: View {
             .onChanged { v in
                 if backDrag == nil {
                     let onDay = day != nil
-                    if onDay { retargetDayForBack() }
+                    if onDay { retargetDayForBack() } else { aimAtCard() }
                     backDrag = (onDay, onDay ? dayDial : monthDial)
                     JourneyFrameLog.shared.start(onDay ? "day → month (finger)" : "month → card (finger)")
                 }
@@ -536,6 +626,8 @@ private struct LabMonthLayer: View, Animatable {
     let hiddenDay: Date?
     let onReady: () -> Void
     let onDay: (Date) -> Void
+    /// The name tapped: back out to the year.
+    var onTitle: () -> Void = {}
     @State private var title: CGRect?
     @State private var started = false
     @Environment(\.colorScheme) private var scheme
@@ -592,7 +684,7 @@ private struct LabMonthLayer: View, Animatable {
         let shortW = (short as NSString).size(withAttributes: [.font: rounded]).width + 1
         let fullW = (full as NSString).size(withAttributes: [.font: rounded]).width + 2
         let unroll = JourneyMotion.out(JourneyMotion.seg(t, 0.3, 0.75))
-        let k = JourneyMotion.lerp(12.5 / 30, 1, z)
+        let k = JourneyMotion.lerp(flight.labelSize / 30, 1, z)
         let from = flight.label
         let dx = from.flatMap { f in title.map { f.minX - $0.minX } } ?? 0
         let dy = from.flatMap { f in title.map { f.midY - $0.midY } } ?? 0
@@ -608,7 +700,8 @@ private struct LabMonthLayer: View, Animatable {
             .overlay(alignment: .leading) {
                 Text(full)
                     .font(.system(size: 30, weight: .regular, design: .rounded))
-                    .foregroundStyle(Color.sage.mix(with: Color.primary, by: Double(z)))
+                    .foregroundStyle((flight.labelSage ? Color.sage : Color.primary).mix(with: Color.primary, by: Double(z)))
+                    .fontWeight(flight.source == .year && z < 0.5 ? .semibold : .regular)
                     .lineLimit(1).fixedSize()
                     .mask(alignment: .leading) { Rectangle().frame(width: JourneyMotion.lerp(shortW, fullW, unroll)) }
                     .scaleEffect(k, anchor: .leading)
@@ -616,6 +709,8 @@ private struct LabMonthLayer: View, Animatable {
                     // No label on screen (scrolled off the card): the title fades in with the words instead.
                     .opacity(title == nil ? 0 : from == nil ? JourneyMotion.out(JourneyMotion.seg(t, 0.3, 0.8)) : 1)
             }
+            .contentShape(Rectangle())
+            .onTapGesture { onTitle() }   // the month's name: out to the year (the real page's title and Month | Year)
     }
 
     private func fact(_ value: String, _ caption: String) -> some View {
@@ -657,6 +752,7 @@ private struct LabMonthLayer: View, Animatable {
                                              ring: JourneyMotion.io(JourneyMotion.seg(t, a, a + 0.2)),
                                              number: JourneyMotion.out(JourneyMotion.seg(t, a + 0.02, a + 0.2)),
                                              tile: grid.map { (from: flight.tiles[date], color: LabCard.color($0.kind, dark: dark)) },
+                                             corner: flight.tileCorner,
                                              z: z, tint: JourneyMotion.seg(t, 0.35, 0.8), hidden: hiddenDay == date)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: JourneyDayRing.size)
@@ -715,6 +811,8 @@ private struct LabMonthCell: View {
     let number: CGFloat
     /// Its tile on the card (nil frame: not in view there, so it grows in place).
     let tile: (from: CGRect?, color: Color)?
+    /// The tile's corner where it starts (the card's bar 5, the year's square 2.5).
+    var corner: CGFloat = 5
     let z: CGFloat
     let tint: CGFloat
     /// Its ring is flying to the day page.
@@ -757,7 +855,7 @@ private struct LabMonthCell: View {
                     let end = CGRect(x: me.midX - disc / 2, y: me.midY - disc / 2, width: disc, height: disc)
                     let start = tile.from ?? end.insetBy(dx: disc * 0.2, dy: disc * 0.2)
                     let r = JourneyMotion.lerp(start, end, z)
-                    let corner = JourneyMotion.lerp(5, disc / 2, z)
+                    let corner = JourneyMotion.lerp(self.corner, disc / 2, z)
                     let color: Color = fill.map { tile.color.mix(with: $0, by: Double(tint)) } ?? tile.color.opacity(Double(1 - tint))
                     RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .fill(color)
@@ -767,6 +865,150 @@ private struct LabMonthCell: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - The year (stand-in)
+
+/// JourneyYearView's layout (JourneyYear.swift): every year from the first, this one at the bottom; twelve small months three
+/// a row, each its name, one quiet line and its days as squares. Under an open month it waits faded; as the month goes back
+/// into it, its words and other months arrive the way Journey's do (JourneyMotion's beats, run backwards), and the month's
+/// own small month fills in from the month's days.
+private struct LabYearLayer: View {
+    /// The month's dial (1 = the month open over the year). Not animated here: each fade below animates it on its own, so the
+    /// year — some 700 squares — draws once, not every frame (the first try: 13 late frames of 19).
+    let dial: CGFloat
+    let log: JourneyLog
+    let today: Date
+    /// The month opening from (or going back into) the year, if any.
+    let open: LabMonthFlight?
+    /// A month is open but not from the year yet (the moment before its days go home): the year waits hidden.
+    var waiting = false
+    let geo: LabGeometry
+    let onPick: (Date) -> Void
+    @Environment(\.colorScheme) private var scheme
+
+    private static let gap: CGFloat = 2.5
+
+    private var words: LabYearFade { LabYearFade(dial: waiting ? 1 : open == nil ? 0 : dial, part: .words) }
+    private var others: LabYearFade { LabYearFade(dial: waiting ? 1 : open == nil ? 0 : dial, part: .others) }
+
+    var body: some View {
+        let cal = Calendar.current
+        let last = cal.component(.year, from: today)
+        let first = log.firstDay.map { cal.component(.year, from: $0) } ?? last
+        ScrollView {
+            VStack(alignment: .leading, spacing: 30) {
+                HStack(spacing: 14) {
+                    swatch(.allInTime, "All five in time"); swatch(.allFive, "All five"); swatch(.some, "Some")
+                }
+                .font(.system(size: 11.5, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+                .modifier(words)
+                ForEach(Array(first...last), id: \.self) { y in year(y) }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
+        }
+        .defaultScrollAnchor(.bottom)
+        .scrollIndicators(.hidden)
+    }
+
+    private func swatch(_ kind: YourJourneyStats.Kind, _ title: String) -> some View {
+        HStack(spacing: 5) {
+            RoundedRectangle(cornerRadius: 3, style: .continuous).fill(LabCard.color(kind, dark: scheme == .dark)).frame(width: 10, height: 10)
+            Text(title)
+        }
+    }
+
+    private func year(_ y: Int) -> some View {
+        let cal = Calendar.current
+        let months = (1...12).compactMap { cal.date(from: DateComponents(year: y, month: $0, day: 1)) }
+        let days = months.reduce(0) { $0 + log.month($1).activeDays }
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Text(String(y)).font(.system(size: 30, weight: .regular, design: .rounded))
+                Text(days == 1 ? "1 day you marked a prayer" : "\(days) days you marked a prayer")
+                    .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+            }
+            .modifier(words)
+            VStack(alignment: .leading, spacing: 18) {
+                ForEach(0..<4, id: \.self) { row in
+                    HStack(alignment: .top, spacing: 18) {
+                        ForEach(0..<3, id: \.self) { col in mini(months[row * 3 + col]) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func mini(_ start: Date) -> some View {
+        let cal = Calendar.current
+        let numbers = log.month(start)
+        let isOpen = open?.start == start
+        let thisMonth = start == JourneyLog.monthStart(today)
+        let future = start > today
+        let before = log.firstDay.map { start < JourneyLog.monthStart($0) } ?? true
+        let line = future || before ? " " : numbers.activeDays == 0 ? "Away" : numbers.activeDays == 1 ? "1 day" : "\(numbers.activeDays) days"
+        let lead = ((cal.component(.weekday, from: start) - cal.firstWeekday) + 7) % 7
+        let days = JourneyLog.daysOf(month: start)
+        let dark = scheme == .dark
+        return VStack(alignment: .leading, spacing: 3) {
+            Button { onPick(start) } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(start.formatted(.dateTime.month(.abbreviated)))
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(thisMonth ? Color.sage : numbers.activeDays == 0 && !future && !before ? Color.secondary : Color.primary)
+                        .background { JourneyFlightReport { geo.yearNames[start] = $0 } }
+                        .opacity(isOpen ? 0 : 1)
+                        .modifier(words)
+                    Text(line).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
+                        .modifier(words)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(numbers.activeDays == 0)
+            VStack(spacing: Self.gap) {
+                ForEach(0..<6, id: \.self) { row in
+                    HStack(spacing: Self.gap) {
+                        ForEach(0..<7, id: \.self) { col in
+                            let i = row * 7 + col - lead
+                            if days.indices.contains(i) {
+                                let d = days[i]
+                                let fill: Color = d > today ? Color.primary.opacity(0.04)
+                                    : (log.firstDay.map { d < $0 } ?? true) ? .clear
+                                    : LabCard.color(YourJourneyStats.kind(log.day(d)), dark: dark)
+                                RoundedRectangle(cornerRadius: 2.5, style: .continuous).fill(fill).aspectRatio(1, contentMode: .fit)
+                            } else {
+                                Color.clear.aspectRatio(1, contentMode: .fit)
+                            }
+                        }
+                    }
+                }
+            }
+            .background { JourneyFlightReport { geo.yearGrids[start] = $0 } }
+            // The open month's own squares are its days, flying; the rest of the year waits faded.
+            .opacity(isOpen ? 0 : 1)
+            .modifier(others)
+            .padding(.top, 3)
+        }
+        .padding(6)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+/// One of the year's fades on its own dial (the Journey beats: its words as the page's, its other months as the card's other
+/// weeks). Animatable by itself, so only the faded pieces redraw per frame.
+private struct LabYearFade: ViewModifier, Animatable {
+    enum Part { case words, others }
+    var dial: CGFloat
+    let part: Part
+    var animatableData: CGFloat { get { dial } set { dial = newValue } }
+    func body(content: Content) -> some View {
+        content.opacity(Double(part == .words ? 1 - JourneyMotion.pageWords(dial) : JourneyMotion.otherWeeks(dial)))
     }
 }
 
