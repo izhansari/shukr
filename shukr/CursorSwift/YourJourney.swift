@@ -762,6 +762,9 @@ struct JourneyDayFifths: View {
     let day: JourneyLog.Day
     /// What sits inside: the day's score (not its date — the date is right beside it, owner 2026-10-17).
     let center: String
+    /// Each prayed fifth in its grade's colour (the one-day map's ring — owner, 2026-10-17: "put colors on the fifths");
+    /// else plain ink (the card: "we won't use color here").
+    var colored = false
     var body: some View {
         GeometryReader { g in
             let side = min(g.size.width, g.size.height)
@@ -771,7 +774,8 @@ struct JourneyDayFifths: View {
                     let arc = JourneyDayRing.fifth(i)
                     let mark = day.marks[i]
                     Circle().trim(from: arc.from, to: arc.to)
-                        .stroke(mark.done ? Color.primary.opacity(0.72) : mark == .excused ? Color.primary.opacity(0.3) : Color.primary.opacity(0.12),
+                        .stroke(mark.done ? (colored ? PrayerScoring.color(for: mark.score) : Color.primary.opacity(0.72))
+                                : mark == .excused ? Color.primary.opacity(0.3) : Color.primary.opacity(0.12),
                                 style: StrokeStyle(lineWidth: JourneyDayRing.band * k * 1.15, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .frame(width: JourneyDayRing.radius * 2 * k, height: JourneyDayRing.radius * 2 * k)

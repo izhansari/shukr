@@ -343,16 +343,16 @@ struct PrayerSpotsHome: View {
         return groups
     }
 
+    /// The day's places as a quiet timeline (owner, 2026-10-17: "something a little more editorial"): a thin line down
+    /// the left with a dot a place; the time in small grey capitals, the place in large light type, its prayers in grey.
+    /// No cards, no icons.
     private var placesSection: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(dayPlaces.enumerated()), id: \.offset) { i, group in
-                DayPlaceRow(prayers: group, viewModel: viewModel)
-                if i < dayPlaces.count - 1 {
-                    Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 0.5).padding(.leading, 52)
-                }
+                DayPlaceRow(prayers: group, viewModel: viewModel, last: i == dayPlaces.count - 1)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.primary.opacity(0.045)))
+        .padding(.top, 6)
     }
 
     /// "Tuesday, Oct 6" ("Today", "Yesterday"); the year when it isn't this one.
@@ -375,12 +375,12 @@ struct PrayerSpotsHome: View {
                 let log = JourneyLog.last
                 let day = log?.day(dayOnly)
                 let n = onMap.count, places = dayPlaces.count
+                // No prayer count: the ring's fifths show it (owner: "get rid of how many prayers there are").
                 let line = [log?.dayNumber(dayOnly).map { "Day \($0)" },
-                            places == 1 ? "1 place" : "\(places) places",
-                            n == 1 ? "1 prayer" : "\(n) prayers"].compactMap { $0 }.joined(separator: " · ")
+                            n == 0 ? nil : places == 1 ? "1 place" : "\(places) places"].compactMap { $0 }.joined(separator: " · ")
                 MapSheetHeader(title: dayTitle(dayOnly), subtitle: line) {
                     if let day, day.active {
-                        JourneyDayFifths(day: day, center: "\(day.dayScore)").frame(width: 46, height: 46)
+                        JourneyDayFifths(day: day, center: "\(day.dayScore)", colored: true).frame(width: 58, height: 58)
                     }
                 }
             }
@@ -443,10 +443,19 @@ struct PrayerSpotsHome: View {
 private struct DayPlaceRow: View {
     let prayers: [PrayerModel]
     @ObservedObject var viewModel: LocationViewModel
+    /// The day's last place: the line stops at its dot.
+    var last = false
     @State private var address: String?
 
     private var coordinate: CLLocationCoordinate2D? { prayers.first.flatMap(DayFacts.spot) }
     private var masjid: String? { prayers.first.flatMap { $0.atMasjid ? $0.mosqueName : nil }.flatMap { $0.isEmpty ? nil : $0 } }
+    /// "1:40 PM", or "5:22 – 8:21 PM" when more than one was prayed there.
+    private var when: String {
+        let times = prayers.compactMap(\.timeAtComplete).sorted()
+        guard let a = times.first, let b = times.last else { return "" }
+        let f: (Date) -> String = { $0.formatted(date: .omitted, time: .shortened) }
+        return a == b ? f(a) : "\(f(a)) – \(f(b))"
+    }
 
     var body: some View {
         Button {
@@ -454,19 +463,28 @@ private struct DayPlaceRow: View {
             triggerSomeVibration(type: .light)
             viewModel.present(PrayerSpotSelection(prayers: prayers, coordinate: c))
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: masjid != nil ? "building.columns" : "mappin.and.ellipse")
-                    .font(.title3).frame(width: 28).foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(masjid ?? address ?? "Finding the address…")
-                        .font(.body.weight(.medium)).lineLimit(1)
-                    Text(prayers.map(\.displayName).joined(separator: " · "))
-                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            HStack(alignment: .top, spacing: 16) {
+                // The spine: a dot at the place, the line on to the next one.
+                VStack(spacing: 0) {
+                    Circle().fill(Color.primary.opacity(0.55)).frame(width: 7, height: 7).padding(.top, 5)
+                    if !last { Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1).frame(maxHeight: .infinity) }
                 }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                .frame(width: 7)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(when)
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .tracking(1.2).textCase(.uppercase)
+                        .foregroundStyle(.tertiary)
+                    Text(masjid ?? address ?? "Finding the place…")
+                        .font(.system(size: 22, weight: .light, design: .rounded))
+                        .lineLimit(2).minimumScaleFactor(0.85)
+                    Text(prayers.map(\.displayName).joined(separator: " · ") + (masjid != nil ? " · at the masjid" : ""))
+                        .font(.system(size: 14, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, last ? 4 : 26)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14).padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
