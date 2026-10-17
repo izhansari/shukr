@@ -306,6 +306,12 @@ struct PrayerScoresPage: View {
     @State private var ringFaded = false
     @State private var detailShown = false
     @State private var busy = false
+    /// One open prayer giving way to another (a fifth tapped while one's open): the header's name and line, the ring's
+    /// words and the lines fade, the prayer swaps, they come back — no close and open. The newest tap wins.
+    @State private var swapping = false
+    @State private var swapToken = 0
+    /// A fifth tapped while a prayer was still opening or closing: switched to once that's done.
+    @State private var pendingSwitch: String?
     @State private var focus: PrayerScores.Grade?
     @State private var showMakeUp = false
     @State private var showMoments = false
@@ -320,7 +326,9 @@ struct PrayerScoresPage: View {
         let _ = JourneyPerf.body("scores")
         ScrollView {
             VStack(spacing: 0) {
-                header.padding(.top, 4)
+                // Over the switch: the picked name and line fly up past it into the header and back (owner, 2026-10-17:
+                // "looks strange cuz it goes up and behind the switcher").
+                header.padding(.top, 4).zIndex(1)
                 spanSwitch.padding(.top, 10)
                 rows.padding(.top, folded ? 10 : 18)
                 if selected != nil { detail }
@@ -340,6 +348,21 @@ struct PrayerScoresPage: View {
         // 2026-10-17: "clicking the back chevron is kind of annoying because it takes us back to the card page instead
         // of just exiting out of that current prayers page"). The system's ‹ comes back once it's closed.
         .navigationBarBackButtonHidden(selected != nil)
+        // With ‹ ours, the system's edge swipe is off: a swipe from the left edge closes the prayer as ‹ does (owner,
+        // 2026-10-17: "i want to swipe from edge to go back to the full prayer list"). Closed, the system's is back.
+        .overlay(alignment: .leading) {
+            if selected != nil {
+                Color.clear.frame(width: 22).frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .gesture(DragGesture(minimumDistance: 8, coordinateSpace: .global).onEnded { v in
+                        let w = UIScreen.main.bounds.width
+                        guard abs(v.translation.width) > abs(v.translation.height),
+                              v.translation.width > w / 4 || v.predictedEndTranslation.width > w / 2 else { return }
+                        close()
+                    })
+                    .ignoresSafeArea()
+            }
+        }
         .toolbar {
             if selected != nil {
                 ToolbarItem(placement: .topBarLeading) {
@@ -429,11 +452,49 @@ struct PrayerScoresPage: View {
             withAnimation(motion(.easeOut(duration: 0.3))) { detailShown = true }
             await beat(0.3)
             busy = false
+            if let next = pendingSwitch { pendingSwitch = nil; switchTo(next) }
+        }
+    }
+
+    /// From one open prayer straight to another (owner, 2026-10-17: "I want tapping the fifths to be a quicker move from
+    /// prayer to prayer"): ~0.3 s, never through the list. Mid-open, it waits for the open to land; a newer tap replaces an
+    /// older one at every step.
+    private func switchTo(_ name: String) {
+        guard data.prayers[name]?.prayedScore != nil else { return }
+        guard !busy else { pendingSwitch = name; return }
+        guard selected != nil, name != selected || swapping else { return }
+        swapToken += 1
+        let token = swapToken
+        triggerSomeVibration(type: .light)
+        JourneyPerf.began("scores switch")
+        Task { @MainActor in
+            withAnimation(motion(.easeOut(duration: 0.12))) {
+                swapping = true
+                linesFaded = true
+                ringFaded = true
+                detailShown = false
+            }
+            await beat(0.13)
+            guard token == swapToken else { return }   // a newer tap took over
+            focus = nil
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                selected = name
+                shown = name
+            }
+            withAnimation(motion(.easeOut(duration: 0.18))) {
+                swapping = false
+                linesFaded = false
+                ringFaded = false
+                detailShown = true
+            }
         }
     }
 
     private func close() {
-        guard !busy, selected != nil else { return }
+        guard !busy, selected != nil, !swapping else { return }
+        pendingSwitch = nil
         busy = true
         JourneyPerf.began("scores close")
         triggerSomeVibration(type: .light)
@@ -477,7 +538,7 @@ struct PrayerScoresPage: View {
             DayRing(day: ringPrayers, picked: shown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
                 let name = DayRing.order[i]
                 guard data.prayers[name]?.prayedScore != nil else { return }
-                if selected == nil { open(name) } else { close() }
+                if selected == nil { open(name) } else if name == selected && !swapping { close() } else { switchTo(name) }
             }
             VStack(spacing: 1) {
                 Text(ringScore.map { "\($0)" } ?? "–")
@@ -579,10 +640,18 @@ struct PrayerScoresPage: View {
                         .lineLimit(2).minimumScaleFactor(0.8)
                         .opacity(selected == nil && !linesFaded ? 1 : 0)
                     if let name = selected {
-                        Text(name)
-                            .modifier(PrayerScoresHeroFont(size: folded ? 34 : 16))
-                            .lineLimit(1)
-                            .matchedGeometryEffect(id: "name", in: hero, properties: .position, anchor: .leading, isSource: folded)
+                        // Its symbol flies with it and stays beside the name ("it loses the SF. keep the sf").
+                        HStack(spacing: folded ? 10 : 12) {
+                            Image(systemName: prayerIcon(for: name))
+                                .modifier(PrayerScoresHeroFont(size: folded ? 28 : 19))
+                                .frame(width: folded ? 34 : 26)
+                                .matchedGeometryEffect(id: "icon", in: hero, properties: .position, isSource: folded)
+                            Text(name)
+                                .modifier(PrayerScoresHeroFont(size: folded ? 34 : 16))
+                                .lineLimit(1)
+                                .matchedGeometryEffect(id: "name", in: hero, properties: .position, anchor: .leading, isSource: folded)
+                        }
+                        .opacity(swapping ? 0 : 1)
                     }
                 }
                 ZStack(alignment: .topLeading) {
@@ -603,12 +672,15 @@ struct PrayerScoresPage: View {
                                 Text(scorePart(name)).opacity(folded ? 0 : 1)
                             }
                             .clipped()
-                            Text(prayedLine(name))
+                            // No score: the row's "Not enough yet" flies as it is and turns to its "% prayed" once landed
+                            // (with the lines), and back before it sinks — never mid-flight.
+                            Text(scorePart(name).isEmpty && (linesFaded || !folded) ? statLine(name) : prayedLine(name))
                         }
                             .modifier(PrayerScoresHeroFont(size: folded ? 15 : 12.5))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .matchedGeometryEffect(id: "stat", in: hero, properties: .position, anchor: .leading, isSource: folded)
+                            .opacity(swapping ? 0 : 1)
                     }
                 }
                 if shown != nil { lines }
@@ -672,7 +744,8 @@ struct PrayerScoresPage: View {
                 Image(systemName: prayerIcon(for: name))
                     .font(.system(size: 19, weight: .light)).foregroundStyle(picked ? .primary : .secondary)
                     .frame(width: 26)
-                    .opacity(picked && othersFaded ? 0 : 1)   // goes with the others: the name and line fly up without it
+                    .opacity(picked ? 0 : 1)   // the header's copy is it while picked (it flies up beside the name and back)
+                    .matchedGeometryEffect(id: picked ? "icon" : "icon-\(name)", in: hero, properties: .position, isSource: !folded)
                 VStack(alignment: .leading, spacing: 2) {
                     // One weight and one colour always: changing either as the move starts dropped the name for the
                     // whole rise (seen frame by frame, 2026-10-16).
