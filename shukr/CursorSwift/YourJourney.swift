@@ -41,6 +41,8 @@ struct JourneyHomeCard: View {
     @State private var streakShown = false
     /// The grid's place (today's week at the bottom to start; `toToday`).
     @State private var position = ScrollPosition(edge: .bottom)
+    /// A month scrub under way: the month it started from and the one it's at (indexes into `monthWeeks`).
+    @State private var scrubbing: (from: Int, at: Int)?
     /// Where the grid was when the streak lit (its top row; nil: resting at today), and whether to go back there.
     @State private var beforeStreak: (week: Date?, back: Bool) = (nil, false)
     /// A finger on the tiles (not observed: nothing redraws from it).
@@ -168,6 +170,7 @@ struct JourneyHomeCard: View {
                 // The ring's room below the last row, as a row of its own: the grid's true end, to scroll to.
                 Color.clear.frame(height: Self.ringRoom - 3).id(Self.end)
             }
+            .scrollTargetLayout()   // its rows are what the visibility and the scrub's scrolls go by
             // Journey opens on today's week at the bottom (owner, 2026-10-17: "opening journey page should show card
             // scrolled to bottom instead of how it opens with the furthest date at the top"): defaultScrollAnchor only
             // sets the first layout's offset, and the weeks arrive after it — so the grid stays pinned to today while
@@ -201,25 +204,42 @@ struct JourneyHomeCard: View {
         .defaultScrollAnchor(.bottom)
         .scrollPosition($position)
         .scrollBounceBehavior(.basedOnSize)
+        // The month column scrubs the months (owner, 2026-10-17: "use that left column to scrub the months. Like fast
+        // scrub … it looks exactly the same until it's scrubbed. Then you feel it clicking … to each month … the whole
+        // tile scroll area, you see it move down or up"): a drag that starts there steps a month every `scrubStep`
+        // (down = earlier, as a scroll), a click each, the grid gliding to that month's first week. Hung on the grid, not
+        // a row (a row scrolled far off is let go by the lazy stack, and its gesture with it); the grid's own scroll holds
+        // still meanwhile. Taps on the names still open their month; the tiles still scroll.
+        .scrollDisabled(scrubbing != nil)
+        .simultaneousGesture(DragGesture(minimumDistance: 4)
+            .onChanged { v in monthScrub(v) }
+            .onEnded { _ in
+                if scrubbing != nil { scrubbing = nil }
+            })
+        .sensoryFeedback(.selection, trigger: scrubbing?.at)
         // A finger scrolling the grid lets a picked tile and a lit streak go (owner, 2026-10-17: "if a tile is selected,
         // but we start scrolling, it deselects that tile. Same for if we scroll away while the best streak is selected").
         // Only the finger's scroll: the streak's own scroll to its days is .animating, not .interacting.
-        .onScrollPhaseChange { old, phase in
-            JourneyTapLog.write("scroll \(old) → \(phase) holding=\(scrub.scrubbing) picked=\(picked.map(JourneyTapLog.day) ?? "–")")
+        .onScrollPhaseChange { _, phase in
             if phase == .interacting { scrub.pinned = false }   // the finger's now: no more snapping to today
             guard phase == .interacting, picked != nil || streakShown else { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
         }
-        .onScrollGeometryChange(for: [Int].self) { geo in
-            let count = max(1, Int((geo.containerSize.height - 12 - Self.ringRoom) / Self.pitch))
-            let first = max(0, Int(((geo.contentOffset.y + geo.contentInsets.top) - 12) / Self.pitch))
-            let atEnd = geo.contentSize.height - (geo.contentOffset.y + geo.contentInsets.top) - geo.containerSize.height < 4
-            return [first, count, atEnd ? 1 : 0]
-        } action: { _, v in
-            view = (v[0], v[1], v[2] == 1)
+        // Which weeks are in view, as iOS has them — not the offset ÷ a row's pitch: the lazy stack only estimates the rows
+        // it hasn't built, so with a long history the label read "SEP 2025 – JAN 2026" over Dec – Mar (sim, 2026-10-17),
+        // and the scrub's start, the streak's way back and the expand button's month read the same wrong rows.
+        .onScrollTargetVisibilityChange(idType: Date.self, threshold: 0.5) { ids in
+            let index = ids.compactMap { id in stats.weeks.firstIndex { $0.id == id } }
+            guard let lo = index.min(), let hi = index.max() else { return }
+            let atEnd = hi == stats.weeks.count - 1
+            if view.first != lo || view.count != hi - lo + 1 || view.atEnd != atEnd { view = (lo, hi - lo + 1, atEnd) }
+        }
+        .onScrollGeometryChange(for: Bool.self) { geo in
+            geo.contentSize.height - (geo.contentOffset.y + geo.contentInsets.top) - geo.containerSize.height < 4
+        } action: { _, atEnd in
             // Pinned to today and the weeks grew under it (they arrive after the first layout; on a return to Journey into
             // a copy of the page that started empty — logged on the sim, it settled at the first weeks): back to the end.
-            if v[2] == 0, scrub.pinned, picked == nil, !streakShown { toToday() }
+            if !atEnd, scrub.pinned, picked == nil, !streakShown { toToday() }
         }
         // A fade at the top: there are earlier weeks up there.
         .mask {
@@ -268,7 +288,6 @@ struct JourneyHomeCard: View {
             // knew none or half the rows on screen ("Sometimes it doesn't do it … puts my finger higher … like I'm hitting
             // a wall" — journey-taps.log, 2026-10-17: rows=0 after opening, 8 of ~14 after a scroll).
             .onTapGesture { p in
-                JourneyTapLog.write("tap row=\(JourneyTapLog.day(week.id)) #\(i) at=\(JourneyTapLog.pt(p)) col=\(column(p.x)) picked=\(picked.map(JourneyTapLog.day) ?? "–")")
                 // A tap near the picked tile (its bar and a few points round it) lets it go (owner, 2026-10-17: "the
                 // intention of deselecting is very hard since user has to tap exactly on that tile").
                 if let on = picked, let r = rect(of: on, fromRow: i), r.insetBy(dx: -5, dy: -4).contains(p) { tap(on); return }
@@ -280,7 +299,6 @@ struct JourneyHomeCard: View {
             // own and keeps the finger until it lifts — rows on screen are exactly `pitch` apart, so the row under the finger
             // is this one plus its offset.
             .gesture(JourneyHoldPick(hold: Self.holdTime) { state, p, global in
-                JourneyTapLog.write("hold \(JourneyTapLog.name(state)) from=\(JourneyTapLog.day(week.id)) #\(i) at=\(JourneyTapLog.pt(p)) screen=\(JourneyTapLog.pt(global)) → \(day(at: p, fromRow: i).map { JourneyTapLog.day($0.date) } ?? "–") width=\(Int(scrub.width))")
                 held(state, p, fromRow: i)
             })
         }
@@ -333,6 +351,31 @@ struct JourneyHomeCard: View {
     private func tap(_ date: Date) {
         triggerSomeVibration(type: .light)
         withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == date ? nil : date; streakShown = false }
+    }
+
+    /// The months on the card, oldest first: each one's first week (the row with its name).
+    private var monthWeeks: [Date] { stats.weeks.compactMap { $0.month == nil ? nil : $0.id } }
+    /// A finger's travel per month on the column.
+    private static let scrubStep: CGFloat = 18
+
+    private func monthScrub(_ v: DragGesture.Value) {
+        let months = monthWeeks
+        guard !months.isEmpty else { return }
+        if scrubbing == nil {
+            // Only a drag that starts on the column, and runs up or down.
+            guard v.startLocation.x < Self.nameColumn + 4, abs(v.translation.height) > abs(v.translation.width) else { return }
+            // From the month at the top of the view.
+            let top = stats.weeks.indices.contains(view.first) ? stats.weeks[view.first].id : months.last!
+            let from = months.lastIndex(where: { $0 <= top }) ?? 0
+            scrub.pinned = false
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
+            scrubbing = (from, from)
+        }
+        guard let s = scrubbing else { return }
+        let at = min(max(s.from - Int((v.translation.height / Self.scrubStep).rounded(.towardZero)), 0), months.count - 1)
+        guard at != s.at else { return }
+        scrubbing = (s.from, at)
+        withAnimation(.easeOut(duration: 0.18)) { position.scrollTo(id: months[at], anchor: .top) }
     }
 
     /// The grid at today's week, at once — not while a tile is picked or the streak is lit.
@@ -837,40 +880,6 @@ struct JourneyDayExtras {
         let near = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= from && $0.startTime < to }))) ?? []
         e.zikrSeconds = near.filter { PrayerDay.start(for: $0.startTime) == date }.reduce(0) { $0 + $1.secondsPassed }
         return e
-    }
-}
-
-/// The card's taps, holds and scrolls, for finding the misses on his phone (owner, 2026-10-17: "put a log on my phone so
-/// you can catch these bugs … Sometimes it doesn't do it. Sometimes it puts my finger higher than it really is. Sometimes
-/// it locks me from being able to drag and select tiles like I'm hitting a wall"). DEBUG builds only:
-/// Library/Caches/journey-taps.log.
-enum JourneyTapLog {
-    #if DEBUG
-    private static let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-        .appendingPathComponent("journey-taps.log")
-    private static let stamp: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm:ss.SSS"; return f }()
-    private static let dayFormat: DateFormatter = { let f = DateFormatter(); f.dateFormat = "MMM d"; return f }()
-    #endif
-    static func write(_ line: String) {
-        #if DEBUG
-        guard let url else { return }
-        let data = Data((stamp.string(from: Date()) + " " + line + "\n").utf8)
-        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() } else { try? data.write(to: url) }
-        #endif
-    }
-    static func day(_ d: Date) -> String {
-        #if DEBUG
-        return dayFormat.string(from: d)
-        #else
-        return ""
-        #endif
-    }
-    static func pt(_ p: CGPoint) -> String { "(\(Int(p.x)),\(Int(p.y)))" }
-    static func name(_ state: UIGestureRecognizer.State) -> String {
-        switch state {
-        case .began: "began"; case .changed: "changed"; case .ended: "ended"; case .cancelled: "CANCELLED"; case .failed: "FAILED"
-        default: "state\(state.rawValue)"
-        }
     }
 }
 
