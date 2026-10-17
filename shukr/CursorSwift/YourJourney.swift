@@ -225,6 +225,22 @@ struct JourneyHomeCard: View {
                 .padding(.leading, -7)
                 .scaleEffect(rail != nil ? 1 : 0.96, anchor: .leading)
         }
+        // At rest, a slim scroll bar down the column's edge says it can be taken hold of (owner, 2026-10-17: "we should
+        // probably show that it's something that you can scroll … It looks very plain and unassuming"; his pick, A): a
+        // hairline the rail's length, a thumb where the grid is in the whole history. It gives way to the lifted track.
+        .background(alignment: .topLeading) {
+            let h = max(scrub.gridHeight - 12, 1), n = max(stats.weeks.count, 1)
+            let thumb = max(CGFloat(view.count) / CGFloat(n) * h, 14)
+            let top = min(CGFloat(view.first) / CGFloat(n) * h, h - thumb)
+            ZStack(alignment: .topLeading) {
+                Capsule().fill(Color.primary.opacity(0.08)).frame(width: 2, height: h)
+                Capsule().fill(Color.primary.opacity(0.3)).frame(width: 2, height: thumb).offset(y: max(top, 0))
+            }
+            .padding(.top, 6)
+            .opacity(rail == nil && stats.weeks.count > view.count ? 1 : 0)
+            .animation(.easeOut(duration: CircleMotion.quick), value: rail == nil)
+            .allowsHitTesting(false)
+        }
         .overlay(alignment: .topLeading) {
             if let m = rail, monthWeeks.indices.contains(m), let start = stats.weeks.first(where: { $0.id == monthWeeks[m] })?.month?.start {
                 let h = max(scrub.gridHeight, 1)
@@ -299,7 +315,8 @@ struct JourneyHomeCard: View {
                     Color.clear
                 }
             }
-            .frame(width: Self.nameColumn, height: 11, alignment: .leading)
+            // The names against the tiles (owner: "push the text so that it's right leaning"), the edge the scroll bar's.
+            .frame(width: Self.nameColumn, height: 11, alignment: .trailing)
             HStack(spacing: 6) {
                 ForEach(Array(week.days.enumerated()), id: \.offset) { _, day in
                     bar(day)
