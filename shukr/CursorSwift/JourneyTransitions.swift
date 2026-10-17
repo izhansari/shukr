@@ -139,6 +139,11 @@ enum JourneyMotion {
     var gridOffset: CGFloat = 0
     var weekStarts: [Date] = []
     var names: [Date: CGRect] = [:]
+    /// The year's small months: each one's squares area and its name (global), written as they're laid out.
+    var yearGrids: [Date: CGRect] = [:]
+    var yearNames: [Date: CGRect] = [:]
+    /// The month page is showing its year (the host's ‹ then fades back to Journey: no days on screen to fly).
+    var yearShowing = false
     /// The month's day rings (global, the ring's own square at the page's scale).
     var cells: [Date: CGRect] = [:]
     /// The month title's slot, and the month it names (the page may have been paged since it opened).
@@ -146,6 +151,22 @@ enum JourneyMotion {
     var shownMonth: Date?
     /// Called when the title's slot is first laid out (a month waiting to open).
     var onTitle: (() -> Void)?
+
+    /// Runs `go` once the month's title is laid out — at once if no host resolves it (a month page shown on its own).
+    func afterTitle(_ go: @escaping () -> Void) {
+        var done = false
+        onTitle = { if !done { done = true; go() } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard !done else { return }
+            done = true; self?.onTitle = nil; go()
+        }
+    }
+
+    /// Runs `go` once the year has laid out `month`'s small month (a frame or two after it's shown).
+    func whenYearReady(_ month: Date, tries: Int = 0, _ go: @escaping () -> Void) {
+        guard yearGrids[month] == nil, tries < 12 else { go(); return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.016) { [weak self] in self?.whenYearReady(month, tries: tries + 1, go) }
+    }
 
     /// Where a day's bar is on the card now, from the card's row layout (JourneyHomeCard.row: a 34 pt name column, then
     /// seven bars 11 pt tall with 6 pt between; rows `pitch` apart under 12 pt of top room).
@@ -222,6 +243,8 @@ struct JourneyFlightTile: Equatable {
     let from: CGRect?
     let kind: YourJourneyStats.Kind
     let fill: Fill
+    /// Its corner where it starts: the card's bar 5, the year's square 2.5.
+    var corner: CGFloat = 5
 }
 
 /// A month opening from the card: which, and the card's geometry frozen at the tap.
@@ -231,6 +254,33 @@ struct JourneyMonthFlight: Equatable {
     /// The month's name on the card, if it was in view.
     let label: CGRect?
     let card: CGRect
+    /// The name where it starts: the card's 12.5 pt sage, or the year's 15 pt (sage only on this month).
+    var labelSize: CGFloat = 12.5
+    var labelSage = true
+
+    /// The flight for `start` from (or back to) its small month in the year: its squares where they are on screen now,
+    /// worked out from its squares area (JourneyYearView: seven columns, 2.5 pt apart, square), and its name.
+    @MainActor static func fromYear(_ start: Date, log: JourneyLog, today: Date) -> JourneyMonthFlight {
+        let g = JourneyFlightGeometry.shared
+        let cal = Calendar.current
+        let lead = ((cal.component(.weekday, from: start) - cal.firstWeekday) + 7) % 7
+        let screen = UIScreen.main.bounds
+        var tiles: [Date: JourneyFlightTile] = [:]
+        let grid = g.yearGrids[start] ?? .zero
+        let gap: CGFloat = 2.5, side = (grid.width - 6 * gap) / 7
+        for (i, date) in JourneyLog.daysOf(month: start).enumerated() {
+            guard let first = log.firstDay, date >= first, date <= today else { continue }
+            let d = log.day(date)
+            let kind = YourJourneyStats.kind(d)
+            let fill: JourneyFlightTile.Fill = d.allFive && date != today ? (d.allInTime ? .green : .grey) : .none
+            let at = lead + i
+            let r = CGRect(x: grid.minX + CGFloat(at % 7) * (side + gap), y: grid.minY + CGFloat(at / 7) * (side + gap), width: side, height: side)
+            let from: CGRect? = grid.width > 0 && r.maxY > 60 && r.minY < screen.height - 40 ? r : nil
+            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill, corner: 2.5)
+        }
+        return JourneyMonthFlight(start: start, tiles: tiles, label: g.yearNames[start], card: .zero,
+                                  labelSize: 15, labelSage: start == JourneyLog.monthStart(today))
+    }
 
     /// The flight for `start` from where the card's pieces are now.
     @MainActor static func make(_ start: Date, log: JourneyLog, today: Date) -> JourneyMonthFlight {
@@ -386,14 +436,15 @@ struct JourneyFlightTitle: ViewModifier {
         let width = e == nil ? 10_000 : JourneyMotion.lerp(short, slot?.width ?? short, JourneyMotion.titleUnroll(t))
         let dx = from.flatMap { f in slot.map { f.minX - $0.minX } } ?? 0
         let dy = from.flatMap { f in slot.map { f.midY - $0.midY } } ?? 0
-        let k = JourneyMotion.lerp(12.5 / 30, 1, z)
+        let k = JourneyMotion.lerp((open?.flight.labelSize ?? 12.5) / 30, 1, z)
         // Placed by a hidden copy, never by the moving one: a frame read inside its own scale and offset feeds back into
         // them every frame (the lab's first try froze for 0.4–1.5 s).
         content.hidden()
             .journeyFlightPlace(.title(shown))
             .overlay(alignment: .leading) {
                 content
-                    .foregroundStyle(e == nil ? Color.primary : Color.sage.mix(with: Color.primary, by: Double(z)))
+                    .foregroundStyle(e == nil ? Color.primary
+                                     : ((open?.flight.labelSage ?? true) ? Color.sage : Color.primary).mix(with: Color.primary, by: Double(z)))
                     .mask(alignment: .leading) { Rectangle().frame(width: max(width, 1)) }
                     .scaleEffect(k, anchor: .leading)
                     .offset(x: (1 - z) * dx, y: (1 - z) * dy)
@@ -456,7 +507,7 @@ private struct JourneyFlightCellDial: ViewModifier {
         let end = CGRect(x: me.midX - disc / 2, y: me.midY - disc / 2, width: disc, height: disc)
         let start = tile.from ?? end.insetBy(dx: disc * 0.2, dy: disc * 0.2)
         let r = JourneyMotion.lerp(start, end, z)
-        let corner = JourneyMotion.lerp(5, disc / 2, z)
+        let corner = JourneyMotion.lerp(tile.corner, disc / 2, z)
         let from = JourneyTileColor.of(tile.kind, dark: dark)
         let color: Color = switch tile.fill {
         case .green: from.mix(with: JourneyDayRing.green(dark).opacity(0.24), by: Double(tint))
@@ -474,6 +525,41 @@ private struct JourneyFlightCellDial: ViewModifier {
 struct JourneyFlightMonthSurface: ViewModifier {
     @Environment(\.journeyMonthDial) private var e
     func body(content: Content) -> some View { content.opacity(e.map { $0.dial >= 1 ? 1 : 0 } ?? 1) }
+}
+
+// MARK: - Month ↔ year (JourneyMonth.swift, JourneyYear.swift)
+
+extension View {
+    /// A small month's squares in the year: reports where they are, hides them while that month flies in or out of them,
+    /// and fades with the year's other months.
+    func journeyFlightYearSquares(_ start: Date) -> some View {
+        background { JourneyFlightReport { JourneyFlightGeometry.shared.yearGrids[start] = $0 } }
+            .modifier(JourneyFlightHide(part: .name(start)))
+            .modifier(JourneyFlightFade(part: .grid))
+    }
+    /// A small month's name in the year: reports where it is, hidden while the month's title flies from or back to it.
+    func journeyFlightYearName(_ start: Date) -> some View {
+        background { JourneyFlightReport { JourneyFlightGeometry.shared.yearNames[start] = $0 } }
+            .modifier(JourneyFlightHide(part: .name(start)))
+    }
+}
+
+/// The month page's own dial for month ↔ year: while it runs, it is what's open and how far (the month's days, title and
+/// words read it exactly as they read the card's); idle, the month inherits the host's and the year (`clearWhenIdle`)
+/// sees nothing open — so the year never fades or hides for a card flight.
+struct JourneyYearFlightDriver: ViewModifier, Animatable {
+    var dial: CGFloat
+    let flight: JourneyMonthFlight?
+    let clearWhenIdle: Bool
+    @Environment(\.journeyMonthOpen) private var hostOpen
+    @Environment(\.journeyMonthDial) private var hostDial
+    var animatableData: CGFloat { get { dial } set { dial = newValue } }
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.journeyMonthOpen, flight.map { JourneyMonthOpen(flight: $0) } ?? (clearWhenIdle ? nil : hostOpen))
+            .environment(\.journeyMonthDial, flight != nil ? JourneyMonthDial(dial: dial) : (clearWhenIdle ? nil : hostDial))
+    }
 }
 
 // MARK: - A ring that changes size (the month's F2 ring ↔ the day page's)
@@ -579,6 +665,9 @@ struct JourneyMonthHost: ViewModifier {
     /// The edge swipe claims only a drag that starts sideways; one that starts up or down is the month's paging, left alone.
     @State private var edgeSideways: Bool?
     @State private var openerID = UUID()
+    /// Back from the year: Journey shown at rest under the month layer, which fades out over it.
+    @State private var fadingOut = false
+    @State private var outFade: CGFloat = 0
 
     private var today: Date { PrayerDay.start() }
     private var width: CGFloat { UIScreen.main.bounds.width }
@@ -587,6 +676,7 @@ struct JourneyMonthHost: ViewModifier {
         ZStack(alignment: .topLeading) {
             content
                 .allowsHitTesting(flight == nil)
+                .modifier(JourneyFlightClear(active: fadingOut))
             // Over Journey's page (its own background is opaque — under it, the card had no shadow all flight and it popped
             // back on the last frame: Sami's check of 7174d7c7), drawn only outside the card's shape.
             if let flight { JourneyGrowingSurface(card: flight.card) }
@@ -594,7 +684,8 @@ struct JourneyMonthHost: ViewModifier {
                 JourneyMonthPage(log: log, start: flight.start)
                     .modifier(JourneyMonthAway())
                     .environment(\.journeyDayOpener, JourneyDayOpener(id: openerID, open: { openDay($0) }))
-                    .allowsHitTesting(day == nil && monthDial == 1)
+                    .allowsHitTesting(day == nil && monthDial == 1 && !fadingOut)
+                    .opacity(1 - outFade)
             }
             if flight != nil && day == nil { edgeStrip }
         }
@@ -665,6 +756,25 @@ struct JourneyMonthHost: ViewModifier {
     private func close() {
         flight = nil
         month = nil
+        JourneyFlightGeometry.shared.yearShowing = false
+    }
+
+    /// Back while the month page shows its year: Journey at rest underneath, the month layer fading out over it (no days on
+    /// screen to fly). A plain removal transition dropped the year in one frame and faded only Journey in.
+    private func fadeFromYear() {
+        guard !fadingOut else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { fadingOut = true }
+        withAnimation(.easeOut(duration: CircleMotion.standard)) { outFade = 1 } completion: {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                close()
+                outFade = 0
+                fadingOut = false
+            }
+        }
     }
 
     /// Going back: the tiles land on the month the page shows now (it may have been paged), from where the card is now.
@@ -735,6 +845,7 @@ struct JourneyMonthHost: ViewModifier {
     private func back() {
         DispatchQueue.main.async {
             if day != nil { retargetDayForBack(); runDay(to: 0, how: "button") }
+            else if flight != nil && JourneyFlightGeometry.shared.yearShowing { fadeFromYear() }
             else if flight != nil { retargetMonthForBack(); runMonth(to: 0, how: "button") }
         }
     }
@@ -743,7 +854,7 @@ struct JourneyMonthHost: ViewModifier {
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
             .onChanged { v in
                 if edgeSideways == nil { edgeSideways = abs(v.translation.width) >= abs(v.translation.height) }
-                guard edgeSideways == true else { return }
+                guard edgeSideways == true, day != nil || !JourneyFlightGeometry.shared.yearShowing else { return }
                 if backDrag == nil {
                     let onDay = day != nil
                     if onDay { retargetDayForBack() } else { retargetMonthForBack() }
@@ -758,6 +869,11 @@ struct JourneyMonthHost: ViewModifier {
             }
             .onEnded { v in
                 defer { edgeSideways = nil }
+                if backDrag == nil, edgeSideways == true, day == nil, JourneyFlightGeometry.shared.yearShowing,
+                   v.translation.width > width / 3 || v.predictedEndTranslation.width > width / 2 {
+                    fadeFromYear()   // the year: a swipe from the edge fades back to Journey
+                    return
+                }
                 guard let drag = backDrag else { return }
                 backDrag = nil
                 JourneyFrameLog.shared.stop()
@@ -792,6 +908,18 @@ private struct JourneyEntranceDriver: ViewModifier, Animatable {
         content
             .environment(\.journeyMonthDial, dials)
             .environment(\.journeyDayEntrance, dayEntrance)
+    }
+}
+
+/// Journey's page as at rest: no month open as far as its pieces know (the back from the year).
+private struct JourneyFlightClear: ViewModifier {
+    let active: Bool
+    @Environment(\.journeyMonthOpen) private var open
+    @Environment(\.journeyMonthDial) private var dial
+    func body(content: Content) -> some View {
+        content
+            .environment(\.journeyMonthOpen, active ? nil : open)
+            .environment(\.journeyMonthDial, active ? nil : dial)
     }
 }
 

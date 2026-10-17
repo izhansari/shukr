@@ -31,6 +31,13 @@ struct JourneyMonthPage: View {
     @State private var dragVertical: Bool?
     /// The year, in place of the month (the title, Month | Year, or a pinch).
     @State private var showYear = false
+    /// Month ↔ year (owner, 2026-10-16: "i didnt see the transition for month to year"): the month's days fly home into its
+    /// small month in the year and back, on this dial (1 = the month) — JourneyTransitions.swift's flight, aimed at the year.
+    @State private var yearFlight: JourneyMonthFlight?
+    @State private var yearDial: CGFloat = 1
+    /// The year laid out but its flight not set yet (a frame or two): the month stays up and the year hidden — without it the
+    /// whole year showed for a frame first.
+    @State private var yearWaiting = false
     @Environment(\.journeyDayOpener) private var dayOpener
 
     init(log: JourneyLog, start: Date) {
@@ -71,12 +78,15 @@ struct JourneyMonthPage: View {
             if showYear {
                 JourneyYearView(log: log, today: today, current: start, onPick: { month in
                     triggerSomeVibration(type: .light)
-                    withAnimation(Self.zoom) { start = month; showYear = false }
+                    toMonth(month)
                 }, onSpread: {
-                    withAnimation(Self.zoom) { showYear = false }   // a spread elsewhere: back into the month
+                    toMonth(start)   // a spread elsewhere: back into the month
                 }, onDay: { open($0) })
-                .transition(.opacity.combined(with: .scale(scale: 1.08)))
-            } else {
+                // Idle, the year sees no flight (a card's or a day's never fades it); in a month ↔ year flight, this one.
+                .modifier(JourneyYearFlightDriver(dial: yearDial, flight: yearFlight, clearWhenIdle: true))
+                .opacity(yearWaiting ? 0 : 1)
+            }
+            if !showYear || yearFlight != nil || yearWaiting {
                 // Never a scroll (it took the up/down drag: a six-week month on a 17 Pro didn't fit and the page scrolled
                 // instead of turning — Sami's check of 63c027c). The largest day size that fits the phone, down to 70 %.
                 ViewThatFits(in: .vertical) {
@@ -85,17 +95,18 @@ struct JourneyMonthPage: View {
                     page(scale: 0.8)
                     page(scale: 0.7)
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 .simultaneousGesture(MagnifyGesture().onEnded { v in
-                    if v.magnification < 0.85 { withAnimation(Self.zoom) { showYear = true } }   // pinch in: the year
+                    if v.magnification < 0.85 { toYear() }   // pinch in: the year
                 })
+                .allowsHitTesting(yearFlight == nil)
             }
         }
+        .modifier(JourneyYearFlightDriver(dial: yearDial, flight: yearFlight, clearWhenIdle: false))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .safeAreaInset(edge: .bottom) {
             JourneySwitch(options: [("Month", "month"), ("Year", "year")],
                           selection: Binding(get: { showYear ? "year" : "month" },
-                                             set: { v in withAnimation(Self.zoom) { showYear = v == "year" } }))
+                                             set: { v in if v == "year" { toYear() } else { toMonth(start) } }))
                 .padding(.bottom, 6)
                 .journeyFlightWords(.month)
         }
@@ -105,8 +116,48 @@ struct JourneyMonthPage: View {
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
     }
 
-    /// Month ↔ year: a calm zoom (the month shrinks away as the year settles in, and back).
-    private static let zoom = Animation.easeInOut(duration: 0.35)
+    /// Out to the year: the year laid out under the month, the month's days go home into its small month there, the year's
+    /// words and other months arrive (the card's opening, run backwards from the year).
+    private func toYear() {
+        guard !showYear, yearFlight == nil else { return }
+        triggerSomeVibration(type: .light)
+        let month = shownMonth
+        // Fresh places for the year (the last time's may be stale), and the host's ‹ fades from here.
+        JourneyFlightGeometry.shared.yearGrids = [:]
+        JourneyFlightGeometry.shared.yearNames = [:]
+        JourneyFlightGeometry.shared.yearShowing = true
+        yearWaiting = true
+        showYear = true
+        JourneyFlightGeometry.shared.whenYearReady(month) {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                start = month; yearFlight = .fromYear(month, log: log, today: today); yearDial = 1; yearWaiting = false
+            }
+            JourneyFrameLog.shared.start("month → year")
+            withAnimation(.linear(duration: JourneyMotion.monthDuration)) { yearDial = 0 } completion: {
+                JourneyFrameLog.shared.stop()
+                yearFlight = nil
+            }
+        }
+    }
+
+    /// Into a month from the year: its small month's squares grow into its days, as from the card.
+    private func toMonth(_ month: Date) {
+        guard showYear, yearFlight == nil else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { start = month; yearFlight = .fromYear(month, log: log, today: today); yearDial = 0 }
+        JourneyFlightGeometry.shared.afterTitle {
+            JourneyFrameLog.shared.start("year → month")
+            withAnimation(.linear(duration: JourneyMotion.monthDuration)) { yearDial = 1 } completion: {
+                JourneyFrameLog.shared.stop()
+                showYear = false
+                yearFlight = nil
+                JourneyFlightGeometry.shared.yearShowing = false
+            }
+        }
+    }
 
     private func page(scale: CGFloat) -> some View {
         let shown = shownMonth
@@ -114,8 +165,7 @@ struct JourneyMonthPage: View {
         return VStack(alignment: .leading, spacing: 0) {
             // The month's name says it can be tapped (owner: "an updown sf symbol"): a tap zooms out to the year.
             Button {
-                triggerSomeVibration(type: .light)
-                withAnimation(Self.zoom) { showYear = true }
+                toYear()
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 7) {
                     Text(shown.formatted(.dateTime.month(.wide).year()))

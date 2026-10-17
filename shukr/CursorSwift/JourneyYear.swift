@@ -50,7 +50,7 @@ struct JourneyYearView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
-                key
+                key.journeyFlightWords(.page)   // the transitions: arrive as a month goes home (JourneyTransitions.swift)
                 ForEach(years, id: \.self) { year($0) }
             }
             .padding(.horizontal, 20)
@@ -117,6 +117,7 @@ struct JourneyYearView: View {
                 Text(days == 1 ? "1 day you marked a prayer" : "\(days) days you marked a prayer")
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
+            .journeyFlightWords(.page)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 18), count: 3), alignment: .leading, spacing: 18) {
                 ForEach(months, id: \.self) { mini($0) }
             }
@@ -142,7 +143,10 @@ struct JourneyYearView: View {
                     Text(start.formatted(.dateTime.month(.abbreviated)))
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(thisMonth ? Color.sage : numbers.activeDays == 0 && !future && !before ? Color.secondary : Color.primary)
+                        .journeyFlightYearName(start)
+                        .journeyFlightWords(.page)
                     Text(line).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary).lineLimit(1)
+                        .journeyFlightWords(.page)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -156,6 +160,7 @@ struct JourneyYearView: View {
                 // Every small month six weeks tall, so the names in a row line up.
                 ForEach(0..<max(0, 42 - lead - days.count), id: \.self) { _ in Color.clear.aspectRatio(1, contentMode: .fit) }
             }
+            .journeyFlightYearSquares(start)   // its days fly in and out of these (JourneyTransitions.swift)
             .padding(.top, 3)
         }
         .padding(6)
