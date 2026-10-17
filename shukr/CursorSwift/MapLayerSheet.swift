@@ -10,6 +10,7 @@
 
 import SwiftUI
 import MapKit
+import SwiftData
 
 /// The sheet's height as it is on screen right now, for the controls that float above it. Its own
 /// @Observable so only they re-render while the sheet is dragged, not the whole map screen.
@@ -343,18 +344,6 @@ struct PrayerSpotsHome: View {
         return groups
     }
 
-    /// The day's places as a quiet timeline (owner, 2026-10-17: "something a little more editorial"): a thin line down
-    /// the left with a dot a place; the time in small grey capitals, the place in large light type, its prayers in grey.
-    /// No cards, no icons.
-    private var placesSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(dayPlaces.enumerated()), id: \.offset) { i, group in
-                DayPlaceRow(prayers: group, viewModel: viewModel, last: i == dayPlaces.count - 1)
-            }
-        }
-        .padding(.top, 6)
-    }
-
     /// "Tuesday, Oct 6" ("Today", "Yesterday"); the year when it isn't this one.
     private func dayTitle(_ d: Date) -> String {
         if let word = PrayerDay.todayWord(d) { return word }
@@ -420,7 +409,7 @@ struct PrayerSpotsHome: View {
                             .padding(.vertical, 24)
                     }
                     if dayOnly != nil {
-                        placesSection
+                        DayBento(places: dayPlaces, day: viewModel.prayers.filter(\.isCompleted), viewModel: viewModel)
                     } else {
                         ForEach(days, id: \.date) { day in
                             daySection(day.date, day.prayers)
@@ -438,62 +427,128 @@ struct PrayerSpotsHome: View {
 }
 
 
-/// One place on the one-day map: the masjid's name or the street, the prayers prayed there; a tap opens them there (the
-/// map flies to it), as a pin of theirs does.
-private struct DayPlaceRow: View {
-    let prayers: [PrayerModel]
+/// The one-day map's sheet: a bento of what the map knows that Journey doesn't (owner, 2026-10-17: "what would it look
+/// like if … all the prayers are done at home? … some chips or sections, like a bento box, showing different stats for
+/// that day … in the shortcuts, we have the logic for showing how many times we've prayed in an area … Just do whatever
+/// you want"). Where (the day's main place, a tap flies there) · prayed here, ever (the "prayed here" shortcut's rule:
+/// 100 m, or the same masjid) · at the masjid · moved · Fajr → Isha.
+private struct DayBento: View {
+    /// The day's places, the order the day reached them (PrayerSpotsHome.dayPlaces).
+    let places: [[PrayerModel]]
+    /// The day's marked prayers, on the map or not.
+    let day: [PrayerModel]
     @ObservedObject var viewModel: LocationViewModel
-    /// The day's last place: the line stops at its dot.
-    var last = false
+    @Environment(\.modelContext) private var context
     @State private var address: String?
+    @State private var history: (count: Int, since: Date?)?
 
-    private var coordinate: CLLocationCoordinate2D? { prayers.first.flatMap(DayFacts.spot) }
-    private var masjid: String? { prayers.first.flatMap { $0.atMasjid ? $0.mosqueName : nil }.flatMap { $0.isEmpty ? nil : $0 } }
-    /// "1:40 PM", or "5:22 – 8:21 PM" when more than one was prayed there.
-    private var when: String {
-        let times = prayers.compactMap(\.timeAtComplete).sorted()
-        guard let a = times.first, let b = times.last else { return "" }
-        let f: (Date) -> String = { $0.formatted(date: .omitted, time: .shortened) }
-        return a == b ? f(a) : "\(f(a)) – \(f(b))"
-    }
+    /// Where most of the day was prayed.
+    private var main: [PrayerModel]? { places.max { $0.count < $1.count } }
+    private var mainSpot: CLLocationCoordinate2D? { main?.first.flatMap(DayFacts.spot) }
+    private var masjid: String? { main?.first.flatMap { $0.atMasjid ? $0.mosqueName : nil }.flatMap { $0.isEmpty ? nil : $0 } }
+    private var marked: Int { day.count }
 
     var body: some View {
-        Button {
-            guard let c = coordinate else { return }
-            triggerSomeVibration(type: .light)
-            viewModel.present(PrayerSpotSelection(prayers: prayers, coordinate: c))
-        } label: {
-            HStack(alignment: .top, spacing: 16) {
-                // The spine: a dot at the place, the line on to the next one.
-                VStack(spacing: 0) {
-                    Circle().fill(Color.primary.opacity(0.55)).frame(width: 7, height: 7).padding(.top, 5)
-                    if !last { Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1).frame(maxHeight: .infinity) }
+        VStack(spacing: 10) {
+            if let main {
+                Button {
+                    guard let c = mainSpot else { return }
+                    triggerSomeVibration(type: .light)
+                    viewModel.present(PrayerSpotSelection(prayers: main, coordinate: c))
+                } label: {
+                    tile("Where", masjid ?? address ?? "Finding the place…",
+                         main.count == marked ? (marked == 1 ? "Prayed here" : "All \(marked) prayed here")
+                         : "\(main.count) of \(marked) here · \(places.count - 1) other \(places.count == 2 ? "place" : "places")",
+                         big: true)
                 }
-                .frame(width: 7)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(when)
-                        .font(.system(size: 11, weight: .regular, design: .rounded))
-                        .tracking(1.2).textCase(.uppercase)
-                        .foregroundStyle(.tertiary)
-                    Text(masjid ?? address ?? "Finding the place…")
-                        .font(.system(size: 22, weight: .light, design: .rounded))
-                        .lineLimit(2).minimumScaleFactor(0.85)
-                    Text(prayers.map(\.displayName).joined(separator: " · ") + (masjid != nil ? " · at the masjid" : ""))
-                        .font(.system(size: 14, weight: .light, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.bottom, last ? 4 : 26)
-                Spacer(minLength: 0)
+                .buttonStyle(.plain)
             }
-            .contentShape(Rectangle())
+            HStack(spacing: 10) {
+                tile("Prayed here", history.map { "\($0.count)" } ?? "–",
+                     history?.since.map { "since \($0.formatted(.dateTime.month(.abbreviated).year()))" } ?? "ever")
+                let atMasjid = day.filter(\.atMasjid).count
+                tile("At the masjid", atMasjid == 0 ? "None" : "\(atMasjid)", atMasjid == 0 ? "that day" : "of \(marked) prayers")
+            }
+            HStack(spacing: 10) {
+                tile("Moved", moved.value, moved.detail)
+                tile(spanTitle, span.value, span.detail)
+            }
         }
-        .buttonStyle(.plain)
-        .task { await loadAddress() }
+        .task(id: mainSpot.map { "\($0.latitude),\($0.longitude)" }) {
+            await loadAddress()
+            loadHistory()
+        }
+    }
+
+    // MARK: The tiles' words
+
+    /// "One place" all day, else the farthest two places apart.
+    private var moved: (value: String, detail: String) {
+        let spots = places.compactMap { $0.first.flatMap(DayFacts.spot) }.map { CLLocation(latitude: $0.latitude, longitude: $0.longitude) }
+        var far = 0.0
+        for a in spots { for b in spots { far = max(far, a.distance(from: b)) } }
+        guard spots.count > 1, far > 75 else { return ("One place", "all day") }
+        let d = Measurement(value: far, unit: UnitLength.meters).formatted(.measurement(width: .abbreviated, usage: .road))
+        return (d, "between \(places.count) places")
+    }
+
+    private var spanTitle: String {
+        let names = sortedDay.map(\.displayName)
+        guard let a = names.first, let b = names.last, a != b else { return "Prayed" }
+        return "\(a) → \(b)"
+    }
+    private var sortedDay: [PrayerModel] { day.sorted { ($0.timeAtComplete ?? $0.startTime) < ($1.timeAtComplete ?? $1.startTime) } }
+    /// The day's first and last marks.
+    private var span: (value: String, detail: String) {
+        let times = sortedDay.compactMap(\.timeAtComplete)
+        guard let a = times.first, let b = times.last else { return ("–", "") }
+        let f: (Date) -> String = { $0.formatted(date: .omitted, time: .shortened) }
+        return a == b ? (f(a), "one prayer") : (f(a), "to \(f(b))")
+    }
+
+    private func tile(_ title: String, _ value: String, _ detail: String, big: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 11, weight: .regular, design: .rounded))
+                .tracking(1.2).textCase(.uppercase)
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.system(size: big ? 24 : 22, weight: .light, design: .rounded))
+                .lineLimit(big ? 2 : 1).minimumScaleFactor(0.75)
+                .monospacedDigit()
+            Text(detail)
+                .font(.system(size: 13, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
+        .contentShape(Rectangle())
+    }
+
+    // MARK: Loading
+
+    /// Every prayer ever marked at the day's main place: within 100 m, or anywhere at its masjid (1 km) — one a prayer a
+    /// day (PrayedHere's rule, the "How many times have I prayed here" shortcut).
+    private func loadHistory() {
+        guard let c = mainSpot else { history = nil; return }
+        let here = CLLocation(latitude: c.latitude, longitude: c.longitude)
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted == true }))) ?? []
+        func distance(_ r: PrayerModel) -> Double {
+            guard let s = DayFacts.spot(r) else { return .infinity }
+            return CLLocation(latitude: s.latitude, longitude: s.longitude).distance(from: here)
+        }
+        var near = rows.filter { distance($0) <= 100 }
+        if let m = masjid { near += rows.filter { $0.mosqueName == m && distance($0) <= 1_000 } }
+        var seen = Set<String>()
+        let unique = near.filter { seen.insert("\($0.dayKey)|\($0.name)").inserted }
+        history = (unique.count, unique.map { $0.timeAtComplete ?? $0.startTime }.min())
     }
 
     /// Street + city, as a pin's page finds it (shared cache on the view model).
     private func loadAddress() async {
-        guard masjid == nil, let c = coordinate else { return }
+        guard masjid == nil, let c = mainSpot else { return }
         let key = String(format: "%.4f,%.4f", c.latitude, c.longitude)
         if let cached = viewModel.addressCache[key] { address = cached; return }
         let placemark = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: c.latitude, longitude: c.longitude)).first
