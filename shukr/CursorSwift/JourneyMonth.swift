@@ -158,15 +158,14 @@ struct JourneyMonthPage: View {
         }
         // Month | Year up on the back button's row, out of the bottom's way ("maybe we move the month and year switcher to
         // the top right in the top bar. To make space for a bottom area").
+        // Always there and only faded: the bar's own glass behind it is off, so nothing of it shows but the switch, which
+        // comes and goes with the month's words — it was an empty glass pill popping in at the end of card → month and
+        // staying ~0.5 s after month → card, and the switch popping back when a day opened here closed (sim recording).
         .toolbar {
-            // Not over a day opened from here (it opens in place, so this toolbar would stay on its page).
-            if monthOpen?.hiddenDay == nil {
-            ToolbarItem(placement: .topBarTrailing) {
-                JourneySwitch(options: [("Month", "month"), ("Year", "year")],
-                              selection: Binding(get: { showYear ? "year" : "month" },
-                                                 set: { v in if v == "year" { toYear() } else { toMonth(start) } }))
-                    .journeyFlightWords(.month)
-            }
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .topBarTrailing) { monthYearSwitch }.sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .topBarTrailing) { monthYearSwitch }
             }
         }
         .modifier(JourneyExtrasPresenter(tap: $extraTap))
@@ -178,6 +177,19 @@ struct JourneyMonthPage: View {
 
     /// Out to the year: the year laid out under the month, the month's days go home into its small month there, the year's
     /// words and other months arrive (the card's opening, run backwards from the year).
+    /// Month | Year in the bar. Not over a day opened from here (it opens in place, so the bar stays this page's): it
+    /// fades out as the day comes in and back as it goes.
+    private var monthYearSwitch: some View {
+        let dayUp = monthOpen?.hiddenDay != nil
+        return JourneySwitch(options: [("Month", "month"), ("Year", "year")],
+                             selection: Binding(get: { showYear ? "year" : "month" },
+                                                set: { v in if v == "year" { toYear() } else { toMonth(start) } }))
+            .journeyFlightWords(.month)
+            .opacity(dayUp ? 0 : 1)
+            .allowsHitTesting(!dayUp)
+            .animation(.easeInOut(duration: 0.3), value: dayUp)
+    }
+
     private func toYear() {
         guard !showYear, yearFlight == nil else { return }
         picked = nil   // the year has its own picks
