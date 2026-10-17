@@ -442,7 +442,7 @@ struct JourneyExpandedPage: View {
         }
         // The rings' places come with the week rows laid out where the scroll put them (their anchors, resolved each
         // layout; the flying squares read them live).
-        DispatchQueue.main.async { geo.title = nil; geo.afterTitle {
+        DispatchQueue.main.async { geo.afterWeeks {
             let run = JourneyFrameLog.shared.start("year → weeks")
             yearDials.animate(.month, to: 1, duration: JourneyMotion.monthDuration) {
                 JourneyFrameLog.shared.stop(run: run)
@@ -460,12 +460,7 @@ struct JourneyExpandedPage: View {
     /// A month's flight between its small month and its rings: the year's squares (where they are on screen now), its days'
     /// rings drawn in by their place in the month; the weeks' other days and words arrive with the dial.
     private static func flight(_ month: Date, log: JourneyLog, today: Date) -> JourneyMonthFlight {
-        var f = JourneyMonthFlight.fromYear(month, log: log, today: today)
-        let dates = f.tiles.keys.sorted()
-        var order: [Date: CGFloat] = [:]
-        for (i, d) in dates.enumerated() { order[d] = dates.count > 1 ? CGFloat(i) / CGFloat(dates.count - 1) : 0 }
-        f.order = order
-        return f
+        JourneyMonthFlight.fromYear(month, log: log, today: today)
     }
 
     // MARK: The month rail (the card's: hold the names, the finger's height is the month)
