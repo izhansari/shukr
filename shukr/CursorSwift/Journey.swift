@@ -316,6 +316,7 @@ struct JourneyPage: View {
     private var small: Bool { UIScreen.main.bounds.height < 700 }
 
     var body: some View {
+        let _ = JourneyPerf.body("page")
         // One screen (owner, 2026-10-16: "ideally, the journey page is a one-page item that doesn't move"): nothing scrolls
         // but the card's grid, which takes the room that's left. Where the rows don't fit under a 12-week card (an SE,
         // larger text), they scroll in their own area under it.
@@ -343,8 +344,9 @@ struct JourneyPage: View {
             JourneyMilestonesPage(milestones: stats?.milestones ?? [], firstDay: log.firstDay, opens: { opens($0) })
         }
         .onAppear {
+            JourneyPerf.began("journey appears")
             onScreen = true
-            if stats == nil { stats = YourJourneyStats(log: log, today: today) }
+            if stats == nil { stats = JourneyPerf.time("stats") { YourJourneyStats(log: log, today: today) } }
             if dirty { reload() }
         }
         .onDisappear { onScreen = false }
@@ -399,15 +401,19 @@ struct JourneyPage: View {
         let ranges = Excused.ranges
         let day = today
         Task {
+            let t = JourneyPerf.now
             let built = await JourneyLog.load(container: container, ranges: ranges)
+            JourneyPerf.took("log.load", since: t)
             guard token == loadToken else { return }
             log = built
             JourneyLog.last = built
-            stats = YourJourneyStats(log: built, today: day)
+            stats = JourneyPerf.time("stats") { YourJourneyStats(log: built, today: day) }
         }
         Task {
+            let t = JourneyPerf.now
             let s = await PrayerScores.load(container: container, ranges: ranges)
             let open = await JourneyMakeUpPage.openCount(container: container)
+            JourneyPerf.took("scores+makeUp.load", since: t)
             guard token == loadToken else { return }
             scores = (s.prayedScore, s.prayed > 0 ? s.ranked.first : nil)
             makeUpTotal = open
@@ -423,6 +429,7 @@ struct JourneyPage: View {
     /// Milestones (Journey on one screen, board/mocks/journey-v6/build-plan.md "A"). Before the first mark: the card says
     /// what will fill it, the rows are there, quiet.
     private func home(rowHeight: CGFloat, tight: Bool, rowsScroll: Bool) -> some View {
+        JourneyPerf.body("home")
         let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
         let card = JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
                                    onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },

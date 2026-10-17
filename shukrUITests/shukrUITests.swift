@@ -309,6 +309,84 @@ final class shukrUITests: XCTestCase {
         for _ in 0..<3 { calendarPass(app) }
     }
 
+    // MARK: The perf round (2026-10-17): one pass over today's Journey for the app's own perf log (journey-perf.log, JourneyPerf.swift)
+    // — real gestures by place, few element queries (XCTest's queries took ~half the main thread in XCTHitchMetric runs).
+    // No metrics here: the app's log is the measure, before and after.
+
+    private func press(_ from: XCUICoordinate, hold: TimeInterval, to: XCUICoordinate) {
+        from.press(forDuration: hold, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.2)
+        usleep(900_000)
+    }
+
+    private func perfPass(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch
+        let weeks = app.descendants(matching: .any)["Your weeks, a week a row"].firstMatch
+        guard weeks.waitForExistence(timeout: 4) else { XCTFail("no card grid"); return }
+        let g = weeks.frame
+        func at(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {   // points in the grid
+            window.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: g.minX + x, dy: g.minY + y))
+        }
+        let tiles = g.width - 40, col = { (c: Int) in 40 + 6 + (tiles - 42) / 7 * (CGFloat(c) + 0.5) + 6 * CGFloat(c) }
+        // The card's grid scrolled back and down again by a quick drag on the tiles.
+        at(col(3), g.height * 0.3).press(forDuration: 0.02, thenDragTo: at(col(3), g.height * 0.95), withVelocity: .fast, thenHoldForDuration: 0)
+        usleep(1_200_000)
+        at(col(3), g.height * 0.9).press(forDuration: 0.02, thenDragTo: at(col(3), g.height * 0.1), withVelocity: .fast, thenHoldForDuration: 0)
+        usleep(1_200_000)
+        at(col(3), g.height * 0.9).press(forDuration: 0.02, thenDragTo: at(col(3), g.height * 0.1), withVelocity: .fast, thenHoldForDuration: 0)
+        usleep(1_500_000)
+        // Taps: three tiles in the last rows, then the last again (let go).
+        for (c, up) in [(1, 3), (4, 2), (2, 1), (2, 1)] { at(col(c), g.height - 6 - 14 * CGFloat(up)).tap(); usleep(900_000) }
+        // A hold, then the finger across tiles and rows.
+        press(at(col(1), g.height - 48), hold: 0.5, to: at(col(5), g.height - 90))
+        at(col(5), g.height - 90).tap(); usleep(700_000)   // that pick let go
+        // The rail: held on the names, up to the top, then down to the bottom.
+        let rail = at(20, g.height * 0.5)
+        rail.press(forDuration: 0.4, thenDragTo: at(20, 4), withVelocity: .slow, thenHoldForDuration: 0.3)
+        usleep(900_000)
+        at(20, g.height * 0.2).press(forDuration: 0.4, thenDragTo: at(20, g.height - 4), withVelocity: .slow, thenHoldForDuration: 0.3)
+        usleep(1_200_000)
+        // Card → month (the expand button), months up and down, a day picked and let go.
+        let expand = app.buttons["Open the month"].firstMatch
+        guard expand.exists else { XCTFail("no expand button"); return }
+        expand.tap(); usleep(1_800_000)
+        for by in [0.3, 0.3, -0.3, -0.3] as [CGFloat] {
+            let y: CGFloat = by > 0 ? 0.3 : 0.7
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y))
+                .press(forDuration: 0.02, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y + by)), withVelocity: .default, thenHoldForDuration: 0)
+            usleep(1_100_000)
+        }
+        for dx in [0.36, 0.64, 0.64] as [CGFloat] { window.coordinate(withNormalizedOffset: CGVector(dx: dx, dy: 0.42)).tap(); usleep(1_000_000) }
+        // Month → year (the title), the year scrolled, a square, a small month → the month.
+        let title = app.buttons.matching(NSPredicate(format: "label MATCHES '^[A-Z][a-z]+ [0-9]{4}$'")).firstMatch
+        if title.exists { title.tap(); usleep(1_800_000) }
+        window.swipeDown(velocity: .default); usleep(1_100_000)
+        window.swipeUp(velocity: .default); usleep(1_100_000)
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.2, dy: 0.62)).tap(); usleep(900_000)
+        let small = app.buttons.matching(NSPredicate(format: "label CONTAINS ' days · '")).allElementsBoundByIndex
+            .filter { inView($0, window) }.last
+        if let small { small.tap(); usleep(1_800_000) }
+        back(app); usleep(800_000)                                   // the month → the card
+        // Prayer scores: in, a prayer opened and closed, out.
+        let scores = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Prayer scores'")).firstMatch
+        guard scores.exists else { return }
+        scores.tap(); usleep(1_500_000)
+        let isha = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Isha'")).firstMatch
+        if isha.exists {
+            isha.tap(); usleep(1_800_000)
+            let close = app.buttons["Back to Prayer scores"].firstMatch
+            if close.exists { close.tap(); usleep(1_800_000) }
+        }
+        back(app)
+    }
+
+    /// `xcodebuild test … -only-testing:shukrUITests/shukrUITests/testJourneyPerfPass` on his phone, then pull journey-perf.log.
+    func testJourneyPerfPass() throws {
+        let app = launchForPerf()
+        openJourney(app)
+        for _ in 0..<2 { perfPass(app) }
+        sleep(3)   // the last window's quiet spell, so it's written
+    }
+
     /// The same moves with no metrics (an Instruments recording alongside), then JOURNEY_IDLE seconds still on Journey.
     func testJourneySwipesOnly() throws {
         let app = launchForPerf()

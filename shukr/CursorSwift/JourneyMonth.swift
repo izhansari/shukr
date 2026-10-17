@@ -239,6 +239,7 @@ struct JourneyMonthPage: View {
     /// `live`: the page on screen. The still copy that picks the size (`dayScale`) lays out the same frame with no months in
     /// its window and measures nothing.
     private func page(scale: CGFloat, live: Bool = true) -> some View {
+        JourneyPerf.body("monthPage")
         let shown = shownMonth
         let numbers = log.month(shown)
         let withQaza = JourneyLog.daysOf(month: shown).filter { JourneyHighlight.withQaza.matches(log.day($0)) }.count
@@ -492,6 +493,7 @@ struct JourneyMonthPage: View {
     /// The neighbour settles into the middle on the spring, then becomes this page's month (its calendar stays — no reload).
     private func turn(_ by: Int, scale: CGFloat) {
         guard let month = neighbour(by), let d = distance(to: by, scale: scale) else { return }
+        JourneyPerf.began("month turn")
         triggerSomeVibration(type: .light)
         shownOverride = month
         withAnimation(CircleMotion.daySlideIn) { drag.offset = d } completion: {
@@ -552,6 +554,7 @@ struct JourneyMonthPage: View {
     /// A day tapped on the calendar: picked (its top and things show), again let go — as a card tile. Its top opens it.
     private func pick(_ date: Date) {
         guard let first = log.firstDay, date >= first, date <= today else { return }
+        JourneyPerf.began("month pick")
         triggerSomeVibration(type: .light)
         withAnimation(.easeOut(duration: CircleMotion.quick)) {
             picked = picked == date ? nil : date
@@ -611,6 +614,7 @@ private struct JourneyCalendar: View {
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(), spacing: 0), count: 7) }
 
     var body: some View {
+        let _ = JourneyPerf.body("calendar")
         let cal = Calendar.current
         let days = JourneyLog.daysOf(month: month)
         let lead = ((cal.component(.weekday, from: month) - cal.firstWeekday) + 7) % 7

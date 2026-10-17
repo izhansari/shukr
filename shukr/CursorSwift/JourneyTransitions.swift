@@ -76,6 +76,7 @@ enum JourneyMotion {
     private(set) var run = 0
 
     @discardableResult func start(_ name: String) -> Int {
+        JourneyPerf.began(name)   // the perf log's window too (JourneyPerf.swift)
         run += 1
         link?.invalidate()
         self.name = name

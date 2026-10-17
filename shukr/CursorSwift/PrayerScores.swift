@@ -315,6 +315,7 @@ struct PrayerScoresPage: View {
     private static let rowHeight: CGFloat = 62
 
     var body: some View {
+        let _ = JourneyPerf.body("scores")
         ScrollView {
             VStack(spacing: 0) {
                 header.padding(.top, 4)
@@ -393,6 +394,7 @@ struct PrayerScoresPage: View {
     private func open(_ name: String) {
         guard !busy, selected == nil else { return }
         busy = true
+        JourneyPerf.began("scores open")
         triggerSomeVibration(type: .light)
         selected = name
         Task { @MainActor in
@@ -420,6 +422,7 @@ struct PrayerScoresPage: View {
     private func close() {
         guard !busy, selected != nil else { return }
         busy = true
+        JourneyPerf.began("scores close")
         triggerSomeVibration(type: .light)
         Task { @MainActor in
             withAnimation(motion(.easeIn(duration: 0.18))) {

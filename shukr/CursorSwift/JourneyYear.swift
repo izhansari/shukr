@@ -81,6 +81,7 @@ struct JourneyYearView: View {
     private static let space = "journeyYear"
 
     var body: some View {
+        let _ = JourneyPerf.body("year")
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 30) {
@@ -167,6 +168,7 @@ struct JourneyYearView: View {
 
     /// A small month: its name, one quiet line, its days as squares (no sage on Journey — owner, 2026-10-17).
     private func mini(_ start: Date) -> some View {
+        JourneyPerf.body("yearMonth")
         let cal = Calendar.current
         let numbers = log.month(start)
         let future = start > today
@@ -253,6 +255,7 @@ struct JourneyYearView: View {
             .contentShape(Rectangle().inset(by: -Self.gap / 2))
             .onTapGesture {
                 guard !future, !before else { return }
+                JourneyPerf.began("year tap")
                 triggerSomeVibration(type: .light)
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = on ? nil : day }
             }

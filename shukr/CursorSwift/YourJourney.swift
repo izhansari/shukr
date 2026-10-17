@@ -64,6 +64,7 @@ struct JourneyHomeCard: View {
     static let minGrid: CGFloat = 12 * pitch + 12
 
     var body: some View {
+        let _ = JourneyPerf.body("card")
         let empty = stats.activeDays == 0
         let shown = picked.flatMap { stats.day(on: $0) }
         VStack(alignment: .leading, spacing: 0) {
@@ -259,7 +260,7 @@ struct JourneyHomeCard: View {
         // but we start scrolling, it deselects that tile. Same for if we scroll away while the best streak is selected").
         // Only the finger's scroll: the streak's own scroll to its days is .animating, not .interacting.
         .onScrollPhaseChange { _, phase in
-            if phase == .interacting { scrub.pinned = false }   // the finger's now: no more snapping to today
+            if phase == .interacting { scrub.pinned = false; JourneyPerf.began("card scroll") }   // the finger's now: no more snapping to today
             guard phase == .interacting, picked != nil || streakShown else { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
         }
@@ -295,7 +296,8 @@ struct JourneyHomeCard: View {
     }
 
     private func row(_ week: YourJourneyStats.Week, index i: Int) -> some View {
-        HStack(spacing: 6) {
+        JourneyPerf.body("row")
+        return HStack(spacing: 6) {
             Group {
                 if let m = week.month {
                     Button {
@@ -376,6 +378,7 @@ struct JourneyHomeCard: View {
     private func held(_ state: UIGestureRecognizer.State, _ p: CGPoint, fromRow i: Int) {
         switch state {
         case .began:
+            JourneyPerf.began("card hold")
             scrub.scrubbing = true
             triggerSomeVibration(type: .medium)
             if let d = day(at: p, fromRow: i) { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d.date; streakShown = false } }
@@ -389,6 +392,7 @@ struct JourneyHomeCard: View {
     }
 
     private func tap(_ date: Date) {
+        JourneyPerf.began("card tap")
         triggerSomeVibration(type: .light)
         withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == date ? nil : date; streakShown = false }
     }
@@ -412,6 +416,7 @@ struct JourneyHomeCard: View {
                 try? await Task.sleep(for: .seconds(Self.railHold))
                 guard !Task.isCancelled, r.railStart != nil, !r.railMoved else { return }
                 r.pinned = false
+                JourneyPerf.began("card rail")
                 triggerSomeVibration(type: .medium)
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
                 railTo(railIndex(r.railLast.y), lifting: true)
@@ -896,6 +901,7 @@ struct JourneyDayTop: View {
     let onOpen: () -> Void
 
     var body: some View {
+        let _ = JourneyPerf.body("dayTop")
         let d = day
         let date = d.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
         let number = log.dayNumber(d.date).map { "Day \($0)" }
@@ -948,6 +954,7 @@ struct JourneyDayExtrasRow: View {
     @Environment(\.modelContext) private var context
 
     var body: some View {
+        let _ = JourneyPerf.body("extras")
         let e = extras.date == date ? extras : nil
         HStack(alignment: .top, spacing: 0) {
             extra("text.quote", e.map { "\($0.notes.count)" }, e?.notes.count == 1 ? "note" : "notes", !(e?.notes.isEmpty ?? true)) {
@@ -969,7 +976,7 @@ struct JourneyDayExtrasRow: View {
             // A held finger crossing days doesn't count every one it passes.
             try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled else { return }
-            extras = JourneyDayExtras.load(date, in: context)
+            extras = JourneyPerf.time("extras.load") { JourneyDayExtras.load(date, in: context) }
         }
     }
 
