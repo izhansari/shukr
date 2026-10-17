@@ -445,7 +445,11 @@ struct JourneyFlightTitle: ViewModifier {
                 content
                     .foregroundStyle(e == nil ? Color.primary
                                      : ((open?.flight.labelSage ?? true) ? Color.sage : Color.primary).mix(with: Color.primary, by: Double(z)))
-                    .mask(alignment: .leading) { Rectangle().frame(width: max(width, 1)) }
+                    // Scaled, not sized: a mask whose frame changed every frame re-laid the page out every frame.
+                    .mask(alignment: .leading) {
+                        Rectangle().frame(width: slot?.width ?? 400)
+                            .scaleEffect(x: e == nil ? 1 : min(max(width, 1) / max(slot?.width ?? 400, 1), 1), anchor: .leading)
+                    }
                     .scaleEffect(k, anchor: .leading)
                     .offset(x: (1 - z) * dx, y: (1 - z) * dy)
                     // No name on screen (scrolled off the card): the title fades in with the words instead.
@@ -490,35 +494,48 @@ private struct JourneyFlightCellDial: ViewModifier {
         let draw = JourneyCellDraw(ring: hidden ? 0 : JourneyMotion.ring(t, day: n),
                                    number: Double(JourneyMotion.number(t, day: n)),
                                    fill: hidden || t < 1 ? 0 : 1)
-        content
-            .environment(\.journeyCellDraw, draw)
-            .background {
-                if let tile, !hidden, t < 1 {
-                    GeometryReader { g in tileFlight(tile, me: g.frame(in: .global), z: JourneyMotion.zoom(t), tint: JourneyMotion.tint(t)) }
-                }
-            }
+        content.environment(\.journeyCellDraw, draw)
     }
 
-    /// The card's bar sliding and growing to this day's fill disc, rounding as it goes, its colour turning to the fill's (or
-    /// fading where the day has none).
-    private func tileFlight(_ tile: JourneyFlightTile, me: CGRect, z: CGFloat, tint: CGFloat) -> some View {
-        let dark = scheme == .dark
-        let disc = JourneyDayRing.fill * 2 * scale
-        let end = CGRect(x: me.midX - disc / 2, y: me.midY - disc / 2, width: disc, height: disc)
-        let start = tile.from ?? end.insetBy(dx: disc * 0.2, dy: disc * 0.2)
-        let r = JourneyMotion.lerp(start, end, z)
-        let corner = JourneyMotion.lerp(tile.corner, disc / 2, z)
-        let from = JourneyTileColor.of(tile.kind, dark: dark)
-        let color: Color = switch tile.fill {
-        case .green: from.mix(with: JourneyDayRing.green(dark).opacity(0.24), by: Double(tint))
-        case .grey: from.mix(with: JourneyDayRing.greyFill(dark), by: Double(tint))
-        case .none: from.opacity(Double(1 - tint))
+}
+
+/// Every landing tile of the open month in one Canvas, under the month's rings and numbers: the card's bar (or the year's
+/// square) sliding and growing to its day's fill disc, rounding as it goes, its colour turning to the fill's (or fading where
+/// the day has none). One drawing, no layout: drawn per cell (a GeometryReader behind each, its tile a new size every frame),
+/// the page was laid out every frame and its four-size layout rebuilt all three calendars each time (~75 rebuilds an opening).
+struct JourneyFlyingTiles: View {
+    @Environment(\.journeyMonthDial) private var e
+    @Environment(\.journeyMonthOpen) private var open
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let t = e?.dial ?? 1
+        if let open, t < 1 {
+            let z = JourneyMotion.zoom(t), tint = JourneyMotion.tint(t)
+            let dark = scheme == .dark
+            let cells = JourneyFlightGeometry.shared.cells
+            JourneyGlobalCanvas { o in
+                Canvas { ctx, _ in
+                    for (date, tile) in open.flight.tiles where open.hiddenDay != date {
+                        guard let cell = cells[date] else { continue }
+                        let scale = cell.height / JourneyDayRing.size
+                        let disc = JourneyDayRing.fill * 2 * scale
+                        let end = CGRect(x: cell.midX - disc / 2, y: cell.midY - disc / 2, width: disc, height: disc)
+                        let start = tile.from ?? end.insetBy(dx: disc * 0.2, dy: disc * 0.2)
+                        let r = JourneyMotion.lerp(start, end, z).offsetBy(dx: -o.x, dy: -o.y)
+                        let corner = JourneyMotion.lerp(tile.corner, disc / 2, z)
+                        let from = JourneyTileColor.of(tile.kind, dark: dark)
+                        let color: Color = switch tile.fill {
+                        case .green: from.mix(with: JourneyDayRing.green(dark).opacity(0.24), by: Double(tint))
+                        case .grey: from.mix(with: JourneyDayRing.greyFill(dark), by: Double(tint))
+                        case .none: from.opacity(Double(1 - tint))
+                        }
+                        ctx.opacity = tile.from == nil ? Double(z) : 1
+                        ctx.fill(Path(roundedRect: r, cornerRadius: corner, style: .continuous), with: .color(color))
+                    }
+                }
+            }
         }
-        return RoundedRectangle(cornerRadius: corner, style: .continuous)
-            .fill(color)
-            .frame(width: r.width, height: r.height)
-            .position(x: r.midX - me.minX, y: r.midY - me.minY)
-            .opacity(tile.from == nil ? Double(z) : 1)
     }
 }
 
@@ -722,6 +739,33 @@ struct JourneyMonthHost: ViewModifier {
         .onChange(of: month) { _, route in
             if let route, flight == nil { openMonth(route.month) }
         }
+        .task { await autoRun() }
+    }
+
+    /// `-demoJourneyFlightRun [N]`: the real Journey's flights N times with no finger (default 5) — card → month → a day →
+    /// back → back — for the frame log on a phone in Release (the test screen's runs measure the lab, not these pages).
+    private func autoRun() async {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-demoJourneyFlightRun") else { return }
+        let n = args.indices.contains(i + 1) ? Int(args[i + 1]) ?? 5 : 5
+        func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
+        await wait(3)
+        let latest = JourneyLog.monthStart(today)
+        let previous = Calendar.current.date(byAdding: .month, value: -1, to: latest) ?? latest
+        let m = log.month(latest).activeDays >= 14 ? latest : previous
+        for _ in 0..<n {
+            month = JourneyMonthRoute(month: m)
+            await wait(JourneyMotion.monthDuration + 1.2)
+            if let d = JourneyLog.daysOf(month: m).filter({ $0 < today && log.day($0).active }).last {
+                openDay(d)
+                await wait(JourneyMotion.dayDuration + 1.6)
+                back()
+                await wait(JourneyMotion.dayDuration + 1)
+            }
+            back()
+            await wait(JourneyMotion.monthDuration + 1.2)
+        }
+        print("🎞️ journey auto run done")
     }
 
     private var edgeStrip: some View {
@@ -908,6 +952,19 @@ private struct JourneyEntranceDriver: ViewModifier, Animatable {
         content
             .environment(\.journeyMonthDial, dials)
             .environment(\.journeyDayEntrance, dayEntrance)
+    }
+}
+
+/// A hidden copy that only measures (the month page's size picker): never animates, never reports a place, takes no taps.
+struct JourneyFlightStill: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .environment(\.journeyMonthOpen, nil)
+            .environment(\.journeyMonthDial, nil)
+            .transformPreference(JourneyFlightAnchors.self) { $0 = [:] }
+            .hidden()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 

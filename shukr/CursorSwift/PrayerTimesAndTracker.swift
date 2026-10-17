@@ -1641,7 +1641,13 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: Binding(get: { JourneyLabPresenter.shared.open },
                                                     set: { JourneyLabPresenter.shared.open = $0 })) { JourneyTransitionLab() }
         .task {
-            guard ProcessInfo.processInfo.arguments.contains("-demoTransitionLab") else { return }
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-demoJourneyFlightRun") {   // Journey itself, for its flights' auto run (Release too)
+                try? await Task.sleep(for: .seconds(1))
+                JourneyPresenter.shared.open = true
+                return
+            }
+            guard args.contains("-demoTransitionLab") else { return }
             try? await Task.sleep(for: .seconds(1))
             JourneyLabPresenter.shared.open = true
         }

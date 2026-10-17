@@ -38,6 +38,8 @@ struct JourneyMonthPage: View {
     /// The year laid out but its flight not set yet (a frame or two): the month stays up and the year hidden — without it the
     /// whole year showed for a frame first.
     @State private var yearWaiting = false
+    /// The days' size the page shows (1 / 0.9 / 0.8 / 0.7), picked by the still copy below.
+    @State private var dayScale: CGFloat = 1
     @Environment(\.journeyDayOpener) private var dayOpener
 
     init(log: JourneyLog, start: Date) {
@@ -86,14 +88,23 @@ struct JourneyMonthPage: View {
                 .modifier(JourneyYearFlightDriver(dial: yearDial, flight: yearFlight, clearWhenIdle: true))
                 .opacity(yearWaiting ? 0 : 1)
             }
+            // The open month's tiles landing (from the card or the year), under its rings and numbers.
+            JourneyFlyingTiles()
             if !showYear || yearFlight != nil || yearWaiting {
                 // Never a scroll (it took the up/down drag: a six-week month on a 17 Pro didn't fit and the page scrolled
                 // instead of turning — Sami's check of 63c027c). The largest day size that fits the phone, down to 70 %.
-                ViewThatFits(in: .vertical) {
-                    page(scale: 1)
-                    page(scale: 0.9)
-                    page(scale: 0.8)
-                    page(scale: 0.7)
+                // The size is picked on a still, hidden copy and the page shown at it: a ViewThatFits on screen re-measured
+                // all four sizes on every frame of a transition and rebuilt the three calendars each time (~75 rebuilds an
+                // opening; his 13 Pro Max ran card → month at ~40 of 70 frames).
+                ZStack(alignment: .top) {
+                    ViewThatFits(in: .vertical) {
+                        page(scale: 1).onAppear { dayScale = 1 }
+                        page(scale: 0.9).onAppear { dayScale = 0.9 }
+                        page(scale: 0.8).onAppear { dayScale = 0.8 }
+                        page(scale: 0.7).onAppear { dayScale = 0.7 }
+                    }
+                    .modifier(JourneyFlightStill())
+                    page(scale: dayScale)
                 }
                 .simultaneousGesture(MagnifyGesture().onEnded { v in
                     if v.magnification < 0.85 { toYear() }   // pinch in: the year
@@ -224,6 +235,7 @@ struct JourneyMonthPage: View {
         .padding(.horizontal, 20)
         .padding(.bottom, 24)
         .onChange(of: shown) { focus = nil }   // another month: its own days
+
     }
 
     /// The month's calendar between its neighbours, a page apart, moving with the finger (Journey's day pager: the one
