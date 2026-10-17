@@ -47,6 +47,8 @@ struct PrayerScores {
         var positions: [Double] = []
         /// Where Perfect ends and Late starts, as a share of its usual window (its colour bar).
         var bands: (perfect: Double, late: Double) = (0.3, 0.65)
+        /// Its usual window's length (the median of its prayed days'), for a histogram slot's minutes.
+        var window: TimeInterval?
         /// "Usually 29 minutes after it starts." over the last 30 days (5+ marks), nil otherwise.
         var usual: String?
         var bestStreak = 0
@@ -170,6 +172,7 @@ struct PrayerScores {
             p.prayedScore = p.prayedRaw.map { Int(($0 * 100).rounded()) }
             p.lifeScore = dueScores.isEmpty ? 0 : Int((dueScores.reduce(0, +) / Double(dueScores.count) * 100).rounded())
             p.topMasjid = mosques.max { $0.value < $1.value }.map { ($0.key, $0.value) }
+            p.window = median(windows)
             if let window = median(windows), window > 0 {
                 let perfect = min(0.9, PrayerScoring.earlyWindow / window)
                 p.bands = (perfect, perfect + (1 - perfect) / 2)
@@ -312,6 +315,11 @@ struct PrayerScoresPage: View {
     @State private var swapToken = 0
     /// A fifth tapped while a prayer was still opening or closing: switched to once that's done.
     @State private var pendingSwitch: String?
+    /// The open prayer's histogram slot under the finger (0…13 its window, `PrayerScoresChart.qazaSlot` the Qaza block): its
+    /// line in place of the usual ones (owner, 2026-10-17: "drag my finger on the histogram dots, kind of the same function as
+    /// the row tiles … display that prayer's information under the header").
+    @State private var slotPick: Int?
+    @State private var chartWidth: CGFloat = 0
     @State private var focus: PrayerScores.Grade?
     @State private var showMakeUp = false
     @State private var showMoments = false
@@ -335,6 +343,9 @@ struct PrayerScoresPage: View {
                 footnote
             }
             .padding(.horizontal, 16)
+            // A tap anywhere off the chart lets its slot go (the chart's own tap wins on the chart; buttons keep theirs).
+            .contentShape(Rectangle())
+            .onTapGesture { if slotPick != nil { withAnimation(.easeOut(duration: 0.15)) { slotPick = nil } } }
             .padding(.bottom, 30)
         }
         .scrollIndicators(.hidden)
@@ -383,6 +394,7 @@ struct PrayerScoresPage: View {
         .task { reload() }
         .onChange(of: spanRaw) {
             JourneyPerf.began("scores span")
+            slotPick = nil
             if let cached = PrayerScores.lastBySpan[span] { data = cached }
             reload()
         }
@@ -477,6 +489,7 @@ struct PrayerScoresPage: View {
             await beat(0.13)
             guard token == swapToken else { return }   // a newer tap took over
             focus = nil
+            slotPick = nil
             var quiet = Transaction()
             quiet.disablesAnimations = true
             withTransaction(quiet) {
@@ -495,6 +508,7 @@ struct PrayerScoresPage: View {
     private func close() {
         guard !busy, selected != nil, !swapping else { return }
         pendingSwitch = nil
+        slotPick = nil
         busy = true
         JourneyPerf.began("scores close")
         triggerSomeVibration(type: .light)
@@ -574,6 +588,54 @@ struct PrayerScoresPage: View {
 
     /// Two lines under the ring, on both pages: what it covers / when you usually pray it, then the 7 / 30 day trend.
     private var lines: some View {
+        ZStack(alignment: .topLeading) {
+            usualLines.opacity(slotPick == nil ? 1 : 0)
+            if let k = slotPick, let s = shown, let p = data.prayers[s] {
+                // In the usual lines' room (they stay laid out underneath): nothing below moves.
+                Text(slotLine(p, k))
+                    .font(.system(size: 14, weight: .light, design: .rounded))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+            }
+        }
+        .opacity(linesFaded ? 0 : 1)
+    }
+
+    /// "38 prayers (12%) · 10–20 min after it starts · On time" (owner, 2026-10-17, his wording), or "· made up as Qaza".
+    private func slotLine(_ p: PrayerScores.Prayer, _ k: Int) -> String {
+        let (counts, qaza) = PrayerScoresChart.slotCounts(p)
+        let n = k == PrayerScoresChart.qazaSlot ? qaza : (counts.indices.contains(k) ? counts[k] : 0)
+        let total = max(1, p.positions.count)
+        let head = "\(n) prayer\(n == 1 ? "" : "s") (\(Int((Double(n) / Double(total) * 100).rounded()))%)"
+        if k == PrayerScoresChart.qazaSlot { return head + " · made up as Qaza" }
+        let grade = PrayerScoresChart.zone((Double(k) + 0.5) / Double(PrayerScoresChart.slots), p).rawValue
+        guard let w = p.window, w > 0 else { return "\(head) · \(grade)" }
+        let minutes = w / 60
+        let a = Int((Double(k) / Double(PrayerScoresChart.slots) * minutes).rounded())
+        let b = Int((Double(k + 1) / Double(PrayerScoresChart.slots) * minutes).rounded())
+        return "\(head) · \(Self.span(a, b)) after it starts · \(grade)"
+    }
+
+    /// "10–20 min", "1 h 10–1 h 30 min".
+    private static func span(_ a: Int, _ b: Int) -> String {
+        func f(_ m: Int) -> String { m < 60 ? "\(m)" : m % 60 == 0 ? "\(m / 60) h" : "\(m / 60) h \(m % 60)" }
+        return "\(f(a))–\(f(b)) min"
+    }
+
+    /// The open slot under a point on the chart (nil: off its slots, or an empty one).
+    private func slot(at x: CGFloat, _ p: PrayerScores.Prayer) -> Int? {
+        guard chartWidth > 0 else { return nil }
+        let (counts, qaza) = PrayerScoresChart.slotCounts(p)
+        let x0: CGFloat = 2, end = chartWidth * 0.74, after = chartWidth * 0.86
+        if x >= x0, x < end {
+            let k = min(PrayerScoresChart.slots - 1, Int((x - x0) / ((end - x0) / CGFloat(PrayerScoresChart.slots))))
+            return counts[k] > 0 ? k : nil
+        }
+        if x >= end, x <= after + 12, qaza > 0 { return PrayerScoresChart.qazaSlot }
+        return nil
+    }
+
+    private var usualLines: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let s = shown, let p = data.prayers[s] {
                 Text(p.usual.map { $0.replacingOccurrences(of: "Usually", with: "Lately, usually") }
@@ -587,7 +649,6 @@ struct PrayerScoresPage: View {
         }
         .multilineTextAlignment(.leading)
         .fixedSize(horizontal: false, vertical: true)
-        .opacity(linesFaded ? 0 : 1)
     }
 
     /// "since Jul 2026", or the span's own words.
@@ -794,10 +855,27 @@ struct PrayerScoresPage: View {
                             .font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
                     let per = PrayerScoresChart.perDot([p], big: true)
-                    PrayerScoresChart(prayer: p, per: per, big: true, focus: focus)
+                    PrayerScoresChart(prayer: p, per: per, big: true, focus: focus, slot: slotPick)
                         // As tall as its own tallest column, up to 150: short columns left an empty band under "1 dot =
                         // 1 prayer" (owner, 2026-10-17: "a lot of empty space between the histogram and the priors label").
                         .frame(height: PrayerScoresChart.fittedHeight(p, per: per, big: true))
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { chartWidth = $0 }
+                        // As the card's tiles: a tap picks the slot under it (again, or off the slots, lets it go); a finger
+                        // resting picks and then moves across slots, a soft tick each. A quick drag still scrolls the page.
+                        .contentShape(Rectangle())
+                        .onTapGesture { pt in
+                            let k = slot(at: pt.x, p)
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.easeOut(duration: 0.15)) {
+                                slotPick = k == slotPick ? nil : k
+                                if slotPick != nil { focus = nil }
+                            }
+                        }
+                        .gesture(JourneyHoldPick(hold: JourneyHomeCard.holdTime) { state, pt, _ in
+                            guard state == .began || state == .changed, let k = slot(at: pt.x, p), k != slotPick else { return }
+                            triggerSomeVibration(type: state == .began ? .medium : .soft)
+                            withAnimation(.easeOut(duration: 0.12)) { slotPick = k; focus = nil }
+                        })
                 }
                 .stagger(detailShown, 0)
                 chartLine(p).padding(.top, 10).stagger(detailShown, 1)
@@ -846,7 +924,7 @@ struct PrayerScoresPage: View {
                 let on = focus == g
                 Button {
                     triggerSomeVibration(type: .light)
-                    withAnimation(.easeInOut(duration: 0.25)) { focus = on ? nil : g }
+                    withAnimation(.easeInOut(duration: 0.25)) { focus = on ? nil : g; slotPick = nil }
                 } label: {
                     VStack(spacing: 2) {
                         HStack(spacing: 6) {
@@ -930,8 +1008,26 @@ struct PrayerScoresChart: View {
     let per: Int
     let big: Bool
     let focus: PrayerScores.Grade?
+    /// One picked slot (0…13, or `qazaSlot`): its dots and its stretch of the bar stay, the rest fade.
+    var slot: Int? = nil
 
     static let slots = 14
+    static let qazaSlot = slots
+
+    /// Each window slot's count of marks, and the Qaza block's.
+    static func slotCounts(_ prayer: PrayerScores.Prayer) -> (counts: [Int], qaza: Int) {
+        var counts = Array(repeating: 0, count: slots)
+        var qaza = 0
+        for v in prayer.positions {
+            if v > 1 { qaza += 1 } else { counts[min(slots - 1, max(0, Int(v * Double(slots))))] += 1 }
+        }
+        return (counts, qaza)
+    }
+
+    /// The grade a place in the window sits in (its colour bar).
+    static func zone(_ v: Double, _ prayer: PrayerScores.Prayer) -> PrayerScores.Grade {
+        v < prayer.bands.perfect ? .perfect : v < prayer.bands.late ? .onTime : .late
+    }
 
     private struct Metrics {
         let r: CGFloat, step: CGFloat, bandH: CGFloat, labels: CGFloat
@@ -991,21 +1087,30 @@ struct PrayerScoresChart: View {
             let ink = Color.primary
             func zone(_ v: Double) -> PrayerScores.Grade { v < prayer.bands.perfect ? .perfect : v < prayer.bands.late ? .onTime : .late }
             func dim(_ g: PrayerScores.Grade) -> Double { focus == nil ? 1 : focus == g ? 1 : 0.15 }
+            func dim(slot k: Int, _ g: PrayerScores.Grade) -> Double { slot.map { $0 == k ? 1 : 0.15 } ?? dim(g) }
 
             // The window's colour bar: Perfect · On time · Late, then a dashed stretch for after the end.
             let xPerfect = x0 + CGFloat(prayer.bands.perfect) * (end - x0), xLate = x0 + CGFloat(prayer.bands.late) * (end - x0)
             let barY = base + 2
             func bar(_ from: CGFloat, _ to: CGFloat, _ g: PrayerScores.Grade, _ base: Double) {
                 let rect = CGRect(x: from, y: barY, width: max(0, to - from), height: m.bandH)
-                ctx.fill(Path(roundedRect: rect, cornerRadius: m.bandH / 2), with: .color(g.color.opacity(base * (focus == nil ? 1 : focus == g ? 1.8 : 0.35))))
+                let strength = slot != nil ? 0.35 : focus == nil ? 1 : focus == g ? 1.8 : 0.35
+                ctx.fill(Path(roundedRect: rect, cornerRadius: m.bandH / 2), with: .color(g.color.opacity(base * strength)))
             }
             bar(x0, xPerfect, .perfect, 0.38)
             bar(xPerfect, xLate, .onTime, 0.42)
             bar(xLate, end, .late, 0.32)
+            // A picked slot's own stretch of the bar, in its grade's colour, full.
+            if let k = slot, k < Self.slots {
+                let g = zone((Double(k) + 0.5) / Double(Self.slots))
+                let rect = CGRect(x: x0 + CGFloat(k) * (end - x0) / CGFloat(Self.slots), y: barY,
+                                  width: (end - x0) / CGFloat(Self.slots), height: m.bandH)
+                ctx.fill(Path(roundedRect: rect, cornerRadius: m.bandH / 2), with: .color(g.color.opacity(0.75)))
+            }
             var dash = Path()
             dash.move(to: CGPoint(x: end + 4, y: barY + m.bandH / 2))
             dash.addLine(to: CGPoint(x: after + (big ? 8 : 4), y: barY + m.bandH / 2))
-            ctx.stroke(dash, with: .color(Color.secondary.opacity(focus == .qaza ? 0.7 : 0.35)),
+            ctx.stroke(dash, with: .color(Color.secondary.opacity(focus == .qaza || slot == Self.qazaSlot ? 0.7 : slot != nil ? 0.15 : 0.35)),
                        style: StrokeStyle(lineWidth: big ? 2 : 1.4, dash: [2, 4]))
 
             // Blocks inside the window.
@@ -1022,7 +1127,7 @@ struct PrayerScoresChart: View {
                 for i in 0..<dots {
                     let c = CGPoint(x: left + CGFloat(i % wide) * m.step, y: base - m.r - CGFloat(i / wide) * m.step)
                     ctx.fill(Path(ellipseIn: CGRect(x: c.x - m.r, y: c.y - m.r, width: m.r * 2, height: m.r * 2)),
-                             with: .color(ink.opacity(dotOpacity * dim(g))))
+                             with: .color(ink.opacity(dotOpacity * dim(slot: k, g))))
                 }
             }
             // Qaza: its own block past the end, filled bottom-up then rightward.
@@ -1032,7 +1137,8 @@ struct PrayerScoresChart: View {
                 for i in 0..<dots {
                     let c = CGPoint(x: qx + CGFloat(i / tall) * m.step, y: base - m.r - CGFloat(i % tall) * m.step)
                     ctx.fill(Path(ellipseIn: CGRect(x: c.x - m.r, y: c.y - m.r, width: m.r * 2, height: m.r * 2)),
-                             with: .color(ink.opacity(dotOpacity * (focus == nil ? 0.55 : focus == .qaza ? 1 : 0.15))))
+                             with: .color(ink.opacity(dotOpacity * (slot.map { $0 == Self.qazaSlot ? 1 : 0.15 }
+                                                                     ?? (focus == nil ? 0.55 : focus == .qaza ? 1 : 0.15)))))
                 }
             }
             if big {
