@@ -565,12 +565,15 @@ struct JourneyFlyingTiles: View {
 
     var body: some View {
         let t = e?.dial ?? 1
-        if let open, t < 1 {
+        // Mounted all the while a month is open, drawing nothing at rest: inserted on the first frame of a flight back, it
+        // cost that frame ~60 ms on his 13 Pro Max.
+        if let open {
             let z = JourneyMotion.zoom(t), tint = JourneyMotion.tint(t)
             let dark = scheme == .dark
             let cells = JourneyFlightGeometry.shared.cells
             JourneyGlobalCanvas { o in
                 Canvas { ctx, _ in
+                    guard t < 1 else { return }
                     for (date, tile) in open.flight.tiles where open.hiddenDay != date {
                         guard let cell = cells[date] else { continue }
                         let scale = cell.height / JourneyDayRing.size
