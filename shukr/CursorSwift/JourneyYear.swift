@@ -69,7 +69,8 @@ struct JourneyYearView: View {
     @State private var picked: Date?
     @Environment(\.colorScheme) private var scheme
     /// Each small month's frame on screen, for a spread over it (build-plan C: "spread on a small month → that month").
-    @State private var frames: [Date: CGRect] = [:]
+    /// Not state: it changed on every frame of a scroll and rebuilt the whole year each time (perf #3).
+    @State private var frames = JourneyYearFrames()
 
     private var years: [Int] {
         let cal = Calendar.current
@@ -78,7 +79,7 @@ struct JourneyYearView: View {
         return Array(first...last)
     }
 
-    private static let space = "journeyYear"
+    static let space = "journeyYear"
 
     var body: some View {
         let _ = JourneyPerf.body("year")
@@ -111,7 +112,7 @@ struct JourneyYearView: View {
         // Spread two fingers: the small month they started on opens (one with prayers); anywhere else, back to the month.
         .simultaneousGesture(MagnifyGesture().onEnded { v in
             guard v.magnification > 1.15 else { return }
-            if let hit = frames.first(where: { $0.value.contains(v.startLocation) })?.key, log.month(hit).activeDays > 0 {
+            if let hit = frames.all.first(where: { $0.value.contains(v.startLocation) })?.key, log.month(hit).activeDays > 0 {
                 onPick(hit)
             } else {
                 onSpread()
@@ -165,22 +166,63 @@ struct JourneyYearView: View {
             }
             .journeyFlightWords(.page)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 18), count: 3), alignment: .leading, spacing: 18) {
-                ForEach(months, id: \.self) { mini($0) }
+                ForEach(months, id: \.self) { m in
+                    JourneyYearMonth(start: m, log: log, today: today, picked: picked.flatMap { JourneyLog.monthStart($0) == m ? $0 : nil },
+                                     dark: scheme == .dark, frames: frames, space: Self.space, onPick: onPick) { day in
+                        JourneyPerf.began("year tap")
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == day ? nil : day }
+                    } onMiss: {
+                        // A tap on no day (an empty cell before the 1st or after the last) lets the picked day go, as the
+                        // year's own tap does.
+                        if picked != nil { withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil } }
+                    }
+                    .equatable()
+                }
             }
         }
     }
 
-    /// A small month: its name, one quiet line, its days as squares (no sage on Journey — owner, 2026-10-17).
-    private func mini(_ start: Date) -> some View {
-        JourneyPerf.body("yearMonth")
+    /// "9 days · score 83" (its average score) or "Away" for a month with nothing marked.
+    static func line(_ m: JourneyLog.Month) -> String {
+        guard m.activeDays > 0 else { return "Away" }
+        let days = m.activeDays == 1 ? "1 day" : "\(m.activeDays) days"
+        // The month's average score, the month page's own (owner, 2026-10-17: "change that to the month score … average
+        // score of that month"; was the in-time %).
+        guard let score = m.averageScore else { return days }
+        return "\(days) · score \(score)"
+    }
+}
+
+/// A small month: its name, one quiet line, its days as squares (no sage on Journey — owner, 2026-10-17). Its own view, equal
+/// while its days, its picked day and the look are (perf #3: a pick ran every small month's body, ~27 a tap).
+private struct JourneyYearMonth: View, Equatable {
+    let start: Date
+    let log: JourneyLog
+    let today: Date
+    /// The picked day, if it's in this month.
+    let picked: Date?
+    let dark: Bool
+    let frames: JourneyYearFrames
+    let space: String
+    let onPick: (Date) -> Void
+    let onDay: (Date) -> Void
+    let onMiss: () -> Void
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.start == b.start && a.picked == b.picked && a.dark == b.dark && a.today == b.today && a.log.version == b.log.version
+    }
+
+    var body: some View {
+        let _ = JourneyPerf.body("yearMonth")
         let cal = Calendar.current
         let numbers = log.month(start)
         let future = start > today
         let before = log.firstDay.map { start < JourneyLog.monthStart($0) } ?? true
-        let line = future || before ? " " : Self.line(numbers)
+        let line = future || before ? " " : JourneyYearView.line(numbers)
         let lead = ((cal.component(.weekday, from: start) - cal.firstWeekday) + 7) % 7
         let days = JourneyLog.daysOf(month: start)
-        return VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 3) {
             // The name (and its line) opens the month; the squares are taps of their own.
             Button {
                 if numbers.activeDays > 0 { onPick(start) }
@@ -200,69 +242,117 @@ struct JourneyYearView: View {
             .buttonStyle(.plain)
             .disabled(numbers.activeDays == 0)
             .accessibilityLabel("\(start.formatted(.dateTime.month(.wide).year())), \(line)")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Self.gap), count: 7), spacing: Self.gap) {
-                ForEach(0..<lead, id: \.self) { _ in Color.clear.aspectRatio(1, contentMode: .fit) }
-                ForEach(days, id: \.self) { day in square(day) }
-                // Every small month six weeks tall, so the names in a row line up.
-                ForEach(0..<max(0, 42 - lead - days.count), id: \.self) { _ in Color.clear.aspectRatio(1, contentMode: .fit) }
-            }
-            .journeyFlightYearSquares(start)   // its days fly in and out of these (JourneyTransitions.swift)
-            .padding(.top, 3)
+            // Its days as one picture, not ~40 views each with its own tap (perf #3: a pick redrew all ~1,500 squares).
+            JourneyYearSquares(start: start, lead: lead, days: days, log: log, today: today, picked: picked, dark: dark,
+                               onTap: onDay, onMiss: onMiss)
+                .journeyFlightYearSquares(start)   // its days fly in and out of these (JourneyTransitions.swift)
+                .padding(.top, 3)
         }
         .padding(6)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.space)) } action: { frames[start] = $0 }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(space)) } action: { [frames, start] in frames.all[start] = $0 }
         // No outline round the month you came from (owner, 2026-10-17: "there's like an outline on the month that we came
         // from … I think we can just get rid of that outline … It doesn't really do anything for us").
     }
+}
 
-    /// The squares' spacing: a square's tap covers half the gap each side, so it fills its grid cell and never reaches the
-    /// next day.
-    private static let gap: CGFloat = 2.5
+/// The year's small months' frames, written as they move and read only by a spread (never observed).
+final class JourneyYearFrames { var all: [Date: CGRect] = [:] }
 
-    /// "9 days · score 83" (its average score) or "Away" for a month with nothing marked.
-    private static func line(_ m: JourneyLog.Month) -> String {
-        guard m.activeDays > 0 else { return "Away" }
-        let days = m.activeDays == 1 ? "1 day" : "\(m.activeDays) days"
-        // The month's average score, the month page's own (owner, 2026-10-17: "change that to the month score … average
-        // score of that month"; was the in-time %).
-        guard let score = m.averageScore else { return days }
-        return "\(days) · score \(score)"
+/// A small month's squares, drawn as one picture: seven columns 2.5 pt apart, square, six weeks tall whatever the month (so
+/// the names in a row line up) — the layout JourneyMonthFlight.fromYear works its squares out from. Each day the card's
+/// tile color (its hairline when unmarked); today outlined; the picked day ringed. A tap goes to the day under it, a
+/// square's tap covering half the gap each side (it fills its cell and never reaches the next day). Redrawn only when its
+/// own picked day, the look or the log changes.
+struct JourneyYearSquares: View {
+    let start: Date
+    let lead: Int
+    let days: [Date]
+    let log: JourneyLog
+    let today: Date
+    let picked: Date?
+    let dark: Bool
+    let onTap: (Date) -> Void
+    /// A tap on no day (an empty cell, a day before the first or still to come).
+    var onMiss: () -> Void = {}
+    /// Its width, for a tap's cell (never observed).
+    @State private var width = JourneyFrameBox()
+
+    static let gap: CGFloat = 2.5
+
+    var body: some View {
+        let _ = JourneyPerf.body("yearSquares")
+        let first = log.firstDay
+        JourneyYearSquaresFrame {
+            Canvas { ctx, size in
+                let side = (size.width - 6 * Self.gap) / 7
+                func cell(_ at: Int) -> CGRect {
+                    CGRect(x: CGFloat(at % 7) * (side + Self.gap), y: CGFloat(at / 7) * (side + Self.gap), width: side, height: side)
+                }
+                func shape(_ r: CGRect, _ corner: CGFloat) -> Path { Path(roundedRect: r, cornerRadius: corner, style: .continuous) }
+                /// A strokeBorder: the line inside the shape's edge.
+                func border(_ r: CGRect, _ corner: CGFloat, _ color: Color, _ width: CGFloat) {
+                    let h = width / 2
+                    ctx.stroke(shape(r.insetBy(dx: h, dy: h), max(corner - h, 0)), with: .color(color), lineWidth: width)
+                }
+                for (i, day) in days.enumerated() {
+                    let r = cell(lead + i)
+                    let future = day > today
+                    let before = first.map { day < $0 } ?? true
+                    if future || before {
+                        if future { ctx.fill(shape(r, 2.5), with: .color(Color.primary.opacity(0.04))) }
+                    } else {
+                        let d = log.day(day)
+                        ctx.fill(shape(r, 2.5), with: .color(JourneyTileColor.of(d, in: log, dark: dark)))
+                        if !d.active { border(r, 2.5, JourneyTileColor.outline(dark: dark), JourneyTileColor.outlineWidth) }
+                    }
+                    if day == today { border(r, 2.5, Color.primary.opacity(0.8), 1.2) }
+                }
+            }
+        }
+        // Picked: the card's mark, a ring 2 pt round the square — outside the picture (a canvas clips to its frame: the ring
+        // lost its outer side on the first and last columns — the helper's check), over its neighbours.
+        .overlay(alignment: .topLeading) {
+            if let p = picked, let i = days.firstIndex(of: p) {
+                let w = width.frame.width, side = max((w - 6 * Self.gap) / 7, 0), at = lead + i
+                RoundedRectangle(cornerRadius: 3.5, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.3)
+                    .frame(width: side + 4, height: side + 4)
+                    .offset(x: CGFloat(at % 7) * (side + Self.gap) - 2, y: CGFloat(at / 7) * (side + Self.gap) - 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { [width] in width.frame.size.width = $0 }
+        .contentShape(Rectangle())
+        .onTapGesture { p in
+            guard let day = day(at: p) else { onMiss(); return }
+            let future = day > today
+            let before = first.map { day < $0 } ?? true
+            guard !future, !before else { onMiss(); return }
+            onTap(day)
+        }
+        .accessibilityHidden(true)   // the month's name (its button, with its line) speaks for it
     }
 
-    private func square(_ day: Date) -> some View {
-        let future = day > today
-        let before = log.firstDay.map { day < $0 } ?? true
-        let fill: Color = future || before ? Color.primary.opacity(future ? 0.04 : 0) : JourneyTileColor.of(log.day(day), in: log, dark: scheme == .dark)
-        let on = picked == day
-        let unmarked = !future && !before && !log.day(day).active
-        return RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-            .fill(fill)
-            .aspectRatio(1, contentMode: .fit)
-            .overlay {
-                if unmarked {
-                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                        .strokeBorder(JourneyTileColor.outline(dark: scheme == .dark), lineWidth: JourneyTileColor.outlineWidth)
-                }
-            }
-            .overlay {
-                if day == today { RoundedRectangle(cornerRadius: 2.5, style: .continuous).strokeBorder(Color.primary.opacity(0.8), lineWidth: 1.2) }
-            }
-            // Picked: the card's mark, a ring round the square.
-            .overlay {
-                if on {
-                    RoundedRectangle(cornerRadius: 3.5, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.3)
-                        .padding(-2)
-                }
-            }
-            .zIndex(on ? 1 : 0)
-            .contentShape(Rectangle().inset(by: -Self.gap / 2))
-            .onTapGesture {
-                guard !future, !before else { return }
-                JourneyPerf.began("year tap")
-                triggerSomeVibration(type: .light)
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = on ? nil : day }
-            }
-            .accessibilityAddTraits(.isButton)
+    /// The day whose cell (its square and half the gap round it) holds `p`.
+    private func day(at p: CGPoint) -> Date? {
+        let w = width.frame.width
+        guard w > 0 else { return nil }
+        let pitch = (w + Self.gap) / 7   // a square and a gap
+        let col = Int(((p.x + Self.gap / 2) / pitch).rounded(.down)), row = Int(((p.y + Self.gap / 2) / pitch).rounded(.down))
+        guard (0..<7).contains(col), (0..<6).contains(row) else { return nil }
+        let i = row * 7 + col - lead
+        return days.indices.contains(i) ? days[i] : nil
+    }
+}
+
+/// Seven square columns 2.5 pt apart, six rows: as tall as the width makes them, in one layout pass.
+private struct JourneyYearSquaresFrame: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let w = proposal.width ?? 120
+        let side = max((w - 6 * JourneyYearSquares.gap) / 7, 0)
+        return CGSize(width: w, height: 6 * side + 5 * JourneyYearSquares.gap)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for v in subviews { v.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size)) }
     }
 }
