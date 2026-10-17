@@ -91,9 +91,12 @@ import QuartzCore
         if observer == nil {
             let o = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { [weak self] _, activity in
                 MainActor.assumeIsolated {
-                    guard let self, self.link != nil else { return }
+                    guard let self else { return }
                     let now = CACurrentMediaTime()
-                    if activity == .afterWaiting { self.wokeAt = now } else { self.busy = max(self.busy, now - self.wokeAt) }
+                    // Every wake is noted, a window open or not: noted only while one was open, the first pass after a
+                    // quiet spell measured from a wake seconds old (busy read 10–13 s on the sim).
+                    if activity == .afterWaiting { self.wokeAt = now }
+                    else if self.link != nil { self.busy = max(self.busy, now - self.wokeAt) }
                 }
             }
             CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
