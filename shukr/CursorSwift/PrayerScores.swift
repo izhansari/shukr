@@ -270,6 +270,9 @@ struct PrayerScoresPage: View {
     // fold to nothing, so it rises into the top slot; back, they unfold, then fade in. Nothing is ever drawn twice.
     /// The prayer whose row stays (set before the others fold, cleared after they're back).
     @State private var selected: String?
+    /// The picked row's name and score line, flown up into the header as the others fold (the same text, moving and
+    /// growing — owner, 2026-10-17: "I want it to look like those same elements are going up into that area").
+    @Namespace private var hero
     /// The prayer the ring and the lines show (swapped while they're faded out).
     @State private var shown: String?
     @State private var othersFaded = false
@@ -505,27 +508,51 @@ struct PrayerScoresPage: View {
                 // Open, the prayer's name is the title and its lines are the grey ones (owner, 2026-10-17: "instead of it
                 // just saying prayer scores, like when a prayer is tapped, it instead says that prayer's name … same for
                 // its secondary lines, we'll move that in there underneath it").
-                Text(shown ?? "Prayer scores")
-                    .font(.system(size: 34, weight: .light, design: .rounded))
-                    .lineLimit(2).minimumScaleFactor(0.8)
-                    .id(shown ?? "")
-                    .transition(.opacity)
-                    .opacity(linesFaded ? 0 : 1)
-                if shown != nil {
-                    lines
-                } else if let s = data.sentence {
-                    Text(s.line)
-                        .font(.system(size: 15, weight: .light, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .opacity(othersFaded || linesFaded ? 0 : 1)   // fades with the rows, both ways
+                // The picked prayer's name and score line, from the moment it's tapped: laid over its row's own text
+                // (same size, same place) until the others fold, then rising here as they do, growing to the title —
+                // and back down on close. Its "% prayed" stays ("We also lose like the 98% prayed stat … We should keep
+                // that").
+                ZStack(alignment: .leading) {
+                    Text("Prayer scores")
+                        .font(.system(size: 34, weight: .light, design: .rounded))
+                        .lineLimit(2).minimumScaleFactor(0.8)
+                        .opacity(selected == nil && !linesFaded ? 1 : 0)
+                    if let name = selected {
+                        Text(name)
+                            .modifier(PrayerScoresHeroFont(size: folded ? 34 : 16))
+                            .lineLimit(1)
+                            .matchedGeometryEffect(id: "name", in: hero, properties: .position, anchor: .leading, isSource: folded)
+                    }
                 }
+                ZStack(alignment: .topLeading) {
+                    if let s = data.sentence {
+                        Text(s.line)
+                            .font(.system(size: 15, weight: .light, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .opacity(othersFaded || linesFaded ? 0 : 1)   // fades with the rows, both ways
+                    }
+                    if let name = selected {
+                        Text(statLine(name))
+                            .modifier(PrayerScoresHeroFont(size: folded ? 15 : 12.5))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .matchedGeometryEffect(id: "stat", in: hero, properties: .position, anchor: .leading, isSource: folded)
+                    }
+                }
+                if shown != nil { lines }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             ring.scaleEffect(scale)
                 .frame(width: CircleMotion.dayDiscDiameter * scale, height: CircleMotion.dayDiscDiameter * scale)
         }
         .padding(.leading, 4)
+    }
+
+    /// "97 · 98% prayed" (a row's line, and an open prayer's under its name).
+    private func statLine(_ name: String) -> String {
+        guard let p = data.prayers[name] else { return " " }
+        return p.prayedScore.map { "\($0) · \(Int((Double(p.prayed) / Double(max(1, p.due)) * 100).rounded()))% prayed" } ?? "Not enough yet"
     }
 
     // MARK: The rows
@@ -555,12 +582,19 @@ struct PrayerScoresPage: View {
                 Image(systemName: prayerIcon(for: name))
                     .font(.system(size: 19, weight: .light)).foregroundStyle(picked ? .primary : .secondary)
                     .frame(width: 26)
+                    .opacity(picked && othersFaded ? 0 : 1)   // goes with the others: the name and line fly up without it
                 VStack(alignment: .leading, spacing: 2) {
                     // One weight and one colour always: changing either as the move starts dropped the name for the
                     // whole rise (seen frame by frame, 2026-10-16).
                     Text(name).font(.system(size: 16, weight: .light, design: .rounded))
-                    Text(p.map { p in p.prayedScore.map { "\($0) · \(Int((Double(p.prayed) / Double(max(1, p.due)) * 100).rounded()))% prayed" } ?? "Not enough yet" } ?? " ")
+                        .opacity(picked ? 0 : 1)   // the header's copy is it while picked (it flies up and back)
+                        .matchedGeometryEffect(id: picked ? "name" : "name-\(name)", in: hero, properties: .position, anchor: .leading,
+                                               isSource: !folded)
+                    Text(statLine(name))
                         .font(.system(size: 12.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        .opacity(picked ? 0 : 1)
+                        .matchedGeometryEffect(id: picked ? "stat" : "stat-\(name)", in: hero, properties: .position, anchor: .leading,
+                                               isSource: !folded)
                 }
                 .frame(width: 104, alignment: .leading)
                 Group {
@@ -893,5 +927,19 @@ private struct PrayerScoresMap: View {
         let center = CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2)
         let span = MKCoordinateSpan(latitudeDelta: max(0.02, (maxLat - minLat) * 1.4), longitudeDelta: max(0.02, (maxLon - minLon) * 1.4))
         return .region(MKCoordinateRegion(center: center, span: span))
+    }
+}
+
+
+/// A font size that animates (a plain `.font` jumps between sizes): the picked prayer's name and line growing into the
+/// header as they rise.
+private struct PrayerScoresHeroFont: ViewModifier, Animatable {
+    var size: CGFloat
+    var animatableData: CGFloat {
+        get { size }
+        set { size = newValue }
+    }
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: .light, design: .rounded))
     }
 }
