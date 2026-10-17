@@ -405,7 +405,7 @@ struct JourneyPage: View {
     /// what will fill it, the rows are there, quiet.
     private func home(rowHeight: CGFloat, tight: Bool, rowsScroll: Bool) -> some View {
         let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
-        let card = JourneyHomeCard(stats: s, compact: small, tight: tight,
+        let card = JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
                                    onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
                                    onMonth: { openMonth = JourneyMonthRoute(month: $0) })
         return VStack(alignment: .leading, spacing: 0) {

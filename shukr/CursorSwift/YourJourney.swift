@@ -21,6 +21,8 @@ import SwiftData
 /// three numbers' place; again, the numbers. Before the first mark: "0 days so far" and the line that says what will fill it.
 struct JourneyHomeCard: View {
     let stats: YourJourneyStats
+    /// The days themselves (the picked day's ring draws from it).
+    var log = JourneyLog()
     /// A small phone: the number at 42 pt (the canvas's SE).
     var compact = false
     /// A little less room around its parts, so five rows fit under 12 weeks on a 6.3" phone.
@@ -256,7 +258,7 @@ struct JourneyHomeCard: View {
     }
 
     private func dayLine(_ d: YourJourneyStats.GridDay) -> some View {
-        JourneyDayLine(day: d, canOpen: d.prayed > 0 && opens(d.date)) { onDay(d.date) }
+        JourneyDayLine(day: d, log: log, canOpen: d.prayed > 0 && opens(d.date)) { onDay(d.date) }
     }
 
     private func figure(_ value: String, _ caption: String) -> some View {
@@ -311,36 +313,51 @@ enum ThisMonthMeasure: String, CaseIterable, Identifiable {
 
 /// A picked day's line — the card's, and the year's (owner, 2026-10-16: "when the year is shown, let's make it work the
 /// same way that the card works, where tapping a tile shows that day information at the bottom, which we can then open
-/// into"): "Fri, Sep 25 · Complete · score 96 · Open ›"; a tap opens the day when it can.
+/// into"). Two lines (owner, 2026-10-17: "we have enough space to use the two lines"): the date, then its kind and the day
+/// page's score; on the right the day's ring as the month draws it — the door to
+/// its day page ("instead of the open button … the representation of that same tile when it's on the calendar in the
+/// month view. then clicking that circle takes us to that day view"). A plain push for now; a flight later (open item).
 struct JourneyDayLine: View {
     let day: YourJourneyStats.GridDay
+    let log: JourneyLog
     let canOpen: Bool
     let onOpen: () -> Void
+    /// The ring's size here (the month's is 46).
+    static let ring: CGFloat = 36
 
     var body: some View {
-        let date = day.date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        let date = day.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
         // The kind in his words (owner, 2026-10-17: "Complete · With Qaza · Incomplete"), and the day page's own score.
         let what: String = day.prayed == 0 ? (day.excused ? "Excused" : "No prayers marked")
-            : day.unfinished ? "\(day.prayed) of 5 so far · score \(day.score)"
+            // No "3 of 5": the ring beside it says which (owner: "you'll know which prayer it was that you didn't complete").
+            : day.unfinished ? "So far · score \(day.score)"
             : day.kind == .allInTime ? "Complete · score \(day.score)"
             : day.kind == .allFive ? "With Qaza · score \(day.score)"
-            : "Incomplete · \(day.prayed) of 5 · score \(day.score)"
-        return Button {
-            guard canOpen else { return }
-            triggerSomeVibration(type: .light)
-            onOpen()
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(date) · \(what)").foregroundStyle(.primary).lineLimit(1).minimumScaleFactor(0.85)
-                Spacer(minLength: 4)
-                if canOpen { Text("Open ›").foregroundStyle(.primary) }
+            : "Incomplete · score \(day.score)"
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(date).font(.system(size: 15, weight: .regular, design: .rounded)).foregroundStyle(.primary)
+                Text(what).font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
-            .font(.system(size: 14, weight: .light, design: .rounded))
-            .padding(.top, 8)
-            .contentShape(Rectangle())
+            .lineLimit(1).minimumScaleFactor(0.85)
+            .accessibilityElement(children: .combine)
+            Spacer(minLength: 4)
+            Button {
+                triggerSomeVibration(type: .light)
+                onOpen()
+            } label: {
+                JourneyDayCell(day: log.day(day.date), date: day.date, today: PrayerDay.start(), first: log.firstDay,
+                               usesExcused: log.usesExcused)
+                    .scaleEffect(Self.ring / JourneyDayRing.size)
+                    .frame(width: Self.ring, height: Self.ring)
+                    .contentShape(Circle().inset(by: -6))
+            }
+            .buttonStyle(.plain)
+            .disabled(!canOpen)
+            .opacity(canOpen ? 1 : 0.45)   // a day that doesn't open (nothing marked, today still going): its ring, quiet
+            .accessibilityLabel("Open \(date)")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(date), \(what)")
+        .padding(.top, 4)
     }
 }
 

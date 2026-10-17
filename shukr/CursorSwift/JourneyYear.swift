@@ -113,7 +113,7 @@ struct JourneyYearView: View {
                 VStack(spacing: 0) {
                     Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
                     let day = YourJourneyStats.GridDay.of(log, date)
-                    JourneyDayLine(day: day, canOpen: day.prayed > 0 && (date < today || log.day(date).allFive)) { onDay(date) }
+                    JourneyDayLine(day: day, log: log, canOpen: day.prayed > 0 && (date < today || log.day(date).allFive)) { onDay(date) }
                         .padding(.bottom, 10)
                 }
                 .padding(.horizontal, 20)

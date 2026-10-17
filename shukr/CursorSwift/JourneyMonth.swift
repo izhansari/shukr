@@ -523,7 +523,9 @@ enum JourneyDayRing {
     static func greyFill(_ dark: Bool) -> Color { dark ? .white.opacity(0.10) : .black.opacity(0.14) }
 }
 
-private struct JourneyDayCell: View {
+/// A day as the month draws it: its ring of fifths (or the closed ring of a day with all five), its number, today's dot.
+/// Also the picked day's door on the card and in the year (JourneyDayLine).
+struct JourneyDayCell: View {
     let day: JourneyLog.Day
     let date: Date
     let today: Date
