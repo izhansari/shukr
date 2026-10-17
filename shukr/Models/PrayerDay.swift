@@ -184,7 +184,12 @@ enum PrayerNotificationID {
 
     static func dayKey(_ day: Date) -> String {
         let c = Calendar.current.dateComponents([.year, .month, .day], from: day)
-        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        // Not String(format:): it was ~80 % of this on his 13 Pro Max (Journey's year asks ~1,500 of these at a time).
+        return pad(c.year ?? 0, 4) + "-" + pad(c.month ?? 0, 2) + "-" + pad(c.day ?? 0, 2)
+    }
+    private static func pad(_ n: Int, _ width: Int) -> String {
+        let s = String(n)
+        return s.count >= width ? s : String(repeating: "0", count: width - s.count) + s
     }
     static func make(day: Date, prayer: String, kind: String) -> String {
         make(dayKey: dayKey(day), prayer: prayer, kind: kind)

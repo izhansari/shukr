@@ -121,6 +121,12 @@ struct JourneyLog {
             log.days[key] = day
         }
         log.firstDay = log.days.values.filter(\.active).map(\.date).min()
+        var m = log.firstDay.map(monthStart)
+        let last = monthStart(now)
+        while let start = m, start <= last {
+            log.months[start] = log.monthFromDays(start)
+            m = Calendar.current.date(byAdding: .month, value: 1, to: start)
+        }
         return log
     }
 
@@ -137,7 +143,13 @@ struct JourneyLog {
         var perPrayer = Array(repeating: (prayed: 0, due: 0), count: 5)
     }
 
-    func month(_ start: Date) -> Month {
+    /// Each month's numbers, worked out once as the log is built (off the main thread): the month page and the year read
+    /// them on every body pass (his 13 Pro Max, 2026-10-16: ~450 ms over a test's three passes, 30 ms of each year open).
+    private var months: [Date: Month] = [:]
+
+    func month(_ start: Date) -> Month { months[start] ?? monthFromDays(start) }
+
+    private func monthFromDays(_ start: Date) -> Month {
         var m = Month()
         for date in Self.daysOf(month: start) {
             let d = day(date)
