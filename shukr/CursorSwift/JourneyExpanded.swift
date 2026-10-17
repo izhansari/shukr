@@ -25,6 +25,12 @@ struct JourneyExpandedPage: View {
     @State private var showYear = false
     /// The year's own dials (its flights, E4); idle, the year sees no flight — the card's dial at "open" faded its words out.
     @State private var yearDials = JourneyMonthDial()
+    /// A month flying between the weeks and the year (1 = the weeks, 0 = the year); nil at rest.
+    @State private var yearFlight: JourneyMonthFlight?
+    /// The year laid out, its flight not set yet (a frame or two): the weeks stay up and the year hidden.
+    @State private var yearWaiting = false
+    /// The month the year opened on (its year shows; its small month is where the days go home).
+    @State private var yearMonth: Date?
     @State private var extraTap: JourneyExtraTap?
     /// The month rail (hold the names' column, as on the card): the month the finger's on.
     @State private var rail: Int?
@@ -62,23 +68,30 @@ struct JourneyExpandedPage: View {
         let _ = JourneyPerf.body("expanded")
         ZStack {
             if showYear {
-                JourneyYearView(log: log, today: today, current: focus ?? opened, onPick: { m in
+                JourneyYearView(log: log, today: today, current: yearMonth ?? focus ?? opened, onPick: { m in
                     triggerSomeVibration(type: .light)
                     fromYear(to: m)   // a small month's tap: back to the weeks with it in focus
                 }, onSpread: { fromYear(to: nil) }, onDay: { open($0) })
-                .modifier(JourneyYearFlightDriver(dials: yearDials, flight: nil, clearWhenIdle: true))
-            } else {
-                // The opening month's tiles landing from the card, under its rings.
-                JourneyFlyingTiles()
-                VStack(spacing: 0) {
-                    top
-                    hairline
-                    grid
-                    hairline
-                    bottom
-                }
+                // Idle, the year sees no flight (a card's or a day's never fades it); in a weeks ↔ year flight, this one.
+                .modifier(JourneyYearFlightDriver(dials: yearDials, flight: yearFlight, clearWhenIdle: true))
+                .opacity(yearWaiting ? 0 : 1)
             }
+            // The landing tiles: the card's (opening), or a small month's squares to and from its rings (the year).
+            JourneyFlyingTiles()
+            // The weeks stay mounted under the year (hidden): a month tapped there is scrolled to before its flight starts
+            // — rebuilt at the flight, the new scroll view took its default (today at the bottom) and the scroll was lost.
+            VStack(spacing: 0) {
+                top
+                hairline
+                grid
+                hairline
+                bottom
+            }
+            .opacity(showYear && yearFlight == nil && !yearWaiting ? 0 : 1)
+            .allowsHitTesting(yearFlight == nil && !showYear)
         }
+        // A weeks ↔ year flight drives the page's own pieces (its cells, words, the flying squares); at rest, the host's.
+        .modifier(JourneyYearFlightDriver(dials: yearDials, flight: yearFlight, clearWhenIdle: false))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .toolbar {
             if #available(iOS 26.0, *) {
@@ -367,33 +380,92 @@ struct JourneyExpandedPage: View {
         .animation(.easeInOut(duration: 0.3), value: dayUp)
     }
 
-    private func toYear() {
-        JourneyPerf.began("year opens")
-        picked = nil
-        JourneyFlightGeometry.shared.yearShowing = true
-        // The host's ‹ and edge swipe: back to the weeks, not the card.
-        JourneyFlightGeometry.shared.yearBack = { fromYear(to: nil) }
-        withAnimation(.easeInOut(duration: CircleMotion.standard)) { showYear = true }
+    /// The month a weeks ↔ year flight carries: the one in focus, else the one in the middle of the weeks.
+    private var flightMonth: Date {
+        if let f = focus { return f }
+        if let w = middleWeek, let mid = Calendar.current.date(byAdding: .day, value: 3, to: w) { return JourneyLog.monthStart(mid) }
+        return opened
     }
 
-    /// Back to the weeks from the year: ‹, the toggle or a spread as they were (no focus — only a tap focuses); a small
-    /// month's tap with that month in focus, in the middle.
-    private func fromYear(to m: Date?) {
-        JourneyPerf.began("weeks from year")
-        JourneyFlightGeometry.shared.yearShowing = false
-        JourneyFlightGeometry.shared.yearBack = nil
-        withAnimation(.easeInOut(duration: CircleMotion.standard)) {
-            showYear = false
-            picked = nil
-            focus = m
+    /// Out to the year (E4): the year laid out under the weeks, then that month's days fly home into its small month's
+    /// squares while the year's words and other months arrive — the old month page's month → year, from the week rows.
+    private func toYear() {
+        guard !showYear, yearFlight == nil else { return }
+        JourneyPerf.began("year opens")
+        picked = nil
+        let month = flightMonth
+        let geo = JourneyFlightGeometry.shared
+        geo.yearGrids = [:]
+        geo.yearNames = [:]
+        geo.yearShowing = true
+        // The host's ‹ and edge swipe: back to the weeks, not the card.
+        geo.yearBack = { fromYear(to: nil) }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            yearMonth = month
+            yearWaiting = true
+            showYear = true
         }
-        if let m, let week = stats.weeks.first(where: { $0.month?.start == m })?.id {
-            DispatchQueue.main.async {
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { position.scrollTo(id: week, anchor: .center) }
+        geo.whenYearReady(month) {
+            yearDials.set(.month, 1)
+            withTransaction(quiet) { yearFlight = Self.flight(month, log: log, today: today); yearWaiting = false }
+            let run = JourneyFrameLog.shared.start("weeks → year")
+            yearDials.animate(.month, to: 0, duration: JourneyMotion.monthDuration) {
+                JourneyFrameLog.shared.stop(run: run)
+                // The weeks come down a beat after the days have landed, when nothing moves (the month page's way: at the
+                // landing frame their teardown held the last frame).
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { withTransaction(quiet) { yearFlight = nil } }
             }
         }
+    }
+
+    /// Back to the weeks from the year: a small month's tap grows its squares into its rings, landing in focus in the
+    /// middle; ‹, the toggle or a spread fly the middle month home as it was (no focus — only a tap focuses).
+    private func fromYear(to m: Date?) {
+        guard showYear, yearFlight == nil else { return }
+        JourneyPerf.began("weeks from year")
+        let month = m ?? flightMonth
+        let geo = JourneyFlightGeometry.shared
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        yearDials.set(.month, 0)
+        withTransaction(quiet) {
+            picked = nil
+            focus = m
+            yearFlight = Self.flight(month, log: log, today: today)
+        }
+        // The month's middle week in the middle (its 1st's week there left most of it below).
+        if let m, let mid = Calendar.current.date(byAdding: .day, value: 14, to: m),
+           let week = stats.weeks.last(where: { $0.start <= mid })?.id {
+            withTransaction(quiet) { position.scrollTo(id: week, anchor: .center) }
+        }
+        // The rings' places come with the week rows laid out where the scroll put them (their anchors, resolved each
+        // layout; the flying squares read them live).
+        DispatchQueue.main.async { geo.title = nil; geo.afterTitle {
+            let run = JourneyFrameLog.shared.start("year → weeks")
+            yearDials.animate(.month, to: 1, duration: JourneyMotion.monthDuration) {
+                JourneyFrameLog.shared.stop(run: run)
+                withTransaction(quiet) {
+                    showYear = false
+                    yearFlight = nil
+                    yearMonth = nil
+                }
+                geo.yearShowing = false
+                geo.yearBack = nil
+            }
+        } }
+    }
+
+    /// A month's flight between its small month and its rings: the year's squares (where they are on screen now), its days'
+    /// rings drawn in by their place in the month; the weeks' other days and words arrive with the dial.
+    private static func flight(_ month: Date, log: JourneyLog, today: Date) -> JourneyMonthFlight {
+        var f = JourneyMonthFlight.fromYear(month, log: log, today: today)
+        let dates = f.tiles.keys.sorted()
+        var order: [Date: CGFloat] = [:]
+        for (i, d) in dates.enumerated() { order[d] = dates.count > 1 ? CGFloat(i) / CGFloat(dates.count - 1) : 0 }
+        f.order = order
+        return f
     }
 
     // MARK: The month rail (the card's: hold the names, the finger's height is the month)
