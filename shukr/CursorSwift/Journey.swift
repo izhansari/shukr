@@ -296,6 +296,12 @@ struct JourneyPage: View {
     @State private var showMakeUp = false
     @State private var showScores = false
     @State private var showMilestones = false
+    /// The picked day's notes, photos, map and zikr, opened from the card's bottom — where the day page's back card opens
+    /// them (owner, 2026-10-17: "we can use the same tap destinations as we do in the day ring's page for the flipped card").
+    @State private var dayNotes: [DayFacts.Note]?
+    @State private var dayPile: DayPileRoute?
+    @State private var mapDay: Date?
+    @State private var zikrDay: Date?
     /// The rows scroll (no room for five) and there's more below: the fade shows.
     @State private var rowsMore = true
     /// The This month row's measure (a hold on the row chooses it).
@@ -335,6 +341,22 @@ struct JourneyPage: View {
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(today)) }
         .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
+        .infoModal(isPresented: Binding(get: { dayNotes != nil }, set: { if !$0 { dayNotes = nil } }),
+                   title: dayNotes?.count == 1 ? "Note" : "Notes", symbol: "text.quote", tint: .secondary) {
+            DayNotesInfo(notes: dayNotes ?? [])
+        }
+        .fullScreenCover(item: $dayPile) { route in
+            PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from) {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { dayPile = nil }
+            }
+            .presentationBackground(.clear)
+        }
+        .fullScreenCover(isPresented: Binding(get: { mapDay != nil }, set: { if !$0 { mapDay = nil } })) {
+            LocationMapContentView(dayOnly: mapDay ?? today)
+        }
+        .navigationDestination(item: $zikrDay) { ZikrAreaPage(start: .dayOnly($0)) }
         .navigationDestination(isPresented: $showMilestones) {
             JourneyMilestonesPage(milestones: stats?.milestones ?? [], firstDay: log.firstDay, opens: { opens($0) })
         }
@@ -422,7 +444,15 @@ struct JourneyPage: View {
         let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
         let card = JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
                                    onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
-                                   onMonth: { openMonth = JourneyMonthRoute(month: $0) })
+                                   onMonth: { openMonth = JourneyMonthRoute(month: $0) },
+                                   onExtra: { tap in
+                                       switch tap {
+                                       case .notes(let n): dayNotes = n
+                                       case .photos(let keys, let from): dayPile = DayPileRoute(keys: keys, from: from)
+                                       case .map(let d): mapDay = d
+                                       case .zikr(let d): zikrDay = d
+                                       }
+                                   })
         return VStack(alignment: .leading, spacing: 0) {
             header
             if rowsScroll {

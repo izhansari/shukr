@@ -30,6 +30,8 @@ struct JourneyHomeCard: View {
     var onDay: (Date) -> Void = { _ in }
     var opens: (Date) -> Bool = { _ in false }
     var onMonth: (Date) -> Void = { _ in }
+    /// One of the picked day's things tapped at the bottom (Journey opens it as the day page's back card does).
+    var onExtra: (JourneyExtraTap) -> Void = { _ in }
     @State private var picked: Date?
     /// The picked day's notes, photos, places and zikr (JourneyDayExtras), counted once it settles.
     @State private var extras = JourneyDayExtras()
@@ -453,21 +455,24 @@ struct JourneyHomeCard: View {
     /// didnt do zikr that day and its not a bug"). Counted when the pick settles; a tap opens the day.
     private func dayExtras(_ d: YourJourneyStats.GridDay) -> some View {
         let e = extras.date == d.date ? extras : nil
-        let can = d.prayed > 0 && opens(d.date)
-        return Button {
-            guard can else { return }
-            triggerSomeVibration(type: .light)
-            onDay(d.date)
-        } label: {
-            HStack(alignment: .top, spacing: 0) {
-                extra("text.quote", e.map { "\($0.notes)" }, e?.notes == 1 ? "note" : "notes", e?.notes ?? 0 > 0)
-                extra("photo.on.rectangle", e.map { "\($0.photos)" }, e?.photos == 1 ? "photo" : "photos", e?.photos ?? 0 > 0)
-                extra("map", e.map { "\($0.places)" }, "on the map", e?.places ?? 0 > 0)
-                extra("circle.hexagonpath", e.map { $0.zikrMinutes }, "min of zikr", e?.zikrSeconds ?? 0 > 0)
+        // Each one opens itself, where the day page's back card opens it (owner, 2026-10-17: "tapping the bottom area
+        // should show the tapped item"); a 0 opens nothing, as there.
+        return HStack(alignment: .top, spacing: 0) {
+            extra("text.quote", e.map { "\($0.notes.count)" }, e?.notes.count == 1 ? "note" : "notes", !(e?.notes.isEmpty ?? true)) {
+                if let n = e?.notes, !n.isEmpty { onExtra(.notes(n)) }
             }
-            .contentShape(Rectangle())
+            extra("photo.on.rectangle", e.map { "\($0.photoKeys.count)" }, e?.photoKeys.count == 1 ? "photo" : "photos",
+                  !(e?.photoKeys.isEmpty ?? true)) {
+                if let k = e?.photoKeys, !k.isEmpty { onExtra(.photos(k, scrub.photosFrame)) }
+            }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { scrub.photosFrame = $0 }
+            extra("map", e.map { "\($0.places)" }, "on the map", e?.places ?? 0 > 0) {
+                if e?.places ?? 0 > 0 { onExtra(.map(d.date)) }
+            }
+            extra("circle.hexagonpath", e.map { $0.zikrMinutes }, "min of zikr", e?.zikrSeconds ?? 0 > 0) {
+                if e?.zikrSeconds ?? 0 > 0 { onExtra(.zikr(d.date)) }
+            }
         }
-        .buttonStyle(.plain)
         .task(id: d.date) {
             // A held finger crossing tiles doesn't count every one it passes.
             try? await Task.sleep(for: .milliseconds(120))
@@ -476,7 +481,12 @@ struct JourneyHomeCard: View {
         }
     }
 
-    private func extra(_ symbol: String, _ value: String?, _ caption: String, _ has: Bool) -> some View {
+    private func extra(_ symbol: String, _ value: String?, _ caption: String, _ has: Bool, _ open: @escaping () -> Void) -> some View {
+        Button {
+            guard has else { return }
+            triggerSomeVibration(type: .light)
+            open()
+        } label: {
         VStack(spacing: 2) {
             HStack(spacing: 5) {
                 Image(systemName: symbol).font(.system(size: 13, weight: .light))
@@ -490,6 +500,10 @@ struct JourneyHomeCard: View {
         .foregroundStyle(has ? Color.primary : Color.secondary)
         .opacity(has ? 1 : 0.55)
         .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!has)
     }
 
     /// The best streak's dates: "Sep 3 – 10", "Aug 28 – Sep 4", with the year when it isn't this one.
@@ -790,9 +804,11 @@ struct JourneyMilestonesList: View {
 
 /// A day's other things, as counts: notes, photos, prayers with a place (the map), zikr time — the day page's own rules
 /// (DayFacts), without its place-name lookups.
-struct JourneyDayExtras: Equatable {
+struct JourneyDayExtras {
     var date: Date?
-    var notes = 0, photos = 0, places = 0
+    var notes: [DayFacts.Note] = []
+    var photoKeys: [String] = []
+    var places = 0
     var zikrSeconds: TimeInterval = 0
     /// Whole minutes ("<1" for a little).
     var zikrMinutes: String {
@@ -808,9 +824,9 @@ struct JourneyDayExtras: Equatable {
         for row in all where row.dayKey == key && JourneyLog.names.contains(row.name) && (!(kept[row.name]?.isCompleted ?? false) || row.isCompleted) {
             kept[row.name] = row
         }
-        let done = kept.values.filter(\.isCompleted)
-        e.notes = done.filter { DayFacts.note($0) != nil }.count
-        e.photos = done.filter { PrayerPhotos.has(PrayerPhotos.key(dayKey: $0.dayKey, name: $0.name)) }.count
+        let done = JourneyLog.names.compactMap { kept[$0] }.filter(\.isCompleted)   // Fajr → Isha
+        e.notes = done.compactMap { row in DayFacts.note(row).map { DayFacts.Note(name: row.displayName, text: $0) } }
+        e.photoKeys = done.map { PrayerPhotos.key(dayKey: $0.dayKey, name: $0.name) }.filter(PrayerPhotos.has)
         e.places = done.filter { DayFacts.spot($0) != nil }.count
         let from = date.addingTimeInterval(-86_400), to = date.addingTimeInterval(2 * 86_400)
         let near = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= from && $0.startTime < to }))) ?? []
@@ -819,11 +835,21 @@ struct JourneyDayExtras: Equatable {
     }
 }
 
+/// One of a picked day's things, tapped on the card.
+enum JourneyExtraTap {
+    case notes([DayFacts.Note])
+    case photos([String], CGRect)
+    case map(Date)
+    case zikr(Date)
+}
+
 /// A finger on the card's tiles: whether a hold is picking, the rows' width (the bars' slots come from it), and each built
 /// row's top in the rows' space, by week.
 @MainActor final class JourneyCardScrub {
     var scrubbing = false
     var width: CGFloat = 0
+    /// The photos count's place on screen (the day's pile opens out of it).
+    var photosFrame: CGRect = .zero
     var rowTops: [Date: CGFloat] = [:]
 }
 
