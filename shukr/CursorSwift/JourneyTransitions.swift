@@ -426,21 +426,19 @@ struct JourneyMonthFlight: Equatable {
     /// worked out from its squares area (JourneyYearView: seven columns, 2.5 pt apart, square), and its name.
     @MainActor static func fromYear(_ start: Date, log: JourneyLog, today: Date) -> JourneyMonthFlight {
         let g = JourneyFlightGeometry.shared
-        let cal = Calendar.current
-        let lead = ((cal.component(.weekday, from: start) - cal.firstWeekday) + 7) % 7
+        // The small month's squares where the year laid them out: the year's own geometry (JourneyYearSquares), never a copy.
+        let lead = JourneyYearSquares.lead(of: start)
         let screen = UIScreen.main.bounds
         var tiles: [Date: JourneyFlightTile] = [:]
         let grid = g.yearGrids[start] ?? .zero
-        let gap: CGFloat = 2.5, side = (grid.width - 6 * gap) / 7
         for (i, date) in JourneyLog.daysOf(month: start).enumerated() {
             guard let first = log.firstDay, date >= first, date <= today else { continue }
             let d = log.day(date)
             let kind = d.tileKind
             let fill: JourneyFlightTile.Fill = d.allFive && date != today ? (d.allInTime ? .green : .grey) : .none
-            let at = lead + i
-            let r = CGRect(x: grid.minX + CGFloat(at % 7) * (side + gap), y: grid.minY + CGFloat(at / 7) * (side + gap), width: side, height: side)
+            let r = JourneyYearSquares.rect(of: i, lead: lead, in: grid)
             let from: CGRect? = grid.width > 0 && r.maxY > 60 && r.minY < screen.height - 40 ? r : nil
-            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill, corner: 2.5, rank: log.tileRank(d))
+            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill, corner: JourneyYearSquares.corner, rank: log.tileRank(d))
         }
         return JourneyMonthFlight(start: start, tiles: tiles, card: .zero, order: order(of: tiles))
     }

@@ -218,12 +218,11 @@ private struct JourneyYearMonth: View, Equatable {
 
     var body: some View {
         let _ = JourneyPerf.body("yearMonth")
-        let cal = Calendar.current
         let numbers = log.month(start)
         let future = start > today
         let before = log.firstDay.map { start < JourneyLog.monthStart($0) } ?? true
         let line = future || before ? " " : JourneyYearView.line(numbers)
-        let lead = ((cal.component(.weekday, from: start) - cal.firstWeekday) + 7) % 7
+        let lead = JourneyYearSquares.lead(of: start)
         let days = JourneyLog.daysOf(month: start)
         VStack(alignment: .leading, spacing: 3) {
             // The name (and its line) opens the month; the squares are taps of their own.
@@ -262,7 +261,9 @@ private struct JourneyYearMonth: View, Equatable {
 final class JourneyYearFrames { var all: [Date: CGRect] = [:] }
 
 /// A small month's squares, drawn as one picture: seven columns 2.5 pt apart, square, six weeks tall whatever the month (so
-/// the names in a row line up) — the layout JourneyMonthFlight.fromYear works its squares out from. Each day the card's
+/// the names in a row line up). Where each square is lives only here (`cell`, `rect`, `index`): the picture, the picked
+/// ring, a tap and the year ↔ weeks flight (JourneyMonthFlight.fromYear) all ask it, from the grid as laid out — never a
+/// copy of the formula that could drift from it, and never a reporter per square (perf #3). Each day the card's
 /// tile color (its hairline when unmarked); today outlined; the picked day ringed. A tap goes to the day under it, a
 /// square's tap covering half the gap each side (it fills its cell and never reaches the next day). Redrawn only when its
 /// own picked day, the look or the log changes.
@@ -281,16 +282,42 @@ struct JourneyYearSquares: View {
     @State private var width = JourneyFrameBox()
 
     static let gap: CGFloat = 2.5
+    /// A square's corner.
+    static let corner: CGFloat = 2.5
+    static let rows = 6
+
+    /// Empty cells before the 1st: its weekday's place in the week.
+    static func lead(of month: Date, calendar cal: Calendar = .current) -> Int {
+        ((cal.component(.weekday, from: month) - cal.firstWeekday) + 7) % 7
+    }
+    /// A square's side in a grid this wide.
+    static func side(width: CGFloat) -> CGFloat { max((width - 6 * gap) / 7, 0) }
+    /// The grid's height for its width: six rows, whatever the month.
+    static func height(width: CGFloat) -> CGFloat { CGFloat(rows) * side(width: width) + CGFloat(rows - 1) * gap }
+    /// Cell `at` (lead + the day's index) in a grid this wide, from its top left.
+    static func cell(_ at: Int, width: CGFloat) -> CGRect {
+        let side = side(width: width)
+        return CGRect(x: CGFloat(at % 7) * (side + gap), y: CGFloat(at / 7) * (side + gap), width: side, height: side)
+    }
+    /// Day `i` of the month in the grid `grid` (wherever it is: local or on screen).
+    static func rect(of i: Int, lead: Int, in grid: CGRect) -> CGRect {
+        cell(lead + i, width: grid.width).offsetBy(dx: grid.minX, dy: grid.minY)
+    }
+    /// The cell (lead + the day's index) whose square and half the gap round it hold `p` (the grid's own space).
+    static func index(at p: CGPoint, width: CGFloat) -> Int? {
+        guard width > 0 else { return nil }
+        let pitch = (width + gap) / 7   // a square and a gap
+        let col = Int(((p.x + gap / 2) / pitch).rounded(.down)), row = Int(((p.y + gap / 2) / pitch).rounded(.down))
+        guard (0..<7).contains(col), (0..<rows).contains(row) else { return nil }
+        return row * 7 + col
+    }
 
     var body: some View {
         let _ = JourneyPerf.body("yearSquares")
         let first = log.firstDay
         JourneyYearSquaresFrame {
             Canvas { ctx, size in
-                let side = (size.width - 6 * Self.gap) / 7
-                func cell(_ at: Int) -> CGRect {
-                    CGRect(x: CGFloat(at % 7) * (side + Self.gap), y: CGFloat(at / 7) * (side + Self.gap), width: side, height: side)
-                }
+                func cell(_ at: Int) -> CGRect { Self.cell(at, width: size.width) }
                 func shape(_ r: CGRect, _ corner: CGFloat) -> Path { Path(roundedRect: r, cornerRadius: corner, style: .continuous) }
                 /// A strokeBorder: the line inside the shape's edge.
                 func border(_ r: CGRect, _ corner: CGFloat, _ color: Color, _ width: CGFloat) {
@@ -302,13 +329,13 @@ struct JourneyYearSquares: View {
                     let future = day > today
                     let before = first.map { day < $0 } ?? true
                     if future || before {
-                        if future { ctx.fill(shape(r, 2.5), with: .color(Color.primary.opacity(0.04))) }
+                        if future { ctx.fill(shape(r, Self.corner), with: .color(Color.primary.opacity(0.04))) }
                     } else {
                         let d = log.day(day)
-                        ctx.fill(shape(r, 2.5), with: .color(JourneyTileColor.of(d, in: log, dark: dark)))
-                        if !d.active { border(r, 2.5, JourneyTileColor.outline(dark: dark), JourneyTileColor.outlineWidth) }
+                        ctx.fill(shape(r, Self.corner), with: .color(JourneyTileColor.of(d, in: log, dark: dark)))
+                        if !d.active { border(r, Self.corner, JourneyTileColor.outline(dark: dark), JourneyTileColor.outlineWidth) }
                     }
-                    if day == today { border(r, 2.5, Color.primary.opacity(0.8), 1.2) }
+                    if day == today { border(r, Self.corner, Color.primary.opacity(0.8), 1.2) }
                 }
             }
         }
@@ -316,11 +343,11 @@ struct JourneyYearSquares: View {
         // lost its outer side on the first and last columns — the helper's check), over its neighbours.
         .overlay(alignment: .topLeading) {
             if let p = picked, let i = days.firstIndex(of: p) {
-                let w = width.frame.width, side = max((w - 6 * Self.gap) / 7, 0), at = lead + i
+                let r = Self.cell(lead + i, width: width.frame.width).insetBy(dx: -2, dy: -2)
                 RoundedRectangle(cornerRadius: 3.5, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.3)
-                    .frame(width: side + 4, height: side + 4)
-                    .offset(x: CGFloat(at % 7) * (side + Self.gap) - 2, y: CGFloat(at / 7) * (side + Self.gap) - 2)
+                    .frame(width: r.width, height: r.height)
+                    .offset(x: r.minX, y: r.minY)
                     .allowsHitTesting(false)
             }
         }
@@ -338,12 +365,8 @@ struct JourneyYearSquares: View {
 
     /// The day whose cell (its square and half the gap round it) holds `p`.
     private func day(at p: CGPoint) -> Date? {
-        let w = width.frame.width
-        guard w > 0 else { return nil }
-        let pitch = (w + Self.gap) / 7   // a square and a gap
-        let col = Int(((p.x + Self.gap / 2) / pitch).rounded(.down)), row = Int(((p.y + Self.gap / 2) / pitch).rounded(.down))
-        guard (0..<7).contains(col), (0..<6).contains(row) else { return nil }
-        let i = row * 7 + col - lead
+        guard let at = Self.index(at: p, width: width.frame.width) else { return nil }
+        let i = at - lead
         return days.indices.contains(i) ? days[i] : nil
     }
 }
@@ -352,8 +375,7 @@ struct JourneyYearSquares: View {
 private struct JourneyYearSquaresFrame: Layout {
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let w = proposal.width ?? 120
-        let side = max((w - 6 * JourneyYearSquares.gap) / 7, 0)
-        return CGSize(width: w, height: 6 * side + 5 * JourneyYearSquares.gap)
+        return CGSize(width: w, height: JourneyYearSquares.height(width: w))
     }
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         for v in subviews { v.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size)) }
