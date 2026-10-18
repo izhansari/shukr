@@ -1150,6 +1150,15 @@ struct JourneyMonthHost: ViewModifier {
     }
 
     private func runMonth(to target: CGFloat, how: String = "") {
+        // Back from the page at rest: the flight's pieces switch over one turn before it moves — the dial a hair under 1,
+        // where nothing on screen differs (rings whole, each tile's disc on its own fill) — so that first update (every
+        // flying cell and fade waking, the fills handed to the canvas, its first draw: the back's one slow frame, ~35 ms on
+        // his 13 Pro Max, the same with any one of them taken out) lands while the page still stands, not mid-motion.
+        if target == 0, dials.dial >= 1 {
+            dials.set(.month, 0.9999)
+            DispatchQueue.main.async { runMonth(to: 0, how: how) }
+            return
+        }
         let remaining = abs(target - dials.dial)
         guard remaining > 0.001 else { if target == 0 { close() }; return }
         let run = JourneyFrameLog.shared.start(target == 1 ? "card → expanded" : "expanded → card")
