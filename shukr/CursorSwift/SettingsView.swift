@@ -549,6 +549,13 @@ struct SettingsView: View {
                     }
                     .id("liveActivities")
 
+                    // Journey's own (owner, 2026-10-18): the fresh start (FreshStart.swift); the prayer goal joins it.
+                    Section {
+                        FreshStartSettingsRow()
+                    } header: {
+                        Text("Journey")
+                    }
+
 
                     
                     
