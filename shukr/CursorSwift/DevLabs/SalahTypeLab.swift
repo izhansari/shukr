@@ -61,8 +61,6 @@ struct SalahTypeLab: View {
     private let closedBottomReserve: CGFloat = 34
     private let ringListMin: CGFloat = 12
     private let listBottomGap: ClosedRange<CGFloat> = 16...44
-    /// DESIGN: between the ring and the open list.
-    private let ringListGap: CGFloat = 36
 
     private var momentTitle: String {
         moment == "Live" ? "Live" : moment == "Day" ? "Day ring" : "\(moment) on"
@@ -70,7 +68,7 @@ struct SalahTypeLab: View {
 
     var body: some View {
         page
-            .padding(.top, 56)   // under the top bar (TopBar: a 24 pt row, 16 pt round it)
+            .coordinateSpace(.named("lab"))
             .frame(maxWidth: .infinity)
             .ignoresSafeArea(edges: .bottom)   // the pager ignores the bottom safe area, as the real page
             .background(theme.surface.ignoresSafeArea())
@@ -78,6 +76,13 @@ struct SalahTypeLab: View {
             .overlay(alignment: .top) { LabPlace(city: viewModel.cityName ?? "Finding…") }
             .overlay(alignment: .bottom) {
                 VStack(spacing: 0) {
+                    // Over the bar, as the chrome's ZStack(alignment: .bottom) puts them.
+                    if open && doneCount > 0 && !dayDone {
+                        LabDoneFooter(count: doneCount, open: $showDone)
+                    } else if open && dayDone {
+                        LabJourneyLink()
+                    }
+                    Color.clear.frame(height: 13)   // measured: the real footer sits 13 pt over the bar's line
                     LabBottomBar().frame(height: bottomChromeHeight)
                 }
                 .ignoresSafeArea(edges: .bottom)
@@ -119,29 +124,31 @@ struct SalahTypeLab: View {
             .onReceive(Self.ticker) { clock = $0 }
     }
 
-    /// PrayerTimesView's `poppingBody`: the ring centred when closed. Open — DESIGN (owner, 2026-10-18: "the list seems
-    /// to be pushed really far down to the bottom"): the list follows the ring at a fixed gap and the ring + list sit
-    /// together in the middle, the spare room shared over and under them (was: three spacers over the ring, two between
-    /// it and the list, the list held 16…44 pt over the bar).
+    /// PrayerTimesView's `poppingBody` (whose layout the real page's resting places are measured from, `restGhosts`): the
+    /// page runs from the top safe area to the screen's bottom (the top bar is drawn over it). Closed: the ring centred
+    /// over the home indicator's 34 pt. Open: three spacers over the ring (its 200 pt box), two under it (12 pt at least
+    /// each), the list, a gap that gives a quarter of every point the list grows past two rows (16…44 pt), then the bar's
+    /// 86 pt + 44 pt for "N done" / the Journey link.
     private var page: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            face
-            if !open { Spacer(minLength: 0) }   // closed: the ring centred
             if open {
-                Color.clear.frame(height: dayDone ? 28 : ringListGap)
+                Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+            face
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("lab")).midY } action: { ringMidY = $0 }
+            Spacer(minLength: open ? ringListMin : 0)
+            if open {
+                Spacer(minLength: ringListMin)
                 VStack(spacing: theme.rowSpacing) {
                     ForEach(shownRows, id: \.name) { LabPrayerRow(prayer: $0, now: now, dayPage: dayDone) }
                 }
-                .modifier(LabCard())
+                .modifier(SalahLookCard())
                 .frame(width: 290)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("lab")) } action: { listFrame = $0 }
                 .transition(theme.listEntrance)
-                // DESIGN: "N done" right under the list it folds (was over the bottom bar, in the chrome — with the list
-                // moved up it was left on its own).
-                if doneCount > 0 && !dayDone {
-                    LabDoneFooter(count: doneCount, open: $showDone).padding(.top, 6).transition(.opacity)
-                }
-                Spacer(minLength: listBottomGap.lowerBound)
+                Color.clear.frame(height: listGap)
             }
             Color.clear.frame(height: open ? bottomChromeHeight + theme.listFooterRoom : closedBottomReserve)
         }
@@ -149,20 +156,51 @@ struct SalahTypeLab: View {
         .animation(CircleMotion.spring, value: showDone)
     }
 
+    @State private var ringMidY: CGFloat = 0
+    @State private var lineHeight: CGFloat = 17
+    @State private var listFrame: CGRect = .zero
+    /// The gap under the open list: 44 pt with two rows, giving up a quarter of every point the list grows, never below 16.
+    private var listGap: CGFloat {
+        let grown = max(listFrame.height - 2 * SalahLook.raisedRowHeight, 0)
+        return min(max(listBottomGap.upperBound - grown * 0.25, listBottomGap.lowerBound), listBottomGap.upperBound)
+    }
+
     @ViewBuilder private var face: some View {
         if dayDone && open {
             // The day's page: the score side (all five marked, the list open).
-            VStack(spacing: 0) {
-                LabDayFace(day: rows.map(\.dayPrayer), score: dayScore)
-                // The day's line under the circle (DayInsight's; a sample here).
-                Text("This week: 31 of 35 prayers in their time.")
-                    .multilineTextAlignment(.center).lineLimit(2)
-                    .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    .padding(.top, 36)   // DESIGN: was 48
-            }
+            LabDayFace(day: rows.map(\.dayPrayer), score: dayScore)
+                .overlay(alignment: .top) {
+                    // The day's line (DayInsight's; a sample here), drawn over the layout: centred in the room between
+                    // the ring and the list (106 = the ring's radius + band), 12 pt under the ring at least.
+                    let gap = listFrame.minY - ringMidY - 106
+                    Text("This week: 31 of 35 prayers in their time.")
+                        .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { lineHeight = $0 }
+                        .frame(width: 310)
+                        .offset(y: 206 + max((max(gap, 0) - lineHeight) / 2, 12))
+                }
         } else if let prayer = ringPrayer {
             LabRingFace(prayer: prayer, now: now)
         }
+    }
+}
+
+/// MemoriesFooterLink at rest: the day page's "Journey ›" in "N done"'s place.
+private struct LabJourneyLink: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
+                .font(.system(size: 12, weight: .light))
+            Text("Journey")
+                .font(.system(size: 13, weight: .light, design: .rounded))
+            Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
+        }
+        .foregroundStyle(.tertiary)
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(NeuRaised(shape: Capsule(), radius: 2.5, offset: 1.2).opacity(0.6))
+        .padding(.vertical, 2)
     }
 }
 
@@ -376,7 +414,7 @@ private struct LabPrayerRow: View {
             Spacer()
 
             if dayPage, let prayedAt = prayer.prayedAt {
-                LabDayRowTime(prayedAt: prayedAt)
+                LabDayRowTime(prayedAt: prayedAt, summary: prayer.summary)
             } else if look.raisesNow && isCurrentPrayer {
                 LabTimeLeft(end: prayer.endTime, now: now)
             } else {
@@ -389,38 +427,26 @@ private struct LabPrayerRow: View {
         }
         .padding(.horizontal)
         .padding(.vertical, theme.rowVerticalPadding)
-        // DESIGN (owner, 2026-10-18: "list items that have more space above and below … they're way too close to each
-        // other"): raised rows 54 pt (were 44, SalahLook.raisedRowHeight).
-        .frame(minHeight: look == .raised ? LabCard.rowHeight : nil)
+        .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)
         .background { if isCurrentPrayer { SalahRowRaise(look: look) } }
     }
 }
 
-/// DayRowTime — DESIGN (owner, 2026-10-18: "I don't like the @ symbols either. And I think it's stupid that we keep the
-/// text scores there too"): just when it was prayed, as the list's other times (was "@ 6:39 AM" over "Perfect · 100").
-/// The dot's colour and the day ring still carry the grade.
+/// DayRowTime: "@ 6:39 AM" over "Perfect · 100".
 private struct LabDayRowTime: View {
     let prayedAt: Date
+    let summary: String
     var body: some View {
-        Text(shortTimePM(prayedAt))
-            .font(.footnote).fontDesign(.rounded).fontWeight(.light)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-    }
-}
-
-/// SalahLookCard's raised case at the lab's row height — DESIGN: the corners stay half a row, so the band on now still
-/// traces them.
-private struct LabCard: ViewModifier {
-    static let rowHeight: CGFloat = 54
-    @Environment(\.circleTheme) private var theme
-    func body(content: Content) -> some View {
-        if theme.list == .raised {
-            let round = RoundedRectangle(cornerRadius: Self.rowHeight / 2, style: .circular)
-            content.clipShape(round).background(NeuRaised(shape: round))
-        } else {
-            content.modifier(SalahLookCard())
+        VStack(alignment: .trailing, spacing: 1) {
+            Text("@ \(shortTimePM(prayedAt))")
+                .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+                .foregroundStyle(.secondary)
+            Text(summary)
+                .font(.caption2).fontDesign(.rounded).fontWeight(.light)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
         }
+        .monospacedDigit()
     }
 }
 
