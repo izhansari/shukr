@@ -92,8 +92,11 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
   link "journey" ("insights" too). InsightsView is kept in code, unreached. iOS 26's back button shows no page name.
 - Journey on one screen (owner 2026-10-16, board/mocks/journey-v6/build-plan.md): `JourneyPage` doesn't scroll — "Journey"
-  + "Since <date>"; the card (`JourneyHomeCard`, YourJourney.swift); five rows (`JourneyHomeRow`): This month (hold →
-  `ThisMonthMeasure`, `journey.thisMonth`) · Prayer scores · To make up · Moments · Milestones (→ `JourneyMilestonesPage`).
+  + "Since <date>" with Prayer scores' ring on its right (`JourneyMiniRing` at 54 pt, the way in: the page zooms out of it,
+  `.navigationTransition(.zoom)`, and the edge swipe shrinks it back — owner 2026-10-18); the card (`JourneyHomeCard`,
+  YourJourney.swift); four rows (`JourneyHomeRow`): This month (hold → `ThisMonthMeasure`, `journey.thisMonth`) · To make up ·
+  Moments · Milestones (→ `JourneyMilestonesPage`). The card's streak and best streak are the Salah page's rule
+  (`YourJourneyStats.streakDay`, `prayerStreakMode`).
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
 - Journey is the pager's right page (swipe left from Salah; ☰ / links page there): the same page, its own 54 pt band where
@@ -116,22 +119,29 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   between them the same continuous weeks as rings (`JourneyExpandedRow`, Equatable; JourneyDayCell), each month's name with
   "N days" / "score N" centred on its month's rows ("Feb ’25" outside this year). Focus only by a tap: a ring (picks its day
   too) or a name (its numbers at the top); a finger scroll lets both go. Hold 0.3 s and drag: picks across rows. Hold the
-  names: the month rail, its month in focus as it goes (and after). Pinch in: the card's tiles (more weeks), spread: rings (the middle week kept). The toggle top right
+  names: the month rail, its month in focus as it goes (and after). Pinch in: the year (spread there: back). "best streak" at
+  the bottom lights its days and scrolls there (again: back), and under the numbers the legend In time · With Qaza ·
+  Incomplete lights only those days (`JourneyHighlight`); a scroll, ring, month, rail or the year lets either go. The
+  tiles look (`setTiles`) is no longer reached (cleanup later). The toggle top right
   (square.grid.3x3 ↔ calendar) flies the focused / middle month into the year and a small month's name back. The old
   month page (window of months, neighbours, month rail) is gone.
 - The year (`JourneyYearView`, JourneyYear.swift): every year from the first, opening on this one; twelve small months
   (`JourneyYearMonth`, Equatable) each with its name, "N days · score N" (the month's average score) or "Away", and its days
   as one picture (`JourneyYearSquares`, a Canvas: tile colors, unmarked hairline, future faint, today outlined; the picked
-  ring drawn over it); a square's tap picks it (its line at the bottom, → the day); a name flies back into the expanded
-  weeks with that month focused; ‹, the edge swipe and the toggle go back to the weeks (`JourneyFlightGeometry.yearBack`).
+  ring drawn over it); a tap on a month (its name or squares) flies back into the expanded weeks with it focused; the
+  squares' geometry is one set of statics on `JourneyYearSquares` (drawing, hit test, layout, the flight); ‹, the edge swipe and the toggle go back to the weeks (`JourneyFlightGeometry.yearBack`).
 - Prayer scores (`PrayerScoresPage`, PrayerScores.swift): its title + the one-liner beside the day page's own ring at 70 %
   (`DayRing` on the raised disc: each prayer's fifth in its average grade, its dot at its usual place in the window; under the
   number "average lifetime score" / "… last 30 days"); All time · 30 days · 7 days under the header (`PrayerScores.build(span:)`,
   kept in `prayerScores.span`; a span's trend reads against the span before). The one-liner never names the strongest as the
   one that "needs you most" (a tie → the lowest score). The ring = the score when prayed; rows "97 · 98% prayed" + their dots (`PrayerScoresChart`: 14 slots across the window +
   a Qaza block). A row's (or a fifth's) tap: its symbol, name and line rise over the switch into the header (the "97 · "
-  folds away), the rest after it lands; ‹ in the bar or a left-edge swipe sinks it back; another fifth switches straight to
-  that prayer. A prayer's page: "Lately, usually…" + its trend, the big chart — tap or hold-drag a slot → "N prayers (P%) ·
+  folds away), the rest after it lands; the way back runs on one dial (`ScoresBack`): ‹ plays it, a left-edge swipe holds
+  it under the finger (¼ / a flick finishes, else springs back; cancel-safe), the hero flying by measured frames
+  (`ScoresHeroFrames`) and turning white → grey as it lands; another fifth switches straight to that prayer. A span switch
+  keeps what's shown until the new data is in, then the numbers roll, charts cross-fade and rows re-rank (in a prayer: the
+  fifths' quick swap). Held until his layout pass (owner 2026-10-18, layout first): the open's scripted beats, the
+  first-draw hitch, the bar title snap; 7 days' empty one-liner, "100 · 100% prayed" wrapping. A prayer's page: "Lately, usually…" + its trend, the big chart — tap or hold-drag a slot → "N prayers (P%) ·
   A–B min after it starts · <grade>" (Qaza: "made up as Qaza") in those lines' place; grade chips, insight, To make up,
   photos, Where you pray it. Thin data: "Not enough yet" (kept steady through the rise).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
