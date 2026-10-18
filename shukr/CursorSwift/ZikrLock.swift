@@ -66,6 +66,8 @@ import SwiftData
         if replaying { return !ZikrTour.shared.active }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-zikrUnlocked") { return false }
+        // `-demoLand <page>` lands past the lock too, unless `-zikrLocked` asks for it.
+        if DemoLand.page != nil, !ProcessInfo.processInfo.arguments.contains("-zikrLocked") { return false }
         #endif
         return !unlocked && !ZikrTour.shared.active && (!TourRuntime.shared.active || fromAppTour)
     }

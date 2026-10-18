@@ -1172,6 +1172,25 @@ struct PrayerTimesView: View {
             }
         }
         .task {
+            // `-demoLand salah|zikr|journey|settings` (owner, 2026-10-18: "skip this whole intro and opening animation so
+            // we can land straight to the salah tab or whatever page the agents need to test"): the real app on its own
+            // data, nothing seeded. Being a `-demo…` arg it already skips the welcome / opening, setup and the prompts;
+            // the tour only comes after a setup, and ZikrLock reads `DemoLand.page` too.
+            guard let page = DemoLand.page else { return }
+            switch page {
+            case "zikr":
+                try? await Task.sleep(for: .seconds(1))   // the pager up (sooner, the change was lost)
+                sharedState.go(to: .zikr, animated: false)
+            case "journey":
+                try? await Task.sleep(for: .seconds(0.5))   // the root up; Journey's page builds on the page change
+                sharedState.go(to: .journey, animated: false)
+            case "settings":
+                try? await Task.sleep(for: .seconds(1.5))   // once the pager is up (as `-demoSettings`)
+                SettingsPresenter.shared.show()
+            default: break   // salah: the launch page
+            }
+        }
+        .task {
             // Masjid detection check: a late Friday Dhuhr at your first favourite masjid (+ one
             // 400 m away) → the first should come back as Jumu'ah, scored Early; the second not.
             if ProcessInfo.processInfo.arguments.contains("-demoMasjidCheck"), let fav = MosqueFavorites.all.first {
@@ -4013,3 +4032,16 @@ struct AppearanceProbe: UIViewControllerRepresentable {
         }
     }
 }
+
+#if DEBUG
+/// `-demoLand salah|zikr|journey|settings`: which page a test launch lands on (no value = Salah). Any `-demo…` arg
+/// already skips the welcome / opening, setup and the prompts; this one also passes the zikr lock.
+enum DemoLand {
+    static let page: String? = {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-demoLand") else { return nil }
+        let next = args.indices.contains(i + 1) ? args[i + 1].lowercased() : ""
+        return ["zikr", "journey", "settings"].contains(next) ? next : "salah"
+    }()
+}
+#endif
