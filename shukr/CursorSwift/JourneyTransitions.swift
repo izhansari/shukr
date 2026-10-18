@@ -54,6 +54,12 @@ enum JourneyMotion {
     /// un-drew in each of the back's first frames (the ~35 ms start on his 13 Pro Max).
     static func ringBack(_ t: CGFloat, at p: CGFloat) -> CGFloat { let a = 0.6 + p * 0.32; return io(seg(t, a, a + 0.08)) }
     static func numberBack(_ t: CGFloat, at p: CGFloat) -> CGFloat { let a = 0.6 + p * 0.32; return out(seg(t, a + 0.01, a + 0.08)) }
+    /// A flying month name's width at `size` (the card's and the labels' face: rounded, regular).
+    @MainActor static func nameWidth(_ word: String, size: CGFloat) -> CGFloat {
+        let base = UIFont.systemFont(ofSize: size, weight: .regular)
+        let font = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: size) } ?? base
+        return ceil((word as NSString).size(withAttributes: [.font: font]).width)
+    }
     /// A card month name landing on its label: the label's own name takes over as the flying one goes.
     static func nameLand(_ t: CGFloat) -> CGFloat { out(seg(t, 0.72, 0.9)) }
     /// The month fading as a day opens (Bradley: "it fades out as the ring starts to grow").
@@ -397,6 +403,13 @@ struct JourneyMonthFlight: Equatable {
     /// The card's month names in view, each flying to its label, and their words (the card rows' labels, "Jul’26").
     var names: [Date: CGRect] = [:]
     var nameWords: [Date: String] = [:]
+    /// Each name's size as the card draws it: 12.5 pt, less where its 11 pt row shrinks it (the row's minimumScaleFactor —
+    /// ~9.5 pt on his phones). The flying name lands at it: at 12.5 it shrank and slid as the card's own took over (owner,
+    /// 2026-10-17: "it doesn't feel very fluid … And it jumps at the end").
+    var nameSizes: [Date: CGFloat] = [:]
+    /// Each label's own word ("Nov ’25", where the card says "Nov"; "Jan" where it says "Jan’26"): the flying name turns
+    /// from one into the other on the way, never swapping on the label as it lands or leaves.
+    var labelWords: [Date: String] = [:]
 
     /// The flight for `start` from (or back to) its small month in the year: its squares where they are on screen now,
     /// worked out from its squares area (JourneyYearView: seven columns, 2.5 pt apart, square), and its name.
@@ -450,7 +463,15 @@ struct JourneyMonthFlight: Equatable {
         let names = g.names.filter { visible.insetBy(dx: 0, dy: -2).contains(CGPoint(x: $0.value.midX, y: $0.value.midY)) }
         var words: [Date: String] = [:]
         for w in weeks { if let m = w.month, names[m.start] != nil { words[m.start] = m.label } }
-        return JourneyMonthFlight(start: start, tiles: tiles, card: g.card, order: order(of: tiles), names: names, nameWords: words)
+        // The shrink from its reported width against the word's natural one (its height is the row's, not the text's).
+        var sizes: [Date: CGFloat] = [:], labelWords: [Date: String] = [:]
+        for (m, r) in names {
+            let natural = JourneyMotion.nameWidth(words[m] ?? m.formatted(.dateTime.month(.abbreviated)), size: 12.5)
+            sizes[m] = natural > 0 ? 12.5 * min(max(r.width / natural, 0.7), 1) : 12.5
+            labelWords[m] = JourneyExpandedRow.name(m, today: today)
+        }
+        return JourneyMonthFlight(start: start, tiles: tiles, card: g.card, order: order(of: tiles), names: names, nameWords: words,
+                                  nameSizes: sizes, labelWords: labelWords)
     }
 
 }
@@ -811,13 +832,41 @@ struct JourneyFlyingTiles: View {
                         if let from = open.flight.names[m] {
                             let to = labels[m]
                             let r = to.map { JourneyMotion.lerp(from, $0, z) } ?? from
-                            Text(open.flight.nameWords[m] ?? m.formatted(.dateTime.month(.abbreviated)))
-                                .font(.system(size: JourneyMotion.lerp(12.5, 13, to == nil ? 0 : z), weight: .regular, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .fixedSize()
-                                .position(x: r.midX - o.x, y: r.midY - o.y)
-                                .opacity(Double(to == nil ? 1 - z : 1 - JourneyMotion.nameLand(t)))
+                            let card = open.flight.nameWords[m] ?? m.formatted(.dateTime.month(.abbreviated))
+                            let label = to == nil ? card : open.flight.labelWords[m] ?? card
+                            let size = JourneyMotion.lerp(open.flight.nameSizes[m] ?? 12.5, 13, to == nil ? 0 : z)
+                            // By its right edge, as both columns set their names. One word the other's start ("Jun" / "Jun ’25",
+                            // "Jan’26" / "Jan"): the shared part slides as one word and only the rest fades, its width given back
+                            // as it goes (crossfaded, the two overlapped into a smudge for a few frames).
+                            let long = label.count >= card.count ? label : card, short = long == label ? card : label
+                            let w = long == label ? z : 1 - z   // how much of the longer word shows
+                            Group {
+                                if long != short, long.hasPrefix(short) {
+                                    let rest = String(long.dropFirst(short.count))
+                                    let shortW = JourneyMotion.nameWidth(short, size: size)
+                                    let end = r.maxX - JourneyMotion.nameWidth(rest, size: size) * w
+                                    HStack(spacing: 0) {
+                                        Text(short)
+                                        Text(rest).opacity(Double(JourneyMotion.seg(w, 0.3, 1)))
+                                    }
+                                    .fixedSize()
+                                    .frame(width: 160, alignment: .leading)
+                                    .position(x: end - shortW + 80 - o.x, y: r.midY - o.y)
+                                } else {
+                                    let mix = Double(JourneyMotion.seg(z, 0.3, 0.7))   // 0 the card's word … 1 the label's
+                                    ZStack(alignment: .trailing) {
+                                        Text(card).opacity(label == card ? 1 : 1 - mix)
+                                        if label != card { Text(label).opacity(mix) }
+                                    }
+                                    .fixedSize()
+                                    .frame(width: 160, alignment: .trailing)
+                                    .position(x: r.maxX - 80 - o.x, y: r.midY - o.y)
+                                }
+                            }
+                            .font(.system(size: size, weight: .regular, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .opacity(Double(to == nil ? 1 - z : 1 - JourneyMotion.nameLand(t)))
                         }
                     }
                 }

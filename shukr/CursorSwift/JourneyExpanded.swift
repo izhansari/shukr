@@ -720,7 +720,10 @@ struct JourneyExpandedRow: View, Equatable {
 
     /// "Sep", with its year when it isn't this one ("Feb ’25") — the weeks run across years (the helper's check: after the
     /// rail, "Feb · 22 days" was 2025's with nothing saying so).
-    private func name(_ start: Date) -> String {
+    private func name(_ start: Date) -> String { Self.name(start, today: today) }
+
+    /// The flight back crossfades the card's word into this one (JourneyTransitions.swift).
+    static func name(_ start: Date, today: Date) -> String {
         let month = start.formatted(.dateTime.month(.abbreviated))
         let year = Calendar.current.component(.year, from: start)
         guard year != Calendar.current.component(.year, from: today) else { return month }
