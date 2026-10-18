@@ -1385,6 +1385,9 @@ struct summaryCircle: View, Equatable {
             DayPageState.shared.leaveDay()   // the side swapped: nothing picked, the front up
             if shows { refreshDay() }
         }
+        // An outside mark of an earlier day (the reconcile clears DayHistory, then posts this): yesterday's ring, score and
+        // dots before a Fajr, and the line, are read again (Fable's review, gap 2 — the score moved with a @Query before #12).
+        .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in refreshDay() }
         // A mark (or an unmark) changes the day.
         .onChange(of: viewModel.todaysPrayers.map { "\($0.name)\($0.isCompleted)\($0.timeAtComplete?.timeIntervalSince1970 ?? 0)" }) { _, _ in
             refreshDay()
