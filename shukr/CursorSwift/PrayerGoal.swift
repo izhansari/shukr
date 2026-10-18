@@ -100,6 +100,7 @@ enum PrayerStats {
     static let rulesChanged = Notification.Name("PrayerStats.rulesChanged")
 
     @MainActor static func changed() {
+        UserDefaults.standard.set(true, forKey: MilestoneCelebration.quietKey)   // before anything can check
         NotificationCenter.default.post(name: rulesChanged, object: nil)
         NotificationCenter.default.post(name: .journeyChanged, object: nil)
     }
@@ -132,12 +133,13 @@ struct PrayerGoalSettingsRow: View {
     }
 }
 
-/// The four goals, each with the streak it would give you now (from Journey's log, when it's been read) — a flip's cost
-/// seen before it's made. Card look's list (a title, a grey line, the sage check).
+/// The four goals, each with its grades as a strip (the ones that count solid, the rest faded — the This month menu's look,
+/// owner 2026-10-18: "it looks nice and communicates the idea better") and how many of your last 30 days met it. Card
+/// look's list: a title, the strip, the sage check.
 struct PrayerGoalPage: View {
     @State private var goal = PrayerGoal.current
-    /// Each goal's streak today (nil: Journey's log isn't read yet).
-    @State private var streaks: [PrayerGoal: Int] = [:]
+    /// Each goal's share of the last 30 finished days with a mark, 0…100 (nil: Journey's log isn't read yet).
+    @State private var rates: [PrayerGoal: Int] = [:]
 
     var body: some View {
         Form {
@@ -150,35 +152,62 @@ struct PrayerGoalPage: View {
                         PrayerGoal.set(option)
                     } label: {
                         HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(option.title).foregroundStyle(.primary)
-                                Text(option.line).font(.footnote).foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 8)
-                            if let n = streaks[option] {
-                                Text(n == 1 ? "1 day" : "\(n) days").font(.footnote).foregroundStyle(.secondary).monospacedDigit()
-                            }
                             Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.sage)
                                 .opacity(option == goal ? 1 : 0)
+                            VStack(alignment: .leading, spacing: 7) {
+                                Text(option.title).foregroundStyle(.primary)
+                                PrayerGoalStrip(goal: option)
+                            }
+                            Spacer(minLength: 8)
+                            if let r = rates[option] {
+                                Text("\(r)%").foregroundStyle(.secondary).monospacedDigit()
+                            }
                         }
+                        .padding(.vertical, 4)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowInsets(AppIconChoice.rowInsets)
+                    .accessibilityLabel("\(option.title): \(option.line)" + (rates[option].map { ", \($0)% of your last 30 days" } ?? ""))
                 }
             } footer: {
-                Text("Your streak, Journey's days and its rate follow your goal. Change it any time: they're counted again. Scores never change.")
+                Text("The % is how many of your last 30 days met each goal. Your streak, Journey's days and its rate follow your goal; change it any time. Scores never change.")
             }
         }
         .navigationTitle("Your goal")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard let log = JourneyLog.last else { return }
+            let cal = Calendar.current
             let today = PrayerDay.start()
-            let excused = Excused.Days(Excused.ranges)
+            let from = cal.date(byAdding: .day, value: -30, to: today) ?? today
+            let days = log.days.values.filter { $0.active && !$0.unfinished && $0.date >= from && $0.date < today }
+            guard !days.isEmpty else { return }
             var all: [PrayerGoal: Int] = [:]
-            for g in PrayerGoal.allCases { all[g] = YourJourneyStats.currentStreak(log: log, goal: g, today: today, excused: excused) }
-            streaks = all
+            for g in PrayerGoal.allCases {
+                let met = days.filter { YourJourneyStats.streakDay($0, goal: g) }.count
+                all[g] = Int((Double(met) / Double(days.count) * 100).rounded())
+            }
+            rates = all
         }
+    }
+}
+
+/// A goal's grades as small capsules in their colors — Perfect, Middle, Closing, then Qaza — solid where they count.
+struct PrayerGoalStrip: View {
+    let goal: PrayerGoal
+    /// How many capsules each grade gets (the score's own spread: Perfect, Middle, Closing, Qaza).
+    private static let parts: [(score: Double, count: Int)] = [(1, 5), (0.9, 3), (0.7, 5), (PrayerScoring.qaza, 1)]
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(Array(Self.parts.enumerated()), id: \.offset) { _, part in
+                ForEach(0..<part.count, id: \.self) { _ in
+                    Capsule()
+                        .fill(PrayerScoring.color(for: part.score).opacity(goal.meets(score: part.score) ? 1 : 0.22))
+                        .frame(width: 11, height: 6)
+                }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

@@ -950,7 +950,11 @@ struct PrayerScoresPage: View {
     /// All time | 30 days | 7 days, under the header (owner: "we have a lot of space where the header is"); the choice
     /// stays.
     private var spanSwitch: some View {
-        JourneySwitch(options: PrayerScores.Span.allCases.map { ($0.title, $0.rawValue) }, selection: $spanRaw)
+        // After a fresh start All time is only since then (owner, 2026-10-18: "the label all time isnt really accurate
+        // there - its really since i reset"): its chip says so.
+        let since = PrayerStats.countsFrom.map { "Since \($0.formatted(.dateTime.month(.abbreviated).day()))" }
+        return JourneySwitch(options: PrayerScores.Span.allCases.map { ($0 == .all ? since ?? $0.title : $0.title, $0.rawValue) },
+                      selection: $spanRaw)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 4)
     }

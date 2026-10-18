@@ -1580,7 +1580,9 @@ struct JourneyMilestone: Identifiable, Equatable {
         func closeRun() {
             // A run that beat the best before it: "N days in a row, all in time" — "your best" while it still is.
             // Keyed by the run's first day: a best still growing is one milestone, celebrated once, not one a day.
-            if run >= 3, run > bestAtRunStart, let last = runLastDay, let firstOfRun = runFirstDay {
+            // From 7 days (was 3): a goal flip to Pray all five turned every early 3-, 4-, 5-day improvement into its own
+            // milestone (owner, 2026-10-18: "got hella milestones … 3 days in a row prayed or something... that was weird").
+            if run >= 7, run > bestAtRunStart, let last = runLastDay, let firstOfRun = runFirstDay {
                 out.removeAll { $0.id == "run.\(run)\(era)" && cal.isDate($0.date, inSameDayAs: last) }   // the same news twice
                 add("best.\(PrayerNotificationID.dayKey(firstOfRun))", "\(run) days in a row, \(goal.runWords)", last, .inTime,
                     symbol: "trophy", about: "A new best: more days in a row with all five \(goal.prayersWords) than ever before.",
@@ -1730,6 +1732,8 @@ struct JourneyMilestone: Identifiable, Equatable {
     static let shared = MilestoneCelebration()
     static let seenKey = "journey.milestones.seen"
     static let seenVersionKey = "journey.milestones.seenVersion"
+    /// Set by a goal or fresh-start change (PrayerStats.changed): the next check records what's earned without a word.
+    static let quietKey = "journey.milestones.quietNext"
     /// Bumped when a kind of milestone is added (2: every hundred prayers): the first check after an update records what's
     /// already earned of it without a word — never a run of "200th … 800th" celebrations (Sami's trap, acceptance-2 2b).
     static let seenVersion = 2
@@ -1755,7 +1759,11 @@ struct JourneyMilestone: Identifiable, Equatable {
                 defaults.set(Self.seenVersion, forKey: Self.seenVersionKey)
             }
             #endif
-            guard let seen = defaults.stringArray(forKey: Self.seenKey),
+            // The first check after the goal or the fresh start changed records, never celebrates (recordSilently races
+            // it: both read the log, and a check that won celebrated runs the new goal "earned" — owner, 2026-10-18).
+            let quiet = defaults.bool(forKey: Self.quietKey)
+            if quiet { defaults.set(false, forKey: Self.quietKey) }
+            guard !quiet, let seen = defaults.stringArray(forKey: Self.seenKey),
                   defaults.integer(forKey: Self.seenVersionKey) >= Self.seenVersion else {
                 let before = defaults.stringArray(forKey: Self.seenKey) ?? []
                 defaults.set(Array(Set(before + ids)), forKey: Self.seenKey)
@@ -1784,6 +1792,7 @@ struct JourneyMilestone: Identifiable, Equatable {
             let defaults = UserDefaults.standard
             let before = defaults.stringArray(forKey: Self.seenKey) ?? []
             defaults.set(Array(Set(before + ids)), forKey: Self.seenKey)
+            defaults.set(false, forKey: Self.quietKey)
         }
     }
 
