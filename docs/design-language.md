@@ -37,6 +37,20 @@ is why this is hard. The points above still hold, but they have to be stretched,
   pager, a display-link spring, shared state). Tried 2026-10-18 with a Salah type lab — looked right, felt wrong.
 - **Swift lab** (My Dev Stuff, DEBUG) — only for a screen that doesn't exist yet or a static look.
 - **Artifact / canvas** — for storyboards and motion sequences (Journey v6) and several options side by side.
+  "**Mock-up artifact with design canvas**" (owner, 2026-10-18) means the Journey v6 style — proposals only; once he
+  approves, the change goes into the real views:
+  - a plain HTML artifact with a canvas he can drag, pinch-zoom and Fit;
+  - **one tab per version in the top bar, newest first** ("v7 · the plan", "v6 · …"): a new round adds a tab and keeps
+    the old ones, never overwrites them; each tab has its own plan card and boards;
+  - real-size phone boards (402 × 874) in rows, each with a code, a title and a caption;
+  - an **"As built"** row first: real screenshots of the page as it is now;
+  - proposed phones in the app's real look that respond to taps (buttons, menus, rows, chart columns);
+  - a control at the top for each open choice, plus Reset;
+  - a **plan card** on top: what changes, what stays, open questions with the pick;
+  - a "Comment on <code>" button on every board (comments capability, `composer_only`).
+
+  Copy the canvas from `shukrGit/board/mocks/prayer-scores-rework/template.html`, or from Journey v6
+  (https://claude.ai/artifact/NTGrwqKivq2Duj56YwXb75). Example: https://claude.ai/artifact/RHGJxkiHW2ziHRsRrd2KJh.
 - A faster loop for all of this (hot reload on the sim, a design branch, a separate Lab app) is parked on the Plan page:
   design-loop (F3CP).
 
