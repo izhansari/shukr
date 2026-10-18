@@ -118,7 +118,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// App Storage doesnt use Date types. So we use timeIntervalSince1970 to convert to Date. Then use a computed var to get and set it. (which deals with the unwrapping for us)
     @AppStorage("prayerStreak") var prayerStreak: Int = 0 //prayerstreak_flag
     @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
-    @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1
     @AppStorage("dateOfMaxPrayerStreak") var dateOfMaxPrayerStreakTimeInterval: Double = Date().timeIntervalSince1970
     var dateOfMaxPrayerStreak: Date {
         get { return Date(timeIntervalSince1970: dateOfMaxPrayerStreakTimeInterval) }
@@ -160,7 +159,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     @Published var timeAtLastRefresh: Date
     @Published var prayerSettings: [String: Bool] = [:]
     @Published var todaysPrayers: [PrayerModel] = []
-    @Published var validPrayersToday: Int = 0
     @Published var todaysScore: Double = 0.0
 
     // Add this property to PrayerViewModel
@@ -550,26 +548,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
 
-    private func isNotCompletedToday(prayerName: String) -> Bool{
-        let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
-        let todayKey = PrayerDay.key()
-        var fetchDescriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { ($0.prayerDayKey == todayKey || ($0.prayerDayKey == nil && $0.startTime >= todayStart && $0.startTime <= todayEnd)) && $0.name == prayerName }
-        )
-        fetchDescriptor.fetchLimit = 1
 
-        do {
-            let fetchedPrayer = try context.fetch(fetchDescriptor).first // Fetch the first item directly
-            let isIncomplete = ( fetchedPrayer?.isCompleted == false )
-            return isIncomplete ? true : false
-        } catch {
-            print("❌ (checkIfComplete) Error fetching '\(prayerName)' from context \(error.localizedDescription)")
-            return false
-        }
-
-    }
-
-    
 // MARK: - PrayerObject Utils
 
 
@@ -823,58 +802,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         Task { @MainActor in PrayerLiveActivities.plan(reason: "a prayer marked / unmarked / edited in shukr") }
     }
     
-    /*
-     lets say we have a streak counter already.
-     we just wait for today to get 5. then add one to it.
-     otherwise if day is over and didnt get to 5, then we kill the streak.
-     also if they skipped a day inbetween then we kill the streak.
-     we will allow this to run only if a prayer from today is marked as complete.
-     we will ignore any incompletions.
-      */
 
-//    func calculatePrayerStreak() {
-//        let now = Date()
-//        let todayStart = Calendar.current.startOfDay(for: now)
-//        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)!.addingTimeInterval(-1)
-//        var satisfiedForToday: Bool = false //need to use this somehow to know wether we increment or go back. but they shouldnt be able to game the system and toggle the 5th prayer back and forth to increment the streak.
-//        // Fetch prayers for today
-//        var todayPrayersFetchDescriptor = FetchDescriptor<PrayerModel>(
-//            predicate: #Predicate<PrayerModel> {
-//                $0.startTime >= todayStart && $0.startTime <= todayEnd
-//            }
-//        )
-//        todayPrayersFetchDescriptor.fetchLimit = 5
-//        
-//        guard let todayPrayers = try? context.fetch(todayPrayersFetchDescriptor) else {
-//            print("❌ Failed to fetch today's prayers")
-//            return
-//        }
-//        
-//        let prayersSatisfyGrading = todayPrayers.allSatisfy({ gradingCriteria(for: $0) })
-//        let has5PrayerObjects = todayPrayers.count == 5
-//        
-//        if prayersSatisfyGrading && has5PrayerObjects {
-//            // All 5 prayers for today are valid, increment streak
-//            //prayerStreak += 1
-//            satisfiedForToday = true
-//
-//        } else {
-//            // Day is over and didn't get to 5 valid prayers, reset streak
-//            //prayerStreak = 0
-//            satisfiedForToday = false
-//        }
-//        if satisfiedForToday{
-//            prayerStreak += 1
-//        }
-//        
-//        // Update max streak if necessary
-//        if prayerStreak > maxPrayerStreak {
-//            maxPrayerStreak = prayerStreak
-//            dateOfMaxPrayerStreak = now
-//        }
-//    }
-
-    
     /// The other completed rows of `prayer`'s name on its prayer day (duplicates; normally none).
     private func completedTwins(of prayer: PrayerModel) -> [PrayerModel] {
         let name = prayer.name, id = prayer.persistentModelID
@@ -941,15 +869,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     // Add this method to PrayerViewModel to save a daily score to SwiftData
     func saveDailyScore(for date: Date, score: Double) {
-//        let todayStart = Calendar.current.startOfDay(for: now)
-//        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)!.addingTimeInterval(-1)
-//
-//        // Fetch prayers for today
-//        let todayPrayersFetchDescriptor = FetchDescriptor<PrayerModel>(
-//            predicate: #Predicate<PrayerModel> {
-//                $0.startTime >= todayStart && $0.startTime <= todayEnd
-//            }
-//        )
         let startOfDay = Calendar.current.startOfDay(for: date)
         let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)!.addingTimeInterval(-1)
         
@@ -982,46 +901,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
     
-    // Add this to PrayerViewModel
-/*
- func loadDailyScores() {
-        let fetchDescriptor = FetchDescriptor<DailyPrayerScore>()
-        
-        do {
-            let records = try context.fetch(fetchDescriptor)
-            
-            // Initialize the dictionary
-            dailyScores = [:]
-            
-            // Populate the dictionary
-            for record in records {
-                let dayStart = Calendar.current.startOfDay(for: record.date)
-                if let score = record.averageScore {
-                    dailyScores[dayStart] = score
-                }
-            }
-        } catch {
-            print("❌ Error loading daily prayer scores: \(error.localizedDescription)")
-        }
-    }
-  */
-    
-//    func calculateDayScore(for date: Date) {
-////        todaysScore = 0
-//        var runningScore: Double = 0.0
-//        for name in /*viewModel.*/orderedPrayerNames {
-//            if let prayer = /*viewModel.*/todaysPrayers.first(where: { $0.name == name }){
-//                let thisWeightedScore = prayer.weightedSummaryScoreFromNumberScore()
-////                summaryInfo[name] = thisWeightedScore
-//                /*todaysScore*/ runningScore += thisWeightedScore
-//                print("\(prayer.isCompleted ? "☑" : "☐") \(prayer.name) with score: \(thisWeightedScore)")
-//            }
-//        }
-//        
-//        todaysScore = /*todaysScore*/ runningScore / 5
-//    }
-
-    //most recent one
     func calculatePrayerStreak() {
         guard !StoreFallback.active else { return }   // in-memory store (WF56): keep the saved streaks as they are
         let now = Date()
@@ -1033,8 +912,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         if prayerStreak < 0 { prayerStreak = 0 }
 
         guard let todayPrayers = getTodaysPrayersFromContext() else{ return }
-        let validPrayersToday = todayPrayers.filter { gradingCriteria(for: $0) }.count
-        self.validPrayersToday = validPrayersToday
         // Today counts once every prayer she isn't excused from is prayed (Excused.streakDay): all five, or the ones
         // before / after an excused stretch. A day excused in full adds nothing; an unmark still takes a counted day back.
         let ranges = Excused.ranges
@@ -1329,206 +1206,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     }
 
     
-    //this one fetches a day of prayers from context and loops backwards. But flaw: 1. its starting from yesterday. 2. its loop based. 3. requires database fetching... not a fan.
-//    func calculatePrayerStreak() {
-//        print("------ starting the calculation")
-//        let calendar = Calendar.current
-//        let now = Date()
-//        let yesterday = calendar.date(byAdding: .day, value: -1, to: now)!
-//        
-//        var currentStreak = 0
-//        var currentDate = calendar.startOfDay(for: yesterday)
-//        
-//        while true {
-//            let dayStart = currentDate
-//            let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!.addingTimeInterval(-1)
-//            
-//            // Fetch prayers for the specific day
-//            let prayersForDayFetchDescriptor = FetchDescriptor<PrayerModel>(
-//                predicate: #Predicate<PrayerModel> {
-//                    $0.startTime >= dayStart && $0.startTime <= dayEnd
-//                }
-//            )
-//            
-//            guard let prayersForDay = try? context.fetch(prayersForDayFetchDescriptor) else {
-//                print("❌ Failed to fetch prayers for day \(currentDate)")
-//                break
-//            }
-//            
-//            if prayersForDay.count == 5 && prayersForDay.allSatisfy({ gradingCriteria(for: $0) }) {
-//                print("\(currentStreak): \(currentDate)")
-//                currentStreak += 1
-//                currentDate = calendar.date(byAdding: .day, value: -1, to: currentDate)!
-//            } else {
-//                break
-//            }
-//        }
-//         
-//         prayerStreak = currentStreak
-//         
-//         // Update max streak if necessary
-//         if prayerStreak > maxPrayerStreak {
-//             maxPrayerStreak = prayerStreak
-//             dateOfMaxPrayerStreak = Date()
-//         }
-//        
-//        func gradingCriteria(for prayer: PrayerModel) -> Bool{
-//            if prayerStreakMode == 1 {
-//                prayer.isCompleted
-//            }
-//            else if prayerStreakMode == 2 {
-//                prayer.numberScore ?? 0 > 0
-//            }
-//            else {
-//                prayer.numberScore ?? 0 > 0.25
-//            }
-//        }
-//    }
-
-  
-//    func calculatePrayerStreak(){ //prayerstreak_flag main logic
-//                
-//        /*
-//         NEW LOGIC:
-//         - calculate by days
-//         fetch all completed prayers from today.
-//         if it totals to 5 AND all pass the grading then we are good.
-//         Grading criteria:
-//            > 1 includes kazas
-//            > 2 on time
-//            > 3. anything not in the red zone (aka 25% score or up)
-//         have to
-//         */
-//        // Fetch prayers that are in the past
-//        
-//        
-//
-//
-//        
-//        // Fetch prayers for the current day from context...
-//        let todayStart = Calendar.current.startOfDay(for: Date())
-//        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
-//        var prayerFromTodayFetchDescriptor = FetchDescriptor<PrayerModel>(
-//            predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd},
-//            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
-//        )
-//        prayerFromTodayFetchDescriptor.fetchLimit = 5
-//        
-//        // alternatively we can fetch all the prayers ever and loop through them...
-//        let now = Date()
-//        var allPrayersFetchDescriptor = FetchDescriptor<PrayerModel>(
-//            predicate: #Predicate<PrayerModel> { $0.startTime <= now},
-//            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
-//        )
-//        
-//        // Fetch from the database
-//        guard let prayersFromToday = try? context.fetch(prayerFromTodayFetchDescriptor) else {
-//            print("❌ Failed to fetch prayers for streak.")
-//            return
-//        }
-//        
-//        guard let allPrayersInDatabase = try? context.fetch(allPrayersFetchDescriptor) else {
-//            print("❌ Failed to fetch prayers for streak.")
-//            return
-//        }
-//
-//        for prayer in prayersFromToday {
-//            if gradingCriteria(for: prayer) {
-//                //then we can continue i guess...
-//            }
-//        }
-//
-////        //set a new max streak if the current streak is greateer than the max streak
-////                if prayerStreak > maxPrayerStreak {
-////                    maxPrayerStreak = prayerStreak
-////                    dateOfMaxPrayerStreak = Date()
-////                }
-//        
-//        func gradingCriteria(for prayer: PrayerModel) -> Bool{
-//            if prayerStreakMode == 1 {
-//                prayer.isCompleted
-//            }
-//            else if prayerStreakMode == 2 {
-//                prayer.numberScore ?? 0 > 0
-//            }
-//            else {
-//                prayer.numberScore ?? 0 > 0.25
-//            }
-//        }
-//    }
-
-    
-    /*
-    func calculatePrayerStreak(){ //prayerstreak_flag main logic
-                
-        /*
-         NEW LOGIC:
-         - calculate by days
-         fetch all completed prayers from today.
-         if it totals to 5 then we are good.
-         Grading criteria:
-            > 1 on time
-            > 2 kazas
-         */
-        // Fetch prayers that are in the past
-        
-        
-        let now = Date()
-        let fetchDescriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { $0.startTime <= now},
-            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
-        )
-        
-        // Fetch all prayers from the database
-        guard let pastPrayersSorted = try? context.fetch(fetchDescriptor) else {
-            print("❌ Failed to fetch prayers for streak.")
-            prayerStreak = -999 // to quickly see in the view that something is wrong
-            return
-        }
-        
-        prayerStreak = 0
-        for prayer in pastPrayersSorted {
-            if gradingCriteria(for: prayer) {
-                prayerStreak += 1
-            }
-            else if now <= prayer.endTime{continue}
-            else {
-                if prayerStreak > maxPrayerStreak {
-                    maxPrayerStreak = prayerStreak
-                    dateOfMaxPrayerStreak = Date()
-                }
-                break
-            }
-        }
-        
-        func gradingCriteria(for prayer: PrayerModel) -> Bool{
-            if prayerStreakMode == 1 {
-                prayer.isCompleted
-            }
-            else if prayerStreakMode == 2 {
-                prayer.numberScore ?? 0 > 0
-            }
-            else {
-                prayer.numberScore ?? 0 > 0.25
-            }
-        }
-    }
-     
-     func getColorForPrayerScore(_ score: Double?) -> Color {
-         guard let score = score else { return .gray }
-
-         if score >= 0.50 {
-             return .green
-         } else if score >= 0.25 {
-             return .yellow
-         } else if score > 0 {
-             return .red
-         } else {
-             return .gray
-         }
-     }
-     */
-
     /// A day's rows, one per prayer name (a completed row wins, else the first), in time order.
     /// The loaders used `fetchLimit = 5`: with a sixth row that day (an edited / imported / duplicate
     /// one) a prayer dropped out of the list — the same bug as fetchPrayerTimes' (2026-09-27).
@@ -1558,28 +1235,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
     
-    func loadPrayerObjectsV2_AccountsForEmptyPrayerObjects_NotTested(for date: Date? = nil) -> [PrayerModel] {
-        let targetDate = date ?? Date() // Use the provided date or default to the current date
-        let dayStart = Calendar.current.startOfDay(for: targetDate)
-        var fetchDescriptor = FetchDescriptor<PrayerModel>(
-            predicate: PrayerDay.rowsPredicate(forDayStarting: dayStart),   // 2.8.0
-            sortBy: [SortDescriptor(\.startTime, order: .forward)]
-        )
-        do {
-            var prayers = Self.onePerPrayer(try context.fetch(fetchDescriptor))
-            for name in orderedPrayerNames {
-                let searchForThisName = prayers.first(where: { $0.name == name })
-                if searchForThisName == nil, let newPrayer = createPrayerModel(name: name, at: targetDate) {
-                    prayers.append(newPrayer)
-                }
-            }
-            printPrayersOutput(prayers, for: targetDate)
-            return prayers
-        } catch {
-            print("❌ (loadPrayerObjects) Error occurred during the fetch attempt. \(error.localizedDescription)")
-            return []
-        }
-    }
 
     func printPrayersOutput(_ prayers: [PrayerModel], for date: Date) {
         let dateFormatter = DateFormatter()
@@ -1653,9 +1308,6 @@ extension PrayerViewModel{
         locationPrints ? print(message) : ()
     }
     
-    func schedulePriner(_ message: String){
-        schedulePrints ? print(message) : ()
-    }
         
     func calculationPrinter(_ message: String = "",
                             addNewPrayer: (name: String, startTime: Date, endTime: Date)? = nil,
