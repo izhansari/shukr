@@ -777,7 +777,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// The widget writes prayer completions straight into the shared store. Our ModelContext
     /// may still hold cached copies of those rows, so when the widget says it wrote, commit
     /// anything pending, drop cached values, re-read, and redo the bits only the app can do.
-    func reconcileAfterWidgetWrites() {
+    @MainActor func reconcileAfterWidgetWrites() {
         let defaults = UserDefaults(suiteName: SharedStore.appGroup)
         guard defaults?.bool(forKey: SharedStore.widgetWroteStoreKey) == true else { return }
         defaults?.set(false, forKey: SharedStore.widgetWroteStoreKey)
@@ -796,6 +796,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         calculatePrayerStreak()
         calculateDayScore(for: PrayerDay.date())
+        DayHistory.invalidate()   // an outside mark of an earlier day: the day page's history and the circle's line (mark audit #5)
         JourneyChange.post()   // a widget / notification / watch mark: Journey's numbers too
         print("✅ reconciled widget completions: \(todaysPrayers.filter { $0.isCompleted }.map { $0.name })")
     }

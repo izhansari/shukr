@@ -367,6 +367,7 @@ struct PrayerTimesView: View {
         }
         let others = completedRows(request).filter { $0.persistentModelID != shown?.persistentModelID }
         others.forEach { $0.resetPrayer(); PrayerPhotos.discard(for: $0) }
+        if !others.isEmpty { DayHistory.invalidate() }   // another day's prayer: the day page's history (mark audit #5)
         if let shown {
             viewModel.togglePrayerCompletion(for: shown)   // rescores the day and the streak, pushes the widget
         } else if !others.isEmpty {
