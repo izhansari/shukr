@@ -47,6 +47,22 @@ line + a screenshot to the guide in the same commit, so it never goes stale.
 **Between sessions:** the hash, the facts, what's wanted — short. Engineers talk to each other directly about merges and
 installs.
 
+**Chapters and the status block** (owner, 2026-10-17: so he can tell where a chat stands; "I don't want this to bog
+down the system … I don't want it in every single reply"). Mark a chapter (`mark_chapter`) only when the main task changes,
+titled "Feature: task" ("Prayer scores: flying title"). Only when an item is pushed or ready for him to test — or when he
+asks for "status" — the reply ends, under the write-up, with this block (it replaces a separate "To check" list):
+```
+### Status <n>.<m> · <Area> › <Page>
+**Ask:** "<his words when the main task started — never reworded>"
+- <a small edit he added along the way>   (~~crossed out~~ once done)
+**Still open from the spec:**
+- <agreed, not built yet>
+**To check (<his 13 Pro Max | the sim>):**
+- <what to do>: <what should happen>
+```
+`<n>` = the main task's number in this chat, `<m>` = this block's count on it (2.1, 2.2 …; a new main task → a new
+chapter and 3.1). The heading is there so he can Ctrl+F it.
+
 **Context:** state lives in files (this file, `docs/features/`, the board, memory), so a fresh start loses nothing.
 Compact or start fresh at an item boundary (after commit + push); first overwrite `shukrGit/board/handoff-<name>.md`
 (≤ 20 lines: now, next, half-done, traps). After a compaction, re-read this file and your handoff from disk, and open your next reply with "Compacted — picked up from <handoff>" (owner, 2026-10-17: he couldn't tell it had happened).
