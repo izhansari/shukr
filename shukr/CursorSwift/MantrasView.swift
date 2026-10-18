@@ -22,7 +22,7 @@ struct MantrasView: View {
     @State private var editingMantra: MantraModel? = nil
     @State private var showingNewMantra = false
     @State private var search = ""
-    /// Inside `AzkarPage`: the page owns the search field, the + and the sort button
+    /// Embedded in another page that owns the search field, the + and the sort button
     /// (both pages stay mounted side by side, so a page's own toolbar / search would show on the
     /// other page).
     var embedded = false
