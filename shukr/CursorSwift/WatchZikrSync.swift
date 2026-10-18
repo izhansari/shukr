@@ -296,6 +296,13 @@ enum WatchZikrSync {
             if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, -1] }   // not applied
             scheduleSend(); return
         }
+        // The row's own start, as the app and the store path check (mark audit #7): a watch still on the old place's times
+        // after travel could mark a prayer that hasn't started here — scored Perfect before its time (Fable's review, gap 1).
+        // Not applied, so the watch drops its local mark (as for an excused one).
+        guard prayer.startTime <= tapped else {
+            if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, -1] }
+            scheduleSend(); return
+        }
         prayer.isCompleted = true
         prayer.setPrayerLocation(with: SharedStore.lastKnownLocation())
         // At one of your own masajid: a Friday Dhuhr is Jumu'ah at once, as when marked in the app.
@@ -526,6 +533,18 @@ enum WatchZikrSync {
         setRows([s0 + 500])             // marked again on the phone since
         unmarkPrayer(["id": m7, "name": "Asr", "start": s0])
         check("old undo never removes a newer mark", state() == "✓500", state())
+
+        // The phone's row moved later (travel) while the watch kept the old start: a tap between the two isn't applied
+        // (Fable's review, gap 1).
+        do {
+            let c = ModelContext(container)
+            prayerRows(named: "Asr", on: start, in: c).forEach { c.delete($0) }
+            c.insert(PrayerModel(name: "Asr", startTime: start.addingTimeInterval(3600), endTime: end, dateAtMake: start))
+            try? c.save()
+        }
+        let m10 = id("m10"); mark(m10, at: s0 + 600)
+        check("a tap before the row's own start (watch on old times) isn't applied",
+              state() == "·" && receivedMarks[m10]?.last == -1, "\(state()) at \(receivedMarks[m10]?.last ?? 0)")   // -1 = not applied
 
         // Clean up: the test rows, their day score and ids.
         let c = ModelContext(container)
