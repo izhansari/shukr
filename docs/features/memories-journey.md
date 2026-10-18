@@ -102,8 +102,10 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   leaf in a ring, Az-Zumar 39:53, "Hold to begin" 1.5 s; Day N; again from tomorrow; undo any time). `PrayerGoal.meets` is
   the one rule (gradingCriteria, streakDay, `Day.metGoal`); `PrayerStats.countsFrom` the one date; either change posts
   `PrayerStats.rulesChanged` → a silent recount (no hearts, milestones recorded as seen), Max recounted from rows. From
-  the date: streak, best, the rate ("N% of days met your goal", finished days), rank, runs, Prayer scores' All time and
-  trends; lifetime: days marked, prayers marked, month lines, firsts; kept: To make up, Moments. Days before it draw at
+  the date: the whole card (days and prayers marked, the rate "N% of days met your goal" after 3 finished days, best),
+  the streak, rank, runs, Prayer scores' All time (its chip "Since Oct 17") and trends, Journey's ring; the header line
+  "Since your fresh start, Oct 17 ⇄" flips the card to lifetime and back (`JourneyLens`); lifetime always: month lines,
+  firsts; kept: To make up, Moments. Days before it draw at
   0.35 everywhere (`JourneyTileColor.beforeFreshStart`); a quiet "Fresh start" milestone (never celebrated). Both travel
   in Your Data's copy. Not built: "Show earlier" (the calendar still scrolls back).
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
