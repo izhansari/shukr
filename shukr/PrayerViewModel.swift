@@ -796,6 +796,13 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         calculatePrayerStreak()
         calculateDayScore(for: PrayerDay.date())
+        // Yesterday too: two outside marks on different days before an open leave only the last one's day in
+        // `markedDayKey` (yesterday's Isha from its banner after Fajr, then Fajr from the widget — mark audit #11). Only a
+        // day with rows, so a new install doesn't get a zero day.
+        if let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: PrayerDay.date()),
+           !loadPrayerObjects(for: yesterday).isEmpty {
+            calculateDayScore(for: yesterday)
+        }
         DayHistory.invalidate()   // an outside mark of an earlier day: the day page's history and the circle's line (mark audit #5)
         JourneyChange.post()   // a widget / notification / watch mark: Journey's numbers too
         print("✅ reconciled widget completions: \(todaysPrayers.filter { $0.isCompleted }.map { $0.name })")
