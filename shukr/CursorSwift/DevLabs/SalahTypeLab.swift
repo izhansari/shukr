@@ -61,6 +61,8 @@ struct SalahTypeLab: View {
     private let closedBottomReserve: CGFloat = 34
     private let ringListMin: CGFloat = 12
     private let listBottomGap: ClosedRange<CGFloat> = 16...44
+    /// DESIGN: between the ring and the open list.
+    private let ringListGap: CGFloat = 36
 
     private var momentTitle: String {
         moment == "Live" ? "Live" : moment == "Day" ? "Day ring" : "\(moment) on"
@@ -76,9 +78,6 @@ struct SalahTypeLab: View {
             .overlay(alignment: .top) { LabPlace(city: viewModel.cityName ?? "Finding…") }
             .overlay(alignment: .bottom) {
                 VStack(spacing: 0) {
-                    if open && doneCount > 0 && !dayDone {
-                        LabDoneFooter(count: doneCount, open: $showDone).frame(height: theme.listFooterRoom)
-                    }
                     LabBottomBar().frame(height: bottomChromeHeight)
                 }
                 .ignoresSafeArea(edges: .bottom)
@@ -120,26 +119,29 @@ struct SalahTypeLab: View {
             .onReceive(Self.ticker) { clock = $0 }
     }
 
-    /// PrayerTimesView's `poppingBody`: the ring centred when closed; open, three spacers over the ring, two under it, the
-    /// list, its gap, then room for the bar and "N done".
+    /// PrayerTimesView's `poppingBody`: the ring centred when closed. Open — DESIGN (owner, 2026-10-18: "the list seems
+    /// to be pushed really far down to the bottom"): the list follows the ring at a fixed gap and the ring + list sit
+    /// together in the middle, the spare room shared over and under them (was: three spacers over the ring, two between
+    /// it and the list, the list held 16…44 pt over the bar).
     private var page: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            if open {
-                Spacer(minLength: 0)
-                Spacer(minLength: 0)
-            }
             face
-            Spacer(minLength: open ? ringListMin : 0)
+            if !open { Spacer(minLength: 0) }   // closed: the ring centred
             if open {
-                Spacer(minLength: ringListMin)
+                Color.clear.frame(height: dayDone ? 28 : ringListGap)
                 VStack(spacing: theme.rowSpacing) {
                     ForEach(shownRows, id: \.name) { LabPrayerRow(prayer: $0, now: now, dayPage: dayDone) }
                 }
-                .modifier(SalahLookCard())
+                .modifier(LabCard())
                 .frame(width: 290)
                 .transition(theme.listEntrance)
-                Spacer(minLength: listBottomGap.lowerBound).frame(maxHeight: listBottomGap.upperBound)
+                // DESIGN: "N done" right under the list it folds (was over the bottom bar, in the chrome — with the list
+                // moved up it was left on its own).
+                if doneCount > 0 && !dayDone {
+                    LabDoneFooter(count: doneCount, open: $showDone).padding(.top, 6).transition(.opacity)
+                }
+                Spacer(minLength: listBottomGap.lowerBound)
             }
             Color.clear.frame(height: open ? bottomChromeHeight + theme.listFooterRoom : closedBottomReserve)
         }
@@ -156,7 +158,7 @@ struct SalahTypeLab: View {
                 Text("This week: 31 of 35 prayers in their time.")
                     .multilineTextAlignment(.center).lineLimit(2)
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    .padding(.top, 48)
+                    .padding(.top, 36)   // DESIGN: was 48
             }
         } else if let prayer = ringPrayer {
             LabRingFace(prayer: prayer, now: now)
@@ -374,7 +376,7 @@ private struct LabPrayerRow: View {
             Spacer()
 
             if dayPage, let prayedAt = prayer.prayedAt {
-                LabDayRowTime(prayedAt: prayedAt, summary: prayer.summary)
+                LabDayRowTime(prayedAt: prayedAt)
             } else if look.raisesNow && isCurrentPrayer {
                 LabTimeLeft(end: prayer.endTime, now: now)
             } else {
@@ -387,26 +389,38 @@ private struct LabPrayerRow: View {
         }
         .padding(.horizontal)
         .padding(.vertical, theme.rowVerticalPadding)
-        .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)
+        // DESIGN (owner, 2026-10-18: "list items that have more space above and below … they're way too close to each
+        // other"): raised rows 54 pt (were 44, SalahLook.raisedRowHeight).
+        .frame(minHeight: look == .raised ? LabCard.rowHeight : nil)
         .background { if isCurrentPrayer { SalahRowRaise(look: look) } }
     }
 }
 
-/// DayRowTime: "@ 6:39 AM" over "Perfect · 100".
+/// DayRowTime — DESIGN (owner, 2026-10-18: "I don't like the @ symbols either. And I think it's stupid that we keep the
+/// text scores there too"): just when it was prayed, as the list's other times (was "@ 6:39 AM" over "Perfect · 100").
+/// The dot's colour and the day ring still carry the grade.
 private struct LabDayRowTime: View {
     let prayedAt: Date
-    let summary: String
     var body: some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            Text("@ \(shortTimePM(prayedAt))")
-                .font(.footnote).fontDesign(.rounded).fontWeight(.light)
-                .foregroundStyle(.secondary)
-            Text(summary)
-                .font(.caption2).fontDesign(.rounded).fontWeight(.light)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+        Text(shortTimePM(prayedAt))
+            .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+    }
+}
+
+/// SalahLookCard's raised case at the lab's row height — DESIGN: the corners stay half a row, so the band on now still
+/// traces them.
+private struct LabCard: ViewModifier {
+    static let rowHeight: CGFloat = 54
+    @Environment(\.circleTheme) private var theme
+    func body(content: Content) -> some View {
+        if theme.list == .raised {
+            let round = RoundedRectangle(cornerRadius: Self.rowHeight / 2, style: .circular)
+            content.clipShape(round).background(NeuRaised(shape: round))
+        } else {
+            content.modifier(SalahLookCard())
         }
-        .monospacedDigit()
     }
 }
 
