@@ -1,6 +1,6 @@
 ---
 name: close-out
-description: Save the item you're on so the team stays smart — docs, rules to memory, parked ideas, commit + push, a lean What's new, Plan page, the record for whoever's next; then ask: archive · start a new task here · stay on the same task
+description: Save the item you're on so the team stays smart — docs, rules to memory, parked ideas, commit + push, a lean What's new, Plan page, the record for whoever's next; then ask: archive · start a new task here · stay on the same task (both of the last two clear the chat after a handoff)
 ---
 **Why this exists (Izhan, 2026-10-17):** so nothing is lost and the organisation gets smarter. The readers are a fresh
 agent session, the sessions working in parallel right now, and Izhan's planning — not Izhan reading records. What has been
@@ -74,7 +74,16 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
          "**Clearing this chat now** — you'll get an approval prompt; once the chat is empty, send anything (even 'go') and
          I'll start on <task> from CLAUDE.md + <handoff file>." Then `mcp__ccd_session_mgmt__clear_session` "self". The
          cleared chat's first reply opens with "Fresh chat — read CLAUDE.md + <handoff file>; starting on <task>."
-    - **Stay on the same task here**: nothing more; wait for him.
+    - **Stay on the same task here** — it still clears the context (owner, 2026-10-17: "if I choose to stay on the same
+      task, it still asks to compact"). Its option description: "the handoff is updated, then this chat clears (you
+      approve) and picks the same task back up".
+      1. No intake. Make the handoff current for THIS task (≤ 20 lines: the goal in his words, where it stands, the next
+         step, files, traps).
+      2. Announce it, bold, on its own line: "**Clearing this chat now** — you'll get an approval prompt (decline to keep
+         this chat as it is); once it's empty, send anything (even 'go') and I'll carry on with <task> from CLAUDE.md +
+         <handoff file>." Then `mcp__ccd_session_mgmt__clear_session` "self". The cleared chat's first reply opens with
+         "Fresh chat — read CLAUDE.md + <handoff file>; carrying on with <task>."
+      3. Declined: nothing more; carry on here.
     **The close-out ends here. It never starts, plans or discusses the next task** beyond that intake — not even when he
     describes one in Other: his words go into the handoff verbatim, and the work starts only in the cleared chat. (It
     went off on a long interview inside the close-out once; he meant "clear the context, then the new task".)
