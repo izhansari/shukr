@@ -324,6 +324,9 @@ enum WatchZikrSync {
         // a widget or notification mark (owner, 2026-10-17, the mark's fold into the day ring).
         NotificationCenter.default.post(name: .watchMarkedPrayer, object: PrayerDay.start(forRow: name, startingAt: startDate))   // the prayer day (mark audit #1)
         WidgetCenter.shared.reloadAllTimelines()
+        // The prayer's Live Activity card ends now, as after a mark in shukr (pushCompletionsToWidget): it stayed on the
+        // Lock Screen asking for a prayer the watch had marked (mark audit #3). Ending a card works from the background.
+        PrayerLiveActivities.plan(reason: "a prayer marked on the watch")
         scheduleSend()
         print("⌚️ \(name) marked from the watch")
     }
@@ -410,6 +413,8 @@ enum WatchZikrSync {
         UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
         NotificationCenter.default.post(name: .watchMarkedPrayer, object: PrayerDay.start(forRow: name, startingAt: day))   // the prayer day (mark audit #1)
         WidgetCenter.shared.reloadAllTimelines()
+        // Its card comes back while the window is open (a new card only once shukr is in front — iOS's rule; audit #3).
+        PrayerLiveActivities.plan(reason: "a prayer unmarked on the watch")
         scheduleSend()
     }
 
