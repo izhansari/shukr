@@ -1028,15 +1028,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
     
+    /// A prayer that keeps the streak: the user's goal (PrayerGoal — the one rule; Journey asks it too).
     func gradingCriteria(for prayer: PrayerModel) -> Bool {
-        switch prayerStreakMode {
-        case 1:
-            return prayer.isCompleted
-        case 2:   // prayed within its window (not Qaza)
-            return prayer.isCompleted && (prayer.numberScore ?? 0) >= PrayerScoring.inWindowFloor - 0.0001
-        default:  // on time or early
-            return prayer.isCompleted && (prayer.numberScore ?? 0) >= 0.8
-        }
+        prayer.isCompleted && PrayerGoal.current.meets(score: prayer.numberScore ?? 0)
     }
     
     /// The in-time days streak (all five within their windows: no Qaza, none missed) and the

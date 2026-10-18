@@ -4,8 +4,8 @@ import SwiftUI
 // something they look at and get turned off and they think theres no way they can come back from such a low %age". One
 // prayer day, kept in Settings; nothing is deleted and an undo brings the whole history back. "A big deal - not a nilly
 // willy feature to the user. With an emotional moment before they commit": a page that says what changes and a hold to
-// begin. Owed prayers stay ("keep qaza forsure"). What counts from the date is mapped in board/goal-reset-inventory.md;
-// nothing reads it yet.
+// begin. Owed prayers stay ("keep qaza forsure"). Every count reads it through PrayerStats (PrayerGoal.swift); what counts
+// from it and what stays lifetime: board/goal-reset-inventory.md, his picks 2026-10-18 ("your pick for all").
 
 /// The fresh start: one prayer day ("YYYY-MM-DD", the day turns at Fajr), or none.
 enum FreshStart {
@@ -25,14 +25,16 @@ enum FreshStart {
     }
 
     /// From today's prayer day.
-    static func begin(now: Date = Date()) {
+    @MainActor static func begin(now: Date = Date()) {
         UserDefaults.standard.set(PrayerDay.key(for: now), forKey: key)
         NotificationCenter.default.post(name: changed, object: nil)
+        PrayerStats.changed()
     }
 
-    static func undo() {
+    @MainActor static func undo() {
         UserDefaults.standard.removeObject(forKey: key)
         NotificationCenter.default.post(name: changed, object: nil)
+        PrayerStats.changed()
     }
 }
 

@@ -1305,22 +1305,16 @@ struct YourJourneyStats {
         d.marks.allSatisfy { $0 == .excused } || (log.days[d.key] == nil && excused.excludes(date))
     }
 
-    /// A day that keeps the streak, by the Salah page's rule (`PrayerViewModel.gradingCriteria`, `prayerStreakMode`): all five
-    /// marked (1, the default), all five in their windows (2), or all five on time or early; an excused prayer counts as kept.
-    static func streakDay(_ d: JourneyLog.Day, mode: Int) -> Bool {
-        let kept = d.marks.filter { mark in
+    /// A day that keeps the streak: every prayer meets the goal (PrayerGoal, the Salah page's rule too); an excused prayer
+    /// counts as kept.
+    static func streakDay(_ d: JourneyLog.Day, goal: PrayerGoal) -> Bool {
+        d.marks.allSatisfy { mark in
             switch mark {
-            case .excused: return true
-            case .done(let score):
-                switch mode {
-                case 1: return true
-                case 2: return score >= PrayerScoring.inWindowFloor - 0.0001
-                default: return score >= 0.8
-                }
-            default: return false
+            case .excused: true
+            case .done(let score): goal.meets(score: score)
+            default: false
             }
-        }.count
-        return kept == 5
+        }
     }
 
     static func kind(_ d: JourneyLog.Day) -> Kind {
@@ -1441,7 +1435,7 @@ struct YourJourneyStats {
             // The streak is the Salah page's (owner, 2026-10-17, his pick: "Salah page's" — the card said "Start a streak
             // today" over a 25-day streak there): its rule, and today never breaks it. It counted only all-in-time days, and
             // a prayer missed so far today reset it.
-            let mode = UserDefaults.standard.object(forKey: "prayerStreakMode") as? Int ?? 1
+            let goal = PrayerGoal.current
             var run = 0
             var runStart: Date?
             var date = cal.startOfDay(for: first)
@@ -1449,7 +1443,7 @@ struct YourJourneyStats {
                 let d = log.day(date)
                 if Self.excusedAll(d, on: date, in: log, excused) {
                     // An excused day neither counts nor breaks.
-                } else if Self.streakDay(d, mode: mode) {
+                } else if Self.streakDay(d, goal: goal) {
                     if run == 0 { runStart = date }
                     run += 1
                     if run >= bestStreak, let s = runStart { bestStreak = run; bestStreakDays = s...date }
