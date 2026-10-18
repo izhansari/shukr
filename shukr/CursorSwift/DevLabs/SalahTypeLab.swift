@@ -55,6 +55,8 @@ struct SalahTypeLab: View {
 
     /// The list up (the real page's `navPosition == .bottom`): a swipe up opens it, a swipe down closes it.
     @State private var open = true
+    /// The design edits on, or today's look (the lab's menu), to compare in place.
+    @AppStorage("labEdits") private var edits = true
     /// The real page's numbers (PrayerTimesView): the bar's 86 pt, the soft looks' 44 pt for "N done" over it, the closed
     /// page's home-indicator reserve, 12 pt at least between the ring and the list, 16…44 pt under the list.
     private let bottomChromeHeight: CGFloat = 86
@@ -95,6 +97,7 @@ struct SalahTypeLab: View {
             // The lab's own control (not part of the copy): which state to show.
             .overlay(alignment: .topTrailing) {
                 Menu {
+                    Toggle("Design edits", isOn: $edits)
                     Picker("State", selection: $moment) {
                         Text("Live").tag("Live")
                         ForEach(real.map(\.name), id: \.self) { Text("\($0) on").tag($0) }
@@ -102,6 +105,7 @@ struct SalahTypeLab: View {
                     }
                 } label: {
                     HStack(spacing: 4) {
+                        if edits { Image(systemName: "pencil").font(.caption.weight(.semibold)) }
                         Text(momentTitle)
                         Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
                     }
@@ -142,9 +146,9 @@ struct SalahTypeLab: View {
             if open {
                 Spacer(minLength: ringListMin)
                 VStack(spacing: theme.rowSpacing) {
-                    ForEach(shownRows, id: \.name) { LabPrayerRow(prayer: $0, now: now, dayPage: dayDone) }
+                    ForEach(shownRows, id: \.name) { LabPrayerRow(prayer: $0, now: now, dayPage: dayDone, edits: edits) }
                 }
-                .modifier(SalahLookCard())
+                .modifier(LabCard(edits: edits))
                 .frame(width: 290)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("lab")) } action: { listFrame = $0 }
                 .transition(theme.listEntrance)
@@ -154,6 +158,7 @@ struct SalahTypeLab: View {
         }
         .animation(CircleMotion.page, value: open)
         .animation(CircleMotion.spring, value: showDone)
+        .animation(CircleMotion.spring, value: edits)
     }
 
     @State private var ringMidY: CGFloat = 0
@@ -161,7 +166,7 @@ struct SalahTypeLab: View {
     @State private var listFrame: CGRect = .zero
     /// The gap under the open list: 44 pt with two rows, giving up a quarter of every point the list grows, never below 16.
     private var listGap: CGFloat {
-        let grown = max(listFrame.height - 2 * SalahLook.raisedRowHeight, 0)
+        let grown = max(listFrame.height - 2 * (edits ? LabCard.rowHeight : SalahLook.raisedRowHeight), 0)
         return min(max(listBottomGap.upperBound - grown * 0.25, listBottomGap.lowerBound), listBottomGap.upperBound)
     }
 
@@ -183,6 +188,22 @@ struct SalahTypeLab: View {
                 }
         } else if let prayer = ringPrayer {
             LabRingFace(prayer: prayer, now: now)
+        }
+    }
+}
+
+/// SalahLookCard, with the design's taller rows: the raised card's corners stay half a row, so the band on now still
+/// traces them.
+private struct LabCard: ViewModifier {
+    static let rowHeight: CGFloat = 54
+    let edits: Bool
+    @Environment(\.circleTheme) private var theme
+    func body(content: Content) -> some View {
+        if edits && theme.list == .raised {
+            let round = RoundedRectangle(cornerRadius: Self.rowHeight / 2, style: .circular)
+            content.clipShape(round).background(NeuRaised(shape: round))
+        } else {
+            content.modifier(SalahLookCard())
         }
     }
 }
@@ -366,6 +387,7 @@ private struct LabPrayerRow: View {
     let now: Date
     /// The day's page: a marked row shows when it was prayed and its score (DayRowTime).
     var dayPage = false
+    var edits = false
     @Environment(\.circleTheme) private var theme
     @AppStorage(PrayerDotStyle.key) private var dotStyleRaw = PrayerDotStyle.muted.rawValue
 
@@ -414,7 +436,17 @@ private struct LabPrayerRow: View {
             Spacer()
 
             if dayPage, let prayedAt = prayer.prayedAt {
-                LabDayRowTime(prayedAt: prayedAt, summary: prayer.summary)
+                if edits {
+                    // DESIGN (owner, 2026-10-18: "I don't like the @ symbols either. And I think it's stupid that we keep
+                    // the text scores there too"): just when it was prayed, as the list's other times; the dot and the
+                    // day ring carry the grade.
+                    Text(shortTimePM(prayedAt))
+                        .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                } else {
+                    LabDayRowTime(prayedAt: prayedAt, summary: prayer.summary)
+                }
             } else if look.raisesNow && isCurrentPrayer {
                 LabTimeLeft(end: prayer.endTime, now: now)
             } else {
@@ -427,7 +459,9 @@ private struct LabPrayerRow: View {
         }
         .padding(.horizontal)
         .padding(.vertical, theme.rowVerticalPadding)
-        .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)
+        // DESIGN (owner, 2026-10-18: "list items that have more space above and below … they're way too close to each
+        // other"): raised rows 54 pt (today 44, SalahLook.raisedRowHeight).
+        .frame(minHeight: look == .raised ? (edits ? LabCard.rowHeight : SalahLook.raisedRowHeight) : nil)
         .background { if isCurrentPrayer { SalahRowRaise(look: look) } }
     }
 }
