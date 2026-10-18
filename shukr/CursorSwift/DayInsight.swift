@@ -35,7 +35,8 @@ struct DayPrayer {
 /// Three tiers, in order:
 /// 1. **Something to act on** — a prayer that was missed, Qaza or late today (the worst first); when the same prayer has
 ///    been hard all week it says so, and a Fajr line offers the alarm when it's off.
-/// 2. **A milestone** — 7, 14, 21, 30, 40, 50, 60, 90, 100… days in a row with all five in time. Rare on purpose.
+/// 2. **A milestone** — 7, 14, 21, 30, 40, 50, 60, 90, 100… days in a row meeting the goal (PrayerGoal), from the fresh
+///    start. Rare on purpose.
 /// 3. **Something noticed** — rotated so the same one doesn't come back within three days: a prayer's early run, a
 ///    personal best, earlier than usual, the day's average, the week's tally, all five Perfect, Jumu'ah tomorrow.
 /// Then the plain fallback: tomorrow's Fajr. Every line has a few phrasings, picked by the day, so even a repeat reads
@@ -110,8 +111,12 @@ enum DayInsight {
 
     static func candidates(_ input: Inputs) -> [Line] {
         var out: [Line] = []
+        // From the fresh start only (PrayerStats): the runs, the week, "your usual" never reach back past it. Today's own
+        // grades are today's facts and stay as they are.
+        let history = counted(input.history)
+        let goal = PrayerGoal.current
         let today = order.compactMap { name in input.today.first { $0.name == name } }
-        let week = [input.today] + input.history.prefix(6)
+        let week = [input.today] + history.prefix(6)
 
         // 1 · Something to act on: missed, then Qaza, then Closing — the worst prayer of today. Middle is never one.
         let missed = today.filter { !$0.done && $0.end < Date() }
@@ -146,17 +151,19 @@ enum DayInsight {
             }
         }
 
-        // 2 · A milestone: days in a row with all five in time, today included.
-        if today.count == 5, today.allSatisfy(\.inTime) {
+        // 2 · A milestone: days in a row meeting the goal (PrayerGoal), today included — in its words ("all five Perfect").
+        func met(_ p: DayPrayer) -> Bool { p.done && goal.meets(score: p.score ?? 0) }
+        if today.count == 5, today.allSatisfy(met) {
             var run = 1
-            for day in input.history {
-                guard day.count == 5, day.allSatisfy(\.inTime) else { break }
+            for day in history {
+                guard day.count == 5, day.allSatisfy(met) else { break }
                 run += 1
             }
             if milestones.contains(run) {
+                let words = goal.dayWords.prefix(1).lowercased() + goal.dayWords.dropFirst()
                 out.append(Line(id: "milestone.\(run)", text: phrase([
-                    "\(run) days in a row, all five in time. Alhamdulillah.",
-                    "All five in time, \(run) days running. Alhamdulillah.",
+                    "\(run) days in a row, \(words). Alhamdulillah.",
+                    "\(goal.dayWords), \(run) days running. Alhamdulillah.",
                 ], input), offersFajrAlarm: false))
             }
         }
@@ -171,7 +178,7 @@ enum DayInsight {
         for p in today where p.perfect {
             // An early run: this prayer in its first 30 minutes, days in a row (3+), the longest one only.
             var run = 1
-            for day in input.history {
+            for day in history {
                 guard let q = day.first(where: { $0.name == p.name }), q.perfect else { break }
                 run += 1
             }
@@ -184,7 +191,7 @@ enum DayInsight {
         }
         for p in today {
             guard let mins = p.minutesIn else { continue }
-            let past = input.history.prefix(30).compactMap { day in day.first { $0.name == p.name }?.minutesIn }
+            let past = history.prefix(30).compactMap { day in day.first { $0.name == p.name }?.minutesIn }
             // A personal best: the earliest in at least two weeks of marks.
             if past.count >= 14, mins < (past.min() ?? 0) - 1 {
                 out.append(Line(id: "notice.best.\(p.name)", text: phrase([
@@ -232,6 +239,12 @@ enum DayInsight {
             out.append(Line(id: "tomorrow", text: "Tomorrow's Fajr is at \(time(fajr)).", offersFajrAlarm: !input.fajrAlarmOn))
         }
         return out
+    }
+
+    /// The earlier days (newest first) from the fresh start on: the first one before it ends them.
+    private static func counted(_ history: [[DayPrayer]]) -> [[DayPrayer]] {
+        guard let from = PrayerStats.countsFrom else { return history }
+        return Array(history.prefix { day in day.map(\.start).min().map { PrayerDay.start(for: $0) >= from } ?? true })
     }
 
     static let milestones: Set<Int> = [7, 14, 21, 30, 40, 50, 60, 90, 100, 150, 200, 250, 300, 365]

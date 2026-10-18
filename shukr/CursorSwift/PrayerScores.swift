@@ -51,6 +51,9 @@ struct PrayerScores {
         /// The average score of the prayers due, a miss counting 0: the rows' rank.
         var lifeScore = 0
         var prayed = 0, due = 0, missed = 0
+        /// Its prayers to make up in the span, the fresh start or not: owed prayers are kept (owner, 2026-10-18: "keep qaza
+        /// forsure").
+        var owed = 0
         var grades: [Grade: Int] = [:]
         /// Where in its window each prayer was marked: 0 = the start, 1 = the end, > 1 = after it (Qaza, capped 1.3).
         var positions: [Double] = []
@@ -85,6 +88,18 @@ struct PrayerScores {
         var ringLabel: String { switch self { case .all: "average\nlifetime score"; case .days30: "average score\nlast 30 days"; case .days7: "average score\nlast 7 days" } }
     }
     var span = Span.all
+    /// The fresh start, when it cuts into this span (All time: whenever there is one): the page counts from it and says so
+    /// ("since Oct 17") — a lifetime number after a fresh start would be the discouraging stat it's there to clear (owner,
+    /// 2026-10-18, his pick: "average lifetime score" counts from the reset).
+    var countsFrom: Date?
+    /// The goal the streak lines were counted at (PrayerGoal).
+    var goal = PrayerGoal.prayed
+
+    /// Under the ring's number: the span's words, or "since Oct 17" when the fresh start cuts into it.
+    var ringLabel: String {
+        guard let from = countsFrom else { return span.ringLabel }
+        return "average score\nsince \(from.formatted(.dateTime.month(.abbreviated).day()))"
+    }
 
     var prayers: [String: Prayer] = [:]
     var since: Date?
@@ -102,22 +117,32 @@ struct PrayerScores {
     /// The page's last build for each span (all time is `last`), shown at once while a fresh one is read.
     @MainActor static var lastBySpan: [Span: PrayerScores] = [:]
 
-    static func load(container: ModelContainer, ranges: [ExcusedRange], now: Date = Date(), span: Span = .all) async -> PrayerScores {
+    /// Read off the main thread, at the goal and from the fresh start as they are now (PrayerStats).
+    static func load(container: ModelContainer, ranges: [ExcusedRange], now: Date = Date(), span: Span = .all,
+                     countsFrom: Date? = PrayerStats.countsFrom, goal: PrayerGoal = .current) async -> PrayerScores {
         await Task.detached(priority: .userInitiated) {
             let context = ModelContext(container)
             let log = JourneyLog.build(in: context, ranges: ranges, now: now)
-            return build(log: log, context: context, now: now, span: span)
+            return build(log: log, context: context, now: now, span: span, countsFrom: countsFrom, goal: goal)
         }.value
     }
 
-    static func build(log: JourneyLog, context: ModelContext, now: Date, span: Span = .all) -> PrayerScores {
+    static func build(log: JourneyLog, context: ModelContext, now: Date, span: Span = .all,
+                      countsFrom: Date? = nil, goal: PrayerGoal = .prayed) -> PrayerScores {
         var out = PrayerScores()
         out.span = span
+        out.goal = goal
         let today = Calendar.current.startOfDay(for: now)
-        let allDays = log.days.values.filter(\.active).sorted { $0.date < $1.date }
-        // The span's days only (the trends below still compare across all of them).
-        let from = span.days.flatMap { Calendar.current.date(byAdding: .day, value: -($0 - 1), to: today) }
-        let days = from.map { f in allDays.filter { $0.date >= f } } ?? allDays
+        // Only the days from the fresh start count (PrayerStats): the span, the trends, the streaks — nothing reaches back
+        // past it.
+        let allDays = log.days.values.filter { d in d.active && (countsFrom.map { d.date >= $0 } ?? true) }
+            .sorted { $0.date < $1.date }
+        // The span's days only (the trends below still compare across all of them), clipped to the fresh start.
+        let spanFrom = span.days.flatMap { Calendar.current.date(byAdding: .day, value: -($0 - 1), to: today) }
+        if let f = countsFrom, span == .all || spanFrom.map({ f > $0 }) == true { out.countsFrom = f }
+        let days = spanFrom.map { f in allDays.filter { $0.date >= f } } ?? allDays
+        // To make up counts every miss in the span, from before the fresh start too.
+        let owedDays = log.days.values.filter { d in d.active && (spanFrom.map { d.date >= $0 } ?? true) }
         out.since = days.first?.date
         let recent30 = Calendar.current.date(byAdding: .day, value: -30, to: today) ?? today
 
@@ -159,7 +184,8 @@ struct PrayerScores {
                             }
                         }
                     }
-                    if mark.inTime { streak += 1; p.bestStreak = max(p.bestStreak, streak) } else { streak = 0 }
+                    // The goal's streak (PrayerGoal): a day this prayer met it adds one, else it breaks.
+                    if goal.meets(score: s) { streak += 1; p.bestStreak = max(p.bestStreak, streak) } else { streak = 0 }
                     let photoKey = PrayerPhotos.key(dayKey: day.key, name: name)
                     _ = photoKey
                     if PrayerPhotos.note(photoKey) != nil { p.notes += 1 }
@@ -176,6 +202,7 @@ struct PrayerScores {
                 }
             }
             p.photos = photoNames.filter { $0 == name }.count
+            p.owed = owedDays.filter { $0.marks[i] == .missed }.count
             p.due = dueScores.count
             p.prayedRaw = scores.isEmpty ? nil : scores.reduce(0, +) / Double(scores.count)
             p.prayedScore = p.prayedRaw.map { Int(($0 * 100).rounded()) }
@@ -263,14 +290,25 @@ struct PrayerScores {
 
     /// One true thing about a prayer, in a fixed order (spec: best-timed → longest streak → most at a masjid → mostly
     /// Perfect when in time → most prayed); nil when nothing is clearly true.
+    /// What a prayer's streak counts, in the goal's words ("In time" only when that's the goal).
+    private var streakWords: String {
+        switch goal {
+        case .prayed: "Prayed, day after day you used shukr"
+        case .inWindow: "In time, day after day you used shukr"
+        case .onTime: "On time, day after day you used shukr"
+        case .perfect: "Perfect, day after day you used shukr"
+        }
+    }
+
     func insight(_ name: String) -> (symbol: String, line: String, sub: String)? {
         guard let p = prayers[name], p.prayed >= 5 else { return nil }
         let others = Self.names.filter { $0 != name }.compactMap { prayers[$0] }
         if let s = p.prayedScore, others.allSatisfy({ ($0.prayedScore ?? 0) < s || $0.prayed < 5 }) {
-            return ("star", "Historically your best-timed prayer: \(s) when you pray it.", "Higher than any other prayer when prayed")
+            let when = countsFrom == nil ? "Historically your" : "Since your fresh start, your"
+            return ("star", "\(when) best-timed prayer: \(s) when you pray it.", "Higher than any other prayer when prayed")
         }
         if p.bestStreak >= 7, others.allSatisfy({ $0.bestStreak < p.bestStreak }) {
-            return ("flame", "Your most steady prayer: a \(p.bestStreak)-day streak, your longest.", "In time, day after day you used shukr")
+            return ("flame", "Your most steady prayer: a \(p.bestStreak)-day streak, your longest.", streakWords)
         }
         if p.masjid >= 3, others.allSatisfy({ $0.masjid < p.masjid }) {
             let at = p.topMasjid.map { "\($0.count) at \($0.name)" } ?? ""
@@ -284,7 +322,7 @@ struct PrayerScores {
             return ("checkmark.circle", "Your most prayed: \(p.prayed) of \(p.due).", "More often than any other prayer")
         }
         if p.bestStreak >= 3 {
-            return ("flame", "Your best streak: \(p.bestStreak) days in a row.", "In time, day after day you used shukr")
+            return ("flame", "Your best streak: \(p.bestStreak) days in a row.", streakWords)
         }
         return nil
     }
@@ -413,6 +451,12 @@ struct PrayerScoresPage: View {
         .task { reload() }
         .onChange(of: spanRaw) { switchSpan() }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
+        // The goal or the fresh start changed: what's kept was counted the old way (PrayerStats).
+        .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
+            PrayerScores.lastBySpan = [:]
+            PrayerScores.last = nil
+            reload()
+        }
         #if DEBUG
         .task {
             guard let pick = Self.demoPick else { return }
@@ -702,7 +746,7 @@ struct PrayerScoresPage: View {
                     .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
                 // What the number is (owner: "a little subtitle … saying like average lifetime score"); sized for the ring
                 // drawn at 70 % beside the title.
-                Text(data.span.ringLabel)
+                Text(data.ringLabel)
                     .contentTransition(.opacity)
                     .font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -797,7 +841,8 @@ struct PrayerScoresPage: View {
 
     /// "since Jul 2026", or the span's own words.
     private var sinceWords: String? {
-        switch data.span {
+        if let from = data.countsFrom { return "since \(from.formatted(.dateTime.month(.abbreviated).day()))" }   // a fresh start
+        return switch data.span {
         case .all: data.since.map { "since \($0.formatted(.dateTime.month(.abbreviated).year()))" }
         case .days30: "in the last 30 days"
         case .days7: "in the last 7 days"
@@ -1048,8 +1093,8 @@ struct PrayerScoresPage: View {
                     if let i = data.insight(s) {
                         listRow(symbol: i.symbol, title: i.line, sub: i.sub, door: false) {}
                     }
-                    if p.missed > 0 {
-                        listRow(symbol: "clock", title: "\(p.missed) to make up", sub: "Unmarked on days you used shukr", door: true) { showMakeUp = true }
+                    if p.owed > 0 {
+                        listRow(symbol: "clock", title: "\(p.owed) to make up", sub: "Unmarked on days you used shukr", door: true) { showMakeUp = true }
                     }
                     if p.photos > 0 {
                         listRow(symbol: "photo.on.rectangle", title: p.photos == 1 ? "1 photo" : "\(p.photos) photos",
