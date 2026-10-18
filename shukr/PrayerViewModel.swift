@@ -727,6 +727,10 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 triggerSomeVibration(type: .medium)
                 prayer.resetPrayer()
                 PrayerPhotos.discard(for: prayer)
+                // A day can hold two completed rows of one prayer (a store salvage, a legacy import): the others go
+                // too, or the next reload picks one and it's still prayed (mark audit #9; the widget's and the watch's
+                // unmarks already reset every one).
+                for twin in completedTwins(of: prayer) { twin.resetPrayer(); PrayerPhotos.discard(for: twin) }
             }
             calculatePrayerStreak()
             calculateDayScore(for: prayer.dayStart)
@@ -859,6 +863,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 //    }
 
     
+    /// The other completed rows of `prayer`'s name on its prayer day (duplicates; normally none).
+    private func completedTwins(of prayer: PrayerModel) -> [PrayerModel] {
+        let name = prayer.name, id = prayer.persistentModelID
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(
+            predicate: PrayerDay.rowsPredicate(forDayStarting: prayer.dayStart)))) ?? []
+        return rows.filter { $0.name == name && $0.isCompleted && $0.persistentModelID != id }
+    }
+
     /// `date`: any time on the prayer day's calendar date — a row's `dayStart`, never its `startTime` (an Isha after
     /// midnight belongs to the day before: mark audit #1). `fromStore`: score from the store's rows even for today (the
     /// one-time repair runs before today's list may be loaded — Bradley's review).
