@@ -53,44 +53,133 @@ struct SalahTypeLab: View {
         return rows.compactMap(\.score).reduce(0, +) / Double(max(rows.count, 1))
     }
 
+    /// The list up (the real page's `navPosition == .bottom`): a swipe up opens it, a swipe down closes it.
+    @State private var open = true
+    /// The real page's numbers (PrayerTimesView): the bar's 86 pt, the soft looks' 44 pt for "N done" over it, the closed
+    /// page's home-indicator reserve, 12 pt at least between the ring and the list, 16…44 pt under the list.
+    private let bottomChromeHeight: CGFloat = 86
+    private let closedBottomReserve: CGFloat = 34
+    private let ringListMin: CGFloat = 12
+    private let listBottomGap: ClosedRange<CGFloat> = 16...44
+
+    private var momentTitle: String {
+        moment == "Live" ? "Live" : moment == "Day" ? "Day ring" : "\(moment) on"
+    }
+
     var body: some View {
+        page
+            .padding(.top, 56)   // under the top bar (TopBar: a 24 pt row, 16 pt round it)
+            .frame(maxWidth: .infinity)
+            .ignoresSafeArea(edges: .bottom)   // the pager ignores the bottom safe area, as the real page
+            .background(theme.surface.ignoresSafeArea())
+            // The chrome: the top bar's place, "N done" over the bottom bar, the bar.
+            .overlay(alignment: .top) { LabPlace(city: viewModel.cityName ?? "Finding…") }
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    if open && doneCount > 0 && !dayDone {
+                        LabDoneFooter(count: doneCount, open: $showDone).frame(height: theme.listFooterRoom)
+                    }
+                    LabBottomBar().frame(height: bottomChromeHeight)
+                }
+                .ignoresSafeArea(edges: .bottom)
+            }
+            .overlay(alignment: .topLeading) {
+                Button { dismiss() } label: { Image(systemName: "xmark").font(.body.weight(.medium)).padding(12) }
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 8)
+            }
+            // The lab's own control (not part of the copy): which state to show.
+            .overlay(alignment: .topTrailing) {
+                Menu {
+                    Picker("State", selection: $moment) {
+                        Text("Live").tag("Live")
+                        ForEach(real.map(\.name), id: \.self) { Text("\($0) on").tag($0) }
+                        Text("Day ring").tag("Day")
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(momentTitle)
+                        Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                    }
+                    .font(.footnote.weight(.medium))
+                    .padding(.horizontal, 12).padding(.vertical, 7)
+                    .background(Capsule().fill(Color.primary.opacity(0.07)))
+                }
+                .foregroundStyle(.primary)
+                .padding(.trailing, 12)
+                .padding(.top, 6)
+            }
+            .contentShape(Rectangle())
+            // The real page's swipe: past 30 pt up opens the list, down closes it (the pop — the finger never drags it).
+            .gesture(DragGesture(minimumDistance: 6).onEnded { value in
+                withAnimation(CircleMotion.page) {
+                    if value.translation.height < -30, !open { open = true; triggerSomeVibration(type: .light) }
+                    if value.translation.height > 30, open { open = false; triggerSomeVibration(type: .light) }
+                }
+            })
+            .onReceive(Self.ticker) { clock = $0 }
+    }
+
+    /// PrayerTimesView's `poppingBody`: the ring centred when closed; open, three spacers over the ring, two under it, the
+    /// list, its gap, then room for the bar and "N done".
+    private var page: some View {
         VStack(spacing: 0) {
-            LabPlace(city: viewModel.cityName ?? "Finding…")
-            Spacer(minLength: 24)
-            if dayDone {
+            Spacer(minLength: 0)
+            if open {
+                Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
+            face
+            Spacer(minLength: open ? ringListMin : 0)
+            if open {
+                Spacer(minLength: ringListMin)
+                VStack(spacing: theme.rowSpacing) {
+                    ForEach(shownRows, id: \.name) { LabPrayerRow(prayer: $0, now: now, dayPage: dayDone) }
+                }
+                .modifier(SalahLookCard())
+                .frame(width: 290)
+                .transition(theme.listEntrance)
+                Spacer(minLength: listBottomGap.lowerBound).frame(maxHeight: listBottomGap.upperBound)
+            }
+            Color.clear.frame(height: open ? bottomChromeHeight + theme.listFooterRoom : closedBottomReserve)
+        }
+        .animation(CircleMotion.page, value: open)
+        .animation(CircleMotion.spring, value: showDone)
+    }
+
+    @ViewBuilder private var face: some View {
+        if dayDone && open {
+            // The day's page: the score side (all five marked, the list open).
+            VStack(spacing: 0) {
                 LabDayFace(day: rows.map(\.dayPrayer), score: dayScore)
                 // The day's line under the circle (DayInsight's; a sample here).
                 Text("This week: 31 of 35 prayers in their time.")
                     .multilineTextAlignment(.center).lineLimit(2)
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     .padding(.top, 48)
-            } else if let prayer = ringPrayer { LabRingFace(prayer: prayer, now: now) }
-            Spacer(minLength: 24)
-            VStack(spacing: theme.rowSpacing) {
-                ForEach(shownRows, id: \.name) { LabPrayerRow(prayer: $0, now: now, dayPage: dayDone) }
             }
-            .modifier(SalahLookCard())
-            .frame(width: 290)
-            if doneCount > 0 && !dayDone { LabDoneFooter(count: doneCount, open: $showDone).padding(.top, 8) }
-            Spacer(minLength: 24)
-            // The lab's own control (not part of the copy).
-            Picker("Moment", selection: $moment) {
-                Text("Live").tag("Live")
-                ForEach(real.map(\.name), id: \.self) { Text($0).tag($0) }
-                Text("Day").tag("Day")
+        } else if let prayer = ringPrayer {
+            LabRingFace(prayer: prayer, now: now)
+        }
+    }
+}
+
+/// The bottom bar (PagerChromeView's): Zikr · Salah · Journey, a hairline over it. A stand-in for where it sits.
+private struct LabBottomBar: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5)
+            HStack {
+                ForEach(["Zikr", "Salah", "Journey"], id: \.self) { name in
+                    Text(name)
+                        .font(.caption).fontDesign(.rounded)
+                        .foregroundStyle(name == "Salah" ? AnyShapeStyle(Color.green) : AnyShapeStyle(.secondary))
+                        .frame(maxWidth: .infinity)
+                }
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
+            .padding(.top, 16)
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
-        .background(theme.surface.ignoresSafeArea())
-        .overlay(alignment: .topLeading) {
-            Button { dismiss() } label: { Image(systemName: "xmark").font(.body.weight(.medium)).padding(12) }
-                .foregroundStyle(.secondary)
-                .padding(.leading, 8)
-        }
-        .onReceive(Self.ticker) { clock = $0 }
     }
 }
 
