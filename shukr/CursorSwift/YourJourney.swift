@@ -1220,9 +1220,10 @@ struct YourJourneyStats {
     var prayersMarked = 0
     /// In time over due, on active days only; nil before any prayer was due.
     var inTimeRate: Int?
-    /// The longest run of days with every prayer in time (excused days skip, today waits until it's over).
+    /// The longest run of streak days — the Salah page's rule (`streakDay`): excused days skip, today adds once it counts.
     var bestStreak = 0
-    /// The streak going now: days with every prayer in time up to today (excused days skip; today waits until it's over).
+    /// The streak going now, the number the Salah page shows: streak days up to yesterday, plus today once it counts (today
+    /// never breaks it).
     var currentStreak = 0
     /// The best streak's first and last day (the latest of equal ones; its excused days inside it).
     var bestStreakDays: ClosedRange<Date>?
@@ -1285,6 +1286,24 @@ struct YourJourneyStats {
     /// Bradley's Excused.streakDay steps over it too). Neither adds to a streak nor breaks it, and isn't "away".
     static func excusedAll(_ d: JourneyLog.Day, on date: Date, in log: JourneyLog, _ excused: Excused.Days) -> Bool {
         d.marks.allSatisfy { $0 == .excused } || (log.days[d.key] == nil && excused.excludes(date))
+    }
+
+    /// A day that keeps the streak, by the Salah page's rule (`PrayerViewModel.gradingCriteria`, `prayerStreakMode`): all five
+    /// marked (1, the default), all five in their windows (2), or all five on time or early; an excused prayer counts as kept.
+    static func streakDay(_ d: JourneyLog.Day, mode: Int) -> Bool {
+        let kept = d.marks.filter { mark in
+            switch mark {
+            case .excused: return true
+            case .done(let score):
+                switch mode {
+                case 1: return true
+                case 2: return score >= PrayerScoring.inWindowFloor - 0.0001
+                default: return score >= 0.8
+                }
+            default: return false
+            }
+        }.count
+        return kept == 5
     }
 
     static func kind(_ d: JourneyLog.Day) -> Kind {
@@ -1402,6 +1421,10 @@ struct YourJourneyStats {
         milestones = JourneyMilestone.earned(log: log, today: today, excused: excused)
         if let first = log.firstDay {
             buildMonths(log: log, first: cal.startOfDay(for: first), today: today, excused: excused)
+            // The streak is the Salah page's (owner, 2026-10-17, his pick: "Salah page's" — the card said "Start a streak
+            // today" over a 25-day streak there): its rule, and today never breaks it. It counted only all-in-time days, and
+            // a prayer missed so far today reset it.
+            let mode = UserDefaults.standard.object(forKey: "prayerStreakMode") as? Int ?? 1
             var run = 0
             var runStart: Date?
             var date = cal.startOfDay(for: first)
@@ -1409,11 +1432,11 @@ struct YourJourneyStats {
                 let d = log.day(date)
                 if Self.excusedAll(d, on: date, in: log, excused) {
                     // An excused day neither counts nor breaks.
-                } else if Self.kind(d) == .allInTime {
+                } else if Self.streakDay(d, mode: mode) {
                     if run == 0 { runStart = date }
                     run += 1
                     if run >= bestStreak, let s = runStart { bestStreak = run; bestStreakDays = s...date }
-                } else if !(date == today && d.marks.contains(.toCome)) {
+                } else if date != today {
                     run = 0
                 }
                 guard let next = cal.date(byAdding: .day, value: 1, to: date) else { break }

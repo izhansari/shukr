@@ -97,7 +97,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in
-  view) · the current streak ("N-day streak" / "Start a streak today"), the expand button top right → the month. The grid a
+  view) · the current streak ("N-day streak" / "Start a streak today"; it and "best streak" are the Salah page's streak —
+  `YourJourneyStats.streakDay`, `prayerStreakMode`: all five marked by default, today never breaks it), the expand button. The grid a
   week a row (`JourneyCardRow`, Equatable: a row redraws only for its own days / pick / streak light / look / log version):
   a 40 pt right-aligned column of grey month names (tap → that month), seven 11 pt bars (corner 4) in `JourneyTileColor`
   (kind × the user's own heat rank; unmarked = a hairline only). Opens on today's week (pinned until a finger scrolls).
