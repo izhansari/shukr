@@ -405,15 +405,15 @@ enum SharedStore {
             duasN += 1
         }
 
-        // Prayers are keyed by name + day. The shared store has its own rows for days since the
-        // update; keep those, except where the old row is completed and the new one isn't.
-        func key(_ name: String, _ date: Date) -> String {
-            "\(name)|\(cal.startOfDay(for: date).timeIntervalSince1970)"
-        }
+        // Prayers are keyed by name + prayer day (2.8.0's `dayKey`, not the calendar day: an Isha that starts after
+        // midnight belongs to the day before — by calendar day an old 00:30 Isha's mark landed on the next day's Isha,
+        // mark audit #10). The shared store has its own rows for days since the update; keep those, except where the
+        // old row is completed and the new one isn't.
+        func key(_ prayer: PrayerModel) -> String { "\(prayer.name)|\(prayer.dayKey)" }
         var prayerByKey: [String: PrayerModel] = [:]
-        for prayer in try dst.fetch(FetchDescriptor<PrayerModel>()) { prayerByKey[key(prayer.name, prayer.startTime)] = prayer }
+        for prayer in try dst.fetch(FetchDescriptor<PrayerModel>()) { prayerByKey[key(prayer)] = prayer }
         for old in try src.fetch(FetchDescriptor<PrayerModel>()) {
-            if let existing = prayerByKey[key(old.name, old.startTime)] {
+            if let existing = prayerByKey[key(old)] {
                 if !existing.isCompleted && old.isCompleted {
                     copyCompletion(from: old, to: existing)
                     mergedN += 1
@@ -425,7 +425,7 @@ enum SharedStore {
             new.id = old.id
             copyCompletion(from: old, to: new)
             dst.insert(new)
-            prayerByKey[key(new.name, new.startTime)] = new
+            prayerByKey[key(new)] = new
             prayersN += 1
         }
 
@@ -2761,7 +2761,7 @@ enum SetAsideStoreSalvage {
             parts.append("sessions added=\(sessionsAdded)")
         } catch { failures.append("sessions: \(error)") }
 
-        // Prayers: a completed row with no live counterpart (name + calendar day) is added whole; a live
+        // Prayers: a completed row with no live counterpart (name + prayer day) is added whole; a live
         // incomplete row gets the completion. Unmarked set-aside rows aren't worth carrying over.
         var prayersCompleted = 0, prayersAdded = 0
         do {
@@ -2777,7 +2777,9 @@ enum SetAsideStoreSalvage {
                 for r in try rows(db, "SELECT \(want.joined(separator: ", ")) FROM ZPRAYERMODEL WHERE ZISCOMPLETED = 1") {
                     guard let start = date(r, "ZSTARTTIME") else { continue }
                     let name = str(r, "ZNAME")
-                    let key = "\(name)|\(cal.startOfDay(for: start).timeIntervalSince1970)"
+                    // The map's own key (name + prayer day): a calendar-day number never matched it, so every completed
+                    // row was added again beside its live one (mark audit #2).
+                    let key = "\(name)|\(PrayerDay.key(forRow: name, startingAt: start))"
                     let row: PrayerModel
                     if let live = prayerByKey[key] {
                         guard !live.isCompleted else { continue }
