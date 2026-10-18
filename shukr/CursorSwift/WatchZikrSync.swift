@@ -322,7 +322,7 @@ enum WatchZikrSync {
         UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
         // No completion moment on the phone for a watch mark: it was made elsewhere, so the circle just moves on, as for
         // a widget or notification mark (owner, 2026-10-17, the mark's fold into the day ring).
-        NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
+        NotificationCenter.default.post(name: .watchMarkedPrayer, object: PrayerDay.start(forRow: name, startingAt: startDate))   // the prayer day (mark audit #1)
         WidgetCenter.shared.reloadAllTimelines()
         scheduleSend()
         print("⌚️ \(name) marked from the watch")
@@ -408,7 +408,7 @@ enum WatchZikrSync {
     /// After an unmark is saved: the app reconciles (day score, streaks), widgets and the watch update.
     private static func unmarkApplied(_ name: String, day: Date) {
         UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
-        NotificationCenter.default.post(name: .watchMarkedPrayer, object: day)
+        NotificationCenter.default.post(name: .watchMarkedPrayer, object: PrayerDay.start(forRow: name, startingAt: day))   // the prayer day (mark audit #1)
         WidgetCenter.shared.reloadAllTimelines()
         scheduleSend()
     }

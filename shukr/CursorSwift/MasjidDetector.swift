@@ -77,7 +77,7 @@ enum MasjidDetector {
             prayer.mosqueName = name
             if prayer.isJumuah {
                 prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? prayer.startTime)
-                rescored.append(prayer.startTime)
+                rescored.append(prayer.dayStart)
             }
             if !isCached { try? await Task.sleep(for: .seconds(2)) }   // MKLocalSearch is rate-limited
         }

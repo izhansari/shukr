@@ -593,7 +593,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         prayer.longPrayedAt = spot.longitude
         prayer.mosqueName = MasjidDetector.favoriteMasjid(near: spot)   // nil = search below
         if prayer.isCompleted { prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? prayer.startTime) }
-        calculateDayScore(for: prayer.startTime)
+        calculateDayScore(for: prayer.dayStart)
         calculatePrayerStreak()
         pushCompletionsToWidget()
         objectWillChange.send()
@@ -630,7 +630,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         afterTimeChange(prayer)
     }
     private func afterTimeChange(_ prayer: PrayerModel) {
-        calculateDayScore(for: prayer.startTime)
+        calculateDayScore(for: prayer.dayStart)
         calculatePrayerStreak()
         pushCompletionsToWidget()
         objectWillChange.send()
@@ -655,7 +655,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         prayer.setPrayerScore(atDate: date)
         prayer.cancelUpcomingNudges()
         PrayerCompletionHaptics.play()
-        calculateDayScore(for: prayer.startTime)
+        calculateDayScore(for: prayer.dayStart)
         calculatePrayerStreak()
         DayHistory.invalidate()
         pushCompletionsToWidget()
@@ -729,7 +729,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 PrayerPhotos.discard(for: prayer)
             }
             calculatePrayerStreak()
-            calculateDayScore(for: prayer.startTime)
+            calculateDayScore(for: prayer.dayStart)
 //            updatePrayerStreak()
             pushCompletionsToWidget()
             PhotoDevelop.check(todaysPrayers)   // the last of the five develops the day's photos
@@ -859,8 +859,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 //    }
 
     
-    /// `fromStore`: score from the store's rows even for today (the one-time repair runs before today's list may be
-    /// loaded — Bradley's review).
+    /// `date`: any time on the prayer day's calendar date — a row's `dayStart`, never its `startTime` (an Isha after
+    /// midnight belongs to the day before: mark audit #1). `fromStore`: score from the store's rows even for today (the
+    /// one-time repair runs before today's list may be loaded — Bradley's review).
     func calculateDayScore(for date: Date, fromStore: Bool = false) {
         let today = PrayerDay.date()
         let updatingToday = Calendar.current.isDate(date, inSameDayAs: today)
@@ -869,7 +870,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         let practiceShown = TourRuntime.practiceMirror != nil
         let objectsToCheck: [PrayerModel] = updatingToday && !practiceShown && !fromStore ? todaysPrayers : loadPrayerObjects(for: date)
         // An excused day not prayed in full has no score (Excused.swift): the charts leave it out rather than show it low.
-        if Set(objectsToCheck.filter(\.isCompleted).map(\.name)).count < 5, Excused.Days().excludes(PrayerDay.start(for: date)) {
+        if Set(objectsToCheck.filter(\.isCompleted).map(\.name)).count < 5, Excused.Days().excludes(Calendar.current.startOfDay(for: date)) {   // `date` is on the prayer day's own date; PrayerDay.start(for:) read a midnight as the day before
             if updatingToday { todaysScore = 0 }
             clearDailyScore(for: date)
             return

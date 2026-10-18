@@ -559,7 +559,7 @@ extension SharedStore {
         group?.set(true, forKey: widgetWroteStoreKey)
         // The app rescores that day and its streaks (audit B5: every mark made outside the app, not only the list's —
         // a late mark of yesterday's Isha from a notification left yesterday's score stale).
-        group?.set(start.timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)
+        group?.set(PrayerDay.start(forRow: name, startingAt: start).timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)   // the prayer day (mark audit #1)
         WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
         ControlCenter.shared.reloadAllControls()   // its "ends …" moves on
         return true

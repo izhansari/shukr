@@ -370,7 +370,7 @@ struct PrayerTimesView: View {
         if let shown {
             viewModel.togglePrayerCompletion(for: shown)   // rescores the day and the streak, pushes the widget
         } else if !others.isEmpty {
-            viewModel.calculateDayScore(for: request.start)
+            viewModel.calculateDayScore(for: PrayerDay.start(forRow: request.name, startingAt: request.start))
             viewModel.recomputeStreaks()
             viewModel.pushCompletionsToWidget()
         }

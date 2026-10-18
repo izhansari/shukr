@@ -93,6 +93,12 @@ enum PrayerDay {
         return PrayerNotificationID.dayKey(dayStart)
     }
 
+    /// The start of the prayer day a prayer `name` starting at `start` belongs to (the name rule): what a day score is
+    /// keyed by. Never `startOfDay(start)` — an Isha after midnight is the day before's (mark audit #1).
+    static func start(forRow name: String, startingAt start: Date) -> Date {
+        Self.start(ofKey: key(forRow: name, startingAt: start)) ?? Calendar.current.startOfDay(for: start)
+    }
+
     /// Midnight at the start of a key's calendar date, in the current time zone.
     static func start(ofKey key: String) -> Date? {
         let parts = key.split(separator: "-").compactMap { Int($0) }
