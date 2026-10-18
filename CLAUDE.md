@@ -27,7 +27,10 @@ claude/tasbeeh-zikr-updates`; push with `git push origin HEAD:claude/tasbeeh-zik
 behaviour, and "tried X, dropped because Y" when something goes — with `git log`, that's the record of who did what.
 WhatsNew.jsonl merges by itself (merge=union).
 
-**Install** on his phones only right after a pull (`zsh scripts/install.sh both`), so every build has everyone's work.
+**Install** when an item is ready for him to test, or when he asks — not after every push (owner, 2026-10-17: "I don't
+necessarily need it every time … that way it saves time"). `zsh scripts/install.sh both` builds from origin (everyone's
+work is in it); run it in the background so the chat stays free. A phone that can't be reached (CoreDeviceError 4016) is
+normal — they're often out of the house: one line saying so, no retry loop; the next install catches it up.
 
 **The Plan page** (https://shukr-board.vercel.app — the only part of the board he uses; the Stop hook publishes it):
 an item he names → whoever takes it runs `board/idea.sh add` (if it isn't there) and `board/queue.sh start <id>`, then
@@ -98,7 +101,7 @@ upload). Written only by `scripts/whatsnew.py`; the page and tool in full: `docs
 
 - **ASC API key** (all signing / uploads; no Xcode sign-in): ID `6K2RUXRJ92`, issuer `60a885ac-0315-4323-974d-57783a7392a2`, file `~/.appstoreconnect/private_keys/AuthKey_6K2RUXRJ92.p8`. Never read it out, print it or commit it; scripts only pass its path.
 - **Device build:** add `-allowProvisioningUpdates -authenticationKeyPath <that file> -authenticationKeyID 6K2RUXRJ92 -authenticationKeyIssuerID <issuer>` and `SHUKR_BUILD_STAMP="$(git rev-parse --short HEAD)"` (add "+" if dirty; commit first so the hash is real; it feeds `BuildInfo.line`, the stamp at the bottom of ☰ / Settings, and the watch's `WatchBuildInfo.line` at the bottom of its Settings — shukrWatchInfo.plist has the same `ShukrBuildStamp` key).
-- **Phones:** 13 Pro Max `00008110-001C041C2203801E`; 15 Pro `00008130-00027DDE0AE8001C` (often unavailable). Install: `xcrun devicectl device install app --device <udid> build/device/Build/Products/Debug-iphoneos/shukr.app`; retry on CoreDeviceError 4016. Install only right after pulling the team line.
+- **Phones:** 13 Pro Max `00008110-001C041C2203801E`; 15 Pro `00008130-00027DDE0AE8001C` (often unavailable). Install: `xcrun devicectl device install app --device <udid> build/device/Build/Products/Debug-iphoneos/shukr.app`; CoreDeviceError 4016 = the phone is away or locked: say so, move on. Install only right after pulling the team line.
 - **Verify gesture fixes with a Release device install** (`-configuration Release` + devicectl): on iOS 26.6 dead Settings rows showed in Release only.
 - **TestFlight** (only after Izhan says go; Frank confirms first): `scripts/testflight.sh` bumps `CURRENT_PROJECT_VERSION` (12 places), archives Release with the watch, uploads (system PATH: Homebrew rsync breaks export), records the build (`whatsnew.py build`); commit the bump. Notes: `whatsnew.py testflight --since last` → `TestFlightNotes-<ver>.<build>.md` with a "What to Test (paste this)" block, **≤ 4000 chars, no emoji** (Apple rejects non-BMP). `scripts/asc.py builds` → VALID; `scripts/asc.py release <build> <notes.txt>` sets What to Test, adds every external group ("test" = public link https://testflight.apple.com/join/GW5j85jk), submits for beta review (`IN_BETA_TESTING` = testers have it). App id `6743040873`, team `7R387XZ2Y7`.
 - **App Store archive:** `SHUKR_APPSTORE=1 scripts/testflight.sh` leaves out the What's new shots; check `ls build/shukr-*.xcarchive/Products/Applications/shukr.app | grep -c wn-` → 0.
