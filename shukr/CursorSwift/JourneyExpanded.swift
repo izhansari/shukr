@@ -21,6 +21,11 @@ struct JourneyExpandedPage: View {
     @State private var focus: Date?
     /// The day picked (a ring's tap): its top and its things at the bottom, the card's way.
     @State private var picked: Date?
+    /// "best streak" tapped (owner, 2026-10-18: "We need to be able to click on the day streak when the calendar is open in the
+    /// bottom right to go and find that streak as well"): its days lit, the weeks at them — the card's way. Again, back to
+    /// where they were; a finger scroll, a ring or a month lets it go.
+    @State private var streakShown = false
+    @State private var beforeStreak: Date?
     @State private var position = ScrollPosition(edge: .bottom)
     @State private var gridWidth: CGFloat = 0
     /// The year in place of the weeks (the toggle top right — owner: "leave this as an sf toggle button in top right").
@@ -159,7 +164,8 @@ struct JourneyExpandedPage: View {
                 ForEach(Array(stats.weeks.enumerated()), id: \.element.id) { i, week in
                     JourneyExpandedRow(week: week, index: i, log: log, today: today, cell: cell, tiles: tiles,
                                        labelMonth: labels[week.id]?.month, labelBetween: labels[week.id]?.between ?? false,
-                                       focus: focus, picked: picked.flatMap { p in week.days.contains { $0?.date == p } ? p : nil },
+                                       focus: focus, streak: streakShown ? stats.bestStreakDays : nil,
+                                       picked: picked.flatMap { p in week.days.contains { $0?.date == p } ? p : nil },
                                        onDay: { pick($0) }, onMonth: { focusMonth($0) },
                                        onHold: { state, p in held(state, p, fromRow: i) })
                         .equatable()
@@ -191,8 +197,8 @@ struct JourneyExpandedPage: View {
         .onScrollPhaseChange { _, phase in
             if phase == .interacting { JourneyPerf.began("expanded scroll") }
             JourneyPerf.scrolling(phase.isScrolling)
-            guard phase == .interacting, rail == nil, picked != nil || focus != nil else { return }
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; focus = nil }
+            guard phase == .interacting, rail == nil, picked != nil || focus != nil || streakShown else { return }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; focus = nil; streakShown = false }
         }
         // The names' column is a rail (the card's): held still a moment, the finger's height is the month.
         .simultaneousGesture(DragGesture(minimumDistance: 0)
@@ -272,9 +278,15 @@ struct JourneyExpandedPage: View {
                     .transition(.opacity)
             } else {
                 HStack(alignment: .top, spacing: 0) {
-                    figure("\(stats.prayersMarked)", "prayers marked")
-                    figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days")
-                    figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days", "best streak")
+                    figure("\(stats.prayersMarked)", "prayers marked").opacity(streakShown ? 0.35 : 1)
+                    figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days").opacity(streakShown ? 0.35 : 1)
+                    Button { toggleStreak() } label: {
+                        figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days",
+                               streakShown ? stats.bestStreakDays.map(JourneyHomeCard.streakSpan) ?? "best streak" : "best streak")
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Shows those days")
                 }
                 .transition(.opacity)
             }
@@ -298,10 +310,28 @@ struct JourneyExpandedPage: View {
     // MARK: Picks
 
     /// A ring's tap: that day picked and its month in focus; again, both let go.
+    /// The best streak lit or let go; on, its middle week in the middle (the weeks it was on kept for the way back).
+    private func toggleStreak() {
+        guard let days = stats.bestStreakDays else { return }
+        triggerSomeVibration(type: .light)
+        if streakShown {
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { streakShown = false }
+            if let w = beforeStreak { withAnimation(.easeInOut(duration: 0.45)) { position.scrollTo(id: w, anchor: .center) } }
+            return
+        }
+        beforeStreak = middleWeek
+        let mid = days.lowerBound.addingTimeInterval(days.upperBound.timeIntervalSince(days.lowerBound) / 2)
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; focus = nil; streakShown = true }
+        if let week = stats.weeks.last(where: { $0.start <= mid }) {
+            withAnimation(.easeInOut(duration: 0.45)) { position.scrollTo(id: week.id, anchor: .center) }
+        }
+    }
+
     private func pick(_ date: Date) {
         guard let first = log.firstDay, date >= first, date <= today else { return }
         JourneyPerf.began("expanded pick")
         triggerSomeVibration(type: .light)
+        streakShown = false
         withAnimation(.easeOut(duration: CircleMotion.quick)) {
             if picked == date { picked = nil; focus = nil } else { picked = date; focus = JourneyLog.monthStart(date) }
         }
@@ -318,12 +348,12 @@ struct JourneyExpandedPage: View {
             scrub.scrubbing = true
             triggerSomeVibration(type: .medium)
             if let d = day(at: p, fromRow: i) {
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d; focus = JourneyLog.monthStart(d) }
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d; focus = JourneyLog.monthStart(d); streakShown = false }
             }
         case .changed:
             guard scrub.scrubbing, let d = day(at: p, fromRow: i), d != picked else { return }
             triggerSomeVibration(type: .soft)
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d; focus = JourneyLog.monthStart(d) }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = d; focus = JourneyLog.monthStart(d); streakShown = false }
         default:
             scrub.scrubbing = false
         }
@@ -350,6 +380,7 @@ struct JourneyExpandedPage: View {
         triggerSomeVibration(type: .light)
         withAnimation(.easeOut(duration: CircleMotion.quick)) {
             picked = nil
+            streakShown = false
             focus = focus == m ? nil : m
         }
     }
@@ -542,7 +573,7 @@ struct JourneyExpandedPage: View {
         // calendar page, can we make it so that it focuses those rings?"): its rings full, the rest faded, its numbers at the
         // top; it stays in focus when the finger lifts.
         if let start = stats.weeks.first(where: { $0.id == months[m] })?.month?.start, focus != start {
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { focus = start }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { focus = start; streakShown = false }
         }
         withAnimation(CircleMotion.wheelScrub) { position.scrollTo(id: months[m], anchor: .center) }
         let r = scrub
@@ -615,6 +646,8 @@ struct JourneyExpandedRow: View, Equatable {
     let labelMonth: Date?
     let labelBetween: Bool
     let focus: Date?
+    /// The best streak's days while it's lit (else nil): those days full, the rest faded — over the focus.
+    let streak: ClosedRange<Date>?
     /// The picked day, if it's in this week.
     let picked: Date?
     let onDay: (Date) -> Void
@@ -633,10 +666,18 @@ struct JourneyExpandedRow: View, Equatable {
         return mask
     }
 
+    /// Which of its days the lit streak holds (-1: no streak lit).
+    private var streakMask: Int {
+        guard let s = streak else { return -1 }
+        var mask = 0
+        for i in 0..<7 where s.contains(Calendar.current.date(byAdding: .day, value: i, to: week.start) ?? week.start) { mask |= 1 << i }
+        return mask
+    }
+
     static func == (a: Self, b: Self) -> Bool {
         a.week.start == b.week.start && a.index == b.index && a.log.version == b.log.version && a.today == b.today && a.cell == b.cell
             && a.tiles == b.tiles && a.labelMonth == b.labelMonth && a.labelBetween == b.labelBetween
-            && a.picked == b.picked && a.focusMask == b.focusMask
+            && a.picked == b.picked && a.focusMask == b.focusMask && a.streakMask == b.streakMask
     }
 
     @Environment(\.colorScheme) private var scheme
@@ -674,7 +715,7 @@ struct JourneyExpandedRow: View, Equatable {
                     .frame(maxWidth: .infinity)
                     .frame(height: height)
                     .journeyFlightCell(date, scale: scale)   // the card's tiles land on it (JourneyTransitions.swift)
-                    .opacity(focus.map { JourneyLog.monthStart(date) == $0 ? 1 : 0.22 } ?? 1)
+                    .opacity(streak.map { $0.contains(date) ? 1 : 0.22 } ?? focus.map { JourneyLog.monthStart(date) == $0 ? 1 : 0.22 } ?? 1)
                     .overlay {
                         if picked == date {
                             if tiles {

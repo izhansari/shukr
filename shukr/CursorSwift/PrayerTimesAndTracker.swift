@@ -2726,12 +2726,29 @@ struct PrayerTimesView: View {
                             .frame(width: 100)
                         }
                         
-                        // Zikr and Salah only (owner, 2026-10-17: "just leave bottom bar with salah tab and zikr tab"): Journey is
-                        // the swipe left, and the bar fades as it comes.
+                        Spacer()
+
+                        // Journey, where Settings was (owner, 2026-10-18: "bottom bar still needs to show three items like how it
+                        // did before, but just change the settings one to instead be the Journey one"; the path is ☰'s
+                        // Journey row's symbol). Toward Journey the bar fades where it is.
+                        Button(action: {
+                            sharedState.horizontalPage = .journey
+                        }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
+                                    .font(.system(size: 20))
+                                Text("Journey")
+                                    .font(.system(size: 12))
+                                    .fontWeight(.light)
+                                    .fontDesign(.rounded)
+                            }
+                            .foregroundColor(sharedState.horizontalPage == .journey ? .green : .gray)
+                            .frame(width: 100)
+                        }
                     }
                     .padding(.top, 15)
                     .padding(.bottom, 25)
-                    .padding(.horizontal, 80)
+                    .padding(.horizontal, 45)
                     .opacity(0.8)
 //                    .background(Color("bgColor"))
                 

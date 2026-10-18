@@ -577,8 +577,10 @@ struct JourneyHomeCard: View {
     }
 
     /// The best streak's dates: "Sep 3 – 10", "Aug 28 – Sep 4", with the year when it isn't this one.
-    private var streakSpan: String {
-        guard let r = stats.bestStreakDays else { return "best streak" }
+    private var streakSpan: String { stats.bestStreakDays.map(Self.streakSpan) ?? "best streak" }
+
+    /// "Sep 3 – 10", "Aug 28 – Sep 4", with the year when it isn't this one (the card's and the calendar's best streak).
+    static func streakSpan(_ r: ClosedRange<Date>) -> String {
         let cal = Calendar.current
         let thisYear = cal.component(.year, from: r.upperBound) == cal.component(.year, from: Date())
         let sameMonth = cal.isDate(r.lowerBound, equalTo: r.upperBound, toGranularity: .month)
