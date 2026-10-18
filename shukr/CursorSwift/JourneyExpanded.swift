@@ -185,9 +185,14 @@ struct JourneyExpandedPage: View {
             JourneyFlightGeometry.shared.expandedWeeks = sorted
             JourneyFlightGeometry.shared.follow()
         }
-        // Pinch in: tiles; spread: rings — the week in the middle stays where it is through the morph.
+        // Pinch in: the year (owner, 2026-10-18: "make pinching the calendar go to year view. not the tile year thing") —
+        // the toggle's flight; a spread in the year comes back (JourneyYearView's onSpread). The tiles look is no longer
+        // reached by a pinch (a spread still leaves it, if it's ever on).
         .simultaneousGesture(MagnifyGesture().onEnded { v in
-            if v.magnification < 0.85, !tiles { setTiles(true) } else if v.magnification > 1.15, tiles { setTiles(false) }
+            if v.magnification < 0.85, !showYear, yearFlight == nil {
+                triggerSomeVibration(type: .light)
+                toYear()
+            } else if v.magnification > 1.15, tiles { setTiles(false) }
         })
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }   // inside its padding: = the guess
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrub.gridHeight = $0 }
