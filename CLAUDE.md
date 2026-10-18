@@ -49,7 +49,7 @@ installs.
 
 **Context:** state lives in files (this file, `docs/features/`, the board, memory), so a fresh start loses nothing.
 Compact or start fresh at an item boundary (after commit + push); first overwrite `shukrGit/board/handoff-<name>.md`
-(≤ 20 lines: now, next, half-done, traps). After a compaction, re-read this file and your handoff from disk.
+(≤ 20 lines: now, next, half-done, traps). After a compaction, re-read this file and your handoff from disk, and open your next reply with "Compacted — picked up from <handoff>" (owner, 2026-10-17: he couldn't tell it had happened).
 
 **This file stays ≤ ~35 KB:** rules, traps and an index. Feature detail lives in `docs/features/<area>.md` — read only
 the area you're working in. When you change a feature, replace its lines there: current behaviour only, ≤ ~15 lines a

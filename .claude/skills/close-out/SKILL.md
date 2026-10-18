@@ -55,15 +55,22 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
 11. **Then ask "What now?"** with **AskUserQuestion**, exactly these three options (his words, 2026-10-17):
     - **Archive** (the pick for a fork / side session): archive yourself (`mcp__ccd_session_mgmt__get_session` "self" for
       the id → `mcp__ccd_session_mgmt__archive_session`; load them with ToolSearch if deferred).
-    - **Start a new task here** (the pick for the main session used as a save button):
-      1. A brief intake, **at most 3 questions in ONE AskUserQuestion call** (owner, 2026-10-17: "maybe three questions is
-         fine"): "What's the new task?" (up to 3 options from what's open — the handoff's next, the Plan page — plus Other
-         to type it), then at most two more that the next context would otherwise have to ask (the area / which page, a
-         choice he's already made, what done looks like). No follow-up rounds, no mockups, no options analysis.
+    - **Start a new task here** (the pick for the main session used as a save button). Its option description says when
+      the clear comes: "a few questions about the new task, then this chat clears (you approve)".
+      1. **The intake: four boxes, one at a time, each headed with its count** (owner, 2026-10-17):
+         - **"0/3 · What's the new task?"** — the setup: up to 3 options from what's open (the handoff's next, the Plan
+           page) plus Other, where he says the idea he has in mind.
+         - **"1/3 · …"** — about what's in his head: built from his 0/3 answer, not a stock question.
+         - **"2/3 · …"** and **"3/3 · …"** — follow-ups on his answers so far (which page, what's decided, the first stop:
+           talk · mockup · build). Only what the cleared chat would otherwise have to ask; if an answer already covers one,
+           skip it and say so ("3/3 skipped — you've said it").
+         No more boxes than that, no mockups, no options analysis.
       2. Write the handoff (step 8; a fork writes `board/handoff-<name>-<fork>.md`, ≤ 20 lines): what's open, traps, and
          **"Next task, his words: …"** with his answers verbatim.
-      3. Say in one line "Clearing now — when the chat is empty, send anything (even 'go') and I'll start on <task> from
-         CLAUDE.md + <handoff file>", then `mcp__ccd_session_mgmt__clear_session` "self" (he approves).
+      3. **Announce the clear before it happens**, as its own line, bold (he once didn't know a compaction was happening):
+         "**Clearing this chat now** — you'll get an approval prompt; once the chat is empty, send anything (even 'go') and
+         I'll start on <task> from CLAUDE.md + <handoff file>." Then `mcp__ccd_session_mgmt__clear_session` "self". The
+         cleared chat's first reply opens with "Fresh chat — read CLAUDE.md + <handoff file>; starting on <task>."
     - **Stay on the same task here**: nothing more; wait for him.
     **The close-out ends here. It never starts, plans or discusses the next task** beyond that intake — not even when he
     describes one in Other: his words go into the handoff verbatim, and the work starts only in the cleared chat. (It
