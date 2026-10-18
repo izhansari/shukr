@@ -743,8 +743,6 @@ struct PrayerTimesView: View {
             }
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
-            // The lost page is the Salah page alone (circle step 3b): nothing else to swipe to, as before.
-            .scrollDisabled(CircleStage.shared.lost != nil)
             .scrollPosition(id: $scrollPage)
             .defaultScrollAnchor(.center)
             .modifier(PagerLock(live: live))     // .scrollDisabled(live.pagerLocked), see PagerLiveState
@@ -3854,8 +3852,11 @@ struct PagerPanLock: UIViewRepresentable {
     var live: PagerLiveState
     func makeUIView(context: Context) -> Finder { Finder() }
     func updateUIView(_ view: Finder, context: Context) {
+        // The lost page is the Salah page alone (circle step 3b): nothing else to swipe to. Here, not `.scrollDisabled` on
+        // the pager: that reached every scroll view in the pages, and Journey's grid and calendar wouldn't scroll with no
+        // location (sim, 2026-10-18).
         view.locked = live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating
-            || JourneyPagerHold.shared.held
+            || JourneyPagerHold.shared.held || CircleStage.shared.lost != nil
     }
 
     /// Sits in the pager's content: the nearest UIScrollView above it is the pager.
