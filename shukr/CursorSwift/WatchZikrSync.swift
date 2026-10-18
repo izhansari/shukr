@@ -422,6 +422,7 @@ enum WatchZikrSync {
         WidgetCenter.shared.reloadAllTimelines()
         // Its card comes back while the window is open (a new card only once shukr is in front — iOS's rule; audit #3).
         PrayerLiveActivities.plan(reason: "a prayer unmarked on the watch")
+        NotificationScheduler.topUp(reason: "watch unmark")   // its halfway / 30-minutes-left nudges come back (review gap 3)
         scheduleSend()
     }
 
