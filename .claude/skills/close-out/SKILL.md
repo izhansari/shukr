@@ -34,6 +34,9 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
    `git push origin HEAD:claude/tasbeeh-zikr-updates`. Never main, never force.
    **Shared checkout:** forks share this folder. Stage only your own files, by name. If others' uncommitted edits are in the
    tree, copy them aside, `pull --rebase --autostash`, and check each comes back byte for byte; never touch anyone's stash.
+   **Before `git push`, run `git log origin/claude/tasbeeh-zikr-updates..HEAD`: it must list only your own commits.** In a
+   shared checkout other sessions commit locally too, and a push sends theirs with yours (2026-10-17: the map fork pushed
+   main Frank's three unpushed commits). Others' commits there → don't push; message their session.
 6. **What's new — lean** (only for something he'd see): first check `shukr/WhatsNew.jsonl` for an entry any session already
    wrote for the same item — if one covers it, skip. Otherwise one entry per thing he'd recognise: `whatsnew.py add --topic …
    --title "<how it works, 2–3 lines>" --headline "<≤ 40 chars>" --try "…" --ask <slug> --ask-words "<his words, verbatim>"
