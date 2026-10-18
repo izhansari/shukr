@@ -1006,7 +1006,6 @@ struct summaryCircle: View, Equatable {
     // FIXME: think this through more and make sure it makes sense.
     @EnvironmentObject var viewModel: PrayerViewModel
     @Environment(SharedStateClass.self) var sharedState
-    @Query private var scores: [DailyPrayerScore]
 
     @Binding var ogText: Bool  // to control the toggle text in the middle
     /// The side shown and whether its words are out: MainCircleView's (its `flipSummary` moment). The score and next Fajr
@@ -1041,10 +1040,14 @@ struct summaryCircle: View, Equatable {
     @State private var drawToken = 0
     /// The first showing today: the score counts up from 0 once the ring is whole (nil = show the score as it is).
     @State private var countedScore: Double?
-    /// A stored day score, `daysBack` prayer days before today (1 = yesterday).
-    private func storedScore(daysBack: Int) -> Double {
-        let day = Calendar.current.date(byAdding: .day, value: -daysBack, to: PrayerDay.date()) ?? PrayerDay.date()
-        return scores.first { Calendar.current.isDate($0.date, inSameDayAs: day) }?.averageScore ?? 0
+    /// Yesterday's day score from its own rows (DayHistory, the day shown), as every other count reads them — never
+    /// DailyPrayerScore, whose bare-Date keys shift after a time-zone change (mark audit #12). An excused day not prayed
+    /// in full has no score: 0, as before.
+    private var yesterdayScore: Double {
+        guard let day = history.first, !day.isEmpty else { return 0 }
+        let done = day.filter(\.done)
+        if done.count < 5, day.contains(where: \.excused) { return 0 }
+        return done.reduce(0) { $0 + ($1.score ?? 0) } / 5
     }
 
     /// Before Fajr with nothing marked in a new prayer day, show the day that just finished
@@ -1054,7 +1057,7 @@ struct summaryCircle: View, Equatable {
         guard let fajr = viewModel.todaysPrayers.first(where: { $0.name == "Fajr" }) else { return false }
         return Date() < fajr.startTime && !fajr.isCompleted
     }
-    private var shownScore: Double { showingYesterday ? storedScore(daysBack: 1) : viewModel.todaysScore }
+    private var shownScore: Double { showingYesterday ? yesterdayScore : viewModel.todaysScore }
 
     /// The prayers of the day shown (today, or yesterday before a Fajr with nothing marked).
     private var shownDay: [DayPrayer] {
