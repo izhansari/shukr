@@ -51,7 +51,10 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
 9. **Tidy:** delete only the sims, scratch files and branches you made; never another engineer's.
 10. **Write-up** (his rule: a full one, plain): what changed, the hashes, what's on the team line, what wasn't checked, what
     was saved to memory, the parked ideas swept, anything left for him to decide — and a **to-check list**: each gesture,
-    what to do, what should happen.
+    what to do, what should happen. **It opens with the step list**, one line per step 1–9, so a skipped step shows
+    (owner, 2026-10-17: "add that so its reliable"): `1 Ready ✓ · 2 Docs ✓ salah.md · 3 Memory — none new · 4 Parked ✓ 2
+    added · 5 Pushed ✓ <hash> · 6 What's new — skipped, covered by <entry> · 7 Plan ✓ <id> done · 8 Record ✓ note to
+    <parent> · 9 Tidy ✓` — ✓ done, — skipped with the reason, ✗ failed with the error. Never leave a step off the list.
 11. **Then ask "What now?"** with **AskUserQuestion**, exactly these three options (his words, 2026-10-17):
     - **Archive** (the pick for a fork / side session): archive yourself (`mcp__ccd_session_mgmt__get_session` "self" for
       the id → `mcp__ccd_session_mgmt__archive_session`; load them with ToolSearch if deferred).
