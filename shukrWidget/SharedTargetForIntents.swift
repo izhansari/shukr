@@ -545,6 +545,9 @@ extension SharedStore {
             return made
         }()
         guard !prayer.isCompleted else { return false }
+        // The row's own start, not the caller's: a widget or banner drawn at another place (or before a times change)
+        // could mark a prayer that hasn't started here yet — scored Perfect before its time (mark audit #7).
+        guard prayer.startTime <= Date() else { return false }
 
         prayer.isCompleted = true
         prayer.setPrayerScore()                                        // scored now, at the tap
