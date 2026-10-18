@@ -502,20 +502,31 @@ struct JourneyPage: View {
             let built = await JourneyLog.load(container: container, ranges: ranges, now: now)
             JourneyPerf.took("log.load", since: t)
             guard token == loadToken else { return }
-            // Never mid-flight: a new log redraws the page and the card (JourneyTransitions.swift, JourneyFlights).
-            JourneyFlights.whenIdle {
-                guard token == loadToken else { return }
-                log = built
-                JourneyLog.last = built
-                stats = JourneyPerf.time("stats") { YourJourneyStats(log: built, today: day) }
-            }
+            // The card's numbers off the main thread too (42 ms on main on his 13 Pro Max per reload, a goal flip's worst
+            // frame — journey-perf.log, 2026-10-18), alongside the scores. The excused days from the ranges read on main
+            // (Excused.ranges' cache isn't safe off it).
             let t2 = JourneyPerf.now
-            let (s, open) = await Task.detached(priority: .userInitiated) {
+            let statsTask = Task.detached(priority: .userInitiated) {
+                YourJourneyStats(log: built, today: day, excused: Excused.Days(ranges))
+            }
+            let scoresTask = Task.detached(priority: .userInitiated) {
                 let context = ModelContext(container)
                 // At the log's own goal and fresh start (the header ring then reads since it, as Prayer scores does).
                 return (PrayerScores.build(log: built, context: context, now: now, countsFrom: built.countsFrom, goal: built.goal),
                         JourneyMakeUpPage.entries(in: context, ranges: ranges, now: now).open.count)
-            }.value
+            }
+            let builtStats = await statsTask.value
+            JourneyPerf.took("stats.load", since: t2)
+            guard token == loadToken else { return }
+            // Never mid-flight: a new log redraws the page and the card (JourneyTransitions.swift, JourneyFlights). The log
+            // and its numbers land together.
+            JourneyFlights.whenIdle {
+                guard token == loadToken else { return }
+                log = built
+                JourneyLog.last = built
+                stats = builtStats
+            }
+            let (s, open) = await scoresTask.value
             JourneyPerf.took("scores+makeUp.load", since: t2)
             guard token == loadToken else { return }
             JourneyFlights.whenIdle {
