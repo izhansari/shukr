@@ -3048,6 +3048,8 @@ enum HitAreaDebug {
 
 import MapKit
 struct PrayerButton: View {
+    /// The type tuner's sizes grow with the phone's text size, as .callout / .footnote did (SalahTypeTuner.swift).
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The row's dot answering a mark.
     private static let dotPress = Animation.spring(response: 0.1, dampingFraction: 0.7)
     /// An unmark from the row's alert: the page settles back (score → prayer, the list's rows) in one ease.
@@ -3233,12 +3235,12 @@ struct PrayerButton: View {
         case .nowLeads: isCurrentPrayer ? .title3 : .subheadline     // E · the one on now leads
         // G · one size for every row (owner: stepping sizes on mark / unmark "looks tacky"); the lift alone sets the one on
         // now apart.
-        default: .callout
+        default: .system(size: SalahType.scaled(SalahType.v.listName, .callout, dynamicTypeSize))   // .callout (16) until the type tuner moves it
         }
     }
     /// F · a prayer still to say reads in regular; the rest light (as everywhere). G and the raised list stay light like the
     /// original list (owner: the bolder names changed its type).
-    private var nameWeight: Font.Weight { look == .prayedAt && !prayerObject.isCompleted ? .regular : .light }
+    private var nameWeight: Font.Weight { look == .prayedAt && !prayerObject.isCompleted ? .regular : SalahType.v.listNameWeight.value }
 
     private var isFuturePrayer: Bool {
 //        withAnimation(.spring(duration: 0.5)) {
@@ -3305,7 +3307,7 @@ struct PrayerButton: View {
 //    }
     
     private var timeFontSize: Font {
-        .footnote
+        .system(size: SalahType.scaled(SalahType.v.listTime, .footnote, dynamicTypeSize))   // .footnote (13) until the type tuner moves it
     }
     
     private var calcStartTime: Date{
@@ -3465,8 +3467,8 @@ struct PrayerButton: View {
                     .layoutPriority(1)
                     .font(nameFont)   // Sami's looks try type sizes (nameFont); the others .callout
                     // Today's look: exactly the old Color.secondary (the hierarchical .secondary differed a hair).
-                    .foregroundStyle(theme.emphasisesCurrentRow && (isCurrentPrayer || pickedOnDayPage) ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
-                    .fontDesign(.rounded)
+                    .foregroundStyle(theme.emphasisesCurrentRow && (isCurrentPrayer || pickedOnDayPage) ? AnyShapeStyle(Color.primary) : AnyShapeStyle((SalahType.v.rowsInk ? Color.primary : Color.secondary).opacity(statusBasedOpacity * SalahType.v.restOpacity))) //1
+                    .fontDesign(SalahType.v.design.value)
                     .fontWeight(nameWeight)
                     // E · the prayer on now: its time left right under its name.
                     if look == .nowLeads && isCurrentPrayer {
@@ -3541,7 +3543,15 @@ struct PrayerButton: View {
             }
             #endif
             .padding(.horizontal)
-            .padding(.vertical, theme.rowVerticalPadding)   // the well's rows a bit shorter (owner, 2026-10-01)
+            .padding(.vertical, theme.rowVerticalPadding + SalahType.v.rowExtra)   // the well's rows a bit shorter (owner, 2026-10-01)
+            // The type tuner's hairlines (Journey's rows have them) and the page's width and letter spacing.
+            .overlay(alignment: .bottom) {
+                if SalahType.v.hairlines && prayerObject.name != "Isha" {
+                    Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1).padding(.leading, 48).padding(.trailing, 16)
+                }
+            }
+            .fontWidth(SalahType.v.width.value)
+            .tracking(SalahType.v.tracking)
             .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 44 pt rows
             // E · the raised one gets its own room (the rest are compact).
             .padding(.vertical, look == .nowLeads && isCurrentPrayer ? 6 : 0)
@@ -3620,8 +3630,8 @@ struct PrayerButton: View {
                         toggledText: timeUntilStart(calcStartTime),
                         externalTrigger: $toggledText,
                         font: timeFontSize,
-                        fontDesign: .rounded,
-                        fontWeight: .light,
+                        fontDesign: SalahType.v.design.value,
+                        fontWeight: SalahType.v.listTimeWeight.value,
                         hapticFeedback: true
                     )
                     .foregroundColor(.secondary.opacity(statusBasedOpacity))
@@ -3637,8 +3647,8 @@ struct PrayerButton: View {
                     Text(shortTimePM(shownStart))
                         .font(timeFontSize)
                         .foregroundColor(.secondary.opacity(statusBasedOpacity))
-                        .fontDesign(.rounded)
-                        .fontWeight(.light)
+                        .fontDesign(SalahType.v.design.value)
+                        .fontWeight(SalahType.v.listTimeWeight.value)
                 } else if prayerObject.isCompleted {
                     // Completed Prayer: Show Completion Time
                     if let prayedAt = prayerObject.timeAtComplete {
@@ -3654,8 +3664,8 @@ struct PrayerButton: View {
                             toggledText: look.behavesLikeG ? "@ \(shortTimePM(prayedAt))" : completedTimeAndScore,
                             externalTrigger: $toggledText,
                             font: timeFontSize,
-                            fontDesign: .rounded,
-                            fontWeight: .light,
+                            fontDesign: SalahType.v.design.value,
+                            fontWeight: SalahType.v.listTimeWeight.value,
                             hapticFeedback: true,
                             fits: true
                         )
@@ -3669,8 +3679,8 @@ struct PrayerButton: View {
                     Text(shortTimePM(shownStart))
                         .font(timeFontSize)
                         .foregroundColor(.secondary)
-                        .fontDesign(.rounded)
-                        .fontWeight(.light)
+                        .fontDesign(SalahType.v.design.value)
+                        .fontWeight(SalahType.v.listTimeWeight.value)
                 }
     }
 
