@@ -50,8 +50,7 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
    - **The main session:** refresh your own `board/handoff-<name>.md` (≤ 20 lines: now, next, half-done, open, traps).
 9. **Tidy:** delete only the sims, scratch files and branches you made; never another engineer's.
 10. **Write-up** (his rule: a full one, plain): what changed, the hashes, what's on the team line, what wasn't checked, what
-    was saved to memory, the parked ideas swept, anything left for him to decide — and a **to-check list**: each gesture,
-    what to do, what should happen. **It opens with the step list**, one line per step 1–9, so a skipped step shows
+    was saved to memory, the parked ideas swept, anything left for him to decide — and ends with the **Status block** (CLAUDE.md, Team → Chapters and the status block; its To check list: each gesture, what to do, what should happen). **It opens with the step list**, one line per step 1–9, so a skipped step shows
     (owner, 2026-10-17: "add that so its reliable"): `1 Ready ✓ · 2 Docs ✓ salah.md · 3 Memory — none new · 4 Parked ✓ 2
     added · 5 Pushed ✓ <hash> · 6 What's new — skipped, covered by <entry> · 7 Plan ✓ <id> done · 8 Record ✓ note to
     <parent> · 9 Tidy ✓` — ✓ done, — skipped with the reason, ✗ failed with the error. Never leave a step off the list.
