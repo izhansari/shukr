@@ -35,7 +35,7 @@ is why this is hard. The points above still hold, but they have to be stretched,
 - **Swift lab** — to settle type, spacing, colour and feel on the real screen: a copy of only the views being redesigned, in
   its own DEBUG file under `shukr/CursorSwift/DevLabs/`, opened from My Dev Stuff (a new, blue row). The real page is never
   touched. Real data (plus a switch for the states that need one); the shapes the design doesn't touch are the real views.
-  The first commit is the copy as it is; later commits are the design, so the file's diff from that commit is the spec for
+  The first commit is the copy as it is — its layout rules taken from the real code and checked against the real page's screenshot at the same state before any edit; later commits are the design, so the file's diff from that commit is the spec for
   the real build. Show designs directly, with a state menu at the top right (live, mid-prayer, the day ring …) and the
   page's own gestures; knobs only if they leave the page in view and show their values (owner: a sheet that "is hiding
   everything" with no values is useless). No circle-check or pixel checks. Delete the lab once the real build lands. Example: `SalahTypeLab.swift`.
