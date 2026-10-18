@@ -81,15 +81,6 @@ struct DayFacts {
 
 // MARK: - The rows (one look on both pages)
 
-extension PrayerModel {
-    /// A day page row's second line: "Closing · 75"; a Jumu'ah "Jumu'ah · 100" — never "Jumu'ah at <masjid>", which ran the
-    /// width of the row (owner, 2026-10-16). The masjid stays as the mark by the name and the place under the ring.
-    var dayRowSummary: String {
-        guard let s = numberScore else { return "" }
-        return isJumuah ? "Jumu'ah · \(Int((s * 100).rounded()))" : PrayerScoring.summary(for: s)
-    }
-}
-
 /// The prayer list's raised band for a row — the prayer on now, a row whose buttons are up, a picked row on the day page.
 /// The ONE place the look's raise is drawn: PrayerButton and Journey's rows both use it (owner, 2026-10-16: "selecting a row
 /// item should match … how the current prayer looks … raised up … reference that same view logic").
@@ -147,27 +138,21 @@ struct DayPickBandLayer: View {
     }
 }
 
-/// A prayed row's right side on the day page: "@ 7:45 PM" (when it was prayed), the grade and score under it
-/// ("Closing · 75"). Both pages (owner, 2026-10-16: "should say '@ 7:45PM' to indicate thats the time we prayed it").
+/// A prayed row's right side on the day page: when it was prayed ("7:45 PM"), in the list's time type. Both pages. The
+/// dot's colour and the day ring carry the grade (owner, 2026-10-18: "I don't like the @ symbols either. And I think
+/// it's stupid that we keep the text scores there too. We don't need that." — was "@ 7:45 PM" over "Closing · 75").
 struct DayRowTime: View {
     let prayedAt: Date
-    let summary: String
     var body: some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            Text("@ \(shortTimePM(prayedAt))")
-                .font(.footnote).fontDesign(.rounded).fontWeight(.light)
-                .foregroundStyle(.secondary)
-            Text(summary)
-                .font(.caption2).fontDesign(.rounded).fontWeight(.light)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-        }
-        .monospacedDigit()
+        Text(shortTimePM(prayedAt))
+            .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
     }
 }
 
 /// A row of a past day's card (Journey): the Salah list's row — its dot (the chosen dot style), name in `.callout`
-/// light, the day page's time, 44 pt tall in the raised look, raised when picked — drawn from the same pieces as
+/// light, the day page's time, a raised row's height (SalahLook.raisedRowHeight) in the raised look, raised when picked — drawn from the same pieces as
 /// PrayerButton (which only knows today's rows: it marks, it runs the tour).
 struct DayCardRow: View {
     let row: PrayerModel
@@ -191,7 +176,7 @@ struct DayCardRow: View {
             }
             Spacer()
             if row.isCompleted, let at = row.timeAtComplete {
-                DayRowTime(prayedAt: at, summary: row.dayRowSummary)
+                DayRowTime(prayedAt: at)
             } else {
                 Text(excused ? "Excused" : "Missed")
                     .font(.footnote).fontDesign(.rounded).fontWeight(.light)

@@ -69,9 +69,10 @@ enum SalahLook: String, CaseIterable, Identifiable {
     /// G's behaviour: the score / "@ time" on a prayed row's tap, unprayed names regular, the marked row's buttons (G and
     /// the raised list).
     var behavesLikeG: Bool { self == .prayedOnTap || self == .raised }
-    /// The raised list's row height: its band is a capsule of it, the card's corners its half. 44 pt ≈ the original
-    /// list's row pitch (owner: back to the original spacing; 42 felt different on the phone).
-    static let raisedRowHeight: CGFloat = 44
+    /// The raised list's row height: its band is a capsule of it, the card's corners its half. 54 pt (owner, 2026-10-18:
+    /// "list items that have more space above and below … they're way too close to each other"; was 44 ≈ the original
+    /// list's pitch). Journey's day card uses it too (owner: both pages alike).
+    static let raisedRowHeight: CGFloat = 54
     /// The day's line through the dots (B, D).
     var drawsDayLine: Bool { self == .timeline || self == .dayNow }
 

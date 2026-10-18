@@ -2094,7 +2094,6 @@ struct PrayerTimesView: View {
         @State private var demoAlarmCheck = false
         @State private var demoRingDepth = false
         @State private var demoRaisedList = false
-        @State private var demoTypeLab = false
         @State private var demoListSandbox = false
         @State private var demoLATuner = false
         @State private var demoPileMock: String?
@@ -2425,10 +2424,6 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(2))
                     demoRaisedList = true
                 }
-                if ProcessInfo.processInfo.arguments.contains("-demoSalahTypeLab") {   // CursorSwift/DevLabs/SalahTypeLab.swift
-                    try? await Task.sleep(for: .seconds(2))
-                    demoTypeLab = true
-                }
                 if ProcessInfo.processInfo.arguments.contains("-demoRingDepth") {   // RingDepthMocks.swift
                     try? await Task.sleep(for: .seconds(2))
                     demoRingDepth = true
@@ -2463,7 +2458,6 @@ struct PrayerTimesView: View {
             .sheet(isPresented: $demoAlarmCheck) { NavigationStack { FajrAlarmCheckView() } }
             .sheet(isPresented: $demoRingDepth) { NavigationStack { RingDepthMockPage() } }
             .sheet(isPresented: $demoRaisedList) { NavigationStack { RaisedListMockPage() } }
-            .fullScreenCover(isPresented: $demoTypeLab) { SalahTypeLab().environmentObject(viewModel) }
             .fullScreenCover(isPresented: $demoListSandbox) { ListDragSandbox() }
             // `-laTuner`: Settings → Live Activities → Tune the card's look.
             .sheet(isPresented: $demoLATuner) { LATunerView() }
@@ -3590,7 +3584,7 @@ struct PrayerButton: View {
             #endif
             .padding(.horizontal)
             .padding(.vertical, theme.rowVerticalPadding)   // the well's rows a bit shorter (owner, 2026-10-01)
-            .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 44 pt rows
+            .frame(minHeight: look == .raised ? SalahLook.raisedRowHeight : nil)   // the raised list: 54 pt rows
             // E · the raised one gets its own room (the rest are compact).
             .padding(.vertical, look == .nowLeads && isCurrentPrayer ? 6 : 0)
             .modifier(DayPickAnchor(name: prayerObject.name))   // where the day page's band goes when it's picked
@@ -3677,8 +3671,8 @@ struct PrayerButton: View {
 
                 } else if prayerObject.isCompleted && DayPageState.shared.up && !TourRuntime.shared.active,
                           let prayedAt = prayerObject.timeAtComplete {
-                    // The day page, Jumu'ah too: "@ 1:22 PM" over "Jumu'ah · 100" (DayRowTime — Journey's rows too).
-                    DayRowTime(prayedAt: prayedAt, summary: prayerObject.dayRowSummary)
+                    // The day page, Jumu'ah too: when it was prayed, "1:22 PM" (DayRowTime — Journey's rows too).
+                    DayRowTime(prayedAt: prayedAt)
                         .allowsHitTesting(false)
                 } else if prayerObject.isCompleted && prayerObject.isJumuah {
                     // A Jumu'ah: its time stays; a tap opens the masjid's line under the name (showMasjidLine).
@@ -3691,8 +3685,8 @@ struct PrayerButton: View {
                     // Completed Prayer: Show Completion Time
                     if let prayedAt = prayerObject.timeAtComplete {
                         if DayPageState.shared.up && !TourRuntime.shared.active {
-                            // The day page: "@ 7:45 PM", the grade and score under it (DayRowTime — Journey's rows too).
-                            DayRowTime(prayedAt: prayedAt, summary: prayerObject.dayRowSummary)
+                            // The day page: when it was prayed, "7:45 PM" (DayRowTime — Journey's rows too).
+                            DayRowTime(prayedAt: prayedAt)
                                 .allowsHitTesting(false)
                         } else {
                         ExternalToggleText(
