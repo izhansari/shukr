@@ -295,11 +295,12 @@ struct TourDemoLayer: View {
                     UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
                 }
                 // `-tourAwayAfter s`: s seconds later the page is taken to Zikr, as a widget would (Back to the tour);
-                // `-tourAwayTo settings` takes it to Settings instead (the settings step without a tap).
+                // `-tourAwayTo settings` opens Settings instead (the settings step without a tap on the gear).
                 let away = UserDefaults.standard.double(forKey: "tourAwayAfter")
                 if away > 0 {
                     try? await Task.sleep(for: .seconds(away))
-                    sharedState.go(to: UserDefaults.standard.string(forKey: "tourAwayTo") == "settings" ? .journey /* P3 */ : .zikr)
+                    if UserDefaults.standard.string(forKey: "tourAwayTo") == "settings" { SettingsPresenter.shared.show() }
+                    else { sharedState.go(to: .zikr) }
                 }
                 return
             }
@@ -488,8 +489,9 @@ struct TourCallout: View {
                              openSection: openSection, lit: lit, step: step, place: place,
                              onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack, onToggle: onToggle,
                              onSkipQibla: onSkipQibla, onSkip: onSkip)
-                    // Over the top bar (owner: the tour never uses ☰ or the place, and Skip is in the panel now).
-                    .tourStripPlaced(top: true, size: size, topInset: TourTopPanel.topInset, bottomInset: 0)
+                    // Over the top bar (owner: the tour never uses ☰ or the place, and Skip is in the panel now) — but under it
+                    // for Settings' "Tap the gear": the gear is in the top bar.
+                    .tourStripPlaced(top: true, size: size, topInset: TourTopPanel.top(for: step), bottomInset: 0)
                     .opacity(shown ? 1 : 0)
                     .transition(.opacity)
             } else if mode == .strip {
@@ -629,6 +631,14 @@ struct TourTopPanel: View {
     static var topInset: CGFloat {
         let window = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.keyWindow
         return (window?.safeAreaInsets.top ?? 47) + 4
+    }
+
+    /// Where the panel's top sits for a card: just under the status bar — or, for Settings' "Tap the gear", under the top
+    /// bar, clear of the gear it asks for (Settings is the Salah page's gear since Journey took its page, 2026-10-17).
+    @MainActor static func top(for step: TourStep) -> CGFloat {
+        guard step == .settings, TourRuntime.shared.phase == .go,
+              let gear = TourTargets.shared.frame("settingsGear") else { return topInset }
+        return max(topInset, gear.maxY + 10)
     }
 
     /// The chapters moved into the panel so far: one overlay for all of them, so the panel stays from one to the next.
@@ -1777,9 +1787,9 @@ struct BubbleShape: Shape {
     /// The qibla line's "skip": a compass that won't settle (set by the layer after a wait).
     var qiblaSkippable = false
 
-    /// The pager stays on the card's page, except while a card asks for the swipe (Settings' swipe left; Zikr's swipe
-    /// right, from before Zikr left the tour).
-    var locksPager: Bool { active && !((step == .zikr || step == .settings) && phase == .go) }
+    /// The pager stays on the card's page, except while a card asks for the swipe (Zikr's swipe right, from before Zikr
+    /// left the tour). Settings is the Salah page's gear now — a tap, not a swipe (Journey took its page, 2026-10-17).
+    var locksPager: Bool { active && !(step == .zikr && phase == .go) }
     /// The list stays as the card needs it (TourLayer.sheetPosition); free only where the card is about other pages.
     /// Card 1 lets go once Asr is marked: its last to-do is the swipe up.
     var holdsSheet: Bool {
@@ -2951,8 +2961,12 @@ struct TourLayer: View {
     @State private var skippedNote = false
     private var runtime: TourRuntime { TourRuntime.shared }
 
+    /// The one layer that watches (the root's): a copy drawn over the pushed Settings (its chapter) only draws — its
+    /// watchers would run every page / step / phase change twice.
+    var watches = true
+
     var body: some View {
-        watching(layers)
+        if watches { watching(layers) } else { layers }
     }
 
     /// The layers, front to back: the input guard, the invitation, the one bubble, Back to the tour, Skip tour, the
@@ -3052,9 +3066,9 @@ struct TourLayer: View {
 
     @ViewBuilder private var skipLayer: some View {
         // The way out, for the whole tour, in one place (owner: "just keep it in the top right"): two taps, like
-        // Finish early. Where the page has its own top-right button it slides left beside it, in the same row:
-        // Settings' light / dark (a row lower sat on the location's refresh).
-        let besideCorner = sharedState.horizontalPage == .journey /* P3 */
+        // Finish early. Where the page has its own top-right button it slides left beside it, in the same row: the Salah
+        // page's gear (Settings).
+        let besideCorner = sharedState.horizontalPage == .main
         // Not while a chapter is up: its panel has the ✕ (a flag the map's own panel could clear — so by step).
         if runtime.active, !covered, !TourTopPanel.chapters.contains(runtime.step ?? .intro) {
             TourSkipButton {
@@ -3062,7 +3076,7 @@ struct TourLayer: View {
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .padding(.top, (typeSize.isAccessibilitySize ? 56 : 12) - (sharedState.horizontalPage == .journey /* P3 */ ? 8 : 0))   // Settings' header sits higher
+            .padding(.top, typeSize.isAccessibilitySize ? 56 : 12)
             .padding(.trailing, besideCorner ? 60 : 16)
             .animation(.smooth(duration: CircleMotion.standard), value: besideCorner)
             .transition(.asymmetric(insertion: .identity, removal: .opacity))
@@ -3088,15 +3102,15 @@ struct TourLayer: View {
                 if old == .list, step == .circle, sharedState.navPosition != .main {
                     withAnimation(CircleMotion.page) { sharedState.navPosition = .main }
                 }
-                // ‹ from Settings' first line: back on the Salah page, where Zikr's "Swipe right" starts.
-                if old == .settings, step == .zikr { sharedState.go(to: .main) }
+                // ‹ from Settings' first line: Settings closed, back on the Salah page, where Zikr's "Swipe right" starts.
+                if old == .settings, step == .zikr { SettingsPresenter.shared.open = false; sharedState.go(to: .main) }
                 if step.isTourPage, !onItsPage(step) { returnTo(step) }
                 announce()
             }
             .onChange(of: runtime.phase) { old, new in
                 guard let step = runtime.step, step.isTourPage else { return }
-                // ‹ from Settings' first card: back on the Zikr page, where "Tap Settings" is done.
-                if step == .settings, old == .learn, new == .go { sharedState.go(to: .main) }
+                // ‹ from Settings' first card: Settings closed, back on the Salah page, where "Tap the gear" is done.
+                if step == .settings, old == .learn, new == .go { SettingsPresenter.shared.open = false; sharedState.go(to: .main) }
                 if !onItsPage(step) { returnTo(step) }
                 announce()
             }
@@ -3106,6 +3120,13 @@ struct TourLayer: View {
             .onAppear { runtime.viewModel = viewModel }
         .modifier(TourLayerWatchers2(runtime: runtime, compass: compass, qiblaWatch: qiblaWatch))
         .task(id: runtime.mapOpen) { await mapWatch() }
+    }
+}
+
+/// The tour over the pushed Settings (its chapter, from "Tap the gear" on): the root's TourLayer is covered by the push.
+struct SettingsTourLayer: View {
+    var body: some View {
+        if TourRuntime.shared.active, TourRuntime.shared.step == .settings { TourLayer(covered: false, watches: false) }
     }
 }
 
@@ -3154,18 +3175,18 @@ extension TourLayer {
     }
 
     private func pageRested(_ page: SharedStateClass.HorizontalPage?) {
-        // The Zikr card frees the pager for its swipe right; a swipe left (to Settings) is put back (Sami).
-        if runtime.active, runtime.step == .zikr, runtime.phase == .go, page == .journey /* P3 */ {
+        // The Zikr card frees the pager for its swipe right; a swipe left (to Journey) is put back (Sami).
+        if runtime.active, runtime.step == .zikr, runtime.phase == .go, page == .journey {
             withAnimation(CircleMotion.page) { sharedState.horizontalPage = .main }
             return
         }
-        // Settings' swipe left: a swipe right (to Zikr, not in the tour) is put back.
-        if runtime.active, runtime.step == .settings, runtime.phase == .go, page == .zikr {
+        // Settings' gear: the pager's held then, but a page reached anyway (Zikr, Journey — neither in the tour) is put back.
+        if runtime.active, runtime.step == .settings, runtime.phase == .go, page == .zikr || page == .journey {
             withAnimation(CircleMotion.page) { sharedState.horizontalPage = .main }
             return
         }
         if page == .zikr { runtime.event(.zikrPage) }
-        if page == .journey /* P3 */ { runtime.event(.settingsPage) }
+        // Settings arriving is the push's own appearance (SettingsPresenter, PrayerTimesAndTracker), not a page.
     }
 
     /// The qibla line: already facing it ticks it once the bubble is up; a compass that can't settle gets a quiet
@@ -3220,7 +3241,7 @@ extension TourLayer {
         case (.list, _): return "prayerList"
         case (.zikr, .go): return "circle"
         case (.zikr, _): return "zikrSlot"   // the wheel's centre, still while it scrolls (owner)
-        case (.settings, .go): return "settingsTab"
+        case (.settings, .go): return "settingsGear"
         case (.settings, .last): return "tourAgainRow"
         case (.settings, _): return nil
         case (.firstPill, _) where runtime.insight || !runtime.pillVisible: return "circle"
@@ -3295,9 +3316,9 @@ extension TourLayer {
             if next(TourRuntime.sInfo) { return t.frame("remindersHeader").map { .init(kind: .tap, at: CGPoint(x: $0.maxX - 10, y: $0.midY)) } }
             return nil
         case (.settings, .go):
-            // A swipe left, under the circle (clear of the prayer's name).
-            guard sharedState.horizontalPage == .main, let c = circle else { return nil }
-            return .init(kind: .swipe(dx: -170, dy: 0), at: CGPoint(x: c.maxX + 10, y: c.maxY + 36))
+            // A tap on the gear, top right of the Salah page.
+            guard sharedState.horizontalPage == .main, let g = t.frame("settingsGear") else { return nil }
+            return .init(kind: .tap, at: CGPoint(x: g.midX, y: g.midY))
         case (.map, _):
             return circle.map { .init(kind: .tap, at: CGPoint(x: $0.midX + $0.width * 0.315, y: $0.midY - $0.height * 0.235)) }
         case (.firstPill, _):
@@ -3338,11 +3359,11 @@ extension TourLayer {
         let page: SharedStateClass.HorizontalPage = switch (step, runtime.phase) {
         case (.zikr, .go): .main
         case (.zikr, _): .zikr
-        case (.settings, .go): .main
-        case (.settings, _): .journey /* P3 */
-        default: .main
+        default: .main   // Settings too: its push sits over the Salah page
         }
         sharedState.go(to: page)
+        // Past "Tap the gear": Settings open again (a swipe back popped it); before it, the gear's tap is the card's to do.
+        if step == .settings, runtime.phase != .go, !SettingsPresenter.shared.open { SettingsPresenter.shared.show() }
         if let wanted = sheetPosition(step), sharedState.navPosition != wanted {
             withAnimation(CircleMotion.page) { sharedState.navPosition = wanted }
         }
@@ -3355,7 +3376,7 @@ extension TourLayer {
         case .intro: .main
         case .list: .bottom
         case .zikr: .main
-        case .settings: runtime.phase == .go ? .main : nil   // the swipe left starts from the Salah page, list closed
+        case .settings: runtime.phase == .go ? .main : nil   // the gear is on the Salah page, list closed
         default: nil
         }
     }
@@ -3386,7 +3407,7 @@ extension TourLayer {
         // From the wheel's top (under the top bar and its doors), not the centre circle's: a drag on the wheel's upper
         // half was taken (owner: "my drags a bit to the side don't seem to work").
         case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("historyDoor").map { $0.maxY + 12 } ?? 120) : []
-        case (.settings, .go): return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
+        case (.settings, .go): return sharedState.horizontalPage == .main ? f("settingsGear") : []
         // Settings' try-its: the Reminders switch and its ⓘ (the header's row) only.
         case (.settings, .tryIt): return f("remindersSwitch") + f("remindersHeader") + f("reminderBells")
         default: return []
@@ -3400,8 +3421,8 @@ extension TourLayer {
         case (.list, _): return page == .main && list == .bottom
         case (.zikr, .go): return page == .main || page == .zikr
         case (.zikr, _): return page == .zikr
-        case (.settings, .go): return page == .main || page == .journey /* P3 */
-        case (.settings, _): return page == .journey /* P3 */
+        case (.settings, .go): return page == .main
+        case (.settings, _): return SettingsPresenter.shared.open   // the gear's push (over the Salah page)
         case (.hintMark, _): return page == .main && list == .bottom
         default: return page == .main
         }

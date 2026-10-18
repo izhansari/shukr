@@ -1611,7 +1611,13 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: Binding(get: { SettingsPresenter.shared.open },
                                                     set: { SettingsPresenter.shared.open = $0 })) {
             SettingsView(onBack: { SettingsPresenter.shared.open = false }, refetchOnLeave: false, systemBar: true)
-                .onAppear { SettingsPresenter.shared.shown = true }
+                // The tour's Settings chapter happens here, over the push — the root's tour layer is under it (covered by
+                // it): a copy that only draws (the root's keeps watching).
+                .overlay { SettingsTourLayer() }
+                .onAppear {
+                    SettingsPresenter.shared.shown = true
+                    TourRuntime.shared.event(.settingsPage)   // the tour's "Tap the gear" done
+                }
         }
         .onChange(of: SettingsPresenter.shared.open) { was, now in
             guard was, !now else { return }

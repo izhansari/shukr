@@ -3232,10 +3232,14 @@ private struct SettingsSystemBar: ViewModifier {
     let on: Bool
     func body(content: Content) -> some View {
         if on {
+            // The tour's Settings chapter: its panel sits where the bar is (the bar's ‹ and title drew over it), so the bar
+            // steps aside meanwhile — the panel has its own ‹.
+            let touring = TourRuntime.shared.active && TourRuntime.shared.step == .settings
             content
                 .navigationTitle("Settings")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbar(touring ? .hidden : .automatic, for: .navigationBar)
         } else {
             content
         }
