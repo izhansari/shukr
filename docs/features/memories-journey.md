@@ -94,16 +94,26 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - Journey on one screen (owner 2026-10-16, board/mocks/journey-v6/build-plan.md): `JourneyPage` doesn't scroll — "Journey"
   + "Since <date>" with Prayer scores' ring on its right (`JourneyMiniRing` at 54 pt, the way in: the page zooms out of it,
   `.navigationTransition(.zoom)`, and the edge swipe shrinks it back — owner 2026-10-18); the card (`JourneyHomeCard`,
-  YourJourney.swift); four rows (`JourneyHomeRow`): This month (hold → `ThisMonthMeasure`, `journey.thisMonth`) · To make up ·
-  Moments · Milestones (→ `JourneyMilestonesPage`). The card's streak and best streak are the Salah page's rule
-  (`YourJourneyStats.streakDay`, `prayerStreakMode`).
+  YourJourney.swift); three rows (`JourneyHomeRow`): To make up · Moments · Milestones (→ `JourneyMilestonesPage`); This
+  month went with the goal (owner 2026-10-18). The card's streak and best streak are the Salah page's rule (`PrayerGoal`).
+- **The goal and the fresh start** (PrayerGoal.swift, FreshStart.swift; owner 2026-10-18, his picks for
+  board/goal-reset-inventory.md): Settings → Journey → Your goal (Pray all five · In their windows · On time · Perfect,
+  under the old `prayerStreakMode` key, each with the streak it'd give now) and Fresh start (one prayer day; a page with a
+  leaf in a ring, Az-Zumar 39:53, "Hold to begin" 1.5 s; Day N; again from tomorrow; undo any time). `PrayerGoal.meets` is
+  the one rule (gradingCriteria, streakDay, `Day.metGoal`); `PrayerStats.countsFrom` the one date; either change posts
+  `PrayerStats.rulesChanged` → a silent recount (no hearts, milestones recorded as seen), Max recounted from rows. From
+  the date: streak, best, the rate ("N% of days met your goal", finished days), rank, runs, Prayer scores' All time and
+  trends; lifetime: days marked, prayers marked, month lines, firsts; kept: To make up, Moments. Days before it draw at
+  0.35 everywhere (`JourneyTileColor.beforeFreshStart`); a quiet "Fresh start" milestone (never celebrated). Both travel
+  in Your Data's copy. Not built: "Show earlier" (the calendar still scrolls back).
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
 - Journey is the pager's right page (swipe left from Salah; ☰ / links page there): the same page, its own 54 pt band where
   the system bar was (the calendar's ‹ + Month | Year, a day's heading), the pager held while the calendar or a day is open.
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in
-  view) · the current streak ("N-day streak" / "Start a streak today"; it and "best streak" are the Salah page's streak —
-  `YourJourneyStats.streakDay`, `prayerStreakMode`: all five marked by default, today never breaks it), the expand button. The grid a
+  view) · the current streak ("N-day streak" / "Start a streak today"; it and "best streak" are the Salah page's streak at
+  the goal, from the fresh start; today never breaks it), the expand button; under the grid prayers marked · % of days met
+  your goal · best streak. The grid a
   week a row (`JourneyCardRow`, Equatable: a row redraws only for its own days / pick / streak light / look / log version):
   a 40 pt right-aligned column of grey month names (tap → that month), seven 11 pt bars (corner 4) in `JourneyTileColor`
   (kind × the user's own heat rank; unmarked = a hairline only). Opens on today's week (pinned until a finger scrolls).
@@ -114,14 +124,14 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   score, date, "Day N · Rth of M", its kind; the ring flies into the day page), the bottom `JourneyDayExtrasRow` (notes ·
   photos · on the map · min of zikr → the day page back card's destinations; the photo pile rises, fades out).
 - The expanded card (`JourneyExpandedPage`, JourneyExpanded.swift; owner 2026-10-17, board/journey-expand-plan.md): the card's ↗
-  (a month name / This month: that month focused and centred) grows the card to the whole screen in Journey's host — its top
+  (a month name: that month focused and centred) grows the card to the whole screen in Journey's host — its top
   (the count · a picked day's JourneyDayTop · a focused month's numbers) and bottom (the three numbers · the day's extras),
   between them the same continuous weeks as rings (`JourneyExpandedRow`, Equatable; JourneyDayCell), each month's name with
   "N days" / "score N" centred on its month's rows ("Feb ’25" outside this year). Focus only by a tap: a ring (picks its day
   too) or a name (its numbers at the top); a finger scroll lets both go. Hold 0.3 s and drag: picks across rows. Hold the
   names: the month rail, its month in focus as it goes (and after). Pinch in: the year (spread there: back). "best streak" at
-  the bottom lights its days and scrolls there (again: back), and under the numbers the legend In time · With Qaza ·
-  Incomplete lights only those days (`JourneyHighlight`); a scroll, ring, month, rail or the year lets either go. The
+  the bottom lights its days and scrolls there (again: back), and under the numbers the legend Goal met · All five
+  (not at Pray all five) · Incomplete lights only those days (`JourneyHighlight`); a scroll, ring, month, rail or the year lets either go. The
   tiles look (`setTiles`) is no longer reached (cleanup later). The toggle top right
   (square.grid.3x3 ↔ calendar) flies the focused / middle month into the year and a small month's name back. The old
   month page (window of months, neighbours, month rail) is gone.
@@ -197,7 +207,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   month) puts them back in their months, greyed, by date; an empty side shows "All caught up" (a check drawn in + a
   success buzz). A row opens its sheet (decision makeup-row-tap: kept).
 - Milestones (`JourneyMilestone.earned`, YourJourney.swift; earned once, dated, newest first, a hollow dot each): Day one,
-  first Jumu'ah / first prayer at a masjid, 7…365 days all in time in a row, each streak that beat the best ("Your best
+  first Jumu'ah / first prayer at a masjid, 7…365 days in a row at the goal ("…, all Perfect"; from the fresh start, its
+  id carries it), Fresh start (quiet), each streak that beat the best ("Your best
   streak: N days" over its dates on the latest), every hundredth prayer (the list keeps the 100th, 500th, every thousandth
   and the latest), each prayer's 100th/500th, a perfect day, Welcome back (the latest return only), years since day one.
   Each carries its card: symbol, about, how, day.
