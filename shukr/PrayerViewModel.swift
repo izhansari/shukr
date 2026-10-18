@@ -634,6 +634,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         calculatePrayerStreak()
         pushCompletionsToWidget()
         objectWillChange.send()
+        JourneyChange.post()
     }
 
     /// A mark from Journey's prayer sheet, on any day (decision journey-past-marks A): at `date` — after the window it's
@@ -660,6 +661,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         pushCompletionsToWidget()
         PhotoDevelop.check(todaysPrayers)
         objectWillChange.send()
+        JourneyChange.post()
         return true
     }
 
@@ -731,6 +733,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 //            updatePrayerStreak()
             pushCompletionsToWidget()
             PhotoDevelop.check(todaysPrayers)   // the last of the five develops the day's photos
+            JourneyChange.post()   // Journey's numbers (in the pager it stays built)
             // Prayed at a masjid? (Jumu'ah gets full marks.)
             if prayer.isCompleted {
                 Task { @MainActor in
@@ -739,6 +742,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                     if !days.isEmpty {
                         pushCompletionsToWidget()
                         objectWillChange.send()
+                        JourneyChange.post()   // rescored
                         // It turned out to be Jumu'ah: the moment, corrected (the right name and score), not replayed.
                         let window = prayer.endTime.timeIntervalSince(prayer.startTime)
                         let markedAt = prayer.timeAtComplete ?? Date()
@@ -788,6 +792,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         calculatePrayerStreak()
         calculateDayScore(for: PrayerDay.date())
+        JourneyChange.post()   // a widget / notification / watch mark: Journey's numbers too
         print("✅ reconciled widget completions: \(todaysPrayers.filter { $0.isCompleted }.map { $0.name })")
     }
     

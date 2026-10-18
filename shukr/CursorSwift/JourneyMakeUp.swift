@@ -479,7 +479,7 @@ struct JourneyMakeUpPage: View {
         guard let row = model(entry), viewModel.markFromJourney(row, at: Date()) else { return }
         let id = entry.id, token = UUID()
         withAnimation(.easeInOut(duration: 0.25)) { settling[id] = token }
-        NotificationCenter.default.post(name: .journeyChanged, object: nil)
+        JourneyChange.post()
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(3))
             guard settling[id] == token else { return }
@@ -499,7 +499,7 @@ struct JourneyMakeUpPage: View {
         guard let row = model(entry) else { return }
         viewModel.unmarkFromJourney(row)
         withAnimation(.easeInOut(duration: 0.25)) { settling[entry.id] = nil }
-        NotificationCenter.default.post(name: .journeyChanged, object: nil)
+        JourneyChange.post()
         Task { await reload(animation: .easeInOut(duration: 0.25)) }
     }
 

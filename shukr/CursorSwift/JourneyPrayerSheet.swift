@@ -12,8 +12,27 @@ import MapKit
 // (owner), marked with its pill.
 
 extension Notification.Name {
-    /// A prayer was marked, unmarked or edited from Journey: its pages read their rows again.
+    /// A prayer was marked, unmarked or edited (anywhere: the Salah page, Journey, a widget / watch mark reconciled): its
+    /// pages read their rows again. Post it through `JourneyChange.post()`.
     static let journeyChanged = Notification.Name("journeyChanged")
+}
+
+/// One `.journeyChanged` per change: every mark, unmark and time edit posts here, and the posts of one turn of the main
+/// thread go out as one (a mark from Journey's sheet runs the view model's path, which posts, and then the sheet's own).
+/// A mark on the Salah page posted nothing, and Journey in the pager kept its old numbers until a relaunch (sim,
+/// 2026-10-18). Journey reads it only while it's on screen; under another page it marks itself dirty for the way back.
+enum JourneyChange {
+    /// Main thread only (every mark path runs there).
+    nonisolated(unsafe) private static var pending = false
+    static func post() {
+        assert(Thread.isMainThread)
+        guard !pending else { return }
+        pending = true
+        DispatchQueue.main.async {
+            pending = false
+            NotificationCenter.default.post(name: .journeyChanged, object: nil)
+        }
+    }
 }
 
 struct JourneyPrayerSheet: View {
@@ -484,7 +503,7 @@ struct JourneyPrayerSheet: View {
         if let draftSpot { viewModel.movePrayer(prayer, to: draftSpot) }
         if note != savedNote { PrayerPhotos.setNote(photoKey, note) }
         triggerSomeVibration(type: .success)
-        NotificationCenter.default.post(name: .journeyChanged, object: nil)
+        JourneyChange.post()
         dismiss()
     }
 
@@ -493,13 +512,13 @@ struct JourneyPrayerSheet: View {
         guard viewModel.markFromJourney(prayer, at: when) else { return }
         if let draftSpot { viewModel.movePrayer(prayer, to: draftSpot) }
         if let note { PrayerPhotos.setNote(photoKey, note) }
-        NotificationCenter.default.post(name: .journeyChanged, object: nil)
+        JourneyChange.post()
         dismiss()
     }
 
     private func unmark() {
         viewModel.unmarkFromJourney(prayer)
-        NotificationCenter.default.post(name: .journeyChanged, object: nil)
+        JourneyChange.post()
         dismiss()
     }
 }
