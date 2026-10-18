@@ -365,7 +365,7 @@ struct PrayerSpotsHome: View {
                 let day = log?.day(dayOnly)
                 let n = onMap.count, places = dayPlaces.count
                 // No prayer count: the ring's fifths show it (owner: "get rid of how many prayers there are").
-                let line = [log?.dayNumber(dayOnly).map { "Day \($0)" },
+                let line = [log?.dayNumber(dayOnly, lifetime: true).map { "Day \($0)" },
                             n == 0 ? nil : places == 1 ? "1 place" : "\(places) places"].compactMap { $0 }.joined(separator: " · ")
                 // The date is the biggest thing on the sheet (owner: "the date should be the biggest text on the page").
                 HStack(alignment: .center, spacing: 12) {

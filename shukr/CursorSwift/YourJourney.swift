@@ -776,7 +776,7 @@ struct JourneyDayLine: View {
             : day.kind == .metGoal ? "Goal met"   // the goal's words since 2026-10-18 (was Complete · With Qaza)
             : day.kind == .allFive ? "All five"
             : "Incomplete"   // the score is in the ring
-        let number = log.dayNumber(day.date)
+        let number = log.dayNumber(day.date, lifetime: JourneyLens.shared.lifetime)
         // The whole line opens the day (owner, 2026-10-17: "Clicking the whole bottom row should open the selected
         // prayers day ring page").
         return Button {
@@ -1043,8 +1043,10 @@ struct JourneyDayTop: View {
         let _ = JourneyPerf.body("dayTop")
         let d = day
         let date = d.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-        let number = log.dayNumber(d.date).map { "Day \($0)" }
-        let rank = log.dayRank(d.date).map { "\(Self.ordinal($0)) of \(log.rankedDays)" }
+        // Both by the header's ⇄: since the fresh start, or over every day (Fable's audit #5).
+        let lifetime = JourneyLens.shared.lifetime
+        let number = log.dayNumber(d.date, lifetime: lifetime).map { "Day \($0)" }
+        let rank = log.dayRank(d.date, lifetime: lifetime).map { "\(Self.ordinal($0)) of \(log.rankedCount(lifetime: lifetime))" }
         let second = d.unfinished ? [number, "today, so far"] : [number, rank]
         let kind = d.prayed == 0 ? (d.excused ? "Excused" : "No prayers marked")
             : d.unfinished ? "Still going" : d.kind == .metGoal ? "Goal met" : d.kind == .allFive ? "All five" : "Incomplete"

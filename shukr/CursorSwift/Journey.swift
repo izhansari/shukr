@@ -164,11 +164,20 @@ struct JourneyLog {
             m = Calendar.current.date(byAdding: .month, value: 1, to: start)
         }
         log.tileRanks = ranks(log.days.values)
-        for (n, d) in log.days.values.filter(\.active).sorted(by: { $0.date < $1.date }).enumerated() { log.dayNumbers[d.key] = n + 1 }
-        // Ranked among the days since the fresh start (owner's pick, 2026-10-18: "#3 of 12 since your fresh start").
-        let ranked = log.days.values.filter { $0.active && !$0.unfinished && $0.counted }.map { ($0.key, $0.dayScore) }.sorted { $0.1 > $1.1 }
-        log.rankedDays = ranked.count
-        for (i, r) in ranked.enumerated() { log.dayRanks[r.0] = i > 0 && ranked[i - 1].1 == r.1 ? log.dayRanks[ranked[i - 1].0] : i + 1 }
+        // Day N and the rank both ways: since the fresh start (owner's pick, 2026-10-18: "#3 of 12 since your fresh
+        // start") and over every day, for the card's lifetime view (Fable's audit #5: "Day 281 · 3rd of 12" read one each).
+        let active = log.days.values.filter(\.active).sorted(by: { $0.date < $1.date })
+        for (n, d) in active.enumerated() { log.dayNumbers[d.key] = n + 1 }
+        for (n, d) in active.filter(\.counted).enumerated() { log.freshDayNumbers[d.key] = n + 1 }
+        func rank(_ days: [Day]) -> [String: Int] {
+            let ranked = days.filter { !$0.unfinished }.map { ($0.key, $0.dayScore) }.sorted { $0.1 > $1.1 }
+            var out: [String: Int] = [:]
+            for (i, r) in ranked.enumerated() { out[r.0] = i > 0 && ranked[i - 1].1 == r.1 ? out[ranked[i - 1].0] : i + 1 }
+            return out
+        }
+        log.dayRanks = rank(active.filter(\.counted))
+        log.rankedDays = log.dayRanks.count
+        log.lifetimeDayRanks = log.countsFrom == nil ? log.dayRanks : rank(active)
         return log
     }
 
@@ -199,14 +208,24 @@ struct JourneyLog {
 
     /// Which day of the journey it was: the nth day with a mark (nil: nothing marked that day).
     private var dayNumbers: [String: Int] = [:]
-    func dayNumber(_ date: Date) -> Int? { dayNumbers[PrayerNotificationID.dayKey(date)] }
+    /// The same, from the fresh start (no number for a day before it).
+    private var freshDayNumbers: [String: Int] = [:]
+    /// From the fresh start (the card's default), or over every day (its lifetime view; the map).
+    func dayNumber(_ date: Date, lifetime: Bool = false) -> Int? {
+        (lifetime || countsFrom == nil ? dayNumbers : freshDayNumbers)[PrayerNotificationID.dayKey(date)]
+    }
 
     /// Where a day ranks among the finished days with a mark, by the day page's score (owner, 2026-10-17: "the rank of that
     /// day across all of our days … rank number 105 out of 280"): equal scores share a rank (two 100s are both 1st). Today
     /// before its last prayer isn't ranked (its score is still climbing).
     private var dayRanks: [String: Int] = [:]
     private(set) var rankedDays = 0
-    func dayRank(_ date: Date) -> Int? { dayRanks[PrayerNotificationID.dayKey(date)] }
+    /// Over every day (the card's lifetime view).
+    private var lifetimeDayRanks: [String: Int] = [:]
+    func dayRank(_ date: Date, lifetime: Bool = false) -> Int? {
+        (lifetime ? lifetimeDayRanks : dayRanks)[PrayerNotificationID.dayKey(date)]
+    }
+    func rankedCount(lifetime: Bool) -> Int { lifetime ? lifetimeDayRanks.count : rankedDays }
 
     /// A tile's place on its kind's scale, 0…1 (1 with nothing to compare against yet).
     func tileRank(_ d: Day) -> Double {
@@ -315,6 +334,8 @@ struct JourneyPage: View {
     @State private var stats: YourJourneyStats?
     /// Prayer scores' row: the page's lifetime score and its strongest prayer (PrayerScores, read off the main thread).
     @State private var scores: (score: Int?, strongest: String?)?
+    /// The same over every day, while a fresh start is on: the ring follows the header's ⇄ (Fable's audit #5).
+    @State private var lifetimeScores: (score: Int?, strongest: String?)?
     /// To make up's row: every unmarked prayer on a day shukr was used (the page's own count).
     @State private var makeUpTotal: Int?
     /// The log is read off the main thread (JourneyLog.load); a newer request drops an older result, and a change while
@@ -512,8 +533,9 @@ struct JourneyPage: View {
             let scoresTask = Task.detached(priority: .userInitiated) {
                 let context = ModelContext(container)
                 // At the log's own goal and fresh start (the header ring then reads since it, as Prayer scores does).
-                return (PrayerScores.build(log: built, context: context, now: now, countsFrom: built.countsFrom, goal: built.goal),
-                        JourneyMakeUpPage.entries(in: context, ranges: ranges, now: now).open.count)
+                let s = PrayerScores.build(log: built, context: context, now: now, countsFrom: built.countsFrom, goal: built.goal)
+                let all = built.countsFrom == nil ? nil : PrayerScores.build(log: built, context: context, now: now, countsFrom: nil, goal: built.goal)
+                return (s, all, JourneyMakeUpPage.entries(in: context, ranges: ranges, now: now).open.count)
             }
             let builtStats = await statsTask.value
             JourneyPerf.took("stats.load", since: t2)
@@ -526,12 +548,13 @@ struct JourneyPage: View {
                 JourneyLog.last = built
                 stats = builtStats
             }
-            let (s, open) = await scoresTask.value
+            let (s, all, open) = await scoresTask.value
             JourneyPerf.took("scores+makeUp.load", since: t2)
             guard token == loadToken else { return }
             JourneyFlights.whenIdle {
                 guard token == loadToken else { return }
                 scores = (s.prayedScore, s.prayed > 0 ? s.ranked.first : nil)
+                lifetimeScores = all.map { ($0.prayedScore, $0.prayed > 0 ? $0.ranked.first : nil) }
                 makeUpTotal = open
                 // Prayer scores opens on these at once (its own load then refreshes them).
                 PrayerScores.lastBySpan[.all] = s
@@ -629,7 +652,8 @@ struct JourneyPage: View {
                 triggerSomeVibration(type: .light)
                 showScores = true
             } label: {
-                JourneyMiniRing(score: scores?.strongest != nil ? scores?.score : nil, size: 54)
+                let ring = JourneyLens.shared.lifetime ? lifetimeScores ?? scores : scores
+                JourneyMiniRing(score: ring?.strongest != nil ? ring?.score : nil, size: 54)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
