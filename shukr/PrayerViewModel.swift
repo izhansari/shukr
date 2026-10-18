@@ -733,6 +733,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 // too, or the next reload picks one and it's still prayed (mark audit #9; the widget's and the watch's
                 // unmarks already reset every one).
                 for twin in completedTwins(of: prayer) { twin.resetPrayer(); PrayerPhotos.discard(for: twin) }
+                // The mark took away its halfway / 30-minutes-left nudges: the plan puts them back (a diff — mark audit #6).
+                Task { @MainActor in NotificationScheduler.topUp(reason: "unmark") }
             }
             calculatePrayerStreak()
             calculateDayScore(for: prayer.dayStart)
