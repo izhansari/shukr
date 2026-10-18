@@ -544,8 +544,6 @@ final class LocationViewModel: ObservableObject {
         return (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
     }
 
-    /// Shortest signed difference between two angles in degrees, -180…180.
-    func angleDifference(from: Double, to: Double) -> Double { signedAngleDifference(from: from, to: to) }
 
     /// Pin colour for a completed prayer, same scale as the app's score colouring.
     static func markerColor(for prayer: PrayerModel) -> UIColor {
@@ -731,10 +729,6 @@ struct MapView: UIViewRepresentable {
             }
         }
 
-        /// The tapped pin stays selected (bigger, green) while its sheet is up.
-        func deselectAll(on mapView: MKMapView) {
-            for a in mapView.selectedAnnotations { mapView.deselectAnnotation(a, animated: true) }
-        }
 
         /// The day page's map: its prayers' pins in view, above the sheet, once (a lone pin a few streets around).
         private func fitDayIfAsked(on mapView: MKMapView) {
@@ -1806,20 +1800,6 @@ extension View {
     }
 }
 
-struct MapPill: ButtonStyle {
-    var filled = false
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 15, weight: .medium))
-            .foregroundStyle(filled ? Color.white : Color.green)
-            .frame(minWidth: 18, minHeight: 18)
-            .padding(14)
-            .background(filled ? Color.green : Color.white)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .shadow(radius: 2)
-            .opacity(configuration.isPressed ? 0.7 : 1)
-    }
-}
 
 // MARK: - CircleWithArrowOverlay
 struct CircleWithArrowOverlay: View {
@@ -1890,209 +1870,12 @@ struct CircleWithArrowOverlay: View {
         }
         .frame(width: 200, height: 200)
 
-/*
-        ZStack {
-            Circle()
-                .stroke(lineWidth: 2)
-                .frame(width: 200, height: 200)
-                .foregroundColor(Color.white)
-                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
-
-            Image(systemName: "arrowtriangle.up.fill")
-                .resizable()
-                .foregroundColor(.white)
-                .frame(width: 20, height: 20)
-                .offset(y: -100)
-                .rotationEffect(.degrees(degrees))
-                .animation(.easeInOut, value: degrees)
-            
-            // Compass Based Qibla Arrow
-            Image(systemName: "chevron.up")
-                .font(.subheadline)
-                .foregroundColor(compass.qibla.aligned ? .green : .primary)
-                .background(
-                    Circle() // this is to increase tappable aread
-                        .fill(Color.white.opacity(0.001))
-                        .frame(width: 44, height: 44)
-                )
-                .opacity(0.7)
-                .offset(y: -80)
-//                            .rotationEffect(Angle(degrees: compass.qibla.aligned ? 0 : compass.qibla.heading))
-                .rotationEffect(Angle(degrees: compass.heading))
-                .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: compass.qibla.aligned)
-//                            .onChange(of: compass.qibla.aligned) { _, newIsAligned in
-//                                checkToTriggerQiblaHaptic(aligned: newIsAligned)
-//                            }
-//                            .onTapGesture { showQiblaMap = true }
-        }
-        .frame(width: 200, height: 200)
- */
     }
 }
-
-// The rest of your code remains the same (CheckboxStyle, FilterView, PrayerDetailView, ClusterPrayersDetailView)
-
-
 
 
 // MARK: - Custom Checkbox ToggleStyle
 
-// MARK: - FilterView
-struct FilterView: View {
-    @Binding var selectedStartDate: Date
-    @Binding var selectedEndDate: Date
-    @Binding var selectedPrayerNames: Set<String>
-
-    let defaultStartDate: Date
-    let defaultEndDate: Date
-    let defaultPrayerNames: Set<String>
-    /// What the start picker shows while the range is "all time" (`.distantPast` would read 0001).
-    var earliestPinDate: Date = Date()
-
-    @Environment(\.dismiss) var dismiss
-
-    private var currentRange: LocationViewModel.QuickRange {
-        let cal = Calendar.current
-        for r in LocationViewModel.QuickRange.allCases {
-            guard let d = r.dates() else { continue }
-            let sameStart = r == .allTime ? selectedStartDate == .distantPast : cal.isDate(selectedStartDate, inSameDayAs: d.start)
-            if sameStart && cal.isDate(selectedEndDate, inSameDayAs: d.end) { return r }
-        }
-        return .custom
-    }
-    private func apply(_ range: LocationViewModel.QuickRange) {
-        guard let d = range.dates() else { return }
-        selectedStartDate = d.start
-        selectedEndDate = d.end
-    }
-    private var isDefault: Bool {
-        selectedStartDate == defaultStartDate && Calendar.current.isDate(selectedEndDate, inSameDayAs: defaultEndDate) && selectedPrayerNames == defaultPrayerNames
-    }
-
-    let allPrayerNames = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    // WHEN: a grid of range chips
-                    VStack(alignment: .leading, spacing: 12) {
-                        sectionTitle("When")
-                        LazyVGrid(columns: columns, spacing: 10) {
-                            ForEach(LocationViewModel.QuickRange.allCases) { range in
-                                let on = currentRange == range
-                                Button {
-                                    withAnimation(.snappy(duration: 0.2)) {
-                                        if range == .custom {
-                                            if currentRange != .custom { selectedStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date() }
-                                        } else { apply(range) }
-                                    }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: range.symbol).font(.subheadline)
-                                        Text(range.rawValue).lineLimit(1).minimumScaleFactor(0.85)
-                                    }
-                                    .font(.subheadline.weight(.medium))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .foregroundStyle(on ? Color.green : Color.primary)
-                                    .background(on ? Color.green.opacity(0.16) : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.green.opacity(on ? 0.35 : 0), lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        if currentRange == .custom {
-                            VStack(spacing: 0) {
-                                dateRow("From", selection: Binding(
-                                    get: { selectedStartDate == .distantPast ? earliestPinDate : selectedStartDate },
-                                    set: { selectedStartDate = $0 }
-                                ), in: ...selectedEndDate)
-                                Divider().padding(.leading, 16)
-                                dateRow("To", selection: $selectedEndDate, in: selectedStartDate...Date())
-                            }
-                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
-
-                    // PRAYERS: five icon chips
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            sectionTitle("Prayers")
-                            Spacer()
-                            Button(selectedPrayerNames == defaultPrayerNames ? "All on" : "Select all") {
-                                withAnimation(.snappy(duration: 0.2)) { selectedPrayerNames = defaultPrayerNames }
-                            }
-                            .font(.caption.weight(.medium))
-                            .disabled(selectedPrayerNames == defaultPrayerNames)
-                        }
-                        HStack(spacing: 8) {
-                            ForEach(allPrayerNames, id: \.self) { name in
-                                let on = selectedPrayerNames.contains(name)
-                                Button {
-                                    withAnimation(.snappy(duration: 0.2)) {
-                                        if on { selectedPrayerNames.remove(name) } else { selectedPrayerNames.insert(name) }
-                                    }
-                                } label: {
-                                    VStack(spacing: 6) {
-                                        Image(systemName: prayerSymbol(name)).font(.title3)
-                                        Text(name).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .foregroundStyle(on ? Color.green : Color.secondary)
-                                    .background(on ? Color.green.opacity(0.16) : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.green.opacity(on ? 0.35 : 0), lineWidth: 1))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-                .padding(20)
-            }
-            .background(Color(.systemGroupedBackground))
-            .fontDesign(.rounded)
-            .navigationTitle("Filter Prayers")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Reset") {
-                        withAnimation(.snappy(duration: 0.2)) {
-                            selectedStartDate = defaultStartDate
-                            selectedEndDate = defaultEndDate
-                            selectedPrayerNames = defaultPrayerNames
-                        }
-                    }
-                    .disabled(isDefault)
-                }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.semibold) }
-            }
-        }
-    }
-
-    private func sectionTitle(_ t: String) -> some View {
-        Text(t.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.leading, 4)
-    }
-    private func dateRow(_ label: String, selection: Binding<Date>, in range: ClosedRange<Date>) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            DatePicker("", selection: selection, in: range, displayedComponents: [.date]).labelsHidden()
-        }
-        .padding(.horizontal, 16).padding(.vertical, 8)
-    }
-    private func dateRow(_ label: String, selection: Binding<Date>, in range: PartialRangeThrough<Date>) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            DatePicker("", selection: selection, in: range, displayedComponents: [.date]).labelsHidden()
-        }
-        .padding(.horizontal, 16).padding(.vertical, 8)
-    }
-}
 
 /// The SF Symbol the app uses for each prayer (same set as the circle and the spot sheet).
 func prayerSymbol(_ name: String) -> String {

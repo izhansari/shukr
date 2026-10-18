@@ -278,26 +278,6 @@ struct QuickAddStepper: View {
     }
 }
 
-/// The quick-add step for one mantra (or no mantra), saved as it changes. The mantra's page and
-/// the pause screen.
-struct QuickAddStepRow: View {
-    let mantra: MantraModel?
-    @Environment(\.modelContext) private var context
-    @AppStorage(QuickAddSteps.noMantraKey) private var noMantraStep = 0
-
-    var body: some View {
-        QuickAddStepper(step: Binding(
-            get: { mantra?.quickAddStep ?? noMantraStep },
-            set: { newValue in
-                if let mantra {
-                    mantra.quickAddStep = newValue
-                    try? context.save()
-                } else {
-                    noMantraStep = newValue
-                }
-            }))
-    }
-}
 
 /// A zikr's card, being edited (only ever in `ZikrCardEditor`, the card over a dimmed screen — decision
 /// zikr-card-edit B): the name in large light type (with `nameAccessory` top right), then one fixed box with three
@@ -570,21 +550,6 @@ struct MemoRecordingKey: PreferenceKey {
     static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
-/// Save in a sheet's bar: green text when there's something to save, gray otherwise (owner,
-/// 2026-09-25 — a filled green button was too much).
-struct SaveButton: View {
-    let enabled: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text("Save")
-                .fontWeight(.semibold)
-                .foregroundStyle(enabled ? Color.green : Color.secondary)
-        }
-        .disabled(!enabled)
-    }
-}
 
 /// How the Azkar list is ordered, within each section: one field and a direction, Notion-style
 /// (owner, 2026-09-27, feedback ADD5836A — it was a list of opposite pairs). The default is Name,

@@ -2153,9 +2153,6 @@ struct MemoriesDayStrip: View, Equatable {
     /// Scrolled onto the pile's day once the margins were in.
     @State private var opened = false
 
-    private func nearestPhotoDay(to i: Int) -> String? {
-        days.indices.filter { photoDays.contains(days[$0]) }.min { abs($0 - i) < abs($1 - i) }.map { days[$0] }
-    }
 
     /// Once, as soon as the width and the margins are both in: straight onto the pile's day.
     private func openOnPileDay() {

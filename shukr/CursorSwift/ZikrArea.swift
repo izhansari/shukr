@@ -222,21 +222,6 @@ private enum Soft {
         .barGlass(Capsule())   // Liquid Glass wherever it can be (owner)
     }
 
-    static func addRow(_ title: String, action: @escaping () -> Void = {}) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: "plus").font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.sage)
-                    .frame(width: 30, height: 30).background(Circle().fill(Color.sage.opacity(0.14)))
-                Text(title).foregroundStyle(Color.sage)
-                Spacer()
-            }
-            .padding(.horizontal, 14).padding(.vertical, 11)
-            .background(RoundedRectangle(cornerRadius: Soft.radius, style: .continuous)
-                .strokeBorder(Color.sage.opacity(0.45), style: StrokeStyle(lineWidth: 1.2, dash: [5, 5])))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
 
     /// A light title + one grey line (README 4), left-aligned over the hero.
     static func title(_ title: String, _ line: String) -> some View {
@@ -284,12 +269,6 @@ private extension View {
     func bareRow(top: CGFloat = 6, bottom: CGFloat = 6) -> some View {
         listRowInsets(EdgeInsets(top: top, leading: 16, bottom: bottom, trailing: 16))
             .listRowBackground(Color.clear).listRowSeparator(.hidden)
-    }
-    /// A regular flat list row on the soft page, a faint line between rows.
-    func flatRow() -> some View {
-        listRowInsets(EdgeInsets(top: 10, leading: 20, bottom: 10, trailing: 20))
-            .listRowBackground(Color.clear)
-            .listRowSeparatorTint(Color.primary.opacity(0.1))
     }
 }
 
@@ -759,34 +738,8 @@ private struct DayPiece: View {
     }
 }
 private extension View {
-    /// A single row in its own flat card ("All N sessions").
-    func pieceRow() -> some View {
-        listRowInsets(EdgeInsets(top: 14, leading: 32, bottom: 14, trailing: 32))
-            .listRowSeparator(.hidden)
-            .listRowBackground(DayPiece(first: true, last: true))
-    }
 }
 
-/// "History · 39 sessions · last 11 days ago ›": a goal's or a zikr's way into History, filtered to it.
-private struct HistoryLink: View {
-    let sessions: [SessionDataModel]
-    var body: some View {
-        let count = sessions.reduce(0) { $0 + $1.totalCount }
-        let last = sessions.map(\.startTime).max()
-        HStack(spacing: 12) {
-            Image(systemName: "clock.arrow.circlepath").font(.system(size: 16, weight: .light)).foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("History")
-                Text(["\(sessions.count) session\(sessions.count == 1 ? "" : "s")", "\(ZikrFmt.count(count)) counted",
-                      last.map { "last \(ZikrFmt.ago($0))" }].compactMap { $0 }.joined(separator: " · "))
-                    .font(.footnote).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer()
-            Soft.chevron()
-        }
-        .contentShape(Rectangle())
-    }
-}
 
 private struct ZoomSource: ViewModifier {
     let id: String
@@ -2221,14 +2174,6 @@ private struct ZikrHistoryHome: View {
         }
     }
 
-    /// Whose streak (the cold test met four unlabelled ones): any zikr, or the zikr / goal History is filtered to.
-    private func streakLabel(_ n: Int) -> String {
-        switch active {
-        case .zikr(_, let name)?: return "Longest \(name) streak: \(n) days"
-        case .goal(_, let name)?: return "Longest \(name) streak: \(n) days"
-        default: return "Longest streak, any zikr: \(n) days"
-        }
-    }
 
     /// Give to Causes' filter beside the search: a plain filter glyph, a sage pill with its name while one is on.
     private var filterMenu: some View {

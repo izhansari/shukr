@@ -175,10 +175,6 @@ class AyahDatabaseManager {
         return Verse(index: index, sura: result.sura, aya: result.aya, arabic: result.text)
     }
 
-    /// Returns a random verse (with Arabic text) from the Arabic database.
-    func getRandomVerse() -> Verse? {
-        getVerse(at: Int.random(in: 1...Self.verseCount))
-    }
 
     /// Returns a translation for the given verse index and translation option.
     func getTranslation(for verseIndex: Int, translation: TranslationType) -> String? {
@@ -325,40 +321,9 @@ final class DailyAyahViewModel: ObservableObject {
 
 // MARK: - Share Sheet
 
-struct AyahShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    let applicationActivities: [UIActivity]? = nil
-
-    func makeUIViewController(context: Context) -> some UIViewController {
-        let controller = UIActivityViewController(activityItems: activityItems,
-                                                  applicationActivities: applicationActivities)
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: UIViewControllerType, context: Context) {}
-}
 
 // MARK: - Main ContentView
 
-struct SurahHeaderView: View {
-    let surah: Surah
-    let ayahNumber: Int
-    
-    @State private var showTranslation = false
-
-    var body: some View {
-        HStack(spacing: 3) {
-            // This text shows either the englishName or the englishNameTranslation.
-            Text("\(showTranslation ? surah.englishNameTranslation : surah.englishName)")
-            Text("(\(surah.number):\(ayahNumber))")
-        }
-        .onTapGesture {
-            withAnimation {
-                showTranslation.toggle()
-            }
-        }
-    }
-}
 
 struct DailyAyahView: View {
     @StateObject private var viewModel = DailyAyahViewModel()
@@ -772,18 +737,4 @@ struct DailyAyahCountdownView: View {
             }
     }
 
-}
-
-struct CountdownView_Previews: PreviewProvider {
-    static var previews: some View {
-        DailyAyahCountdownView(viewModel: DailyAyahViewModel())
-    }
-}
-
-// MARK: - Preview
-
-struct AyahApp_Previews: PreviewProvider {
-    static var previews: some View {
-        DailyAyahView()
-    }
 }

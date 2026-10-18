@@ -404,17 +404,6 @@ enum PhotoDevelop {
         PhotoRevealState.shared.value += 1   // every other copy of this photo on screen clears too
     }
 
-    /// Today has photos still developing (the day page says when they'll be ready).
-    static func todayDeveloping(now: Date = Date()) -> Bool {
-        let today = PrayerDay.key(for: now)
-        return !isDeveloped(day: today, now: now) && PrayerPhotos.all().contains { $0.dayKey == today }
-    }
-
-    /// Today has a developed photo still to tap (the day page's "developed" link).
-    static func todayReady(now: Date = Date()) -> Bool {
-        let today = PrayerDay.key(for: now)
-        return PrayerPhotos.all().contains { $0.dayKey == today && needsReveal(key: $0.key) }
-    }
 
     nonisolated(unsafe) private static let context = CIContext(options: [.useSoftwareRenderer: false])
 
@@ -757,25 +746,6 @@ struct PrayerPhotoFace: View {
     }
 }
 
-/// A prayer's photo very small (the day ring's dot): the back camera's alone, a rounded square with an edge.
-struct PrayerPhotoThumb: View {
-    let key: String
-    var size: CGFloat = 18
-    var edge: Color = .white
-    @State private var image: UIImage?
-
-    var body: some View {
-        Group {
-            if let image { Image(uiImage: image).resizable().scaledToFill() } else { Color.primary.opacity(0.2) }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).stroke(edge, lineWidth: 2))
-        // A small cached thumbnail (decoding the full photo for a 20 pt dot, five times over, was wasted work).
-        .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { image = await PrayerPhotos.thumbnail(key, side: Int(size * 3)) }
-        .developReveal(key, width: size, interactive: false)   // a dot in the day ring: it clears when its photo is developed
-    }
-}
 
 /// The photo as a card floating over the app (owner: "instead of showing it full screen on a black page … like just the
 /// image. And like a modal … cute and modern"): the page blurred and dimmed behind, the photo and its footer on a dark

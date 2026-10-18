@@ -77,15 +77,6 @@ class SharedStateClass {
         }
     }
     
-    func resetTasbeehInputs(){
-        selectedTask = nil
-        selectedMinutes = 0
-        targetCount = ""
-        titleForSession = ""
-        mantraForSession = nil
-        selectedMode = 1
-    }
-
 
 //    var newTopMainOrBottom: ViewPosition = .main {
 //        didSet {
@@ -277,20 +268,6 @@ class PrayerModel {
         PrayerScoring.color(for: numberScore)
     }
     
-//    func weightedSummaryScoreFromEnglishScore() -> Double {
-//        switch englishScore {
-//        case "Optimal":
-//            return 1.0
-//        case "Good":
-//            return 0.85
-//        case "Poor":
-//            return 0.75
-//        case "Kaza":
-//            return 0.5
-//        default:
-//            return 0.0
-//        }
-//    }
 
 }
 
@@ -370,18 +347,6 @@ class MantraModel: Identifiable {
         return all.first { $0.name == trimmed } ?? all.first { BuiltInAzkar.key($0.name) == BuiltInAzkar.key(trimmed) }
     }
 
-    /// Insert any built-in that isn't there yet. Runs on fresh installs (the migration seeds
-    /// upgrades). Returns how many were added; the caller saves.
-    @discardableResult
-    static func seedBuiltInsIfNeeded(in context: ModelContext) -> Int {
-        let existing = Set(((try? context.fetch(FetchDescriptor<MantraModel>())) ?? []).map { $0.name.lowercased() })
-        var added = 0
-        for name in builtIn where !existing.contains(name.lowercased()) {
-            context.insert(MantraModel(name: name))
-            added += 1
-        }
-        return added
-    }
 }
 
 
@@ -551,52 +516,6 @@ class DailyPrayerScore {
     }
 
 }
-
-
-
-//@Model
-//class TaskModel2: Identifiable {
-//    
-//    @Attribute(.unique) var id: UUID = UUID()
-//    var mantra: String
-//    var isCountMode: Bool
-//    var goal: Int
-//
-//    var isCompleted: Bool {
-//        goal != 0 && runningGoal != 0 && runningGoal >= goal
-//    }
-//    
-//    var runningGoal: Int = 0 // Dynamically updated
-//
-//    init(mantra: String, isCountMode: Bool, goal: Int) {
-//        self.mantra = mantra
-//        self.isCountMode = isCountMode
-//        self.goal = goal
-//    }
-//
-//    // Function to calculate running goal using a predicate
-//    func updateRunningGoal(using context: ModelContext) throws {
-//        // Define today's start and end times
-//        let todayStart = Calendar.current.startOfDay(for: Date())
-//        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
-//
-//        // Build a fetch descriptor with a predicate
-//        let fetchDescriptor = FetchDescriptor<SessionDataModel>(
-//            predicate: #Predicate<SessionDataModel> {
-//                $0.startTime >= todayStart &&
-//                $0.startTime <= todayEnd &&
-//                $0.title == self.mantra
-//            },
-//            sortBy: [SortDescriptor(\.startTime, order: .forward)]
-//        )
-//
-//        // Fetch sessions matching the criteria
-//        let todaysMantraSessions = try context.fetch(fetchDescriptor)
-//
-//        // Calculate the running goal
-//        runningGoal = todaysMantraSessions.reduce(0) { $0 + $1.totalCount }
-//    }
-//}
 
 
 // MARK: - Mantra stats

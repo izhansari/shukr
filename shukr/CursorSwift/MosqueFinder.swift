@@ -76,11 +76,6 @@ final class MosqueAnnotation: MKPointAnnotation {
     }
 }
 
-/// The mosque the user tapped (drives the sheet).
-struct MosqueSelection: Identifiable {
-    let id = UUID()
-    let item: MKMapItem
-}
 
 enum MosqueSearch {
     static let queries = ["mosque", "masjid", "islamic center"]

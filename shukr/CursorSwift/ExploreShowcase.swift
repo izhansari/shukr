@@ -1664,60 +1664,6 @@ private struct ShortcutTiles: View {
     }
 }
 
-private struct SiriExchange: View {
-    let ask: String
-    let answer: String
-    var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Circle().fill(AngularGradient(colors: [.pink, .indigo, .cyan, .pink], center: .center)).frame(width: 26, height: 26)
-                Text("“\(ask)”").font(.system(size: 12, design: .rounded)).foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.8)
-            }
-            Text(answer)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(Color(red: 0.11, green: 0.13, blue: 0.15))
-                .lineLimit(2).multilineTextAlignment(.center)
-                .padding(.horizontal, 12).padding(.vertical, 9)
-                .frame(width: 190)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.white.opacity(0.94)))
-        }
-    }
-}
-
-private struct WidgetTile<Content: View>: View {
-    var fill: Color = .white
-    var width: CGFloat = 96, height: CGFloat = 96
-    @ViewBuilder let content: () -> Content
-    var body: some View {
-        content()
-            .frame(width: width, height: height)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(fill))
-            .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
-            .environment(\.colorScheme, .light)
-    }
-}
-
-private struct RingFace: View {
-    let name: String
-    let line: String?
-    let progress: Double
-    let size: CGFloat
-    var dark = false
-    var body: some View {
-        ZStack {
-            Circle().stroke(dark ? Color.white.opacity(0.15) : Color.black.opacity(0.08), lineWidth: size * 0.1)
-            Circle().trim(from: 0, to: progress)
-                .stroke(Color.green, style: StrokeStyle(lineWidth: size * 0.1, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            VStack(spacing: 0) {
-                Text(name).font(.system(size: size * 0.2, weight: .semibold, design: .rounded))
-                if let line { Text(line).font(.system(size: size * 0.14, design: .rounded)).opacity(0.6) }
-            }
-            .foregroundStyle(dark ? Color.white : Color.black)
-        }
-        .frame(width: size, height: size)
-    }
-}
 
 private struct MiniArc: View {
     let progress: Double
@@ -1762,17 +1708,6 @@ private struct LockClock<Accessory: View>: View {
     }
 }
 
-private struct LockCircle: View {
-    let text: String
-    var body: some View {
-        ZStack {
-            Circle().stroke(.white.opacity(0.25), lineWidth: 3)
-            Circle().trim(from: 0, to: 0.75).stroke(.white, style: StrokeStyle(lineWidth: 3, lineCap: .round)).rotationEffect(.degrees(-90))
-            Text(text).font(.system(size: 12, weight: .bold, design: .rounded))
-        }
-        .frame(width: 44, height: 44)
-    }
-}
 
 private struct LockButton: View {
     let symbol: String
@@ -1782,23 +1717,6 @@ private struct LockButton: View {
     }
 }
 
-private struct CCTile: View {
-    let symbol: String
-    var body: some View {
-        Image(systemName: symbol).font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
-            .frame(width: 52, height: 52).background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(.white.opacity(0.18)))
-    }
-}
-
-private struct WatchCase<Content: View>: View {
-    @ViewBuilder let content: () -> Content
-    var body: some View {
-        content()
-            .frame(width: 76, height: 92)
-            .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(.black))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color(white: 0.2), lineWidth: 4))
-    }
-}
 
 private struct Pin: View {
     let color: Color

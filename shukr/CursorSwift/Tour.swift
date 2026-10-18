@@ -1481,23 +1481,6 @@ struct TourColorKey: View {
     }
 }
 
-/// The tour's place: a dot per card, the current one a longer oval (owner).
-struct TourDots: View {
-    let current: Int
-    let count: Int
-    var body: some View {
-        HStack(spacing: 4) {
-            ForEach(1...count, id: \.self) { i in
-                Capsule()
-                    .fill(i == current ? Color.primary.opacity(0.6) : Color.primary.opacity(i < current ? 0.3 : 0.15))
-                    .frame(width: i == current ? 16 : 5, height: 5)
-            }
-        }
-        .animation(.smooth(duration: CircleMotion.standard), value: current)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step \(current) of \(count)")
-    }
-}
 
 /// What just changed glows a moment: a soft green outline that breathes in and out once.
 struct ChangeGlow: View {
@@ -1537,30 +1520,6 @@ struct SteadyGlow: View {
     }
 }
 
-/// The target pulses once when a touch elsewhere wasn't let through ("over here").
-struct TargetPulse: View {
-    let frame: CGRect
-    let round: Bool
-    @State private var go = false
-    var body: some View {
-        Group {
-            if round {
-                let d = max(frame.width, frame.height)
-                Circle().stroke(Color.primary.opacity(go ? 0 : 0.35), lineWidth: 2)
-                    .frame(width: d, height: d)
-                    .scaleEffect(go ? 1.15 : 1)
-            } else {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(Color.primary.opacity(go ? 0 : 0.35), lineWidth: 2)
-                    .frame(width: frame.width, height: frame.height)
-                    .scaleEffect(go ? 1.05 : 1)
-            }
-        }
-        .position(x: frame.midX, y: frame.midY)
-        .allowsHitTesting(false)
-        .onAppear { withAnimation(.easeOut(duration: 0.7)) { go = true } }
-    }
-}
 
 /// The tip's material (owner: "the tool tip is a little hard to see… maybe we make it liquid glass-y? or something that
 /// just doesn't look the same material as our soft ring material"): glass (the default), ink (the opposite of the

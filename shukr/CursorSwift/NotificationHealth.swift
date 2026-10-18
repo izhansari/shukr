@@ -267,36 +267,6 @@ struct NotificationHealthRows: View {
     }
 }
 
-/// Settings → Reminders, under the tiles (decision reminders-status-row B): the way into Your Notifications, the next one
-/// on the right — as Card Appearance sits on the Live Activities side.
-struct YourNotificationsRow: View {
-    @ObservedObject private var health = NotificationHealth.shared
-
-    var body: some View {
-        NavigationLink {
-            YourRemindersView()
-        } label: {
-            HStack {
-                Label {
-                    Text("Your Notifications")
-                } icon: {
-                    Image(systemName: "calendar.badge.clock").foregroundStyle(.primary)
-                }
-                Spacer(minLength: 8)
-                if let next = health.nextAt {
-                    Text("Next \(Self.when(next))").foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-        }
-    }
-
-    /// "4:53 PM" today, else "Mon 4:53 PM".
-    static func when(_ date: Date) -> String {
-        Calendar.current.isDateInToday(date)
-            ? date.formatted(date: .omitted, time: .shortened)
-            : date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
-    }
-}
 
 // MARK: - Upcoming reminders (Settings → Notifications)
 

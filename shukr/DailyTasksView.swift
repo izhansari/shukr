@@ -1310,28 +1310,6 @@ struct AddDailyTaskView: View {
                         .foregroundColor(Color.secondary.opacity(1))
                         .padding(.vertical, 4)
                     
-                    // OLD: Zikr Picker Menu
-//                    Menu {
-//                        ForEach(filteredMantras, id: \ .self) { zikr in
-//                            if zikr != "" {
-//                                Button("\(zikr)") {
-//                                    selectedMantra = zikr
-//                                }
-//                            }
-//                        }
-//                    } label: {
-//                        Text(selectedMantra ?? "" == "" ? "Zikr" : (selectedMantra ?? ""))
-//                            .font(.headline)
-//                            .lineLimit(1)
-//                            .foregroundColor(selectedMantra ?? "" == ""  ? Color.secondary.opacity(0.5) : accentColor.opacity(1))
-//                            .padding(.horizontal, 8)
-//                            .padding(.vertical, 4)
-//                            .background(
-//                                RoundedRectangle(cornerRadius: 5)
-//                                    .stroke(accentColor.opacity(0.5), lineWidth: 1)
-//                                    .foregroundStyle(accentColor.opacity(0.15))
-//                            )
-//                    }
                     
                     // NEW: Zikr Picker Sheet (locked in edit mode: it's that mantra's task)
                     Button(action: {

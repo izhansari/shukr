@@ -87,18 +87,15 @@ struct SettingsView: View {
     @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var school: Int = 0
 
     
-    @AppStorage("modeToggle") var colorModeToggle = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     @AppStorage(LiveActivityLook.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var liveActivityLookRaw = LiveActivityLook.system.rawValue
     @State private var isAppearanceInfoVisible = false
     @AppStorage("widgetStyle", store: UserDefaults(suiteName: SharedStore.appGroup)) private var widgetStyleRaw = "system"   // WidgetStyle (shukrWidget/AppIntent.swift)
     
     
-    @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
     @State private var isNotifPopupVisible: Bool = false
     /// Prayer Times' ⓘ: what a method, a madhab and the qibla's accuracy are (owner, decision settings-times-explainer A).
     @State private var isTimesInfoVisible = false
-    @State private var isStreakPopupVisible: Bool = false
     
     @State private var rotationAngle: Double = 0 // For rotating the symbol
     
@@ -542,25 +539,6 @@ struct SettingsView: View {
                     }
 
 
-                    
-                    
-                    
-                    //MARK: - Prayer Streak Settings 
-//                    Section(header: headerWithInfoButton(title: "Streak Settings", isPopupVisible: $isStreakPopupVisible) ) { //prayerstreak_flag
-//                        Picker("Streak Type", selection: $prayerStreakMode) {
-//                            Text("Level 1").tag(1)
-//                            Text("Level 2").tag(2)
-//                            Text("Level 3").tag(3)
-//                        }
-//                        .pickerStyle(.segmented)
-//                        
-//                        if isStreakPopupVisible{
-//                            StreakDropdownInfo()
-//                        }
-//                    }
-
-                    
-                    
                     // (The Masjid section — duas when you arrive and leave — is parked: it didn't fire until the app was
                     // opened (owner, settings-cleanup-1). `MasjidArrival.parked` turns it off for anyone who had it on.)
 
@@ -720,25 +698,6 @@ struct SettingsView: View {
                         }
                     }
 
-                    //MARK: - Suggestions / Up and Coming
-//                    Section(header: Text("Sneak Peek...")) {
-//                        
-//                        sectionWithChevronButton(image: "map", title: "Masjid Map", isPopupVisible: .constant(false))
-//                        
-//                        sectionWithChevronButton(image: "lightbulb.max.fill", title: "Hadith Motivator", isPopupVisible: .constant(false))
-//                        
-//                        sectionWithChevronButton(image: "fork.knife", title: "Food Finder", isPopupVisible: .constant(false))
-//                        
-//                        sectionWithChevronButton(image: "character.book.closed", title: "Quranic Words", isPopupVisible: .constant(false))
-//                        
-//                        sectionWithChevronButton(image: "gift", title: "Sadqah Links", isPopupVisible: .constant(false))
-//                        
-//                        sectionWithChevronButton(image: "figure.2.left.holdinghands", title: "Support Muslim Brands", isPopupVisible: .constant(false))
-//                        
-//                        Button("Suggest Feature") {
-//                            // control a popup or send to an external link?
-//                        }
-//                    }
                     
                     Section {
                         ForEach(upcomingFeatures) { feature in
@@ -1113,41 +1072,6 @@ struct floatingMessageView: View {
     }
 }
 
-struct ColorModeToggleButton: View {
-    @EnvironmentObject var viewModel: PrayerViewModel
-    
-    @Binding var showFloatingMessage: Bool
-    @State private var dismissWorkItem: DispatchWorkItem? // Manage the dismissal timer
-
-    @AppStorage("modeToggleNew") private var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = Auto
-    
-    var body: some View {
-        Button(action: toggleColorMode) {
-            Image(systemName: currentSymbol)
-                .foregroundColor(.primary)
-                .padding(.horizontal, 4)
-        }
-    }
-    
-    /// Computed property for the current SF Symbol
-    private var currentSymbol: String {
-        switch colorModeToggleNew {
-        case 0: return "sun.min" // Light mode
-        case 1: return "moon" // Dark mode
-        case 2: return viewModel.isDaytime ? "sun.max.circle" : "moon.circle"
-        default: return "circle.lefthalf.filled"
-        }
-    }
-    
-    /// Toggle color mode and update the rotation angle
-    private func toggleColorMode() {
-        withAnimation {
-            colorModeToggleNew = (colorModeToggleNew + 1) % 3
-        }
-        showTemporaryMessage(workItem: &dismissWorkItem, boolToShow: $showFloatingMessage, delay: 2)
-    }
-}
-
 
 struct headerWithInfoButton: View {
     var image: String? = nil
@@ -1173,46 +1097,6 @@ struct headerWithInfoButton: View {
         }
     }
 }
-
-//struct sectionWithChevronButton: View {
-//    var image: String? = nil
-//    let title: String
-//    let description: String
-//    @Binding var isPopupVisible: Bool
-//    
-//    var body: some View {
-//        HStack {
-////            Text("Notifications")
-//            if let imageName = image {
-//                Image(systemName: imageName)
-//                    .frame(width: 24)
-//            }
-//            Text(title)
-//            Spacer()
-//            Button(action: {
-//                withAnimation {
-//                    isPopupVisible.toggle()
-//                }
-//            }) {
-//                Image(systemName: "chevron.right")
-//                    .foregroundColor(.secondary)
-//            }
-//        }
-//        .sheet(isPresented: $isPopupVisible) {
-//            VStack {
-//                Text(title)
-//                    .font(.title)
-//                    .padding()
-//                Text(description)
-//                    .padding()
-//                Button("Close") {
-//                    isPopupVisible = false
-//                }
-//                .padding()
-//            }
-//        }
-//    }
-//}
 
 
 /// One prayer's notifications: a single button that cycles off → start → nudge (nudge includes the
@@ -1358,45 +1242,6 @@ struct NotificationDropdownInfo: View {
         .accessibilityAddTraits(shown == state ? .isSelected : [])
     }
     
-    func addToNotificationCenterBySeconds(identifier: String, content: UNMutableNotificationContent, sec: Double){
-        let center = UNUserNotificationCenter.current()
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: sec, repeats: false)
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-        center.add(request) { error in
-            if let error = error {
-                print("Error \(identifier): \(error.localizedDescription)")
-            }
-        }
-        print("✅ Scheduled \(identifier): in \(sec)s")
-    }
-}
-
-struct StreakDropdownInfo: View {
-    var body: some View {
-        
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Information:")
-            
-            HStack{
-                Text("Level 1: Counts kazas")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-            
-            HStack{
-                Text("Level 2: counts prayers completed during prayer window")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-            
-            HStack{
-                Text("Level 3: counts prayers before 75% of time")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-            
-        }
-    }
 }
 
 

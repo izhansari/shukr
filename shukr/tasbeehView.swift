@@ -695,10 +695,6 @@ struct tasbeehView: View {
                 
                 Spacer()
                 
-                // Stop Button when not auto stopping
-//                completeButton(stopTimer: stopTimer)
-//                    .opacity(stopCondition ? 1 : 0)
-//                    .disabled(!stopCondition)
 //                    .animation(.easeInOut, value: stopCondition)
             }
             
@@ -1558,18 +1554,6 @@ struct tasbeehView: View {
             totalPauseInSession += thisPauseSesh
             endTime = endTime?.addingTimeInterval(thisPauseSesh)
         }
-        /*
-         - store time at pause (pauseStartTime)
-         - calculate time at resume (thisPauseSesh)
-         - keep track of how many pauses since last increment (pauseSinceLastInc)
-            > (use this to subtract pause time from tPC when incrementing)
-         - add to totalPauseInSession
-            > (only needed for reset so we can calculate tpc on first click)
-         - extend endTime by thisPauseSesh
-            
-         move end time.
-        
-         */
     }
     
     private func incrementTasbeeh() {
@@ -1615,14 +1599,7 @@ struct tasbeehView: View {
         }
     }
     
-    private func resetTasbeeh() { //not being used but just keeping incase need later
-        if timerIsActive {
-            tasbeeh = 0
-            triggerSomeVibration(type: .error)
-        }
-    }
         
-    
     // MARK: - Helper Structs (basically moved from Utils)
     
     /// After Finish (restyled 2026-09-25 to match the pause screen): a sage check that pops in,
@@ -3176,39 +3153,6 @@ struct tasbeehView: View {
         }
     }
     
-    struct NoteModalView: View {
-        @Binding var savedText: String
-        @Binding var showSheet: Bool
-        @Binding var takingNotes: Bool
-        @State private var tempText = ""
-        
-        var body: some View {
-                TextEditor(text: $tempText)
-                    .padding()
-                    .navigationTitle("Edit Text")
-                    .navigationBarItems(
-                        leading: Button("Cancel") {
-                            showSheet = false
-                        },
-                        trailing: Button("Save") {
-                            if !tempText.isEmpty {
-                                savedText = tempText
-                                showSheet = false
-                            }
-                        }
-                        .disabled(tempText.isEmpty)
-                    )
-            .presentationDetents([.medium])
-
-            .onAppear {
-                takingNotes = true
-                tempText = savedText
-            }
-            .onDisappear{
-                takingNotes = false
-            }
-        }
-    }
     
     /// − while counting; paused, the same button becomes Finish (decision minus-finish-morph, owner: "make the transition for
     /// the minus button to turn into the finish button"), as ⏸ becomes ‹ Resume: one view the whole time, so the circle
@@ -3375,36 +3319,6 @@ struct tasbeehView: View {
     }
 
 
-
-    
-    struct completeButton: View {
-        let stopTimer: () -> Void
-        @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
-        
-        var body: some View{
-            Button(action: stopTimer, label: {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 20)
-                        .foregroundStyle(.gray.opacity(0.2))
-                    RoundedRectangle(cornerRadius: 20)
-                        .foregroundStyle(
-                                         LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.yellow.opacity(0.6), .green.opacity(0.8)] : [.yellow, .green]), startPoint: .topLeading, endPoint: .bottomTrailing)
-                                         )
-                    Text("complete")
-                        .foregroundStyle(.white)
-                        .font(.title3)
-                        .fontDesign(.rounded)
-                }
-                .frame(width: 300,height: 50)
-                .shadow(radius: 5)
-            })
-            .padding([.leading, .bottom, .trailing])
-        }
-    }
-    
-    
-
-    
 }
 
 

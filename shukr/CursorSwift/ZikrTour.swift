@@ -111,19 +111,6 @@ import SwiftData
         showMe(existing: task, doneToday: task.map { $0.isCompleted(with: $0.progress(in: today)) } ?? false)
     }
 
-    /// The lock's page 3 (owner, 2026-10-08: "we should just go ahead and create a task for them … show it as a task ring
-    /// … they then click on to start the counter"): the first zikr's task is made already; its ring's tap opens the
-    /// counter straight into the counting lessons — no task-making in the tour.
-    func startFirst(_ task: TaskModel) {
-        countGoal = task.isCountMode ? task.goal : 33
-        welcomed = false
-        UserDefaults.standard.set(true, forKey: Self.offeredKey)
-        inAppTour = false
-        taskID = task.id
-        reused = true
-        skippedCount = false
-        go(.taps)
-    }
 
     /// Show me: their Astaghfirullah task if they have one (no duplicate), else making it.
     /// Already done for today: it's off the wheel and there's nothing left to count, so straight to how long tasks take.

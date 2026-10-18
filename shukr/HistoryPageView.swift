@@ -657,63 +657,6 @@ extension Array {
     }
 }
 
-struct DayView: View {
-    let date: Date
-    let sessions: [SessionDataModel]
-    
-    private var dateString: String {
-        if Calendar.current.isDateInToday(date) {
-            return "Today"
-        } else if Calendar.current.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "E, MMM d"
-            return formatter.string(from: date)
-        }
-    }
-    
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .medium
-        return formatter.string(from: date)
-    }
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(dateString)
-                .font(.headline)
-                .padding(.horizontal)
-            
-            if sessions.isEmpty {
-                Text("No sessions for this day")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(sessions) { session in
-                            //                            SessionRowView(session: session)
-                            //                                .padding(.horizontal)
-                            SessionCardView(
-                                title: session.displayTitle,
-                                sessionMode: session.sessionMode,
-                                totalCount: session.totalCount,
-                                sessionDuration: session.timeDurationString,
-                                sessionTime: formatDate(session.startTime),
-                                tasbeehRate: session.tasbeehRate,
-                                targetMin: session.targetMin,
-                                targetCount: "\(session.targetCount)"
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 struct SessionCardView: View {
     let title: String
@@ -824,31 +767,6 @@ struct SessionCardView: View {
     HistoryPageView()
 }
 
-//// Helper view for footer text
-struct FooterText: View {
-    let sessionCount: Int
-    let index: Int
-    
-    var body: some View {
-        Group {
-            if sessionCount >= 3 {
-                Text("Nice! \(sessionCount) sessions \(index == 0 ? "today." : "")")
-                    .frame(height: 100)
-                    .fontWeight(.thin)
-            } else if sessionCount >= 1 {
-                Text("Completed \(sessionCount) sessions \(index == 0 ? "today." : "")")
-                    .frame(height: 100)
-                    .fontWeight(.thin)
-            } else if index == 0 {
-                Text("Start another session to add more cards!")
-                    .frame(height: 70)
-                    .fontWeight(.thin)
-            }
-        }
-    }
-}
-
-
 
 #Preview {
 //    @Previewable @State var showingHistoryPageBool = true
@@ -877,72 +795,6 @@ func formatTime(_ time: TimeInterval) -> String {
     return components.isEmpty ? "0m" : components.joined(separator: " ")
 }
 
-
-struct DailyStatToggleView: View {
-
-    @Environment(\.modelContext) private var context
-  
-    static var descriptor: FetchDescriptor<SessionDataModel> {
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
-        
-        let predicate = #Predicate<SessionDataModel> { session in
-            session.startTime >= today && session.startTime < tomorrow
-        }
-        
-        let descriptor = FetchDescriptor<SessionDataModel>(
-            predicate: predicate,
-            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
-        )
-        return descriptor
-    }
-
-    @Query(descriptor) var todaySessions: [SessionDataModel]
-    
-    @Binding var dailyStatBool: Bool
-//    @Binding var dateToCheck: Date
-    private var dailyStats: (Count: Int, Time: TimeInterval) { //not sure if this works with modelContainer / persistent data yet...
-        var runningCount = 0
-        var runningTime = 0.0
-
-        for session in todaySessions {
-            runningCount += session.totalCount
-            runningTime += session.secondsPassed
-        }
-        return (runningCount, runningTime)
-    }
-    
-    var body: some View {
-        HStack(alignment: .center) { // toggle daily stat section.
-            if dailyStatBool {
-                Image(systemName: "clock")
-//                    .frame(width: 20, height: 20)
-                    .font(.system(size: 12))
-//                    .padding(.leading)
-//                Spacer()
-                Text("\(timerStyle(dailyStats.Time/60))")
-//                Spacer()
-            } else {
-                Image(systemName: "circle.hexagonpath")
-//                    .frame(width: 20, height: 20)
-                    .font(.system(size: 12))
-//                    .padding(.leading)
-//                Spacer()
-                Text("\(dailyStats.Count)")
-//                Spacer()
-            }
-        }
-        .padding(10)
-        .frame(width: 120, height: 40) // Set fixed width and height to prevent jumping
-        .background(Color.gray.opacity(0.1))
-        .cornerRadius(10)
-        .onTapGesture {
-            dailyStatBool.toggle()
-        }
-    }
-}
 
 /// Pick (or add) a mantra. Hands back the `MantraModel` through `selectedMantraObject` and its
 /// name through `selectedMantra` (the name is what most callers display; the object is what
@@ -1000,83 +852,6 @@ struct MantraPickerView: View {
         isPresented = false
     }
   
-    
-//    var body: some View {
-//        VStack {
-//            // Search Bar
-//            TextField("Search azkar", text: $searchQuery)
-//                .textFieldStyle(RoundedBorderTextFieldStyle())
-//                .padding()
-//            
-//            // Combine predefined and custom mantras, and filter by search query
-//            let filteredMantras = (predefinedMantras + mantraItems.map { $0.text })
-//                .filter { searchQuery.isEmpty || $0.lowercased().contains(searchQuery.lowercased()) }
-//                .sorted()
-//            
-//            if filteredMantras.isEmpty {
-//                // If no matches, show option to add new mantra
-//                Text("No results.")
-//                Text(" Add '\(searchQuery)' as a new zikr?")
-//                    .padding()
-//            } else {
-//                
-//                Spacer()
-//                
-//                Picker("Select Mantra", selection: $tempSelection) {
-//                    ForEach(filteredMantras, id: \.self) { existingMantra in
-//                        Text(existingMantra).tag(existingMantra)
-//                    }
-//                }
-//                .pickerStyle(.wheel)
-//                .frame(height: 150) // Adjust the height as needed
-//                
-//                Spacer()
-//                
-//            }
-//            
-//            Button("Add Zikr") {
-//                if !searchQuery.isEmpty {
-//                    saveToMantraList(searchQuery) // Save the mantra to model
-//                    if selectedSession != nil {
-//                        assignMantraToSession(searchQuery)
-//                    }
-//                    selectedMantra = searchQuery // Set the selected mantra if provided
-//                    isPresented = false // Close the sheet
-//                }
-//            }
-//            .disabled(searchQuery.isEmpty || !filteredMantras.isEmpty)
-//            .opacity(searchQuery.isEmpty || !filteredMantras.isEmpty ? 0 : 1)
-//            .padding()
-//            .onDisappear {
-//                searchQuery = ""
-//            }
-//            
-//            if !filteredMantras.isEmpty {
-//                Button("Confirm") {
-//                    if let pickedMantra = tempSelection, selectedSession != nil {
-//                        assignMantraToSession(pickedMantra)
-//                    }
-//                    selectedMantra = tempSelection
-//                }
-//                .foregroundStyle(.green.opacity(0.7))
-//                .buttonStyle(.bordered)
-//                .padding(.bottom)
-//            }
-//            Spacer()
-//        }
-//        .padding(.top)
-//        .onChange(of: selectedMantra) {_, newValue in
-//            // This will be called whenever the selection changes
-//            print("Selected mantra: \(newValue ?? "nil")")
-//        }
-//        .onDisappear{
-////            if let pickedMantra = selectedMantra, selectedSession != nil {
-////                assignMantraToSession(pickedMantra)
-////            }
-//        }
-//        .presentationDetents(presentation)
-//        .padding()
-//    }
     
     private func pickRow(_ mantra: MantraModel) -> some View {
         Button { select(mantra) } label: {

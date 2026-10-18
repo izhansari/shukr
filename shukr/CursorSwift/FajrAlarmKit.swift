@@ -301,21 +301,6 @@ enum FajrAlarms {
         }
     }
 
-    /// The test alarms still ahead (for Settings' line), soonest first.
-    @MainActor static func pendingTests() -> [Date] {
-        guard #available(iOS 26.1, *) else { return [] }
-        let tests = testIDs
-        return ((try? AlarmManager.shared.alarms) ?? []).compactMap { alarm -> Date? in
-            guard tests.contains(alarm.id.uuidString), case .fixed(let d)? = alarm.schedule, d > Date() else { return nil }
-            return d
-        }.sorted()
-    }
-
-    @MainActor static func cancelTests() {
-        guard #available(iOS 26.1, *) else { return }
-        for id in testIDs { if let u = UUID(uuidString: id) { try? AlarmManager.shared.cancel(id: u) } }
-        testIDs = []
-    }
 
     /// What the times are worked out from, logged when it changes (a move, a method or rule change, a time zone).
     private static func logInputsIfChanged() {

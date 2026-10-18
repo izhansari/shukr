@@ -142,16 +142,6 @@ enum ZikrReminders {
         return dates
     }
 
-    /// The next time a task's reminder goes off (nil: off, or nothing in the next week — e.g. a
-    /// prayer reminder with no saved location).
-    @MainActor static func nextFire(_ task: TaskModel, sessions: [SessionDataModel], now: Date = Date()) -> Date? {
-        guard task.reminderKind != nil else { return nil }
-        let doneToday = task.isCompleted(with: task.progress(in: sessions))
-        let todayKey = PrayerNotificationID.dayKey(PrayerDay.date(for: now))
-        return fires(task, now: now, horizon: now.addingTimeInterval(8 * 86_400), doneToday: doneToday, todayKey: todayKey) { prayer, day in
-            NotificationScheduler.windows(for: day)?[prayer]?.start
-        }.first
-    }
 
     /// "After Fajr" / "Bismillah · 50 counts · ~3 min".
     /// `streak`: the days to keep (2 or more adds "🔥 Keep your 12-day streak" on its own line).
