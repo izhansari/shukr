@@ -50,15 +50,18 @@ installs.
 **Chapters and the status block** (owner, 2026-10-17: so he can tell where a chat stands; "I don't want this to bog
 down the system … I don't want it in every single reply"). Mark a chapter (`mark_chapter`) only when the main task changes,
 titled "Feature: task" ("Prayer scores: flying title"). Only when an item is pushed or ready for him to test — or when he
-asks for "status" — the reply ends, under the write-up, with this block (it replaces a separate "To check" list):
+asks for "status" — the reply ends, under the write-up, with this block **as a table** (plain text gets missed — owner,
+2026-10-17; it replaces a separate "To check" list). One row per line, nothing stacked in a cell:
 ```
 ### Status <n>.<m> · <Area> › <Page>
-**Ask:** "<his words when the main task started — never reworded>"
-- <a small edit he added along the way>   (~~crossed out~~ once done)
-**Still open from the spec:**
-- <agreed, not built yet>
-**To check (<his 13 Pro Max | the sim>):**
-- <what to do>: <what should happen>
+| | |
+|---|---|
+| **Ask** | "<his words when the main task started — never reworded>" |
+| ✓ | ~~<a small edit he added along the way, done>~~ |
+| ◻︎ | <a small edit not done yet> |
+| **Still open** | <agreed in the spec, not built yet> (one row each; "Nothing" when done) |
+| **To check** | <his 13 Pro Max or the sim> — <what to do>: <what should happen> |
+| | <the next check> |
 ```
 `<n>` = the main task's number in this chat, `<m>` = this block's count on it (2.1, 2.2 …; a new main task → a new
 chapter and 3.1). The heading is there so he can Ctrl+F it.
