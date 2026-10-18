@@ -269,6 +269,18 @@ struct JourneyLog {
 
 // MARK: - The page
 
+/// After a fresh start, which way Journey's card counts: from it (the default, each launch and after any change) or over
+/// every day — the header's toggle (YourJourneyStats.Numbers).
+@Observable final class JourneyLens {
+    static let shared = JourneyLens()
+    var lifetime = false
+    private init() {
+        NotificationCenter.default.addObserver(forName: PrayerStats.rulesChanged, object: nil, queue: .main) { [weak self] _ in
+            self?.lifetime = false
+        }
+    }
+}
+
 /// The card's two day counts light their days up and dim the rest (as Insights did — owner: it helps most in the grid).
 enum JourneyHighlight: Equatable {
     case metGoal, allFive
@@ -500,7 +512,8 @@ struct JourneyPage: View {
             let t2 = JourneyPerf.now
             let (s, open) = await Task.detached(priority: .userInitiated) {
                 let context = ModelContext(container)
-                return (PrayerScores.build(log: built, context: context, now: now),
+                // At the log's own goal and fresh start (the header ring then reads since it, as Prayer scores does).
+                return (PrayerScores.build(log: built, context: context, now: now, countsFrom: built.countsFrom, goal: built.goal),
                         JourneyMakeUpPage.entries(in: context, ranges: ranges, now: now).open.count)
             }.value
             JourneyPerf.took("scores+makeUp.load", since: t2)
@@ -568,11 +581,34 @@ struct JourneyPage: View {
         HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Journey").font(.system(size: 38, weight: .regular, design: .rounded))
-                Text(log.firstDay.map { "Since \($0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))" }
-                     ?? "It starts with your first prayer")
-                    .font(.system(size: 16, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1).minimumScaleFactor(0.8)
+                if let from = log.countsFrom, let first = log.firstDay {
+                    // After a fresh start the card counts from it; a tap here shows lifetime instead, and back (owner,
+                    // 2026-10-18: "i still want it to show lifetime maybe off a toggle somewhere"). Ink, no sage (Journey).
+                    Button {
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.easeOut(duration: CircleMotion.quick)) { JourneyLens.shared.lifetime.toggle() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(JourneyLens.shared.lifetime
+                                 ? "Lifetime, since \(first.formatted(.dateTime.month(.abbreviated).day().year()))"
+                                 : "Since your fresh start, \(from.formatted(.dateTime.month(.abbreviated).day()))")
+                                .contentTransition(.opacity)
+                            Image(systemName: "arrow.left.arrow.right").font(.system(size: 12, weight: .regular))
+                        }
+                        .font(.system(size: 16, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(JourneyLens.shared.lifetime ? "Shows since your fresh start" : "Shows lifetime")
+                } else {
+                    Text(log.firstDay.map { "Since \($0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))" }
+                         ?? "It starts with your first prayer")
+                        .font(.system(size: 16, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                }
             }
             Spacer(minLength: 0)
             // Prayer scores' way in (owner, 2026-10-18: "on the Journey page, just move the prayer score ring to the top right,

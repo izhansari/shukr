@@ -80,7 +80,8 @@ struct JourneyHomeCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 12) {
                 Text("\(stats.activeDays)").font(.system(size: compact ? 42 : 54, weight: .thin, design: .rounded))
                     .foregroundStyle(empty ? .secondary : .primary)
-                Text(empty ? "days so far" : stats.activeDays == 1 ? "day you marked a prayer" : "days you marked a prayer")
+                Text(empty ? (stats.hasFreshStart ? "days since your fresh start" : "days so far")
+                     : stats.activeDays == 1 ? "day you marked a prayer" : "days you marked a prayer")
                     .font(.system(size: compact ? 15 : 17, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
@@ -522,7 +523,8 @@ struct JourneyHomeCard: View {
             Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
             ZStack {
                 if stats.activeDays == 0 {
-                    Text("Every prayer you mark shows up here.")
+                    // Nothing marked yet since a fresh start: its own words, not a new user's.
+                    Text(stats.hasFreshStart ? "Your fresh start begins with your next prayer." : "Every prayer you mark shows up here.")
                         .font(.system(size: 15, weight: .light, design: .rounded))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
@@ -1234,17 +1236,31 @@ struct JourneyHoldPick: UIGestureRecognizerRepresentable {
 struct YourJourneyStats {
     enum Kind { case metGoal, allFive, some, none }
 
-    var activeDays = 0
-    var prayersMarked = 0
-    /// The share of finished days since the fresh start that met the goal, 0…100; nil before there's one.
-    var goalRate: Int?
-    /// The longest run of streak days — the Salah page's rule (`streakDay`): excused days skip, today adds once it counts.
-    var bestStreak = 0
+    /// The card's numbers, counted two ways: from the fresh start (or all days, with none) and over every day. After a fresh
+    /// start the card counts from it (owner, 2026-10-18: "A", the mixed card "looks really funny"); its header's toggle
+    /// shows lifetime ("i still want it to show lifetime maybe off a toggle somewhere") — JourneyLens.
+    struct Numbers {
+        var days = 0, prayers = 0
+        /// The share of finished days that met the goal, 0…100; nil before there are 3 (one bad first day read "0%").
+        var rate: Int?
+        /// The longest run of streak days — the Salah page's rule (`streakDay`): excused days skip, today adds once it counts.
+        var best = 0
+        /// The best streak's first and last day (the latest of equal ones; its excused days inside it).
+        var bestDays: ClosedRange<Date>?
+    }
+    var fresh = Numbers()
+    var lifetime = Numbers()
+    var hasFreshStart = false
+    /// The numbers on show: lifetime only while there's a fresh start and the header's toggle says so.
+    private var shown: Numbers { hasFreshStart && JourneyLens.shared.lifetime ? lifetime : fresh }
+    var activeDays: Int { shown.days }
+    var prayersMarked: Int { shown.prayers }
+    var goalRate: Int? { shown.rate }
+    var bestStreak: Int { shown.best }
+    var bestStreakDays: ClosedRange<Date>? { shown.bestDays }
     /// The streak going now, the number the Salah page shows: streak days up to yesterday, plus today once it counts (today
-    /// never breaks it).
+    /// never breaks it; from the fresh start, as the Salah page).
     var currentStreak = 0
-    /// The best streak's first and last day (the latest of equal ones; its excused days inside it).
-    var bestStreakDays: ClosedRange<Date>?
     /// The last 84 prayer days, oldest first, today last.
     /// A day on the card: its color and its line.
     struct GridDay: Equatable {
@@ -1395,18 +1411,19 @@ struct YourJourneyStats {
 
     init(log: JourneyLog, today: Date, excused: Excused.Days = Excused.Days()) {
         let cal = Calendar.current
-        // The days you marked and the prayers marked stay lifetime (owner, 2026-10-18: "those two are still true lifetime
-        // numbers and theyre not demoralizing"); the rate is the share of days since the fresh start that met the goal
-        // (his pick: of days, not of prayers), finished days only — today before its last prayer would drag it down.
-        var met = 0, judged = 0
+        hasFreshStart = log.countsFrom != nil
+        var met = (fresh: 0, all: 0), judged = (fresh: 0, all: 0)
         for d in log.days.values where d.active {
-            activeDays += 1
-            prayersMarked += d.prayed
-            guard d.counted, !d.unfinished else { continue }
-            judged += 1
-            if d.metGoal { met += 1 }
+            lifetime.days += 1
+            lifetime.prayers += d.prayed
+            if d.counted { fresh.days += 1; fresh.prayers += d.prayed }
+            guard !d.unfinished else { continue }
+            judged.all += 1
+            if d.metGoal { met.all += 1 }
+            if d.counted { judged.fresh += 1; if d.metGoal { met.fresh += 1 } }
         }
-        if judged > 0 { goalRate = Int((Double(met) / Double(judged) * 100).rounded()) }
+        if judged.all >= 3 { lifetime.rate = Int((Double(met.all) / Double(judged.all) * 100).rounded()) }
+        if judged.fresh >= 3 { fresh.rate = Int((Double(met.fresh) / Double(judged.fresh) * 100).rounded()) }
 
         if let first = log.firstDay {
             let firstDay = cal.startOfDay(for: first)
@@ -1465,23 +1482,32 @@ struct YourJourneyStats {
             let goal = PrayerGoal.current
             var run = 0
             var runStart: Date?
-            // From the fresh start (best streak too — owner's pick, 2026-10-18).
-            var date = max(cal.startOfDay(for: first), log.countsFrom ?? .distantPast)
+            // Every day, the lifetime best; from the fresh start, its own best and the streak (owner's pick, 2026-10-18).
+            var freshRun = 0
+            var freshStart: Date?
+            var date = cal.startOfDay(for: first)
             while date <= today {
                 let d = log.day(date)
+                let counted = log.countsFrom.map { date >= $0 } ?? true
                 if Self.excusedAll(d, on: date, in: log, excused) {
                     // An excused day neither counts nor breaks.
                 } else if Self.streakDay(d, goal: goal) {
                     if run == 0 { runStart = date }
                     run += 1
-                    if run >= bestStreak, let s = runStart { bestStreak = run; bestStreakDays = s...date }
+                    if run >= lifetime.best, let s = runStart { lifetime.best = run; lifetime.bestDays = s...date }
+                    if counted {
+                        if freshRun == 0 { freshStart = date }
+                        freshRun += 1
+                        if freshRun >= fresh.best, let s = freshStart { fresh.best = freshRun; fresh.bestDays = s...date }
+                    }
                 } else if date != today {
                     run = 0
+                    freshRun = 0
                 }
                 guard let next = cal.date(byAdding: .day, value: 1, to: date) else { break }
                 date = next
             }
-            currentStreak = run
+            currentStreak = freshRun
         }
     }
 }
