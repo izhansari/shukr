@@ -143,7 +143,9 @@ struct JourneyLog {
         for row in kept.values {
             let key = row.dayKey
             guard let slot = names.firstIndex(of: row.name) else { continue }
-            var day = log.days[key] ?? Day(key: key, date: row.dayStart, goal: goal, counted: PrayerStats.counts(row.dayStart))
+            // The fresh start read once (log.countsFrom), not per row: a change mid-build gave a mixed log (audit #8).
+            let dayStart = row.dayStart
+            var day = log.days[key] ?? Day(key: key, date: dayStart, goal: goal, counted: log.countsFrom.map { dayStart >= $0 } ?? true)
             if row.isCompleted {
                 day.marks[slot] = .done(row.numberScore ?? 0)
             } else if Excused.covers(start: row.startTime, end: row.endTime, in: ranges) {

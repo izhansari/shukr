@@ -96,9 +96,9 @@ struct PrayerScores {
     var goal = PrayerGoal.prayed
 
     /// Under the ring's number: the span's words, or "since Oct 17" when the fresh start cuts into it.
+    /// The date is said once, on the span chip ("Since Oct 17"; owner's rule, a fact once per screen — audit #13).
     var ringLabel: String {
-        guard let from = countsFrom else { return span.ringLabel }
-        return "average score\nsince \(from.formatted(.dateTime.month(.abbreviated).day()))"
+        countsFrom == nil ? span.ringLabel : "average score"
     }
 
     var prayers: [String: Prayer] = [:]
@@ -452,10 +452,10 @@ struct PrayerScoresPage: View {
         .onChange(of: spanRaw) { switchSpan() }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
         // The goal or the fresh start changed: what's kept was counted the old way (PrayerStats).
+        // Only the caches go here: the .journeyChanged posted right after reloads, once (audit #9).
         .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
             PrayerScores.lastBySpan = [:]
             PrayerScores.last = nil
-            reload()
         }
         #if DEBUG
         .task {
@@ -841,7 +841,8 @@ struct PrayerScoresPage: View {
 
     /// "since Jul 2026", or the span's own words.
     private var sinceWords: String? {
-        if let from = data.countsFrom { return "since \(from.formatted(.dateTime.month(.abbreviated).day()))" }   // a fresh start
+        // A fresh start: the chip says since when (audit #13); a clipped 30 / 7 days says nothing either.
+        if data.countsFrom != nil { return nil }
         return switch data.span {
         case .all: data.since.map { "since \($0.formatted(.dateTime.month(.abbreviated).year()))" }
         case .days30: "in the last 30 days"

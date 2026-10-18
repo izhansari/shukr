@@ -98,7 +98,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   month went with the goal (owner 2026-10-18). The card's streak and best streak are the Salah page's rule (`PrayerGoal`).
 - **The goal and the fresh start** (PrayerGoal.swift, FreshStart.swift; owner 2026-10-18, his picks for
   board/goal-reset-inventory.md): Settings → Journey → Your goal (Pray all five · In their windows · On time · Perfect,
-  under the old `prayerStreakMode` key, each with the streak it'd give now) and Fresh start (one prayer day; a page with a
+  under the old `prayerStreakMode` key, each with its grades as a strip and the % of the last 30 marked days that met it) and Fresh start (one prayer day; a page with a
   leaf in a ring, Az-Zumar 39:53, "Hold to begin" 1.5 s; Day N; again from tomorrow; undo any time). `PrayerGoal.meets` is
   the one rule (gradingCriteria, streakDay, `Day.metGoal`); `PrayerStats.countsFrom` the one date; either change posts
   `PrayerStats.rulesChanged` → a silent recount (no hearts, milestones recorded as seen), Max recounted from rows. From

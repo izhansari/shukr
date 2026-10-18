@@ -1353,26 +1353,6 @@ struct YourJourneyStats {
         }
     }
 
-    /// The streak at a goal today, walking back from today (today never breaks it; an excused day neither counts nor breaks;
-    /// nothing before the fresh start) — Settings' goal page shows one per goal.
-    static func currentStreak(log: JourneyLog, goal: PrayerGoal, today: Date, excused: Excused.Days) -> Int {
-        let cal = Calendar.current
-        var run = 0
-        var date = today
-        while let first = log.firstDay, date >= cal.startOfDay(for: first), PrayerStats.counts(date) {
-            let d = log.day(date)
-            if excusedAll(d, on: date, in: log, excused) {
-            } else if streakDay(d, goal: goal) {
-                run += 1
-            } else if date != today {
-                break
-            }
-            guard let previous = cal.date(byAdding: .day, value: -1, to: date) else { break }
-            date = previous
-        }
-        return run
-    }
-
     static func kind(_ d: JourneyLog.Day) -> Kind {
         guard d.active else { return .none }
         let excused = d.marks.filter { $0 == .excused }.count
@@ -1777,8 +1757,10 @@ struct JourneyMilestone: Identifiable, Equatable {
     static let shared = MilestoneCelebration()
     static let seenKey = "journey.milestones.seen"
     static let seenVersionKey = "journey.milestones.seenVersion"
-    /// Set by a goal or fresh-start change (PrayerStats.changed): the next check records what's earned without a word.
-    static let quietKey = "journey.milestones.quietNext"
+    /// Set by a goal or fresh-start change (PrayerStats.changed): the next check records what's earned without a word. In
+    /// memory, not stored: a stored flag could outlive a crash, or a fallback store where nothing clears it, and swallow a
+    /// real milestone (audit #10).
+    @ObservationIgnored var quietNext = false
     /// Bumped when a kind of milestone is added (2: every hundred prayers): the first check after an update records what's
     /// already earned of it without a word — never a run of "200th … 800th" celebrations (Sami's trap, acceptance-2 2b).
     static let seenVersion = 2
@@ -1806,8 +1788,8 @@ struct JourneyMilestone: Identifiable, Equatable {
             #endif
             // The first check after the goal or the fresh start changed records, never celebrates (recordSilently races
             // it: both read the log, and a check that won celebrated runs the new goal "earned" — owner, 2026-10-18).
-            let quiet = defaults.bool(forKey: Self.quietKey)
-            if quiet { defaults.set(false, forKey: Self.quietKey) }
+            let quiet = quietNext
+            quietNext = false
             guard !quiet, let seen = defaults.stringArray(forKey: Self.seenKey),
                   defaults.integer(forKey: Self.seenVersionKey) >= Self.seenVersion else {
                 let before = defaults.stringArray(forKey: Self.seenKey) ?? []
@@ -1837,7 +1819,7 @@ struct JourneyMilestone: Identifiable, Equatable {
             let defaults = UserDefaults.standard
             let before = defaults.stringArray(forKey: Self.seenKey) ?? []
             defaults.set(Array(Set(before + ids)), forKey: Self.seenKey)
-            defaults.set(false, forKey: Self.quietKey)
+            self.quietNext = false
         }
     }
 

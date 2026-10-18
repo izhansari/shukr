@@ -100,10 +100,16 @@ enum PrayerStats {
     static let rulesChanged = Notification.Name("PrayerStats.rulesChanged")
 
     @MainActor static func changed() {
-        UserDefaults.standard.set(true, forKey: MilestoneCelebration.quietKey)   // before anything can check
+        MilestoneCelebration.shared.quietNext = true   // before anything can check
+        UserDefaults.standard.set(PrayerDay.key(), forKey: changedDayKey)
         NotificationCenter.default.post(name: rulesChanged, object: nil)
         NotificationCenter.default.post(name: .journeyChanged, object: nil)
     }
+
+    /// The prayer day the goal or the fresh start last changed: the line under the circle skips its milestone tier then (a
+    /// run the change itself made isn't news — audit #11).
+    static let changedDayKey = "prayerStats.changedDay"
+    static var changedToday: Bool { UserDefaults.standard.string(forKey: changedDayKey) == PrayerDay.key() }
 
     /// The first prayer day that counts: the fresh start's, or nil (all of them).
     static var countsFrom: Date? { FreshStart.start }
@@ -137,6 +143,7 @@ struct PrayerGoalSettingsRow: View {
 /// owner 2026-10-18: "it looks nice and communicates the idea better") and how many of your last 30 days met it. Card
 /// look's list: a title, the strip, the sage check.
 struct PrayerGoalPage: View {
+    @Environment(\.modelContext) private var context
     @State private var goal = PrayerGoal.current
     /// Each goal's share of the last 30 finished days with a mark, 0…100 (nil: Journey's log isn't read yet).
     @State private var rates: [PrayerGoal: Int] = [:]
@@ -170,13 +177,16 @@ struct PrayerGoalPage: View {
                     .accessibilityLabel("\(option.title): \(option.line)" + (rates[option].map { ", \($0)% of your last 30 days" } ?? ""))
                 }
             } footer: {
-                Text("The % is how many of your last 30 days met each goal. Your streak, Journey's days and its rate follow your goal; change it any time. Scores never change.")
+                Text("The % is how many of the days you marked a prayer, in the last 30, met each goal. Your streak, Journey's days and its rate follow your goal; change it any time. Scores never change.")
             }
         }
         .navigationTitle("Your goal")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            guard let log = JourneyLog.last else { return }
+            // Journey's log, or read now if Journey hasn't been built yet (a launch straight to Settings — audit #12).
+            var log = JourneyLog.last
+            if log == nil { log = await JourneyLog.load(container: context.container, ranges: Excused.ranges) }
+            guard let log else { return }
             let cal = Calendar.current
             let today = PrayerDay.start()
             let from = cal.date(byAdding: .day, value: -30, to: today) ?? today

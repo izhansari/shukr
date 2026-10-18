@@ -147,7 +147,7 @@ struct JourneyYearView: View {
     private var key: some View {
         HStack(spacing: 14) {
             swatch(.metGoal, "Goal met")
-            swatch(.allFive, "All five")
+            if log.goal != .prayed { swatch(.allFive, "All five") }   // at Pray all five every all-five day met it (audit #6)
             swatch(.some, "Some")
         }
         .font(.system(size: 11.5, weight: .light, design: .rounded))

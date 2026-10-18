@@ -153,7 +153,8 @@ enum DayInsight {
 
         // 2 · A milestone: days in a row meeting the goal (PrayerGoal), today included — in its words ("all five Perfect").
         func met(_ p: DayPrayer) -> Bool { p.done && goal.meets(score: p.score ?? 0) }
-        if today.count == 5, today.allSatisfy(met) {
+        // Not on the day the goal or the fresh start changed: a run the change made isn't news (audit #11).
+        if today.count == 5, today.allSatisfy(met), !PrayerStats.changedToday {
             var run = 1
             for day in history {
                 guard day.count == 5, day.allSatisfy(met) else { break }
