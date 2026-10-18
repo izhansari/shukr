@@ -244,9 +244,12 @@ private struct JourneyYearMonth: View, Equatable {
             .buttonStyle(.plain)
             .disabled(numbers.activeDays == 0)
             .accessibilityLabel("\(start.formatted(.dateTime.month(.wide).year())), \(line)")
-            // Its days as one picture, not ~40 views each with its own tap (perf #3: a pick redrew all ~1,500 squares).
+            // Its days as one picture, not ~40 views each with its own tap (perf #3: a pick redrew all ~1,500 squares). A tap
+            // anywhere on the month opens it, as its name does (owner, 2026-10-18: "clicking on a calendar month in year view
+            // just opens that month"; its squares used to pick a day).
             JourneyYearSquares(start: start, lead: lead, days: days, log: log, today: today, picked: picked, dark: dark,
-                               onTap: onDay, onMiss: onMiss)
+                               onTap: { _ in if numbers.activeDays > 0 { onPick(start) } else { onMiss() } },
+                               onMiss: { if numbers.activeDays > 0 { onPick(start) } else { onMiss() } })
                 .journeyFlightYearSquares(start)   // its days fly in and out of these (JourneyTransitions.swift)
                 .padding(.top, 3)
         }
