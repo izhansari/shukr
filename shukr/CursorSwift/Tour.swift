@@ -3390,9 +3390,10 @@ extension TourLayer {
         func f(_ key: String) -> [CGRect] { t.frame(key).map { [$0] } ?? [] }
         /// The page between `top` and the tab bar: where a swipe starts.
         func swipeBand(from top: CGFloat?) -> [CGRect] {
-            // Down to the tab bar — or, before it has ever shown (the list closed since launch), near the screen's foot.
+            // Near the screen's foot, above where the bottom bar sits (its Settings tab, which gave the line, went with Journey's
+            // move into the pager).
             let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height ?? 800
-            let bottom = t.frame("settingsTab")?.minY ?? screen - 110
+            let bottom = screen - 110
             let y = (top ?? 140)
             return [CGRect(x: 0, y: y, width: 10_000, height: max(bottom - 8 - y, 0))]
         }
