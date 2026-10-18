@@ -867,17 +867,22 @@ struct JourneyHomeRow<Symbol: View, Value: View>: View {
 
 /// Prayer scores' row value: its lifetime score in a small pressed ring (PrayerScores.prayedScore — the page's own number).
 struct JourneyMiniRing: View {
-    let score: Int
+    /// nil: before a score (an empty ring, a dash).
+    let score: Int?
+    /// 38 in a row; Journey's header ring is larger (everything scales with it).
+    var size: CGFloat = 38
     var body: some View {
+        let k = size / 38
         ZStack {
-            NeuPressed(shape: Circle(), radius: 2.5, offset: 1.5)
-            Circle().trim(from: 0, to: CGFloat(score) / 100)
-                .stroke(Color.primary.opacity(0.65), style: StrokeStyle(lineWidth: 2.4, lineCap: .round))
+            NeuPressed(shape: Circle(), radius: 2.5 * k, offset: 1.5 * k)
+            Circle().trim(from: 0, to: CGFloat(score ?? 0) / 100)
+                .stroke(Color.primary.opacity(0.65), style: StrokeStyle(lineWidth: 2.4 * k, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .padding(3)
-            Text("\(score)").font(.system(size: 12, weight: .light, design: .rounded)).foregroundStyle(.primary)
+                .padding(3 * k)
+            Text(score.map { "\($0)" } ?? "–").font(.system(size: 12 * k, weight: .light, design: .rounded))
+                .foregroundStyle(score == nil ? .secondary : .primary)
         }
-        .frame(width: 38, height: 38)
+        .frame(width: size, height: size)
     }
 }
 

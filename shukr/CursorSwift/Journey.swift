@@ -300,6 +300,8 @@ struct JourneyPage: View {
     @State private var showMoments = false
     @State private var showMakeUp = false
     @State private var showScores = false
+    /// Prayer scores zooms out of the header's ring and back into it (iOS's zoom transition: the way back follows the finger).
+    @Namespace private var scoresZoom
     @State private var showMilestones = false
     /// The picked day's notes, photos, map and zikr, opened from the card's bottom — where the day page's back card opens
     /// them (owner, 2026-10-17: "we can use the same tap destinations as we do in the day ring's page for the flipped card").
@@ -359,7 +361,9 @@ struct JourneyPage: View {
         .journeyMonthHost(month: $openMonth, log: log, stats: stats)
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(today)) }
-        .navigationDestination(isPresented: $showScores) { PrayerScoresPage() }
+        .navigationDestination(isPresented: $showScores) {
+            PrayerScoresPage().navigationTransition(.zoom(sourceID: "scores", in: scoresZoom))
+        }
         .modifier(JourneyExtrasPresenter(tap: $extraTap))
         .navigationDestination(isPresented: $showMilestones) {
             JourneyMilestonesPage(milestones: stats?.milestones ?? [], firstDay: log.firstDay, opens: { opens($0) })
@@ -502,8 +506,8 @@ struct JourneyPage: View {
 
     // MARK: Home
 
-    /// The title, Your journey's card (D's: a week a row), then five rows: This month, Prayer scores, To make up, Moments,
-    /// Milestones (Journey on one screen, board/mocks/journey-v6/build-plan.md "A"). Before the first mark: the card says
+    /// The title (Prayer scores' ring on its right), Your journey's card (D's: a week a row), then four rows: This month,
+    /// To make up, Moments, Milestones (Journey on one screen, board/mocks/journey-v6/build-plan.md "A"). Before the first mark: the card says
     /// what will fill it, the rows are there, quiet.
     private func home(rowHeight: CGFloat, tight: Bool, rowsScroll: Bool) -> some View {
         JourneyPerf.body("home")
@@ -546,12 +550,29 @@ struct JourneyPage: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("Journey").font(.system(size: 38, weight: .regular, design: .rounded))
-            Text(log.firstDay.map { "Since \($0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))" }
-                 ?? "It starts with your first prayer")
-                .font(.system(size: 16, weight: .light, design: .rounded))
-                .foregroundStyle(.secondary)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Journey").font(.system(size: 38, weight: .regular, design: .rounded))
+                Text(log.firstDay.map { "Since \($0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))" }
+                     ?? "It starts with your first prayer")
+                    .font(.system(size: 16, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            Spacer(minLength: 0)
+            // Prayer scores' way in (owner, 2026-10-18: "on the Journey page, just move the prayer score ring to the top right,
+            // next to where it says Journey on the trailing side. Just leave that ring there, and that's our entrance into
+            // the prayer scores") — its row is gone.
+            Button {
+                triggerSomeVibration(type: .light)
+                showScores = true
+            } label: {
+                JourneyMiniRing(score: scores?.strongest != nil ? scores?.score : nil, size: 54)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .matchedTransitionSource(id: "scores", in: scoresZoom)
+            .accessibilityLabel(scores?.score.map { "Prayer scores, \($0)" } ?? "Prayer scores")
         }
         .journeyFlightWords(.page)   // lifts away as a month opens (JourneyTransitions.swift)
     }
@@ -579,18 +600,6 @@ struct JourneyPage: View {
                     }
                 }
             }
-            JourneyHomeRow(title: "Prayer scores",
-                           line: scores?.strongest.map { "\($0) is your strongest" } ?? "After a few prayers",
-                           height: rowHeight, quiet: scores?.strongest == nil) {
-                HStack(alignment: .bottom, spacing: 3.1) {
-                    ForEach(Array([12.0, 17, 14, 19].enumerated()), id: \.offset) { _, h in
-                        Capsule().fill(Color.primary.opacity(0.55)).frame(width: 3.4, height: h)
-                    }
-                }
-                .frame(height: 22, alignment: .bottom)
-            } value: {
-                if let score = scores?.score, scores?.strongest != nil { JourneyMiniRing(score: score) }
-            } action: { showScores = true }
             JourneyHomeRow(title: "To make up",
                            line: owed == 0 ? "Nothing to make up" : "Unmarked on days you used shukr",
                            height: rowHeight, quiet: owed == 0) {
