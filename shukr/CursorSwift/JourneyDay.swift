@@ -134,6 +134,7 @@ struct JourneyDayPage: View {
         // In the pager its heading is drawn in Journey's band, beside the host's ‹ (JourneyHostBar): it says which day shows.
         .onChange(of: shownDate, initial: true) { _, d in if inPager { JourneyDayShown.shared.date = d } }
         .onDisappear { if inPager { JourneyDayShown.shared.date = nil } }
+        .onAppear { if inPager { JourneyDayShown.shared.date = shownDate } }   // back from a push over the day
         .fullScreenCover(item: $dayPile) { route in
             PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from) {
                 var quiet = Transaction()

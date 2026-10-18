@@ -16,7 +16,9 @@ struct JourneyPagerPage: View, Equatable {
 
     var body: some View {
         if built {
-            JourneyPage(visible: sharedState.horizontalPage == .journey)
+            // Shown once the pager rests on it, not at the swipe's detent: a reload applied mid-coast stalled frames (the
+            // old Settings refetch at the commit, perf 2026-10-10 — the helper's check).
+            JourneyPage(visible: CircleStage.shared.restingPage == .journey)
                 .environment(\.journeyInPager, true)
                 // The pager runs under the home indicator; Journey's page stops above it, as it did pushed.
                 .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: JourneyBar.screenBottom) }
@@ -30,10 +32,19 @@ struct JourneyPagerPage: View, Equatable {
                     try? await Task.sleep(for: .seconds(1.5))
                     built = true
                 }
-                // Wanted sooner: a swipe heading there, or something asking for the page.
-                .onChange(of: live.scrollProgress > 1.01) { _, heading in if heading { built = true } }
+                // Wanted sooner: a swipe heading there (read in a leaf — not this view per pager frame), or asked for.
+                .background { JourneyHeading(live: live) { built = true } }
                 .onChange(of: sharedState.horizontalPage) { _, page in if page == .journey { built = true } }
         }
+    }
+}
+
+/// A swipe heading for Journey before it's built: one call, from a leaf (it reads the pager's live progress every frame).
+private struct JourneyHeading: View {
+    let live: PagerLiveState
+    let go: () -> Void
+    var body: some View {
+        Color.clear.onChange(of: live.scrollProgress > 1.01) { _, heading in if heading { go() } }
     }
 }
 

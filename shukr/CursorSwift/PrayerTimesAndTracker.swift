@@ -2476,14 +2476,19 @@ struct PrayerTimesView: View {
         private func sheet(_ open: Bool) -> CGFloat { sheetFollows ? live.sheetProgress : (open ? 1 : 0) }
 
         func body(content: Content) -> some View {
-            /// How far onto the Zikr page we are, 0...1, live from the scroll offset.
+            /// How far onto the Zikr page we are, 0...1, live from the scroll offset; and onto Journey's.
             let zikr = min(max(1 - live.scrollProgress, 0), 1)
+            let journey = min(max(live.scrollProgress - 1, 0), 1)
+            let stays: Bool = if case .bottomBar = role { true } else { false }
             let (opacity, push, taps): (CGFloat, CGFloat, Bool) = switch role {
             case .salah(let push): (1 - zikr, zikr * push, zikr < 0.5)
             case .zikr(let push): (zikr, -(1 - zikr) * push, zikr > 0.5)
             case .chevron(let open): ((1 - sheet(open)) * (1 - zikr), 0, sheet(open) < 0.5 && zikr < 0.5)
             case .doneFooter(let open): (sheet(open) * (1 - zikr), 0, sheet(open) >= 0.5 && zikr < 0.5)
-            case .bottomBar(let open): (max(sheet(open), zikr), 0, sheet(open) >= 0.5 || zikr > 0.5)
+            // Toward Journey it fades out where it is, and Journey slides over its place (owner, 2026-10-17: "it fades out as
+            // we drag the page on and sits on top of the bottom bar, that would be visually cleaner"): gone by halfway.
+            case .bottomBar(let open): (max(sheet(open), zikr) * max(1 - 2 * journey, 0), 0,
+                                        (sheet(open) >= 0.5 || zikr > 0.5) && journey < 0.5)
             }
             // "N done" rides up under the list while a finger brings the sheet (its fixed spot is the open rest).
             let rise: CGFloat = if case .doneFooter = role, sheetFollows {
@@ -2491,6 +2496,8 @@ struct PrayerTimesView: View {
             } else { 0 }
             content
                 .offset(x: push, y: rise)
+                // The bar holds its place toward Journey: ChromeLeaves takes the rest of the chrome away with the Salah page.
+                .visualEffect { c, proxy in c.offset(x: stays ? journey * proxy.size.width : 0) }
                 .opacity(Double(opacity))
                 .allowsHitTesting(taps)
         }
@@ -2713,29 +2720,12 @@ struct PrayerTimesView: View {
                             .frame(width: 100)
                         }
                         
-                        Spacer()
-                        
-                        // The pager's right page (owner, 2026-10-17: Journey took Settings' place; Settings is the gear).
-                        Button(action: {
-                            sharedState.horizontalPage = .journey
-                        }) {
-                            VStack(spacing: 6) {
-                                Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
-                                    .font(.system(size: 20))
-                                Text("Journey")
-                                    .font(.system(size: 12))
-                                    .fontWeight(.light)
-                                    .fontDesign(.rounded)
-                            }
-                            .foregroundColor(sharedState.horizontalPage == .journey ? .green : .gray)
-                            .frame(width: 100)
-                            // The tour's last step taps this (audit J: the bar is taught as well as the swipe).
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("settingsTab", $0) }
-                        }
+                        // Zikr and Salah only (owner, 2026-10-17: "just leave bottom bar with salah tab and zikr tab"): Journey is
+                        // the swipe left, and the bar fades as it comes.
                     }
                     .padding(.top, 15)
                     .padding(.bottom, 25)
-                    .padding(.horizontal, 45)
+                    .padding(.horizontal, 80)
                     .opacity(0.8)
 //                    .background(Color("bgColor"))
                 

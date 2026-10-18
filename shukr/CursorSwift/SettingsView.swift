@@ -715,24 +715,6 @@ struct SettingsView: View {
                     // The tour's Settings card (v2): the top on arrival — the page has come to rest by then (scrolling
                     // mid-swipe stalled the pager, Sami's round D run) — then this row for its last step.
                     // The day page's "Set a Fajr alarm ›": the alarm row, once the page is at rest (DaySummary.swift).
-                    .onChange(of: SettingsJump.shared.count) { _, _ in
-                        let target = SettingsJump.shared.target
-                        let side = target == SettingsJump.fajrAlarm ? ReminderSwitch.fajrAlarm
-                            : target == SettingsJump.liveActivities ? ReminderSwitch.liveActivities
-                            : target == SettingsJump.notifications ? ReminderSwitch.notifications : nil
-                        if let side { remindersTab = side }
-                        withAnimation(.smooth(duration: CircleMotion.standard)) {
-                            proxy.scrollTo(side != nil ? "liveActivities" : target, anchor: .center)
-                        }
-                    }
-                    .onChange(of: TourRuntime.shared.settingsScroll.1) { _, _ in
-                        let to = TourRuntime.shared.settingsScroll.0
-                        withAnimation(.smooth(duration: CircleMotion.standard)) {
-                            // The top: the first header asked for well down the page, so the scroll stops at the page's own
-                            // start (its margin under the tour's panel kept) — `.top` pinned it under the panel.
-                            proxy.scrollTo(to == .top ? "settingsTop" : "tourAgainRow", anchor: to == .top ? UnitPoint(x: 0.5, y: 0.3) : .center)
-                        }
-                    }
 
                     // The watch's pinch log (watch-pinch-log), for any TestFlight install with one: the only pinch watch
                     // is a TestFlight one, with no feedback pull.
@@ -927,6 +909,26 @@ struct SettingsView: View {
                 .contentMargins(.top, tourRoom, for: .scrollContent)
                 .animation(.smooth(duration: CircleMotion.standard), value: tourRoom)
                 .onChange(of: tourRoomNow, initial: true) { _, now in tourRoom = now == 0 ? 0 : max(tourRoom, now) }
+                // On the Form, always there: a lazily realised section near the bottom had no onChange alive on a Settings
+                // just pushed (the helper's check of the gear's push).
+                .onChange(of: SettingsJump.shared.count) { _, _ in
+                    let target = SettingsJump.shared.target
+                    let side = target == SettingsJump.fajrAlarm ? ReminderSwitch.fajrAlarm
+                        : target == SettingsJump.liveActivities ? ReminderSwitch.liveActivities
+                        : target == SettingsJump.notifications ? ReminderSwitch.notifications : nil
+                    if let side { remindersTab = side }
+                    withAnimation(.smooth(duration: CircleMotion.standard)) {
+                        proxy.scrollTo(side != nil ? "liveActivities" : target, anchor: .center)
+                    }
+                }
+                .onChange(of: TourRuntime.shared.settingsScroll.1) { _, _ in
+                    let to = TourRuntime.shared.settingsScroll.0
+                    withAnimation(.smooth(duration: CircleMotion.standard)) {
+                        // The top: the first header asked for well down the page, so the scroll stops at the page's own
+                        // start (its margin under the tour's panel kept) — `.top` pinned it under the panel.
+                        proxy.scrollTo(to == .top ? "settingsTop" : "tourAgainRow", anchor: to == .top ? UnitPoint(x: 0.5, y: 0.3) : .center)
+                    }
+                }
                 #if DEBUG
                 .task {   // `-settingsScrollTo lockTime`: Settings opened on the Lock Screen time-left picker
                     guard let to = UserDefaults.standard.string(forKey: "settingsScrollTo") else { return }   // + liveActivities

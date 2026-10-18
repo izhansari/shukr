@@ -1150,6 +1150,8 @@ struct JourneyMonthHost: ViewModifier {
             if inPager, JourneyPagerHold.shared.held != open { JourneyPagerHold.shared.held = open }
         }
         .onDisappear { if inPager { JourneyPagerHold.shared.held = false } }
+        // Back from a page pushed over the calendar or a day (their extras, Prayer scores): held again (the helper's check).
+        .onAppear { if inPager { JourneyPagerHold.shared.held = (flight != nil && !leaving) || day != nil } }
         .onChange(of: month) { _, route in
             guard let route, flight == nil || leaving else { return }
             if leaving { finishLeaving() }
