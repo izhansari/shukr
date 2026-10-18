@@ -1068,6 +1068,7 @@ struct JourneyMonthHost: ViewModifier {
     let stats: YourJourneyStats?
     @State private var flight: JourneyMonthFlight?
     @State private var day: JourneyDayFlight?
+    @Environment(\.journeyInPager) private var inPager
     /// The dials (one object all flight; the leaf pieces read it). Taps wait for a flight to land through a leaf gate that
     /// reads them (JourneyHitGate): a settled flag here redrew the host — and rebuilt the month page — on the first frame of
     /// every flight back (a ~60 ms start on his 13 Pro Max).
@@ -1142,15 +1143,13 @@ struct JourneyMonthHost: ViewModifier {
         .environment(\.journeyMonthDial, flight == nil || leaving ? nil : dials)
         .environment(\.journeyDayEntrance, day == nil ? nil : JourneyDayEntrance(source: dials))
         .environment(\.journeyMonthOpen, leaving ? nil : flight.map { JourneyMonthOpen(flight: $0, hiddenDay: day?.to == nil ? nil : day?.date) })
-        .navigationBarBackButtonHidden((flight != nil && !leaving) || day != nil)
-        .toolbar {
-            if (flight != nil && !leaving) || day != nil {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { back() } label: { Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold)) }
-                        .accessibilityLabel("Back")
-                }
-            }
+        .modifier(JourneyHostBar(inPager: inPager, showsBack: (flight != nil && !leaving) || day != nil, dayOpen: day != nil,
+                                 dials: dials, back: back))
+        // In the pager: the calendar or a day open holds the pager still (their edge swipe is the way back).
+        .onChange(of: (flight != nil && !leaving) || day != nil, initial: true) { _, open in
+            if inPager, JourneyPagerHold.shared.held != open { JourneyPagerHold.shared.held = open }
         }
+        .onDisappear { if inPager { JourneyPagerHold.shared.held = false } }
         .onChange(of: month) { _, route in
             guard let route, flight == nil || leaving else { return }
             if leaving { finishLeaving() }
@@ -1430,6 +1429,49 @@ struct JourneyMonthHost: ViewModifier {
                 if drag.day { runDay(to: goes ? 0 : 1, how: goes ? "let go" : "sprang back") }
                 else { JourneyFlightGeometry.shared.flushFollow { runMonth(to: goes ? 0 : 1, how: goes ? "let go" : "sprang back") } }
             }
+    }
+}
+
+/// The host's ‹: pushed, the system bar's (its own back button hidden meanwhile); in the pager, Journey's band where the bar
+/// was — a glass circle — with every page under it laid out as it was under the bar.
+private struct JourneyHostBar: ViewModifier {
+    let inPager: Bool
+    let showsBack: Bool
+    /// A day is open: its heading in the band's middle (the day page reports which day — JourneyDayShown).
+    let dayOpen: Bool
+    let dials: JourneyMonthDial
+    let back: () -> Void
+    func body(content: Content) -> some View {
+        if inPager {
+            content.safeAreaInset(edge: .top, spacing: 0) {
+                HStack {
+                    if showsBack { JourneyBarBack(action: back).transition(.opacity) }
+                    Spacer()
+                }
+                .overlay {
+                    if dayOpen, let d = JourneyDayShown.shared.date {
+                        // Comes and goes with the day page's own words (its entrance fade, read from the host's dials).
+                        JourneyDayHeadingText(date: d, today: PrayerDay.start())
+                            .modifier(JourneyDayEntranceFade(part: .rest))
+                            .environment(\.journeyDayEntrance, JourneyDayEntrance(source: dials))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(height: JourneyBar.height)
+                .animation(.easeInOut(duration: 0.25), value: showsBack)
+            }
+        } else {
+            content
+                .navigationBarBackButtonHidden(showsBack)
+                .toolbar {
+                    if showsBack {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button { back() } label: { Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold)) }
+                                .accessibilityLabel("Back")
+                        }
+                    }
+                }
+        }
     }
 }
 

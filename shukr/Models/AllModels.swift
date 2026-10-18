@@ -43,7 +43,8 @@ class SharedStateClass {
 
     /// Which page of the horizontal pager is showing. Written by the pager when a swipe
     /// settles, and by anything that wants to navigate (bottom bar, widget deep link, menu).
-    enum HorizontalPage: Hashable { case zikr, main, settings }
+    /// Zikr · Salah · Journey (Journey took Settings' place on the right, owner 2026-10-17; Settings is the gear's push).
+    enum HorizontalPage: Hashable { case zikr, main, journey }
     var horizontalPage: HorizontalPage = .main
     /// The next `horizontalPage` change scrolls the pager at once (`go(to:animated: false)`); the pager resets it.
     @ObservationIgnored var quietPageChange = false

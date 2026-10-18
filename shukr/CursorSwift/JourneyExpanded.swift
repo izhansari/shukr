@@ -7,6 +7,7 @@ import SwiftUI
 // month page: the card's top and bottom, and between them the same weeks — a week a row, seven columns — as rings.
 
 struct JourneyExpandedPage: View {
+    @Environment(\.journeyInPager) private var inPager
     let log: JourneyLog
     let stats: YourJourneyStats
     /// The month it opened on, and whether it opened focused on it (a month name, This month) or not (the ↗: the weeks the
@@ -94,13 +95,7 @@ struct JourneyExpandedPage: View {
         // A weeks ↔ year flight drives the page's own pieces (its cells, words, the flying squares); at rest, the host's.
         .modifier(JourneyYearFlightDriver(dials: yearDials, flight: yearFlight, clearWhenIdle: false))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .toolbar {
-            if #available(iOS 26.0, *) {
-                ToolbarItem(placement: .topBarTrailing) { yearToggle }.sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .topBarTrailing) { yearToggle }
-            }
-        }
+        .modifier(JourneyExpandedToggle(inPager: inPager, toggle: yearToggle))
         .modifier(JourneyExtrasPresenter(tap: $extraTap))
         .background(theme.surface.journeyFlightMonthSurface().ignoresSafeArea())   // clear while it opens over Journey
         .fontDesign(.rounded)
@@ -573,6 +568,31 @@ struct JourneyExpandedPage: View {
                 .offset(x: Self.labelColumn + 30, y: min(max((CGFloat(m) + 0.5) / CGFloat(months.count) * h - 15, 0), h - 30))
                 .transition(.opacity)
                 .allowsHitTesting(false)
+        }
+    }
+}
+
+/// Month | Year top right: the system bar's (pushed), or in Journey's band where the bar was (the pager: the page sits under
+/// the band, so the toggle is lifted into it).
+private struct JourneyExpandedToggle<Toggle: View>: ViewModifier {
+    let inPager: Bool
+    let toggle: Toggle
+    func body(content: Content) -> some View {
+        if inPager {
+            content.overlay(alignment: .topTrailing) {
+                toggle
+                    .frame(height: JourneyBar.height)
+                    .padding(.trailing, 14)
+                    .offset(y: -JourneyBar.height)
+            }
+        } else {
+            content.toolbar {
+                if #available(iOS 26.0, *) {
+                    ToolbarItem(placement: .topBarTrailing) { toggle }.sharedBackgroundVisibility(.hidden)
+                } else {
+                    ToolbarItem(placement: .topBarTrailing) { toggle }
+                }
+            }
         }
     }
 }

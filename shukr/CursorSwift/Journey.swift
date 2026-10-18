@@ -278,6 +278,8 @@ extension JourneyLog.Day {
 }
 
 struct JourneyPage: View {
+    /// The pager rests on it (JourneyPagerPage): a reload waits for it, as one under a pushed page waits for the way back.
+    var visible = true
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @State private var log = JourneyLog.last ?? JourneyLog()
@@ -291,6 +293,7 @@ struct JourneyPage: View {
     /// another page is over this one waits for its return (`dirty`) — no rebuild under To make up on every Made up.
     @State private var loadToken = 0
     @State private var onScreen = false
+    @State private var appeared = false
     @State private var dirty = false
     @State private var openDay: JourneyDayRoute?
     @State private var openMonth: JourneyMonthRoute?
@@ -362,22 +365,18 @@ struct JourneyPage: View {
             JourneyMilestonesPage(milestones: stats?.milestones ?? [], firstDay: log.firstDay, opens: { opens($0) })
         }
         .onAppear {
-            JourneyPerf.began("journey appears")
-            onScreen = true
+            appeared = true
             if stats == nil { stats = JourneyPerf.time("stats") { YourJourneyStats(log: log, today: today) } }
-            if dirty { reload() }
+            arrive()
         }
-        .onDisappear { onScreen = false }
+        .onDisappear { appeared = false; onScreen = false }
+        // In the pager it stays built: each arrival on its page is an appearance.
+        .onChange(of: visible) { _, _ in arrive() }
         .task {
-            onScreen = true
-            reload()
-            // Asked for To make up straight away (the day page's pill): on, once the page is there to push from.
-            if JourneyPresenter.shared.makeUp {
-                JourneyPresenter.shared.makeUp = false
-                try? await Task.sleep(for: .seconds(0.05))
-                showMakeUp = true
-            }
+            reload(first: true)   // read at once, even built ahead of a swipe, so it's ready when it's shown
+            takeMakeUp()
         }
+        .onChange(of: JourneyPresenter.shared.makeUp) { _, _ in takeMakeUp() }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in reload() }
@@ -438,8 +437,27 @@ struct JourneyPage: View {
         if next != fit { fit = next } else { checkFit(needed) }
     }
 
-    private func reload() {
-        guard onScreen else { dirty = true; return }   // under another page: read it on the way back
+    /// On screen now (appeared, and the pager on it): what waited reloads.
+    private func arrive() {
+        onScreen = appeared && visible
+        guard onScreen else { return }
+        JourneyPerf.began("journey appears")
+        if dirty { reload() }
+    }
+
+    /// Asked for To make up straight away (the day page's pill): on, once the page is shown to push from.
+    private func takeMakeUp() {
+        guard JourneyPresenter.shared.makeUp else { return }
+        JourneyPresenter.shared.makeUp = false
+        Task { @MainActor in
+            for _ in 0..<30 where !onScreen { try? await Task.sleep(for: .milliseconds(50)) }
+            try? await Task.sleep(for: .seconds(0.05))
+            showMakeUp = true
+        }
+    }
+
+    private func reload(first: Bool = false) {
+        guard onScreen || first else { dirty = true; return }   // under another page, or paged away: read it on the way back
         dirty = false
         loadToken += 1
         let token = loadToken

@@ -299,7 +299,7 @@ struct TourDemoLayer: View {
                 let away = UserDefaults.standard.double(forKey: "tourAwayAfter")
                 if away > 0 {
                     try? await Task.sleep(for: .seconds(away))
-                    sharedState.go(to: UserDefaults.standard.string(forKey: "tourAwayTo") == "settings" ? .settings : .zikr)
+                    sharedState.go(to: UserDefaults.standard.string(forKey: "tourAwayTo") == "settings" ? .journey /* P3 */ : .zikr)
                 }
                 return
             }
@@ -3054,7 +3054,7 @@ struct TourLayer: View {
         // The way out, for the whole tour, in one place (owner: "just keep it in the top right"): two taps, like
         // Finish early. Where the page has its own top-right button it slides left beside it, in the same row:
         // Settings' light / dark (a row lower sat on the location's refresh).
-        let besideCorner = sharedState.horizontalPage == .settings
+        let besideCorner = sharedState.horizontalPage == .journey /* P3 */
         // Not while a chapter is up: its panel has the ✕ (a flag the map's own panel could clear — so by step).
         if runtime.active, !covered, !TourTopPanel.chapters.contains(runtime.step ?? .intro) {
             TourSkipButton {
@@ -3062,7 +3062,7 @@ struct TourLayer: View {
                 withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .padding(.top, (typeSize.isAccessibilitySize ? 56 : 12) - (sharedState.horizontalPage == .settings ? 8 : 0))   // Settings' header sits higher
+            .padding(.top, (typeSize.isAccessibilitySize ? 56 : 12) - (sharedState.horizontalPage == .journey /* P3 */ ? 8 : 0))   // Settings' header sits higher
             .padding(.trailing, besideCorner ? 60 : 16)
             .animation(.smooth(duration: CircleMotion.standard), value: besideCorner)
             .transition(.asymmetric(insertion: .identity, removal: .opacity))
@@ -3155,7 +3155,7 @@ extension TourLayer {
 
     private func pageRested(_ page: SharedStateClass.HorizontalPage?) {
         // The Zikr card frees the pager for its swipe right; a swipe left (to Settings) is put back (Sami).
-        if runtime.active, runtime.step == .zikr, runtime.phase == .go, page == .settings {
+        if runtime.active, runtime.step == .zikr, runtime.phase == .go, page == .journey /* P3 */ {
             withAnimation(CircleMotion.page) { sharedState.horizontalPage = .main }
             return
         }
@@ -3165,7 +3165,7 @@ extension TourLayer {
             return
         }
         if page == .zikr { runtime.event(.zikrPage) }
-        if page == .settings { runtime.event(.settingsPage) }
+        if page == .journey /* P3 */ { runtime.event(.settingsPage) }
     }
 
     /// The qibla line: already facing it ticks it once the bubble is up; a compass that can't settle gets a quiet
@@ -3339,7 +3339,7 @@ extension TourLayer {
         case (.zikr, .go): .main
         case (.zikr, _): .zikr
         case (.settings, .go): .main
-        case (.settings, _): .settings
+        case (.settings, _): .journey /* P3 */
         default: .main
         }
         sharedState.go(to: page)
@@ -3400,8 +3400,8 @@ extension TourLayer {
         case (.list, _): return page == .main && list == .bottom
         case (.zikr, .go): return page == .main || page == .zikr
         case (.zikr, _): return page == .zikr
-        case (.settings, .go): return page == .main || page == .settings
-        case (.settings, _): return page == .settings
+        case (.settings, .go): return page == .main || page == .journey /* P3 */
+        case (.settings, _): return page == .journey /* P3 */
         case (.hintMark, _): return page == .main && list == .bottom
         default: return page == .main
         }
