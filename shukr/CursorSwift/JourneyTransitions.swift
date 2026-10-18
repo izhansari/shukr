@@ -139,6 +139,17 @@ enum JourneyMotion {
         last = now
     }
 
+    /// A line about the host's state (a flight opened, closed, cleared; a swipe cancelled): when Journey stops taking taps,
+    /// the log says what was still open (his phone, 2026-10-17: "best streak" dead until a relaunch).
+    func note(_ what: String) {
+        let line = "\(Date().formatted(.iso8601)) · \(what)"
+        print("🎞️ \(line)")
+        guard let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
+        let url = dir.appendingPathComponent("journey-transitions.log")
+        let data = Data((line + "\n").utf8)
+        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(data); try? h.close() } else { try? data.write(to: url) }
+    }
+
     func stop(_ how: String = "", run: Int? = nil) {
         guard let l = link, run == nil || run == self.run else { return }
         l.invalidate(); link = nil
@@ -1065,6 +1076,8 @@ struct JourneyMonthHost: ViewModifier {
     @State private var backDrag: (day: Bool, from: CGFloat)?
     /// The edge swipe claims only a drag that starts sideways; one that starts up or down is the month's paging, left alone.
     @State private var edgeSideways: Bool?
+    /// The edge swipe's finger is down (reset by SwiftUI however the gesture ends — onEnded isn't called when it's cancelled).
+    @GestureState private var edgeHeld = false
     @State private var openerID = UUID()
     @State private var cardOpenerID = UUID()
     /// Back from the year: Journey shown at rest under the month layer, which fades out over it.
@@ -1125,6 +1138,7 @@ struct JourneyMonthHost: ViewModifier {
             }
         }
         .overlay(alignment: .leading) { if day != nil { edgeStrip } }
+        .onChange(of: edgeHeld) { _, held in if !held { edgeLetGo() } }
         .environment(\.journeyMonthDial, flight == nil || leaving ? nil : dials)
         .environment(\.journeyDayEntrance, day == nil ? nil : JourneyDayEntrance(source: dials))
         .environment(\.journeyMonthOpen, leaving ? nil : flight.map { JourneyMonthOpen(flight: $0, hiddenDay: day?.to == nil ? nil : day?.date) })
@@ -1245,6 +1259,7 @@ struct JourneyMonthHost: ViewModifier {
         JourneyFlightGeometry.shared.yearShowing = false
         JourneyFlightGeometry.shared.yearBack = nil
         guard flight != nil, !leaving else { return }
+        JourneyFrameLog.shared.note("host: landed on the card")
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { leaving = true }
@@ -1258,6 +1273,7 @@ struct JourneyMonthHost: ViewModifier {
             flight = nil
             leaving = false
         }
+        JourneyFrameLog.shared.note("host: calendar taken down")
     }
 
     /// Back while the month page shows its year: into the month it came from (its own flight), else Journey.
@@ -1333,6 +1349,29 @@ struct JourneyMonthHost: ViewModifier {
         }
     }
 
+    /// The edge swipe let go without its onEnded: iOS took the touch (its own back swipe at the screen's edge, a banner, the
+    /// app leaving). The dial stayed where the finger left it — at the card, the card looked at rest while the flight, never
+    /// closed, kept every tap off Journey (his phone, 2026-10-17: "best streak" did nothing until a relaunch; the swipe's
+    /// frame-log line, written at its end, never came). It finishes as a let-go would, to the nearer end. A turn later, so a
+    /// normal end's onEnded has run first.
+    private func edgeLetGo() {
+        DispatchQueue.main.async {
+            edgeSideways = nil
+            guard let drag = backDrag else { return }
+            backDrag = nil
+            JourneyFrameLog.shared.stop()
+            JourneyFrameLog.shared.note(String(format: "host: edge swipe cancelled at %.2f (%@)", drag.day ? dials.dayDial : dials.dial,
+                                               drag.day ? "day" : "calendar"))
+            if drag.day {
+                let goes = dials.dayDial < 0.5
+                runDay(to: goes ? 0 : 1, how: goes ? "cancelled, went" : "cancelled, sprang back")
+            } else {
+                let goes = dials.dial < 0.5
+                JourneyFlightGeometry.shared.flushFollow { runMonth(to: goes ? 0 : 1, how: goes ? "cancelled, went" : "cancelled, sprang back") }
+            }
+        }
+    }
+
     /// Going back from a day: the ring shrinks into the day on the page now (it may have been paged), from where it sits.
     private func retargetDayForBack() {
         let spot = JourneyDayRingSpot.shared
@@ -1361,6 +1400,7 @@ struct JourneyMonthHost: ViewModifier {
 
     private var edgeBack: some Gesture {
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .updating($edgeHeld) { _, held, _ in held = true }
             .onChanged { v in
                 if edgeSideways == nil { edgeSideways = abs(v.translation.width) >= abs(v.translation.height) }
                 guard edgeSideways == true, day != nil || !JourneyFlightGeometry.shared.yearShowing else { return }

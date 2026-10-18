@@ -283,6 +283,15 @@ struct JourneyHomeCard: View {
         .onScrollPhaseChange { _, phase in
             if phase == .interacting { scrub.pinned = false; JourneyPerf.began("card scroll") }   // the finger's now: no more snapping to today
             JourneyPerf.scrolling(phase.isScrolling)
+            // At rest, the weeks in view from the rows' own reports too: after an animated scroll of the card's own (the
+            // streak's way back to today) iOS's visibility report didn't come, and the range line stayed on "JAN – APR 2025"
+            // over Aug – Oct (sim, 2026-10-17).
+            if phase == .idle {
+                DispatchQueue.main.async {
+                    let rows = JourneyFlightGeometry.shared.cardWeeksInView()
+                    if let lo = rows.first, let hi = rows.last, inView?.first != lo || inView?.last != hi { inView = (lo, hi) }
+                }
+            }
             guard phase == .interacting, picked != nil || streakShown else { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
         }
@@ -524,6 +533,7 @@ struct JourneyHomeCard: View {
                         figure("\(stats.prayersMarked)", "prayers marked").opacity(streakShown ? 0.35 : 1)
                         figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days").opacity(streakShown ? 0.35 : 1)
                         Button {
+                            JourneyFrameLog.shared.note("card: best streak tapped (\(stats.bestStreakDays == nil ? "no days" : streakShown ? "on → off" : "off → on"))")
                             guard stats.bestStreakDays != nil else { return }
                             triggerSomeVibration(type: .light)
                             if streakShown {
