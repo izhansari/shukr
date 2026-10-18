@@ -88,6 +88,10 @@ enum CircleMotion {
     static let dayPickOut = Animation.easeOut(duration: 0.14)
     static let dayPickIn = Animation.easeOut(duration: 0.26).delay(0.12)
     /// The day page's centre swapping: out, then in.
+    /// The day's rank teaching its tap (owner, 2026-10-17: "I like what you had said about teach it … every time we finish
+    /// the day"): once the ring has drawn and the score counted, the middle flips to the rank on its own, holds, and back.
+    static let dayRankTeachDelay: Double = 3.2
+    static let dayRankTeachHold: Double = 2.4
     static let dayPickSwap = AnyTransition.asymmetric(insertion: .opacity.animation(dayPickIn), removal: .opacity.animation(dayPickOut))
     /// Journey's days settling after the finger lets go (a pager: the next day comes in as this one goes — owner, 2026-10-16:
     /// "knowing that I'm pulling something in"); quick, not lazy ("faster, more responsive feeling").

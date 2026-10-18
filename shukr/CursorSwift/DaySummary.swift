@@ -34,9 +34,25 @@ extension DayPrayer {
     /// Salah tab has no day card to flip (owner, 2026-10-16: "the salah stays simple"); Journey's is JourneyDayPage's.
     var picked: Int?
 
-    /// A fifth (or its row) picks; the same one again clears it.
+    /// A fifth (or its row) picks; the same one again clears it. A pick lets the rank go: un-picking comes back to the score.
     func togglePick(_ i: Int) {
         picked = picked == i ? nil : i
+        showsRank = false
+    }
+    /// The middle shows the day's rank instead of its score (a tap on the middle; owner, 2026-10-17: "Let's keep it as a
+    /// tap"). Only while there's a rank to show (`rankReady`, set by the day page).
+    var showsRank = false
+    var rankReady = false
+    /// The middle was tapped this showing: the rank's own flip (its teaching) stands down.
+    private(set) var centreTouched = false
+    /// A tap on the ring's middle (the band picks a fifth; a photo or pill there takes its own tap): a picked prayer goes
+    /// back to the day, else the score and the rank swap. False when there was nothing to do.
+    func centreTapped() -> Bool {
+        centreTouched = true
+        if picked != nil { picked = nil; return true }
+        guard rankReady else { return false }
+        showsRank.toggle()
+        return true
     }
     func togglePick(name: String) {
         if let i = DayRing.order.firstIndex(of: name) { togglePick(i) }
@@ -81,6 +97,8 @@ extension DayPrayer {
     /// The day page is over (the score side left, the day changed, a row unmarked): nothing picked, the front up.
     func leaveDay() {
         picked = nil
+        showsRank = false
+        centreTouched = false
     }
 }
 
@@ -191,6 +209,9 @@ struct DayCentre: View {
     /// Prayers still owed (JourneyMakeUpPage.entries), for a missed prayer picked; nil or 0 = no pill.
     var makeUpCount: Int? = nil
     var onMakeUp: (() -> Void)? = nil
+    /// The day's place among your days, shown instead of the score while `showsRank` (the Salah tab's day page only).
+    var rank: DayRank? = nil
+    var showsRank = false
 
     var body: some View {
         if let i = picked, DayRing.order.indices.contains(i) {
@@ -225,6 +246,17 @@ struct DayCentre: View {
                 }
                 .transition(CircleMotion.dayPickSwap)
             }
+        } else if showsRank, let rank {
+            // The rank in the score's place, the same type: "5th" / "of 112 days" (the suffix small, raised).
+            VStack(spacing: 3) {
+                (Text("\(rank.place)") + Text(rank.suffix).font(.system(size: 22, weight: .light, design: .rounded)).baselineOffset(18))
+                    .font(.system(size: 48, weight: .thin, design: .rounded))
+                    .monospacedDigit()
+                Text(rank.caption)
+                    .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .transition(CircleMotion.dayPickSwap)
         } else {
             VStack(spacing: 3) {
                 CountingScore(value: score)   // counts up when animated (the day's first showing)
@@ -243,6 +275,41 @@ struct DayCentre: View {
         if inTime == 5 { words = day.allSatisfy(\.perfect) ? "all five Perfect" : "all five in time" }
         else { words = "\(inTime) of 5 in time" }
         return yesterday ? "yesterday · \(words)" : words
+    }
+}
+
+/// Today's place among every finished day you've marked, by the day page's own number (`dayScore`, the five ÷ 5): the
+/// same place Journey shows on a picked day ("5th of 112"), equal scores sharing it. None for an unfinished or excused day,
+/// or before there's a week to compare (owner, 2026-10-17: "you've marked prayers for this many days. And of those days,
+/// like, this ranked, like, number 5").
+struct DayRank: Equatable {
+    let place: Int
+    let of: Int
+    /// Other days with the same score.
+    let tiedWith: Int
+
+    /// Fewer finished days than this: no rank ("2nd of 3" says nothing yet).
+    static let minimumDays = 7
+
+    var suffix: String {
+        let f = NumberFormatter(); f.numberStyle = .ordinal
+        let s = f.string(from: NSNumber(value: place)) ?? "\(place)"
+        return String(s.drop { $0.isNumber })
+    }
+    /// "of 112 days"; at the top "your best day yet", or "best day · tied with 8" when others share it.
+    var caption: String {
+        guard place == 1 else { return "of \(of) days" }
+        return tiedWith == 0 ? "your best day yet" : "best day · tied with \(tiedWith)"
+    }
+
+    /// Today's rank, read off the main thread (JourneyLog.load: the whole prayer log).
+    @MainActor static func today(container: ModelContainer) async -> DayRank? {
+        let date = PrayerDay.date()
+        let log = await JourneyLog.load(container: container, ranges: Excused.ranges)
+        guard let day = log.days[PrayerNotificationID.dayKey(date)], day.allFive, day.excused == 0, !day.unfinished,
+              let place = log.dayRank(date), log.rankedDays >= minimumDays else { return nil }
+        let tied = log.days.values.filter { $0.active && !$0.unfinished && $0.dayScore == day.dayScore }.count - 1
+        return DayRank(place: place, of: log.rankedDays, tiedWith: max(tied, 0))
     }
 }
 

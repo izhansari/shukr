@@ -947,6 +947,13 @@ struct MainCircleView: View {
         TourRuntime.shared.event(.circleTapped)   // the tour's first step ends on this tap
         // A mark's flourish holding the day ring: a tap moves on to the next prayer.
         if flourish != nil, !flourishOut, !flourishSkipped { flourishSkipped = true; return }
+        // The day's page: the middle swaps the score and the rank, or lets a picked prayer go (the band picks a fifth).
+        if daySummaryShowing {
+            withAnimation(CircleMotion.dayPick) {
+                if DayPageState.shared.centreTapped() { triggerSomeVibration(type: .light) }
+            }
+            return
+        }
         if excusedShown != nil { NotificationCenter.default.post(name: Excused.openSheet, object: nil); return }
         guard morningShown == nil, lostShown == nil else { return }
         // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
@@ -1012,6 +1019,9 @@ struct summaryCircle: View, Equatable {
     @Environment(\.circleTheme) private var theme
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var fajrAlarmOn = false
     @State private var history: [[DayPrayer]] = []
+    /// Today's place among your days (DayRank), once the day is finished; nil = the score alone.
+    @State private var dayRank: DayRank?
+    @State private var teachTask: Task<Void, Never>?
     /// The picked prayer lives in DayPageState (the rows pick too, the flip clears it — the day page merge).
     private var picked: Int? { DayPageState.shared.picked }
     /// The picked prayer's note, on the frosted card; its place, on the map sheet (DayPickLines' doors).
@@ -1089,6 +1099,46 @@ struct summaryCircle: View, Equatable {
     }
 
     /// The day's line, kept for the day (DayInsight); none during the tour (its practice day isn't the user's).
+    /// Today's rank, for the middle's tap (finished, counted days only; none for yesterday's page). The first showing of
+    /// each finished day teaches the tap: the rank flips in on its own and back (owner, 2026-10-17: "every time we finish
+    /// the day — not just one time ever"), unless the middle was touched first.
+    private func loadRank() {
+        guard showsScore, !showingYesterday, shownDay.count == 5, shownDay.allSatisfy(\.done),
+              !shownDay.contains(where: \.excused) else {
+            dayRank = nil
+            DayPageState.shared.rankReady = false
+            return
+        }
+        let container = context.container
+        Task { @MainActor in
+            let rank = await DayRank.today(container: container)
+            dayRank = rank
+            DayPageState.shared.rankReady = rank != nil
+            guard rank != nil else { return }
+            teach()
+        }
+    }
+    /// The rank's flip on its own, once per finished day: only one waiting at a time (refreshDay runs on every change),
+    /// and the day counts as taught only once it has played.
+    private func teach() {
+        let key = PrayerNotificationID.dayKey(PrayerDay.date())
+        guard !Self.stillForCheck, UserDefaults.standard.string(forKey: Self.rankTaughtKey) != key else { return }
+        teachTask?.cancel()
+        teachTask = Task { @MainActor in
+            let state = DayPageState.shared
+            try? await Task.sleep(for: .seconds(CircleMotion.dayRankTeachDelay))
+            guard !Task.isCancelled, state.up, !state.centreTouched, state.picked == nil, !state.showsRank,
+                  dayRank != nil else { return }
+            UserDefaults.standard.set(key, forKey: Self.rankTaughtKey)
+            withAnimation(CircleMotion.dayPick) { state.showsRank = true }
+            try? await Task.sleep(for: .seconds(CircleMotion.dayRankTeachHold))
+            guard !Task.isCancelled, !state.centreTouched, state.showsRank else { return }
+            withAnimation(CircleMotion.dayPick) { state.showsRank = false }
+        }
+    }
+    /// The prayer day whose rank flipped in on its own (once per finished day).
+    static let rankTaughtKey = "daySummary.rankTaught"
+
     private func refreshDay() {
         guard !TourRuntime.shared.active else { line = nil; return }
         history = DayHistory.load(context)
@@ -1102,6 +1152,7 @@ struct summaryCircle: View, Equatable {
             tomorrowStart: { viewModel.getPrayerTime(for: $0, on: tomorrow)?.start },
             tomorrowIsFriday: Calendar.current.component(.weekday, from: tomorrow) == 6)
         line = DayInsight.line(input)
+        loadRank()
         // A full day glows once (per prayer day), the first time its page is shown.
         let key = input.dayKey
         if showsScore, !Self.stillForCheck, shownDay.count == 5, shownDay.allSatisfy(\.inTime),
@@ -1223,8 +1274,10 @@ struct summaryCircle: View, Equatable {
                           // To make up, in Journey (the pill in the ring; marking stays the list's dot — owner).
                           JourneyPresenter.shared.makeUp = true
                           JourneyPresenter.shared.open = true
-                      })
+                      }, rank: showingYesterday ? nil : dayRank,
+                      showsRank: DayPageState.shared.showsRank && dayRank != nil && !showingYesterday)
                 .animation(CircleMotion.dayPick, value: picked)
+                .animation(CircleMotion.dayPick, value: DayPageState.shared.showsRank)
                 .modifier(CircleWordsAway(away: away || !showsScore))
             DayRing(day: shownDay, picked: picked, drawn: drawn) { i in
                 withAnimation(CircleMotion.dayPick) { DayPageState.shared.togglePick(i) }
@@ -1318,8 +1371,9 @@ struct summaryCircle: View, Equatable {
         }
         .transition(.opacity)
         .onAppear { getTheNextFajrTime(); refreshDay(); DayPageState.shared.pageAppeared() }
-        .onDisappear { DayPageState.shared.pageGone() }
+        .onDisappear { DayPageState.shared.pageGone(); teachTask?.cancel() }
         .onChange(of: showsScore) { _, shows in
+            teachTask?.cancel()   // the rank's flip on its own waits for the score side's next showing
             DayPageState.shared.leaveDay()   // the side swapped: nothing picked, the front up
             if shows { refreshDay() }
         }
