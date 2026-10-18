@@ -47,8 +47,10 @@ struct JourneyHomeCard: View {
     @State private var beforeStreak: (week: Date?, back: Bool) = (nil, false)
     /// A finger on the tiles (not observed: nothing redraws from it).
     @State private var scrub = JourneyCardScrub()
-    /// What the grid shows: the first week row in view, how many fit, and whether it rests at today.
-    @State private var view = (first: 0, count: 12, atEnd: true)
+    /// The first and last week in view, as iOS reports them — kept as weeks, never row indexes: a reload that changes the
+    /// weeks under a resting grid reports nothing new, and stored indexes then named other rows (the helper's 17 Pro sim:
+    /// the grid at today, the label "NOV 2024 – FEB 2025" and ↗ opening on Dec – Feb — indexes from an older, shorter list).
+    @State private var inView: (first: Date, last: Date)?
     @Environment(\.colorScheme) private var scheme
     @Environment(\.journeyDayOpener) private var dayOpener
 
@@ -130,13 +132,25 @@ struct JourneyHomeCard: View {
         .journeyFlightCard()
     }
 
+    /// What the grid shows, against the weeks as they are now: the first week row in view, how many, and whether it rests at
+    /// today. Before iOS has reported (or with weeks it no longer holds), the last 12 — the grid opens pinned to today.
+    private var view: (first: Int, count: Int, atEnd: Bool) {
+        let w = stats.weeks
+        guard let v = inView, let lo = w.firstIndex(where: { $0.start == v.first }),
+              let hi = w[lo...].firstIndex(where: { $0.start == v.last }) else {
+            return (max(w.count - 12, 0), min(12, w.count), true)
+        }
+        return (lo, hi - lo + 1, hi == w.count - 1)
+    }
+
     /// The month the expand button opens: the picked day's, else the bottom row in view's — stepping back to one with marks.
     private var monthInView: Date? {
         let cal = Calendar.current
         var date: Date
         if let p = picked { date = p } else {
             guard !stats.weeks.isEmpty else { return nil }
-            let i = min(max(view.first + view.count - 1, 0), stats.weeks.count - 1)
+            let v = view
+            let i = min(max(v.first + v.count - 1, 0), stats.weeks.count - 1)
             date = min(cal.date(byAdding: .day, value: 6, to: stats.weeks[i].start) ?? stats.weeks[i].start, PrayerDay.start())
         }
         var m = JourneyLog.monthStart(date)
@@ -152,13 +166,14 @@ struct JourneyHomeCard: View {
     private var rangeLabel: String {
         // Before the log is in (no weeks yet) the card says what it will show, never "THE LAST 1 WEEKS" (Frank's catch).
         if stats.weeks.isEmpty { return "THE LAST 12 WEEKS" }
-        if view.atEnd {
-            let n = min(view.count, stats.weeks.count)
+        let v = view
+        if v.atEnd {
+            let n = min(v.count, stats.weeks.count)
             return n == 1 ? "THIS WEEK" : "THE LAST \(n) WEEKS"
         }
         let rows = stats.weeks
-        let a = rows[min(max(view.first, 0), rows.count - 1)].start
-        let lastRow = min(rows.count - 1, view.first + view.count - 1)
+        let a = rows[min(max(v.first, 0), rows.count - 1)].start
+        let lastRow = min(rows.count - 1, v.first + v.count - 1)
         let b = Calendar.current.date(byAdding: .day, value: 6, to: rows[max(lastRow, 0)].start) ?? a
         let cal = Calendar.current
         let from = a.formatted(.dateTime.month(.abbreviated)).uppercased()
@@ -235,15 +250,15 @@ struct JourneyHomeCard: View {
         // probably show that it's something that you can scroll … It looks very plain and unassuming"; his pick, A): a
         // hairline the rail's length, a thumb where the grid is in the whole history. It gives way to the lifted track.
         .background(alignment: .topLeading) {
-            let h = max(scrub.gridHeight - 12, 1), n = max(stats.weeks.count, 1)
-            let thumb = max(CGFloat(view.count) / CGFloat(n) * h, 14)
-            let top = min(CGFloat(view.first) / CGFloat(n) * h, h - thumb)
+            let h = max(scrub.gridHeight - 12, 1), n = max(stats.weeks.count, 1), v = view
+            let thumb = max(CGFloat(v.count) / CGFloat(n) * h, 14)
+            let top = min(CGFloat(v.first) / CGFloat(n) * h, h - thumb)
             ZStack(alignment: .topLeading) {
                 Capsule().fill(Color.primary.opacity(0.08)).frame(width: 2, height: h)
                 Capsule().fill(Color.primary.opacity(0.3)).frame(width: 2, height: thumb).offset(y: max(top, 0))
             }
             .padding(.top, 6)
-            .opacity(rail == nil && stats.weeks.count > view.count ? 1 : 0)
+            .opacity(rail == nil && stats.weeks.count > v.count ? 1 : 0)
             .animation(.easeOut(duration: CircleMotion.quick), value: rail == nil)
             .allowsHitTesting(false)
         }
@@ -274,11 +289,10 @@ struct JourneyHomeCard: View {
         // Which weeks are in view, as iOS has them — not the offset ÷ a row's pitch: the lazy stack only estimates the rows
         // it hasn't built, so with a long history the label read "SEP 2025 – JAN 2026" over Dec – Mar (sim, 2026-10-17),
         // and the scrub's start, the streak's way back and the expand button's month read the same wrong rows.
+        // A week's id is its start, so the ids alone say first and last (this closure's `stats` can be an older copy's).
         .onScrollTargetVisibilityChange(idType: Date.self, threshold: 0.5) { ids in
-            let index = ids.compactMap { id in stats.weeks.firstIndex { $0.id == id } }
-            guard let lo = index.min(), let hi = index.max() else { return }
-            let atEnd = hi == stats.weeks.count - 1
-            if view.first != lo || view.count != hi - lo + 1 || view.atEnd != atEnd { view = (lo, hi - lo + 1, atEnd) }
+            guard let lo = ids.min(), let hi = ids.max() else { return }
+            if inView?.first != lo || inView?.last != hi { inView = (lo, hi) }
         }
         .onScrollGeometryChange(for: Bool.self) { geo in
             geo.contentSize.height - (geo.contentOffset.y + geo.contentInsets.top) - geo.containerSize.height < 4
@@ -516,8 +530,9 @@ struct JourneyHomeCard: View {
                                 beforeStreak.back = true
                             } else {
                                 scrub.pinned = false
-                                let top = stats.weeks.indices.contains(view.first) ? stats.weeks[view.first].id : nil
-                                beforeStreak = (view.atEnd ? nil : top, false)
+                                let v = view
+                                let top = stats.weeks.indices.contains(v.first) ? stats.weeks[v.first].id : nil
+                                beforeStreak = (v.atEnd ? nil : top, false)
                             }
                             withAnimation(.easeInOut(duration: 0.3)) { streakShown.toggle() }
                         } label: {
