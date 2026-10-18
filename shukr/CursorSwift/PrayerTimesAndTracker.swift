@@ -33,7 +33,6 @@ struct PrayerTimesView: View {
         
     @State private var showDailyAyahView: Bool = false
     @State private var showMantraSheetFromHomePage: Bool = false
-    @State private var settingsViewNavBool: Bool = false
     @State private var showTasbeehPage: Bool = false
     @State private var showQiblaMap: Bool = false
 
@@ -515,7 +514,7 @@ struct PrayerTimesView: View {
     private var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
             || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights || JourneyPresenter.shared.open
-            || showNamesPage || showMantraSheetFromHomePage || settingsViewNavBool
+            || showNamesPage || showMantraSheetFromHomePage || SettingsPresenter.shared.open
             || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
 
@@ -523,7 +522,7 @@ struct PrayerTimesView: View {
         showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
         showSalahHistoryV1 = false; showSalahHistoryV2 = false; showZikrHistory = false
         showInsightsPage = false; showOldInsights = false; showNamesPage = false; JourneyPresenter.shared.open = false
-        showMantraSheetFromHomePage = false; settingsViewNavBool = false
+        showMantraSheetFromHomePage = false; SettingsPresenter.shared.open = false
         healthCard = nil
     }
 
@@ -970,7 +969,7 @@ struct PrayerTimesView: View {
                 switch link {
                 case "salah": sharedState.horizontalPage = .main
                 case "zikr": sharedState.horizontalPage = .zikr
-                case "settings": sharedState.horizontalPage = .settings
+                case "settings": sharedState.horizontalPage = .main; SettingsPresenter.shared.show()
                 case "history": showZikrHistory = true
                 case "azkar": showMantrasPage = true
                 case "map": sharedState.horizontalPage = .main; showQiblaMap = true
@@ -1351,12 +1350,12 @@ struct PrayerTimesView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("-demoSettings") {
                 try? await Task.sleep(for: .seconds(1.5))   // once the pager is up
-                sharedState.horizontalPage = .settings   // the Settings page (screenshots)
+                SettingsPresenter.shared.show()   // Settings (screenshots)
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartPreview") {
-                // What Settings → My Dev Stuff → Preview prayer begins does (from the Settings page).
-                sharedState.horizontalPage = .settings
+                // What Settings → My Dev Stuff → Preview prayer begins does (from Settings).
+                SettingsPresenter.shared.show()
                 try? await Task.sleep(for: .seconds(2))
                 NotificationCenter.default.post(name: PrayerStartPreview.request, object: nil)
                 return
@@ -1614,8 +1613,19 @@ struct PrayerTimesView: View {
 //                print("ResetTasbeehInputs cuz we dismissed DailyTasks.")
 //            }
 //        }
-        .navigationDestination(isPresented: $settingsViewNavBool) {
-            SettingsView()
+        // Settings, from the gear top right (SettingsPresenter): the system bar's ‹ and the edge swipe pop it. It may have
+        // changed how times are worked out: refetched once it's closed, after the pop has landed.
+        .navigationDestination(isPresented: Binding(get: { SettingsPresenter.shared.open },
+                                                    set: { SettingsPresenter.shared.open = $0 })) {
+            SettingsView(onBack: { SettingsPresenter.shared.open = false }, refetchOnLeave: false, systemBar: true)
+                .onAppear { SettingsPresenter.shared.shown = true }
+        }
+        .onChange(of: SettingsPresenter.shared.open) { was, now in
+            guard was, !now else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.45))
+                viewModel.fetchPrayerTimes(cameFrom: "closed Settings")
+            }
         }
         .navigationDestination(isPresented: $showMapPage) {
             LocationMapContentView()
@@ -2276,14 +2286,16 @@ struct PrayerTimesView: View {
                         // Zikr page, top right: nothing (owner, 2026-10-15: the books door went — "N of M daily goals
                         // done" under the wheel opens Your azkar).
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
-                        if access.available && !TourRuntime.shared.active {
-                            HStack(spacing: 0) {
+                        // Settings, for everyone (owner, 2026-10-17; the pager's right page is Journey's).
+                        HStack(spacing: 0) {
+                            if access.available && !TourRuntime.shared.active {
                                 SalahPlayButton()
                                 SalahLookSwitcher()
                             }
-                            .padding(.trailing, 8)
-                            .modifier(follow(.salah(push: 0)))
+                            SettingsGearButton()
                         }
+                        .padding(.trailing, 8)
+                        .modifier(follow(.salah(push: 0)))
                         }
                     }
                 }

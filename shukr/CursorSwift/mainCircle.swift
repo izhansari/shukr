@@ -1352,8 +1352,8 @@ struct summaryCircle: View, Equatable {
             if let fajr = nextFajr, let alarm = alarmTime(for: fajr) {
                 Button {
                     triggerSomeVibration(type: .light)
-                    // Settings, then its alarm row once the page has come to rest (scrolling mid-swipe stalls it).
-                    Task { if await sharedState.navigate(to: .settings) { SettingsJump.shared.request(SettingsJump.fajrAlarm) } }
+                    // Settings, then its alarm row once the push has landed (scrolling mid-push stalls it).
+                    SettingsPresenter.shared.show(jump: SettingsJump.fajrAlarm)
                 } label: {
                     Label("Alarm \(shortTimePM(alarm))", systemImage: "alarm")
                         .labelStyle(.titleAndIcon)

@@ -647,7 +647,7 @@ struct SalahPlayButton: View {
 }
 
 /// The top bar's icon look (the ☰'s grey, light weight).
-private struct ChromeIcon: View {
+struct ChromeIcon: View {
     let systemName: String
     var body: some View {
         Image(systemName: systemName)

@@ -3,6 +3,40 @@ import SwiftData
 import UIKit
 import WidgetKit
 
+/// Settings, pushed on the root stack from the Salah page's gear (owner, 2026-10-17: "put the settings in the top right of
+/// the top bar on the main Salah tab" — the pager's right page is Journey's now). `show(jump:)` opens it and, once it has
+/// arrived, scrolls it to a row (SettingsJump) — a scroll mid-push stalled it, as one mid-swipe did on the old page.
+@MainActor @Observable final class SettingsPresenter {
+    static let shared = SettingsPresenter()
+    var open = false { didSet { if !open { shown = false } } }
+    /// The pushed Settings is on screen (its onAppear): a jump waits for it.
+    @ObservationIgnored var shown = false
+
+    func show(jump: String? = nil) {
+        open = true
+        guard let jump else { return }
+        Task { @MainActor in
+            for _ in 0..<40 where !shown { try? await Task.sleep(for: .milliseconds(50)) }
+            try? await Task.sleep(for: .milliseconds(350))   // the push has landed
+            SettingsJump.shared.request(jump)
+        }
+    }
+}
+
+/// The Salah page's top right: Settings (everyone; the owner's ▶︎ and 🎨 sit to its left).
+struct SettingsGearButton: View {
+    var body: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            SettingsPresenter.shared.show()
+        } label: {
+            ChromeIcon(systemName: "gearshape")
+        }
+        .accessibilityLabel("Settings")
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("settingsGear", $0) }
+    }
+}
+
 struct SettingsView: View {
     #if DEBUG
     @AppStorage("firstZikrChoice") private var firstZikrChoice = "cards"
@@ -33,6 +67,9 @@ struct SettingsView: View {
     /// Form doesn't re-render on every page turn (it only ever wrote `horizontalPage`).
     var onBack: () -> Void = {}
     var refetchOnLeave = true
+    /// Pushed (the gear): the system's own see-through bar — its back button and the title — in place of the page's header;
+    /// hiding the bar switched off iOS's swipe back (decision swipe-back-pages A).
+    var systemBar = false
     @EnvironmentObject var envLocationManager: EnvLocationManager
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
@@ -899,10 +936,12 @@ struct SettingsView: View {
                 #endif
                 }
                 .modifier(OverListHeader {
-                    settingsHeader
-                        // The page's content starts under this bar (its 6 pt padding below): the tour's room is measured
-                        // from here.
-                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY + 6 } action: { listTop = $0 }
+                    Group {
+                        if systemBar { Color.clear.frame(height: 0) } else { settingsHeader }
+                    }
+                    // The page's content starts under this bar (its 6 pt padding below): the tour's room is measured
+                    // from here.
+                    .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).maxY + 6 } action: { listTop = $0 }
                 })
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
@@ -1014,6 +1053,7 @@ struct SettingsView: View {
         // because pages are clipped to the pager's frame and can't reach it from here.
         .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
         .navigationBarBackButtonHidden(false)
+        .modifier(SettingsSystemBar(on: systemBar))
         
         // The pushed Settings only: the pager's page refetches when it's paged away from (PrayerTimesAndTracker). Under a
         // pushed page (Your tasks) the pager's copy was told disappear / appear on every update, the fetch published,
@@ -3184,6 +3224,21 @@ struct LAIslandGallery: View {
 }
 #endif
 
+
+/// The pushed Settings' bar: the system's, see-through, titled.
+private struct SettingsSystemBar: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        if on {
+            content
+                .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+        } else {
+            content
+        }
+    }
+}
 
 /// A header the list scrolls under: iOS 26's `safeAreaBar` (the scroll edge effect softens what passes beneath), a bar
 /// material before.
