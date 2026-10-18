@@ -287,12 +287,7 @@ struct JourneyHomeCard: View {
             // At rest, the weeks in view from the rows' own reports too: after an animated scroll of the card's own (the
             // streak's way back to today) iOS's visibility report didn't come, and the range line stayed on "JAN – APR 2025"
             // over Aug – Oct (sim, 2026-10-17).
-            if phase == .idle {
-                DispatchQueue.main.async {
-                    let rows = JourneyFlightGeometry.shared.cardWeeksInView()
-                    if let lo = rows.first, let hi = rows.last, inView?.first != lo || inView?.last != hi { inView = (lo, hi) }
-                }
-            }
+            if phase == .idle { DispatchQueue.main.async { readInView() } }
             guard phase == .interacting, picked != nil || streakShown else { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; streakShown = false }
         }
@@ -310,7 +305,11 @@ struct JourneyHomeCard: View {
             // Pinned to today and the weeks grew under it (they arrive after the first layout; on a return to Journey into
             // a copy of the page that started empty — logged on the sim, it settled at the first weeks): back to the end.
             if !atEnd, scrub.pinned, picked == nil, !streakShown { toToday() }
+            // Reached today's end (or left it) with no scroll of its own to come to rest: the weeks in view read again.
+            settleInView()
         }
+        // The weeks arrive after the first layout (and grow on a new week): what's in view, again once they're laid out.
+        .onChange(of: stats.weeks.count) { settleInView() }
         // A fade at the top: there are earlier weeks up there.
         .mask {
             VStack(spacing: 0) {
@@ -490,6 +489,22 @@ struct JourneyHomeCard: View {
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { position.scrollTo(edge: .bottom) }
+        settleInView()
+    }
+
+    /// The weeks in view from the rows' own reports (JourneyFlightGeometry.cardWeeksInView), once the grid has laid out where
+    /// it settled: for a place no scroll of the finger's took it to. Pinned to today on the first layout, iOS's visibility
+    /// report came for that layout's top rows and never again, and the range line read "AUG 2024 – JAN 2025" over Jun – Oct
+    /// (the owner's history, 2026-10-18). Now and a beat later (the rows report a layout after they move).
+    private func settleInView() {
+        DispatchQueue.main.async { readInView() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { readInView() }
+    }
+
+    private func readInView() {
+        let rows = JourneyFlightGeometry.shared.cardWeeksInView()
+        guard let lo = rows.first, let hi = rows.last, inView?.first != lo || inView?.last != hi else { return }
+        inView = (lo, hi)
     }
 
     /// A bar's slot across the row's bars (the row's width less the name column; bars 6 pt apart).
