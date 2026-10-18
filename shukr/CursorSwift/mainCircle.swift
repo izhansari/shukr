@@ -1040,15 +1040,20 @@ struct summaryCircle: View, Equatable {
     @State private var drawToken = 0
     /// The first showing today: the score counts up from 0 once the ring is whole (nil = show the score as it is).
     @State private var countedScore: Double?
-    /// Yesterday's day score from its own rows (DayHistory, the day shown), as every other count reads them — never
-    /// DailyPrayerScore, whose bare-Date keys shift after a time-zone change (mark audit #12). An excused day not prayed
-    /// in full has no score: 0, as before.
-    private var yesterdayScore: Double {
-        guard let day = history.first, !day.isEmpty else { return 0 }
-        let done = day.filter(\.done)
-        if done.count < 5, day.contains(where: \.excused) { return 0 }
-        return done.reduce(0) { $0 + ($1.score ?? 0) } / 5
+    /// DayHistory's first day only when it IS yesterday: DayHistory leaves out a day that doesn't count (excused, not
+    /// prayed in full), and its first is then the day before (the helper's check of mark audit #12). A day with no rows
+    /// is kept as an empty list.
+    private var historyStartsYesterday: Bool {
+        guard let day = history.first else { return false }
+        guard let p = day.first else { return true }
+        guard let y = Calendar.current.date(byAdding: .day, value: -1, to: PrayerDay.date()) else { return false }
+        return PrayerDay.key(forRow: p.name, startingAt: p.start) == PrayerNotificationID.dayKey(y)
     }
+    private var yesterday: [DayPrayer] { historyStartsYesterday ? (history.first ?? []) : [] }
+    /// Yesterday's day score from its own rows, as every other count reads them — never DailyPrayerScore, whose bare-Date
+    /// keys shift after a time-zone change (mark audit #12). The average of the five, unmarked = 0 (PrayerScoring.dayScore);
+    /// an excused yesterday not prayed in full isn't in DayHistory: 0, as before.
+    private var yesterdayScore: Double { yesterday.reduce(0) { $0 + ($1.score ?? 0) } / 5 }
 
     /// Before Fajr with nothing marked in a new prayer day, show the day that just finished
     /// instead of a 0 (owner, 2026-09-25). Since the day rolls over at Fajr this only happens
@@ -1061,7 +1066,7 @@ struct summaryCircle: View, Equatable {
 
     /// The prayers of the day shown (today, or yesterday before a Fajr with nothing marked).
     private var shownDay: [DayPrayer] {
-        showingYesterday ? (history.first ?? []) : viewModel.todaysPrayers.map(DayPrayer.init)
+        showingYesterday ? yesterday : viewModel.todaysPrayers.map(DayPrayer.init)
     }
 
     /// Today's row of the picked prayer (none while yesterday's day is shown: those rows are gone).
@@ -1150,7 +1155,7 @@ struct summaryCircle: View, Equatable {
         let input = DayInsight.Inputs(
             dayKey: PrayerNotificationID.dayKey(showingYesterday ? Calendar.current.date(byAdding: .day, value: -1, to: today) ?? today : today),
             today: shownDay,
-            history: showingYesterday ? Array(history.dropFirst()) : history,
+            history: showingYesterday && historyStartsYesterday ? Array(history.dropFirst()) : history,
             fajrAlarmOn: fajrAlarmOn,
             tomorrowStart: { viewModel.getPrayerTime(for: $0, on: tomorrow)?.start },
             tomorrowIsFriday: Calendar.current.component(.weekday, from: tomorrow) == 6)
