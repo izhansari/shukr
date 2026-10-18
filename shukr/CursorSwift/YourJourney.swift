@@ -1753,7 +1753,9 @@ struct JourneyMilestone: Identifiable, Equatable {
         }
 
         // The latest best is "Your best streak: N days" over its dates (the canvas); the ones it beat stay as they were.
-        if let i = out.lastIndex(where: { $0.id.hasPrefix("best.") }) {
+        // After a fresh start only a best earned since it: an older one keeps its dated words (the fresh day's closeRun
+        // adds it; retitled, it read "since your fresh start" over a run from before — Fable's audit #1).
+        if let i = out.lastIndex(where: { $0.id.hasPrefix("best.") }), log.countsFrom.map({ out[i].date >= $0 }) ?? true {
             let n = out[i].text.split(separator: " ").first.map(String.init) ?? ""
             out[i].text = "Your best streak: \(n) days"
             out[i].about = "Your longest streak of days with all five \(goal.prayersWords)\(log.countsFrom == nil ? "" : " since your fresh start")."

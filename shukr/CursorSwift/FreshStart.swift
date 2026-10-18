@@ -24,9 +24,13 @@ enum FreshStart {
         return max(days, 0) + 1
     }
 
-    /// From today's prayer day.
+    /// From today's prayer day — or, between midnight and Fajr, the one that starts at Fajr: the prayer day still showing
+    /// then is yesterday's and already over (Isha ended at 11:59 PM), and starting it would put its record (a missed Isha)
+    /// inside the fresh start (Fable's audit #3). Day 1 until Fajr, then Day 1 again.
     @MainActor static func begin(now: Date = Date()) {
-        UserDefaults.standard.set(PrayerDay.key(for: now), forKey: key)
+        let calendarDay = Calendar.current.startOfDay(for: now)
+        let key = calendarDay > PrayerDay.start(for: now) ? PrayerNotificationID.dayKey(calendarDay) : PrayerDay.key(for: now)
+        UserDefaults.standard.set(key, forKey: Self.key)
         NotificationCenter.default.post(name: changed, object: nil)
         PrayerStats.changed()
     }
