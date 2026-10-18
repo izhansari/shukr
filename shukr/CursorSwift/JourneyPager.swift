@@ -30,6 +30,8 @@ struct JourneyPagerPage: View, Equatable {
                         CircleStage.shared.restingPage == .main && !CircleStage.shared.pageHidden
                     }
                     try? await Task.sleep(for: .seconds(1.5))
+                    guard !built else { return }
+                    JourneyPerf.began("journey prebuild")   // its cost on the Salah page, measured
                     built = true
                 }
                 // Wanted sooner: a swipe heading there (read in a leaf — not this view per pager frame), or asked for.
