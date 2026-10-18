@@ -200,12 +200,14 @@ struct CompletionFlourish: View {
             VStack(spacing: 4) {
                 HStack(alignment: .center, spacing: 8) {
                     Image(systemName: "checkmark")
-                        .font(.system(size: SalahType.v.ringIcon, weight: .light))
+                        .font(.system(size: 22, weight: .light))
                     Text(event.name)
-                        .salahType(SalahType.v.ringName, SalahType.v.ringNameWeight)
+                        .font(.system(size: 32, weight: .light, design: .rounded))
                 }
                 Text(event.summary ?? PrayerScoring.summary(for: event.score))
-                    .salahType(SalahType.v.ringLine, SalahType.v.ringLineWeight, style: .subheadline)
+                    .font(.subheadline)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
                     // The grade's colour only for Perfect; every other grade in plain ink (owner, 2026-10-17: "that
                     // yellow color is really hard to read … we only show the color if it's in the Perfect window").
                     .foregroundStyle(PrayerScoring.grade(for: event.score) == .perfect ? color : .primary)

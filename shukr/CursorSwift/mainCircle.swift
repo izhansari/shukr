@@ -23,8 +23,6 @@ import SwiftData
 }
 
 struct MainCircleView: View {
-    /// The upcoming prayer's line scales as .subheadline did (the type tuner, SalahTypeTuner.swift).
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The circle's 1 s clock (see `.onReceive(Self.ticker)`): created once, never per render.
     private static let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     /// "NEXT" above a prayer that hasn't started, or the dashed ring alone (dev toggle, NextLabel).
@@ -313,9 +311,9 @@ struct MainCircleView: View {
                                 // Same type as the Insights ring: large, light, rounded.
                                 HStack(alignment: .center, spacing: 8){
                                     Image(systemName: prayerIcon(for: prayer.name))
-                                        .font(.system(size: SalahType.v.ringIcon, weight: .light))
+                                        .font(.system(size: 22, weight: .light))
                                     Text(prayer.name)
-                                        .salahType(SalahType.v.ringName, SalahType.v.ringNameWeight)
+                                        .font(.system(size: 32, weight: .light, design: .rounded))
                                 }
                                 // Next ⇄ now changes only inside a moment, while the words are out (the face carries it).
                                 .foregroundStyle(upcoming ? Color.primary.opacity(0.55) : Color.primary)
@@ -349,15 +347,17 @@ struct MainCircleView: View {
                                         originalText: "at \(shortTimePM(PracticeClock.shown(prayer.startTime, of: prayer)))",
                                         toggledText: timeUntilStart(prayer.startTime),
                                         externalTrigger: $timeFlipPulse,
-                                        font: .system(size: SalahType.scaled(SalahType.v.ringLine, .subheadline, min(dynamicTypeSize, .xxLarge))),
-                                        fontDesign: SalahType.v.design.value,
-                                        fontWeight: SalahType.v.ringLineWeight.value,
+                                        font: .subheadline,
+                                        fontDesign: .rounded,
+                                        fontWeight: .thin,
                                         hapticFeedback: true
                                     )
                                     .foregroundStyle(.secondary)
                                 }else {
                                     Text("missed")
-                                        .salahType(SalahType.v.ringLine, SalahType.v.ringLineWeight, style: .subheadline)
+                                        .font(.subheadline)
+                                        .fontDesign(.rounded)
+                                        .fontWeight(.thin)
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -1311,9 +1311,9 @@ struct summaryCircle: View, Equatable {
             VStack{
                 HStack(alignment: .center, spacing: 8){
                     Image(systemName: prayerIcon(for: "Fajr"))
-                        .font(.system(size: SalahType.v.ringIcon, weight: .light))
+                        .font(.system(size: 22, weight: .light))
                     Text("Fajr")
-                        .salahType(SalahType.v.ringName, SalahType.v.ringNameWeight)
+                        .font(.system(size: 32, weight: .light, design: .rounded))
                 }
                 .foregroundStyle(Color.primary.opacity(0.55))
                 .overlay(alignment: .top) {
@@ -1530,10 +1530,11 @@ struct PrayerTimeLine: View {
 
     var body: some View {
         Text((shown ?? wanted) == .left ? timeLeftString(from: end.timeIntervalSince(now)) : "ends \(shortTimePM(end.addingTimeInterval(labelShift)))")
+            .font(.subheadline)
+            .fontDesign(.rounded)
             // The last hour's time left in the prayer name's colour and weight (light), not thin grey (owner: "a little
             // more prominent … maybe its the weight" — thin read faint even in black; the watch's light looked right).
-            // Its size and weight are the type tuner's (SalahTypeTuner.swift; today's: 15, thin).
-            .salahType(SalahType.v.ringLine, lastHourLeftShown && SalahType.v.ringLineWeight == .thin ? .light : SalahType.v.ringLineWeight, style: .subheadline)
+            .fontWeight(lastHourLeftShown ? .light : .thin)
             .foregroundStyle(lastHourLeftShown ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
             .modifier(CircleWordsAway(away: away))
             // The tour circles exactly these words when they flip (owner: not a box through the prayer's name). Only

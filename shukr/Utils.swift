@@ -3408,7 +3408,9 @@ struct TopBar: View {
                     .frame(height: 24, alignment: .center)
                 }
             }
-            .salahType(SalahType.v.barSize, SalahType.v.barWeight, style: .caption1)   // caption, thin, until the type tuner moves it
+            .font(.caption)
+            .fontDesign(.rounded)
+            .fontWeight(.thin)
             .padding()
 
         }

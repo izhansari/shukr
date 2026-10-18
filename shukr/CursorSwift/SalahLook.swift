@@ -442,7 +442,7 @@ struct SalahLookListFrame: ViewModifier {
             // Exactly as before the look prototype: not clipped (Sami's audit — the clip cut Today's slide-in rows).
             content.frame(width: 260).background(FlatBorder())
         case .card, .well, .pills, .quiet, .timeline, .now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap, .raised:
-            content.frame(width: SalahType.v.listWidth)   // the card goes round the rows only (SalahLookCard), "N done" under it
+            content.frame(width: 290)   // the card goes round the rows only (SalahLookCard), "N done" under it
         }
     }
 }
@@ -519,10 +519,6 @@ struct SalahLookSwitcher: View {
             Button { useMainLook() } label: {
                 Label("Main build's look", systemImage: isMainLook ? "checkmark" : "arrow.uturn.backward")
             }
-            #if DEBUG
-            // The page's type, live (SalahTypeTuner.swift).
-            Button { SalahTypeTuner.shared.open = true } label: { Label("Type tuner…", systemImage: "textformat.size") }
-            #endif
             Menu {
                 Section("List") {
                     Menu("Prayer list") {
@@ -567,7 +563,6 @@ struct SalahLookSwitcher: View {
             ChromeIcon(systemName: "paintpalette")
         }
         .accessibilityLabel("Salah page look")
-        .modifier(SalahTypeTunerHost())
     }
 }
 
