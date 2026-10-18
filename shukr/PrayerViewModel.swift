@@ -1,4 +1,5 @@
 import SwiftUI
+import QuartzCore
 import Adhan
 import CoreLocation
 import SwiftData
@@ -44,6 +45,20 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoStreakExcused() }
         }
         #endif
+        // `-demoGoalFlip`: the goal to another level and back, 6 s and 10 s after launch, so a flip's cost lands in
+        // journey-perf.log on his phone (run with -demoLand journey to include Journey's rebuild). Leaves it as it was.
+        if ProcessInfo.processInfo.arguments.contains("-demoGoalFlip") {
+            let original = PrayerGoal.current
+            let other: PrayerGoal = original == .perfect ? .prayed : .perfect
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { MainActor.assumeIsolated { PrayerGoal.set(other) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) { MainActor.assumeIsolated { PrayerGoal.set(original) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 14) {
+                MainActor.assumeIsolated {
+                    JourneyPerf.began("best recount, every day")
+                    self.recountBestStreak(from: .distantPast, save: false)
+                }
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-demoStreakBackfill") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoStreakBackfill() }
         }
@@ -1079,6 +1094,10 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// otherwise the next mark would celebrate a day that already counted).
     func rulesChanged() {
         guard !StoreFallback.active else { return }
+        // Its cost on the main thread, measured (owner, 2026-10-18: "measure a goal flip"): journey-perf.log's "goal flip".
+        MainActor.assumeIsolated { JourneyPerf.began("goal flip") }
+        let start = CACurrentMediaTime()
+        defer { MainActor.assumeIsolated { JourneyPerf.took("rules: recount, total", since: start) } }
         let now = Date()
         let todayStart = PrayerDay.start(for: now)
         let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
@@ -1089,8 +1108,10 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             let wasCounted = PrayerDay.start(for: lastStreakDate) == todayStart
             if counts != wasCounted { lastStreakDate = counts ? now : yesterdayStart }
         }
+        let t1 = CACurrentMediaTime()
         refreshStreaksFromHistory()
-        recountBestStreak(now: now)
+        MainActor.assumeIsolated { JourneyPerf.took("rules: streak recount", since: t1) }
+        recountBestStreak(now: now)   // off the main thread
         let container = context.container
         Task { @MainActor in MilestoneCelebration.shared.recordSilently(container: container) }
     }
@@ -1098,41 +1119,58 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// "Max N Days" from the rows: the longest run at the goal since the fresh start. It's otherwise only ever raised (a
     /// flip down or a reset left a best never reached at the new rules — inventory §8). Reads every prayer day once: only on
     /// a rule change or a restore.
-    func recountBestStreak(now: Date = Date()) {
+    /// Read off the main thread (on his history a whole pass took 71 ms on the main thread in the sim — a hitch on every
+    /// goal flip without a fresh start, 2026-10-18); the result is kept on the main thread. `save: false` (the DEBUG flip
+    /// run) only times a whole-history pass.
+    func recountBestStreak(now: Date = Date(), from: Date? = PrayerStats.countsFrom, save: Bool = true) {
         guard !StoreFallback.active else { return }
-        let todayStart = PrayerDay.start(for: now)
-        let from = PrayerStats.countsFrom ?? .distantPast
+        let container = context.container
         let ranges = Excused.ranges
+        let goal = PrayerGoal.current
+        let todayStart = PrayerDay.start(for: now)   // here: PrayerDay's Fajr cache isn't for other threads
+        let start = CACurrentMediaTime()
+        Task.detached(priority: .utility) { [weak self] in
+            let found = Self.bestRun(in: ModelContext(container), from: from ?? .distantPast, todayStart: todayStart,
+                                     ranges: ranges, goal: goal)
+            await MainActor.run {
+                JourneyPerf.took(save ? "rules: best recount (off main)" : "rules: best recount, every day (off main)", since: start)
+                guard save, let self else { return }
+                let best = max(found?.best ?? 0, self.prayerStreak)
+                if self.maxPrayerStreak != best { self.maxPrayerStreak = best }
+                if let end = found?.end, self.dateOfMaxPrayerStreak != end { self.dateOfMaxPrayerStreak = end }
+            }
+        }
+    }
+
+    /// The longest run at the goal from `from` to today (today before its last prayer never breaks it), and its last day.
+    nonisolated static func bestRun(in context: ModelContext, from: Date, todayStart: Date, ranges: [ExcusedRange],
+                                    goal: PrayerGoal) -> (best: Int, end: Date)? {
         let all = !ranges.isEmpty
         let descriptor = FetchDescriptor<PrayerModel>(
             predicate: #Predicate<PrayerModel> { $0.startTime >= from && (all || $0.isCompleted) }
         )
-        guard let rows = try? context.fetch(descriptor) else { return }
+        guard let rows = try? context.fetch(descriptor) else { return nil }
         var byDay: [Date: [PrayerModel]] = [:]
         for row in rows { byDay[row.dayStart, default: []].append(row) }
-        guard let first = byDay.keys.filter({ $0 >= from }).min() else {
-            if maxPrayerStreak != prayerStreak { maxPrayerStreak = prayerStreak }
-            return
-        }
+        guard let first = byDay.keys.filter({ $0 >= from }).min() else { return nil }
         let excused = Excused.Days(ranges)
         let calendar = Calendar.current
+        let ok = { (p: PrayerModel) in p.isCompleted && goal.meets(score: p.numberScore ?? 0) }
         var run = 0, best = 0
         var bestEnd = todayStart
         var day = first
         while day <= todayStart {
-            switch Excused.streakDay(byDay[day] ?? [], ok: gradingCriteria, ranges: ranges, touched: excused.excludes(day)) {
+            switch Excused.streakDay(byDay[day] ?? [], ok: ok, ranges: ranges, touched: excused.excludes(day)) {
             case .counts:
                 run += 1
                 if run >= best { best = run; bestEnd = day }
             case .skip: break
-            case .breaks: if day != todayStart { run = 0 }   // today before its last prayer never breaks it
+            case .breaks: if day != todayStart { run = 0 }
             }
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
             day = next
         }
-        best = max(best, prayerStreak)
-        if maxPrayerStreak != best { maxPrayerStreak = best }
-        if dateOfMaxPrayerStreak != bestEnd { dateOfMaxPrayerStreak = bestEnd }
+        return (best, bestEnd)
     }
 
     /// Runs on app activation and at the start of every streak update. It used to only zero the
