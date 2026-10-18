@@ -2075,6 +2075,7 @@ struct PrayerTimesView: View {
         @State private var demoAlarmCheck = false
         @State private var demoRingDepth = false
         @State private var demoRaisedList = false
+        @State private var demoTypeLab = false
         @State private var demoListSandbox = false
         @State private var demoLATuner = false
         @State private var demoPileMock: String?
@@ -2405,6 +2406,10 @@ struct PrayerTimesView: View {
                     try? await Task.sleep(for: .seconds(2))
                     demoRaisedList = true
                 }
+                if ProcessInfo.processInfo.arguments.contains("-demoSalahTypeLab") {   // CursorSwift/DevLabs/SalahTypeLab.swift
+                    try? await Task.sleep(for: .seconds(2))
+                    demoTypeLab = true
+                }
                 if ProcessInfo.processInfo.arguments.contains("-demoRingDepth") {   // RingDepthMocks.swift
                     try? await Task.sleep(for: .seconds(2))
                     demoRingDepth = true
@@ -2439,6 +2444,7 @@ struct PrayerTimesView: View {
             .sheet(isPresented: $demoAlarmCheck) { NavigationStack { FajrAlarmCheckView() } }
             .sheet(isPresented: $demoRingDepth) { NavigationStack { RingDepthMockPage() } }
             .sheet(isPresented: $demoRaisedList) { NavigationStack { RaisedListMockPage() } }
+            .fullScreenCover(isPresented: $demoTypeLab) { SalahTypeLab().environmentObject(viewModel) }
             .fullScreenCover(isPresented: $demoListSandbox) { ListDragSandbox() }
             // `-laTuner`: Settings → Live Activities → Tune the card's look.
             .sheet(isPresented: $demoLATuner) { LATunerView() }

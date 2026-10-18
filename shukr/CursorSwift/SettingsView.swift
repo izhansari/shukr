@@ -136,6 +136,7 @@ struct SettingsView: View {
     @State private var showWhatsNew = false
     @State private var showRingPlayground = false
     @State private var showListSandbox = false
+    @State private var showTypeLab = false   // the Salah type lab (CursorSwift/DevLabs/SalahTypeLab.swift)
     @State private var showLiveActivitySetup = false
     @State private var showLATuner = false
     @State private var showNextPlayground = false
@@ -792,6 +793,9 @@ struct SettingsView: View {
                     // out; give new rows no tint.
                     if showDevStuff {
                         Section {
+                            // The Salah page's type in a lab: a copy of the ring's face and the list's rows (owner, 2026-10-18).
+                            Button("Salah type lab…") { showTypeLab = true }
+                                .foregroundStyle(Color.blue)   // new: blue among the sage rows
                             // The whole prayer list raised, the one on now a step more (owner, 2026-10-14).
                             NavigationLink("Raised list mock-up") { RaisedListMockPage() }
                             // Today's soft ring beside the app icon's lifted one, everywhere it shows (owner, 2026-10-14).
@@ -955,6 +959,7 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
         .fullScreenCover(isPresented: $showListSandbox) { ListDragSandbox() }
+        .fullScreenCover(isPresented: $showTypeLab) { SalahTypeLab().environmentObject(viewModel) }
         // The Reminders switch's dots, live (owner: turned off in iOS, back through the app switcher, no badge until a
         // force quit): iOS's own change streams while the page lives, plus one re-read each time the app comes back —
         // nothing polls. Notifications are re-read on every return by the app (shukrApp).
