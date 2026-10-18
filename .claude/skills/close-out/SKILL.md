@@ -1,12 +1,12 @@
 ---
 name: close-out
-description: Save the item you're on so the team stays smart — docs, rules to memory, parked ideas, commit + push, a lean What's new, Plan page, the record for whoever's next; then ask: archive · start a new task here · stay on the same task (both of the last two clear the chat after a handoff)
+description: Save the item you're on so the team stays smart — docs, rules to memory, parked ideas, commit + push, a lean What's new, Plan page, the record for whoever's next; then ask: archive · start a new task here · stay on the same task (both of the last two end with "you're good to compact" + a line to paste after)
 ---
 **Why this exists (Izhan, 2026-10-17):** so nothing is lost and the organisation gets smarter. The readers are a fresh
 agent session, the sessions working in parallel right now, and Izhan's planning — not Izhan reading records. What has been
 lost before: things he said "later" to, how he wants us to work, and why a choice was made (what was tried and dropped).
 He runs it (a) at the end of a fork / side session he'll archive, (b) as a save button in the main session before the next
-item, (c) before clearing the chat for a new task. It never installs on the phones and never uploads to TestFlight.
+item, (c) before a compaction. It never installs on the phones and never uploads to TestFlight.
 
 Rules come from CLAUDE.md (Team, What's new); re-read those sections first. Your name (Frank / Sami / Bradley) starts every
 commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (zsh); `whatsnew.py` is in the app repo's
@@ -58,32 +58,32 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
 11. **Then ask "What now?"** with **AskUserQuestion**, exactly these three options (his words, 2026-10-17):
     - **Archive** (the pick for a fork / side session): archive yourself (`mcp__ccd_session_mgmt__get_session` "self" for
       the id → `mcp__ccd_session_mgmt__archive_session`; load them with ToolSearch if deferred).
-    - **Start a new task here** (the pick for the main session used as a save button). Its option description says when
-      the clear comes: "a few questions about the new task, then this chat clears (you approve)".
+    - **Start a new task here** (the pick for the main session used as a save button). Option description: "a few
+      questions about the new task, then you're good to compact".
       1. **The intake: four boxes, one at a time, each headed with its count** (owner, 2026-10-17):
          - **"0/3 · What's the new task?"** — the setup: up to 3 options from what's open (the handoff's next, the Plan
            page) plus Other, where he says the idea he has in mind.
          - **"1/3 · …"** — about what's in his head: built from his 0/3 answer, not a stock question.
          - **"2/3 · …"** and **"3/3 · …"** — follow-ups on his answers so far (which page, what's decided, the first stop:
-           talk · mockup · build). Only what the cleared chat would otherwise have to ask; if an answer already covers one,
-           skip it and say so ("3/3 skipped — you've said it").
+           talk · mockup · build). Only what the compacted chat would otherwise have to ask; if an answer already covers
+           one, skip it and say so ("3/3 skipped — you've said it").
          No more boxes than that, no mockups, no options analysis.
       2. Write the handoff (step 8; a fork writes `board/handoff-<name>-<fork>.md`, ≤ 20 lines): what's open, traps, and
          **"Next task, his words: …"** with his answers verbatim.
-      3. **Announce the clear before it happens**, as its own line, bold (he once didn't know a compaction was happening):
-         "**Clearing this chat now** — you'll get an approval prompt; once the chat is empty, send anything (even 'go') and
-         I'll start on <task> from CLAUDE.md + <handoff file>." Then `mcp__ccd_session_mgmt__clear_session` "self". The
-         cleared chat's first reply opens with "Fresh chat — read CLAUDE.md + <handoff file>; starting on <task>."
-    - **Stay on the same task here** — it still clears the context (owner, 2026-10-17: "if I choose to stay on the same
-      task, it still asks to compact"). Its option description: "the handoff is updated, then this chat clears (you
-      approve) and picks the same task back up".
+      3. The compact line (below), with "start on <task>".
+    - **Stay on the same task here** (owner, 2026-10-17: "if I choose to stay on the same task, it still asks to
+      compact"). Option description: "the handoff is updated, then you're good to compact and pick this task back up".
       1. No intake. Make the handoff current for THIS task (≤ 20 lines: the goal in his words, where it stands, the next
          step, files, traps).
-      2. Announce it, bold, on its own line: "**Clearing this chat now** — you'll get an approval prompt (decline to keep
-         this chat as it is); once it's empty, send anything (even 'go') and I'll carry on with <task> from CLAUDE.md +
-         <handoff file>." Then `mcp__ccd_session_mgmt__clear_session` "self". The cleared chat's first reply opens with
-         "Fresh chat — read CLAUDE.md + <handoff file>; carrying on with <task>."
-      3. Declined: nothing more; carry on here.
-    **The close-out ends here. It never starts, plans or discusses the next task** beyond that intake — not even when he
-    describes one in Other: his words go into the handoff verbatim, and the work starts only in the cleared chat. (It
+      2. The compact line (below), with "carry on with <task>".
+    **The compact line — the very last thing in the reply** (an agent can't run /compact itself; owner, 2026-10-17: "tell
+    me at the end of everything that I'm good to compact. And give me a short one line that I can paste in to the session
+    after compaction"):
+    > **You're good to compact.** Run `/compact`, then paste:
+    ```
+    Re-read CLAUDE.md and board/handoff-<name>.md, then <start on | carry on with> <task>.
+    ```
+    The first reply after the compaction opens with "Compacted — picked up from <handoff file>" (CLAUDE.md, Context).
+    **The close-out ends there. It never starts, plans or discusses the next task** beyond that intake — not even when he
+    describes one in Other: his words go into the handoff verbatim, and the work starts only after the compaction. (It
     went off on a long interview inside the close-out once; he meant "clear the context, then the new task".)
