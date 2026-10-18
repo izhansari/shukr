@@ -411,12 +411,7 @@ struct PrayerScoresPage: View {
             if let s = shown, let p = data.prayers[s] { PrayerScoresMap(name: s, pins: p.pins) }
         }
         .task { reload() }
-        .onChange(of: spanRaw) {
-            JourneyPerf.began("scores span")
-            slotPick = nil
-            if let cached = PrayerScores.lastBySpan[span] { data = cached }
-            reload()
-        }
+        .onChange(of: spanRaw) { switchSpan() }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
         #if DEBUG
         .task {
@@ -440,6 +435,64 @@ struct PrayerScoresPage: View {
             data = built
             PrayerScores.lastBySpan[span] = built
             if span == .all { PrayerScores.last = built }
+        }
+    }
+
+    // MARK: The span
+
+    /// All time · 30 days · 7 days (owner, 2026-10-18: "Clicking between the switchers … doesn't do anything" — it changed,
+    /// all at once): what's shown stays until the new span's numbers are in (kept, or read — never a blank between), then
+    /// moves to them in one go: the numbers roll, the fifths and charts cross-fade, the rows re-rank in place. Inside a
+    /// prayer, the fifths' quick swap (its lines and page out and back) with the ring's number rolling.
+    private func switchSpan() {
+        JourneyPerf.began("scores span")
+        slotPick = nil
+        let span = self.span
+        loadToken += 1
+        let token = loadToken
+        let cached = PrayerScores.lastBySpan[span]
+        Task { @MainActor in
+            let next: PrayerScores
+            if let cached { next = cached } else { next = await read(span) }
+            guard token == loadToken, span == self.span else { return }
+            show(next)
+            // A kept span is read again: the log may have moved since (it lands quietly, as a reload does).
+            if cached != nil { reload() }
+        }
+    }
+
+    private func read(_ span: PrayerScores.Span) async -> PrayerScores {
+        let container = context.container, ranges = Excused.ranges
+        let t = JourneyPerf.now
+        let built = await PrayerScores.load(container: container, ranges: ranges, span: span)
+        JourneyPerf.took("scores.load", since: t)
+        PrayerScores.lastBySpan[span] = built
+        if span == .all { PrayerScores.last = built }
+        return built
+    }
+
+    private func show(_ next: PrayerScores) {
+        // Mid open or close: as it was (its own motion is running).
+        guard !busy, !dialing else { data = next; return }
+        guard selected != nil else {
+            withAnimation(motion(.smooth(duration: 0.4))) { data = next }
+            return
+        }
+        swapToken += 1
+        let token = swapToken
+        Task { @MainActor in
+            withAnimation(motion(.easeOut(duration: 0.12))) {
+                linesFaded = true
+                detailShown = false
+            }
+            await beat(0.13)
+            guard token == swapToken else { data = next; return }   // a fifth tapped meanwhile: its swap shows it
+            focus = nil
+            withAnimation(motion(.easeOut(duration: 0.2))) {
+                data = next
+                linesFaded = false
+                detailShown = true
+            }
         }
     }
 
@@ -639,14 +692,18 @@ struct PrayerScoresPage: View {
                 guard data.prayers[name]?.prayedScore != nil else { return }
                 if selected == nil { open(name) } else if name == selected && !swapping { close() } else { switchTo(name) }
             }
+            .id(data.span)   // a new span's fifths cross-fade in
+            .transition(.opacity)
             VStack(spacing: 1) {
                 Text(ringScore.map { "\($0)" } ?? "–")
                     .font(.system(size: 58, weight: .thin, design: .rounded)).monospacedDigit()
-                    .contentTransition(.identity)
+                    // Rolls to a new span's number; the prayer's own swaps while the words are faded out.
+                    .contentTransition(.numericText(value: Double(ringScore ?? 0)))
                     .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
                 // What the number is (owner: "a little subtitle … saying like average lifetime score"); sized for the ring
                 // drawn at 70 % beside the title.
-                Text(span.ringLabel)
+                Text(data.span.ringLabel)
+                    .contentTransition(.opacity)
                     .font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
@@ -726,9 +783,11 @@ struct PrayerScoresPage: View {
                 Text(p.usual.map { $0.replacingOccurrences(of: "Usually", with: "Lately, usually") }
                      ?? "Not enough yet to say when you usually pray it.")
                     .font(.system(size: 14, weight: .light, design: .rounded))
+                    .contentTransition(.opacity)
             } else {
                 Text("\(data.prayed.formatted()) of \(data.due.formatted()) prayed\(sinceWords.map { " · \($0)" } ?? "")")
                     .font(.system(size: 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
             }
             trendLine(shown ?? "all")
         }
@@ -738,7 +797,7 @@ struct PrayerScoresPage: View {
 
     /// "since Jul 2026", or the span's own words.
     private var sinceWords: String? {
-        switch span {
+        switch data.span {
         case .all: data.since.map { "since \($0.formatted(.dateTime.month(.abbreviated).year()))" }
         case .days30: "in the last 30 days"
         case .days7: "in the last 7 days"
@@ -748,7 +807,7 @@ struct PrayerScoresPage: View {
     /// "Last 7 days ↑3 · last 30 days steady" as one text, so it wraps beside the ring.
     @ViewBuilder private func trendLine(_ key: String) -> some View {
         // All time: the last week and month; a span: against the same span just before it.
-        let parts: [(String, PrayerScores.Trend)] = switch span {
+        let parts: [(String, PrayerScores.Trend)] = switch data.span {
         case .all: [("Last 7 days", data.trend7[key]), ("last 30 days", data.trend30[key])].compactMap { label, t in t.map { (label, $0) } }
         case .days30: [("Vs the 30 days before", data.trend30[key])].compactMap { label, t in t.map { (label, $0) } }
         case .days7: [("Vs the week before", data.trend7[key])].compactMap { label, t in t.map { (label, $0) } }
@@ -760,6 +819,7 @@ struct PrayerScoresPage: View {
                     + Text("\(part.0) ").foregroundStyle(.secondary) + Text(Self.change(part.1.change)).foregroundStyle(.primary)
             }
             .font(.system(size: 14, weight: .light, design: .rounded))
+            .contentTransition(.opacity)
         }
     }
 
@@ -803,6 +863,7 @@ struct PrayerScoresPage: View {
                 ZStack(alignment: .topLeading) {
                     if let s = data.sentence {
                         Text(s.line)
+                            .contentTransition(.opacity)
                             .font(.system(size: 15, weight: .light, design: .rounded))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -819,6 +880,7 @@ struct PrayerScoresPage: View {
                             // No score: the row's "Not enough yet" flies as it is and turns to its "% prayed" once landed
                             // (with the lines), and back before it sinks — never mid-flight.
                             Text(scorePart(name).isEmpty && (linesFaded || !folded) ? statLine(name) : prayedLine(name))
+                                .contentTransition(.numericText())
                         }
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -907,6 +969,7 @@ struct PrayerScoresPage: View {
                                                anchor: .leading, isSource: !folded)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if picked { heroFrames.row[.name] = $0 } }
                     Text(statLine(name))
+                        .contentTransition(.numericText())
                         .font(.system(size: 12.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                         .opacity(picked ? 0 : 1)
                         .matchedGeometryEffect(id: picked && !dialing ? "stat" : "stat-\(name)", in: hero, properties: .position,
@@ -917,6 +980,8 @@ struct PrayerScoresPage: View {
                 Group {
                     if let p, !p.positions.isEmpty {
                         PrayerScoresChart(prayer: p, per: per, big: false, focus: nil)
+                            .id(data.span)   // a new span's chart cross-fades in
+                            .transition(.opacity)
                     } else {
                         Color.clear
                     }
@@ -948,10 +1013,13 @@ struct PrayerScoresPage: View {
                         Spacer()
                         let per = PrayerScoresChart.perDot([p], big: true)
                         Text("1 dot = \(per) prayer\(per == 1 ? "" : "s")")
+                            .contentTransition(.numericText())
                             .font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
                     let per = PrayerScoresChart.perDot([p], big: true)
                     PrayerScoresChart(prayer: p, per: per, big: true, focus: focus, slot: slotPick)
+                        .id(data.span)
+                        .transition(.opacity)
                         // As tall as its own tallest column, up to 150: short columns left an empty band under "1 dot =
                         // 1 prayer" (owner, 2026-10-17: "a lot of empty space between the histogram and the priors label").
                         .frame(height: PrayerScoresChart.fittedHeight(p, per: per, big: true))
@@ -1027,6 +1095,7 @@ struct PrayerScoresPage: View {
                         HStack(spacing: 6) {
                             Circle().fill(g.color.opacity(0.75)).frame(width: 9, height: 9)
                             Text("\(p.grades[g] ?? 0)").font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
+                                .contentTransition(.numericText(value: Double(p.grades[g] ?? 0)))
                         }
                         Text(g.word).font(.system(size: 12, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
@@ -1077,6 +1146,7 @@ struct PrayerScoresPage: View {
     @ViewBuilder private var footnote: some View {
         let per = PrayerScoresChart.perDot(data.ranked.compactMap { data.prayers[$0] }, big: false)
         Text("Each dot = \(per) prayer\(per == 1 ? "" : "s"), on its window's color bar · past the end = Qaza")
+            .contentTransition(.numericText())
             .font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.top, 18)
@@ -1490,7 +1560,9 @@ private struct ScoresScorePart: View {
     let dial: JourneyMonthDial?
     var body: some View {
         let q: CGFloat = dial.map { ScoresBack.unfold(1 - $0.dial) } ?? (folded ? 0 : 1)
-        PrayerScoresCollapse(open: q) { Text(text).opacity(Double(q)) }
+        // Gone before the room it leaves has halved: fading with the room, "84 · " was cut down to "84" and ran into the
+        // "% prayed" behind it ("8496% prayed" mid-flight).
+        PrayerScoresCollapse(open: q) { Text(text).opacity(Double(JourneyMotion.seg(q, 0.55, 1))) }
             .clipped()
     }
 }
