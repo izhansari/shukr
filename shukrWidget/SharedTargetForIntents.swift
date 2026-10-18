@@ -204,7 +204,13 @@ enum SharedStore {
     /// the plan so it physically can't migrate. Retries on each access until the app has done
     /// its part, then caches.
     private static var cachedWidgetContainer: ModelContainer?
+    /// The app runs on an in-memory store (StoreFallback, shukrApp.swift): set only in the app's process, never in the
+    /// widget extension's. Then the app's own process doesn't open the on-disk store either — a banner's "I already
+    /// prayed" or a widget mark run in the app wrote a file the app no longer reads, so the widget and the app told
+    /// different stories (mark audit #4). Outside marks made in the app fail cleanly instead, like "store unavailable".
+    static var appOnMemoryStore = false
     static var widgetContainer: ModelContainer? {
+        if appOnMemoryStore { return nil }
         if let cached = cachedWidgetContainer { return cached }
         let t0 = ContinuousClock.now
         guard FileManager.default.fileExists(atPath: url.path), storeIsCurrentVersion(at: url) else {

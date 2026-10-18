@@ -208,6 +208,12 @@ enum PrayerLiveActivities {
     /// it's marked now, and the row's location state for the log.
     @MainActor @discardableResult
     private static func markPrayer(_ name: String, start: Date, end: Date, from: String) -> Bool {
+        // The saved data couldn't open (StoreFallback): an outside ✓ does nothing, even with the list up — else the app
+        // showed it marked (in memory, lost at the next launch) while the widget didn't (mark audit #4; owner, 2026-10-18).
+        guard !StoreFallback.active else {
+            PrayerWindowLog.add("\(from) mark \(name) → not marked (the store couldn't open)")
+            return false
+        }
         if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) {
             if !row.isCompleted { vm.togglePrayerCompletion(for: row) }   // saves, pushes to widgets / watch, re-plans
             PrayerWindowLog.add("\(from) mark \(name) → \(row.isCompleted ? "marked" : "NOT marked") (the list's toggle)"

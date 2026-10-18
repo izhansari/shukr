@@ -122,6 +122,7 @@ struct shukrApp: App {
             // set-aside copy stay untouched on disk; an alert says so once the app is up.
             print("❌ store: couldn't open or recover the shared store (\(error)); running in memory, nothing is saved")
             StoreFallback.active = true
+            SharedStore.appOnMemoryStore = true   // nothing in this process writes the on-disk store meanwhile (mark audit #4)
             let memory = ModelConfiguration(schema: SharedStore.schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             if let container = try? ModelContainer(for: SharedStore.schema, configurations: [memory]) { return container }
             print("❌ store: the in-memory store failed too")
