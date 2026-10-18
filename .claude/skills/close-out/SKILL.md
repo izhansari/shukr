@@ -55,11 +55,16 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
 11. **Then ask "What now?"** with **AskUserQuestion**, exactly these three options (his words, 2026-10-17):
     - **Archive** (the pick for a fork / side session): archive yourself (`mcp__ccd_session_mgmt__get_session` "self" for
       the id → `mcp__ccd_session_mgmt__archive_session`; load them with ToolSearch if deferred).
-    - **Start a new task here** (the pick for the main session used as a save button): make sure the handoff is current
-      (step 8; a fork writes `board/handoff-<name>-<fork>.md`, ≤ 20 lines: what's open, what was decided, traps), say in one
-      line "Clearing now — type the new task when the chat is empty; I'll re-read CLAUDE.md and <handoff file> first",
-      then `mcp__ccd_session_mgmt__clear_session` "self" (he approves). The new context starts from CLAUDE.md + the handoff.
+    - **Start a new task here** (the pick for the main session used as a save button):
+      1. A brief intake, **at most 3 questions in ONE AskUserQuestion call** (owner, 2026-10-17: "maybe three questions is
+         fine"): "What's the new task?" (up to 3 options from what's open — the handoff's next, the Plan page — plus Other
+         to type it), then at most two more that the next context would otherwise have to ask (the area / which page, a
+         choice he's already made, what done looks like). No follow-up rounds, no mockups, no options analysis.
+      2. Write the handoff (step 8; a fork writes `board/handoff-<name>-<fork>.md`, ≤ 20 lines): what's open, traps, and
+         **"Next task, his words: …"** with his answers verbatim.
+      3. Say in one line "Clearing now — when the chat is empty, send anything (even 'go') and I'll start on <task> from
+         CLAUDE.md + <handoff file>", then `mcp__ccd_session_mgmt__clear_session` "self" (he approves).
     - **Stay on the same task here**: nothing more; wait for him.
-    **The close-out ends here. It never starts, plans or interviews the next task** — not even when he describes one in
-    Other: put his words verbatim as one line in the handoff ("Next, his words: …"), confirm in one line, and stop. (It
+    **The close-out ends here. It never starts, plans or discusses the next task** beyond that intake — not even when he
+    describes one in Other: his words go into the handoff verbatim, and the work starts only in the cleared chat. (It
     went off on a long interview inside the close-out once; he meant "clear the context, then the new task".)
