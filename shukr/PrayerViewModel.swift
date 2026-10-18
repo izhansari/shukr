@@ -699,7 +699,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             NotificationCenter.default.post(name: Excused.askResume, object: prayer)
             return
         }
-        if prayer.startTime <= Date() {
+        // Only a mark needs the prayer to have started; an unmark always runs (a clock set back by hand left a marked
+        // prayer "not started" and its dot dead — mark audit #8).
+        if prayer.isCompleted || prayer.startTime <= Date() {
             prayer.isCompleted.toggle()
             if prayer.isCompleted {
                 let fix = Self.usableFix(ENV_LocationManager.manager.location)

@@ -3118,8 +3118,8 @@ struct PrayerButton: View {
     @State private var searchQuery = ""
     
     private func handlePrayerButtonPress() {
-        // Only allow pressing on Future Prayers
-        if !isFuturePrayer {
+        // Not a prayer to come, unless it's marked: a marked prayer always unmarks (mark audit #8).
+        if !isFuturePrayer || prayerObject.isCompleted {
             // The tour lets only its own moves through (Ben's G1 / G2): a light no otherwise.
             guard TourRuntime.shared.allows(marking: !prayerObject.isCompleted, prayerObject) else {
                 TourRuntime.shared.nudge()   // the tour: the thing to touch pulses (no buzz — owner)
@@ -3417,7 +3417,8 @@ struct PrayerButton: View {
 
     /// A tap round the dot: mark / unmark (a prayer that hasn't started can't be marked).
     private func markTap() {
-        if !isFuturePrayer { handlePrayerButtonPress() }
+        // A marked prayer's dot always unmarks, even one whose start a clock set back put ahead (mark audit #8).
+        if prayerObject.isCompleted || !isFuturePrayer { handlePrayerButtonPress() }
     }
 
     /// G · this row shows the post-mark buttons.
