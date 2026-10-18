@@ -333,6 +333,17 @@ struct PrayerScoresPage: View {
     @State private var showMakeUp = false
     @State private var showMoments = false
     @State private var showMap = false
+    /// The way back on a dial (ScoresBack): ‹ runs it, a finger on the left edge holds it.
+    @State private var dial = JourneyMonthDial()
+    @State private var dialing = false
+    /// Past the dial's ring swap: the ring shows all five's number again.
+    @State private var dialRingAll = false
+    @State private var heroFrames = ScoresHeroFrames()
+    @State private var edgeSideways: Bool?
+    @State private var dragFrom: CGFloat?
+    /// A finger on the edge (back to false on a cancel too, which never reaches onEnded).
+    @GestureState private var edgeHeld = false
+    private var backDial: JourneyMonthDial? { dialing ? dial : nil }
     #if DEBUG
     @MainActor static var demoPick: String?
     #endif
@@ -347,8 +358,8 @@ struct PrayerScoresPage: View {
                 // "looks strange cuz it goes up and behind the switcher").
                 header.padding(.top, 4).zIndex(1)
                 spanSwitch.padding(.top, 10)
-                rows.padding(.top, folded ? 10 : 18)
-                if selected != nil { detail }
+                rows.modifier(ScoresBackRowsTop(folded: folded, dial: backDial))
+                if selected != nil { detail.modifier(ScoresBackFade(part: .outFirst, rest: 1, dial: backDial)) }
                 footnote
             }
             .padding(.horizontal, 16)
@@ -369,20 +380,19 @@ struct PrayerScoresPage: View {
         // of just exiting out of that current prayers page"). The system's ‹ comes back once it's closed.
         .navigationBarBackButtonHidden(selected != nil)
         // With ‹ ours, the system's edge swipe is off: a swipe from the left edge closes the prayer as ‹ does (owner,
-        // 2026-10-17: "i want to swipe from edge to go back to the full prayer list"). Closed, the system's is back.
+        // 2026-10-17: "i want to swipe from edge to go back to the full prayer list"), under the finger — the dial follows it
+        // and lets go to all five or back (owner, 2026-10-18: "feels fluid, like how we did in the Journey page"). Closed,
+        // the system's is back.
         .overlay(alignment: .leading) {
             if selected != nil {
                 Color.clear.frame(width: 22).frame(maxHeight: .infinity)
                     .contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: 8, coordinateSpace: .global).onEnded { v in
-                        let w = UIScreen.main.bounds.width
-                        guard abs(v.translation.width) > abs(v.translation.height),
-                              v.translation.width > w / 4 || v.predictedEndTranslation.width > w / 2 else { return }
-                        close()
-                    })
+                    .gesture(edgeBack)
                     .ignoresSafeArea()
             }
         }
+        .onChange(of: edgeHeld) { _, held in if !held { edgeLetGo(nil) } }
+        .background { if dialing { ScoresBackWatch(dial: dial) { all in if dialRingAll != all { dialRingAll = all } } } }
         .toolbar {
             if selected != nil {
                 ToolbarItem(placement: .topBarLeading) {
@@ -514,40 +524,106 @@ struct PrayerScoresPage: View {
         }
     }
 
+    /// ‹: the way back on the dial, the whole way (ScoresBack).
     private func close() {
         guard !busy, selected != nil, !swapping else { return }
+        beginBack()
+        runBack(to: 0, how: "button")
+    }
+
+    /// The way back starts: the dial at the prayer, its pieces reading it from here.
+    private func beginBack() {
         pendingSwitch = nil
         slotPick = nil
         busy = true
         JourneyPerf.began("scores close")
         triggerSomeVibration(type: .light)
-        Task { @MainActor in
-            withAnimation(motion(.easeIn(duration: 0.18))) {
-                detailShown = false
-                linesFaded = true
-                ringFaded = true
-            }
-            await beat(0.22)   // fully out before the words swap (one faint frame read "Asr · 75" — Frank)
+        dial.set(.month, 1)
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
             focus = nil
-            withAnimation(motion(.smooth(duration: 0.45))) {
-                shown = nil
-                folded = false
-            }
-            await beat(0.34)
-            withAnimation(motion(.easeOut(duration: 0.22))) {
-                othersFaded = false
-                linesFaded = false
-                ringFaded = false
-            }
-            await beat(0.24)
-            selected = nil
-            busy = false
+            dialing = true
         }
+    }
+
+    private func runBack(to target: CGFloat, how: String) {
+        let remaining = abs(target - dial.dial)
+        guard remaining > 0.001 else { if target == 0 { landBack() } else { stayOpen() }; return }
+        let run = JourneyFrameLog.shared.start(target == 0 ? "prayer → scores" : "prayer stays")
+        dial.animate(.month, to: target, duration: ScoresBack.duration * (reduceMotion ? 0.4 : 1) * Double(remaining)) {
+            JourneyFrameLog.shared.stop(how, run: run)
+            if target == 0 { landBack() } else { stayOpen() }
+        }
+    }
+
+    /// All five: the row's own pieces take over exactly where the flying ones landed (its measured place), the page's state
+    /// is all five's, and the dial lets go — one quiet change, nothing moves.
+    private func landBack() {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            selected = nil
+            shown = nil
+            folded = false
+            othersFaded = false
+            linesFaded = false
+            ringFaded = false
+            detailShown = false
+            dialRingAll = false
+            dialing = false
+        }
+        pendingSwitch = nil   // a fifth tapped on the way back: there's no prayer to switch from now
+        busy = false
+    }
+
+    /// Let go short of the way back: the prayer as it was.
+    private func stayOpen() {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            dialing = false
+            dialRingAll = false
+        }
+        busy = false
+        if let next = pendingSwitch { pendingSwitch = nil; switchTo(next) }   // a fifth tapped meanwhile
+    }
+
+    private var edgeBack: some Gesture {
+        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+            .updating($edgeHeld) { _, held, _ in held = true }
+            .onChanged { v in
+                if edgeSideways == nil { edgeSideways = abs(v.translation.width) >= abs(v.translation.height) }
+                guard edgeSideways == true else { return }
+                if dragFrom == nil {
+                    guard !busy, selected != nil, !swapping else { return }
+                    beginBack()
+                    dragFrom = 1
+                    JourneyFrameLog.shared.start("prayer → scores (finger)")
+                }
+                guard let from = dragFrom else { return }
+                dial.set(.month, min(max(from - max(v.translation.width, 0) / UIScreen.main.bounds.width, 0), 1))
+            }
+            .onEnded { v in edgeLetGo(v) }
+    }
+
+    /// The finger lifts (or the touch is cancelled — `edgeHeld` back to false with no `onEnded`): on to all five if it went
+    /// far or fast enough, else back to the prayer.
+    private func edgeLetGo(_ v: DragGesture.Value?) {
+        edgeSideways = nil
+        guard dragFrom != nil else { return }
+        dragFrom = nil
+        JourneyFrameLog.shared.stop()
+        let w = UIScreen.main.bounds.width
+        let goes = v.map { $0.translation.width > w / 4 || $0.predictedEndTranslation.width > w / 2 } ?? (dial.dial < 0.5)
+        runBack(to: goes ? 0 : 1, how: v == nil ? "cancelled" : goes ? "let go" : "sprang back")
     }
 
     // MARK: The ring and its lines
 
-    private var ringScore: Int? { shown.flatMap { data.prayers[$0]?.prayedScore } ?? (shown == nil ? data.prayedScore : nil) }
+    /// The prayer the ring shows: none once the way back has passed its swap.
+    private var ringShown: String? { dialRingAll ? nil : shown }
+    private var ringScore: Int? { ringShown.flatMap { data.prayers[$0]?.prayedScore } ?? (ringShown == nil ? data.prayedScore : nil) }
 
     /// The five prayers on the day page's own ring (owner, 2026-10-17: "make it look like the day ring" — its soft disc,
     /// its band, the dot "that indicates the prayer time relative to … its window"): each fifth in its prayer's average
@@ -558,7 +634,7 @@ struct PrayerScoresPage: View {
         ZStack {
             NeuRaised(shape: Circle(), radius: 9, offset: 4.5)
                 .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
-            DayRing(day: ringPrayers, picked: shown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
+            DayRing(day: ringPrayers, picked: ringShown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
                 let name = DayRing.order[i]
                 guard data.prayers[name]?.prayedScore != nil else { return }
                 if selected == nil { open(name) } else if name == selected && !swapping { close() } else { switchTo(name) }
@@ -567,13 +643,13 @@ struct PrayerScoresPage: View {
                 Text(ringScore.map { "\($0)" } ?? "–")
                     .font(.system(size: 58, weight: .thin, design: .rounded)).monospacedDigit()
                     .contentTransition(.identity)
-                    .opacity(ringFaded ? 0 : 1)
+                    .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
                 // What the number is (owner: "a little subtitle … saying like average lifetime score"); sized for the ring
                 // drawn at 70 % beside the title.
                 Text(span.ringLabel)
                     .font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .opacity(ringFaded ? 0 : 1)
+                    .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
             }
             .allowsHitTesting(false)
         }
@@ -708,16 +784,16 @@ struct PrayerScoresPage: View {
                     Text("Prayer scores")
                         .font(.system(size: 34, weight: .light, design: .rounded))
                         .lineLimit(2).minimumScaleFactor(0.8)
-                        .opacity(selected == nil && !linesFaded ? 1 : 0)
+                        .modifier(ScoresBackFade(part: .inLast, rest: selected == nil && !linesFaded ? 1 : 0, dial: backDial))
                     if let name = selected {
                         // Its symbol flies with it and stays beside the name ("it loses the SF. keep the sf").
                         HStack(spacing: folded ? 10 : 12) {
                             Image(systemName: prayerIcon(for: name))
-                                .modifier(PrayerScoresHeroFont(size: folded ? 28 : 19))
-                                .frame(width: folded ? 34 : 26)
+                                .modifier(ScoresHeroTint(folded: folded, dial: backDial))
+                                .modifier(ScoresHeroPart(part: .icon, folded: folded, dial: backDial, frames: heroFrames))
                                 .matchedGeometryEffect(id: "icon", in: hero, properties: .position, isSource: folded)
                             Text(name)
-                                .modifier(PrayerScoresHeroFont(size: folded ? 34 : 16))
+                                .modifier(ScoresHeroPart(part: .name, folded: folded, dial: backDial, frames: heroFrames))
                                 .lineLimit(1)
                                 .matchedGeometryEffect(id: "name", in: hero, properties: .position, anchor: .leading, isSource: folded)
                         }
@@ -730,7 +806,8 @@ struct PrayerScoresPage: View {
                             .font(.system(size: 15, weight: .light, design: .rounded))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                            .opacity(othersFaded || linesFaded ? 0 : 1)   // fades with the rows, both ways
+                            // Fades with the rows, both ways.
+                            .modifier(ScoresBackFade(part: .inLast, rest: othersFaded || linesFaded ? 0 : 1, dial: backDial))
                     }
                     if let name = selected {
                         // No score here: the ring has it, large (owner, 2026-10-17: "get rid of the score here … because we
@@ -738,22 +815,23 @@ struct PrayerScoresPage: View {
                         // It starts as the row's own line ("84 · 49% prayed"): the score part fades and folds away as it rises,
                         // and grows back as it sinks — swapped at the tap, the line jumped from one text to the other.
                         HStack(spacing: 0) {
-                            PrayerScoresCollapse(open: folded ? 0 : 1) {
-                                Text(scorePart(name)).opacity(folded ? 0 : 1)
-                            }
-                            .clipped()
+                            ScoresScorePart(text: scorePart(name), folded: folded, dial: backDial)
                             // No score: the row's "Not enough yet" flies as it is and turns to its "% prayed" once landed
                             // (with the lines), and back before it sinks — never mid-flight.
                             Text(scorePart(name).isEmpty && (linesFaded || !folded) ? statLine(name) : prayedLine(name))
                         }
-                            .modifier(PrayerScoresHeroFont(size: folded ? 15 : 12.5))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .modifier(ScoresHeroPart(part: .stat, folded: folded, dial: backDial, frames: heroFrames))
                             .matchedGeometryEffect(id: "stat", in: hero, properties: .position, anchor: .leading, isSource: folded)
                             .opacity(swapping ? 0 : 1)
                     }
                 }
-                if shown != nil { lines }
+                if shown != nil {
+                    // On the way back they fold as the rows unfold (the header grows back to all five's).
+                    lines.modifier(ScoresBackFade(part: .outFirst, rest: 1, dial: backDial))
+                        .modifier(ScoresBackCollapse(rest: 1, folds: true, dial: backDial))
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             ring.scaleEffect(scale)
@@ -797,9 +875,11 @@ struct PrayerScoresPage: View {
                 let hidden = selected != nil && !isPicked
                 // Folded, the picked row goes too: its name is the title now (owner: "we don't need to show it twice").
                 row(name, per: per, picked: isPicked)
-                    .frame(height: folded && (hidden || isPicked) ? 0 : Self.rowHeight, alignment: .top)
+                    .modifier(ScoresBackHeight(rest: folded && (hidden || isPicked) ? 0 : Self.rowHeight, full: Self.rowHeight,
+                                               dial: hidden || isPicked ? backDial : nil))
                     .clipped()
-                    .opacity((hidden && othersFaded) || (isPicked && folded) ? 0 : 1)
+                    .modifier(ScoresBackFade(part: hidden ? .inLast : .shown,
+                                             rest: (hidden && othersFaded) || (isPicked && folded) ? 0 : 1, dial: backDial))
                     .allowsHitTesting(!hidden)
             }
         }
@@ -815,19 +895,23 @@ struct PrayerScoresPage: View {
                     .font(.system(size: 19, weight: .light)).foregroundStyle(picked ? .primary : .secondary)
                     .frame(width: 26)
                     .opacity(picked ? 0 : 1)   // the header's copy is it while picked (it flies up beside the name and back)
-                    .matchedGeometryEffect(id: picked ? "icon" : "icon-\(name)", in: hero, properties: .position, isSource: !folded)
+                    // On the way back's dial the copy flies by measured places (ScoresHeroPart): the row's own stays put.
+                    .matchedGeometryEffect(id: picked && !dialing ? "icon" : "icon-\(name)", in: hero, properties: .position, isSource: !folded)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if picked { heroFrames.row[.icon] = $0 } }
                 VStack(alignment: .leading, spacing: 2) {
                     // One weight and one colour always: changing either as the move starts dropped the name for the
                     // whole rise (seen frame by frame, 2026-10-16).
                     Text(name).font(.system(size: 16, weight: .light, design: .rounded))
                         .opacity(picked ? 0 : 1)   // the header's copy is it while picked (it flies up and back)
-                        .matchedGeometryEffect(id: picked ? "name" : "name-\(name)", in: hero, properties: .position, anchor: .leading,
-                                               isSource: !folded)
+                        .matchedGeometryEffect(id: picked && !dialing ? "name" : "name-\(name)", in: hero, properties: .position,
+                                               anchor: .leading, isSource: !folded)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if picked { heroFrames.row[.name] = $0 } }
                     Text(statLine(name))
                         .font(.system(size: 12.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                         .opacity(picked ? 0 : 1)
-                        .matchedGeometryEffect(id: picked ? "stat" : "stat-\(name)", in: hero, properties: .position, anchor: .leading,
-                                               isSource: !folded)
+                        .matchedGeometryEffect(id: picked && !dialing ? "stat" : "stat-\(name)", in: hero, properties: .position,
+                                               anchor: .leading, isSource: !folded)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if picked { heroFrames.row[.stat] = $0 } }
                 }
                 .frame(width: 104, alignment: .leading)
                 Group {
@@ -838,13 +922,16 @@ struct PrayerScoresPage: View {
                     }
                 }
                 .frame(height: 46)
-                .opacity(picked && (othersFaded || detailShown) ? 0 : 1)
+                .modifier(ScoresBackFade(part: .inLast, rest: picked && (othersFaded || detailShown) ? 0 : 1, dial: picked ? backDial : nil))
                 Image(systemName: picked ? "chevron.down" : "chevron.right")
                     .font(.system(size: 11, weight: .medium)).foregroundStyle(.tertiary)
-                    .opacity(picked && folded ? 0 : 1)
+                    .modifier(ScoresBackFade(part: .inLast, rest: picked && folded ? 0 : 1, dial: picked ? backDial : nil))
             }
             .frame(height: Self.rowHeight)
-            .overlay(alignment: .bottom) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1).opacity(picked && folded ? 0 : 1) }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+                    .modifier(ScoresBackFade(part: .inLast, rest: picked && folded ? 0 : 1, dial: picked ? backDial : nil))
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -993,9 +1080,8 @@ struct PrayerScoresPage: View {
             .font(.system(size: 11.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             .multilineTextAlignment(.center)
             .padding(.top, 18)
-            .opacity(othersFaded ? 0 : 1)
-            .frame(height: folded ? 0 : nil)
-            .clipped()
+            .modifier(ScoresBackFade(part: .inLast, rest: othersFaded ? 0 : 1, dial: backDial))
+            .modifier(ScoresBackCollapse(rest: folded ? 0 : 1, folds: false, dial: backDial))
     }
 }
 
@@ -1237,5 +1323,174 @@ private struct PrayerScoresHeroFont: ViewModifier, Animatable {
     }
     func body(content: Content) -> some View {
         content.font(.system(size: size, weight: .light, design: .rounded))
+    }
+}
+
+// MARK: - The way back on a dial
+
+/// From one prayer back to all five, on one dial (1 the prayer … 0 all five) — so a finger on the left edge can hold it
+/// anywhere, as Journey's calendar does (owner, 2026-10-18: "fix the back swipes so that it feels fluid, like how we did in
+/// the Journey page"). ‹ runs the same dial. Its stretches, by how far back (c = 1 − dial): the prayer's own page, lines and
+/// ring words go first; the rows unfold and the name, symbol and line fly down to their row; the other rows, the title and
+/// the sentence come in last. The pieces read the dial themselves (the leaf modifiers below), never the page.
+enum ScoresBack {
+    static func fadeOut(_ c: CGFloat) -> Double { Double(1 - JourneyMotion.out(JourneyMotion.seg(c, 0, 0.2))) }
+    static func unfold(_ c: CGFloat) -> CGFloat { JourneyMotion.io(JourneyMotion.seg(c, 0.15, 0.75)) }
+    static func fadeIn(_ c: CGFloat) -> Double { Double(JourneyMotion.out(JourneyMotion.seg(c, 0.7, 1))) }
+    /// The ring's number and label: out with the page, back with all five (the number changes while they're out).
+    static func ringWords(_ c: CGFloat) -> Double { max(fadeOut(c), fadeIn(c)) }
+    /// Where the ring's number turns to all five's.
+    static let ringSwap: CGFloat = 0.45
+    /// A full way back on ‹ (a part of it, its share).
+    static let duration = 0.8
+}
+
+/// Where the flying name, symbol and line are (the header's copy, before its offset) and where they land (the picked row's
+/// own, laid out under it) — measured as they're laid out, never fixed positions, so a new layout of the page carries the
+/// flight. Not observed: written every layout, read by the copy's offset.
+@MainActor final class ScoresHeroFrames {
+    enum Part: Hashable { case icon, name, stat }
+    var copy: [Part: CGRect] = [:]
+    var row: [Part: CGRect] = [:]
+    /// The offset the copy was last drawn with: its measured place includes it (an offset moves what a view inside it
+    /// measures), so it's taken off to get the copy's own place — else each frame chased the last one and landed short.
+    var applied: [Part: CGSize] = [:]
+}
+
+/// A piece's opacity on the way back (`rest` while no dial runs).
+private struct ScoresBackFade: ViewModifier {
+    enum Part { case outFirst, inLast, ringWords, shown }
+    let part: Part
+    let rest: Double
+    let dial: JourneyMonthDial?
+    func body(content: Content) -> some View {
+        let o: Double = dial.map { d in
+            let c = 1 - d.dial
+            return switch part {
+            case .outFirst: ScoresBack.fadeOut(c)
+            case .inLast: ScoresBack.fadeIn(c)
+            case .ringWords: ScoresBack.ringWords(c)
+            case .shown: 1
+            }
+        } ?? rest
+        content.opacity(o)
+    }
+}
+
+/// A folded row's height (and the rows' top room) as the dial unfolds them.
+private struct ScoresBackHeight: ViewModifier {
+    let rest: CGFloat
+    let full: CGFloat
+    let dial: JourneyMonthDial?
+    func body(content: Content) -> some View {
+        content.frame(height: dial.map { full * ScoresBack.unfold(1 - $0.dial) } ?? rest, alignment: .top)
+    }
+}
+private struct ScoresBackRowsTop: ViewModifier {
+    let folded: Bool
+    let dial: JourneyMonthDial?
+    func body(content: Content) -> some View {
+        content.padding(.top, dial.map { JourneyMotion.lerp(10, 18, ScoresBack.unfold(1 - $0.dial)) } ?? (folded ? 10 : 18))
+    }
+}
+
+/// A height that folds away (`open` 0 … 1): the open prayer's lines as the rows come back, the footnote under them.
+private struct ScoresVCollapse: Layout {
+    var open: CGFloat
+    var animatableData: CGFloat {
+        get { open }
+        set { open = newValue }
+    }
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let s = subviews.first?.sizeThatFits(proposal) ?? .zero
+        return CGSize(width: s.width, height: s.height * max(open, 0))
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, proposal: proposal)
+    }
+}
+private struct ScoresBackCollapse: ViewModifier {
+    /// Open at rest (1) or folded (0).
+    let rest: CGFloat
+    /// On the dial: the lines fold as the rows unfold (true), the footnote unfolds with them (false).
+    let folds: Bool
+    let dial: JourneyMonthDial?
+    func body(content: Content) -> some View {
+        let open = dial.map { d in let u = ScoresBack.unfold(1 - d.dial); return folds ? 1 - u : u } ?? rest
+        ScoresVCollapse(open: open) { content }.clipped()
+    }
+}
+
+/// One of the flying three (the header's copy of the picked row's symbol, name and line): its size grows into the header as
+/// the rows fold (the open, on its animation) and, on the dial, shrinks and flies down to its row by the measured places;
+/// the symbol turns from the header's white to the row's grey so the row's own takes over unseen (owner, 2026-10-18: "the
+/// SF symbol, when it goes down, just flickers" — it changed colour and dropped 10 pt in one frame at the hand-off).
+private struct ScoresHeroPart: ViewModifier {
+    let part: ScoresHeroFrames.Part
+    let folded: Bool
+    let dial: JourneyMonthDial?
+    let frames: ScoresHeroFrames
+
+    private var sizes: (big: CGFloat, small: CGFloat) {
+        switch part { case .icon: (28, 19); case .name: (34, 16); case .stat: (15, 12.5) }
+    }
+
+    func body(content: Content) -> some View {
+        // 0 in the header … 1 on its row.
+        let q: CGFloat = dial.map { ScoresBack.unfold(1 - $0.dial) } ?? (folded ? 0 : 1)
+        let o = dial == nil ? CGSize.zero : offset(q)
+        let _ = frames.applied[part] = o
+        content
+            .modifier(PrayerScoresHeroFont(size: JourneyMotion.lerp(sizes.big, sizes.small, q)))
+            .frame(width: part == .icon ? JourneyMotion.lerp(34, 26, q) : nil)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { r in
+                let a = frames.applied[part] ?? .zero
+                frames.copy[part] = r.offsetBy(dx: -a.width, dy: -a.height)
+            }
+            .offset(o)
+    }
+
+    /// From its own place to its row's, by `q` (the symbol by its centre, the words by their leading edge).
+    private func offset(_ q: CGFloat) -> CGSize {
+        guard let a = frames.copy[part], let b = frames.row[part] else { return .zero }
+        let dx = part == .icon ? b.midX - a.midX : b.minX - a.minX
+        return CGSize(width: dx * q, height: (b.midY - a.midY) * q)
+    }
+}
+
+/// The header symbol's colour: the row's grey at the row, white in the header — as a cross-fade, which animates with the
+/// open and follows the dial.
+private struct ScoresHeroTint: ViewModifier {
+    let folded: Bool
+    let dial: JourneyMonthDial?
+    func body(content: Content) -> some View {
+        let white: Double = dial.map { Double(1 - ScoresBack.unfold(1 - $0.dial)) } ?? (folded ? 1 : 0)
+        ZStack {
+            content.foregroundStyle(.secondary).opacity(1 - white)
+            content.foregroundStyle(.primary).opacity(white)
+        }
+    }
+}
+
+/// Reports the moment the dial passes the ring's number swap (once each way), without the page reading the dial.
+private struct ScoresBackWatch: View {
+    let dial: JourneyMonthDial
+    let onAll: (Bool) -> Void
+    var body: some View {
+        Color.clear.frame(width: 0, height: 0)
+            .onChange(of: 1 - dial.dial >= ScoresBack.ringSwap, initial: true) { _, all in onAll(all) }
+    }
+}
+
+/// The open prayer's score at the front of its line ("84 · "), folding away as the line rises into the header and back as it
+/// sinks (on the open's animation, or the dial).
+private struct ScoresScorePart: View {
+    let text: String
+    let folded: Bool
+    let dial: JourneyMonthDial?
+    var body: some View {
+        let q: CGFloat = dial.map { ScoresBack.unfold(1 - $0.dial) } ?? (folded ? 0 : 1)
+        PrayerScoresCollapse(open: q) { Text(text).opacity(Double(q)) }
+            .clipped()
     }
 }
