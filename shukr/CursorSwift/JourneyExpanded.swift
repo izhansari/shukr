@@ -15,7 +15,8 @@ struct JourneyExpandedPage: View {
     let focusOnOpen: Bool
 
     /// The month in focus (only by a tap: a ring, or a month's name — owner, 2026-10-17: "only focus that month if a
-    /// tile/ring in that month has been clicked … if we scroll away, it unfocuses"): its days full, the rest faded.
+    /// tile/ring in that month has been clicked … if we scroll away, it unfocuses"), or the month rail's month: its days
+    /// full, the rest faded.
     @State private var focus: Date?
     /// The day picked (a ring's tap): its top and its things at the bottom, the card's way.
     @State private var picked: Date?
@@ -515,7 +516,7 @@ struct JourneyExpandedPage: View {
                 guard !Task.isCancelled, r.railStart != nil, !r.railMoved else { return }
                 JourneyPerf.began("expanded rail")
                 triggerSomeVibration(type: .medium)
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil; focus = nil }
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }
                 railTo(railIndex(r.railLast.y, count: months.count), months: months, lifting: true)
             }
             return
@@ -542,6 +543,12 @@ struct JourneyExpandedPage: View {
     private func railTo(_ m: Int, months: [Date], lifting: Bool) {
         guard months.indices.contains(m) else { return }
         if lifting { withAnimation(.snappy(duration: CircleMotion.quick)) { rail = m } } else { rail = m }
+        // The month under the finger in focus, as a tap on its name would (owner, 2026-10-17: "When using the scrubber in the
+        // calendar page, can we make it so that it focuses those rings?"): its rings full, the rest faded, its numbers at the
+        // top; it stays in focus when the finger lifts.
+        if let start = stats.weeks.first(where: { $0.id == months[m] })?.month?.start, focus != start {
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { focus = start }
+        }
         withAnimation(CircleMotion.wheelScrub) { position.scrollTo(id: months[m], anchor: .center) }
         let r = scrub
         r.railSettle?.cancel()

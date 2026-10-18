@@ -114,7 +114,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   between them the same continuous weeks as rings (`JourneyExpandedRow`, Equatable; JourneyDayCell), each month's name with
   "N days" / "score N" centred on its month's rows ("Feb ’25" outside this year). Focus only by a tap: a ring (picks its day
   too) or a name (its numbers at the top); a finger scroll lets both go. Hold 0.3 s and drag: picks across rows. Hold the
-  names: the month rail. Pinch in: the card's tiles (more weeks), spread: rings (the middle week kept). The toggle top right
+  names: the month rail, its month in focus as it goes (and after). Pinch in: the card's tiles (more weeks), spread: rings (the middle week kept). The toggle top right
   (square.grid.3x3 ↔ calendar) flies the focused / middle month into the year and a small month's name back. The old
   month page (window of months, neighbours, month rail) is gone.
 - The year (`JourneyYearView`, JourneyYear.swift): every year from the first, opening on this one; twelve small months
