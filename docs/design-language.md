@@ -30,6 +30,16 @@ is why this is hard. The points above still hold, but they have to be stretched,
 - **Paging in glass.** Moving between levels or filters lives in a bottom glass bar (as Memories), not in more headers and chips.
 - **Pages that feel related.** Going deeper should feel like zooming into the same object (the ring or card you tapped), not opening a new form.
 
+## How we mock up (owner, 2026-10-18)
+
+- **Swift lab** — to settle type, spacing, colour and feel on the real screen: a copy of only the views being redesigned, in
+  its own DEBUG file under `shukr/CursorSwift/DevLabs/`, opened from My Dev Stuff (a new, blue row). The real page is never
+  touched. Real data (plus a switch for the states that need one); the shapes the design doesn't touch are the real views.
+  The first commit is the copy as it is; later commits are the design, so the file's diff from that commit is the spec for
+  the real build. Knobs (a tuner) live in the lab only; once he picks, the values go into the copy as plain numbers. No
+  circle-check or pixel checks. Delete the lab once the real build lands. Example: `SalahTypeLab.swift`.
+- **Artifact / canvas** — for storyboards and motion sequences (Journey v6) and several options side by side.
+
 ## Vocabulary
 
 | Term | Meaning |

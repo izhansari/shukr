@@ -44,7 +44,8 @@ stops the next item.
 
 **Design: the guide first** (owner 2026-10-15). Before any mockup or new view, read `docs/design-language.md` (findings +
 vocabulary, screenshots in `shukrGit/board/mocks/design-library/`) and describe the design in its words ("one hero in a
-ring, a flat list, sage only on what you tap"). When he approves a design that adds a pattern, whoever built it adds a
+ring, a flat list, sage only on what you tap"). Mockups: a Swift lab (a copy of just the views being redesigned, in `shukr/CursorSwift/DevLabs/`, opened
+from My Dev Stuff, real page untouched) or an artifact for storyboards — the guide's "How we mock up". When he approves a design that adds a pattern, whoever built it adds a
 line + a screenshot to the guide in the same commit, so it never goes stale.
 
 **Between sessions:** the hash, the facts, what's wanted — short. Engineers talk to each other directly about merges and
