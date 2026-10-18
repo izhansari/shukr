@@ -288,7 +288,7 @@ struct JourneyExpandedPage: View {
             } else {
                 HStack(alignment: .top, spacing: 0) {
                     figure("\(stats.prayersMarked)", "prayers marked").opacity(streakShown ? 0.35 : 1)
-                    figure(stats.inTimeRate.map { "\($0)%" } ?? "–", "in time, on those days").opacity(streakShown ? 0.35 : 1)
+                    figure(stats.goalRate.map { "\($0)%" } ?? "–", "of days met your goal").opacity(streakShown ? 0.35 : 1)
                     Button { toggleStreak() } label: {
                         figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days",
                                streakShown ? stats.bestStreakDays.map(JourneyHomeCard.streakSpan) ?? "best streak" : "best streak")
@@ -308,11 +308,12 @@ struct JourneyExpandedPage: View {
         .journeyFlightWords(.month)
     }
 
-    /// The rings' key: In time · With Qaza · Incomplete; a tap lights only those days.
+    /// The rings' key: Goal met · All five · Incomplete (the goal's words, 2026-10-18; was In time · With Qaza); a tap lights
+    /// only those days. "All five" (prayed, under the goal) never happens at Pray all five: not shown then.
     private var legend: some View {
         HStack(spacing: 18) {
-            key(.allInTime, "In time") { keyRing(inTime: true) }
-            key(.withQaza, "With Qaza") { keyRing(inTime: false) }
+            key(.metGoal, "Goal met") { keyRing(inTime: true) }
+            if log.goal != .prayed { key(.belowGoal, "All five") { keyRing(inTime: false) } }
             key(.incomplete, "Incomplete") { keyFifths }
         }
         .font(.system(size: 12, weight: .light, design: .rounded))
@@ -822,6 +823,7 @@ struct JourneyExpandedRow: View, Equatable {
                 .overlay {
                     if day.kind == .none { shape.strokeBorder(JourneyTileColor.outline(dark: dark), lineWidth: JourneyTileColor.outlineWidth) }
                 }
+                .opacity(day.counted ? 1 : JourneyTileColor.beforeFreshStart)
                 .frame(height: 11)
         } else {
             Color.clear.frame(height: 11)
@@ -884,13 +886,13 @@ struct JourneyMonthNumbers: View {
 
     var body: some View {
         let m = log.month(month)
-        let withQaza = JourneyLog.daysOf(month: month).filter { JourneyHighlight.withQaza.matches(log.day($0)) }.count
+        let belowGoal = JourneyLog.daysOf(month: month).filter { JourneyHighlight.belowGoal.matches(log.day($0)) }.count
         VStack(alignment: .leading, spacing: 8) {
             Text(month.formatted(.dateTime.month(.wide).year()))
                 .font(.system(size: 22, weight: .regular, design: .rounded))
             HStack(alignment: .top, spacing: 0) {
-                fact("\(m.allInTimeDays)", "days all in time", ring: true)
-                fact("\(withQaza)", "days with Qaza", ring: false)
+                fact("\(m.metGoalDays)", "days met your goal", ring: true)
+                if log.goal != .prayed { fact("\(belowGoal)", "days all five", ring: false) }
                 fact(m.averageScore.map { "\($0)" } ?? "–", "average score", ring: nil)
             }
         }

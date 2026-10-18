@@ -3174,7 +3174,9 @@ struct StreakLabel: View {
         .onTapGesture {
             triggerSomeVibration(type: .light)
             onTap()
-            let next: Mode = mode == .streak ? .onTime : mode == .onTime ? .max : .streak
+            // One streak, at the goal (owner, 2026-10-18, goal levels: the in-time days line went — it doubled the streak
+            // once the goal can be In their windows): the streak, then its best.
+            let next: Mode = mode == .streak ? .max : .streak
             show(next, for: next == .streak ? nil : 3)
         }
         .onChange(of: celebration) { _, _ in celebrate { await celebrateStreak() } }

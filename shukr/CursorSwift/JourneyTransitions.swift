@@ -401,6 +401,8 @@ struct JourneyFlightTile: Equatable {
     var corner: CGFloat = JourneyHomeCard.corner
     /// Its shade where it starts (the card's and the year's heat map, JourneyTileColor).
     var rank: Double = 1
+    /// Before the fresh start: dimmed the whole way, as it is at both ends.
+    var counted = true
 }
 
 /// Days flying between the card (or a year's small month) and the expanded card's rings, with the geometry frozen at the tap.
@@ -435,10 +437,11 @@ struct JourneyMonthFlight: Equatable {
             guard let first = log.firstDay, date >= first, date <= today else { continue }
             let d = log.day(date)
             let kind = d.tileKind
-            let fill: JourneyFlightTile.Fill = d.allFive && date != today ? (d.allInTime ? .green : .grey) : .none
+            let fill: JourneyFlightTile.Fill = d.allFive && date != today ? (d.metGoal ? .green : .grey) : .none
             let r = JourneyYearSquares.rect(of: i, lead: lead, in: grid)
             let from: CGRect? = grid.width > 0 && r.maxY > 60 && r.minY < screen.height - 40 ? r : nil
-            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill, corner: JourneyYearSquares.corner, rank: log.tileRank(d))
+            tiles[date] = JourneyFlightTile(from: from, kind: kind, fill: fill, corner: JourneyYearSquares.corner, rank: log.tileRank(d),
+                                            counted: d.counted)
         }
         return JourneyMonthFlight(start: start, tiles: tiles, card: .zero, order: order(of: tiles))
     }
@@ -464,8 +467,8 @@ struct JourneyMonthFlight: Equatable {
                     guard let date = cal.date(byAdding: .day, value: i, to: week), date >= first, date <= today,
                           let r = g.tile(date), r.minY >= visible.minY + 8, r.maxY <= visible.maxY else { continue }
                     let d = log.day(date)
-                    let fill: JourneyFlightTile.Fill = d.allFive && date != today ? (d.allInTime ? .green : .grey) : .none
-                    tiles[date] = JourneyFlightTile(from: r, kind: d.tileKind, fill: fill, rank: log.tileRank(d))
+                    let fill: JourneyFlightTile.Fill = d.allFive && date != today ? (d.metGoal ? .green : .grey) : .none
+                    tiles[date] = JourneyFlightTile(from: r, kind: d.tileKind, fill: fill, rank: log.tileRank(d), counted: d.counted)
                 }
             }
         }
@@ -805,7 +808,7 @@ struct JourneyFlyingTiles: View {
                         guard let cell = cells[date] else {
                             if let start = tile.from {
                                 // The expanded card's row for it isn't laid out (scrolled away): it fades where it is.
-                                ctx.opacity = Double(1 - z)
+                                ctx.opacity = Double(1 - z) * (tile.counted ? 1 : JourneyTileColor.beforeFreshStart)
                                 let path = Path(roundedRect: start.offsetBy(dx: -o.x, dy: -o.y), cornerRadius: tile.corner, style: .continuous)
                                 ctx.fill(path, with: .color(from))
                                 if tile.kind == .none { outline(ctx, path, dark: dark, fade: 0) }
@@ -823,7 +826,7 @@ struct JourneyFlyingTiles: View {
                         case .grey: from.mix(with: JourneyDayRing.greyFill(dark), by: Double(tint))
                         case .none: from.opacity(Double(1 - tint))
                         }
-                        ctx.opacity = tile.from == nil ? Double(z) : 1
+                        ctx.opacity = (tile.from == nil ? Double(z) : 1) * (tile.counted ? 1 : JourneyTileColor.beforeFreshStart)
                         let path = Path(roundedRect: r, cornerRadius: corner, style: .continuous)
                         ctx.fill(path, with: .color(color))
                         // An unmarked day is its hairline outline on the card (and in the year); the month draws nothing
@@ -948,18 +951,20 @@ struct JourneyFlightRingSpec {
 
     /// The month's F2 look for a day (JourneyDayCell): closed and green / soft, or its fifths.
     static func month(day: JourneyLog.Day, today: Bool, dark: Bool) -> JourneyFlightRingSpec {
+        let dim = day.counted ? 1 : JourneyTileColor.beforeFreshStart   // before the fresh start, as its cell
         if day.allFive && !today {
             // A closed ring is one colour drawn at full and faded as a group, so where its fifths meet nothing darkens.
             return JourneyFlightRingSpec(fifths: [], closed: true,
-                                         closedColor: day.allInTime ? JourneyDayRing.green(dark) : (dark ? .white : .black),
-                                         closedOpacity: day.allInTime ? 0.6 : (dark ? 0.40 : 0.36))
+                                         closedColor: day.metGoal ? JourneyDayRing.green(dark) : (dark ? .white : .black),
+                                         closedOpacity: (day.metGoal ? 0.6 : (dark ? 0.40 : 0.36)) * dim)
         }
         let fifths: [Color?] = day.marks.map { mark in
-            switch mark {
+            let c: Color? = switch mark {
             case .done, .excused: today ? JourneyDayRing.strong(dark) : JourneyDayRing.soft(dark)
             case .missed: JourneyDayRing.track(dark)
             case .toCome, .none: nil
             }
+            return c?.opacity(dim)
         }
         return JourneyFlightRingSpec(fifths: fifths, closed: false)
     }
@@ -1569,7 +1574,8 @@ private struct JourneyFlyingDayRing: View {
         let gap = JourneyMotion.lerp(7.0 / 360, 0.014, k)
         let closedGap = JourneyMotion.lerp(0, 0.014, JourneyMotion.seg(k, 0.5, 1))
         let disc = JourneyMotion.lerp(JourneyDayRing.fill * 2 * cell, CircleMotion.dayDiscDiameter, k)
-        let fill: Color? = spec.closed ? (day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark)) : nil
+        let fill: Color? = spec.closed ? (day.metGoal ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
+            .opacity(day.counted ? 1 : JourneyTileColor.beforeFreshStart) : nil
         ZStack {
             if !landed {
                 NeuRaised(shape: Circle(), radius: 9 * k, offset: 4.5 * k)

@@ -57,6 +57,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     private func subscribeToChanges(){
         // Subscribe to userLocation changes
+        // The goal or the fresh start changed: recount, silently.
+        NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.rulesChanged() }
+            .store(in: &cancellables)
         ENV_LocationManager.locationUpdates
             .sink { [weak self] newVal in
                 self?.handleLocationChange(for: newVal)
@@ -1054,7 +1059,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 onTimeStreak += 1
                 lastOnTimeStreakDate_TI = now.timeIntervalSince1970
                 maxOnTimeStreak = max(maxOnTimeStreak, onTimeStreak)
-                NotificationCenter.default.post(name: .onTimeStreakContinued, object: nil)
+                // No sparkles any more: one streak, at the goal (owner, 2026-10-18); the count stays for Your Data's bests.
             }
         } else if lastOnTime == todayStart {   // today had counted; a prayer was unmarked or re-timed
             onTimeStreak = max(onTimeStreak - 1, 0)
@@ -1067,6 +1072,67 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             lastPerfectDay_TI = now.timeIntervalSince1970
             NotificationCenter.default.post(name: .perfectDay, object: nil)
         }
+    }
+
+    /// The goal or the fresh start changed (PrayerStats): the streak and its best recounted from the rows at the new rules,
+    /// and today's "counted once" flag set to what today is now — silently: a setting never plays hearts (inventory risk 1;
+    /// otherwise the next mark would celebrate a day that already counted).
+    func rulesChanged() {
+        guard !StoreFallback.active else { return }
+        let now = Date()
+        let todayStart = PrayerDay.start(for: now)
+        let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
+        if let rows = try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: todayStart))) {
+            let ranges = Excused.ranges
+            let counts = Excused.streakDay(rows, ok: gradingCriteria, ranges: ranges,
+                                           touched: Excused.Days(ranges).excludes(todayStart)) == .counts
+            let wasCounted = PrayerDay.start(for: lastStreakDate) == todayStart
+            if counts != wasCounted { lastStreakDate = counts ? now : yesterdayStart }
+        }
+        refreshStreaksFromHistory()
+        recountBestStreak(now: now)
+        let container = context.container
+        Task { @MainActor in MilestoneCelebration.shared.recordSilently(container: container) }
+    }
+
+    /// "Max N Days" from the rows: the longest run at the goal since the fresh start. It's otherwise only ever raised (a
+    /// flip down or a reset left a best never reached at the new rules — inventory §8). Reads every prayer day once: only on
+    /// a rule change or a restore.
+    func recountBestStreak(now: Date = Date()) {
+        guard !StoreFallback.active else { return }
+        let todayStart = PrayerDay.start(for: now)
+        let from = PrayerStats.countsFrom ?? .distantPast
+        let ranges = Excused.ranges
+        let all = !ranges.isEmpty
+        let descriptor = FetchDescriptor<PrayerModel>(
+            predicate: #Predicate<PrayerModel> { $0.startTime >= from && (all || $0.isCompleted) }
+        )
+        guard let rows = try? context.fetch(descriptor) else { return }
+        var byDay: [Date: [PrayerModel]] = [:]
+        for row in rows { byDay[row.dayStart, default: []].append(row) }
+        guard let first = byDay.keys.filter({ $0 >= from }).min() else {
+            if maxPrayerStreak != prayerStreak { maxPrayerStreak = prayerStreak }
+            return
+        }
+        let excused = Excused.Days(ranges)
+        let calendar = Calendar.current
+        var run = 0, best = 0
+        var bestEnd = todayStart
+        var day = first
+        while day <= todayStart {
+            switch Excused.streakDay(byDay[day] ?? [], ok: gradingCriteria, ranges: ranges, touched: excused.excludes(day)) {
+            case .counts:
+                run += 1
+                if run >= best { best = run; bestEnd = day }
+            case .skip: break
+            case .breaks: if day != todayStart { run = 0 }   // today before its last prayer never breaks it
+            }
+            guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+            day = next
+        }
+        best = max(best, prayerStreak)
+        if maxPrayerStreak != best { maxPrayerStreak = best }
+        if dateOfMaxPrayerStreak != bestEnd { dateOfMaxPrayerStreak = bestEnd }
     }
 
     /// Runs on app activation and at the start of every streak update. It used to only zero the
@@ -1108,6 +1174,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         // stepped over, a miss breaks it (owner, 2026-10-16).
         let ranges = Excused.ranges
         let excused = Excused.Days(ranges)
+        // Nothing before the fresh start counts (PrayerStats): the runs end there.
+        let countsFrom = PrayerStats.countsFrom
         batches: for _ in 0..<150 {                   // ≤ ~1000 days
             guard let batchStart = calendar.date(byAdding: .day, value: -7, to: batchEnd) else { break }
             // 2.8.0: a day's Isha can start after midnight, so fetch 6 h past the batch and group rows by their own
@@ -1125,6 +1193,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 if d >= batchStart && d < batchEnd { byDay[d, default: []].append(row) }
             }
             while day >= batchStart {
+                if let countsFrom, day < countsFrom { break batches }
                 let dayRows = byDay[day] ?? []
                 let touched = excused.excludes(day)
                 if streakAlive {

@@ -57,15 +57,18 @@ struct JourneyDayCell: View {
         let drawn = !future && !before && day.active
         ZStack {
             if drawn {
+              Group {
                 if day.allFive && !isToday {
-                    Circle().fill(day.allInTime ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
+                    Circle().fill(day.metGoal ? JourneyDayRing.green(dark).opacity(0.24) : JourneyDayRing.greyFill(dark))
                         .frame(width: JourneyDayRing.fill * 2, height: JourneyDayRing.fill * 2)
                         .modifier(JourneyCellFillFade())
-                    JourneyCellRing(closed: day.allInTime ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark),
+                    JourneyCellRing(closed: day.metGoal ? JourneyDayRing.green(dark).opacity(0.6) : JourneyDayRing.soft(dark),
                                     fifths: [])
                 } else {
                     JourneyCellRing(closed: nil, fifths: (0..<5).map { fifthColor($0, today: isToday, dark: dark) })
                 }
+              }
+              .opacity(day.counted ? 1 : JourneyTileColor.beforeFreshStart)
             }
             Text("\(Calendar.current.component(.day, from: date))")
                 .font(.system(size: JourneyDayRing.number, weight: isToday ? .semibold : .regular, design: .rounded))
@@ -99,7 +102,7 @@ struct JourneyDayCell: View {
     private var accessibility: String {
         let d = date.formatted(.dateTime.weekday(.wide).month(.wide).day())
         guard day.active else { return d }
-        return "\(d): \(day.prayed) of 5 prayed" + (day.allInTime ? ", all in time" : "")
+        return "\(d): \(day.prayed) of 5 prayed" + (day.metGoal ? ", goal met" : "")
     }
 }
 

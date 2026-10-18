@@ -40,7 +40,13 @@ struct JourneyLog {
         /// Each prayer's window and when it was marked (the grid's one line).
         var slots: [Slot?] = Array(repeating: nil, count: 5)
 
+        /// The goal it's judged by and whether it's on or after the fresh start (PrayerGoal.swift), set as the log is built.
+        var goal: PrayerGoal = .prayed
+        var counted = true
+
         var prayed: Int { marks.filter(\.done).count }
+        /// Prayers that met the goal.
+        var metCount: Int { marks.filter { if case .done(let s) = $0 { goal.meets(score: s) } else { false } }.count }
         /// A day counts once anything was marked (spec: active day).
         var active: Bool { prayed > 0 }
         /// Due = prayed or missed; to come and excused never are.
@@ -50,7 +56,8 @@ struct JourneyLog {
         /// Everything due was prayed: an excused prayer counts as done, on a day something was marked (the card's rule,
         /// `YourJourneyStats.kind`; spec month-fifths). Without `active` a fully excused day would count and lose its badge.
         var allFive: Bool { active && prayed + excused == 5 }
-        var allInTime: Bool { active && inTime + excused == 5 }
+        /// Every prayer met the goal (an excused one counts): Journey's green day (it was all five in time).
+        var metGoal: Bool { active && metCount + excused == 5 }
         /// Every prayer not prayed was excused (the pause badge instead of dots).
         var excusedDay: Bool { marks.contains(.excused) && marks.allSatisfy { $0 == .excused || $0.done } && !allFive }
 
@@ -68,7 +75,7 @@ struct JourneyLog {
         var tileKind: YourJourneyStats.Kind {
             guard unfinished, active else { return YourJourneyStats.kind(self) }
             let open = marks.filter { $0 == .toCome }.count
-            if inTime + excused + open == 5 { return .allInTime }
+            if metCount + excused + open == 5 { return .metGoal }
             if prayed + excused + open == 5 { return .allFive }
             return .some
         }
@@ -92,10 +99,15 @@ struct JourneyLog {
     var firstDay: Date?
     /// Someone who has used Excused Mode sees its key and badges (spec: only for users of it).
     var usesExcused = false
+    /// The fresh start's day when the log was built (nil: none): days before it are drawn dimmed and count for nothing.
+    var countsFrom: Date?
+    /// The goal its days were judged by.
+    var goal: PrayerGoal = .prayed
 
     func day(_ date: Date) -> Day {
         let key = PrayerNotificationID.dayKey(date)
-        return days[key] ?? Day(key: key, date: Calendar.current.startOfDay(for: date))
+        let start = Calendar.current.startOfDay(for: date)
+        return days[key] ?? Day(key: key, date: start, counted: countsFrom.map { start >= $0 } ?? true)
     }
 
     /// The last log built, shown at once while a fresh one is read (the page never opens blank).
@@ -115,6 +127,9 @@ struct JourneyLog {
 
     static func build(in context: ModelContext, ranges: [ExcusedRange], now: Date = Date()) -> JourneyLog {
         var log = JourneyLog()
+        let goal = PrayerGoal.current
+        log.goal = goal
+        log.countsFrom = PrayerStats.countsFrom
         log.usesExcused = !ranges.isEmpty
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>()) else { return log }
         // One row per prayer per day, a completed row winning (onePerPrayer's rule).
@@ -128,7 +143,7 @@ struct JourneyLog {
         for row in kept.values {
             let key = row.dayKey
             guard let slot = names.firstIndex(of: row.name) else { continue }
-            var day = log.days[key] ?? Day(key: key, date: row.dayStart)
+            var day = log.days[key] ?? Day(key: key, date: row.dayStart, goal: goal, counted: PrayerStats.counts(row.dayStart))
             if row.isCompleted {
                 day.marks[slot] = .done(row.numberScore ?? 0)
             } else if Excused.covers(start: row.startTime, end: row.endTime, in: ranges) {
@@ -150,7 +165,8 @@ struct JourneyLog {
         }
         log.tileRanks = ranks(log.days.values)
         for (n, d) in log.days.values.filter(\.active).sorted(by: { $0.date < $1.date }).enumerated() { log.dayNumbers[d.key] = n + 1 }
-        let ranked = log.days.values.filter { $0.active && !$0.unfinished }.map { ($0.key, $0.dayScore) }.sorted { $0.1 > $1.1 }
+        // Ranked among the days since the fresh start (owner's pick, 2026-10-18: "#3 of 12 since your fresh start").
+        let ranked = log.days.values.filter { $0.active && !$0.unfinished && $0.counted }.map { ($0.key, $0.dayScore) }.sorted { $0.1 > $1.1 }
         log.rankedDays = ranked.count
         for (i, r) in ranked.enumerated() { log.dayRanks[r.0] = i > 0 && ranked[i - 1].1 == r.1 ? log.dayRanks[ranked[i - 1].0] : i + 1 }
         return log
@@ -158,7 +174,7 @@ struct JourneyLog {
 
     /// The month's numbers over its active days (spec: rates over active days only).
     struct Month {
-        var prayed = 0, due = 0, inTime = 0, allInTimeDays = 0, allFiveDays = 0, toMakeUp = 0, activeDays = 0
+        var prayed = 0, due = 0, inTime = 0, metGoalDays = 0, allFiveDays = 0, toMakeUp = 0, activeDays = 0
         /// The scores of the prayers due (a missed one adds 0).
         var scoreSum = 0.0
         /// The average score of the prayers due, 0…100 (nil before anything's due).
@@ -226,7 +242,7 @@ struct JourneyLog {
             m.prayed += d.prayed
             m.due += d.due
             m.inTime += d.inTime
-            if d.allInTime { m.allInTimeDays += 1 }
+            if d.metGoal { m.metGoalDays += 1 }
             if d.allFive { m.allFiveDays += 1 }
             let dayScore = Int((d.marks.reduce(0) { $0 + ($1.score ?? 0) } / 5 * 100).rounded())
             if dayScore >= (m.bestDay?.score ?? -1) { m.bestDay = (date, dayScore) }
@@ -255,17 +271,17 @@ struct JourneyLog {
 
 /// The card's two day counts light their days up and dim the rest (as Insights did — owner: it helps most in the grid).
 enum JourneyHighlight: Equatable {
-    case allInTime, allFive
-    /// The month's legend (owner, 2026-10-16: "In time · With Qaza · Incomplete … tapping any one focuses those rings"):
-    /// all five with a Qaza among them; a day with prayers that isn't finished.
-    case withQaza, incomplete
+    case metGoal, allFive
+    /// The month's legend (owner, 2026-10-16: "In time · With Qaza · Incomplete … tapping any one focuses those rings";
+    /// the goal's words since 2026-10-18): all five prayed but under the goal; a day with prayers that isn't finished.
+    case belowGoal, incomplete
     /// The month's best-scored day(s): every day with that score, a tie lighting each (a tap on the average score — owner).
     case bestScore(Int)
     func matches(_ d: JourneyLog.Day) -> Bool {
         switch self {
-        case .allInTime: d.allInTime
+        case .metGoal: d.metGoal
         case .allFive: d.allFive
-        case .withQaza: d.allFive && !d.allInTime
+        case .belowGoal: d.allFive && !d.metGoal
         case .incomplete: d.active && !d.allFive
         case .bestScore(let score): d.active && d.dayScore == score
         }
@@ -309,7 +325,6 @@ struct JourneyPage: View {
     /// The rows scroll (no room for five) and there's more below: the fade shows.
     @State private var rowsMore = true
     /// The This month row's measure (a hold on the row chooses it).
-    @AppStorage(ThisMonthMeasure.key) private var measureRaw = ThisMonthMeasure.onTime.rawValue
     /// Which of the page's four layouts is shown (`Self.fits`), and the room it was chosen for: the loosest whose content
     /// fits, found by stepping from the loosest while the shown one's content is taller than the room — one page built, not
     /// the four ViewThatFits built and measured on every update (perf #2). Kept per room, so a return to Journey (and the
@@ -582,24 +597,8 @@ struct JourneyPage: View {
         let owed = makeUpTotal ?? 0
         let latest = s.milestones.first
         return VStack(spacing: 0) {
-            let measure = ThisMonthMeasure(rawValue: measureRaw) ?? .onTime
-            JourneyHomeRow(title: "This month", line: "\(measure.title), so far", height: rowHeight,
-                           quiet: s.thisMonth == nil) {
-                Image(systemName: "calendar").font(.system(size: 21, weight: .light)).foregroundStyle(.secondary)
-            } value: {
-                if let m = s.thisMonth { Text(measure.value(m)) }
-            } action: { openMonth = JourneyMonthRoute(month: JourneyLog.monthStart(today)) }
-            // Touch and hold: the four measures, each with its value and what it counts; the check sticks.
-            .contextMenu {
-                // A toggle per measure: its check, its value, and what it counts as the menu's second line.
-                ForEach(ThisMonthMeasure.allCases) { m in
-                    Toggle(isOn: Binding(get: { measureRaw == m.rawValue },
-                                         set: { on in if on { withAnimation(.easeOut(duration: CircleMotion.quick)) { measureRaw = m.rawValue } } })) {
-                        Text(s.thisMonth.map { "\(m.title) · \(m.value($0))" } ?? m.title)
-                        Text(m.counts)
-                    }
-                }
-            }
+            // The This month row went with the goal (owner, 2026-10-18: "I only kept it so i could toggle to see my stats.
+            // I never used it for actually opening the month ever since we fixed the compact card").
             JourneyHomeRow(title: "To make up",
                            line: owed == 0 ? "Nothing to make up" : "Unmarked on days you used shukr",
                            height: rowHeight, quiet: owed == 0) {

@@ -29,6 +29,10 @@ struct ShukrBackup: Codable {
     /// Mosques not to recommend (MosqueHiding's ids: name|lat|lon).
     var hiddenMosques: [String]? = nil
     var bests: Bests? = nil
+    /// The prayer goal (PrayerGoal's raw value) and the fresh start's prayer day: every count reads them, so a restore
+    /// onto an iPhone that has neither set brings them back (nil in copies from before 2026-10-18).
+    var prayerGoal: Int? = nil
+    var freshStartDay: String? = nil
     /// The settings as words, for the record (a restore never changes this iPhone's settings).
     var settings: [String: String]? = nil
 
@@ -108,6 +112,8 @@ extension DataExport {
         let bestOn = d.double(forKey: "dateOfMaxPrayerStreak")
         b.bests = .init(dayStreak: d.integer(forKey: "maxPrayerStreak"), dayStreakDate: bestOn > 0 ? Date(timeIntervalSince1970: bestOn) : nil,
                         inTimeStreak: d.integer(forKey: "maxOnTimeStreak"))
+        b.prayerGoal = PrayerGoal.current.rawValue
+        b.freshStartDay = FreshStart.dayKey
         b.settings = Dictionary(DataSettings.rows(), uniquingKeysWith: { a, _ in a })
         return (b, files)
     }
@@ -210,6 +216,9 @@ enum DataRestore {
         store?.set(true, forKey: SharedStore.widgetWroteStoreKey)
         store?.set(PrayerDay.start().timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)
         NotificationCenter.default.post(name: SharedStore.markedElsewhere, object: nil)
+        // The best streak from the rows now here, at the goal since the fresh start: a copy's own best was made under its
+        // rules (a raise "only if bigger" put back a best after a reset or a flip down — the goal inventory, §7).
+        PrayerStats.changed()   // the goal / fresh start may have come back: every count redoes itself, silently
         return done
     }
 
@@ -372,15 +381,16 @@ enum DataRestore {
             NotificationCenter.default.post(name: MosqueHiding.changed, object: nil)
         }
 
-        // A best streak that's higher in the copy.
+        // The goal and the fresh start, onto an iPhone that has neither (never over a choice made here).
+        if write, d.object(forKey: PrayerGoal.key) == nil, let g = b.prayerGoal, g != PrayerGoal.prayed.rawValue {
+            d.set(g, forKey: PrayerGoal.key)
+        }
+        if write, FreshStart.dayKey == nil, let day = b.freshStartDay {
+            d.set(day, forKey: FreshStart.key)
+        }
+        // The in-time best if it's higher in the copy; the day streak's best isn't taken from it: it's recounted from the
+        // rows after (apply).
         if let bests = b.bests {
-            if bests.dayStreak > d.integer(forKey: "maxPrayerStreak") {
-                plan.bests += 1
-                if write {
-                    d.set(bests.dayStreak, forKey: "maxPrayerStreak")
-                    if let on = bests.dayStreakDate { d.set(on.timeIntervalSince1970, forKey: "dateOfMaxPrayerStreak") }
-                }
-            }
             if bests.inTimeStreak > d.integer(forKey: "maxOnTimeStreak") {
                 plan.bests += 1
                 if write { d.set(bests.inTimeStreak, forKey: "maxOnTimeStreak") }

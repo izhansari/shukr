@@ -110,6 +110,7 @@ struct FreshStartPage: View {
         let (title, line): (String, String) =
             // No date on the day itself: before Fajr the prayer day is still yesterday's date, which reads wrong as "today".
             if justBegan { ("Bismillah", "Your fresh start begins today. Every prayer from here is part of it.") }
+            else if day == 1 { ("Fresh start", "Since today · Day 1. You can start again from tomorrow.") }
             else if let day { ("Fresh start", "Since \(startWords) · Day \(day)") }
             else { ("A fresh start", "However your Journey has gone so far, you can begin again today.") }
         return VStack(spacing: 6) {

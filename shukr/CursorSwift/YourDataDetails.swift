@@ -127,7 +127,9 @@ enum DataKind: String, CaseIterable, Hashable, Identifiable {
                 ("Coordinates", lat == 0 && lon == 0 ? "" : String(format: "%.4f, %.4f", lat, lon)),
                 ("Calculation method", method),
                 ("Asr", group?.integer(forKey: "school") == 1 ? "Hanafi" : "Shafi'i"),
-                ("Fajr alarm", alarm)]
+                ("Fajr alarm", alarm),
+                ("Prayer goal", PrayerGoal.current.title),
+                ("Fresh start", FreshStart.dayKey ?? "Off")]
             + reminders + cards
             + [("Live Activity look", LiveActivityLook.current.title),
                ("App look", looks[d.integer(forKey: "modeToggleNew")] ?? "System"),

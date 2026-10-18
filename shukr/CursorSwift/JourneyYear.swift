@@ -11,6 +11,10 @@ import SwiftUI
 /// A kind never fades into the one below it (a weak Qaza day read as incomplete): its floor stays 0.06 above that kind.
 /// The month's rings keep their own fills (JourneyDayRing).
 enum JourneyTileColor {
+    /// A day before the fresh start (FreshStart.swift): drawn at this strength everywhere it shows — the card, the calendar,
+    /// the year and the flights between them (owner's pick, 2026-10-18: "dim them").
+    static let beforeFreshStart = 0.35
+
     private static func rgba(_ r: Double, _ g: Double, _ b: Double, _ a: Double) -> (Color, Double) {
         (Color(.sRGB, red: r / 255, green: g / 255, blue: b / 255, opacity: 1), a)
     }
@@ -21,7 +25,7 @@ enum JourneyTileColor {
     private static let faintest = 0.41
 
     private static func index(_ kind: YourJourneyStats.Kind) -> Int {
-        switch kind { case .allInTime: 0; case .allFive: 1; case .some: 2; case .none: 3 }
+        switch kind { case .metGoal: 0; case .allFive: 1; case .some: 2; case .none: 3 }
     }
     /// Per look, per kind: the least share of its strength a tile may fade to (the floor above the next kind down).
     private static let floors: [Bool: [Double]] = [false: bands(light), true: bands(dark)]
@@ -142,7 +146,7 @@ struct JourneyYearView: View {
 
     private var key: some View {
         HStack(spacing: 14) {
-            swatch(.allInTime, "All five in time")
+            swatch(.metGoal, "Goal met")
             swatch(.allFive, "All five")
             swatch(.some, "Some")
         }
@@ -335,7 +339,8 @@ struct JourneyYearSquares: View {
                         if future { ctx.fill(shape(r, Self.corner), with: .color(Color.primary.opacity(0.04))) }
                     } else {
                         let d = log.day(day)
-                        ctx.fill(shape(r, Self.corner), with: .color(JourneyTileColor.of(d, in: log, dark: dark)))
+                        ctx.fill(shape(r, Self.corner), with: .color(JourneyTileColor.of(d, in: log, dark: dark)
+                            .opacity(d.counted ? 1 : JourneyTileColor.beforeFreshStart)))
                         if !d.active { border(r, Self.corner, JourneyTileColor.outline(dark: dark), JourneyTileColor.outlineWidth) }
                     }
                     if day == today { border(r, Self.corner, Color.primary.opacity(0.8), 1.2) }

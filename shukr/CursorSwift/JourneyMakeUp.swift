@@ -243,7 +243,7 @@ struct JourneyMakeUpPage: View {
         let missed = shown.left + made
         let share = missed == 0 ? 0 : Double(made) / Double(missed)
         let leftPct = missed == 0 ? 0 : Int(((1 - share) * 100).rounded())
-        let green = JourneyTileColor.of(.allInTime, dark: scheme == .dark)
+        let green = JourneyTileColor.of(.metGoal, dark: scheme == .dark)
         return VStack(alignment: .leading, spacing: 0) {
             JourneyMakeUpHead(missed: missed,
                               words: missed == 1 ? "\(only ?? "prayer") missed" : "\(only.map { "\($0)s" } ?? "prayers") missed",
@@ -727,7 +727,7 @@ private struct JourneyMakeUpScrubber: View {
                 let m = months[i]
                 let here = m == current
                 Circle()
-                    .fill(cleared.contains(m) ? JourneyTileColor.of(.allInTime, dark: scheme == .dark)
+                    .fill(cleared.contains(m) ? JourneyTileColor.of(.metGoal, dark: scheme == .dark)
                           : Color.primary.opacity(here ? 0.55 : 0.18))
                     .frame(width: here ? 7 : 5, height: here ? 7 : 5)
                     .frame(width: 24, height: dotSlot)
