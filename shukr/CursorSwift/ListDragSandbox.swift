@@ -112,7 +112,7 @@ struct ListDragSandbox: View {
             if pageID != i { withAnimation(CircleMotion.page) { pageID = i } }
         }
         .onChange(of: pageID) { _, i in
-            let page: SharedStateClass.HorizontalPage = i == 0 ? .zikr : i == 2 ? .journey : .main
+            let page: SharedStateClass.HorizontalPage = i == 0 ? .zikr : i == 2 ? .settings : .main
             if sandboxState.horizontalPage != page { sandboxState.horizontalPage = page }
         }
         .sheet(isPresented: $tuning) { tuner.presentationDetents([.medium]) }

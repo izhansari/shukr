@@ -8,34 +8,18 @@ import WidgetKit
 /// arrived, scrolls it to a row (SettingsJump) — a scroll mid-push stalled it, as one mid-swipe did on the old page.
 @MainActor @Observable final class SettingsPresenter {
     static let shared = SettingsPresenter()
-    var open = false { didSet { if !open { shown = false } } }
-    /// The pushed Settings is on screen (its onAppear): a jump waits for it.
-    @ObservationIgnored var shown = false
+    /// Asked for: the pager pages to Settings (PrayerTimesView), whatever covers the Salah page closed first.
+    var open = false
+    @ObservationIgnored private var jump: String?
 
+    /// Settings, and optionally a row to scroll to once the page has come to rest (`SettingsJump`).
     func show(jump: String? = nil) {
+        self.jump = jump
         open = true
-        guard let jump else { return }
-        Task { @MainActor in
-            for _ in 0..<40 where !shown { try? await Task.sleep(for: .milliseconds(50)) }
-            try? await Task.sleep(for: .milliseconds(350))   // the push has landed
-            SettingsJump.shared.request(jump)
-        }
     }
+    func takeJump() -> String? { defer { jump = nil }; return jump }
 }
 
-/// The Salah page's top right: Settings (everyone; the owner's ▶︎ and 🎨 sit to its left).
-struct SettingsGearButton: View {
-    var body: some View {
-        Button {
-            triggerSomeVibration(type: .light)
-            SettingsPresenter.shared.show()
-        } label: {
-            ChromeIcon(systemName: "gearshape")
-        }
-        .accessibilityLabel("Settings")
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("settingsGear", $0) }
-    }
-}
 
 struct SettingsView: View {
     #if DEBUG
@@ -3240,14 +3224,10 @@ private struct SettingsSystemBar: ViewModifier {
     let on: Bool
     func body(content: Content) -> some View {
         if on {
-            // The tour's Settings chapter: its panel sits where the bar is (the bar's ‹ and title drew over it), so the bar
-            // steps aside meanwhile — the panel has its own ‹.
-            let touring = TourRuntime.shared.active && TourRuntime.shared.step == .settings
             content
                 .navigationTitle("Settings")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbar(touring ? .hidden : .automatic, for: .navigationBar)
         } else {
             content
         }

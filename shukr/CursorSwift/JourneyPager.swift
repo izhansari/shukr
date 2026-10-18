@@ -1,54 +1,8 @@
 import SwiftUI
 
-// Journey as the pager's right page (owner, 2026-10-17: "Let's see how we can move the Journey page to the right side of the
-// Salah page … Ideally, I can swipe to it freely from the main app … everything operates the way it does now"). Settings,
-// which was there, is the Salah page's gear (SettingsPresenter).
-
-/// Journey in the pager. Built once the app has settled after launch — not in the launch's first frames, and not at a swipe's
-/// start (its first build is the heavy part) — or at once if it's wanted sooner; kept after. Equatable and always equal: the
-/// pager's re-renders skip it; it redraws for its own reads (the page it's on).
-struct JourneyPagerPage: View, Equatable {
-    let live: PagerLiveState
-    static func == (a: Self, b: Self) -> Bool { true }
-    @State private var built = false
-    @Environment(SharedStateClass.self) private var sharedState
-    @Environment(\.circleTheme) private var theme
-
-    var body: some View {
-        if built {
-            // Shown once the pager rests on it, not at the swipe's detent: a reload applied mid-coast stalled frames (the
-            // old Settings refetch at the commit, perf 2026-10-10 — the helper's check).
-            JourneyPage(visible: CircleStage.shared.restingPage == .journey)
-                .environment(\.journeyInPager, true)
-                // The pager runs under the home indicator; Journey's page stops above it, as it did pushed.
-                .safeAreaInset(edge: .bottom, spacing: 0) { Color.clear.frame(height: JourneyBar.screenBottom) }
-        } else {
-            theme.surface
-                .task {
-                    // The Salah page at rest with its opening done, then a breath.
-                    _ = await CircleStage.shared.until(deadline: 8) {
-                        CircleStage.shared.restingPage == .main && !CircleStage.shared.pageHidden
-                    }
-                    try? await Task.sleep(for: .seconds(1.5))
-                    guard !built else { return }
-                    JourneyPerf.began("journey prebuild")   // its cost on the Salah page, measured
-                    built = true
-                }
-                // Wanted sooner: a swipe heading there (read in a leaf — not this view per pager frame), or asked for.
-                .background { JourneyHeading(live: live) { built = true } }
-                .onChange(of: sharedState.horizontalPage) { _, page in if page == .journey { built = true } }
-        }
-    }
-}
-
-/// A swipe heading for Journey before it's built: one call, from a leaf (it reads the pager's live progress every frame).
-private struct JourneyHeading: View {
-    let live: PagerLiveState
-    let go: () -> Void
-    var body: some View {
-        Color.clear.onChange(of: live.scrollProgress > 1.01) { _, heading in if heading { go() } }
-    }
-}
+// Journey was the pager's right page 2026-10-17 → 19; it's pushed from ☰ again (owner, 2026-10-19: "put Journey back in the
+// hamburger menu only"). What's left here is what its views still read: the in-pager band (unused while `journeyInPager`
+// is false, the default) and the hold the pager's pan reads.
 
 /// Journey's calendar or a day open over its page: the pager holds still (its pan off — PagerPanLock), so the calendar's
 /// own edge swipe and ‹ go back, as they did pushed. Journey at rest: a swipe right pages to Salah.

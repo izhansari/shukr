@@ -61,8 +61,7 @@ keywords, "What's New" and screenshot captions.
 
 **Journey — your prayer log**
 - Every prayer you've marked, a week a row on one card, and each month as a calendar of rings: a
-  ring closes on a day you prayed all five, green when the day met your goal. Pinch out to the year. Journey is a swipe
-  away from the prayer times.
+  ring closes on a day you prayed all five, green when the day met your goal. Pinch out to the year.
 - Prayer scores: your average score for each prayer — all time, the last 30 days or the last week — which is strongest
   and which needs you most, when you usually pray it, and every prayer you've prayed as a dot.
 - Your streak and best streak at your goal, and the share of days that met it.

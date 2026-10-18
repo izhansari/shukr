@@ -514,7 +514,7 @@ struct PrayerTimesView: View {
     private var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
             || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights
-            || showNamesPage || showMantraSheetFromHomePage || SettingsPresenter.shared.open
+            || showNamesPage || showMantraSheetFromHomePage || JourneyPresenter.shared.open
             || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
 
@@ -522,7 +522,7 @@ struct PrayerTimesView: View {
         showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
         showSalahHistoryV1 = false; showSalahHistoryV2 = false; showZikrHistory = false
         showInsightsPage = false; showOldInsights = false; showNamesPage = false
-        showMantraSheetFromHomePage = false; SettingsPresenter.shared.open = false
+        showMantraSheetFromHomePage = false; JourneyPresenter.shared.open = false
         healthCard = nil
     }
 
@@ -563,7 +563,7 @@ struct PrayerTimesView: View {
     private func noteRestingPage(progress: CGFloat, phase: ScrollPhase) {
         let index = progress.rounded()
         let resting: NavPage? = phase == .idle && abs(progress - index) < 0.01
-            ? (index <= 0 ? .zikr : index >= 2 ? .journey : .main) : nil
+            ? (index <= 0 ? .zikr : index >= 2 ? .settings : .main) : nil
         if CircleStage.shared.restingPage != resting { CircleStage.shared.restingPage = resting }
     }
 
@@ -604,7 +604,7 @@ struct PrayerTimesView: View {
                         // moving right on the first page, left on the last) is refused for the
                         // whole drag. Bounce stays on, so real page turns keep their physics.
                         let page = sharedState.horizontalPage
-                        if (page == .zikr && t.width > 0) || (page == .journey && t.width < 0) {
+                        if (page == .zikr && t.width > 0) || (page == .settings && t.width < 0) {
                             live.pagerLocked = true
                         }
                     }
@@ -708,11 +708,10 @@ struct PrayerTimesView: View {
             // flashed the whole Salah page gray mid-swipe (owner, 2026-09-25).
             PagerBackdrop(live: live)
 
-            // MARK: - Pager: Zikr | Main | Journey
+            // MARK: - Pager: Zikr | Main | Settings
             // Native paging ScrollView: pages track the finger at UIKit speed, rubber-band at the
             // ends, and settle with the system's velocity curve. All three stay mounted (plain
-            // HStack, not lazy) so the main circle's timers and Journey's state survive paging
-            // (Journey itself is built once the app is idle — JourneyPagerPage).
+            // HStack, not lazy) so the main circle's timers and Settings' state survive paging.
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     // Each page is clipped: the center page hides its side menu by pushing it 200pt
@@ -730,13 +729,14 @@ struct PrayerTimesView: View {
                         .clipped()
                         .id(NavPage.main)
                     
-                    // Journey (owner, 2026-10-17: "I can swipe to it freely from the main app"). Clipped at its sides
-                    // only: its calendar and day page reach into the top edge, as they did pushed.
-                    JourneyPagerPage(live: live)
+                    // Settings, the right page again (owner, 2026-10-19: "I want the settings back in the right-hand side. I'm not
+                    // a fan of having Journey there … put Journey back in the hamburger menu only").
+                    SettingsPage { sharedState.horizontalPage = .main }
                         .equatable()
+                        .environmentObject(viewModel)
                         .containerRelativeFrame(.horizontal)
-                        .clipShape(SidesOnly())
-                        .id(NavPage.journey)
+                        .clipped()
+                        .id(NavPage.settings)
                 }
                 .scrollTargetLayout()
                 .background { PagerPanLock(live: live) }
@@ -774,7 +774,7 @@ struct PrayerTimesView: View {
                 // animation would flip it straight back to where it started.
                 guard live.pagerPhase == .interacting || live.pagerPhase == .decelerating else { return }
                 let index = Int(progress.rounded())
-                let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .journey : .main
+                let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
                 if sharedState.horizontalPage != page {
                     // This closure runs inside the scroll view's layout pass; a @Published change
                     // made there isn't delivered to every subscriber (the bottom bar kept the old
@@ -794,13 +794,12 @@ struct PrayerTimesView: View {
                 if FrameMonitor.on { FrameMonitor.shared.note(now ? "lock" : "unlock") }
             }
             .onAppear {
-                // `-perfPage zikr|journey`: start on that page (the idle-CPU check, Release builds too); `settings` opens it.
+                // `-perfPage zikr|settings`: start on that page (the idle-CPU check, Release builds too).
                 if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-perfPage"),
                    i + 1 < ProcessInfo.processInfo.arguments.count {
                     let page = ProcessInfo.processInfo.arguments[i + 1]
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        if page == "settings" { SettingsPresenter.shared.show(); return }
-                        sharedState.horizontalPage = page == "zikr" ? .zikr : page == "journey" ? .journey : .main
+                        sharedState.horizontalPage = page == "zikr" ? .zikr : page == "settings" ? .settings : .main
                     }
                 }
                 if ProcessInfo.processInfo.arguments.contains("-perfToggleList") {
@@ -835,7 +834,7 @@ struct PrayerTimesView: View {
                 let width = context.geometry.containerSize.width
                 guard width > 0, context.geometry.contentSize.width >= width * 2.5 else { return }
                 let index = Int((context.geometry.visibleRect.midX / width).rounded(.down))
-                let landed: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .journey : .main
+                let landed: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
                 if scrollPage != landed {
                     var t = Transaction(); t.disablesAnimations = true
                     withTransaction(t) { scrollPage = landed }
@@ -960,7 +959,7 @@ struct PrayerTimesView: View {
                 switch link {
                 case "salah": sharedState.horizontalPage = .main
                 case "zikr": sharedState.horizontalPage = .zikr
-                case "settings": sharedState.horizontalPage = .main; SettingsPresenter.shared.show()
+                case "settings": sharedState.horizontalPage = .settings
                 case "history": showZikrHistory = true
                 case "azkar": showMantrasPage = true
                 case "map": sharedState.horizontalPage = .main; showQiblaMap = true
@@ -1180,11 +1179,11 @@ struct PrayerTimesView: View {
                 try? await Task.sleep(for: .seconds(1))   // the pager up (sooner, the change was lost)
                 sharedState.go(to: .zikr, animated: false)
             case "journey":
-                try? await Task.sleep(for: .seconds(0.5))   // the root up; Journey's page builds on the page change
-                sharedState.go(to: .journey, animated: false)
+                try? await Task.sleep(for: .seconds(1))   // the root up: Journey's push
+                JourneyPresenter.shared.open = true
             case "settings":
-                try? await Task.sleep(for: .seconds(1.5))   // once the pager is up (as `-demoSettings`)
-                SettingsPresenter.shared.show()
+                try? await Task.sleep(for: .seconds(1))   // the pager up (sooner, the change was lost)
+                sharedState.go(to: .settings, animated: false)
             default: break   // salah: the launch page
             }
         }
@@ -1623,24 +1622,24 @@ struct PrayerTimesView: View {
 //                print("ResetTasbeehInputs cuz we dismissed DailyTasks.")
 //            }
 //        }
-        // Settings, from the gear top right (SettingsPresenter): the system bar's ‹ and the edge swipe pop it. It may have
-        // changed how times are worked out: refetched once it's closed, after the pop has landed.
-        .navigationDestination(isPresented: Binding(get: { SettingsPresenter.shared.open },
-                                                    set: { SettingsPresenter.shared.open = $0 })) {
-            SettingsView(onBack: { SettingsPresenter.shared.open = false }, refetchOnLeave: false, systemBar: true)
-                // The tour's Settings chapter happens here, over the push — the root's tour layer is under it (covered by
-                // it): a copy that only draws (the root's keeps watching).
-                .overlay { SettingsTourLayer() }
-                .onAppear {
-                    SettingsPresenter.shared.shown = true
-                    TourRuntime.shared.event(.settingsPage)   // the tour's "Tap the gear" done
-                }
+        // Settings' ways in (deep link "settings", the circle's "Alarm 4:45 AM", screenshots args) page to it, whatever
+        // covers the Salah page closed first; a jump (the alarm row) once the page has come to rest.
+        .onChange(of: SettingsPresenter.shared.open) { _, wanted in
+            guard wanted else { return }
+            SettingsPresenter.shared.open = false
+            let jump = SettingsPresenter.shared.takeJump()
+            clearCovers {
+                Task { if await sharedState.navigate(to: .settings), let jump { SettingsJump.shared.request(jump) } }
+            }
         }
-        .onChange(of: SettingsPresenter.shared.open) { was, now in
-            guard was, !now else { return }
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(0.45))
-                viewModel.fetchPrayerTimes(cameFrom: "closed Settings")
+        .onChange(of: sharedState.horizontalPage) { left, now in
+            // Settings may have changed how times are worked out: refetch on leaving its page — once the pager has
+            // landed (run at the page's commit, mid-swipe, it stalled two frames: perf trace 2026-10-10).
+            if left == .settings, now != .settings {
+                Task { @MainActor in
+                    _ = await CircleStage.shared.until(deadline: 2) { CircleStage.shared.restingPage != nil }
+                    viewModel.fetchPrayerTimes(cameFrom: "left the Settings page")
+                }
             }
         }
         .navigationDestination(isPresented: $showMapPage) {
@@ -1658,13 +1657,10 @@ struct PrayerTimesView: View {
         // swipe-back-pages A).
         .navigationDestination(isPresented: Binding(get: { MemoriesPresenter.shared.open },
                                                     set: { MemoriesPresenter.shared.open = $0 })) { MemoriesPage() }
-        // Journey (Journey.swift) is the pager's right page: ☰, the day page's "Journey ›", To make up's pill and What's new
-        // ask for it (JourneyPresenter.open) and land there, whatever covers the Salah page closed first.
-        .onChange(of: JourneyPresenter.shared.open) { _, wanted in
-            guard wanted else { return }
-            JourneyPresenter.shared.open = false
-            clearCovers { sharedState.horizontalPage = .journey }
-        }
+        // Journey (Journey.swift), pushed from ☰, the day page's "Journey ›", To make up's pill and What's new (owner,
+        // 2026-10-19: "put Journey back in the hamburger menu only" — it was the pager's right page from 2026-10-17).
+        .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.open },
+                                                    set: { JourneyPresenter.shared.open = $0 })) { JourneyPage() }
         // `-demoJourneyFlightRun N`: Journey opened for its flights' auto run (JourneyMonthHost) — a launch argument only, so
         // the frame log can be read in Release on his phone.
         .task {
@@ -2306,16 +2302,15 @@ struct PrayerTimesView: View {
                         // Zikr page, top right: nothing (owner, 2026-10-15: the books door went — "N of M daily goals
                         // done" under the wheel opens Your azkar).
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
-                        // Settings, for everyone (owner, 2026-10-17; the pager's right page is Journey's).
-                        HStack(spacing: 0) {
-                            if access.available && !TourRuntime.shared.active {
+                        // (Settings is the right page again — its gear here went, owner 2026-10-19.)
+                        if access.available && !TourRuntime.shared.active {
+                            HStack(spacing: 0) {
                                 SalahPlayButton()
                                 SalahLookSwitcher()
                             }
-                            SettingsGearButton()
+                            .padding(.trailing, 8)
+                            .modifier(follow(.salah(push: 0)))
                         }
-                        .padding(.trailing, 8)
-                        .modifier(follow(.salah(push: 0)))
                         }
                     }
                 }
@@ -2499,19 +2494,14 @@ struct PrayerTimesView: View {
         private func sheet(_ open: Bool) -> CGFloat { sheetFollows ? live.sheetProgress : (open ? 1 : 0) }
 
         func body(content: Content) -> some View {
-            /// How far onto the Zikr page we are, 0...1, live from the scroll offset; and onto Journey's.
+            /// How far onto the Zikr page we are, 0...1, live from the scroll offset.
             let zikr = min(max(1 - live.scrollProgress, 0), 1)
-            let journey = min(max(live.scrollProgress - 1, 0), 1)
-            let stays: Bool = if case .bottomBar = role { true } else { false }
             let (opacity, push, taps): (CGFloat, CGFloat, Bool) = switch role {
             case .salah(let push): (1 - zikr, zikr * push, zikr < 0.5)
             case .zikr(let push): (zikr, -(1 - zikr) * push, zikr > 0.5)
             case .chevron(let open): ((1 - sheet(open)) * (1 - zikr), 0, sheet(open) < 0.5 && zikr < 0.5)
             case .doneFooter(let open): (sheet(open) * (1 - zikr), 0, sheet(open) >= 0.5 && zikr < 0.5)
-            // Toward Journey it fades out where it is, and Journey slides over its place (owner, 2026-10-17: "it fades out as
-            // we drag the page on and sits on top of the bottom bar, that would be visually cleaner"): gone by halfway.
-            case .bottomBar(let open): (max(sheet(open), zikr) * max(1 - 2 * journey, 0), 0,
-                                        (sheet(open) >= 0.5 || zikr > 0.5) && journey < 0.5)
+            case .bottomBar(let open): (max(sheet(open), zikr), 0, sheet(open) >= 0.5 || zikr > 0.5)
             }
             // "N done" rides up under the list while a finger brings the sheet (its fixed spot is the open rest).
             let rise: CGFloat = if case .doneFooter = role, sheetFollows {
@@ -2519,8 +2509,6 @@ struct PrayerTimesView: View {
             } else { 0 }
             content
                 .offset(x: push, y: rise)
-                // The bar holds its place toward Journey: ChromeLeaves takes the rest of the chrome away with the Salah page.
-                .visualEffect { c, proxy in c.offset(x: stays ? journey * proxy.size.width : 0) }
                 .opacity(Double(opacity))
                 .allowsHitTesting(taps)
         }
@@ -2745,22 +2733,22 @@ struct PrayerTimesView: View {
                         
                         Spacer()
 
-                        // Journey, where Settings was (owner, 2026-10-18: "bottom bar still needs to show three items like how it
-                        // did before, but just change the settings one to instead be the Journey one"; the path is ☰'s
-                        // Journey row's symbol). Toward Journey the bar fades where it is.
+                        // Settings, the right page (back, owner 2026-10-19; it was Journey 2026-10-17 → 19).
                         Button(action: {
-                            sharedState.horizontalPage = .journey
+                            sharedState.horizontalPage = .settings
                         }) {
                             VStack(spacing: 6) {
-                                Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
+                                Image(systemName: "gear")
                                     .font(.system(size: 20))
-                                Text("Journey")
+                                Text("Settings")
                                     .font(.system(size: 12))
                                     .fontWeight(.light)
                                     .fontDesign(.rounded)
                             }
-                            .foregroundColor(sharedState.horizontalPage == .journey ? .green : .gray)
+                            .foregroundColor(sharedState.horizontalPage == .settings ? .green : .gray)
                             .frame(width: 100)
+                            // The tour's last step taps this (audit J: the bar is taught as well as the swipe).
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("settingsTab", $0) }
                         }
                     }
                     .padding(.top, 15)
@@ -3825,7 +3813,7 @@ struct PagerBackdrop: View {
                 // Zikr and Salah: the theme's page, status-bar strip included.
                 theme.backdrop.frame(width: width)
                 theme.backdrop.frame(width: width)
-                theme.surface.frame(width: width)   // Journey's page
+                Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: width)   // Settings' page
             }
             .frame(width: width * 3, alignment: .leading)
             .offset(x: -live.scrollProgress * width)
@@ -3877,6 +3865,16 @@ struct PagerPanLock: UIViewRepresentable {
         }
         private func apply() { pager?.panGestureRecognizer.isEnabled = !locked }
     }
+}
+
+/// The pager's Settings page. Equatable and always equal: it has no inputs that change, so when
+/// the pager re-renders (every page turn publishes `sharedState`) SwiftUI skips it instead of
+/// rebuilding the whole Settings Form. Settings still updates from its own state, @AppStorage
+/// and the view model.
+struct SettingsPage: View, Equatable {
+    var onBack: () -> Void
+    static func == (lhs: SettingsPage, rhs: SettingsPage) -> Bool { true }
+    var body: some View { SettingsView(onBack: onBack, refetchOnLeave: false) }
 }
 
 /// A marked row tapped in the Prayers widget's times list: which prayer, on which day

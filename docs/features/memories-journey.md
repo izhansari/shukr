@@ -110,8 +110,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   in Your Data's copy. Not built: "Show earlier" (the calendar still scrolls back).
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
-- Journey is the pager's right page (swipe left from Salah; ☰ / links page there): the same page, its own 54 pt band where
-  the system bar was (the calendar's ‹ + Month | Year, a day's heading), the pager held while the calendar or a day is open.
+- Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the
+  pager's right page; the in-pager band (JourneyPager.swift, `journeyInPager`) is left unused.
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in
   view) · the current streak ("N-day streak" / "Start a streak today"; it and "best streak" are the Salah page's streak at
   the goal, from the fresh start; today never breaks it), the expand button; under the grid prayers marked · % of days met

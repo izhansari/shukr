@@ -219,8 +219,8 @@ enum TourCopy {
     enum Settings {
         static let title = "Settings"
 
-        static let getThereLead = "Settings is the gear, top right."
-        static let getThereTodo = "Tap the gear"
+        static let getThereLead = "Settings is one page over."
+        static let getThereTodo = "Swipe left"
 
         static var hereStep: String { TourFlow.v2 ? "Reminders" : "What you set here" }
         /// The new flow's opening line (owner: the Reminders section had no intro).
