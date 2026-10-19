@@ -59,7 +59,8 @@ asks for "status" — the reply ends, under the write-up, with this block **as a
 ### Status <n>.<m> · <Area> › <Page>
 | | |
 |---|---|
-| **Ask** | "<his words when the main task started — never reworded>" |
+| **Ask** | <the main ask, summed up in one short, clear line> |
+| | *ctrl-F: "<his exact words from the message that started it, unchanged; trim a long one with …>"* |
 | ✓ | ~~<a small edit he added along the way, done>~~ |
 | ◻︎ | <a small edit not done yet> |
 | **Still open** | <agreed in the spec, not built yet> (one row each; "Nothing" when done) |
@@ -67,7 +68,9 @@ asks for "status" — the reply ends, under the write-up, with this block **as a
 | | <the next check> |
 ```
 `<n>` = the main task's number in this chat, `<m>` = this block's count on it (2.1, 2.2 …; a new main task → a new
-chapter and 3.1). The heading is there so he can Ctrl+F it.
+chapter and 3.1). The heading is there so he can Ctrl+F it; so is the Ask's second row: his verbatim words find the
+message in the chat, the first row says what it means (owner, 2026-10-18: "a summarized and clearer concise main ask
+with a ctrlf reference for myself to go find it").
 
 **Context:** state lives in files (this file, `docs/features/`, the board, memory), so a fresh start loses nothing.
 Compact or start fresh at an item boundary (after commit + push); first overwrite `shukrGit/board/handoff-<name>.md`
@@ -181,7 +184,9 @@ a prayer checks `Excused.covers(start:end:)` (Excused.swift). Read `Excused.rang
 **Simulator & testing**
 - **Every sim command and tool call names its device id** — never "booted" or a default: three sessions share this Mac, and a stray tap once landed on another engineer's sim. Use your own sims (named "<engineer> – iPhone <model>"); all were deleted 2026-10-18 (owner: "whoever needs a simulator can make one"): `xcrun simctl create` one when you need it.
 - **His real data** for sim tests: `~/Library/Application Support/shukr-team/izhan-data-copies/` (README there; `2026-10-02-original/` 2,151 rows, `2026-10-18-latest/` 2,466). Copy shukr.store + -wal + -shm into your own sim's app group; never edit the copies.
-- Demo flags miss on the first launch after an install: launch twice — on his phone too (devicectl's first launch after an install fails with LaunchServicesDataMismatch: automated runs do a plain launch first). A fresh install opens on the welcome, setup, the tour or the zikr unlock (owner, 2026-10-17: "you'll get stuck by the zikr unlock or the onboarding or the tour"): check the first screen before driving it, or start with a `-demo…` arg, which skips welcome / prompts / setup. **To test the real app, launch with `-demoLand salah|zikr|journey|settings`** (owner, 2026-10-18: "skip this whole intro and opening animation so we can land straight to the salah tab or whatever page the agents need to test"): no welcome / opening, setup, prompts, tour or zikr lock (`-zikrLocked` keeps the lock), straight onto that page, its own data, nothing seeded — never wait out the opening. After a fresh install, first
+- Demo flags miss on the first launch after an install: launch twice — on his phone too (devicectl's first launch after an install fails with LaunchServicesDataMismatch: automated runs do a plain launch first). A fresh install opens on the welcome, setup, the tour or the zikr unlock (owner, 2026-10-17: "you'll get stuck by the zikr unlock or the onboarding or the tour"): check the first screen before driving it, or start with a `-demo…` arg, which skips welcome / prompts / setup. **To test the real app, launch with `-demoLand salah|zikr|journey|settings`** (owner, 2026-10-18: "skip this whole intro and opening animation so we can land straight to the salah tab or whatever page the agents need to test"): no welcome / opening, setup, prompts, tour or zikr lock (`-zikrLocked` keeps the lock), straight onto that page, its own data, nothing seeded — never wait out the opening. It's the real app, fully usable, and
+the args last that one launch: opened again from the Home Screen it's the plain app (a fresh install still shows the welcome).
+Not `-demoMarkAll` / `-demoMarkMixed` (they seed marks). After a fresh install, first
 `xcrun simctl privacy <udid> grant location com.betternorms.shukr`: with no location the app opens on the setup's
 location step whatever the args. A simulated tap right after a launch or a screen change is often dropped: retry once before debugging. A simulated tap doesn't flip a Toggle: drag its knob. SF Symbol names: check they exist in `/System/Library/CoreServices/CoreGlyphs.bundle/Contents/Resources/name_availability.plist` (`symbols`) — a made-up name draws nothing.
 - **The circle system** (decision circle-system A, 2026-10-02; rules and owners: `shukrGit/board/circle-system.md`): MainCircleView owns every moment (CircleMoments.swift — morning, lost and the opening are circle states); the look is one value, `@Environment(\.circleTheme)` (CircleTheme.swift; `CircleTheme.standard` = everyone's default, `.today`) — never the SalahLook keys; timings only from CircleMotion.swift; out, then in (fades eased out; a ring faded over another gets `.compositingGroup()`). Only a change to a circle moment or its motion (CircleMoments.swift, CircleMotion.swift, mainCircle.swift's moment runner — run / playMarking / the swaps — or a new animation on the Salah circle) runs `scripts/circle-check.sh`: `shots <parent>` (4 states: the public look, dark + light, Salah + list, against the .app you built; ~2–3 min warm) and `strip <moment>` (one-frame jumps); copy, colors and small looks get the build + one screenshot ("Checks sized to the change"; owner 2026-10-17: "I think it was a little bit OD"). The app's clock runs from `--clock` (fakeclock.c); simulators only.
