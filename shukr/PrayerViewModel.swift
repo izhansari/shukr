@@ -35,7 +35,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>PrayerViewModel initialized")
         self.context = context
         self.ENV_LocationManager = envLocationManager
-        self.timeAtLastRefresh = Date()
         self.scheduleDailyRefresh() //this will only run once on initialization. but will not run again if app is kept open in appswitcher.
         self.subscribeToChanges()
         PrayerViewModel.current = self
@@ -66,8 +65,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoPrayerDayKeyTest() }
         }
         #endif
-//        self.loadDailyScores()
-
     }
     
     private func subscribeToChanges(){
@@ -98,18 +95,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     // MARK: - AppStorage
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var calculationMethod: Int = 2
     @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var school: Int = 0
-
-    @AppStorage("fajrNotif") var fajrNotif: Bool = NotificationDefaults.notify("Fajr")
-    @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = NotificationDefaults.notify("Dhuhr")
-    @AppStorage("asrNotif") var asrNotif: Bool = NotificationDefaults.notify("Asr")
-    @AppStorage("maghribNotif") var maghribNotif: Bool = NotificationDefaults.notify("Maghrib")
-    @AppStorage("ishaNotif") var ishaNotif: Bool = NotificationDefaults.notify("Isha")
-    
-    @AppStorage("fajrNudges") var fajrNudges: Bool = NotificationDefaults.nudges("Fajr")
-    @AppStorage("dhuhrNudges") var dhuhrNudges: Bool = NotificationDefaults.nudges("Dhuhr")
-    @AppStorage("asrNudges") var asrNudges: Bool = NotificationDefaults.nudges("Asr")
-    @AppStorage("maghribNudges") var maghribNudges: Bool = NotificationDefaults.nudges("Maghrib")
-    @AppStorage("ishaNudges") var ishaNudges: Bool = NotificationDefaults.nudges("Isha")
 
     @AppStorage("lastLatitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLatitude: Double = 0
     @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
@@ -144,25 +129,12 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     let orderedPrayerNames: [String] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
         
-    var notifSettings: [String: (allowNotif: Bool, allowNudges: Bool)] {
-        [    "Fajr":    (fajrNotif,    fajrNudges),
-             "Dhuhr":   (dhuhrNotif,   dhuhrNudges),
-             "Asr":     (asrNotif,     asrNudges),
-             "Maghrib": (maghribNotif, maghribNudges),
-             "Isha":    (ishaNotif,    ishaNudges)      ]
-    }
-    
     // MARK: - Published & State
     @Published var cityName: String?
     @Published var useTestPrayers: Bool = false  // Add this property
     @Published var prayerTimesForDateDict: [String: (start: Date, end: Date, window: TimeInterval)] = [:]
-    @Published var timeAtLastRefresh: Date
-    @Published var prayerSettings: [String: Bool] = [:]
     @Published var todaysPrayers: [PrayerModel] = []
     @Published var todaysScore: Double = 0.0
-
-    // Add this property to PrayerViewModel
-//    @Published var dailyScores: [Date: Double] = [:]
 
 
     private var refreshTimer: Timer?   // a plain property (audit B2): `@State` does nothing outside a View, so the timer could never be re-planned
@@ -275,7 +247,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
 
-    //used in 2 methods: sub_handleLocationChange() & refreshCityAndPrayerTimes()
     /// `done`: the city found, or nil when the lookup failed (Settings' Refresh Location says which).
     private func updateCityName(for location: CLLocation, done: ((String?) -> Void)? = nil) {
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
@@ -332,15 +303,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         fetchPrayerTimes(cameFrom: "Settings Refresh Location")
         guard let city else { return .failure(RefreshFailure(message: "Couldn't find your city")) }
         return .success(city)
-    }
-
-    func refreshCityAndPrayerTimes() { // used outside of viewmodel.
-        guard let location = ENV_LocationManager.effectiveLocation else {
-            print("Location not available")
-            return
-        }
-        updateCityName(for: location)
-        fetchPrayerTimes(cameFrom: "refreshCityAndPrayerTimes")
     }
 
 
@@ -732,7 +694,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             }
             calculatePrayerStreak()
             calculateDayScore(for: prayer.dayStart)
-//            updatePrayerStreak()
             pushCompletionsToWidget()
             PhotoDevelop.check(todaysPrayers)   // the last of the five develops the day's photos
             JourneyChange.post()   // Journey's numbers (in the pager it stays built)
@@ -844,7 +805,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         // Average of the five prayers' points, unmarked = 0 (PrayerScoring).
         let dayScore = PrayerScoring.dayScore(for: objectsToCheck)
-//        dailyScores[Calendar.current.startOfDay(for: date)] = dayScore
         if updatingToday { todaysScore = dayScore }
         saveDailyScore(for: date, score: dayScore)
 
@@ -890,7 +850,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         // Check if a record for this date already exists
         let fetchDescriptor = FetchDescriptor<DailyPrayerScore>(
             predicate: #Predicate<DailyPrayerScore> {
-//                Calendar.current.startOfDay(for: $0.date) == startOfDay
                 $0.date >= startOfDay && $0.date <= startOfDay
             }
         )
@@ -1361,7 +1320,6 @@ extension PrayerViewModel {
         print("next refresh scheduled for \(midnight) in \(timerStyle(timeInterval))")
         refreshTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { [weak self] _ in
             guard let self else { return }
-            self.timeAtLastRefresh = Date()
             self.fetchPrayerTimes(cameFrom: "scheduleDailyRefresh")   // plans the next turn's timer itself
         }
     }
