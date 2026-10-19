@@ -270,9 +270,7 @@ struct PrayerSpotsHome: View {
         }
         let cal = Calendar.current
         var order: [Date] = []; var byDay: [Date: [PrayerModel]] = [:]
-        let newest = viewModel.visiblePrayers
-            .sorted { ($0.timeAtComplete ?? $0.startTime) > ($1.timeAtComplete ?? $1.startTime) }
-            .prefix(80)
+        let newest = viewModel.visiblePrayers.prefix(80)   // already newest first (the coordinator sorts it once)
         for p in newest {
             let day = cal.startOfDay(for: p.timeAtComplete ?? p.startTime)
             if byDay[day] == nil { order.append(day) }
@@ -407,8 +405,9 @@ struct PrayerSpotsHome: View {
                 Color.clear.frame(height: 0).id("top")
                 VStack(alignment: .leading, spacing: 14) {
                     header
+                    let shown = self.days   // once a redraw (it was built twice)
                     Group {
-                    if days.isEmpty {
+                    if shown.isEmpty {
                         Text(viewModel.prayers.isEmpty
                              ? "Prayers you mark show up here, pinned where you prayed them."
                              : "No prayers in view. Move the map, or change the filters.")
@@ -421,7 +420,7 @@ struct PrayerSpotsHome: View {
                     if dayOnly != nil {
                         DayBento(places: dayPlaces, day: viewModel.prayers.filter(\.isCompleted), viewModel: viewModel)
                     } else {
-                        ForEach(days, id: \.date) { day in
+                        ForEach(shown, id: \.date) { day in
                             daySection(day.date, day.prayers)
                         }
                     }

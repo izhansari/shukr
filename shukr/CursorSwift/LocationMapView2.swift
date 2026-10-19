@@ -685,6 +685,9 @@ struct MapView: UIViewRepresentable {
         }
 
         private func setMosques(_ items: [MKMapItem], on mapView: MKMapView) {
+            // Nothing to swap (prayers on, no mosques): MapKit's remove re-lays out every pin on the map even when the
+            // list is empty — up to a fifth of a stall with ~1,000 prayer pins (his phone, 2026-10-19).
+            if items.isEmpty && mosqueAnnotations.isEmpty { return }
             mapView.removeAnnotations(mosqueAnnotations)
             mosqueAnnotations = items.map(MosqueAnnotation.init(item:))
             mapView.addAnnotations(mosqueAnnotations)
@@ -725,7 +728,11 @@ struct MapView: UIViewRepresentable {
             let prayers = inView.compactMap(\.prayer)
             let old = parent.viewModel.visiblePrayers
             if prayers.count != old.count || Set(prayers.map(ObjectIdentifier.init)) != Set(old.map(ObjectIdentifier.init)) {
-                parent.viewModel.visiblePrayers = prayers
+                // Newest first, sorted here once per change, each prayer's time read once: the sheet's list used to
+                // re-sort them on every redraw with SwiftData's getter in the comparator — ~1,000 pins on the owner's
+                // data, half-second stalls while panning (his phone's hang reports, 2026-10-19).
+                let keyed = prayers.map { ($0.timeAtComplete ?? $0.startTime, $0) }
+                parent.viewModel.visiblePrayers = keyed.sorted { $0.0 > $1.0 }.map(\.1)
             }
         }
 
