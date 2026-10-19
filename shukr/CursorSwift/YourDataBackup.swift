@@ -33,6 +33,8 @@ struct ShukrBackup: Codable {
     /// onto an iPhone that has neither set brings them back (nil in copies from before 2026-10-18).
     var prayerGoal: Int? = nil
     var freshStartDay: String? = nil
+    /// The fresh start cleared the prayers to make up too (FreshStart.makeUpKey).
+    var freshStartClearsMakeUp: Bool? = nil
     /// The settings as words, for the record (a restore never changes this iPhone's settings).
     var settings: [String: String]? = nil
 
@@ -114,6 +116,7 @@ extension DataExport {
                         inTimeStreak: d.integer(forKey: "maxOnTimeStreak"))
         b.prayerGoal = PrayerGoal.current.rawValue
         b.freshStartDay = FreshStart.dayKey
+        b.freshStartClearsMakeUp = FreshStart.clearsMakeUp ? true : nil
         b.settings = Dictionary(DataSettings.rows(), uniquingKeysWith: { a, _ in a })
         return (b, files)
     }
@@ -387,6 +390,7 @@ enum DataRestore {
         }
         if write, FreshStart.dayKey == nil, let day = b.freshStartDay {
             d.set(day, forKey: FreshStart.key)
+            d.set(b.freshStartClearsMakeUp ?? false, forKey: FreshStart.makeUpKey)
         }
         // The in-time best if it's higher in the copy; the day streak's best isn't taken from it: it's recounted from the
         // rows after (apply).

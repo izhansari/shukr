@@ -99,15 +99,19 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - **The goal and the fresh start** (PrayerGoal.swift, FreshStart.swift; owner 2026-10-18, his picks for
   board/goal-reset-inventory.md): Settings → Journey → Your goal (Pray all five · In their windows · On time · Perfect,
   under the old `prayerStreakMode` key, each with its grades as a strip and the % of the last 30 marked days that met it) and Fresh start (one prayer day; the page,
-  Design 2026-10-19: soft look, Az-Zumar 39:53 inside a pressed ring that is itself held 1.5 s ("Hold the ring to
-  begin"), then the ring rises (NeuLiftCard) and holds Day N; four flat lines on what changes and stays; swaps are
-  `.blurReplace` in fixed slots; again from tomorrow; undo any time — on a later visit through an alert). `PrayerGoal.meets` is
+  Design 2026-10-19: soft look, Az-Zumar 39:53 and "Hold the ring" inside a pressed 256 pt ring that is itself held
+  1.5 s, then the ring rises (NeuLiftCard) and holds Day N, Done · Undo; four flat lines on what changes and stays, one a
+  Keep · Start fresh switch for the prayers to make up (`freshStartClearsMakeUp`, off by default; Start fresh = To make up
+  and Prayer scores' "to make up" count from its day, made up ones too; nothing deleted); swaps are `.blurReplace` in
+  fixed slots. Every later visit looks like the first (owner 2026-10-19): its hold starts again today (Undo right after
+  brings back the one it replaced), "Counting since your fresh start on <date>" at the bottom, "Undo fresh start" →
+  an alert). `PrayerGoal.meets` is
   the one rule (gradingCriteria, streakDay, `Day.metGoal`); `PrayerStats.countsFrom` the one date; either change posts
   `PrayerStats.rulesChanged` → a silent recount (no hearts, milestones recorded as seen), Max recounted from rows. From
   the date: the whole card (days and prayers marked, the rate "N% of days met your goal" after 3 finished days, best),
   the streak, rank, runs, Prayer scores' All time (the line under its chart "since Oct 17"; the chip stays "All time") and trends, Journey's ring; the header line
   "Since your fresh start, Oct 17 ⇄" flips the card to lifetime and back (`JourneyLens`); lifetime always: month lines,
-  firsts; kept: To make up, Moments. Days before it draw at
+  firsts; kept: Moments, and To make up unless Start fresh. Days before it draw at
   0.35 everywhere (`JourneyTileColor.beforeFreshStart`); a quiet "Fresh start" milestone (never celebrated). Both travel
   in Your Data's copy. Not built: "Show earlier" (the calendar still scrolls back).
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows

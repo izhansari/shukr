@@ -564,7 +564,10 @@ struct JourneyMakeUpPage: View {
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>()) else { return ([], []) }
         var kept: [String: PrayerModel] = [:]
         var active: Set<String> = []
-        for row in rows where JourneyLog.names.contains(row.name) {
+        // A fresh start that cleared them: the list starts on its day, made up ones too (nothing is deleted; Undo brings
+        // the rest back).
+        let from = FreshStart.makeUpFromKey
+        for row in rows where JourneyLog.names.contains(row.name) && from.map({ row.dayKey >= $0 }) ?? true {
             let id = row.dayKey + row.name
             if row.isCompleted { active.insert(row.dayKey) }
             if let k = kept[id], k.isCompleted, !row.isCompleted { continue }

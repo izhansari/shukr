@@ -141,8 +141,11 @@ struct PrayerScores {
         let spanFrom = span.days.flatMap { Calendar.current.date(byAdding: .day, value: -($0 - 1), to: today) }
         if let f = countsFrom, span == .all || spanFrom.map({ f > $0 }) == true { out.countsFrom = f }
         let days = spanFrom.map { f in allDays.filter { $0.date >= f } } ?? allDays
-        // To make up counts every miss in the span, from before the fresh start too.
-        let owedDays = log.days.values.filter { d in d.active && (spanFrom.map { d.date >= $0 } ?? true) }
+        // To make up counts every miss in the span, from before the fresh start too — unless it cleared them (as To make up).
+        let owedFrom = FreshStart.makeUpFrom
+        let owedDays = log.days.values.filter { d in
+            d.active && (spanFrom.map { d.date >= $0 } ?? true) && (owedFrom.map { d.date >= $0 } ?? true)
+        }
         out.since = days.first?.date
         let recent30 = Calendar.current.date(byAdding: .day, value: -30, to: today) ?? today
 
