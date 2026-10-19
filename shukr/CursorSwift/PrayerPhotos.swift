@@ -1645,36 +1645,121 @@ enum PrayerPhotoMainCleanup {
     func toggle(_ key: String) { set(key, !contains(key)) }
 }
 
-/// The names of the places prayers were marked at, for search ("Cary, NC"): looked up once per place (about a km) from
-/// the prayer's own spot and remembered as words only — no location is copied (owner: "can't we just use the address of
-/// the prayer that was marked?").
+/// The name of the place each prayer was marked at — one name every "where" reads (option B, owner 2026-10-19): the day
+/// ring's line, the editor's Where row, Memories search, Journey's prayer sheet. A masjid is its own name (the prayer's
+/// mosqueName); anywhere else the city, "Cary, NC", looked up once per place (about a km) from the prayer's own spot and
+/// remembered as words only — no location is copied (owner: "can't we just use the address of the prayer that was
+/// marked?"). New marks are named right after (the `.journeyChanged` every mark path posts, and each time the app comes to
+/// the front, which also retries a lookup that failed offline).
 @MainActor enum PrayerPlaceNames {
     private static let defaultsKey = "prayerPhotos.placeNames"
     private static var names: [String: String] = UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: String] ?? [:]
+    /// Spots waiting for a lookup, in order; one runs at a time (Apple's lookup is rate-limited). A spot asked for while one
+    /// runs joins the line — it used to be dropped (`guard !looking`).
+    private static var queue: [CLLocationCoordinate2D] = []
+    private static var waiting: [String: [CheckedContinuation<String?, Never>]] = [:]
+    private static var listeners: [() -> Void] = []
     private static var looking = false
+    /// Posted when a place gets its name (the day ring's line redraws).
+    static let changed = Notification.Name("PrayerPlaceNames.changed")
 
     static func key(_ c: CLLocationCoordinate2D) -> String { String(format: "%.2f,%.2f", c.latitude, c.longitude) }
     static func name(_ c: CLLocationCoordinate2D) -> String? { names[key(c)] }
 
-    /// Looks up the places not named yet, one at a time (Apple's lookup is rate-limited); `onEach` after each new name.
-    static func fill(_ spots: [CLLocationCoordinate2D], onEach: @escaping () -> Void) {
-        guard !looking else { return }
-        var seen = Set<String>()
-        let missing = spots.filter { names[key($0)] == nil && seen.insert(key($0)).inserted }
-        guard !missing.isEmpty else { return }
-        looking = true
-        Task {
-            for spot in missing {
-                if let city = await PrayerSpotAddress.city(spot) {
-                    names[key(spot)] = city
-                    UserDefaults.standard.set(names, forKey: defaultsKey)
-                    onEach()
-                }
-                try? await Task.sleep(for: .milliseconds(600))
-            }
-            looking = false
+    /// The name every "where" reads: the masjid, else the place's name once it's known. Read in a body, it redraws that
+    /// view when a name arrives (the day ring's line).
+    static func place(for row: PrayerModel) -> String? {
+        _ = PlaceNameRevision.shared.value
+        if row.atMasjid, let masjid = row.mosqueName { return masjid }
+        guard let lat = row.latPrayedAt, let lon = row.longPrayedAt else { return nil }
+        return name(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+    }
+
+    /// A spot's name, looked up now if it isn't known (in line behind any running lookup); nil if the lookup fails.
+    static func named(_ spot: CLLocationCoordinate2D) async -> String? {
+        if let known = name(spot) { return known }
+        return await withCheckedContinuation { c in
+            waiting[key(spot), default: []].append(c)
+            enqueue([spot])
         }
     }
+
+    /// Looks up the places not named yet, one at a time; `onEach` after each new name.
+    static func fill(_ spots: [CLLocationCoordinate2D], onEach: @escaping () -> Void) {
+        listeners.append(onEach)
+        enqueue(spots)
+    }
+
+    private static func enqueue(_ spots: [CLLocationCoordinate2D]) {
+        for spot in spots where names[key(spot)] == nil && !queue.contains(where: { key($0) == key(spot) }) {
+            queue.append(spot)
+        }
+        run()
+    }
+
+    private static func run() {
+        guard !looking else { return }
+        guard !queue.isEmpty else { listeners.removeAll(); return }
+        looking = true
+        Task {
+            while !queue.isEmpty {
+                let spot = queue.removeFirst()
+                let k = key(spot)
+                var found = names[k]
+                if found == nil, let city = await PrayerSpotAddress.city(spot) {
+                    names[k] = city
+                    UserDefaults.standard.set(names, forKey: defaultsKey)
+                    found = city
+                    NotificationCenter.default.post(name: changed, object: nil)
+                    PlaceNameRevision.shared.value += 1
+                    listeners.forEach { $0() }
+                }
+                for c in waiting.removeValue(forKey: k) ?? [] { c.resume(returning: found) }
+                if !queue.isEmpty { try? await Task.sleep(for: .milliseconds(600)) }
+            }
+            looking = false
+            listeners.removeAll()
+        }
+    }
+
+    // MARK: Naming new marks (see PlaceNameRevision below)
+
+    private static var container: ModelContainer?
+    private static var observers: [NSObjectProtocol] = []
+
+    /// From the app's start: names new marks after every mark and each time the app comes to the front.
+    static func start(container: ModelContainer) {
+        guard self.container == nil else { return }
+        self.container = container
+        let center = NotificationCenter.default
+        for name in [Notification.Name.journeyChanged, UIApplication.didBecomeActiveNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { nameRecent() }
+            })
+        }
+    }
+
+    /// The last 30 days' marked prayers with a spot and no name yet (not at a masjid — that's its own name): in line.
+    static func nameRecent() {
+        guard let container else { return }
+        let since = Date().addingTimeInterval(-30 * 86_400)
+        var fetch = FetchDescriptor<PrayerModel>(predicate: #Predicate {
+            $0.isCompleted && $0.latPrayedAt != nil && $0.longPrayedAt != nil && $0.startTime >= since
+        })
+        fetch.fetchLimit = 400
+        let rows = (try? ModelContext(container).fetch(fetch)) ?? []
+        let spots = rows.filter { !$0.atMasjid }.compactMap { row -> CLLocationCoordinate2D? in
+            guard let lat = row.latPrayedAt, let lon = row.longPrayedAt else { return nil }
+            return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        }
+        enqueue(spots)
+    }
+}
+
+/// Bumped when a place gets its name: views that read `PrayerPlaceNames.place(for:)` in their body redraw.
+@MainActor @Observable final class PlaceNameRevision {
+    static let shared = PlaceNameRevision()
+    var value = 0
 }
 
 /// "42 photos · 9.3 MB" in Memories' settings.

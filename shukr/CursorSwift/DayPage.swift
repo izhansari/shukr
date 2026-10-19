@@ -66,11 +66,8 @@ struct DayFacts {
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
 
-    /// The masjid's name, else the place's (once geocoded, PrayerPlaceNames).
-    @MainActor static func place(_ row: PrayerModel) -> String? {
-        if let m = row.mosqueName, !m.isEmpty { return m }
-        return spot(row).flatMap(PrayerPlaceNames.name)
-    }
+    /// The masjid's name, else the place's (once named, PrayerPlaceNames — the one name every "where" reads).
+    @MainActor static func place(_ row: PrayerModel) -> String? { PrayerPlaceNames.place(for: row) }
 
     /// The prayer's note, if one was written.
     static func note(_ row: PrayerModel) -> String? {

@@ -138,6 +138,8 @@ struct shukrApp: App {
         if !StoreFallback.active { WatchSync.shared.start(container: sharedModelContainer) }
         // A notification action wakes shukr in the background: it re-plans the reminders too (NotificationScheduler).
         NotificationScheduler.appContainer = sharedModelContainer
+        // Where each prayer was marked, named once (option B, owner 2026-10-19): after every mark and on each activation.
+        if !StoreFallback.active { let c = sharedModelContainer; Task { @MainActor in PrayerPlaceNames.start(container: c) } }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-renderIconMocks") { Task { @MainActor in IconMocks.render() } }
         #endif
