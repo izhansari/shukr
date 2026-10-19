@@ -77,6 +77,9 @@ text of your message, so I can find it from that at least, along with my respons
 **Context:** state lives in files (this file, `docs/features/`, the board, memory), so a fresh start loses nothing.
 Compact or start fresh at an item boundary (after commit + push); first overwrite `shukrGit/board/handoff-<name>.md`
 (≤ 20 lines: now, next, half-done, traps). After a compaction, re-read this file and your handoff from disk, and open your next reply with "Compacted — picked up from <handoff>" (owner, 2026-10-17: he couldn't tell it had happened).
+A hook (`board/context-hook.py`, in ~/.claude/settings.json) measures the chat's real context and tells you once at
+60, 70, 80 and 90 % of 1M (it compacts itself at ~967k): at the next item boundary offer him close-out + a compact, once
+— never stop mid-item for it (owner, 2026-10-19: "if context is getting high the agents suggest to close out and compact").
 
 **This file stays ≤ ~35 KB:** rules, traps and an index. Feature detail lives in `docs/features/<area>.md` — read only
 the area you're working in. When you change a feature, replace its lines there: current behaviour only, ≤ ~15 lines a
