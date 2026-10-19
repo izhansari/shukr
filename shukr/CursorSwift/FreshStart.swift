@@ -61,40 +61,55 @@ struct FreshStartSettingsRow: View {
     }
 }
 
-/// The page: a leaf in a ring, what a fresh start changes and keeps, and a pill held to begin — the ring draws in
-/// with the hold (let go early and it unwinds), then holds Day 1. Opened again later: the day it's on, start again, undo.
-/// Excused Mode's look (light title, grey line, a soft card of sage-iconed rows, the outlined pill and its quiet line).
+/// The page (Design, direction A with the verse inside, owner 2026-10-19: "lets see what mixing A with the verse inside
+/// feels like instead of the leaf thing … better copy explaining it … better visual hierarchy"; canvas
+/// board/mocks/fresh-start-page). In the soft look: a light title over one grey line; the hero is a ring pressed into the
+/// page with Az-Zumar 39:53 inside it, and the ring is what you hold — the sage arc draws under the thumb, let go and it
+/// winds back from where it is. When it closes, the ring rises off the page (NeuLiftCard, pressed → raised) and the verse
+/// gives way to Day 1. Under it, a flat list says what changes and what stays. The bottom slot holds the instruction, then
+/// Done; under it the quiet line. Nothing moves when something changes: every swap happens in a slot of fixed size.
+/// Motion is the system's: `.blurReplace` for every swap (plain fades with Reduce Motion), `.numericText` for the day,
+/// `.smooth` springs for the lift and the wind-back; the hold itself is a linear dial.
 struct FreshStartPage: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.circleTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The day it's on (nil = off), and whether it was begun on this visit (the moment's words and Undo).
     @State private var day: Int? = FreshStart.dayNumber()
     @State private var justBegan = false
-    /// The hold, 0…1: the ring and the pill's fill.
+    /// The hold, 0…1: the arc.
     @State private var held: CGFloat = 0
     @State private var holding = false
     @State private var ticks: Task<Void, Never>?
     @State private var askUndo = false
     @State private var pageHeight: CGFloat = 0
 
-    /// How long the pill is held to begin.
+    /// How long the ring is held to begin.
     static let holdTime = 1.5
+    static let ringSize: CGFloat = 224
 
     private var startWords: String {
         (FreshStart.start ?? Date()).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
     }
+    private var startShort: String {
+        (FreshStart.start ?? Date()).formatted(.dateTime.month(.abbreviated).day())
+    }
+    /// Held to begin, or to start again on a later day (not on its own first day — it would change nothing).
+    private var canHold: Bool { day == nil || (!justBegan && (day ?? 0) > 1) }
+    /// A later visit, holding to start again: the old arc stays faint under the new one.
+    private var restarting: Bool { day != nil && !justBegan && holding }
+    private var swap: AnyTransition { reduceMotion ? .opacity : AnyTransition(.blurReplace) }
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 0) {
                     heading
-                    Spacer(minLength: 24)
+                    Spacer(minLength: 20)
                     ring
                     Spacer(minLength: 24)
-                    verse
-                    Spacer(minLength: 24)
-                    if !justBegan { facts.transition(.opacity) }
-                    Spacer(minLength: 8)
+                    facts
+                    Spacer(minLength: 12)
                 }
                 .frame(minHeight: pageHeight, alignment: .top)
             }
@@ -102,7 +117,7 @@ struct FreshStartPage: View {
             .scrollBounceBehavior(.basedOnSize)
             buttons
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background(theme.surface.ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { ticks?.cancel() }
@@ -114,105 +129,159 @@ struct FreshStartPage: View {
         let (title, line): (String, String) =
             // No date on the day itself: before Fajr the prayer day is still yesterday's date, which reads wrong as "today".
             if justBegan { ("Bismillah", "Your fresh start begins today. Every prayer from here is part of it.") }
-            else if day == 1 { ("Fresh start", "Since today · Day 1. You can start again from tomorrow.") }
-            else if let day { ("Fresh start", "Since \(startWords) · Day \(day)") }
-            else { ("A fresh start", "However your Journey has gone so far, you can begin again today.") }
-        return VStack(spacing: 6) {
-            Text(title).font(.system(size: 30, weight: .light, design: .rounded))
-                .contentTransition(.opacity)
-            Text(line).font(.subheadline).foregroundStyle(.secondary)
-                .contentTransition(.opacity)
+            else if day == 1 { ("Fresh start", "Since today. You can start again from tomorrow.") }
+            else if day != nil { ("Fresh start", "Since \(startWords)") }   // the ring holds Day N (a fact shows once)
+            else { ("A fresh start", "Your past doesn't define you. Start counting again from today.") }
+        return VStack(spacing: 8) {
+            ZStack {   // the old and new words overlap while they swap, never side by side
+                Text(title).font(.system(size: 32, weight: .light, design: .rounded))
+                    .id(title).transition(swap)
+            }
+            // Two lines' room whatever the words, so nothing under it moves when they change.
+            ZStack(alignment: .top) {
+                Text("\n").font(.subheadline).hidden()
+                Text(line).font(.subheadline).foregroundStyle(.secondary)
+                    .id(line).transition(swap)
+            }
         }
         .multilineTextAlignment(.center)
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 32)
         .padding(.top, 8)
     }
 
-    /// The hero: a groove, the sage arc the hold draws, and a leaf (new growth; the sunrise is Fajr's, owner) — Day N once it's on.
+    /// The hero: a ring pressed into the page, the verse inside it, held to begin. The arc draws with the hold; done, the
+    /// ring rises off the page and holds Day N.
     private var ring: some View {
         let on = day != nil
+        let size = Self.ringSize
         return ZStack {
-            Circle().stroke(Color.primary.opacity(0.06), lineWidth: 12)
-            Circle()
-                .trim(from: 0, to: on ? 1 : held)
-                .stroke(Color.sage, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+            NeuLiftCard(shape: Circle(), lift: on ? 1 : 0)
+            Circle().inset(by: 16).stroke(Color.primary.opacity(0.06), lineWidth: 10)
+            if restarting {
+                Circle().inset(by: 16).stroke(Color.sage.opacity(0.25), lineWidth: 10)
+            }
+            Circle().inset(by: 16)
+                .trim(from: 0, to: on && !restarting ? 1 : held)
+                .stroke(Color.sage, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            if let day {
-                VStack(spacing: 0) {
-                    Text("Day").font(.subheadline).foregroundStyle(.secondary)
-                    Text("\(day)").font(.system(size: 64, weight: .light, design: .rounded)).monospacedDigit()
+                .opacity(held > 0.001 || on ? 1 : 0)
+            ZStack {
+                if let day {
+                    VStack(spacing: 0) {
+                        Text("Day").font(.subheadline).foregroundStyle(.secondary)
+                        Text("\(day)").font(.system(size: 64, weight: .light, design: .rounded)).monospacedDigit()
+                            .contentTransition(.numericText(value: Double(day)))
+                    }
+                    .transition(swap)
+                } else {
+                    verse.transition(swap)
                 }
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            }
+            .frame(width: size - 64)
+        }
+        .frame(width: size, height: size)
+        .scaleEffect(holding ? 0.98 : 1)
+        .animation(.snappy(duration: 0.2), value: holding)
+        .contentShape(Circle())
+        .onLongPressGesture(minimumDuration: Self.holdTime, maximumDistance: 60) {
+            if canHold { begin() }
+        } onPressingChanged: { pressing in
+            guard canHold else { return }
+            if pressing {
+                holding = true
+                withAnimation(.linear(duration: Self.holdTime)) { held = 1 }
+                startTicks()
             } else {
-                Image(systemName: "leaf")
-                    .font(.system(size: 48, weight: .light))
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
+                ticks?.cancel()
+                // Winds back from wherever it is (an animation retargets from the drawn value); a new press picks up there.
+                withAnimation(.smooth(duration: 0.35)) { held = 0; holding = false }
             }
         }
-        .frame(width: 190, height: 190)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(day.map { "Fresh start, day \($0)" } ?? "Fresh start, off")
+        .accessibilityLabel(day.map { "Fresh start, day \($0)" } ?? "Fresh start. Despair not of the Mercy of Allah.")
+        .accessibilityHint(canHold ? (day == nil ? "Hold to begin your fresh start today" : "Hold to start again today") : "")
+        .accessibilityAddTraits(canHold ? .isButton : [])
+        .accessibilityAction { if canHold { begin() } }
     }
 
     /// Az-Zumar 39:53, the part that speaks to someone who thinks it's too late: the app's own Quran text and translation
     /// (quran.sqlite, english_hilali.sqlite).
     private var verse: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             Text("لا تَقنَطوا مِن رَحمَةِ اللَّهِ")
-                .font(.custom("KFGQPCUthmanTahaNaskh", size: 26))
+                .font(.custom("KFGQPCUthmanTahaNaskh", size: 23))
                 .environment(\.layoutDirection, .rightToLeft)
-            Text("“Despair not of the Mercy of Allah.”").font(.callout).italic()
-            Text("Az-Zumar 39:53").font(.footnote).foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text("“Despair not of the Mercy of Allah.”").font(.footnote).italic()
+            Text("Az-Zumar 39:53").font(.caption2).foregroundStyle(.secondary)
         }
         .multilineTextAlignment(.center)
-        .padding(.horizontal, 28)
     }
 
-    /// What changes and what stays, one line each.
+    /// What a fresh start changes and what it keeps: a flat list, grey symbols (nothing here is tapped), a line each
+    /// and a quieter line under it.
     private var facts: some View {
         VStack(spacing: 0) {
-            row("chart.bar", "Your scores and streak count from \(day == nil ? "today" : "your fresh start")")
-            Divider().padding(.leading, 52)
-            row("clock.arrow.circlepath", "Your history stays. Look back or undo any time")
-            Divider().padding(.leading, 52)
-            row("hourglass", "Prayers to make up stay with you")
+            row("chart.bar", day == nil || justBegan ? "Your stats start from today" : "Your stats start from \(startShort)",
+                "Your streak and scores count from here.")
+            Divider().padding(.leading, 40)
+            row("photo.on.rectangle.angled", "Nothing is deleted", "Your prayers, photos and places stay.")
+            Divider().padding(.leading, 40)
+            row("hourglass", "Prayers to make up stay", "It doesn't clear what you owe.")
+            Divider().padding(.leading, 40)
+            row("arrow.uturn.backward", "See it all any time", "Look back, or undo to bring it all back.")
         }
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 24)
     }
 
-    private func row(_ icon: String, _ words: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon).foregroundStyle(Color.sage).frame(width: 24)
-            Text(words).font(.subheadline).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+    private func row(_ icon: String, _ lead: String, _ detail: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
+            Image(systemName: icon).font(.body).foregroundStyle(.secondary).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(lead).font(.body)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
+            .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16).padding(.vertical, 12)
-        .frame(minHeight: 52)
+        .padding(.vertical, 8)
     }
 
-    /// One pill and its quiet line: hold to begin · Not now; Done · Undo after; on a later visit, hold to start again
-    /// (not on its own first day — it would change nothing) · Undo fresh start.
+    /// One slot and its quiet line: before, the slot says how to begin (the ring is the button); after, Done · Undo; on a
+    /// later visit, how to start again · Undo fresh start. The slot keeps its height, so nothing moves.
     @ViewBuilder private var buttons: some View {
         VStack(spacing: 6) {
-            if justBegan || day == 1 {
-                pill("Done") { dismiss() }
-            } else {
-                holdPill(day == nil ? "Hold to begin" : "Hold to start again today")
+            ZStack {
+                if justBegan || day == 1 {
+                    Button { dismiss() } label: { pillLabel("Done") }
+                        .buttonStyle(.plain)
+                        .transition(swap)
+                } else {
+                    Text(day == nil ? "Hold the ring to begin" : "Hold the ring to start again today")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .id(day == nil)
+                        .transition(swap)
+                }
             }
+            .frame(height: 52)
             Button {
                 if justBegan { undo() } else if day != nil { askUndo = true } else { dismiss() }
             } label: {
-                Text(justBegan ? "Undo" : day != nil ? "Undo fresh start" : "Not now")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                ZStack {
+                    Text(justBegan ? "Undo" : day != nil ? "Undo fresh start" : "Not now")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .id(justBegan ? 0 : day != nil ? 1 : 2)
+                        .transition(swap)
+                }
                     .frame(minWidth: 160, minHeight: 40)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            // On the button itself: iOS 26 shows it as a popover from the view it's on (on the page, it hung off the top).
-            .confirmationDialog("Bring back your whole history?", isPresented: $askUndo, titleVisibility: .visible) {
+            // An alert, not a confirmation dialog: iOS 26 drew the dialog as a popover over the Done pill, and a tap on
+            // "Bring it back" reached Done under it — the page closed and nothing was undone (Design, 2026-10-19).
+            .alert("Bring back your whole history?", isPresented: $askUndo) {
                 Button("Bring it back") { undo() }
+                Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Your Journey will count from your first prayer again.")
             }
@@ -229,40 +298,7 @@ struct FreshStartPage: View {
             .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
     }
 
-    private func pill(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { pillLabel(title) }.buttonStyle(.plain)
-    }
-
-    /// Held, it fills from the left as the ring draws; let go early, both unwind. A soft tick every fifth of a second,
-    /// firmer as it goes; a success tap at the end.
-    private func holdPill(_ title: String) -> some View {
-        pillLabel(title)
-            .background(alignment: .leading) {
-                Capsule().fill(Color.sage.opacity(0.22)).frame(width: 260 * held)
-            }
-            .clipShape(Capsule())
-            .scaleEffect(holding ? 0.97 : 1)
-            .animation(.snappy(duration: 0.2), value: holding)
-            .contentShape(Capsule())
-            .onLongPressGesture(minimumDuration: Self.holdTime, maximumDistance: 60) {
-                begin()
-            } onPressingChanged: { pressing in
-                guard !justBegan else { return }
-                holding = pressing
-                if pressing {
-                    withAnimation(.linear(duration: Self.holdTime)) { held = 1 }
-                    startTicks()
-                } else {
-                    ticks?.cancel()
-                    withAnimation(.spring(duration: 0.4)) { held = 0 }
-                }
-            }
-            .accessibilityLabel(title)
-            .accessibilityHint("Starts your fresh start from today")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction { begin() }
-    }
-
+    /// A soft tick every fifth of a second while held, firmer as it goes; a success tap at the end.
     private func startTicks() {
         ticks?.cancel()
         ticks = Task { @MainActor in
@@ -279,8 +315,8 @@ struct FreshStartPage: View {
         ticks?.cancel()
         FreshStart.begin()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        holding = false
-        withAnimation(.easeInOut(duration: 0.5)) {
+        withAnimation(.smooth(duration: 0.55)) {
+            holding = false
             justBegan = true
             day = FreshStart.dayNumber()
             held = 1
@@ -289,7 +325,7 @@ struct FreshStartPage: View {
 
     private func undo() {
         FreshStart.undo()
-        withAnimation(.easeInOut(duration: 0.4)) {
+        withAnimation(.smooth(duration: 0.45)) {
             justBegan = false
             day = nil
             held = 0
