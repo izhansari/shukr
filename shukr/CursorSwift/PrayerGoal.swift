@@ -152,7 +152,12 @@ struct PrayerGoalSettingsRow: View {
 /// finger rolling it moves the dot. Under it the four goals in a Settings card, strictest first; Made up counts is only
 /// there and at the wheel's last step (the dot rests at the end and turns grey: Qaza is after the window). No numbers.
 struct PrayerGoalPage: View {
+    /// The goal being tried (the dot, the wheel, the list) — only Save makes it yours (owner, 2026-10-19: "add a save button
+    /// to bottom of your goal page. and cancel line i guess if different from current goal").
     @State private var goal = PrayerGoal.current
+    /// Yours, as saved: its radio keeps an outline of its own while you try others.
+    @State private var current = PrayerGoal.current
+    @Environment(\.dismiss) private var dismiss
     /// The dot's place round the ring (degrees from the top), how grey it is (Made up counts), and the wheel's place
     /// (0 Perfect … 3 Made up counts). All three spring together.
     @State private var angle = PrayerGoalDial.rest(PrayerGoal.current)
@@ -201,6 +206,7 @@ struct PrayerGoalPage: View {
             .fontDesign(.rounded)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .safeAreaInset(edge: .bottom) { saveBar }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: goal)
@@ -212,8 +218,11 @@ struct PrayerGoalPage: View {
             withAnimation(.easeOut(duration: 0.25)) { previews = counted }
         }
         .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
-            guard drag == .none, PrayerGoal.current != goal else { return }
-            goal = PrayerGoal.current
+            // Changed elsewhere (a restore, another device): follow it, unless another goal is being tried here.
+            let was = current
+            current = PrayerGoal.current
+            guard drag == .none, goal == was, current != goal else { return }
+            goal = current
             angle = PrayerGoalDial.rest(goal); grey = goal == .prayed ? 1 : 0; wheel = PrayerGoalDial.index(goal)
         }
     }
@@ -263,6 +272,7 @@ struct PrayerGoalPage: View {
             }
     }
 
+    /// Try a goal: the dot, the wheel and the preview move to it; nothing is saved until Save.
     private func pick(_ g: PrayerGoal) {
         goal = g
         withAnimation(.spring(response: 0.42, dampingFraction: 0.74)) {
@@ -270,7 +280,48 @@ struct PrayerGoalPage: View {
             grey = g == .prayed ? 1 : 0
             wheel = PrayerGoalDial.index(g)
         }
-        PrayerGoal.set(g)
+    }
+
+    /// Save, at the bottom (filled sage only when there's something to save), and under it a quiet "Cancel" back to yours — shown
+    /// only while another goal is tried, its space kept so nothing moves.
+    private var saveBar: some View {
+        let changed = goal != current
+        return VStack(spacing: 2) {
+            Button {
+                PrayerGoal.set(goal)
+                current = goal
+                dismiss()
+            } label: {
+                // Filled in only when it does something (owner, 2026-10-19: "save also only fills in as clickable when
+                // differs from current set goal"); else a quiet grey outline.
+                Text("Save")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .foregroundStyle(changed ? Color.white : Color.secondary)
+                    .background {
+                        Capsule().fill(Color.sage).opacity(changed ? 1 : 0)
+                        Capsule().strokeBorder(Color(.separator), lineWidth: 1).opacity(changed ? 0 : 1)
+                    }
+                    .contentShape(Capsule())
+            }
+            .disabled(!changed)
+            Button { pick(current) } label: {
+                Text("Cancel")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 36)
+                    .contentShape(Rectangle())
+            }
+            .opacity(changed ? 1 : 0)
+            .allowsHitTesting(changed)
+            .accessibilityHidden(!changed)
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.2), value: changed)
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .background(Color(.systemGroupedBackground))
     }
 
     /// The goal under the dot (or the wheel), as it would be (owner, 2026-10-19, UC9R + PBUP: how the streak would change and
@@ -312,7 +363,7 @@ struct PrayerGoalPage: View {
                             .frame(width: 24)
                         Text(option.title).foregroundStyle(.primary)
                         Spacer(minLength: 8)
-                        GoalRadio(on: option == goal)
+                        GoalRadio(on: option == goal, current: option == current)
                     }
                     .frame(minHeight: 50)
                     .padding(.horizontal, 16)
@@ -321,6 +372,7 @@ struct PrayerGoalPage: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(option.title). \(option.line)")
                 .accessibilityAddTraits(option == goal ? .isSelected : [])
+                .accessibilityHint(option == current ? "Your goal now" : "")
                 if i < PrayerGoalDial.order.count - 1 { Divider().padding(.leading, 54) }
             }
         }
@@ -527,9 +579,13 @@ struct GoalPreview: Equatable {
 /// buttons instead"): a quiet ring; yours turns sage and its dot springs in, the old one's shrinks away.
 struct GoalRadio: View {
     let on: Bool
+    /// Your saved goal: an ink outline while another is tried, so you can see which one you have (owner, 2026-10-19:
+    /// "put diff color outline on the radio button of our current goal so we know as we change").
+    var current = false
     var body: some View {
         ZStack {
-            Circle().strokeBorder(on ? Color.sage : Color.secondary.opacity(0.4), lineWidth: 1.6)
+            Circle().strokeBorder(on ? Color.sage : current ? Color.primary.opacity(0.85) : Color.secondary.opacity(0.4),
+                                  lineWidth: current && !on ? 2 : 1.6)
             Circle().fill(Color.sage)
                 .padding(5)
                 .scaleEffect(on ? 1 : 0.2)
