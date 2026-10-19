@@ -8,7 +8,7 @@ lost before: things he said "later" to, how he wants us to work, and why a choic
 He runs it (a) at the end of a fork / side session he'll archive, (b) as a save button in the main session before the next
 item, (c) before a compaction. It never installs on the phones and never uploads to TestFlight.
 
-Rules come from CLAUDE.md (Team, What's new); re-read those sections first. Your name (Frank / Sami / Bradley) starts every
+Rules come from CLAUDE.md (Team, What's new); re-read those sections first. Your name (Frank / Sami / Bradley / Zoe / Fable) starts every
 commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (zsh); `whatsnew.py` is in the app repo's
 `scripts/`. Work through these in order:
 
@@ -17,14 +17,20 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
 2. **Docs:** replace the feature's lines in `docs/features/<area>.md` (current behaviour only); CLAUDE.md only if a rule /
    trap / index line changed; `docs/app-store-features.md` if a user-facing feature changed; `docs/design-language.md` + a
    picture if he approved a new pattern.
-3. **How he wants us to work → memory, with his OK.** Go through this conversation for every new rule or preference about
-   *how to work* (not code facts — those live in git and docs). Drop any an existing memory file already covers (read
-   MEMORY.md and the matching files). Then ask with **AskUserQuestion** before saving anything:
-   - first question: "Save these N rules to memory?" — options **Save all** · **Skip all** · **Pick one by one**, each rule
-     listed in a line in the question's text or the options' descriptions;
-   - "Pick one by one": follow-up multi-select questions with up to 4 rules each as checkboxes (≤ 4 questions per call).
-   Save only what he ticks (one file per rule, frontmatter, `**Why:**` + `**How to apply:**` with his words, a line in
-   MEMORY.md; update an existing file rather than duplicating).
+3. **How he wants us to work → sorted three ways** (owner, 2026-10-19: memory only for "things they think should be
+   shared"). Go through this conversation for every new rule or preference about *how to work* (not code facts — those
+   live in git and docs), drop any already written down (MEMORY.md + the matching files, your `board/roles/<name>.md`),
+   then sort each:
+   - **Only your role** (your area, your tools, how he wants *you* to run) → add it to `board/roles/<name>.md` yourself,
+     no question: a `## <slug>` section with his words, **Why:** and **How to apply:**. Edit line by line; never rewrite
+     or shorten the file.
+   - **Every agent** (would change how Frank *and* Zoe *and* Bradley work) → shared memory, with his OK: ask with
+     **AskUserQuestion** — "Save these N rules to shared memory?" — **Save all** · **Skip all** · **Pick one by one**, each
+     rule a line in the text; "Pick one by one" = multi-select questions, up to 4 rules each. Save only what he ticks (one
+     file per rule, frontmatter, `**Why:**` + `**How to apply:**` with his words, a line in MEMORY.md; update an existing
+     file rather than duplicating). Unsure which? It's role-only.
+   - **Just this task** → nowhere (the commit message and handoff carry it).
+   No shared rules → no question. The write-up lists what went where.
 4. **Parked ideas:** go through the conversation for everything he said "later", "park", "keep in mind", "come back to",
    "push to the side" about. For each one not already on the Plan page (`idea.sh` / the board) or in a handoff's open list:
    `idea.sh dump "<his words, verbatim>" --from chat` → `idea.sh add <id> --dump <dump> --kind new --area <AREA> --title …
@@ -54,7 +60,7 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
 9. **Tidy:** delete only the sims, scratch files and branches you made; never another engineer's.
 10. **Write-up** (his rule: a full one, plain): what changed, the hashes, what's on the team line, what wasn't checked, what
     was saved to memory, the parked ideas swept, anything left for him to decide — and ends with the **Status block** (CLAUDE.md, Team → Chapters and the status block; its To check list: each gesture, what to do, what should happen). **It opens with the step list**, one line per step 1–9, so a skipped step shows
-    (owner, 2026-10-17: "add that so its reliable"): `1 Ready ✓ · 2 Docs ✓ salah.md · 3 Memory — none new · 4 Parked ✓ 2
+    (owner, 2026-10-17: "add that so its reliable"): `1 Ready ✓ · 2 Docs ✓ salah.md · 3 Rules — 1 to roles/<name>.md, none shared · 4 Parked ✓ 2
     added · 5 Pushed ✓ <hash> · 6 What's new — skipped, covered by <entry> · 7 Plan ✓ <id> done · 8 Record ✓ note to
     <parent> · 9 Tidy ✓` — ✓ done, — skipped with the reason, ✗ failed with the error. Never leave a step off the list.
 11. **Then ask "What now?"** with **AskUserQuestion**, exactly these three options (his words, 2026-10-17):
@@ -83,7 +89,7 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
     after compaction"):
     > **You're good to compact.** Run `/compact`, then paste:
     ```
-    Re-read CLAUDE.md and board/handoff-<name>.md, then <start on | carry on with> <task>.
+    Re-read CLAUDE.md, board/handoff-<name>.md and board/roles/<name>.md, then <start on | carry on with> <task>.
     ```
     The first reply after the compaction opens with "Compacted — picked up from <handoff file>" (CLAUDE.md, Context).
     **The close-out ends there. It never starts, plans or discusses the next task** beyond that intake — not even when he
