@@ -29,7 +29,6 @@
 		369A05FC2C5E8635002CD697 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 369A05FB2C5E8635002CD697 /* SwiftUI.framework */; };
 		369A05FF2C5E8635002CD697 /* shukrWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05FE2C5E8635002CD697 /* shukrWidgetBundle.swift */; };
 		369A06012C5E8635002CD697 /* shukrWidgetLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A06002C5E8635002CD697 /* shukrWidgetLiveActivity.swift */; };
-		369A06032C5E8635002CD697 /* shukrWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A06022C5E8635002CD697 /* shukrWidget.swift */; };
 		369A06052C5E8635002CD697 /* AppIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A06042C5E8635002CD697 /* AppIntent.swift */; };
 		369A06072C5E8636002CD697 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A06062C5E8636002CD697 /* Assets.xcassets */; };
 		369A060B2C5E8636002CD697 /* shukrWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 369A05F72C5E8635002CD697 /* shukrWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -162,7 +161,6 @@
 		369A05FB2C5E8635002CD697 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		369A05FE2C5E8635002CD697 /* shukrWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shukrWidgetBundle.swift; sourceTree = "<group>"; };
 		369A06002C5E8635002CD697 /* shukrWidgetLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shukrWidgetLiveActivity.swift; sourceTree = "<group>"; };
-		369A06022C5E8635002CD697 /* shukrWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shukrWidget.swift; sourceTree = "<group>"; };
 		369A06042C5E8635002CD697 /* AppIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntent.swift; sourceTree = "<group>"; };
 		369A06062C5E8636002CD697 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		369A06082C5E8636002CD697 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -360,7 +358,6 @@
 				5A7C0E000000000000000B01 /* PrayerMethods.swift */,
 				369A05FE2C5E8635002CD697 /* shukrWidgetBundle.swift */,
 				369A06002C5E8635002CD697 /* shukrWidgetLiveActivity.swift */,
-				369A06022C5E8635002CD697 /* shukrWidget.swift */,
 				36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */,
 				A1B2C3D4E5F60718293A4B5D /* MoreWidgets.swift */,
 				369A06042C5E8635002CD697 /* AppIntent.swift */,
@@ -689,7 +686,6 @@
 				369A06012C5E8635002CD697 /* shukrWidgetLiveActivity.swift in Sources */,
 				36E0E0A72D417F17005C62BB /* SharedTargetForIntents.swift in Sources */,
 				369A06052C5E8635002CD697 /* AppIntent.swift in Sources */,
-				369A06032C5E8635002CD697 /* shukrWidget.swift in Sources */,
 				369A05FF2C5E8635002CD697 /* shukrWidgetBundle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

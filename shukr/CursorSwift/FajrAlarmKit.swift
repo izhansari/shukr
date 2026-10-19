@@ -139,13 +139,6 @@ enum FajrAlarms {
         return true
     }
 
-    /// Back to no AlarmKit alarms (permission gone, or AlarmKit mode off).
-    @MainActor static func disable() async {
-        group?.set(false, forKey: activeKey)
-        FajrAlarmLog.add("AlarmKit mode off")
-        cancelAll()
-    }
-
     /// Every alarm of ours that isn't ringing right now.
     @MainActor private static func cancelAll() {
         group?.removeObject(forKey: throughKey)
@@ -162,9 +155,10 @@ enum FajrAlarms {
     @MainActor static func plan(reason: String) async {
         guard #available(iOS 26.1, *) else { return }
         defer { refreshLockScreenIfChanged() }
-        // Switched off by a misread while AlarmKit is allowed and still holds our alarms (only `disable` turns it off on
-        // purpose, and it cancels them all): back on, so they're kept to the rule again. The owner's phone, 2026-10-10:
-        // mode off, permission authorized, 56 alarms nobody planned any more.
+        // AlarmKit mode off while AlarmKit is allowed and still holds our alarms is a misread (only lost permission turns
+        // the mode off, below; switching the alarm off keeps the mode and runs plan, which cancels them all): back on, so
+        // they're kept to the rule again. The owner's phone, 2026-10-10: mode off, permission authorized, 56 alarms
+        // nobody planned any more.
         if !isActive, AlarmManager.shared.authorizationState == .authorized, group?.bool(forKey: "alarmEnabled") == true,
            scheduled().contains(where: { !$0.test }) {
             group?.set(true, forKey: activeKey)
