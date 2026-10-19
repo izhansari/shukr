@@ -2,11 +2,11 @@
 //  PrayerTimeEditSheet.swift
 //  shukr
 //
-//  Long-press a completed prayer → "when did you pray?". The window bar shows where the picked
-//  time lands (green Perfect for the first 30 min, yellow Middle, red Closing; past the end is
-//  Qaza), the score updates live, and Cancel / Save sit at the bottom as capsules (2026-09-25:
-//  the old sheet was a bare Form-style stack with a blue Save next to the score). Save is gray
-//  until a different valid time is picked, then a green edge and green text.
+//  Long-press a completed prayer → "when did you pray?" (Design's direction A, owner 2026-10-19: "this my favorite by far";
+//  spec board/mocks/prayer-editor/spec.md). The map sheet's header (the name in light type over one quiet line, round ✕ and
+//  ✓ on the right), the prayer's window as a ring with the marked dot you drag round it, a small time wheel and the score
+//  inside the ring, then one flat card: Where · Photo · Note. ✓ shows only when the time, the place or the note changed;
+//  photos save at once. No swipe to dismiss: ✕ with an unsaved edit asks first ("A").
 //
 
 import SwiftUI
@@ -15,179 +15,117 @@ import MapKit
 struct PrayerTimeEditSheet: View {
     let prayer: PrayerModel
     @Binding var time: Date
-    /// The time being picked lives here until Save (owner saw the bar hang on device: every
-    /// minute scrubbed wrote the parent's state and re-rendered the prayer row behind the sheet).
+    /// The time being picked lives here until ✓ (owner saw the bar hang on device: every minute scrubbed wrote the parent's
+    /// state and re-rendered the prayer row behind the sheet).
     @State private var draft: Date
-    /// From the prayer's start (never earlier) to now or the next Fajr (the day's rollover),
-    /// whichever is first. After the window it's Qaza, e.g. Isha at 12:30 AM.
+    /// From the prayer's start (never earlier) to now or the next Fajr (the day's rollover), whichever is first. After the
+    /// window it's Qaza, e.g. Isha at 12:30 AM.
     let range: ClosedRange<Date>
     var onCancel: () -> Void
     /// The time, and the new spot if the pin was moved (nil = where it was).
     var onSave: (Date, CLLocationCoordinate2D?) -> Void
 
-    /// Where it was prayed (2026-09-26): a chip under the header opens `PrayerLocationPicker`; the
-    /// picked spot waits here and is saved with Save, like the time. Off when the sheet is opened
-    /// from the prayer map, which moves pins on the map itself.
+    /// Where it was prayed: the Where row opens `PrayerLocationPicker`; the picked spot waits here and is saved with ✓, like
+    /// the time. Off when the sheet is opened from the prayer map, which moves pins on the map itself.
     var showsLocation = true
     @State private var draftSpot: CLLocationCoordinate2D?
     @State private var pickingSpot = false
-    @State private var spotAddress: String?
+    @State private var spotName: String?
     private var savedSpot: CLLocationCoordinate2D? {
         guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
     }
     private var shownSpot: CLLocationCoordinate2D? { draftSpot ?? savedSpot }
 
-    /// The prayer's photo (PrayerPhotos.swift): added or retaken while the prayer's window is on and it's marked (owner:
-    /// "they can add photos any time in that window so long as its marked"), seen any time after.
+    /// The prayer's photo (PrayerPhotos.swift): added or retaken while the prayer's window is on and it's marked (owner: "they
+    /// can add photos any time in that window so long as its marked"), seen any time after. Saved at once, never by ✓.
     @State private var photoTarget: PrayerPhotoTarget?
+    @State private var askPhoto = false
+    @State private var photoSaved = false
     private var photoKey: String { PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name) }
     private var photoInWindow: Bool { prayer.isCompleted && Date() < prayer.endTime }
-    private var showsPhotoRow: Bool {
-        let _ = PrayerPhotoRevision.shared.value
-        return !tourTip && prayer.isCompleted && (photoInWindow || PrayerPhotos.has(photoKey))
-    }
 
-    @ViewBuilder private var photoRow: some View {
-        let has = PrayerPhotos.has(photoKey)
-        HStack(spacing: 14) {
-            if has {
-                PrayerPhotoCard(key: photoKey, width: 56)
-            } else {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    .frame(width: 56, height: 56)
-                    .overlay(Image(systemName: "camera").font(.system(size: 16, weight: .light)).foregroundStyle(.secondary))
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(has ? "Your photo" : "Add a photo").font(.subheadline)
-                if photoInWindow {
-                    HStack(spacing: 14) {
-                        Button(has ? "Retake" : "Take one") {
-                            triggerSomeVibration(type: .light)
-                            photoTarget = PrayerPhotoTarget.forMarked(prayer)
-                        }
-                        if has {
-                            Button("Remove", role: .destructive) {
-                                triggerSomeVibration(type: .light)
-                                PrayerPhotos.delete(photoKey)
-                            }
-                        }
-                    }
-                    .font(.footnote)
-                } else {
-                    Text("only while \(prayer.displayName) is on").font(.footnote).foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05)))
-    }
+    /// The note (the photos' note file, PrayerPhotos.note — the day page and Journey read it): edited in its row, saved by ✓
+    /// or the keyboard's Done.
+    @State private var draftNote = ""
+    @State private var savedNote = ""
+    @FocusState private var noteFocused: Bool
+
+    @State private var askDiscard = false
+    @State private var contentHeight: CGFloat = 0
+    @State private var detent: PresentationDetent = .large
 
     init(prayer: PrayerModel, time: Binding<Date>, range: ClosedRange<Date>, showsLocation: Bool = true,
          onCancel: @escaping () -> Void, onSave: @escaping (Date, CLLocationCoordinate2D?) -> Void) {
         self.prayer = prayer
         self.showsLocation = showsLocation
         self._time = time
-        // Open on the time saved for this prayer (owner, 2026-09-26). The parent's binding isn't
-        // enough: it's written in the same long-press that presents the sheet, and the sheet came
-        // up with the value from before — the device's time. Kept within what can be saved.
+        // Open on the time saved for this prayer (owner, 2026-09-26). The parent's binding isn't enough: it's written in the
+        // same long-press that presents the sheet, and the sheet came up with the value from before — the device's time.
+        // Kept within what can be saved.
         let saved = prayer.timeAtComplete ?? time.wrappedValue
         self._draft = State(initialValue: min(max(saved, range.lowerBound), range.upperBound))
         self.range = range
         self.onCancel = onCancel
         self.onSave = onSave
+        let note = PrayerPhotos.note(PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name)) ?? ""
+        self._draftNote = State(initialValue: note)
+        self._savedNote = State(initialValue: note)
     }
 
     private var isValid: Bool { range.contains(draft) }
-    /// The time the sheet opened with; Save is off until a different (valid) one is picked.
+    /// The time the sheet opened with; ✓ stays away until a different (valid) one is picked.
     @State private var openedWith: Date?
-    private var changed: Bool {
+    private var timeChanged: Bool {
         guard let openedWith else { return false }
         return abs(draft.timeIntervalSince(openedWith)) >= 30
     }
-    /// The tour's fix step saves any changed time (tour v2, owner: "change its time, and save").
-    /// The tour's Fajr fix saves only a time in the yellow (owner, 2026-10-06), until it's done.
+    private var noteChanged: Bool { draftNote.trimmingCharacters(in: .whitespacesAndNewlines) != savedNote }
+    private var hasEdits: Bool { timeChanged || draftSpot != nil || noteChanged }
+    /// The tour's fix step saves any changed time (tour v2, owner: "change its time, and save"). The tour's Fajr fix saves
+    /// only a time in the yellow (owner, 2026-10-06), until it's done.
     private var canSave: Bool {
-        isValid && (changed || draftSpot != nil) && (!TourRuntime.shared.needsYellow(prayer) || draftInYellow)
+        isValid && hasEdits && (!TourRuntime.shared.needsYellow(prayer) || draftInYellow)
     }
     private var draftInYellow: Bool {
         PrayerScoring.grade(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)) == .onTime
     }
 
-    /// Where it was prayed, as a quiet chip under "when did you pray?" (owner, 2026-09-26: a full
-    /// row above the buttons sat oddly): the masjid, else the address; tap to move the pin.
-    private var spotChip: some View {
-        // Before a move the stored masjid is right; after one, only your own masajid are known yet.
-        let masjid = draftSpot == nil ? (prayer.atMasjid ? prayer.mosqueName : nil)
-                                      : draftSpot.flatMap { MasjidDetector.favoriteMasjid(near: $0) }
-        let title = shownSpot == nil ? "Add where you prayed"
-                                     : (masjid ?? spotAddress ?? "Pinned on the map")
-        let moved = draftSpot != nil
-        return Button { pickingSpot = true } label: {
-            HStack(spacing: 5) {
-                Image(systemName: masjid != nil ? "building.columns.fill" : "mappin")
-                    .font(.caption)
-                Text(title).lineLimit(1)
-                if moved {
-                    Text("· moved").foregroundStyle(Color.green)
-                } else if prayer.spotEdited {
-                    Text("· edited").foregroundStyle(.tertiary)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .font(.footnote)
-            .foregroundStyle(masjid != nil ? Color.sage : Color.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
-            .background(Capsule().fill(Color(.tertiarySystemFill)))
-            .overlay(Capsule().strokeBorder(moved ? Color.green.opacity(0.6) : Color.clear, lineWidth: 1))
-            .contentShape(Capsule())
-            .animation(.easeInOut(duration: 0.2), value: moved)
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 20)
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// The tour's fix step is in this sheet: its tip continues here (audit J: "nothing goes silent"). The step is the time
+    /// alone (owner: only the intended thing): no card.
+    private var tourTip: Bool { TourRuntime.shared.step == .list && TourRuntime.isPracticeAnywhere(prayer) }
+    private var shift: TimeInterval { PracticeClock.shift(for: prayer) }
+
+    private var subtitle: String {
+        "\(shortTimePM(prayer.startTime.addingTimeInterval(shift))) – \(shortTimePM(prayer.endTime.addingTimeInterval(shift))) · when did you pray?"
     }
 
-    @Environment(\.dynamicTypeSize) private var typeSize
-    /// The tour's fix step is in this sheet: its tip continues here (audit J: "nothing goes silent").
-    private var tourTip: Bool { TourRuntime.shared.step == .list && TourRuntime.isPracticeAnywhere(prayer) }
-
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             // The tour's words for this step are in its panel, over the sheet (TourEditorPanelWindow).
-            // Header, like the main circle's
-            VStack(spacing: 4) {
-                HStack(alignment: .center) {
-                    Image(systemName: prayerIcon(for: prayer.name))
-                    Text(prayer.displayName).fontWeight(.bold)
+            MapSheetHeader(title: prayer.displayName, subtitle: subtitle) {
+                HStack(spacing: 10) {
+                    MapSheetCircleButton(symbol: "xmark", label: "Close") { close() }
+                    if canSave {
+                        MapSheetCircleButton(symbol: "checkmark", label: "Save", tint: .sage, fill: Color.sage.opacity(0.16)) { save() }
+                            .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    }
                 }
-                .font(.title2)
-                Text("when did you pray?")
-                    .font(.subheadline)
-                    .fontWeight(.thin)
-                    .foregroundStyle(.secondary)
-                // Not in the tour: its fix step is the time alone (owner: only the intended thing).
-                if showsLocation && !tourTip {
-                    spotChip.padding(.top, 8)
-                }
+                .animation(.snappy(duration: 0.22), value: canSave)
             }
-            .padding(.top, 30)   // room under the drag handle
+            .padding(.top, 22)
 
             PrayerTimeEditor(prayer: prayer, draft: $draft, range: range)
 
-            if showsPhotoRow { photoRow }
-
-            Spacer(minLength: 0)
-
-            SaveCancelButtons(canSave: canSave, onCancel: onCancel) { onSave(draft, draftSpot) }
+            if !tourTip { card }
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 12)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
         .fontDesign(.rounded)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .onAppear {
             if openedWith == nil { openedWith = draft }
             if tourTip { TourEditorPanelWindow.show() }
@@ -198,6 +136,9 @@ struct PrayerTimeEditSheet: View {
             guard tourTip else { return }
             TourRuntime.shared.editorScore = PrayerScoring.points(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: now))
         }
+        // Writing a note needs the keyboard's room: the sheet goes full height while the field is up.
+        .onChange(of: noteFocused) { _, on in withAnimation(.smooth(duration: 0.3)) { detent = on ? .large : fitted } }
+        .onChange(of: contentHeight) { _, _ in if !noteFocused { detent = fitted } }
         .sheet(isPresented: $pickingSpot) {
             PrayerLocationPicker(prayerName: prayer.displayName, original: shownSpot,
                                  recorded: prayer.recordedSpot ?? savedSpot,
@@ -207,29 +148,180 @@ struct PrayerTimeEditSheet: View {
                 .interactiveDismissDisabled()
         }
         .task(id: shownSpot.map { "\($0.latitude),\($0.longitude)" }) {
-            spotAddress = nil
-            if let spot = shownSpot { spotAddress = await PrayerSpotAddress.lookUp(spot) }
+            spotName = nil
+            if let spot = shownSpot { spotName = await PrayerPlaceNames.named(spot) }
         }
-        // The tour's tip at the largest text: the full height, else Save fell off the sheet (Sami, AX XXXL).
-        .fullScreenCover(item: $photoTarget) { target in
+        .fullScreenCover(item: $photoTarget, onDismiss: flashPhotoSaved) { target in
             PrayerPhotoCapture(target: target) { photoTarget = nil }
         }
-        .presentationDetents([tourTip && typeSize.isAccessibilitySize
-                              ? .large : .height((showsLocation && !tourTip ? 572 : 540) + (showsPhotoRow ? 104 : 0))])
-        .presentationDragIndicator(.visible)
+        .confirmationDialog("Your photo", isPresented: $askPhoto, titleVisibility: .hidden) {
+            Button("Retake") { photoTarget = PrayerPhotoTarget.forMarked(prayer) }
+            Button("Remove", role: .destructive) {
+                PrayerPhotos.delete(photoKey)
+                flashPhotoSaved()
+            }
+        }
+        // ✕ with an unsaved edit (owner, 2026-10-19: "A").
+        .alert("Discard your changes?", isPresented: $askDiscard) {
+            Button("Discard", role: .destructive) { onCancel() }
+            Button("Keep editing", role: .cancel) {}
+        }
+        // The tour's tip at the largest text: the full height, else ✓ fell off the sheet (Sami, AX XXXL).
+        .presentationDetents(tourTip && typeSize.isAccessibilitySize ? [.large] : [fitted, .large], selection: $detent)
+        .presentationDragIndicator(.hidden)
+        .interactiveDismissDisabled()
         .presentationCornerRadius(28)
+    }
+
+    /// The sheet fitted to what it holds.
+    private var fitted: PresentationDetent { contentHeight > 0 ? .height(min(contentHeight + 8, 760)) : .large }
+
+    private func close() {
+        if hasEdits { askDiscard = true } else { onCancel() }
+    }
+
+    private func save() {
+        guard canSave else { return }
+        if noteChanged { commitNote() }
+        onSave(draft, draftSpot)
+    }
+
+    private func commitNote() {
+        PrayerPhotos.setNote(photoKey, draftNote)
+        savedNote = draftNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        draftNote = savedNote
+    }
+
+    private func flashPhotoSaved() {
+        withAnimation(.easeOut(duration: 0.2)) { photoSaved = true }
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation(.easeOut(duration: 0.3)) { photoSaved = false }
+        }
+    }
+
+    // MARK: The card
+
+    /// One flat card under the ring: Where · Photo · Note.
+    private var card: some View {
+        VStack(spacing: 0) {
+            if showsLocation {
+                whereRow
+                Divider().padding(.leading, 52)
+            }
+            photoRow
+            Divider().padding(.leading, 52)
+            noteRow
+        }
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+    }
+
+    private func cardRow<Lead: View, Trail: View>(@ViewBuilder lead: () -> Lead, title: String, detail: String?,
+                                                  titleTint: Color = .primary,
+                                                  @ViewBuilder trailing: () -> Trail) -> some View {
+        HStack(spacing: 12) {
+            lead().frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.body).foregroundStyle(titleTint).lineLimit(1)
+                if let detail {
+                    Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            trailing()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(minHeight: 56)
+        .contentShape(Rectangle())
+    }
+
+    /// Where: the masjid, else the place's name (PrayerPlaceNames — the name every "where" reads); Move opens the picker.
+    private var whereRow: some View {
+        // Before a move the stored masjid is right; after one, only your own masajid are known yet.
+        let masjid = draftSpot == nil ? (prayer.atMasjid ? prayer.mosqueName : nil)
+                                      : draftSpot.flatMap { MasjidDetector.favoriteMasjid(near: $0) }
+        let title = shownSpot == nil ? "Add where you prayed" : (masjid ?? spotName ?? "Pinned on the map")
+        let detail: String? = draftSpot != nil ? "Moved · saves with ✓" : (prayer.spotEdited ? "Edited" : nil)
+        return Button { pickingSpot = true } label: {
+            cardRow(lead: {
+                Image(systemName: masjid != nil ? "building.columns.fill" : "mappin.and.ellipse")
+                    .font(.system(size: 17)).foregroundStyle(masjid != nil ? Color.sage : .secondary)
+            }, title: title, detail: detail) {
+                HStack(spacing: 4) {
+                    Text(shownSpot == nil ? "Add" : "Move")
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Photo: added, retaken or removed while the prayer is on; each saves at once (a quiet "Saved"), never through ✓.
+    private var photoRow: some View {
+        let _ = PrayerPhotoRevision.shared.value
+        let has = PrayerPhotos.has(photoKey)
+        let detail: String = photoSaved ? "Saved"
+            : has ? (photoInWindow ? "Retake or remove while \(prayer.displayName) is on" : takenLine)
+                  : (photoInWindow ? "While \(prayer.displayName) is on" : "Only while \(prayer.displayName) is on")
+        return Button {
+            guard photoInWindow else { return }
+            triggerSomeVibration(type: .light)
+            if has { askPhoto = true } else { photoTarget = PrayerPhotoTarget.forMarked(prayer) }
+        } label: {
+            cardRow(lead: {
+                if has {
+                    PrayerPhotoCard(key: photoKey, width: 28)
+                } else {
+                    Image(systemName: "camera").font(.system(size: 16)).foregroundStyle(.secondary)
+                }
+            }, title: has ? "Your photo" : "Add a photo", detail: detail,
+               titleTint: has || photoInWindow ? .primary : .secondary) {
+                if photoInWindow {
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: photoSaved)
+        }
+        .buttonStyle(.plain)
+        .disabled(!photoInWindow)
+    }
+
+    /// "Taken at 6:58 PM": the photo file's own time.
+    private var takenLine: String {
+        let url = PrayerPhotos.url(photoKey, front: false)
+        let at = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.creationDate] as? Date
+        return at.map { "Taken at \(shortTimePM($0))" } ?? "Seen any time"
+    }
+
+    /// Note: one line; a tap makes it the text field (the keyboard's Done saves it, as ✓ does).
+    private var noteRow: some View {
+        cardRow(lead: {
+            Image(systemName: "text.quote").font(.system(size: 16)).foregroundStyle(.secondary)
+        }, title: "", detail: nil) { EmptyView() }
+        .overlay(alignment: .leading) {
+            TextField("Add a note", text: $draftNote)
+                .font(.body)
+                .focused($noteFocused)
+                .submitLabel(.done)
+                .onSubmit { if noteChanged { commitNote() } }
+                .padding(.leading, 52)
+                .padding(.trailing, 12)
+        }
     }
 }
 
-/// The heart of editing a prayer's time: the window bar (tap / drag to scrub), the wheel, the
-/// score it would get, the recorded time to go back to, and why an impossible time can't be saved.
-/// Used by the time editor sheet and inline on the map's prayer page.
+/// The heart of editing a prayer's time: the prayer's window as a ring with the marked dot you drag round it, a small time
+/// wheel and the score inside it, the recorded time to go back to, and why an impossible time can't be saved. Used by the
+/// time editor sheet and inline on the map's prayer page.
 struct PrayerTimeEditor: View {
     let prayer: PrayerModel
     @Binding var draft: Date
     /// From the prayer's start to now or the next Fajr (the day's rollover).
     let range: ClosedRange<Date>
-    /// The big score line (the map's prayer page shows the score in its header instead).
+    /// The score inside the ring (the map's prayer page shows the score in its header instead).
     var showsScore = true
 
     var isValid: Bool { range.contains(draft) }
@@ -240,18 +332,26 @@ struct PrayerTimeEditor: View {
         prayer.isJumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
     }
 
-    /// Tap / drag on the window bar: that point of the window, to the minute, kept within what
-    /// can be saved (not before the start, not after now).
-    private func pickFromBar(_ fraction: Double) {
+    /// The dot dragged round the ring: that point of the window, to the minute, kept within what can be saved and never past
+    /// the window's end (a Qaza is picked on the wheel).
+    private func pickFromRing(_ fraction: Double) {
         let window = prayer.endTime.timeIntervalSince(prayer.startTime)
         let raw = prayer.startTime.addingTimeInterval(window * fraction)
         let minute = Date(timeIntervalSinceReferenceDate: (raw.timeIntervalSinceReferenceDate / 60).rounded() * 60)
-        let picked = min(max(minute, range.lowerBound), range.upperBound)
+        let upper = min(range.upperBound, prayer.endTime)
+        let picked = min(max(minute, range.lowerBound), max(upper, range.lowerBound))
         if picked != draft { draft = picked }
     }
 
-    /// Why an out-of-range time can't be saved: nearer (on the clock) to the start → it's before
-    /// the prayer; nearer the other end → it hasn't happened yet, or it's past the day's rollover.
+    /// AM / PM only when the editable range crosses noon or midnight (a Qaza late at night).
+    private var showsMeridiem: Bool {
+        let cal = Calendar.current
+        let a = range.lowerBound.addingTimeInterval(shift), b = range.upperBound.addingTimeInterval(shift)
+        return !cal.isDate(a, inSameDayAs: b) || (cal.component(.hour, from: a) < 12) != (cal.component(.hour, from: b) < 12)
+    }
+
+    /// Why an out-of-range time can't be saved: nearer (on the clock) to the start → it's before the prayer; nearer the other
+    /// end → it hasn't happened yet, or it's past the day's rollover.
     private var invalidReason: String {
         let cal = Calendar.current
         func clock(_ d: Date) -> Double {
@@ -271,30 +371,40 @@ struct PrayerTimeEditor: View {
 
     var body: some View {
         let grade = PrayerScoring.grade(for: score)
-        VStack(spacing: 20) {
-            PrayerWindowBar(start: prayer.startTime, end: prayer.endTime, labelShift: shift,
-                            marked: draft, color: isValid ? PrayerScoring.color(for: score) : Color(.tertiaryLabel),
-                            onPick: pickFromBar)
-
-            // The tour's practice prayer reads on its plain clock (PracticeClock): the wheel shows, and picks, shifted times.
-            PrayerTimeWheel(time: Binding(get: { draft.addingTimeInterval(shift) }, set: { draft = $0.addingTimeInterval(-shift) }),
-                            day: prayer.startTime.addingTimeInterval(shift),
-                            range: range.lowerBound.addingTimeInterval(shift)...range.upperBound.addingTimeInterval(shift))
-                .frame(height: 150)
-
-            if showsScore {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(isValid ? "\(PrayerScoring.points(for: score))" : "–")
-                        .font(.system(size: 40, weight: .light, design: .rounded))
-                        .contentTransition(.numericText(value: score))
-                    Text(isValid ? (prayer.isJumuah ? "Jumu'ah" : grade.rawValue) : "not a valid time")
-                        .font(.headline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(isValid ? PrayerScoring.color(for: score) : .secondary)
-                        .contentTransition(.opacity)
+        VStack(spacing: 12) {
+            ZStack {
+                PrayerWindowRing(start: prayer.startTime, end: prayer.endTime, marked: draft, valid: isValid,
+                                 onPick: pickFromRing)
+                VStack(spacing: 6) {
+                    // The tour's practice prayer reads on its plain clock (PracticeClock): the wheel shows, and picks,
+                    // shifted times.
+                    PrayerTimeWheel(time: Binding(get: { draft.addingTimeInterval(shift) }, set: { draft = $0.addingTimeInterval(-shift) }),
+                                    day: prayer.startTime.addingTimeInterval(shift),
+                                    range: range.lowerBound.addingTimeInterval(shift)...range.upperBound.addingTimeInterval(shift),
+                                    compact: true, meridiem: showsMeridiem)
+                        .frame(width: showsMeridiem ? 132 : 92, height: 110)
+                        // The wheel keeps to its box (UIPickerView draws past it), its rows fading out top and bottom.
+                        .clipped()
+                        .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.28),
+                                                     .init(color: .black, location: 0.72), .init(color: .clear, location: 1)],
+                                             startPoint: .top, endPoint: .bottom))
+                    if showsScore {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(isValid ? "\(PrayerScoring.points(for: score))" : "–")
+                                .font(.system(size: 20, weight: .light, design: .rounded))
+                                .contentTransition(.numericText(value: score))
+                            Text(isValid ? (prayer.isJumuah ? "Jumu'ah" : grade.rawValue) : "not a valid time")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(isValid ? PrayerScoring.color(for: score) : .secondary)
+                                .contentTransition(.opacity)
+                        }
+                        .animation(.snappy, value: score)
+                    }
                 }
-                .animation(.snappy, value: score)
+                .offset(y: showsScore ? 8 : 0)
             }
+            .frame(width: PrayerWindowRing.size, height: PrayerWindowRing.size)
+            .frame(maxWidth: .infinity)
 
             // Edited before: what the app recorded, one tap to go back to it.
             if let recorded = prayer.recordedTimeAtComplete, abs(draft.timeIntervalSince(recorded)) >= 30 {
@@ -310,7 +420,7 @@ struct PrayerTimeEditor: View {
             }
 
             if !isValid {
-                // Out of range: say what is allowed (Save stays off until then).
+                // Out of range: say what is allowed (✓ stays away until then).
                 Text(invalidReason)
                     .font(.footnote)
                     .fontWeight(.light)
@@ -327,6 +437,107 @@ struct PrayerTimeEditor: View {
             }
         }
         .sensoryFeedback(.selection, trigger: grade)
+    }
+}
+
+/// The prayer's window as a ring (as PrayerGoalDial draws a window, Design's direction A): clockwise from the top, green the
+/// first 30 minutes, yellow to the window's middle plus 15, red to the end (PrayerScoring), small gaps between them, each
+/// lit up to the marked dot. The dot is the marked ring's hollow one; drag it round the window to move the time. Past the
+/// end (a Qaza, picked on the wheel) the whole ring is lit and the dot rests at the end, grey.
+struct PrayerWindowRing: View {
+    let start: Date
+    let end: Date
+    let marked: Date
+    var valid = true
+    /// The finger on the ring: the fraction of the window under it, 0…1 (never past the end).
+    var onPick: (Double) -> Void = { _ in }
+    @Environment(\.circleTheme) private var theme
+    @State private var dragging = false
+
+    static let size: CGFloat = 260
+    static let radius: CGFloat = 106
+    private static let gap = 2.4
+
+    private var zones: [(from: Double, to: Double, score: Double)] {
+        let total = max(end.timeIntervalSince(start), 1)
+        let early = min(PrayerScoring.earlyWindow / total, 1)
+        let mid = early + (1 - early) / 2
+        return early >= 1 ? [(0, 360, 1)] : [(0, early * 360, 1), (early * 360, mid * 360, 0.9), (mid * 360, 360, 0.7)]
+    }
+    private var isQaza: Bool { marked > end }
+    private var angle: Double {
+        let total = max(end.timeIntervalSince(start), 1)
+        return min(max(marked.timeIntervalSince(start) / total, 0), 1) * 360
+    }
+    private var dotColor: Color {
+        guard valid else { return Color(.tertiaryLabel) }
+        if isQaza { return PrayerScoring.color(for: PrayerScoring.qaza) }
+        return PrayerScoring.color(for: PrayerScoring.score(start: start, end: end, markedAt: marked))
+    }
+
+    var body: some View {
+        let r = Self.radius, d = r * 2
+        ZStack {
+            track.frame(width: d, height: d)
+            ForEach(Array(zones.enumerated()), id: \.offset) { _, z in
+                let color = PrayerScoring.color(for: z.score)
+                let a0 = z.from + Self.gap / 2, a1 = z.to - Self.gap / 2, lit = min(a1, isQaza ? 360 : angle)
+                arc(a0, a1).stroke(color.opacity(0.16), style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
+                    .frame(width: d, height: d)
+                if lit > a0 + 0.5 {
+                    arc(a0, lit).stroke(color, style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
+                        .frame(width: d, height: d)
+                        .shadow(color: color.opacity(theme.arc.glow), radius: 6)
+                }
+            }
+            Circle()
+                .fill(Color(.systemGroupedBackground))
+                .overlay(Circle().strokeBorder(dotColor, lineWidth: 2.8))
+                .frame(width: 15, height: 15)
+                .scaleEffect(dragging ? 1.35 : 1)
+                .offset(x: r * sin(angle * .pi / 180), y: -r * cos(angle * .pi / 180))
+                .animation(.snappy(duration: 0.12), value: angle)
+                .animation(.snappy(duration: 0.2), value: dragging)
+        }
+        .frame(width: Self.size, height: Self.size)
+        // Only the band takes the finger (the wheel inside sits above it and takes its own): a touch that starts near the ring
+        // drags the dot; anywhere else it does nothing.
+        .contentShape(Circle())
+        .gesture(
+            DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                .onChanged { v in
+                    let c = CGPoint(x: Self.size / 2, y: Self.size / 2)
+                    let start = hypot(v.startLocation.x - c.x, v.startLocation.y - c.y)
+                    guard abs(start - r) < 34 else { return }
+                    if !dragging { dragging = true; triggerSomeVibration(type: .light) }
+                    var a = atan2(v.location.x - c.x, -(v.location.y - c.y)) * 180 / .pi
+                    if a < 0 { a += 360 }
+                    // Near the top, the side the dot is on wins: no jump from the end back to the start.
+                    if angle > 300 && a < 60 { a = 360 } else if angle < 60 && a > 300 { a = 0 }
+                    onPick(a / 360)
+                }
+                .onEnded { _ in dragging = false }
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("The prayer's window")
+        .accessibilityValue(shortTimePM(marked))
+    }
+
+    /// The Salah page's track in the theme: the soft raised band, or the plain grey one.
+    @ViewBuilder private var track: some View {
+        if theme.track.lifted {
+            Circle()
+                .stroke(lineWidth: theme.track.width)
+                .foregroundStyle(theme.surface)
+                .shadow(color: theme.shade, radius: 4, x: 2, y: 2)
+                .shadow(color: theme.light, radius: 6, x: -2, y: -2)
+        } else {
+            Circle().stroke(theme.track.fill, lineWidth: theme.track.width)
+        }
+    }
+
+    private func arc(_ from: Double, _ to: Double) -> some Shape {
+        Circle().trim(from: from / 360, to: to / 360).rotation(.degrees(-90))
     }
 }
 
@@ -442,6 +653,11 @@ struct PrayerTimeWheel: UIViewRepresentable {
     /// Any instant on the prayer's calendar day.
     let day: Date
     let range: ClosedRange<Date>
+    /// Inside the editor's ring (owner, 2026-10-19, direction A: "smaller wheel"): 22 pt rows, the picked row 19 pt and its
+    /// neighbours 15, the columns close together.
+    var compact = false
+    /// The AM / PM column (only when the editable range crosses noon or midnight); hours still loop through all 24.
+    var meridiem = true
 
     private static let loops = 200   // rows = 24 × loops (hours), 60 × loops (minutes)
 
@@ -453,6 +669,12 @@ struct PrayerTimeWheel: UIViewRepresentable {
         picker.delegate = context.coordinator
         context.coordinator.show(time, in: picker)
         return picker
+    }
+
+    /// Exactly the size it's given: left to itself the picker keeps its own 216 pt height, which reached past the editor's
+    /// ring band and took drags meant for the dot.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIPickerView, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 200, height: proposal.height ?? 216)
     }
 
     func updateUIView(_ picker: UIPickerView, context: Context) {
@@ -509,7 +731,11 @@ struct PrayerTimeWheel: UIViewRepresentable {
             }
             picker.selectRow(24 * (PrayerTimeWheel.loops / 2) + hour24, inComponent: 0, animated: false)
             picker.selectRow(60 * (PrayerTimeWheel.loops / 2) + minute, inComponent: 1, animated: false)
-            picker.selectRow(hour24 >= 12 ? 1 : 0, inComponent: 2, animated: false)
+            if parent.meridiem { picker.selectRow(hour24 >= 12 ? 1 : 0, inComponent: 2, animated: false) }
+            if parent.compact {   // the picked rows' size (five rows each, cheap)
+                picker.reloadComponent(1)
+                if hourChanged { picker.reloadComponent(0) }
+            }
         }
 
         private func publish(_ picker: UIPickerView) {
@@ -521,12 +747,12 @@ struct PrayerTimeWheel: UIViewRepresentable {
         }
 
         // MARK: data source / delegate
-        func numberOfComponents(in pickerView: UIPickerView) -> Int { 3 }
+        func numberOfComponents(in pickerView: UIPickerView) -> Int { parent.meridiem ? 3 : 2 }
         func pickerView(_ pickerView: UIPickerView, numberOfRowsInComponent component: Int) -> Int {
             [24 * PrayerTimeWheel.loops, 60 * PrayerTimeWheel.loops, 2][component]
         }
-        func pickerView(_ pickerView: UIPickerView, widthForComponent component: Int) -> CGFloat { 64 }
-        func pickerView(_ pickerView: UIPickerView, rowHeightForComponent component: Int) -> CGFloat { 36 }
+        func pickerView(_ pickerView: UIPickerView, widthForComponent component: Int) -> CGFloat { parent.compact ? 40 : 64 }
+        func pickerView(_ pickerView: UIPickerView, rowHeightForComponent component: Int) -> CGFloat { parent.compact ? 22 : 36 }
 
         func pickerView(_ pickerView: UIPickerView, viewForRow row: Int, forComponent component: Int, reusing view: UIView?) -> UIView {
             let label = (view as? UILabel) ?? UILabel()
@@ -546,8 +772,9 @@ struct PrayerTimeWheel: UIViewRepresentable {
             }
             label.text = text
             label.textAlignment = .center
-            let base = UIFont.systemFont(ofSize: 23, weight: .regular)
-            label.font = UIFont(descriptor: base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor, size: 23)
+            let size: CGFloat = parent.compact ? (row == pickerView.selectedRow(inComponent: component) ? 19 : 15) : 23
+            let base = UIFont.systemFont(ofSize: size, weight: parent.compact ? .light : .regular)
+            label.font = UIFont(descriptor: base.fontDescriptor.withDesign(.rounded) ?? base.fontDescriptor, size: size)
             label.textColor = valid ? .label : .tertiaryLabel
             return label
         }
@@ -557,10 +784,11 @@ struct PrayerTimeWheel: UIViewRepresentable {
             case 0:
                 hour24 = row % 24
                 // AM/PM follows the hour, like the system wheel.
-                pickerView.selectRow(hour24 >= 12 ? 1 : 0, inComponent: 2, animated: true)
+                if parent.meridiem { pickerView.selectRow(hour24 >= 12 ? 1 : 0, inComponent: 2, animated: true) }
             case 1:
                 minute = row % 60
             default:
+                if parent.compact { pickerView.reloadComponent(2) }
                 // Tapping AM/PM moves the hour 12 either way, to the nearer row.
                 let wantPM = row == 1
                 if (hour24 >= 12) != wantPM {

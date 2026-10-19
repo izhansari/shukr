@@ -35,6 +35,16 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word. Middle / Closing were On time / Late until 2026-10-17 (owner: users read "on time" as just inside the window and "late" as outside it). The words live only in `PrayerScoring.Grade` (setup's legend and the tour read them there; the watch keeps a copy in `WatchScoring.word`); a shown number never passes its band (`points(for:)`: Middle ≤ 99, Closing ≤ 79). Siri and the Live Activity's VoiceOver say `spokenMark`: "Asr marked as prayed during the Closing window. Score: 66." (Qaza: "after its window, as Qaza"). The "usually Perfect" fact on Prayer scores stays Perfect-only (owner).
+- **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; Design's direction A, owner 2026-10-19): the map sheet's
+  header (name, "6:36 – 7:46 PM · when did you pray?", round ✕, and ✓ only when the time, the place or the note changed);
+  `PrayerWindowRing` — the window as a ring (green 30 min · yellow to the middle + 15 · red), the hollow dot dragged round it
+  (never past the end), a compact `PrayerTimeWheel` inside (AM/PM only when the range crosses noon or midnight; past the end
+  the dot rests grey), the score under it; then one card: Where (`PrayerPlaceNames.place`, Move → PrayerLocationPicker) ·
+  Photo (saves at once, "Saved") · Note (`PrayerPhotos.setNote`; Done or ✓ saves). No swipe to dismiss; ✕ with an edit →
+  "Discard your changes?". The tour's fix step shows the ring alone. The map's prayer page embeds `PrayerTimeEditor`.
+- **Place names** (`PrayerPlaceNames`, PrayerPhotos.swift): one name per prayer's place — the masjid, else the city — named
+  after each mark (`.journeyChanged`) and on activation (last 30 days, queued, retried when offline); read through
+  `place(for:)` (redraws on `PlaceNameRevision`).
 - Streaks: one streak at the user's goal (`PrayerGoal`, Settings → Journey; owner 2026-10-18 — the "In-Time Days" line went; a tap on the label goes streak ↔ Max), from the fresh start (`PrayerStats.countsFrom`); a day counts once; earlier days are recounted from rows (`refreshStreaksFromHistory`), Max from rows on a rule change or a restore (`recountBestStreak`); a rule change never celebrates (`rulesChanged`); perfect day = five Perfect. The day turns at Fajr (`PrayerDay.fajr`; no location → 3 AM); Isha ends 11:59 PM; zikr sessions follow the day (`sessionDayStart()`).
 
 **Excused from prayer** (Excused.swift + `ExcusedRange` / `Excused` in SharedTargetForIntents.swift; owner 2026-10-13, plan board/mocks/excused-days, decisions excused-where B · excused-name A · excused-zikr A)
