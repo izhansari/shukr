@@ -350,7 +350,8 @@ struct PrayerTimeEditor: View {
         return !cal.isDate(a, inSameDayAs: b) || (cal.component(.hour, from: a) < 12) != (cal.component(.hour, from: b) < 12)
     }
 
-    /// Why an out-of-range time can't be saved: nearer (on the clock) to the start → it's before the prayer; nearer the other
+    /// Why an out-of-range time can't be saved, in one short line (it shares the date line's slot, so the sheet never grows —
+    /// owner, 2026-10-19: "the view shifts"): nearer (on the clock) to the start → it's before the prayer; nearer the other
     /// end → it hasn't happened yet, or it's past the day's rollover.
     private var invalidReason: String {
         let cal = Calendar.current
@@ -360,13 +361,13 @@ struct PrayerTimeEditor: View {
         }
         func dist(_ a: Date, _ b: Date) -> Double { let x = abs(clock(a) - clock(b)); return min(x, 1440 - x) }
         if dist(draft, range.lowerBound) <= dist(draft, range.upperBound) {
-            return "That's before \(prayer.name) started at \(shortTimePM(range.lowerBound.addingTimeInterval(shift)))."
+            return "Before \(prayer.name) began at \(shortTimePM(range.lowerBound.addingTimeInterval(shift)))."
         }
         // The upper bound is now unless the day already rolled over before now.
         if range.upperBound < Date().addingTimeInterval(-60) {
-            return "That's after Fajr at \(shortTimePM(range.upperBound.addingTimeInterval(shift))) — the next day had started."
+            return "After Fajr at \(shortTimePM(range.upperBound.addingTimeInterval(shift))), the next day."
         }
-        return "That hasn't happened yet — it's \(shortTimePM(range.upperBound.addingTimeInterval(shift))) now."
+        return "Not yet. It's \(shortTimePM(range.upperBound.addingTimeInterval(shift))) now."
     }
 
     var body: some View {
@@ -375,7 +376,7 @@ struct PrayerTimeEditor: View {
             ZStack {
                 PrayerWindowRing(start: prayer.startTime, end: prayer.endTime, marked: draft, valid: isValid,
                                  onPick: pickFromRing)
-                VStack(spacing: 6) {
+                VStack(spacing: 2) {
                     // The tour's practice prayer reads on its plain clock (PracticeClock): the wheel shows, and picks,
                     // shifted times.
                     PrayerTimeWheel(time: Binding(get: { draft.addingTimeInterval(shift) }, set: { draft = $0.addingTimeInterval(-shift) }),
@@ -401,7 +402,9 @@ struct PrayerTimeEditor: View {
                         .animation(.snappy, value: score)
                     }
                 }
-                .offset(y: showsScore ? 8 : 0)
+                // The score sits just under the wheel, so the ring can stay small (owner, 2026-10-19: "make the circle a
+                // little smaller by moving the score line inside just a tad higher").
+                .offset(y: showsScore ? 4 : 0)
             }
             .frame(width: PrayerWindowRing.size, height: PrayerWindowRing.size)
             .frame(maxWidth: .infinity)
@@ -419,25 +422,22 @@ struct PrayerTimeEditor: View {
                 .transition(.opacity)
             }
 
-            if !isValid {
-                // Out of range: say what is allowed (✓ stays away until then).
-                Text(invalidReason)
-                    .font(.footnote)
-                    .fontWeight(.light)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .transition(.opacity)
-            }
-            // A time on another calendar day than the prayer's window (a Fajr made up the next morning): that day's date —
-            // the time is in the wheel. Its line is always there, faded out on the prayer's own day, so the card below
-            // never moves (owner, 2026-10-19: "ideally it doesn't shift the layout").
-            Text(draft.addingTimeInterval(shift).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+            // One line under the ring, always there so the card below never moves (owner, 2026-10-19: "ideally it doesn't
+            // shift the layout"; "the view shifts"): out of range, why it can't be saved (✓ stays away until then); on
+            // another calendar day than the prayer's window (a Fajr made up the next morning), that day's date — the time
+            // is in the wheel; otherwise empty, its height kept.
+            let otherDay = !Calendar.current.isDate(draft, inSameDayAs: prayer.startTime)
+            Text(isValid ? draft.addingTimeInterval(shift).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+                         : invalidReason)
                 .font(.footnote)
                 .fontWeight(.light)
                 .foregroundStyle(.secondary)
-                .opacity(isValid && !Calendar.current.isDate(draft, inSameDayAs: prayer.startTime) ? 1 : 0)
-                .animation(.easeInOut(duration: 0.2), value: Calendar.current.isDate(draft, inSameDayAs: prayer.startTime))
-                .accessibilityHidden(Calendar.current.isDate(draft, inSameDayAs: prayer.startTime))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .contentTransition(.opacity)
+                .opacity(!isValid || otherDay ? 1 : 0)
+                .animation(.easeInOut(duration: 0.2), value: !isValid || otherDay)
+                .accessibilityHidden(isValid && !otherDay)
         }
         .sensoryFeedback(.selection, trigger: grade)
     }
@@ -457,8 +457,8 @@ struct PrayerWindowRing: View {
     @Environment(\.circleTheme) private var theme
     @State private var dragging = false
 
-    static let size: CGFloat = 260
-    static let radius: CGFloat = 106
+    static let size: CGFloat = 240
+    static let radius: CGFloat = 98
     private static let gap = 2.4
 
     private var zones: [(from: Double, to: Double, score: Double)] {
