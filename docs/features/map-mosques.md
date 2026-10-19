@@ -5,6 +5,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 
 **Map & qibla** (LocationMapView2.swift, MapModes.swift)
 - Opens qibla-up (`pointQiblaUp`), free rotation, the compass ring on the dot (`MapAnchor`), a heavy buzz each second while aligned, `MapNorthButton` home.
+- The top pill: the compass hint (qibla), "N mosques nearby" (mosques), and with prayers on Az-Zalzalah 99:4 (`PrayerSpotsVerse`) in the count's place — the sheet says how many are in view (owner, 2026-10-19).
 - **One sheet** (`MapLayerSheet.swift`, map-one-sheet): up while prayer spots or mosques are on
   (`interactiveDismissDisabled`); `sheetDetent` small 84 / medium / large, the user's height kept. Content by state:
   mosques = list or `mosquePath.last`'s page; prayers = `PrayerSpotsHome` (prayers in view, `PrayerFilterMenu` on the
