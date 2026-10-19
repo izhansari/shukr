@@ -134,7 +134,7 @@ struct PrayerTimeEditSheet: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, 16)
+        .padding(.bottom, 4)   // the home bar's own inset is under it (Design saw ~50 pt spare at 16 + 8)
         .fontDesign(.rounded)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -188,7 +188,7 @@ struct PrayerTimeEditSheet: View {
     }
 
     /// The sheet fitted to what it holds.
-    private var fitted: PresentationDetent { contentHeight > 0 ? .height(min(contentHeight + 8, 760)) : .large }
+    private var fitted: PresentationDetent { contentHeight > 0 ? .height(min(contentHeight, 760)) : .large }
 
     /// Nothing ever waits (every box saved itself), so ✕ just closes.
     private func close() { onClose() }
