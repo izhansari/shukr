@@ -138,7 +138,9 @@ struct PrayerTimeEditSheet: View {
         .fontDesign(.rounded)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        // The Liquid Glass sheet (owner, 2026-10-19: "should we be using the translucent sheet, like the liquid glass sheet that
+        // we use in a lot of other places in the app?"): nothing painted on iOS 26, a material before; the boxes keep their fill.
+        .modifier(EditorSheetGlass())
         .onAppear { if tourTip { TourEditorPanelWindow.show() } }
         .onDisappear {
             TourEditorPanelWindow.hide()
@@ -272,25 +274,28 @@ struct PrayerTimeEditSheet: View {
         removing = nil
     }
 
-    // MARK: The grid (N2: owner 2026-10-19, "i love n2")
+    // MARK: The grid (N2: owner 2026-10-19, "i love n2"; round 2, "more rectangular than it is square")
 
-    private static let ringSide: CGFloat = 204
-    private static let noteHeight: CGFloat = 62
+    @State private var gridWidth: CGFloat = 370
     private static let gap: CGFloat = 8
+    private static let lowRow: CGFloat = 90
+    private var side: CGFloat { max((gridWidth - Self.gap) / 2, 120) }
 
-    /// Left: the ring box over the note; right: the map over the photo, each half the column.
+    /// Grid A: two equal squares on top, the ring box | the photo box; under them the map | the note, side by side.
     private var grid: some View {
-        HStack(alignment: .top, spacing: Self.gap) {
-            VStack(spacing: Self.gap) {
-                ringBox(size: 188).frame(width: Self.ringSide, height: Self.ringSide)
-                noteBox.frame(width: Self.ringSide, height: Self.noteHeight)
+        VStack(spacing: Self.gap) {
+            HStack(spacing: Self.gap) {
+                ringBox(size: side - 12).frame(width: side, height: side)
+                photoBox.frame(width: side, height: side)
             }
-            VStack(spacing: Self.gap) {
+            HStack(spacing: Self.gap) {
                 if showsLocation { mapBox }
-                photoBox
+                noteBox
             }
-            .frame(height: Self.ringSide + Self.gap + Self.noteHeight)
+            .frame(height: Self.lowRow)
         }
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
     }
 
     private func card<Content: View>(radius: CGFloat = 22, @ViewBuilder _ content: () -> Content) -> some View {
@@ -343,7 +348,7 @@ struct PrayerTimeEditSheet: View {
                     Text(savedNote.isEmpty ? "Add a note" : savedNote)
                         .font(.subheadline)
                         .foregroundStyle(savedNote.isEmpty ? .secondary : .primary)
-                        .lineLimit(2)
+                        .lineLimit(3)
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -438,20 +443,19 @@ struct PrayerTimeEditSheet: View {
                 }
             }
         } else if has {
+            // The photo sits in its box (owner, 2026-10-19: "prayer photos should still look like they're in a box. not just
+            // take up the box"): the day page's rounded square with the front camera's inset, its time a grey line under it.
             card {
                 GeometryReader { geo in
-                    PrayerPhotoCard(key: photoKey, width: geo.size.width, opens: !photoInWindow)
-                        .frame(width: geo.size.width, height: geo.size.height)
-                        .clipped()
+                    let w = max(min(geo.size.width, geo.size.height - 18) - 28, 40)
+                    VStack(spacing: 6) {
+                        PrayerPhotoCard(key: photoKey, width: w, opens: !photoInWindow)
+                        Text(photoSaved ? "Saved" : takenLine)
+                            .font(.caption2).foregroundStyle(photoSaved ? Color.sage : .secondary)
+                            .contentTransition(.opacity)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
-            }
-            .overlay(alignment: .bottomLeading) {
-                Text(photoSaved ? "Saved" : takenLine)
-                    .font(.caption2.weight(.medium)).foregroundStyle(.white)
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark))
-                    .padding(8)
-                    .contentTransition(.opacity)
             }
             .overlay {
                 if photoInWindow {
@@ -604,7 +608,7 @@ struct PrayerTimeEditor: View {
                                     day: prayer.startTime.addingTimeInterval(shift),
                                     range: range.lowerBound.addingTimeInterval(shift)...range.upperBound.addingTimeInterval(shift),
                                     compact: true, meridiem: showsMeridiem)
-                        .frame(width: showsMeridiem ? 132 : 92, height: boxed ? 84 : 110)
+                        .frame(width: min(showsMeridiem ? 132 : 92, ringSize * 0.7), height: boxed ? 84 : 110)
                         // The wheel keeps to its box (UIPickerView draws past it), its rows fading out top and bottom.
                         .clipped()
                         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.28),
@@ -1043,5 +1047,14 @@ struct PrayerTimeWheel: UIViewRepresentable {
             }
             publish(pickerView)
         }
+    }
+}
+
+
+/// The editor's sheet in Liquid Glass: nothing painted on iOS 26 (the partial sheet is glass), a material before (as the
+/// top-up sheet, AutoTopUp's TopUpSheetGlass).
+private struct EditorSheetGlass: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) { content } else { content.presentationBackground(.regularMaterial) }
     }
 }
