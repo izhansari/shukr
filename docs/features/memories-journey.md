@@ -97,8 +97,10 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   YourJourney.swift); three rows (`JourneyHomeRow`): To make up · Moments · Milestones (→ `JourneyMilestonesPage`); This
   month went with the goal (owner 2026-10-18). The card's streak and best streak are the Salah page's rule (`PrayerGoal`).
 - **The goal and the fresh start** (PrayerGoal.swift, FreshStart.swift; owner 2026-10-18, his picks for
-  board/goal-reset-inventory.md): Settings → Journey → Your goal (Pray all five · In their windows · On time · Perfect,
-  under the old `prayerStreakMode` key, each with its grades as a strip and the % of the last 30 marked days that met it) and Fresh start (one prayer day; the page,
+  board/goal-reset-inventory.md): Settings → Journey → Your goal (Perfect · Before closing · Before it ends · Made up counts,
+  under the old `prayerStreakMode` key; Design 2026-10-19, board/mocks/your-goal v3: a prayer's window as a ring — green
+  30 min, yellow half of the rest, red — whose hollow dot is dragged and springs to the end of its color, the goals on a
+  wheel inside; the list strictest first, Made up counts only there (grey dot at the end); no numbers) and Fresh start (one prayer day; the page,
   Design 2026-10-19: soft look, 30 pt title; Az-Zumar 39:53 centred in a pressed 256 pt ring that is itself held 1.5 s,
   "Hold the ring" a caption low in it with a light sweeping over it; a sage glow from the bottom, growing with the hold;
   then the ring rises (NeuLiftCard) and holds Day N, the facts give way to "One prayer at a time." + Bukhari 6464,
