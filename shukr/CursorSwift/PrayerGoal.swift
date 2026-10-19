@@ -40,22 +40,35 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         }
     }
 
-    /// Settings' words (owner, 2026-10-19: "all five is vague. we mean kaza counts"; "change “on time” to “before closing”
-    /// maybe? i think it's clearer").
+    /// The grade it reaches down to, in PrayerScoring's own words (Design's v7, owner 2026-10-19: "Perfect Middle Closing Qaza
+    /// as the items"): Settings' row, Your Data and the goal page read it. Was "Made up counts / Before it ends / Before
+    /// closing / Perfect".
     var title: String {
         switch self {
-        case .prayed: "Made up counts"
-        case .inWindow: "Before it ends"
-        case .onTime: "Before closing"
-        case .perfect: "Perfect"
+        case .prayed: PrayerScoring.Grade.qaza.rawValue
+        case .inWindow: PrayerScoring.Grade.late.rawValue
+        case .onTime: PrayerScoring.Grade.onTime.rawValue
+        case .perfect: PrayerScoring.Grade.perfect.rawValue
         }
     }
+    /// Its time, the goal page's second line ("I aim to complete my prayers…").
     var line: String {
         switch self {
-        case .prayed: "All five prayed, even made up later as Qaza."
-        case .inWindow: "All five before their time runs out."
-        case .onTime: "All five while they're green or yellow."
-        case .perfect: "All five in their first 30 minutes."
+        case .prayed: "Even made up later"
+        case .inWindow: "Before it ends"
+        case .onTime: "By 15 minutes past midpoint"
+        case .perfect: "In the first 30 minutes"
+        }
+    }
+    /// The goal page's order: strictest first.
+    static let strictestFirst: [PrayerGoal] = [.perfect, .onTime, .inWindow, .prayed]
+    /// Where it stops counting on the welcome's 150-minute window (the Prayer circle card): Perfect 0.2, Middle 0.6, Closing to
+    /// the end, Qaza the end and grey (it's after the window).
+    var arcEnd: Double {
+        switch self {
+        case .perfect: 0.2
+        case .onTime: 0.6
+        case .inWindow, .prayed: 1
         }
     }
     /// A day that met it, in a few words (the legend, the runs): "All five prayed", "All five Perfect" …
@@ -141,34 +154,36 @@ struct PrayerGoalSettingsRow: View {
     }
 }
 
-/// Your goal (Design, 2026-10-19; canvas board/mocks/your-goal v3 — owner: "I like this design … I just want to keep it
-/// simple without the stats, just so it's not intimidating"; "no labels"; "copy inside should have motion that's simple but
-/// clean … like a wheel selector"; then "we should match the plain settings look … the arc is super thick. let's match the
-/// arc and ring of how the prayer would actually look in its window on salah page … moving the wheel up and down with
-/// finger moves the dot proportionally"). Settings' plain grouped look: a light title over one grey line; the hero is a
-/// prayer's window drawn as the Salah page draws one — green the first 30 minutes, yellow half of what's left, red to the
-/// end (PrayerScoring), in the theme's band and arc — and the marked ring's hollow dot is the slider: drag it round, let go
-/// and it springs to the end of its color. Inside, the goals sit on a wheel: it rolls as the dot crosses a color, and a
-/// finger rolling it moves the dot. Under it the four goals in a Settings card, strictest first; Made up counts is only
-/// there and at the wheel's last step (the dot rests at the end and turns grey: Qaza is after the window). No numbers.
+/// Your goal (Design's v7, 2026-10-19; spec board/mocks/your-goal/spec.md, canvas tab v7 S1 — owner: "Let's try using the
+/// graphic that we have in the onboarding setup with that demo of the prayer ring … as the display of our goal"; "there's no
+/// more spinning the dial thing"; "I want them to have to press a save button that only turns on when it's necessary"; "Maybe
+/// say 'I aim to complete my prayers...' Perfect Middle Closing Qaza as the items"; "close out the list and leave only the
+/// selected option with a bit of text above it"). Settings' plain grouped look: the title and the streaks sentence; the
+/// welcome's Prayer circle card, its arc ending where the goal being tried stops counting (Qaza grey) round your CURRENT
+/// streak; the four goals strictest first, each with its time; Save (onboarding's, live only when the goal tried differs),
+/// and one line under it saying what your streak would become. Save closes out the list to your pick, rolls the number,
+/// swells the arc once and closes the page. Tried and dropped: the dial (a ring, its dot as a slider, a wheel of words) and
+/// Cancel.
 struct PrayerGoalPage: View {
-    /// The goal being tried (the dot, the wheel, the list) — only Save makes it yours (owner, 2026-10-19: "add a save button
-    /// to bottom of your goal page. and cancel line i guess if different from current goal").
+    /// The goal being tried — only Save makes it yours.
     @State private var goal = PrayerGoal.current
     /// Yours, as saved: its radio keeps an outline of its own while you try others.
     @State private var current = PrayerGoal.current
-    @Environment(\.dismiss) private var dismiss
-    /// The dot's place round the ring (degrees from the top), how grey it is (Made up counts), and the wheel's place
-    /// (0 Perfect … 3 Made up counts). All three spring together.
-    @State private var angle = PrayerGoalDial.rest(PrayerGoal.current)
-    @State private var grey: Double = PrayerGoal.current == .prayed ? 1 : 0
-    @State private var wheel = PrayerGoalDial.index(PrayerGoal.current)
-    @State private var drag: PrayerGoalDial.Drag = .none
-    @State private var wheelFrom = 0.0
-    /// Each goal's streak and days met, counted once when the page opens (GoalPreview); nil until then.
+    /// The arc's end and grey, animated between goals (PrayerGoal.arcEnd).
+    @State private var arcEnd = PrayerGoal.current.arcEnd
+    @State private var arcGrey: Double = PrayerGoal.current == .prayed ? 1 : 0
+    @State private var arcSwell: Double = 0
+    /// The number in the ring: your saved goal's streak (it moves only on Save).
+    @State private var shownStreak: Int?
+    /// Each goal's streak, counted once when the page opens (GoalPreview); nil until then.
     @State private var previews: [PrayerGoal: GoalPreview]?
-    @State private var sinceFreshStart = false
+    /// Save's moment is playing: the list closes out to the pick; nothing takes a tap.
+    @State private var saving = false
+    @State private var checkDrawn: CGFloat = 0
+    @State private var savedTick = 0
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ScrollView {
@@ -176,32 +191,26 @@ struct PrayerGoalPage: View {
                 VStack(spacing: 8) {
                     // The app's page title (Give to Causes, Fresh start): 30 pt light rounded.
                     Text("Your goal").font(.system(size: 30, weight: .light, design: .rounded))
-                    Text("What a day needs to keep your streak.").font(.subheadline).foregroundStyle(.secondary)
+                    Text("Your streak grows by a day each time all five prayers meet your goal. Changing your goal recounts your past days. Your prayers' scores stay the same.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 20)
                 }
                 .multilineTextAlignment(.center)
                 .padding(.top, 8)
 
-                PrayerGoalDial(angle: angle, grey: grey, wheel: wheel, drag: drag)
-                    .frame(width: PrayerGoalDial.size, height: PrayerGoalDial.size)
-                    .contentShape(Circle())
-                    .gesture(dialDrag)
-                    .padding(.top, 18)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Your goal")
-                    .accessibilityValue("\(goal.title). \(goal.line)")
-                    .accessibilityAdjustableAction { direction in
-                        let i = PrayerGoalDial.order.firstIndex(of: goal) ?? 1
-                        let next = direction == .increment ? min(i + 1, PrayerGoalDial.order.count - 1) : max(i - 1, 0)
-                        pick(PrayerGoalDial.order[next])
-                    }
+                PrayerCircleCard(ringSize: 140, ringPadding: 16) {
+                    WelcomeSweep(gone: arcEnd, grey: arcGrey, swell: arcSwell, size: 140, endsPure: true)
+                        .overlay { streakInRing }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Prayer circle, \(goal.title). Current streak \(shownStreak ?? 0) days.")
 
-                preview.padding(.top, 10)
-
-                list.padding(.top, 14)
-
-                Text("Scores never change. Change it any time.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                    .padding(.top, 14).padding(.bottom, 24)
+                header.padding(.top, 18)
+                list.padding(.top, 7)
+                    .padding(.bottom, 24)
             }
             .fontDesign(.rounded)
         }
@@ -209,299 +218,188 @@ struct PrayerGoalPage: View {
         .safeAreaInset(edge: .bottom) { saveBar }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
+        // Back never saves; during Save's moment nothing is touched, the back swipe included.
+        .navigationBarBackButtonHidden(saving)
+        .allowsHitTesting(!saving)
         .sensoryFeedback(.selection, trigger: goal)
+        .sensoryFeedback(.success, trigger: savedTick)
         .task {
             let container = context.container
             let ranges = Excused.ranges
-            sinceFreshStart = FreshStart.dayKey != nil
             let counted = await GoalPreview.all(container: container, ranges: ranges)
-            withAnimation(.easeOut(duration: 0.25)) { previews = counted }
+            withAnimation(.easeOut(duration: 0.25)) {
+                previews = counted
+                shownStreak = counted[current]?.streak ?? 0
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
             // Changed elsewhere (a restore, another device): follow it, unless another goal is being tried here.
+            guard !saving else { return }
             let was = current
             current = PrayerGoal.current
-            guard drag == .none, goal == was, current != goal else { return }
-            goal = current
-            angle = PrayerGoalDial.rest(goal); grey = goal == .prayed ? 1 : 0; wheel = PrayerGoalDial.index(goal)
+            guard goal == was, current != goal else { return }
+            pick(current)
         }
     }
 
-    /// One drag, two ways, decided where it starts: on the band the dot follows the finger round (its colors only); inside
-    /// the ring the finger rolls the wheel and the dot moves with it, step for step. Let go: both spring to a goal.
-    private var dialDrag: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .onChanged { v in
-                let c = PrayerGoalDial.size / 2
-                if drag == .none {
-                    let fromCentre = hypot(v.startLocation.x - c, v.startLocation.y - c)
-                    drag = fromCentre < PrayerGoalDial.radius - 26 ? .wheel : .ring
-                    wheelFrom = wheel
-                }
-                switch drag {
-                case .ring:
-                    var a = atan2(v.location.x - c, -(v.location.y - c)) * 180 / .pi
-                    if a < 0 { a += 360 }
-                    // The top is where the window starts and ends: never wrap past it.
-                    if a < PrayerGoalDial.minAngle || a > PrayerGoalDial.maxAngle { a = angle > 180 ? PrayerGoalDial.maxAngle : PrayerGoalDial.minAngle }
-                    angle = a
-                    if grey > 0 { withAnimation(.smooth(duration: 0.25)) { grey = 0 } }
-                    // The wheel rolls once, calmly, when the goal under the dot changes — it used to follow the dot over the
-                    // 10° past each color's start and flicked by (owner, 2026-10-19: "wheel switches real fast when dragging
-                    // the ring dot").
-                    let now = PrayerGoalDial.goal(at: a)
-                    if now != goal {
-                        goal = now
-                        withAnimation(PrayerGoalDial.wheelRoll) { wheel = PrayerGoalDial.index(now) }
-                    }
-                case .wheel:
-                    // Up rolls the next goal in from below, as a picker wheel does.
-                    let p = min(max(wheelFrom - Double(v.translation.height) / PrayerGoalDial.step, 0), 3)
-                    wheel = p
-                    angle = PrayerGoalDial.angle(atWheel: p)
-                    grey = max(0, p - 2)
-                    let now = PrayerGoalDial.order[Int(p.rounded())]
-                    if now != goal { goal = now }
-                case .none: break
-                }
-            }
-            .onEnded { _ in
-                let g = drag == .wheel ? PrayerGoalDial.order[Int(wheel.rounded())] : PrayerGoalDial.goal(at: angle)
-                drag = .none
-                pick(g)
-            }
-    }
-
-    /// Try a goal: the dot, the wheel and the preview move to it; nothing is saved until Save.
-    private func pick(_ g: PrayerGoal) {
-        goal = g
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.74)) {
-            angle = PrayerGoalDial.rest(g)
-            grey = g == .prayed ? 1 : 0
-            wheel = PrayerGoalDial.index(g)
-        }
-    }
-
-    /// Save and Cancel at the bottom, onboarding's own pair (PrimaryButton / SecondaryButton; owner, 2026-10-19: "not a sage
-    /// button. copy the buttons we use in onboarding"): Save only works (and only looks it) once the goal tried differs from
-    /// yours; "Cancel" back to yours shows only then, its space kept so nothing moves.
-    private var saveBar: some View {
-        let changed = goal != current
-        return VStack(spacing: 0) {
-            PrimaryButton(title: "Save", enabled: changed) {
-                PrayerGoal.set(goal)
-                current = goal
-                dismiss()
-            }
-            SecondaryButton(title: "Cancel") { pick(current) }
-                .opacity(changed ? 1 : 0)
-                .allowsHitTesting(changed)
-                .accessibilityHidden(!changed)
-        }
-        .animation(.easeInOut(duration: 0.2), value: changed)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
-        .background(Color(.systemGroupedBackground))
-    }
-
-    /// The goal under the dot (or the wheel), as it would be (owner, 2026-10-19, UC9R + PBUP: how the streak would change and
-    /// "add percentage of days met too … just choose something good"): the streak in light type, then the days that met it and
-    /// the %. Quiet, one goal at a time, never a table (Design kept this page free of a scoreboard); always the same height, so
-    /// the list below never moves.
-    private var preview: some View {
-        let p = previews?[goal]
-        let streak = p.map { $0.streak == 0 ? "0-day streak" : $0.streak == 1 ? "1-day streak" : "\($0.streak)-day streak" } ?? " "
-        let days: String = {
-            guard let p, p.judged > 0 else { return " " }
-            let base = "Met on \(p.met) of \(p.judged) days" + (p.rate.map { " · \($0)%" } ?? "")
-            return base + (sinceFreshStart ? " since your fresh start" : "")
-        }()
-        return VStack(spacing: 3) {
-            Text(streak)
-                .font(.system(size: 19, weight: .light, design: .rounded))
-                .contentTransition(.numericText(value: Double(p?.streak ?? 0)))
-            Text(days)
-                .font(.footnote).foregroundStyle(.secondary)
-                .lineLimit(1).minimumScaleFactor(0.8)
-                .contentTransition(.numericText(value: Double(p?.met ?? 0)))
-        }
-        .animation(.snappy(duration: 0.25), value: goal)
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 24)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(p == nil ? "" : "With \(goal.title): \(streak). \(days)")
-    }
-
-    /// The four goals in a Settings card, strictest first: a hollow dot in the color each one ends on, the name, a radio
-    /// circle filled on yours.
-    private var list: some View {
+    /// Your current streak in the ring (your saved goal's — what "current" says), and its word.
+    private var streakInRing: some View {
         VStack(spacing: 0) {
-            ForEach(Array(PrayerGoalDial.order.enumerated()), id: \.element) { i, option in
+            Text("\(shownStreak ?? 0)")
+                .font(.system(size: 36, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(shownStreak ?? 0)))
+            Text("current streak")
+                .font(.caption2).foregroundStyle(.secondary)
+        }
+        .opacity(shownStreak == nil ? 0 : 1)
+    }
+
+    /// The list's header, the Settings header spot; at Save it says what the one row left means.
+    private var header: some View {
+        ZStack(alignment: .leading) {
+            Text("I aim to complete my prayers…").opacity(saving ? 0 : 1)
+            Text("Your goal is now").opacity(saving ? 1 : 0)
+        }
+        .font(.footnote).foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 36)
+        .animation(.easeInOut(duration: 0.3), value: saving)
+    }
+
+    /// The four goals in a Settings card, strictest first: a radio (sage on the one tried, an ink outline on yours), the
+    /// grade's name over its time. At Save the others go and the card closes round your pick.
+    private var list: some View {
+        let rows = saving && !reduceMotion ? [goal] : PrayerGoal.strictestFirst
+        return VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.element) { i, option in
                 Button { pick(option) } label: {
                     HStack(spacing: 14) {
-                        Circle().strokeBorder(PrayerGoalDial.color(of: option), lineWidth: 2.4).frame(width: 13, height: 13)
-                            .frame(width: 24)
-                        Text(option.title).foregroundStyle(.primary)
+                        GoalRadio(on: option == goal, current: option == current && !saving)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(option.title).foregroundStyle(.primary)
+                            Text(option.line).font(.footnote).foregroundStyle(.secondary)
+                        }
                         Spacer(minLength: 8)
-                        GoalRadio(on: option == goal, current: option == current)
                     }
-                    .frame(minHeight: 50)
+                    .frame(minHeight: 56)
                     .padding(.horizontal, 16)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // Reduce Motion: the others fade where they are, nothing moves.
+                .opacity(saving && reduceMotion && option != goal ? 0 : 1)
+                .transition(.opacity.animation(.easeOut(duration: 0.2)))
                 .accessibilityLabel("\(option.title). \(option.line)")
                 .accessibilityAddTraits(option == goal ? .isSelected : [])
                 .accessibilityHint(option == current ? "Your goal now" : "")
-                if i < PrayerGoalDial.order.count - 1 { Divider().padding(.leading, 54) }
+                if i < rows.count - 1 { Divider().padding(.leading, 52) }
             }
         }
         .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
         .padding(.horizontal, 20)
     }
-}
 
-/// The ring, the dot and the wheel of words, drawn from values that animate (the dot's angle, its grey, the wheel's place),
-/// so a spring moves them all together, frame by frame.
-struct PrayerGoalDial: View, Animatable {
-    var angle: Double
-    var grey: Double
-    var wheel: Double
-    var drag: Drag
-    enum Drag { case none, ring, wheel }
-    var animatableData: AnimatablePair<Double, AnimatablePair<Double, Double>> {
-        get { AnimatablePair(angle, AnimatablePair(grey, wheel)) }
-        set { angle = newValue.first; grey = newValue.second.first; wheel = newValue.second.second }
+    /// Try a goal: the arc sweeps steadily to where it stops counting, its colour turning as it crosses each boundary.
+    private func pick(_ g: PrayerGoal) {
+        goal = g
+        let distance = abs(g.arcEnd - arcEnd)
+        let sweep = reduceMotion ? Animation.easeOut(duration: 0.2) : .easeInOut(duration: 0.35 + 1.1 * distance)
+        withAnimation(sweep) { arcEnd = g.arcEnd }
+        withAnimation(.easeInOut(duration: 0.3)) { arcGrey = g == .prayed ? 1 : 0 }
     }
-    @Environment(\.circleTheme) private var theme
 
-    static let size: CGFloat = 290
-    /// The ring's radius: a little larger than the Salah page's 200 pt circle (room for the wheel), the same band, arc and
-    /// dot.
-    static let radius: CGFloat = 118
-    /// The wheel's roll to the dot's goal while the dot is dragged round the ring.
-    static let wheelRoll = Animation.smooth(duration: 0.45)
-    /// How far a finger moves the wheel one goal.
-    static let step: Double = 64
-    static let minAngle = 8.0, maxAngle = 352.0
-    /// A prayer's window clockwise from the top, drawn for about a three-hour window: Perfect the first 30 minutes, Middle
-    /// half of what's left, Closing the rest (PrayerScoring.score). Degrees; small gaps between them, as the day's fifths.
-    static let zones: [(from: Double, to: Double, score: Double)] = [(4, 62, 1), (62, 208, 0.9), (208, 356, 0.7)]
-    static let gap = 2.4
-    static let order: [PrayerGoal] = [.perfect, .onTime, .inWindow, .prayed]
-    static func index(_ g: PrayerGoal) -> Double { Double(order.firstIndex(of: g) ?? 1) }
-    /// Where the dot rests for a goal: just inside the end of its color (Made up counts: the end, grey).
-    static func rest(_ g: PrayerGoal) -> Double {
-        switch g { case .perfect: 58; case .onTime: 204; case .inWindow, .prayed: maxAngle }
+    /// What Save would do to your streak, in one line (its height always kept).
+    private var whatIf: String {
+        guard goal != current, let previews, let n = previews[goal]?.streak, let m = previews[current]?.streak else {
+            return "Tap a goal to see what your streak would be."
+        }
+        func days(_ k: Int) -> String { k == 1 ? "1 day" : "\(k) days" }
+        if n == m { return "Switching to \(goal.title) keeps your streak at \(days(m))." }
+        if n == 0 { return "Switching to \(goal.title) starts your streak over." }
+        return "Switching to \(goal.title) makes your streak \(days(n))."
     }
-    static func goal(at a: Double) -> PrayerGoal { a <= zones[0].to ? .perfect : a <= zones[1].to ? .onTime : .inWindow }
-    /// The dot's place for the wheel's: straight between the goals' rests (the end for Made up counts).
-    static func angle(atWheel p: Double) -> Double {
-        let rests = [rest(.perfect), rest(.onTime), rest(.inWindow)]
-        if p >= 2 { return rests[2] }
-        let i = Int(p), t = p - Double(i)
-        return rests[i] + (rests[i + 1] - rests[i]) * t
-    }
-    static func color(of g: PrayerGoal) -> Color {
-        switch g { case .perfect: PrayerScoring.color(for: 1); case .onTime: PrayerScoring.color(for: 0.9)
-        case .inWindow: PrayerScoring.color(for: 0.7); case .prayed: PrayerScoring.color(for: PrayerScoring.qaza) }
-    }
-    /// Just past a boundary the dot's color blends from the last one over 10° (fluid as it moves, pure where it rests).
-    private static let blend = 10.0
 
-    /// The dot's color: from the ring under it, or — while a finger rolls the wheel — from the goals the wheel is between;
-    /// then toward grey for Made up counts.
-    private var dotColor: Color {
-        var c: Color
-        if drag == .wheel {
-            let i = min(Int(wheel), 2), t = min(max(wheel - Double(i), 0), 1)
-            c = Self.color(of: Self.order[i]).mix(with: Self.color(of: Self.order[min(i + 1, 2)]), by: i < 2 ? t : 0)
-        } else {
-            c = PrayerScoring.color(for: Self.zones[0].score)
-            for (i, z) in Self.zones.enumerated() where i > 0 && angle > z.from {
-                c = PrayerScoring.color(for: z.score)
-                if angle < z.from + Self.blend {
-                    c = PrayerScoring.color(for: Self.zones[i - 1].score).mix(with: c, by: (angle - z.from) / Self.blend)
+    /// Save — onboarding's PrimaryButton look, faded and off until the goal tried differs from yours — and the line under
+    /// it. At Save the check draws in and it says "Saved".
+    private var saveBar: some View {
+        let changed = goal != current
+        return VStack(spacing: 0) {
+            Button(action: save) {
+                HStack(spacing: 7) {
+                    if saving {
+                        SaveCheck(drawn: checkDrawn).frame(width: 17, height: 13)
+                    }
+                    Text(saving ? "Saved" : "Save")
                 }
+                .font(.system(.body, design: .rounded, weight: .medium))
+                .foregroundStyle(Color.sage)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 54)
+                .background(Capsule().fill(Color.sage.opacity(0.14)))
+                .overlay(Capsule().stroke(Color.sage.opacity(0.45), lineWidth: 1))
+                .contentShape(Capsule())
             }
+            .buttonStyle(.plain)
+            .opacity(changed || saving ? 1 : 0.4)
+            .disabled(!changed || saving)
+            .padding(.horizontal, 24)
+            Text(whatIf)
+                .font(.subheadline).foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.75)
+                .padding(.horizontal, 24)
+                .frame(height: 40)
+                .opacity(saving ? 0 : 1)
+                .animation(.easeOut(duration: 0.2), value: saving)
+                .contentTransition(.opacity)
+                .animation(.easeOut(duration: 0.2), value: whatIf)
         }
-        return c.mix(with: PrayerScoring.color(for: PrayerScoring.qaza), by: grey)
+        .animation(.easeInOut(duration: 0.2), value: changed)
+        .padding(.top, 8)
+        .background(Color(.systemGroupedBackground))
     }
 
-    var body: some View {
-        let r = Self.radius, d = r * 2
-        ZStack {
-            track.frame(width: d, height: d)
-            // The day ring's thickness: half the prayer arc's band (owner, 2026-10-19: "change color ring thickness on goal page
-            // to match thickness of rings shows on the day ring. it's too thick rn").
-            let band = theme.arc.width * 0.5
-            ForEach(Array(Self.zones.enumerated()), id: \.offset) { _, z in
-                let color = PrayerScoring.color(for: z.score)
-                let a0 = z.from + Self.gap / 2, a1 = z.to - Self.gap / 2, lit = min(a1, angle)
-                arc(a0, a1).stroke(color.opacity(0.16), style: StrokeStyle(lineWidth: band, lineCap: theme.arc.cap))
-                    .frame(width: d, height: d)
-                if lit > a0 + 0.5 {
-                    arc(a0, lit).stroke(color, style: StrokeStyle(lineWidth: band, lineCap: theme.arc.cap))
-                        .frame(width: d, height: d)
-                        .shadow(color: color.opacity(theme.arc.glow), radius: 6)
-                }
+    /// Save's moment (about 1.7 s, then the page closes): a success buzz, the check draws in, the list closes out to your pick
+    /// under "Your goal is now", the number rolls to the new streak, the arc swells once. Reduce Motion: crossfades only.
+    private func save() {
+        guard goal != current, !saving else { return }
+        let newStreak = previews?[goal]?.streak
+        PrayerGoal.set(goal)
+        current = goal
+        savedTick += 1
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.42, dampingFraction: 0.8)) { saving = true }
+        withAnimation(.easeOut(duration: 0.3)) { checkDrawn = 1 }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.15))
+            if reduceMotion { shownStreak = newStreak ?? shownStreak } else {
+                withAnimation(.smooth(duration: 0.5)) { shownStreak = newStreak ?? shownStreak }
             }
-            // The marked ring's hollow dot (PrayerCompletionFX: 12 pt at 200, a 2.4 pt rim), a touch bigger as a slider.
-            Circle()
-                .fill(Color(.systemGroupedBackground))
-                .overlay(Circle().strokeBorder(dotColor, lineWidth: 2.8))
-                .frame(width: 15, height: 15)
-                .scaleEffect(drag == .none ? 1 : 1.35)
-                .offset(x: r * sin(angle * .pi / 180), y: -r * cos(angle * .pi / 180))
-            words.frame(width: d - 56, height: d - 30)
-        }
-        .frame(width: Self.size, height: Self.size)
-        .animation(.snappy(duration: 0.2), value: drag)
-    }
-
-    /// The Salah page's track in the theme: the soft raised band, or the plain grey one.
-    @ViewBuilder private var track: some View {
-        if theme.track.lifted {
-            Circle()
-                .stroke(lineWidth: theme.track.width)
-                .foregroundStyle(theme.surface)
-                .shadow(color: theme.shade, radius: 4, x: 2, y: 2)
-                .shadow(color: theme.light, radius: 6, x: -2, y: -2)
-        } else {
-            Circle().stroke(theme.track.fill, lineWidth: theme.track.width)
-        }
-    }
-
-    private func arc(_ from: Double, _ to: Double) -> some Shape {
-        Circle().trim(from: from / 360, to: to / 360).rotation(.degrees(-90))
-    }
-
-    /// The four goals on a drum, like the Clock app's wheel: the one in the middle at full size with its line, the next
-    /// ones turned away and faint above and below, fading out at the top and bottom.
-    private var words: some View {
-        ZStack {
-            ForEach(Array(Self.order.enumerated()), id: \.element) { i, g in
-                let d = Double(i) - wheel, near = abs(d)
-                VStack(spacing: 6) {
-                    Text(g.title).font(.system(size: 23, weight: .light, design: .rounded)).lineLimit(1).minimumScaleFactor(0.75)
-                    Text(g.line).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .opacity(max(0, 1 - near * 1.8))
-                }
-                .rotation3DEffect(.degrees(-d * 50), axis: (x: 1, y: 0, z: 0), perspective: 0.6)
-                .offset(y: d * 70)
-                .opacity(max(0, 1 - near * 0.8))
-                .accessibilityHidden(true)
+            if !reduceMotion {
+                try? await Task.sleep(for: .seconds(0.25))
+                withAnimation(.easeOut(duration: 0.25)) { arcSwell = 1 }
+                try? await Task.sleep(for: .seconds(0.25))
+                withAnimation(.easeInOut(duration: 0.3)) { arcSwell = 0 }
+                try? await Task.sleep(for: .seconds(0.8))
+            } else {
+                try? await Task.sleep(for: .seconds(1.35))
             }
+            dismiss()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)   // the fade spans the wheel's box, not just the words in it
-        .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.24),
-                                     .init(color: .black, location: 0.76), .init(color: .clear, location: 1)],
-                             startPoint: .top, endPoint: .bottom))
-        .allowsHitTesting(false)
     }
 }
 
+/// Save's check, drawn in as it says "Saved".
+private struct SaveCheck: Shape {
+    var drawn: CGFloat
+    var animatableData: CGFloat { get { drawn } set { drawn = newValue } }
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX + r.width * 0.11, y: r.minY + r.height * 0.54))
+        p.addLine(to: CGPoint(x: r.minX + r.width * 0.36, y: r.maxY - r.height * 0.14))
+        p.addLine(to: CGPoint(x: r.maxX - r.width * 0.11, y: r.minY + r.height * 0.14))
+        return p.trimmedPath(from: 0, to: drawn).strokedPath(StrokeStyle(lineWidth: 2.4, lineCap: .round, lineJoin: .round))
+    }
+}
 
 /// Your goal's preview, per goal (owner, 2026-10-19, UC9R + PBUP): the streak you'd have now and how many of your marked days
 /// met it — from the fresh start if there is one, else all your history. Counted the way Journey counts (its card's rate and

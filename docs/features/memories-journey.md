@@ -97,11 +97,15 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   YourJourney.swift); three rows (`JourneyHomeRow`): To make up · Moments · Milestones (→ `JourneyMilestonesPage`); This
   month went with the goal (owner 2026-10-18). The card's streak and best streak are the Salah page's rule (`PrayerGoal`).
 - **The goal and the fresh start** (PrayerGoal.swift, FreshStart.swift; owner 2026-10-18, his picks for
-  board/goal-reset-inventory.md): Settings → Journey → Your goal (Perfect · Before closing · Before it ends · Made up counts,
-  under the old `prayerStreakMode` key; Design 2026-10-19, board/mocks/your-goal v3: a prayer's window as a ring — green
-  30 min, yellow half of the rest, red — whose hollow dot is dragged and springs to the end of its color, the goals on a
-  wheel inside that a finger also rolls (the dot follows); Settings' plain grouped look, the Salah ring's band and arc; the
-  list strictest first, Made up counts only there (grey dot at the end); no numbers; new installs start on Before closing,
+  board/goal-reset-inventory.md): Settings → Journey → Your goal (Perfect · Middle · Closing · Qaza — the grade words,
+  `PrayerGoal.title`; under the old `prayerStreakMode` key; Design's v7, 2026-10-19, board/mocks/your-goal/spec.md): the
+  title and the streaks sentence; the setup welcome's Prayer circle card (`PrayerCircleCard` + `WelcomeSweep`, shared with
+  the welcome, which keeps its Play demo) whose arc ends where the goal tried stops counting (`arcEnd` 0.2 / 0.6 / 1, Qaza
+  grey), round YOUR current streak; "I aim to complete my prayers…" over the four rows (radio + name over its time); a tap
+  only tries a goal — Save (onboarding's PrimaryButton look, off until it differs) and one line under it ("Switching to
+  Middle makes your streak 3 days." …, `GoalPreview`); Save's moment: success buzz, "✓ Saved", the list closes to the pick
+  under "Your goal is now", the number rolls, the arc swells, the page closes at ~1.7 s (Reduce Motion: crossfades); Back
+  never saves; new installs start on Middle,
   existing users keep what an unset goal meant — FirstRunSetup.migrateDefaults) and Fresh start (one prayer day; the page,
   Design 2026-10-19: soft look, 30 pt title; Az-Zumar 39:53 centred in a pressed 256 pt ring that is itself held 1.5 s,
   "Hold the ring" a caption low in it with a light sweeping over it; a sage glow from the bottom, growing with the hold;

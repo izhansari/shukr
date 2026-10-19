@@ -1841,35 +1841,18 @@ private struct WelcomeRingDemo: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Text("Prayer circle")
-                        .font(.system(.caption, design: .rounded, weight: .semibold))
-                        .foregroundStyle(Color.primary.opacity(0.7))
-                    Button { run += 1 } label: {
-                        Label("Play demo", systemImage: "play.fill")
-                            .labelStyle(.titleAndIcon)
-                            .font(.system(.caption, design: .rounded, weight: .medium))
-                            .imageScale(.small)
-                            .foregroundStyle(Color.sage)
-                    }
-                    .buttonStyle(.plain)
+            PrayerCircleCard(ringSize: 112, ringPadding: 32) {
+                Button { run += 1 } label: {
+                    Label("Play demo", systemImage: "play.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(.caption, design: .rounded, weight: .medium))
+                        .imageScale(.small)
+                        .foregroundStyle(Color.sage)
                 }
-                .padding(.leading, 4)
+                .buttonStyle(.plain)
+            } ring: {
                 // 80 % of the first size in the same panel, so it breathes (owner).
                 WelcomeSweep(gone: gone, arcOpacity: arcShown ? 1 : 0)
-                    .frame(width: 112, height: 112)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
-                    // The page's own soft surface, so the raised band reads as it does on the Salah page.
-                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(theme.surface))
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity)
-            .background {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(LinearGradient(colors: [Color.sage.opacity(0.55), Color.sage.opacity(0.18)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
             }
             // A tap on the graphic plays it again (owner).
             .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -1910,13 +1893,6 @@ private struct WelcomeRingDemo: View {
     }
 }
 
-/// The window's three parts, as `PrayerScoring` grades a 150-minute window: Perfect for the first 30 minutes (0.2),
-/// Middle for the first half of the rest (to 0.6), then Closing.
-private enum WelcomeWindow {
-    static func part(_ gone: Double) -> Int { gone < 0.2 ? 0 : gone < 0.6 ? 1 : 2 }
-    static let colours: [Color] = [.green, .yellow, .red]
-}
-
 /// The three parts of the window under the welcome's card; the one the ring is in, in its colour.
 private struct WelcomeSweepParts: View, Animatable {
     var gone: Double
@@ -1941,47 +1917,6 @@ private struct WelcomeSweepParts: View, Animatable {
                 .frame(maxWidth: .infinity, alignment: .top)
             }
         }
-    }
-}
-
-/// The Salah page's ring in its soft look at 140 pt: the raised band, and on it the arc filled to what's gone, from the
-/// top, clockwise, in the colour of where it is (the theme's arc width, round cap and glow).
-private struct WelcomeSweep: View, Animatable {
-    var gone: Double
-    /// Only the arc fades (the replay); the band stays.
-    var arcOpacity: Double = 1
-    var animatableData: AnimatablePair<Double, Double> {
-        get { AnimatablePair(gone, arcOpacity) }
-        set { gone = newValue.first; arcOpacity = newValue.second }
-    }
-    @Environment(\.circleTheme) private var theme
-
-    /// Blended across each boundary (a short crossfade either side), so the colour turns rather than snaps.
-    private var colour: Color {
-        let band = 0.035
-        func mix(_ a: Color, _ b: Color, at edge: Double) -> Color? {
-            guard abs(gone - edge) < band else { return nil }
-            return a.mix(with: b, by: (gone - edge + band) / (2 * band))
-        }
-        return mix(.green, .yellow, at: 0.2) ?? mix(.yellow, .red, at: 0.6)
-            ?? WelcomeWindow.colours[WelcomeWindow.part(gone)]
-    }
-
-    var body: some View {
-        let colour = self.colour
-        ZStack {
-            NeuRingTrack()
-            Circle()
-                .trim(from: 0, to: max(gone, 0.002))
-                .stroke(colour, style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
-                .rotationEffect(.degrees(-90))
-                .frame(width: 200, height: 200)
-                .shadow(color: colour.opacity(theme.arc.glow), radius: 6)
-                .opacity(arcOpacity)
-        }
-        // Drawn at the Salah ring's 200 pt (its band and glow as they are there), shown at 112.
-        .scaleEffect(0.56)
-        .frame(width: 112, height: 112)
     }
 }
 
