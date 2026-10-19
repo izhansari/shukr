@@ -276,7 +276,9 @@ struct PrayerTimeEditSheet: View {
 
     // MARK: The grid (N2: owner 2026-10-19, "i love n2"; round 2, "more rectangular than it is square")
 
-    @State private var gridWidth: CGFloat = 370
+    /// The screen less the sheet's sides from the first frame: a guess (370) measured right a moment later grew the sheet
+    /// ~20 pt after it opened (Zoe's check; owner's no-layout-shift rule).
+    @State private var gridWidth: CGFloat = UIScreen.main.bounds.width - 32
     private static let gap: CGFloat = 8
     private static let lowRow: CGFloat = 90
     private var side: CGFloat { max((gridWidth - Self.gap) / 2, 120) }
