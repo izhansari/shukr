@@ -68,6 +68,12 @@ enum FirstRunSetup {
         let existing = group?.object(forKey: "lastLatitude") != nil || isDone
         AutoMethod.migrateDefault(existingUser: existing)
         NotificationDefaults.migrate(existingUser: existing)   // their reminders don't change; new installs: the owner's defaults
+        // The prayer goal: new installs start on Before closing, green and yellow (owner, 2026-10-19: "can we make new users
+        // defaulted to before closing"); anyone already here keeps what an unset goal meant — any mark (Made up counts) —
+        // written down, so their streak never moves.
+        if UserDefaults.standard.object(forKey: PrayerGoal.key) == nil {
+            UserDefaults.standard.set((existing ? PrayerGoal.prayed : .onTime).rawValue, forKey: PrayerGoal.key)
+        }
         if !existing && UserDefaults.standard.object(forKey: "modeToggleNew") == nil {
             UserDefaults.standard.set(2, forKey: "modeToggleNew")
         }

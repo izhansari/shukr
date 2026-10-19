@@ -142,18 +142,23 @@ struct PrayerGoalSettingsRow: View {
 
 /// Your goal (Design, 2026-10-19; canvas board/mocks/your-goal v3 — owner: "I like this design … I just want to keep it
 /// simple without the stats, just so it's not intimidating"; "no labels"; "copy inside should have motion that's simple but
-/// clean … like a wheel selector"). In the soft look: a light title over one grey line; the hero is a prayer's window as a
-/// ring — green the first 30 minutes, yellow half of what's left, red to the end (PrayerScoring) — and the marked ring's
-/// hollow dot is the slider: drag it round, let go and it springs to the end of its color. Inside, the goals sit on a wheel
-/// that rolls as the dot crosses a color. Under it the four goals, strictest first; Made up counts is only here (the dot
-/// rests at the end and turns grey: Qaza is after the window, so it isn't on the ring). No numbers.
+/// clean … like a wheel selector"; then "we should match the plain settings look … the arc is super thick. let's match the
+/// arc and ring of how the prayer would actually look in its window on salah page … moving the wheel up and down with
+/// finger moves the dot proportionally"). Settings' plain grouped look: a light title over one grey line; the hero is a
+/// prayer's window drawn as the Salah page draws one — green the first 30 minutes, yellow half of what's left, red to the
+/// end (PrayerScoring), in the theme's band and arc — and the marked ring's hollow dot is the slider: drag it round, let go
+/// and it springs to the end of its color. Inside, the goals sit on a wheel: it rolls as the dot crosses a color, and a
+/// finger rolling it moves the dot. Under it the four goals in a Settings card, strictest first; Made up counts is only
+/// there and at the wheel's last step (the dot rests at the end and turns grey: Qaza is after the window). No numbers.
 struct PrayerGoalPage: View {
-    @Environment(\.circleTheme) private var theme
     @State private var goal = PrayerGoal.current
-    /// The dot's place round the ring, degrees from the top; and how grey it is (Made up counts). Both spring.
+    /// The dot's place round the ring (degrees from the top), how grey it is (Made up counts), and the wheel's place
+    /// (0 Perfect … 3 Made up counts). All three spring together.
     @State private var angle = PrayerGoalDial.rest(PrayerGoal.current)
     @State private var grey: Double = PrayerGoal.current == .prayed ? 1 : 0
-    @State private var dragging = false
+    @State private var wheel = PrayerGoalDial.index(PrayerGoal.current)
+    @State private var drag: PrayerGoalDial.Drag = .none
+    @State private var wheelFrom = 0.0
 
     var body: some View {
         ScrollView {
@@ -166,175 +171,233 @@ struct PrayerGoalPage: View {
                 .multilineTextAlignment(.center)
                 .padding(.top, 8)
 
-                PrayerGoalDial(angle: angle, grey: grey, dragging: dragging)
+                PrayerGoalDial(angle: angle, grey: grey, wheel: wheel, drag: drag)
                     .frame(width: PrayerGoalDial.size, height: PrayerGoalDial.size)
                     .contentShape(Circle())
-                    .gesture(drag)
-                    .padding(.top, 28)
+                    .gesture(dialDrag)
+                    .padding(.top, 18)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Your goal")
                     .accessibilityValue("\(goal.title). \(goal.line)")
                     .accessibilityAdjustableAction { direction in
-                        let order = PrayerGoalDial.onRing, i = order.firstIndex(of: goal) ?? 1
-                        let next = direction == .increment ? min(i + 1, order.count - 1) : max(i - 1, 0)
-                        pick(order[next])
+                        let i = PrayerGoalDial.order.firstIndex(of: goal) ?? 1
+                        let next = direction == .increment ? min(i + 1, PrayerGoalDial.order.count - 1) : max(i - 1, 0)
+                        pick(PrayerGoalDial.order[next])
                     }
 
-                list.padding(.top, 30)
+                list.padding(.top, 18)
 
                 Text("Scores never change. Change it any time.")
                     .font(.footnote).foregroundStyle(.secondary)
-                    .padding(.top, 22).padding(.bottom, 24)
+                    .padding(.top, 14).padding(.bottom, 24)
             }
             .fontDesign(.rounded)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .background(theme.surface.ignoresSafeArea())
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: goal)
         .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
-            guard !dragging, PrayerGoal.current != goal else { return }
-            goal = PrayerGoal.current; angle = PrayerGoalDial.rest(goal); grey = goal == .prayed ? 1 : 0
+            guard drag == .none, PrayerGoal.current != goal else { return }
+            goal = PrayerGoal.current
+            angle = PrayerGoalDial.rest(goal); grey = goal == .prayed ? 1 : 0; wheel = PrayerGoalDial.index(goal)
         }
     }
 
-    /// The dot follows the finger round the ring (its colors only; Made up counts is the list's). Let go: it springs to the
-    /// end of the color it's in, and that's the goal.
-    private var drag: some Gesture {
+    /// One drag, two ways, decided where it starts: on the band the dot follows the finger round (its colors only); inside
+    /// the ring the finger rolls the wheel and the dot moves with it, step for step. Let go: both spring to a goal.
+    private var dialDrag: some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { v in
                 let c = PrayerGoalDial.size / 2
-                var a = atan2(v.location.x - c, -(v.location.y - c)) * 180 / .pi
-                if a < 0 { a += 360 }
-                // The top is where the window starts and ends: never wrap past it.
-                if a < PrayerGoalDial.minAngle || a > PrayerGoalDial.maxAngle { a = angle > 180 ? PrayerGoalDial.maxAngle : PrayerGoalDial.minAngle }
-                if !dragging { dragging = true }
-                angle = a
-                if grey > 0 { withAnimation(.smooth(duration: 0.25)) { grey = 0 } }
-                let now = PrayerGoalDial.goal(at: a)
-                if now != goal { goal = now }
+                if drag == .none {
+                    let fromCentre = hypot(v.startLocation.x - c, v.startLocation.y - c)
+                    drag = fromCentre < PrayerGoalDial.radius - 26 ? .wheel : .ring
+                    wheelFrom = wheel
+                }
+                switch drag {
+                case .ring:
+                    var a = atan2(v.location.x - c, -(v.location.y - c)) * 180 / .pi
+                    if a < 0 { a += 360 }
+                    // The top is where the window starts and ends: never wrap past it.
+                    if a < PrayerGoalDial.minAngle || a > PrayerGoalDial.maxAngle { a = angle > 180 ? PrayerGoalDial.maxAngle : PrayerGoalDial.minAngle }
+                    angle = a
+                    if grey > 0 { withAnimation(.smooth(duration: 0.25)) { grey = 0 } }
+                    wheel = PrayerGoalDial.wheel(at: a)
+                    let now = PrayerGoalDial.goal(at: a)
+                    if now != goal { goal = now }
+                case .wheel:
+                    // Up rolls the next goal in from below, as a picker wheel does.
+                    let p = min(max(wheelFrom - Double(v.translation.height) / PrayerGoalDial.step, 0), 3)
+                    wheel = p
+                    angle = PrayerGoalDial.angle(atWheel: p)
+                    grey = max(0, p - 2)
+                    let now = PrayerGoalDial.order[Int(p.rounded())]
+                    if now != goal { goal = now }
+                case .none: break
+                }
             }
             .onEnded { _ in
-                dragging = false
-                pick(PrayerGoalDial.goal(at: angle))
+                let g = drag == .wheel ? PrayerGoalDial.order[Int(wheel.rounded())] : PrayerGoalDial.goal(at: angle)
+                drag = .none
+                pick(g)
             }
     }
 
     private func pick(_ g: PrayerGoal) {
         goal = g
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.72)) {
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.74)) {
             angle = PrayerGoalDial.rest(g)
             grey = g == .prayed ? 1 : 0
+            wheel = PrayerGoalDial.index(g)
         }
         PrayerGoal.set(g)
     }
 
-    /// The four goals, strictest first: a hollow dot in the color each one ends on, the name, the check on yours.
+    /// The four goals in a Settings card, strictest first: a hollow dot in the color each one ends on, the name, the check
+    /// on yours.
     private var list: some View {
         VStack(spacing: 0) {
             ForEach(Array(PrayerGoalDial.order.enumerated()), id: \.element) { i, option in
                 Button { pick(option) } label: {
-                    HStack(spacing: 16) {
-                        Circle().strokeBorder(PrayerGoalDial.color(of: option), lineWidth: 2.5).frame(width: 13, height: 13)
-                        Text(option.title).font(.body).foregroundStyle(option == goal ? .primary : .secondary)
+                    HStack(spacing: 14) {
+                        Circle().strokeBorder(PrayerGoalDial.color(of: option), lineWidth: 2.4).frame(width: 13, height: 13)
+                            .frame(width: 24)
+                        Text(option.title).foregroundStyle(.primary)
                         Spacer(minLength: 8)
-                        Image(systemName: "checkmark").font(.body.weight(.semibold)).foregroundStyle(Color.sage)
+                        Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.sage)
                             .opacity(option == goal ? 1 : 0)
                     }
-                    .frame(height: 54)
+                    .frame(minHeight: 50)
+                    .padding(.horizontal, 16)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(option.title). \(option.line)")
                 .accessibilityAddTraits(option == goal ? .isSelected : [])
-                if i < PrayerGoalDial.order.count - 1 { Divider() }
+                if i < PrayerGoalDial.order.count - 1 { Divider().padding(.leading, 54) }
             }
         }
-        .padding(.horizontal, 28)
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+        .padding(.horizontal, 20)
     }
 }
 
-/// The ring, the dot and the wheel of words, drawn from two values that animate (the dot's angle and its grey), so a
-/// spring moves them all together, frame by frame.
+/// The ring, the dot and the wheel of words, drawn from values that animate (the dot's angle, its grey, the wheel's place),
+/// so a spring moves them all together, frame by frame.
 struct PrayerGoalDial: View, Animatable {
     var angle: Double
     var grey: Double
-    var dragging: Bool
-    var animatableData: AnimatablePair<Double, Double> {
-        get { AnimatablePair(angle, grey) }
-        set { angle = newValue.first; grey = newValue.second }
+    var wheel: Double
+    var drag: Drag
+    enum Drag { case none, ring, wheel }
+    var animatableData: AnimatablePair<Double, AnimatablePair<Double, Double>> {
+        get { AnimatablePair(angle, AnimatablePair(grey, wheel)) }
+        set { angle = newValue.first; grey = newValue.second.first; wheel = newValue.second.second }
     }
     @Environment(\.circleTheme) private var theme
 
-    static let size: CGFloat = 300
-    static let minAngle = 10.0, maxAngle = 352.0
+    static let size: CGFloat = 290
+    /// The ring's radius: a little larger than the Salah page's 200 pt circle (room for the wheel), the same band, arc and
+    /// dot.
+    static let radius: CGFloat = 118
+    /// How far a finger moves the wheel one goal.
+    static let step: Double = 64
+    static let minAngle = 8.0, maxAngle = 352.0
     /// A prayer's window clockwise from the top, drawn for about a three-hour window: Perfect the first 30 minutes, Middle
-    /// half of what's left, Closing the rest (PrayerScoring.score). Degrees.
+    /// half of what's left, Closing the rest (PrayerScoring.score). Degrees; small gaps between them, as the day's fifths.
     static let zones: [(from: Double, to: Double, score: Double)] = [(4, 62, 1), (62, 208, 0.9), (208, 356, 0.7)]
+    static let gap = 2.4
     static let order: [PrayerGoal] = [.perfect, .onTime, .inWindow, .prayed]
-    static let onRing: [PrayerGoal] = [.perfect, .onTime, .inWindow]
+    static func index(_ g: PrayerGoal) -> Double { Double(order.firstIndex(of: g) ?? 1) }
     /// Where the dot rests for a goal: just inside the end of its color (Made up counts: the end, grey).
     static func rest(_ g: PrayerGoal) -> Double {
         switch g { case .perfect: 58; case .onTime: 204; case .inWindow, .prayed: maxAngle }
     }
     static func goal(at a: Double) -> PrayerGoal { a <= zones[0].to ? .perfect : a <= zones[1].to ? .onTime : .inWindow }
+    /// The wheel's place for a dot on the ring: it rolls one step over the 10° past each color's start.
+    static func wheel(at a: Double) -> Double {
+        zones.dropFirst().reduce(0) { p, z in
+            let t = min(max((a - z.from) / blend, 0), 1)
+            return p + t * t * (3 - 2 * t)
+        }
+    }
+    /// The dot's place for the wheel's: straight between the goals' rests (the end for Made up counts).
+    static func angle(atWheel p: Double) -> Double {
+        let rests = [rest(.perfect), rest(.onTime), rest(.inWindow)]
+        if p >= 2 { return rests[2] }
+        let i = Int(p), t = p - Double(i)
+        return rests[i] + (rests[i + 1] - rests[i]) * t
+    }
     static func color(of g: PrayerGoal) -> Color {
         switch g { case .perfect: PrayerScoring.color(for: 1); case .onTime: PrayerScoring.color(for: 0.9)
         case .inWindow: PrayerScoring.color(for: 0.7); case .prayed: PrayerScoring.color(for: PrayerScoring.qaza) }
     }
-    /// Just past a boundary the color blends from the last one over 10° (fluid as it moves, pure where it rests).
+    /// Just past a boundary the dot's color blends from the last one over 10° (fluid as it moves, pure where it rests).
     private static let blend = 10.0
 
+    /// The dot's color: from the ring under it, or — while a finger rolls the wheel — from the goals the wheel is between;
+    /// then toward grey for Made up counts.
     private var dotColor: Color {
-        var c = PrayerScoring.color(for: Self.zones[0].score)
-        for (i, z) in Self.zones.enumerated() {
-            if angle > z.from { c = PrayerScoring.color(for: z.score) }
-            if i > 0, angle > z.from, angle < z.from + Self.blend {
-                c = PrayerScoring.color(for: Self.zones[i - 1].score).mix(with: c, by: (angle - z.from) / Self.blend)
+        var c: Color
+        if drag == .wheel {
+            let i = min(Int(wheel), 2), t = min(max(wheel - Double(i), 0), 1)
+            c = Self.color(of: Self.order[i]).mix(with: Self.color(of: Self.order[min(i + 1, 2)]), by: i < 2 ? t : 0)
+        } else {
+            c = PrayerScoring.color(for: Self.zones[0].score)
+            for (i, z) in Self.zones.enumerated() where i > 0 && angle > z.from {
+                c = PrayerScoring.color(for: z.score)
+                if angle < z.from + Self.blend {
+                    c = PrayerScoring.color(for: Self.zones[i - 1].score).mix(with: c, by: (angle - z.from) / Self.blend)
+                }
             }
         }
         return c.mix(with: PrayerScoring.color(for: PrayerScoring.qaza), by: grey)
     }
-    /// The wheel's place: 0 Perfect … 2 Before it ends, 3 Made up counts — it rolls one step as the dot crosses a color
-    /// (over the same 10° the color blends), and one more as it turns grey.
-    private var wheel: Double {
-        var p = 0.0
-        for z in Self.zones.dropFirst() {
-            let t = min(max((angle - z.from) / Self.blend, 0), 1)
-            p += t * t * (3 - 2 * t)
-        }
-        return p + grey
-    }
 
     var body: some View {
-        let s = Self.size, r = s / 2 - 22, band: CGFloat = 14
+        let r = Self.radius, d = r * 2
         ZStack {
-            Circle().stroke(Color.primary.opacity(0.06), lineWidth: band + 10).frame(width: r * 2, height: r * 2)
+            track.frame(width: d, height: d)
             ForEach(Array(Self.zones.enumerated()), id: \.offset) { _, z in
                 let color = PrayerScoring.color(for: z.score)
-                let lit = min(z.to, angle)
-                arc(z.from + 0.8, z.to - 0.8, r).stroke(color.opacity(0.18), lineWidth: band)
-                if lit > z.from + 0.8 { arc(z.from + 0.8, lit, r).stroke(color, lineWidth: band) }
+                let a0 = z.from + Self.gap / 2, a1 = z.to - Self.gap / 2, lit = min(a1, angle)
+                arc(a0, a1).stroke(color.opacity(0.16), style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
+                    .frame(width: d, height: d)
+                if lit > a0 + 0.5 {
+                    arc(a0, lit).stroke(color, style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
+                        .frame(width: d, height: d)
+                        .shadow(color: color.opacity(theme.arc.glow), radius: 6)
+                }
             }
-            // The marked ring's hollow dot.
+            // The marked ring's hollow dot (PrayerCompletionFX: 12 pt at 200, a 2.4 pt rim), a touch bigger as a slider.
             Circle()
-                .fill(theme.surface)
-                .overlay(Circle().strokeBorder(dotColor, lineWidth: 4.5))
-                .frame(width: 26, height: 26)
-                .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
-                .scaleEffect(dragging ? 1.15 : 1)
+                .fill(Color(.systemGroupedBackground))
+                .overlay(Circle().strokeBorder(dotColor, lineWidth: 2.8))
+                .frame(width: 15, height: 15)
+                .scaleEffect(drag == .none ? 1 : 1.35)
                 .offset(x: r * sin(angle * .pi / 180), y: -r * cos(angle * .pi / 180))
-            words.frame(width: r * 2 - 70, height: r * 2 - 40)
+            words.frame(width: d - 56, height: d - 30)
         }
-        .frame(width: s, height: s)
-        .animation(.snappy(duration: 0.2), value: dragging)
+        .frame(width: Self.size, height: Self.size)
+        .animation(.snappy(duration: 0.2), value: drag)
     }
 
-    private func arc(_ from: Double, _ to: Double, _ r: CGFloat) -> some Shape {
-        Circle().trim(from: from / 360, to: to / 360)
-            .rotation(.degrees(-90))
-            .size(width: r * 2, height: r * 2)
-            .offset(x: Self.size / 2 - r, y: Self.size / 2 - r)
+    /// The Salah page's track in the theme: the soft raised band, or the plain grey one.
+    @ViewBuilder private var track: some View {
+        if theme.track.lifted {
+            Circle()
+                .stroke(lineWidth: theme.track.width)
+                .foregroundStyle(theme.surface)
+                .shadow(color: theme.shade, radius: 4, x: 2, y: 2)
+                .shadow(color: theme.light, radius: 6, x: -2, y: -2)
+        } else {
+            Circle().stroke(theme.track.fill, lineWidth: theme.track.width)
+        }
+    }
+
+    private func arc(_ from: Double, _ to: Double) -> some Shape {
+        Circle().trim(from: from / 360, to: to / 360).rotation(.degrees(-90))
     }
 
     /// The four goals on a drum, like the Clock app's wheel: the one in the middle at full size with its line, the next
@@ -344,13 +407,13 @@ struct PrayerGoalDial: View, Animatable {
             ForEach(Array(Self.order.enumerated()), id: \.element) { i, g in
                 let d = Double(i) - wheel, near = abs(d)
                 VStack(spacing: 6) {
-                    Text(g.title).font(.system(size: 24, weight: .light, design: .rounded)).lineLimit(1).minimumScaleFactor(0.8)
+                    Text(g.title).font(.system(size: 23, weight: .light, design: .rounded)).lineLimit(1).minimumScaleFactor(0.75)
                     Text(g.line).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
                         .opacity(max(0, 1 - near * 1.8))
                 }
                 .rotation3DEffect(.degrees(-d * 50), axis: (x: 1, y: 0, z: 0), perspective: 0.6)
-                .offset(y: d * 74)
+                .offset(y: d * 70)
                 .opacity(max(0, 1 - near * 0.8))
                 .accessibilityHidden(true)
             }
