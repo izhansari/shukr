@@ -598,16 +598,12 @@ struct PrayerTimesView: View {
                     dismissKeyboard()
                     dragAxis.vertical = abs(t.height) > abs(t.width)
                     dragAxis.swallowed = SalahSheetDrag.dragClosesMenu(up: dragAxis.vertical == true && t.height < 0)
+                    // A horizontal drag past either end (right on Zikr, left on Settings) rubber-bands with the
+                    // scroll view's own resistance (owner, 2026-10-19: "allow “trying” to swipe other way but hit w
+                    // resistance"); it used to be refused for the whole drag, when the pull showed white past the edge —
+                    // PagerBackdrop paints past both ends now.
                     if dragAxis.vertical == true {
                         live.pagerLocked = true
-                    } else {
-                        // No overscroll: a horizontal drag that could only rubber-band (finger
-                        // moving right on the first page, left on the last) is refused for the
-                        // whole drag. Bounce stays on, so real page turns keep their physics.
-                        let page = sharedState.horizontalPage
-                        if (page == .zikr && t.width > 0) || (page == .settings && t.width < 0) {
-                            live.pagerLocked = true
-                        }
                     }
                 }
                 if dragAxis.vertical == true {
@@ -2516,15 +2512,17 @@ struct PrayerTimesView: View {
         }
     }
 
-    /// Toward Settings the chrome leaves WITH the Salah page, so Settings slides over empty space instead of under a
-    /// fading top bar (owner, 2026-09-25); it takes no taps past halfway.
+    /// Toward Settings the chrome fades out in place with the anchored Salah page (SalahPageAnchor: gone by `goneAt`), so
+    /// nothing shifts sideways, as toward Zikr (owner, 2026-10-19: "swiping left right doesn't feel even. cuz of top bar and
+    /// bottom bar … it shifts when we pull in the settings page instead of mimicking how it does when we pull in zikr").
+    /// It used to leave WITH the Salah page at full speed (2026-09-25). No taps past halfway.
     private struct ChromeLeaves: ViewModifier {
         let live: PagerLiveState
         func body(content: Content) -> some View {
             let settings = min(max(live.scrollProgress - 1, 0), 1)
             content
                 .allowsHitTesting(settings < 0.5)
-                .visualEffect { content, proxy in content.offset(x: -settings * proxy.size.width) }
+                .opacity(Double(max(0, 1 - settings / SalahPageAnchor.goneAt)))
         }
     }
 
@@ -2682,8 +2680,8 @@ struct PrayerTimesView: View {
         var body: some View {
             VStack(spacing: 0){
 
-                    // One surface on every page: the bar wears the theme. It leaves with the Salah page toward Settings
-                    // (ChromeLeaves), so a Settings look only ever showed mid-swipe — the bar turned white at the page's
+                    // One surface on every page: the bar wears the theme. It fades out toward Settings (ChromeLeaves;
+                    // it used to leave with the Salah page), so a Settings look only ever showed mid-swipe — the bar turned white at the page's
                     // midpoint (bottom-bar-colour, owner: "looks careless").
                     ThemedBarDivider()
 
@@ -3881,7 +3879,7 @@ struct PagerLock: ViewModifier {
     }
 }
 
-/// The per-drag holds (`live.pagerLocked`: a vertical drag on Salah, a drag that could only rubber-band, a finger on the
+/// The per-drag holds (`live.pagerLocked`: a vertical drag on Salah, a finger on the
 /// post-salah pill; and the live sheet's drag) switch the pager's own pan off and on in UIKit. As `.scrollDisabled` each
 /// switch went down through every view in all three pages (the Settings form, the wheel, the list): 8–12 ms twice per
 /// vertical swipe, a dropped frame each (perf trace 2026-10-10).
