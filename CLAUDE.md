@@ -60,7 +60,7 @@ asks for "status" — the reply ends, under the write-up, with this block **as a
 | | |
 |---|---|
 | **Ask** | <the main ask, summed up in one short, clear line> |
-| | *ctrl-F: "<his exact words from the message that started it, unchanged; trim a long one with …>"* |
+| | *ctrl-F: "<a few words that find that message>" · <day + time he sent it, e.g. Sun 14:05>* |
 | ✓ | ~~<a small edit he added along the way, done>~~ |
 | ◻︎ | <a small edit not done yet> |
 | **Still open** | <agreed in the spec, not built yet> (one row each; "Nothing" when done) |
@@ -68,9 +68,10 @@ asks for "status" — the reply ends, under the write-up, with this block **as a
 | | <the next check> |
 ```
 `<n>` = the main task's number in this chat, `<m>` = this block's count on it (2.1, 2.2 …; a new main task → a new
-chapter and 3.1). The heading is there so he can Ctrl+F it; so is the Ask's second row: his verbatim words find the
-message in the chat, the first row says what it means (owner, 2026-10-18: "a summarized and clearer concise main ask
-with a ctrlf reference for myself to go find it").
+chapter and 3.1). The heading is there so he can Ctrl+F it; so is the Ask's second row (owner, 2026-10-18: "a summarized
+and clearer concise main ask with a ctrlf reference for myself to go find it"): a distinctive stretch of his own words,
+unchanged. If he only picked an option ("A", "yes", a button), quote that option's words from the reply he answered —
+a lone "A" finds nothing (owner, 2026-10-19). The time: run `date` when his message starts the task and keep it.
 
 **Context:** state lives in files (this file, `docs/features/`, the board, memory), so a fresh start loses nothing.
 Compact or start fresh at an item boundary (after commit + push); first overwrite `shukrGit/board/handoff-<name>.md`
