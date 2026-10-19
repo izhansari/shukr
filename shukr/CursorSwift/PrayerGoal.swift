@@ -174,7 +174,7 @@ struct PrayerGoalPage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(option.title): \(option.line)" + (rates[option].map { ", \($0)% of your last 30 days" } ?? ""))
+                    .accessibilityLabel("\(option.title): \(option.line)" + (rates[option].map { ", \($0)% of your marked days in the last 30" } ?? ""))
                 }
             } footer: {
                 Text("The % is how many of the days you marked a prayer, in the last 30, met each goal. Your streak, Journey's days and its rate follow your goal; change it any time. Scores never change.")

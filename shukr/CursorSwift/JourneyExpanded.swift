@@ -288,7 +288,7 @@ struct JourneyExpandedPage: View {
             } else {
                 HStack(alignment: .top, spacing: 0) {
                     figure("\(stats.prayersMarked)", "prayers marked").opacity(streakShown ? 0.35 : 1)
-                    figure(stats.goalRate.map { "\($0)%" } ?? "–", "of days met your goal").opacity(streakShown ? 0.35 : 1)
+                    figure(stats.goalRate.map { "\($0)%" } ?? "–", "of your marked days met your goal").opacity(streakShown ? 0.35 : 1)
                     Button { toggleStreak() } label: {
                         figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days",
                                streakShown ? stats.bestStreakDays.map(JourneyHomeCard.streakSpan) ?? "best streak" : "best streak")
@@ -363,7 +363,7 @@ struct JourneyExpandedPage: View {
         VStack(spacing: 2) {
             Text(value).font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
             Text(caption).font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                .lineLimit(1).minimumScaleFactor(0.75)
+                .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.75)   // as the card's figure
         }
         .frame(maxWidth: .infinity)
     }

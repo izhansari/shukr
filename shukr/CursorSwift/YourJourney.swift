@@ -548,7 +548,7 @@ struct JourneyHomeCard: View {
                 } else {
                     HStack(alignment: .top, spacing: 0) {
                         figure("\(stats.prayersMarked)", "prayers marked").opacity(streakShown ? 0.35 : 1)
-                        figure(stats.goalRate.map { "\($0)%" } ?? "–", "of days met your goal").opacity(streakShown ? 0.35 : 1)
+                        figure(stats.goalRate.map { "\($0)%" } ?? "–", "of your marked days met your goal").opacity(streakShown ? 0.35 : 1)
                         Button {
                             JourneyFrameLog.shared.note("card: best streak tapped (\(stats.bestStreakDays == nil ? "no days" : streakShown ? "on → off" : "off → on"))")
                             guard stats.bestStreakDays != nil else { return }
@@ -609,10 +609,12 @@ struct JourneyHomeCard: View {
     private func figure(_ value: String, _ caption: String) -> some View {
         VStack(spacing: 2) {
             Text(value).font(.system(size: 20, weight: .light, design: .rounded)).monospacedDigit()
+            // Up to two lines: "of your marked days met your goal" (owner, 2026-10-19) doesn't fit a third of the card.
             Text(caption)
                 .font(.system(size: 11, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
                 .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity)
