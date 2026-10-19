@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 // The prayer goal (owner, 2026-10-18): "a setting where user can choose their goal. like for me my goal is to pray all perfect.
 // some might be middle and perfect. some might be perfect middle and closing (in window). This is the real goal and the metric
@@ -159,6 +160,10 @@ struct PrayerGoalPage: View {
     @State private var wheel = PrayerGoalDial.index(PrayerGoal.current)
     @State private var drag: PrayerGoalDial.Drag = .none
     @State private var wheelFrom = 0.0
+    /// Each goal's streak and days met, counted once when the page opens (GoalPreview); nil until then.
+    @State private var previews: [PrayerGoal: GoalPreview]?
+    @State private var sinceFreshStart = false
+    @Environment(\.modelContext) private var context
 
     var body: some View {
         ScrollView {
@@ -185,7 +190,9 @@ struct PrayerGoalPage: View {
                         pick(PrayerGoalDial.order[next])
                     }
 
-                list.padding(.top, 18)
+                preview.padding(.top, 10)
+
+                list.padding(.top, 14)
 
                 Text("Scores never change. Change it any time.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -197,6 +204,13 @@ struct PrayerGoalPage: View {
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: goal)
+        .task {
+            let container = context.container
+            let ranges = Excused.ranges
+            sinceFreshStart = FreshStart.dayKey != nil
+            let counted = await GoalPreview.all(container: container, ranges: ranges)
+            withAnimation(.easeOut(duration: 0.25)) { previews = counted }
+        }
         .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
             guard drag == .none, PrayerGoal.current != goal else { return }
             goal = PrayerGoal.current
@@ -252,6 +266,34 @@ struct PrayerGoalPage: View {
             wheel = PrayerGoalDial.index(g)
         }
         PrayerGoal.set(g)
+    }
+
+    /// The goal under the dot (or the wheel), as it would be (owner, 2026-10-19, UC9R + PBUP: how the streak would change and
+    /// "add percentage of days met too … just choose something good"): the streak in light type, then the days that met it and
+    /// the %. Quiet, one goal at a time, never a table (Design kept this page free of a scoreboard); always the same height, so
+    /// the list below never moves.
+    private var preview: some View {
+        let p = previews?[goal]
+        let streak = p.map { $0.streak == 0 ? "Start a streak today" : $0.streak == 1 ? "1-day streak" : "\($0.streak)-day streak" } ?? " "
+        let days: String = {
+            guard let p, p.judged > 0 else { return " " }
+            let base = "Met on \(p.met) of \(p.judged) days" + (p.rate.map { " · \($0)%" } ?? "")
+            return base + (sinceFreshStart ? " since your fresh start" : "")
+        }()
+        return VStack(spacing: 3) {
+            Text(streak)
+                .font(.system(size: 19, weight: .light, design: .rounded))
+                .contentTransition(.numericText(value: Double(p?.streak ?? 0)))
+            Text(days)
+                .font(.footnote).foregroundStyle(.secondary)
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .contentTransition(.numericText(value: Double(p?.met ?? 0)))
+        }
+        .animation(.snappy(duration: 0.25), value: goal)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(p == nil ? "" : "With \(goal.title): \(streak). \(days)")
     }
 
     /// The four goals in a Settings card, strictest first: a hollow dot in the color each one ends on, the name, the check
@@ -423,5 +465,57 @@ struct PrayerGoalDial: View, Animatable {
                                      .init(color: .black, location: 0.76), .init(color: .clear, location: 1)],
                              startPoint: .top, endPoint: .bottom))
         .allowsHitTesting(false)
+    }
+}
+
+
+/// Your goal's preview, per goal (owner, 2026-10-19, UC9R + PBUP): the streak you'd have now and how many of your marked days
+/// met it — from the fresh start if there is one, else all your history. Counted the way Journey counts (its card's rate and
+/// the Salah page's streak): YourJourneyStats.streakDay for each goal, an excused day steps over, today never breaks the
+/// streak, a day still going isn't judged for the rate, which shows from 3 judged days. Once, off the main thread, for all
+/// four, so moving the dot only reads it.
+struct GoalPreview: Equatable {
+    var streak = 0
+    var met = 0
+    var judged = 0
+    var rate: Int? { judged >= 3 ? Int((Double(met) / Double(judged) * 100).rounded()) : nil }
+
+    @MainActor static func all(container: ModelContainer, ranges: [ExcusedRange]) async -> [PrayerGoal: GoalPreview] {
+        let today = PrayerDay.start()
+        let log = await JourneyLog.load(container: container, ranges: ranges)
+        return await Task.detached(priority: .userInitiated) {
+            count(log: log, today: today, excused: Excused.Days(ranges))
+        }.value
+    }
+
+    nonisolated static func count(log: JourneyLog, today: Date, excused: Excused.Days) -> [PrayerGoal: GoalPreview] {
+        var out: [PrayerGoal: GoalPreview] = [:]
+        let cal = Calendar.current
+        for goal in PrayerGoal.allCases {
+            var p = GoalPreview()
+            for d in log.days.values where d.active && d.counted && !d.unfinished {
+                p.judged += 1
+                if YourJourneyStats.streakDay(d, goal: goal) { p.met += 1 }
+            }
+            if let first = log.firstDay {
+                var run = 0
+                var date = cal.startOfDay(for: max(first, log.countsFrom ?? first))
+                while date <= today {
+                    let d = log.day(date)
+                    if YourJourneyStats.excusedAll(d, on: date, in: log, excused) {
+                        // An excused day neither counts nor breaks.
+                    } else if YourJourneyStats.streakDay(d, goal: goal) {
+                        run += 1
+                    } else if date != today {
+                        run = 0
+                    }
+                    guard let next = cal.date(byAdding: .day, value: 1, to: date) else { break }
+                    date = next
+                }
+                p.streak = run
+            }
+            out[goal] = p
+        }
+        return out
     }
 }
