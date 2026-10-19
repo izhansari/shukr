@@ -143,7 +143,7 @@ struct shukrApp: App {
         #endif
         NextLabelTuning.clearSavedTuningOnce()   // back to the original NEXT look (2026-09-27)
         #if DEBUG
-        SalahLook.seedExploringDefaults()   // dev builds start the look exploration on Sunken well, no lines
+        SalahLook.seedExploringDefaults()   // dev builds: a new install on the main build's look; old installs' one-time moves
         if ProcessInfo.processInfo.arguments.contains("-autoMethodTest") { AutoMethodSelfTest.run() }
         // `-tourPendingTest`: as if the first-run setup had just finished (the tour pending, never started), to test that
         // a kill mid-tour resumes it once on the next launch (audit A3).

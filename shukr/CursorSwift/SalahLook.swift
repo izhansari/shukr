@@ -87,12 +87,19 @@ enum SalahLook: String, CaseIterable, Identifiable {
 
 #if DEBUG
 extension SalahLook {
-    /// Dev builds (the owner's phone and the simulators) start the look exploration on Sunken well with no lines
-    /// between prayers (owner, 2026-10-01: "default to no lines with sunken card for this exploring aesthetic
-    /// testing stuff"). Once per install, so a later pick in the palette menu stays. TestFlight / App Store
-    /// builds are locked to `CircleTheme.standard` (the public look) and never read these keys.
+    /// Dev builds (the owner's phone and the simulators): a new install starts on the main build's look; an old one got
+    /// each one-time move below once (Sunken well first, 2026-10-01; then the raised list and the rows' motions), so a
+    /// later pick in the palette menu stays. TestFlight / App Store builds are locked to `CircleTheme.standard` (the
+    /// public look) and never read these keys.
     static func seedExploringDefaults() {
         let d = UserDefaults.standard
+        // A fresh install starts on the main build's look (the keys unset → CircleTheme.standard): every seed below is an
+        // old install's move, and run in this order on a new one the last (v1) put it back on Sunken well (Sami, 2026-10-19:
+        // a new sim came up on the well, its card rising from pressed to raised).
+        if !d.bool(forKey: "salahLook.seeded.v1") {
+            for v in 1...5 { d.set(true, forKey: "salahLook.seeded.v\(v)") }
+            return
+        }
         // The accordion became the rows' motion (owner, 2026-10-14): once, onto it.
         if !d.bool(forKey: "salahLook.seeded.v3") {
             d.set(true, forKey: "salahLook.seeded.v3")
