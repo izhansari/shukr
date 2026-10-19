@@ -427,14 +427,17 @@ struct PrayerTimeEditor: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .transition(.opacity)
-            } else if !Calendar.current.isDate(draft, inSameDayAs: prayer.startTime) {
-                // After midnight, say which day and time this actually is.
-                Text(draft.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()))
-                    .font(.footnote)
-                    .fontWeight(.light)
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
             }
+            // A time on another calendar day than the prayer's window (a Fajr made up the next morning): that day's date —
+            // the time is in the wheel. Its line is always there, faded out on the prayer's own day, so the card below
+            // never moves (owner, 2026-10-19: "ideally it doesn't shift the layout").
+            Text(draft.addingTimeInterval(shift).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
+                .font(.footnote)
+                .fontWeight(.light)
+                .foregroundStyle(.secondary)
+                .opacity(isValid && !Calendar.current.isDate(draft, inSameDayAs: prayer.startTime) ? 1 : 0)
+                .animation(.easeInOut(duration: 0.2), value: Calendar.current.isDate(draft, inSameDayAs: prayer.startTime))
+                .accessibilityHidden(Calendar.current.isDate(draft, inSameDayAs: prayer.startTime))
         }
         .sensoryFeedback(.selection, trigger: grade)
     }
