@@ -482,6 +482,33 @@ final class LocationViewModel: ObservableObject {
         mapView.setCamera(camera, animated: true)
     }
 
+    /// The part of the map the sheet leaves open: below the top controls, above the sheet (the sheet's height measured,
+    /// or half the screen before it is — the half-height it opens at).
+    func openArea(in mapView: MKMapView) -> (top: CGFloat, bottom: CGFloat) {
+        (130, mapView.bounds.height - shownSheetHeight - 40)
+    }
+
+    /// From the qibla to a layer: north-up, and what sat in the middle (you) slid up into the middle of the open area,
+    /// in one camera move (owner, 2026-10-19: "the maps sheet hid us when we went to prayer pins … the available space of
+    /// the map is above the sheet"). Scale is read off the screen, so the qibla-up rotation doesn't skew it.
+    func northUpAboveSheet() {
+        guard let mapView, let camera = mapView.camera.copy() as? MKMapCamera else { return }
+        let bounds = mapView.bounds
+        let area = openArea(in: mapView)
+        let lift = area.bottom > area.top ? bounds.midY - (area.top + area.bottom) / 2 : 0
+        let mid = CGPoint(x: bounds.midX, y: bounds.midY)
+        let a = mapView.convert(mid, toCoordinateFrom: mapView)
+        let b = mapView.convert(CGPoint(x: mid.x, y: mid.y + 100), toCoordinateFrom: mapView)
+        let metresPerPoint = CLLocation(latitude: a.latitude, longitude: a.longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude)) / 100
+        let centre = mapView.centerCoordinate
+        camera.heading = 0
+        // North-up, the centre moves south by the lift, so the old centre shows that far above the screen's middle.
+        camera.centerCoordinate = CLLocationCoordinate2D(latitude: centre.latitude - lift * metresPerPoint / 111_000,
+                                                        longitude: centre.longitude)
+        mapView.setCamera(camera, animated: true)
+    }
+
     /// Qibla-up (owner, 2026-09-26): turn the map so the green line to the Kaaba points straight
     /// up the screen. Hold the phone in front of you, turn until the streets match, and the top
     /// of the phone is the qibla — no arrow pointing one way while the phone points another.
@@ -684,6 +711,9 @@ struct MapView: UIViewRepresentable {
                 .store(in: &cancellables)
         }
 
+        /// The map is moving to the mosques just found (setMosques' fit).
+        private var ownMosqueFit = false
+
         private func setMosques(_ items: [MKMapItem], on mapView: MKMapView) {
             // Nothing to swap (prayers on, no mosques): MapKit's remove re-lays out every pin on the map even when the
             // list is empty — up to a fifth of a stall with ~1,000 prayer pins (his phone, 2026-10-19).
@@ -693,10 +723,15 @@ struct MapView: UIViewRepresentable {
             mapView.addAnnotations(mosqueAnnotations)
             if parent.viewModel.fitMosquesWhenFound, !mosqueAnnotations.isEmpty {
                 parent.viewModel.fitMosquesWhenFound = false
-                // You and the nearest few, not every result 30 km out.
-                var shown: [MKAnnotation] = Array(mosqueAnnotations.prefix(6))
-                if let me = mapView.userLocation.location { _ = me; shown.append(mapView.userLocation) }
-                mapView.showAnnotations(shown, animated: true)
+                // You and the nearest few, not every result 30 km out — in the open area above the sheet, not the whole
+                // screen (they sat under it; owner, 2026-10-19).
+                var points = mosqueAnnotations.prefix(6).map { MKMapPoint($0.coordinate) }
+                if let me = mapView.userLocation.location { points.append(MKMapPoint(me.coordinate)) }
+                let rect = points.reduce(MKMapRect.null) { $0.union(MKMapRect(origin: $1, size: MKMapSize(width: 0, height: 0))) }
+                let area = parent.viewModel.openArea(in: mapView)
+                let pad = UIEdgeInsets(top: area.top + 20, left: 40, bottom: mapView.bounds.height - area.bottom + 20, right: 40)
+                ownMosqueFit = true   // our move, not the user's: no "Search this area" for it
+                mapView.setVisibleMapRect(rect, edgePadding: pad, animated: true)
             }
         }
 
@@ -826,7 +861,9 @@ struct MapView: UIViewRepresentable {
             parent.viewModel.checkFocusDrift()
             updateVisibleCount(on: mapView)
             // Mosque mode: panned or zoomed out well past the last search → "Search this area".
-            if parent.viewModel.showMosques, !parent.viewModel.mosqueSearching,
+            if ownMosqueFit {
+                ownMosqueFit = false
+            } else if parent.viewModel.showMosques, !parent.viewModel.mosqueSearching,
                let last = parent.viewModel.lastMosqueSearch {
                 let a = CLLocation(latitude: last.center.latitude, longitude: last.center.longitude)
                 let b = CLLocation(latitude: mapView.centerCoordinate.latitude, longitude: mapView.centerCoordinate.longitude)
@@ -1087,7 +1124,7 @@ struct LocationMapContentView: View {
         } else {
             // Turn north first, lock after: with rotation disabled MapKit ignores the heading
             // change and the pins came up still qibla-rotated.
-            viewModel.resetMapHeading()
+            if wasQibla { viewModel.northUpAboveSheet() } else { viewModel.resetMapHeading() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak viewModel] in
                 guard let viewModel, viewModel.showPrayers || viewModel.showMosques else { return }
                 viewModel.mapView?.isRotateEnabled = false
