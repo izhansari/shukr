@@ -702,6 +702,10 @@ struct MapView: UIViewRepresentable {
 
         private func setPrayers(_ prayers: [PrayerModel], on mapView: MKMapView) {
             defer { fitDayIfAsked(on: mapView) }
+            #if DEBUG
+            let started = CFAbsoluteTimeGetCurrent()
+            defer { MapStallLog.note("pins set \(prayers.count) · \(Int((CFAbsoluteTimeGetCurrent() - started) * 1000)) ms") }
+            #endif
             mapView.removeAnnotations(prayerAnnotations)
             prayerAnnotations = prayers.compactMap { prayer in
                 guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return nil }
@@ -723,6 +727,9 @@ struct MapView: UIViewRepresentable {
             let rect = mapView.visibleMapRect
             let inView = prayerAnnotations.filter { rect.contains(MKMapPoint($0.coordinate)) }
             let count = inView.count
+            #if DEBUG
+            MapStallLog.note("in view \(count)")
+            #endif
             if parent.viewModel.visiblePrayerCount != count { parent.viewModel.visiblePrayerCount = count }
             // The home list's rows: only when the set changed.
             let prayers = inView.compactMap(\.prayer)
@@ -808,6 +815,9 @@ struct MapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            #if DEBUG
+            MapStallLog.note("region did · \(MapStallLog.viewsMade) views made"); MapStallLog.viewsMade = 0
+            #endif
             if parent.viewModel.movingPrayer != nil {
                 parent.viewModel.pick.centre = parent.viewModel.pickedCoordinate(on: mapView)
                 parent.viewModel.pick.moving = false
@@ -853,6 +863,9 @@ struct MapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             if annotation is MKUserLocation { return nil }
+            #if DEBUG
+            MapStallLog.viewsMade += 1
+            #endif
             if annotation is MeccaAnnotation {
                 return mapView.dequeueReusableAnnotationView(withIdentifier: "MeccaAnnotationView", for: annotation)
             }
@@ -942,6 +955,9 @@ struct MapView: UIViewRepresentable {
             }
             view.zPriority = .max
             let selection = PrayerSpotSelection(prayers: prayers, coordinate: annotation.coordinate)
+            #if DEBUG
+            MapStallLog.note("select \(prayers.count)")
+            #endif
             parent.viewModel.present(selection)
             keepInView(annotation.coordinate, on: mapView)
         }
@@ -1507,7 +1523,17 @@ struct LocationMapContentView: View {
                 .presentationDetents([.height(470)])
                 .presentationDragIndicator(.visible)
         }
-        .onAppear { showGuideIfFirstTime(.qibla, after: 0.7) }   // let the map settle on the dot first
+        .onAppear {
+            showGuideIfFirstTime(.qibla, after: 0.7)   // let the map settle on the dot first
+            #if DEBUG
+            MapStallLog.start()
+            #endif
+        }
+        .onDisappear {
+            #if DEBUG
+            MapStallLog.stop()
+            #endif
+        }
         .onChange(of: currentGuideTopic) { _, topic in
             if topic != .qibla { showGuideIfFirstTime(topic, after: 0.9) }
         }

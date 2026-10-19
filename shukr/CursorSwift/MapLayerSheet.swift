@@ -271,6 +271,9 @@ struct PrayerSpotsHome: View {
         let cal = Calendar.current
         var order: [Date] = []; var byDay: [Date: [PrayerModel]] = [:]
         let newest = viewModel.visiblePrayers.prefix(80)   // already newest first (the coordinator sorts it once)
+        #if DEBUG
+        MapStallLog.note("list \(newest.count) of \(viewModel.visiblePrayers.count)")
+        #endif
         for p in newest {
             let day = cal.startOfDay(for: p.timeAtComplete ?? p.startTime)
             if byDay[day] == nil { order.append(day) }
@@ -589,3 +592,83 @@ private struct DayBento: View {
         }
     }
 }
+
+#if DEBUG
+/// The map's stalls on his phone (DEBUG; owner, 2026-10-19: "still hanging. check my hang logs"): iOS writes only a few
+/// hang reports, late. While the map is up a background thread pings the main thread every 50 ms; a reply later than
+/// 150 ms writes "stall 430 ms" and the map events of the 2 s before it (ms from the ping) to Library/Caches/map-stalls.log.
+/// Pull it: devicectl device copy from --domain-type appDataContainer --domain-identifier com.betternorms.shukr
+/// --source Library/Caches/map-stalls.log.
+enum MapStallLog {
+    private static let queue = DispatchQueue(label: "shukr.mapStalls", qos: .userInitiated)
+    private static let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "map-stalls.log")
+    private static let stamp: DateFormatter = { let f = DateFormatter(); f.dateFormat = "HH:mm:ss.SSS"; return f }()
+    // Queue only.
+    private static var timer: DispatchSourceTimer?
+    private static var waiting = false
+    private static var sentAt: CFAbsoluteTime = 0
+    private static var events: [(at: CFAbsoluteTime, what: String)] = []
+    /// Annotation views made since the last region change (main thread).
+    static var viewsMade = 0
+
+    static func note(_ what: String) {
+        let at = CFAbsoluteTimeGetCurrent()
+        queue.async {
+            events.append((at, what))
+            if events.count > 16 { events.removeFirst(events.count - 16) }
+        }
+    }
+
+    static func start() {
+        queue.async {
+            guard timer == nil else { return }
+            let t = DispatchSource.makeTimerSource(queue: queue)
+            t.schedule(deadline: .now(), repeating: .milliseconds(50))
+            t.setEventHandler { ping() }
+            t.resume()
+            timer = t
+            write("map open · \(build)")
+        }
+    }
+
+    static func stop() {
+        queue.async {
+            timer?.cancel(); timer = nil; waiting = false
+            write("map closed")
+        }
+    }
+
+    private static var build: String { Bundle.main.infoDictionary?["ShukrBuildStamp"] as? String ?? "?" }
+
+    private static func ping() {
+        guard !waiting else { return }   // still blocked: measured when the reply lands
+        waiting = true
+        let sent = CFAbsoluteTimeGetCurrent()
+        sentAt = sent
+        DispatchQueue.main.async {
+            let back = CFAbsoluteTimeGetCurrent()
+            queue.async {
+                waiting = false
+                let ms = Int((back - sent) * 1000)
+                guard ms > 150 else { return }
+                let recent = events.filter { $0.at > sent - 2 }
+                    .map { "\(Int(($0.at - sent) * 1000)) \($0.what)" }
+                    .joined(separator: " · ")
+                write("stall \(ms) ms · \(recent)")
+            }
+        }
+    }
+
+    private static func write(_ line: String) {
+        let text = "\(stamp.string(from: Date())) \(line)\n"
+        guard let data = text.data(using: .utf8) else { return }
+        let fm = FileManager.default
+        if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 500_000 { try? fm.removeItem(at: url) }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile(); handle.write(data); try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
+    }
+}
+#endif
