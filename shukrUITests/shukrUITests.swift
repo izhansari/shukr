@@ -65,6 +65,25 @@ final class shukrUITests: XCTestCase {
     /// explore, then prayers"), MAP_ROUNDS times (default 4), the app relaunched each round. A Debug build writes each
     /// main-thread stall over 150 ms with the map events before it to Library/Caches/map-stalls.log (MapStallLog):
     /// xcodebuild test -scheme shukrPerf -configuration Debug -destination id=<udid> -only-testing:shukrUITests/shukrUITests/testMapPrayersLayer
+    /// A page on his phone, as a screenshot attachment (owner, 2026-10-19: item 9, "how the page fits on his 13 Pro Max"):
+    /// Settings → the row named SHOT_ROW (default "Fresh start"). Export with xcresulttool export attachments.
+    func testSettingsPageShot() throws {
+        let row = ProcessInfo.processInfo.environment["SHOT_ROW"] ?? "Fresh start"
+        let app = XCUIApplication()
+        app.launchArguments += ["-demoLand", "settings"]
+        app.launch(); sleep(3); app.terminate()   // demo flags miss on the first launch after an install
+        app.launch()
+        let cell = app.staticTexts[row]
+        XCTAssertTrue(cell.waitForExistence(timeout: 15), row)
+        sleep(2)
+        cell.tap()
+        sleep(3)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = row
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testMapPrayersLayer() throws {
         let rounds = Int(ProcessInfo.processInfo.environment["MAP_ROUNDS"] ?? "") ?? 4
         let app = XCUIApplication()
