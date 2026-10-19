@@ -1398,8 +1398,10 @@ struct LocationMapContentView: View {
                                     .foregroundStyle(Color.green)
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 12)
-                                    .background(Capsule().fill(Color.white))
-                                    .shadow(radius: 3)
+                                    // Liquid Glass, as the pill above it and the map's buttons (owner, 2026-10-19: "make
+                                    // search this area button a liquid glass button"); it was a white capsule.
+                                    .mapGlass(Capsule())
+                                    .contentShape(Capsule())
                             }
                             .buttonStyle(.plain)
                             .padding(.top, 46 + 10)
