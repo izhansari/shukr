@@ -135,7 +135,7 @@ struct FreshStartPage: View {
                     Spacer(minLength: 20)
                     ring
                     Spacer(minLength: 24)
-                    facts
+                    factsOrWelcome
                     Spacer(minLength: 12)
                 }
                 .frame(minHeight: pageHeight, alignment: .top)
@@ -144,7 +144,7 @@ struct FreshStartPage: View {
             .scrollBounceBehavior(.basedOnSize)
             buttons
         }
-        .background(theme.surface.ignoresSafeArea())
+        .background { ZStack { theme.surface; glow }.ignoresSafeArea() }
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear { ticks?.cancel() }
@@ -155,11 +155,12 @@ struct FreshStartPage: View {
     private var heading: some View {
         let (title, line): (String, String) =
             // No date on the day itself: before Fajr the prayer day is still yesterday's date, which reads wrong as "today".
-            if justBegan { ("Bismillah", "Your fresh start begins today. Every prayer from here is part of it.") }
+            if justBegan { ("Bismillah", "Your fresh start begins today.") }
             else { ("A fresh start", "Your past doesn't define you. Start counting again from today.") }
         return VStack(spacing: 8) {
             ZStack {   // the old and new words overlap while they swap, never side by side
-                Text(title).font(.system(size: 32, weight: .light, design: .rounded))
+                // The app's page title (Give to Causes, Kinds of giving): 30 pt light rounded (owner, 2026-10-19: "match it").
+                Text(title).font(.system(size: 30, weight: .light, design: .rounded))
                     .id(title).transition(swap)
             }
             // Two lines' room whatever the words, so nothing under it moves when they change.
@@ -199,7 +200,14 @@ struct FreshStartPage: View {
                     verse.transition(swap)
                 }
             }
-            .frame(width: size - 64)
+            .frame(width: size - 92)
+            // What to do, in the ring you do it to — quiet, low in the ring, outside the verse's centring (owner,
+            // 2026-10-19: "Center all the ayah stuff in center of the ring. and hold the ring make it look clearly secondary
+            // and calmly animate it with something sleek").
+            FreshStartHint(text: "Hold the ring")
+                .offset(y: size * 0.32)
+                .opacity(on || holding ? 0 : 1)
+                .animation(.smooth(duration: 0.3), value: holding)
         }
         .frame(width: size, height: size)
         .scaleEffect(holding ? 0.98 : 1)
@@ -231,16 +239,44 @@ struct FreshStartPage: View {
     private var verse: some View {
         VStack(spacing: 6) {
             Text("لا تَقنَطوا مِن رَحمَةِ اللَّهِ")
-                .font(.custom("KFGQPCUthmanTahaNaskh", size: 23))
+                .font(.custom("KFGQPCUthmanTahaNaskh", size: 21))
                 .environment(\.layoutDirection, .rightToLeft)
                 .lineLimit(1).minimumScaleFactor(0.7)
             Text("“Despair not of the Mercy of Allah.”").font(.footnote).italic()
             Text("Az-Zumar 39:53").font(.caption2).foregroundStyle(.secondary)
-            // What to do, in the ring you do it to (owner, 2026-10-19: "add "hold the ring" to inside of the ring in
-            // secondary text"); the bottom no longer says it too.
-            Text("Hold the ring").font(.footnote).foregroundStyle(.secondary).padding(.top, 10)
         }
         .multilineTextAlignment(.center)
+    }
+
+    /// Before: what changes and what stays. After the hold, the app answers back in the same room (owner, 2026-10-19: "the
+    /// copy on the page not changing much after the reset feels cold … we just made an effort to be better"): the list
+    /// fades and blurs away and a few warm words come in — both stay laid out, so nothing moves.
+    private var factsOrWelcome: some View {
+        ZStack {
+            facts
+                .opacity(justBegan ? 0 : 1)
+                .blur(radius: justBegan && !reduceMotion ? 6 : 0)
+                .allowsHitTesting(!justBegan)
+                .accessibilityHidden(justBegan)
+            welcome
+                .opacity(justBegan ? 1 : 0)
+                .blur(radius: !justBegan && !reduceMotion ? 6 : 0)
+                .animation(.smooth(duration: 0.7).delay(justBegan ? 0.35 : 0), value: justBegan)
+                .accessibilityHidden(!justBegan)
+        }
+    }
+
+    /// A few words back after the hold. The hadith: Sahih al-Bukhari 6464 (also Muslim 783), from 'Aishah — written from
+    /// memory, to check with the other sources (CLAUDE.md's ⚠️ note).
+    private var welcome: some View {
+        VStack(spacing: 12) {
+            Text("One prayer at a time.").font(.system(size: 22, weight: .light, design: .rounded))
+            Text("“The most beloved of deeds to Allah are those done consistently, even if they are small.”")
+                .font(.callout).italic()
+            Text("Sahih al-Bukhari 6464").font(.caption).foregroundStyle(.secondary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 40)
     }
 
     /// What a fresh start changes and what it keeps: a flat list, grey symbols (nothing here is tapped), a line each
@@ -258,25 +294,16 @@ struct FreshStartPage: View {
         .padding(.horizontal, 24)
     }
 
-    /// Prayers to make up: kept by default; before the hold, a switch to start them fresh too (it reads its line once:
-    /// "Your 412 stay on your list" / "reset to zero too"). After, what was chosen.
+    /// Prayers to make up: kept by default; before the hold, a toggle to reset them too (owner, 2026-10-19: "the switch looks
+    /// weak and out of place. maybe a toggle button?"). Its line reads the count once: "Your 412 stay on your list" /
+    /// "start again from zero". After, what was chosen. Laid out as every other row, so the hourglass never moves.
     @ViewBuilder private var makeUpRow: some View {
         if canHold {
-            // The switch at the row's end, centred on both lines: beside the title it squeezed "Prayers to make up" small.
-            HStack(alignment: .center, spacing: 14) {
-                Image(systemName: "hourglass").font(.body).foregroundStyle(.secondary).frame(width: 26)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Prayers to make up").font(.body).lineLimit(1)
-                    ZStack(alignment: .leading) {
-                        Text(makeUpChoiceLine).font(.subheadline).foregroundStyle(.secondary)
-                            .id(clearMakeUp).transition(swap)
-                    }
-                }
-                .layoutPriority(1)
-                Spacer(minLength: 8)
-                FreshStartMakeUpSwitch(clear: $clearMakeUp)
+            row("hourglass", "Reset prayers to make up", makeUpChoiceLine, detailID: clearMakeUp) {
+                Toggle("Reset prayers to make up", isOn: $clearMakeUp.animation(.snappy(duration: 0.25)))
+                    .labelsHidden()
+                    .tint(Color.sage)
             }
-            .padding(.vertical, 8)
             .task(id: day == nil) {
                 guard day == nil else { return }
                 owed = await JourneyMakeUpPage.openCount(container: context.container)
@@ -290,18 +317,31 @@ struct FreshStartPage: View {
 
     private var makeUpChoiceLine: String {
         let yours = day == nil ? owed.flatMap { $0 > 0 ? "Your \($0)" : nil } : nil
-        return clearMakeUp ? "\(yours ?? "They") reset to zero too." : "\(yours ?? "They") stay on your list."
+        return clearMakeUp ? "\(yours ?? "They") start again from zero." : "\(yours ?? "They") stay on your list."
     }
 
     private func row(_ icon: String, _ lead: String, _ detail: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 14) {
-            Image(systemName: icon).font(.body).foregroundStyle(.secondary).frame(width: 26)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(lead).font(.body)
-                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+        row(icon, lead, detail, detailID: false) { EmptyView() }
+    }
+
+    /// One row: the symbol on the lead's first line, a lead and a quieter line, and an optional control at the end,
+    /// centred on both lines (it never moves the symbol or the words).
+    private func row<Trailing: View>(_ icon: String, _ lead: String, _ detail: String, detailID: Bool,
+                                     @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                Image(systemName: icon).font(.body).foregroundStyle(.secondary).frame(width: 26)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(lead).font(.body)
+                    ZStack(alignment: .leading) {
+                        Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                            .id(detailID).transition(swap)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
             }
-            .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
+            trailing()
         }
         .padding(.vertical, 8)
     }
@@ -328,8 +368,11 @@ struct FreshStartPage: View {
                 if justBegan { undo() } else if day != nil { askUndo = true } else { dismiss() }
             } label: {
                 ZStack {
+                    // Under the date line, Undo fresh start is a size and a shade quieter (owner, 2026-10-19: "both have
+                    // same type face... make it clearer undo is secondary to it").
                     Text(justBegan ? "Undo" : day != nil ? "Undo fresh start" : "Not now")
-                        .font(.subheadline).foregroundStyle(.secondary)
+                        .font(!justBegan && day != nil ? .footnote : .subheadline)
+                        .foregroundStyle(!justBegan && day != nil ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.secondary))
                         .id(justBegan ? 0 : day != nil ? 1 : 2)
                         .transition(swap)
                 }
@@ -347,6 +390,23 @@ struct FreshStartPage: View {
             }
         }
         .padding(.top, 8).padding(.bottom, 8)
+    }
+
+    /// Sage light rising from the bottom of the page, as the Live Activity glows when a prayer is marked (LAWash): faint at
+    /// rest, growing with the hold, blooming when it completes (owner, 2026-10-19: "a green glow curving and reaching out
+    /// from bottom slightly"). Its strength rides `held`, so it follows the hold's own animation and winds back with it.
+    private var glow: some View {
+        let strength = justBegan ? 1.0 : 0.25 + 0.45 * held
+        return GeometryReader { g in
+            EllipticalGradient(colors: [Color.sage.opacity(0.45), Color.sage.opacity(0)], center: .center,
+                               startRadiusFraction: 0, endRadiusFraction: 0.5)
+                .frame(width: g.size.width * 1.8, height: 520)
+                .position(x: g.size.width / 2, y: g.size.height + 80)
+                .scaleEffect(justBegan ? 1.08 : 1, anchor: .bottom)
+        }
+        .opacity(strength)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     private func pillLabel(_ title: String) -> some View {
@@ -401,37 +461,31 @@ struct FreshStartPage: View {
     }
 }
 
-/// Keep · Start fresh, for the prayers to make up: a capsule switch (a fixed two, the guide's "Sadaqah | Community"); the
-/// pick slides between them.
-private struct FreshStartMakeUpSwitch: View {
-    @Binding var clear: Bool
-    @Namespace private var pick
+/// "Hold the ring": a quiet caption with a soft light passing over it every few seconds — a pause, then one sweep (none
+/// with Reduce Motion).
+private struct FreshStartHint: View {
+    let text: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        HStack(spacing: 0) {
-            option("Keep", on: !clear) { clear = false }
-            option("Start fresh", on: clear) { clear = true }
-        }
-        .padding(2)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Prayers to make up")
-    }
-
-    private func option(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button {
-            withAnimation(.snappy(duration: 0.25)) { action() }
-        } label: {
-            Text(title)
-                .font(.footnote.weight(on ? .medium : .regular))
-                .foregroundStyle(on ? Color.sage : .secondary)
-                .padding(.horizontal, 10).frame(height: 28)
-                .background {
-                    if on { Capsule().fill(Color.sage.opacity(0.16)).matchedGeometryEffect(id: "pick", in: pick) }
+        let label = Text(text).font(.caption.weight(.medium))
+        label.foregroundStyle(.tertiary)
+            .overlay {
+                if !reduceMotion {
+                    KeyframeAnimator(initialValue: CGFloat(-0.6), repeating: true) { x in
+                        GeometryReader { g in
+                            LinearGradient(colors: [.clear, Color.primary.opacity(0.75), .clear],
+                                           startPoint: .leading, endPoint: .trailing)
+                                .frame(width: g.size.width * 0.5)
+                                .offset(x: x * g.size.width)
+                        }
+                        .mask(label)
+                    } keyframes: { _ in
+                        LinearKeyframe(-0.6, duration: 1.6)
+                        CubicKeyframe(1.1, duration: 1.4)
+                    }
+                    .allowsHitTesting(false)
                 }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(on ? .isSelected : [])
+            }
     }
 }

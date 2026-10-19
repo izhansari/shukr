@@ -99,9 +99,10 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - **The goal and the fresh start** (PrayerGoal.swift, FreshStart.swift; owner 2026-10-18, his picks for
   board/goal-reset-inventory.md): Settings → Journey → Your goal (Pray all five · In their windows · On time · Perfect,
   under the old `prayerStreakMode` key, each with its grades as a strip and the % of the last 30 marked days that met it) and Fresh start (one prayer day; the page,
-  Design 2026-10-19: soft look, Az-Zumar 39:53 and "Hold the ring" inside a pressed 256 pt ring that is itself held
-  1.5 s, then the ring rises (NeuLiftCard) and holds Day N, Done · Undo; four flat lines on what changes and stays, one a
-  Keep · Start fresh switch for the prayers to make up (`freshStartClearsMakeUp`, off by default; Start fresh = To make up
+  Design 2026-10-19: soft look, 30 pt title; Az-Zumar 39:53 centred in a pressed 256 pt ring that is itself held 1.5 s,
+  "Hold the ring" a caption low in it with a light sweeping over it; a sage glow from the bottom, growing with the hold;
+  then the ring rises (NeuLiftCard) and holds Day N, the facts give way to "One prayer at a time." + Bukhari 6464,
+  Done · Undo; four flat lines on what changes and stays, one a "Reset prayers to make up" toggle (`freshStartClearsMakeUp`, off by default; Start fresh = To make up
   and Prayer scores' "to make up" count from its day, made up ones too; nothing deleted); swaps are `.blurReplace` in
   fixed slots. Every later visit looks like the first (owner 2026-10-19): its hold starts again today (Undo right after
   brings back the one it replaced), "Counting since your fresh start on <date>" at the bottom, "Undo fresh start" →
