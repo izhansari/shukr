@@ -211,6 +211,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         // In the background only a real move (≥ 500 m) re-plans; the 10-minute refresh is for when the app is open.
         if UIApplication.shared.applicationState == .background, let last = lastAppLocation, last.distance(from: location) < 500 {
+            restoreCityIfNeeded(for: location)
             return
         }
         if let lastAppLocation = lastAppLocation {
@@ -220,6 +221,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 // phone re-geocoded, re-fetched, re-planned ~7 days of reminders and 60 alarms; CLGeocoder then
                 // rate-limited and "Error fetching city" reached the widgets).
                 if distanceChange < 500, now.timeIntervalSince(lastRequestTime) < 600 {
+                    restoreCityIfNeeded(for: location)
                     return
                 } else { locationPrinter("📍 New Location: \(location.coordinate.latitude), \(location.coordinate.longitude) -- \(Int(distanceChange)) > 500m ? | \(Int(now.timeIntervalSince(lastRequestTime))) > 10 min?") }
             } else { locationPrinter("📍 New Location: \(location.coordinate.latitude), \(location.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | First geocoding request") }
@@ -260,6 +262,19 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     }
     
+    /// A pass the gates above skip still needs a city on screen. The last pass is kept on disk, so a new process (an
+    /// install, a relaunch) within 10 min and 500 m returned with no city: the top bar said "Fetching location…" and
+    /// Settings "Finding…" until its refresh (owner, 2026-10-19). The saved name first; a lookup only when there's none.
+    private func restoreCityIfNeeded(for location: CLLocation) {
+        guard cityName == nil else { return }
+        let saved = lastCityName
+        if !saved.isEmpty, !["Wonderland", "Error.", "Unknown", "Error fetching city"].contains(saved) {
+            cityName = saved
+        } else {
+            updateCityName(for: location)
+        }
+    }
+
     //used in 2 methods: sub_handleLocationChange() & refreshCityAndPrayerTimes()
     /// `done`: the city found, or nil when the lookup failed (Settings' Refresh Location says which).
     private func updateCityName(for location: CLLocation, done: ((String?) -> Void)? = nil) {
