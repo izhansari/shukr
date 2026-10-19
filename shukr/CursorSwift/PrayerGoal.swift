@@ -279,7 +279,7 @@ struct PrayerGoalPage: View {
     /// the list below never moves.
     private var preview: some View {
         let p = previews?[goal]
-        let streak = p.map { $0.streak == 0 ? "Start a streak today" : $0.streak == 1 ? "1-day streak" : "\($0.streak)-day streak" } ?? " "
+        let streak = p.map { $0.streak == 0 ? "0-day streak" : $0.streak == 1 ? "1-day streak" : "\($0.streak)-day streak" } ?? " "
         let days: String = {
             guard let p, p.judged > 0 else { return " " }
             let base = "Met on \(p.met) of \(p.judged) days" + (p.rate.map { " · \($0)%" } ?? "")

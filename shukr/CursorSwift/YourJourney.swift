@@ -96,7 +96,7 @@ struct JourneyHomeCard: View {
                 Spacer()
                 // Where you stand now, in place of "a week a row" (owner, 2026-10-17: "that's kind of dead. Waste of space";
                 // his pick of the ideas: the current streak — the card's best streak never said it).
-                Text(stats.currentStreak > 0 ? "\(stats.currentStreak)-day streak" : "Start a streak today")
+                Text(stats.currentStreak > 0 ? "\(stats.currentStreak)-day streak" : "0-day streak")
             }
             .font(.system(size: 11, weight: .light, design: .rounded))
             .tracking(0.4)

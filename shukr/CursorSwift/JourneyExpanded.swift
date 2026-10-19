@@ -151,7 +151,7 @@ struct JourneyExpandedPage: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
-            Text(stats.currentStreak > 0 ? "\(stats.currentStreak)-day streak" : "Start a streak today")
+            Text(stats.currentStreak > 0 ? "\(stats.currentStreak)-day streak" : "0-day streak")
                 .font(.system(size: 11, weight: .light, design: .rounded)).tracking(0.4)
                 .foregroundStyle(.secondary)
         }
