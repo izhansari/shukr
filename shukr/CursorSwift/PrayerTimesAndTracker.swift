@@ -723,11 +723,13 @@ struct PrayerTimesView: View {
                     )
                     .containerRelativeFrame(.horizontal)
                     .clipped()
+                    .modifier(PagerSidePage(settings: false))
                     .id(NavPage.zikr)
                     
                     centerPage
                         .containerRelativeFrame(.horizontal)
                         .clipped()
+                        .modifier(SalahPageAnchor())
                         .id(NavPage.main)
                     
                     // Settings, the right page again (owner, 2026-10-19: "I want the settings back in the right-hand side. I'm not
@@ -737,6 +739,7 @@ struct PrayerTimesView: View {
                         .environmentObject(viewModel)
                         .containerRelativeFrame(.horizontal)
                         .clipped()
+                        .modifier(PagerSidePage(settings: true))
                         .id(NavPage.settings)
                 }
                 .scrollTargetLayout()
@@ -3819,6 +3822,46 @@ struct ChevronTap2: View {
 /// Behind the pager: one panel per page (Zikr, Salah plain; Settings grouped-gray in light mode)
 /// offset by the live scroll position, so each page's colour — status-bar strip included —
 /// moves with its page. Its own view so only it re-renders per scroll frame.
+/// The Salah page stays anchored while you page (owner, 2026-10-19: "salah tab stays more anchored than others rather
+/// than drag pushing it out as much pulling the others in"): it moves at `follows` of the finger, under the side page
+/// sliding in over it (PagerSidePage), and dims a touch as it's covered. A visual effect read per frame by the render
+/// pass, not a body: PrayerTimesView's body still reads no per-frame value.
+struct SalahPageAnchor: ViewModifier {
+    /// How much of the drag the Salah page moves with (iOS's own push moves the page beneath about this much).
+    static let follows: CGFloat = 0.3
+    /// How far it dims, fully covered.
+    static let dim: Double = 0.35
+
+    func body(content: Content) -> some View {
+        content
+            .visualEffect { view, proxy in
+                let x = proxy.frame(in: .scrollView(axis: .horizontal)).minX
+                let covered = min(abs(x) / max(proxy.size.width, 1), 1)
+                return view
+                    .offset(x: -x * (1 - Self.follows))
+                    .opacity(1 - Self.dim * covered)
+            }
+            .zIndex(0)
+    }
+}
+
+/// Zikr and Settings over the anchored Salah page: drawn above it, on their own page colour (the backdrop's, so nothing
+/// changes at rest) so the Salah page doesn't show through as they slide over it.
+struct PagerSidePage: ViewModifier {
+    let settings: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.circleTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if settings { Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground) }
+                else { theme.backdrop }
+            }
+            .zIndex(1)
+    }
+}
+
 struct PagerBackdrop: View {
     let live: PagerLiveState
     @Environment(\.colorScheme) private var colorScheme
