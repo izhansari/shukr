@@ -237,9 +237,14 @@ struct PrayerGoalPage: View {
                     if a < PrayerGoalDial.minAngle || a > PrayerGoalDial.maxAngle { a = angle > 180 ? PrayerGoalDial.maxAngle : PrayerGoalDial.minAngle }
                     angle = a
                     if grey > 0 { withAnimation(.smooth(duration: 0.25)) { grey = 0 } }
-                    wheel = PrayerGoalDial.wheel(at: a)
+                    // The wheel rolls once, calmly, when the goal under the dot changes — it used to follow the dot over the
+                    // 10° past each color's start and flicked by (owner, 2026-10-19: "wheel switches real fast when dragging
+                    // the ring dot").
                     let now = PrayerGoalDial.goal(at: a)
-                    if now != goal { goal = now }
+                    if now != goal {
+                        goal = now
+                        withAnimation(PrayerGoalDial.wheelRoll) { wheel = PrayerGoalDial.index(now) }
+                    }
                 case .wheel:
                     // Up rolls the next goal in from below, as a picker wheel does.
                     let p = min(max(wheelFrom - Double(v.translation.height) / PrayerGoalDial.step, 0), 3)
@@ -296,8 +301,8 @@ struct PrayerGoalPage: View {
         .accessibilityLabel(p == nil ? "" : "With \(goal.title): \(streak). \(days)")
     }
 
-    /// The four goals in a Settings card, strictest first: a hollow dot in the color each one ends on, the name, the check
-    /// on yours.
+    /// The four goals in a Settings card, strictest first: a hollow dot in the color each one ends on, the name, a radio
+    /// circle filled on yours.
     private var list: some View {
         VStack(spacing: 0) {
             ForEach(Array(PrayerGoalDial.order.enumerated()), id: \.element) { i, option in
@@ -307,8 +312,7 @@ struct PrayerGoalPage: View {
                             .frame(width: 24)
                         Text(option.title).foregroundStyle(.primary)
                         Spacer(minLength: 8)
-                        Image(systemName: "checkmark").fontWeight(.semibold).foregroundStyle(Color.sage)
-                            .opacity(option == goal ? 1 : 0)
+                        GoalRadio(on: option == goal)
                     }
                     .frame(minHeight: 50)
                     .padding(.horizontal, 16)
@@ -343,6 +347,8 @@ struct PrayerGoalDial: View, Animatable {
     /// The ring's radius: a little larger than the Salah page's 200 pt circle (room for the wheel), the same band, arc and
     /// dot.
     static let radius: CGFloat = 118
+    /// The wheel's roll to the dot's goal while the dot is dragged round the ring.
+    static let wheelRoll = Animation.smooth(duration: 0.45)
     /// How far a finger moves the wheel one goal.
     static let step: Double = 64
     static let minAngle = 8.0, maxAngle = 352.0
@@ -357,13 +363,6 @@ struct PrayerGoalDial: View, Animatable {
         switch g { case .perfect: 58; case .onTime: 204; case .inWindow, .prayed: maxAngle }
     }
     static func goal(at a: Double) -> PrayerGoal { a <= zones[0].to ? .perfect : a <= zones[1].to ? .onTime : .inWindow }
-    /// The wheel's place for a dot on the ring: it rolls one step over the 10° past each color's start.
-    static func wheel(at a: Double) -> Double {
-        zones.dropFirst().reduce(0) { p, z in
-            let t = min(max((a - z.from) / blend, 0), 1)
-            return p + t * t * (3 - 2 * t)
-        }
-    }
     /// The dot's place for the wheel's: straight between the goals' rests (the end for Made up counts).
     static func angle(atWheel p: Double) -> Double {
         let rests = [rest(.perfect), rest(.onTime), rest(.inWindow)]
@@ -520,5 +519,24 @@ struct GoalPreview: Equatable {
             out[goal] = p
         }
         return out
+    }
+}
+
+
+/// A goal's radio circle on the goal page's list (owner, 2026-10-19: "checkmarks just appear. make those check marks radio
+/// buttons instead"): a quiet ring; yours turns sage and its dot springs in, the old one's shrinks away.
+struct GoalRadio: View {
+    let on: Bool
+    var body: some View {
+        ZStack {
+            Circle().strokeBorder(on ? Color.sage : Color.secondary.opacity(0.4), lineWidth: 1.6)
+            Circle().fill(Color.sage)
+                .padding(5)
+                .scaleEffect(on ? 1 : 0.2)
+                .opacity(on ? 1 : 0)
+        }
+        .frame(width: 22, height: 22)
+        .animation(.spring(response: 0.32, dampingFraction: 0.68), value: on)
+        .accessibilityHidden(true)
     }
 }
