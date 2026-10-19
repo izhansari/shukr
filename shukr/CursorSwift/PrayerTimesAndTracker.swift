@@ -3681,7 +3681,7 @@ struct PrayerButton: View {
                             // F · when you prayed it, not when it started (the flip still shows the score).
                             originalText: look == .prayedAt ? "prayed \(shortTimePM(prayedAt))" : shortTimePM(shownStart),
                             // G · the tap shows when you prayed (the score takes the name's place).
-                            toggledText: look.behavesLikeG ? "@ \(shortTimePM(prayedAt))" : completedTimeAndScore,
+                            toggledText: look.behavesLikeG ? "at \(shortTimePM(prayedAt))" : completedTimeAndScore,
                             externalTrigger: $toggledText,
                             font: timeFontSize,
                             fontDesign: .rounded,

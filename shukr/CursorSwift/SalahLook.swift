@@ -35,7 +35,7 @@ enum SalahLook: String, CaseIterable, Identifiable {
     case prayedAt
     /// The raised list (owner, 2026-10-14: "make it the real thing"; PrayerListRaisedMock.swift was the mock): the whole
     /// list one raised card with capsule-round corners, the prayer on now a capsule band of it raised a step more; G's
-    /// behaviour (the score / "@ time" on a tap, the marked row's buttons). The public look.
+    /// behaviour (the score / "at time" on a tap, the marked row's buttons). The public look.
     case raised
     /// G · F's shape, quieter (owner: not the word "prayed"): prayed rows keep their start time; a tap puts the score
     /// where the name sits ("Middle · 88") and when you prayed where the time sits.
@@ -66,7 +66,7 @@ enum SalahLook: String, CaseIterable, Identifiable {
     var isSami: Bool { Self.sami.contains(self) }
     /// The prayer on now is the one raised block, with its time left (C, D, E, F).
     var raisesNow: Bool { [.now, .dayNow, .nowLeads, .prayedAt, .prayedOnTap, .raised].contains(self) }
-    /// G's behaviour: the score / "@ time" on a prayed row's tap, unprayed names regular, the marked row's buttons (G and
+    /// G's behaviour: the score / "at time" on a prayed row's tap, unprayed names regular, the marked row's buttons (G and
     /// the raised list).
     var behavesLikeG: Bool { self == .prayedOnTap || self == .raised }
     /// The raised list's row height: its band is a capsule of it, the card's corners its half. 54 pt (owner, 2026-10-18:
