@@ -46,6 +46,9 @@ struct MainCircleView: View {
     /// tap; never on its own.
     @State private var makeUpShowsAll = false
     @State private var makeUpTotal: Int?
+    /// The flip's out, then in: the name row and the line go away together, swap, come back (CircleWordsAway).
+    @State private var makeUpAway = false
+    @State private var makeUpFlip: Task<Void, Never>?
     @Environment(\.modelContext) private var circleContext
     /// A prayer was just marked done: the flourish plays over the circle, then clears.
     @State private var flourish: PrayerCompletionEvent?
@@ -316,11 +319,20 @@ struct MainCircleView: View {
                             VStack{
                                 // Same type as the Insights ring: large, light, rounded.
                                 HStack(alignment: .center, spacing: 8){
-                                    Image(systemName: prayerIcon(for: prayer.name))
-                                        .font(.system(size: 22, weight: .light))
-                                    Text(prayer.name)
-                                        .font(.system(size: 32, weight: .light, design: .rounded))
+                                    if showsMakeUpTotal(status) {
+                                        // Tapped, owed: the total in the name's place, and the line finishes the phrase
+                                        // (owner, 2026-10-19: "change the prayer name to number and bottom finishes the phrase").
+                                        Text("\(makeUpTotal ?? missedToday)")
+                                            .font(.system(size: 32, weight: .light, design: .rounded))
+                                            .monospacedDigit()
+                                    } else {
+                                        Image(systemName: prayerIcon(for: prayer.name))
+                                            .font(.system(size: 22, weight: .light))
+                                        Text(prayer.name)
+                                            .font(.system(size: 32, weight: .light, design: .rounded))
+                                    }
                                 }
+                                .modifier(CircleWordsAway(away: makeUpAway && status == .missed))
                                 // Next ⇄ now changes only inside a moment, while the words are out (the face carries it).
                                 .foregroundStyle(upcoming ? Color.primary.opacity(0.55) : Color.primary)
                                 // Not started yet: "NEXT" above the name (owner: an empty ring read
@@ -361,9 +373,9 @@ struct MainCircleView: View {
                                     .foregroundStyle(.secondary)
                                 }else {
                                     // Owed: "to make up" / "and more to make up"; tapped, the total (MakeUpLine).
-                                    MakeUpLine(text: makeUpShowsAll && !shownIsPreview
-                                               ? "\(makeUpTotal ?? missedToday) to make up in all"
-                                               : missedToday > 1 ? "and more to make up" : "to make up")
+                                    MakeUpLine(text: showsMakeUpTotal(status) || missedToday <= 1 ? "to make up" : "and more to make up",
+                                               quiet: makeUpAway)
+                                        .modifier(CircleWordsAway(away: makeUpAway))
                                 }
                             }
                         }
@@ -496,9 +508,11 @@ struct MainCircleView: View {
         .onChange(of: TourRuntime.shared.openMapRequests) { _, _ in showQiblaMap = true }   // the qibla's →
         .onChange(of: showQiblaMap) { _, open in if !open { TourRuntime.shared.mapClosed() } }
         // Off the missed face (marked, Fajr, a page change underneath): the line starts over on "to make up".
-        .onChange(of: missedFaceShown) { _, shown in if !shown { makeUpShowsAll = false } }
-        // A prayer marked (or unmarked) under the total: back to the line, so the total is never stale.
-        .onChange(of: missedToday) { _, _ in if makeUpShowsAll { withAnimation(.easeOut(duration: CircleMomentTiming.out)) { makeUpShowsAll = false } } }
+        .onChange(of: missedFaceShown) { _, shown in
+            if !shown { makeUpFlip?.cancel(); makeUpShowsAll = false; makeUpAway = false }
+        }
+        // A prayer marked (or unmarked) under the total: back to the name and line, so the total is never stale.
+        .onChange(of: missedToday) { _, _ in if makeUpShowsAll { flipMakeUp(to: false) } }
         .fullScreenCover(isPresented: $showQiblaMap) {
             // A cover on the stage: a widget open closes it and waits until it's gone (it pushed its page under the
             // closing map — tr-final), and moments wait for it.
@@ -903,19 +917,32 @@ struct MainCircleView: View {
         guard case .prayer(_, let status, let preview) = displayedFace ?? derivedFace else { return false }
         return status == .missed && !preview
     }
-    /// The missed face's tap: the total owed (Journey's To make up count, read off the main thread) and "See all ›"; again,
-    /// back. A light buzz each way.
+    /// The total in the name's place (the missed face, tapped; not the palette's preview).
+    private func showsMakeUpTotal(_ status: PrayerModel.prayerStatus) -> Bool { makeUpShowsAll && status == .missed && !shownIsPreview }
+    /// The missed face's tap: the total owed (Journey's To make up count, read off the main thread) in the name's place,
+    /// "to make up" under it, and "See all ›"; again, back. Name and line go out, swap, come back in; a light buzz.
     private func toggleMakeUp() {
         triggerSomeVibration(type: .light)
-        guard !makeUpShowsAll else {
-            withAnimation(.easeOut(duration: CircleMomentTiming.out)) { makeUpShowsAll = false }
-            return
-        }
+        flipMakeUp(to: !makeUpShowsAll)
+    }
+    private func flipMakeUp(to showAll: Bool) {
         let container = circleContext.container
-        Task { @MainActor in
-            makeUpTotal = await JourneyMakeUpPage.openCount(container: container)
-            guard missedFaceShown else { return }
-            withAnimation(.easeOut(duration: CircleMomentTiming.in)) { makeUpShowsAll = true }
+        makeUpFlip?.cancel()
+        makeUpFlip = Task { @MainActor in
+            if showAll {
+                let total = await JourneyMakeUpPage.openCount(container: container)
+                guard !Task.isCancelled, missedFaceShown else { return }
+                makeUpTotal = total
+            }
+            makeUpAway = true
+            try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
+            guard !Task.isCancelled else { return }
+            // Swapped while out, unanimated (animated, the name and the total crossfaded through each other); See all
+            // fades on its own transition.
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { makeUpShowsAll = showAll }
+            makeUpAway = false
         }
     }
 
@@ -1663,11 +1690,13 @@ struct PrayerTimeLine: View {
 }
 
 
-/// The missed face's line (owner, 2026-10-19, decision circle-make-up-wording): "to make up", "and more to make up", or
-/// tapped, "N to make up in all" — the same type and place as "ends 11:59 PM" / "at 5:52", so nothing moves. A new line
+/// The missed face's line (owner, 2026-10-19, decision circle-make-up-wording): "to make up" or "and more to make up"; tapped,
+/// "to make up" under the total in the name's place — the same type and place as "ends 11:59 PM" / "at 5:52", so nothing moves. A new line
 /// swaps the circle's way: out, then in.
 struct MakeUpLine: View {
     let text: String
+    /// The face's own flip has the words out already: swap at once, no second fade.
+    var quiet = false
     @State private var shown: String?
     @State private var away = false
     @State private var swap: Task<Void, Never>?
@@ -1681,6 +1710,7 @@ struct MakeUpLine: View {
             .modifier(CircleWordsAway(away: away))
             .onChange(of: text) { old, new in
                 swap?.cancel()
+                if quiet { shown = new; away = false; return }
                 if shown == nil { shown = old }
                 away = true
                 swap = Task { @MainActor in
