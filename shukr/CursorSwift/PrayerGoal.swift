@@ -162,7 +162,7 @@ struct PrayerGoalSettingsRow: View {
 /// welcome's Prayer circle card, its arc ending where the goal being tried stops counting (Qaza grey) round your CURRENT
 /// streak; the four goals strictest first, each with its time; Save (onboarding's, live only when the goal tried differs),
 /// and one line under it saying what your streak would become. Save closes out the list to your pick, rolls the number,
-/// swells the arc once and closes the page. Tried and dropped: the dial (a ring, its dot as a slider, a wheel of words) and
+/// swells the arc once, then opens the list back out — the page never leaves on its own. Tried and dropped: the dial (a ring, its dot as a slider, a wheel of words) and
 /// Cancel.
 struct PrayerGoalPage: View {
     /// The goal being tried — only Save makes it yours.
@@ -181,8 +181,12 @@ struct PrayerGoalPage: View {
     @State private var saving = false
     @State private var checkDrawn: CGFloat = 0
     @State private var savedTick = 0
+    /// The line under Save as it was when Save was tapped: it fades out with those words.
+    @State private var savedLine = ""
+    /// The back button and swipe are off during the moment (NavPopGuard) — the button stays where it is: hiding it collapsed
+    /// the bar and the page jumped up ~40 pt (Design's check of fb59050f).
+    @State private var navLocked = false
     @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -218,8 +222,8 @@ struct PrayerGoalPage: View {
         .safeAreaInset(edge: .bottom) { saveBar }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
-        // Back never saves; during Save's moment nothing is touched, the back swipe included.
-        .navigationBarBackButtonHidden(saving)
+        // Back never saves; during Save's moment nothing is touched, the back button and swipe included.
+        .background { NavPopGuard(locked: navLocked) }
         .allowsHitTesting(!saving)
         .sensoryFeedback(.selection, trigger: goal)
         .sensoryFeedback(.success, trigger: savedTick)
@@ -257,14 +261,16 @@ struct PrayerGoalPage: View {
 
     /// The list's header, the Settings header spot; at Save it says what the one row left means.
     private var header: some View {
+        // Out, then in (they overlapped as a crossfade).
         ZStack(alignment: .leading) {
             Text("I aim to complete my prayers…").opacity(saving ? 0 : 1)
+                .animation(saving ? .easeOut(duration: 0.14) : .easeOut(duration: 0.24).delay(0.16), value: saving)
             Text("Your goal is now").opacity(saving ? 1 : 0)
+                .animation(saving ? .easeOut(duration: 0.24).delay(0.16) : .easeOut(duration: 0.14), value: saving)
         }
         .font(.footnote).foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 36)
-        .animation(.easeInOut(duration: 0.3), value: saving)
     }
 
     /// The four goals in a Settings card, strictest first: a radio (sage on the one tried, an ink outline on yours), the
@@ -289,7 +295,9 @@ struct PrayerGoalPage: View {
                 .buttonStyle(.plain)
                 // Reduce Motion: the others fade where they are, nothing moves.
                 .opacity(saving && reduceMotion && option != goal ? 0 : 1)
-                .transition(.opacity.animation(.easeOut(duration: 0.2)))
+                // Going: out at once. Coming back: in once your pick has glided back to its place (they overlapped).
+                .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.22).delay(0.3)),
+                                        removal: .opacity.animation(.easeOut(duration: 0.2))))
                 .accessibilityLabel("\(option.title). \(option.line)")
                 .accessibilityAddTraits(option == goal ? .isSelected : [])
                 .accessibilityHint(option == current ? "Your goal now" : "")
@@ -341,10 +349,11 @@ struct PrayerGoalPage: View {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
+            // "✓ Saved" at full strength: disabled, it drew at the faded look (save() ignores a second tap).
             .opacity(changed || saving ? 1 : 0.4)
-            .disabled(!changed || saving)
+            .disabled(!changed && !saving)
             .padding(.horizontal, 24)
-            Text(whatIf)
+            Text(saving ? savedLine : whatIf)
                 .font(.subheadline).foregroundStyle(.secondary)
                 .lineLimit(1).minimumScaleFactor(0.75)
                 .padding(.horizontal, 24)
@@ -359,11 +368,14 @@ struct PrayerGoalPage: View {
         .background(Color(.systemGroupedBackground))
     }
 
-    /// Save's moment (about 1.7 s, then the page closes): a success buzz, the check draws in, the list closes out to your pick
-    /// under "Your goal is now", the number rolls to the new streak, the arc swells once. Reduce Motion: crossfades only.
+    /// Save's moment (about 1.7 s): a success buzz, the check draws in, the list closes out to your pick under "Your goal is
+    /// now", the number rolls to the new streak, the arc swells once; then the list opens back out and the page stays.
+    /// Reduce Motion: crossfades only.
     private func save() {
         guard goal != current, !saving else { return }
         let newStreak = previews?[goal]?.streak
+        savedLine = whatIf
+        navLocked = true
         PrayerGoal.set(goal)
         current = goal
         savedTick += 1
@@ -383,7 +395,11 @@ struct PrayerGoalPage: View {
             } else {
                 try? await Task.sleep(for: .seconds(1.35))
             }
-            dismiss()
+            // It stays (owner, 2026-10-19: "i don't want it to exit the page on its own"): the list opens back out round
+            // your new goal, the header comes back, Save turns back off.
+            navLocked = false
+            withAnimation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.42, dampingFraction: 0.8)) { saving = false }
+            checkDrawn = 0
         }
     }
 }
@@ -472,5 +488,26 @@ struct GoalRadio: View {
         .frame(width: 22, height: 22)
         .animation(.spring(response: 0.32, dampingFraction: 0.68), value: on)
         .accessibilityHidden(true)
+    }
+}
+
+/// The navigation stack's back button and swipe, switched off and on in UIKit without hiding anything (hiding the back button
+/// collapsed the bar and moved the page). Back on when it goes away, whatever.
+private struct NavPopGuard: UIViewControllerRepresentable {
+    let locked: Bool
+    func makeUIViewController(context: Context) -> Holder { Holder() }
+    func updateUIViewController(_ vc: Holder, context: Context) { vc.locked = locked }
+    static func dismantleUIViewController(_ vc: Holder, coordinator: ()) { vc.locked = false }
+
+    final class Holder: UIViewController {
+        var locked = false { didSet { apply() } }
+        override func viewDidAppear(_ animated: Bool) { super.viewDidAppear(animated); apply() }
+        override func viewWillDisappear(_ animated: Bool) { super.viewWillDisappear(animated); set(false) }
+        private func apply() { set(locked) }
+        private func set(_ on: Bool) {
+            guard let nav = navigationController else { return }
+            nav.interactivePopGestureRecognizer?.isEnabled = !on
+            nav.navigationBar.isUserInteractionEnabled = !on
+        }
     }
 }

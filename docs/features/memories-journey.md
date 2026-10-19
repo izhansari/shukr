@@ -104,8 +104,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   grey), round YOUR current streak; "I aim to complete my prayers…" over the four rows (radio + name over its time); a tap
   only tries a goal — Save (onboarding's PrimaryButton look, off until it differs) and one line under it ("Switching to
   Middle makes your streak 3 days." …, `GoalPreview`); Save's moment: success buzz, "✓ Saved", the list closes to the pick
-  under "Your goal is now", the number rolls, the arc swells, the page closes at ~1.7 s (Reduce Motion: crossfades); Back
-  never saves; new installs start on Middle,
+  under "Your goal is now", the number rolls, the arc swells, then at ~1.7 s the list opens back out and the page stays
+  (owner: never leaves on its own; Reduce Motion: crossfades); the back button stays put, off during it; Back never saves; new installs start on Middle,
   existing users keep what an unset goal meant — FirstRunSetup.migrateDefaults) and Fresh start (one prayer day; the page,
   Design 2026-10-19: soft look, 30 pt title; Az-Zumar 39:53 centred in a pressed 256 pt ring that is itself held 1.5 s,
   "Hold the ring" a caption low in it with a light sweeping over it; a sage glow from the bottom, growing with the hold;
