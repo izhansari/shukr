@@ -303,14 +303,16 @@ struct PrayerTimeEditSheet: View {
     /// The ↺: "edited, tap to go back to how it was marked" — an icon only (owner, 2026-10-19: "let's just make it an undo
     /// symbol. no other data for it just to save space"), sitting on its box so nothing moves when it comes and goes.
     private func undoChip(onGlass: Bool, label: String, action: @escaping () -> Void) -> some View {
+        // One look for both (owner, 2026-10-19: "in the mockups you used diff colors for undo. keep it the same. grayish one
+        // you used"): a white ↺ on the map labels' grey glass, never sage.
         Button(action: action) {
             Image(systemName: "arrow.uturn.backward")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(onGlass ? Color.white : Color.sage)
-                .frame(width: 24, height: 24)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
                 .background {
-                    if onGlass { Circle().fill(.ultraThinMaterial).environment(\.colorScheme, .dark) }
-                    else { Circle().fill(Color.sage.opacity(0.12)) }
+                    Circle().fill(.ultraThinMaterial).environment(\.colorScheme, .dark)
+                        .overlay(Circle().fill(Color.black.opacity(0.35)))
                 }
                 .contentShape(Circle().inset(by: -8))
         }
