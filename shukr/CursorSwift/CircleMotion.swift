@@ -85,6 +85,10 @@ enum CircleMotion {
     /// A prayer picked on the day page (owner, 2026-10-16: "doesn't really feel clean and calm"): the raised band glides to
     /// its row; the ring's centre goes out, then the new one comes in (never a crossfade).
     static let dayPick = Animation.smooth(duration: 0.4)
+    /// A marked prayer's time edited on the day page (owner, 2026-10-19: "the day score just jumps"): once the sheet is
+    /// down, the score counts to its new value, the fifth's colour turns and its dot glides along the ring to its new
+    /// place — one curve for all three, the score's own count-up length.
+    static let dayEdit = Animation.smooth(duration: 0.8)
     static let dayPickOut = Animation.easeOut(duration: 0.14)
     static let dayPickIn = Animation.easeOut(duration: 0.26).delay(0.12)
     /// The day page's centre swapping: out, then in.

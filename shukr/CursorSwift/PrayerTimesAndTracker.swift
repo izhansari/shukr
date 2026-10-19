@@ -3113,6 +3113,8 @@ struct PrayerButton: View {
     @State private var showMarkIncompleteAlert = false // State for showing alert
     @State private var isMarkingIncomplete = false // Track if we are marking incomplete
     @State private var showTimePicker = false
+    /// The day page: a saved edit waits for the sheet to go down, then plays (CircleMotion.dayEdit) where it can be seen.
+    @State private var pendingEdit: (date: Date, spot: CLLocationCoordinate2D?)?
     @State private var selectedEditTimeDate = Date()
     @State private var selectedLocation: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 0, longitude: 0)
     @State private var searchQuery = ""
@@ -3624,20 +3626,34 @@ struct PrayerButton: View {
                             secondaryButton: .cancel()
                         )
                     }
-            .sheet(isPresented: $showTimePicker) {
+            .sheet(isPresented: $showTimePicker, onDismiss: {
+                // The day page: the ring and the score move once the sheet is out of the way (owner, 2026-10-19).
+                guard let edit = pendingEdit else { return }
+                pendingEdit = nil
+                withAnimation(CircleMotion.dayEdit) { applyEdit(edit.date, spot: nil) }
+                if let spot = edit.spot { viewModel.movePrayer(prayerObject, to: spot) }
+            }) {
                 PrayerTimeEditSheet(prayer: prayerObject, time: $selectedEditTimeDate, range: editTimeRange,
                                     onCancel: { showTimePicker = false },
                                     onSave: { date, spot in
-                                        // A user edit: the recorded time / spot are kept (revertible).
-                                        let old = prayerObject.timeAtComplete ?? .distantPast
-                                        if abs(date.timeIntervalSince(old)) >= 30 { viewModel.editPrayerTime(prayerObject, to: date) }
-                                        if let spot { viewModel.movePrayer(prayerObject, to: spot) }
+                                        if DayPageState.shared.up && !TourRuntime.shared.active {
+                                            pendingEdit = (date, spot)
+                                        } else {
+                                            applyEdit(date, spot: spot)
+                                        }
                                         TourRuntime.shared.event(.editorSaved(prayerObject.name))   // the tour's fix step
                                         showTimePicker = false
                                     })
                 // Closed by a widget open: like Cancel (the sheet keeps its edits in a local draft).
                 .stageCover("timeEdit.\(prayerObject.name)")
             }
+    }
+
+    /// A user edit: the recorded time / spot are kept (revertible).
+    private func applyEdit(_ date: Date, spot: CLLocationCoordinate2D?) {
+        let old = prayerObject.timeAtComplete ?? .distantPast
+        if abs(date.timeIntervalSince(old)) >= 30 { viewModel.editPrayerTime(prayerObject, to: date) }
+        if let spot { viewModel.movePrayer(prayerObject, to: spot) }
     }
 
     /// The time: the start time, flipping to the countdown (a prayer to come) or the score (a marked
