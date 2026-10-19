@@ -498,12 +498,17 @@ struct PrayerTimeEditSheet: View {
     }
 }
 
-/// The saved spot as a still map (MKMapSnapshotter, the dark style in dark mode), the pin in the middle.
+/// The saved spot as a still map (MKMapSnapshotter, the dark style in dark mode), the pin in the middle. Street level, ~500 m
+/// across whatever the box's shape, so iOS doesn't draw its own city label under the pin next to ours (Zoe's check: "the name
+/// shows twice"). Kept in memory per spot, look and size, so a reopened sheet has it at once.
 struct PrayerSpotSnapshot: View {
     let spot: CLLocationCoordinate2D
     let dark: Bool
     @State private var image: UIImage?
     @State private var size: CGSize = .zero
+    @MainActor private static let cache = NSCache<NSString, UIImage>()
+
+    private var key: String { String(format: "%.5f,%.5f,%d,%dx%d", spot.latitude, spot.longitude, dark ? 1 : 0, Int(size.width), Int(size.height)) }
 
     var body: some View {
         ZStack {
@@ -516,15 +521,19 @@ struct PrayerSpotSnapshot: View {
                 .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
-        .task(id: "\(spot.latitude),\(spot.longitude),\(dark),\(Int(size.width))x\(Int(size.height))") {
-            guard size.width > 1 else { return }
+        .task(id: key) {
+            guard size.width > 1, size.height > 1 else { return }
+            if let cached = Self.cache.object(forKey: key as NSString) { image = cached; return }
             let options = MKMapSnapshotter.Options()
-            options.region = MKCoordinateRegion(center: spot, latitudinalMeters: 450, longitudinalMeters: 450)
+            let across: CLLocationDistance = 500
+            options.region = MKCoordinateRegion(center: spot, latitudinalMeters: across * size.height / size.width,
+                                                longitudinalMeters: across)
             options.size = size
             options.traitCollection = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
             options.pointOfInterestFilter = .excludingAll
-            let shot = try? await MKMapSnapshotter(options: options).start()
-            withAnimation(.easeOut(duration: 0.2)) { image = shot?.image }
+            guard let shot = try? await MKMapSnapshotter(options: options).start() else { return }
+            Self.cache.setObject(shot.image, forKey: key as NSString)
+            withAnimation(.easeOut(duration: 0.25)) { image = shot.image }
         }
     }
 }
