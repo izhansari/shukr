@@ -96,7 +96,7 @@ struct PrayerScores {
     var goal = PrayerGoal.prayed
 
     /// Under the ring's number: the span's words, or "since Oct 17" when the fresh start cuts into it.
-    /// The date is said once, on the span chip ("Since Oct 17"; owner's rule, a fact once per screen — audit #13).
+    /// The date is said once, on the line under the chart ("since Oct 17"; a fact once per screen — audit #13).
     var ringLabel: String {
         countsFrom == nil ? span.ringLabel : "average score"
     }
@@ -839,10 +839,11 @@ struct PrayerScoresPage: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// "since Jul 2026", or the span's own words.
+    /// "since Jul 2026", or the span's own words; "since Oct 19" when the fresh start cuts into the span. The date lives
+    /// here, not on the chip (owner, 2026-10-19: "the span chip should be kept to "all time" and "since" should stay on
+    /// the text line under the histogram").
     private var sinceWords: String? {
-        // A fresh start: the chip says since when (audit #13); a clipped 30 / 7 days says nothing either.
-        if data.countsFrom != nil { return nil }
+        if let fresh = data.countsFrom { return "since \(fresh.formatted(.dateTime.month(.abbreviated).day()))" }
         return switch data.span {
         case .all: data.since.map { "since \($0.formatted(.dateTime.month(.abbreviated).year()))" }
         case .days30: "in the last 30 days"
@@ -951,11 +952,9 @@ struct PrayerScoresPage: View {
     /// All time | 30 days | 7 days, under the header (owner: "we have a lot of space where the header is"); the choice
     /// stays.
     private var spanSwitch: some View {
-        // After a fresh start All time is only since then (owner, 2026-10-18: "the label all time isnt really accurate
-        // there - its really since i reset"): its chip says so.
-        let since = PrayerStats.countsFrom.map { "Since \($0.formatted(.dateTime.month(.abbreviated).day()))" }
-        return JourneySwitch(options: PrayerScores.Span.allCases.map { ($0 == .all ? since ?? $0.title : $0.title, $0.rawValue) },
-                      selection: $spanRaw)
+        // Always "All time": after a fresh start the line under the chart says since when (sinceWords; owner,
+        // 2026-10-19 — it read "Since Oct 19" here from 2026-10-18).
+        JourneySwitch(options: PrayerScores.Span.allCases.map { ($0.title, $0.rawValue) }, selection: $spanRaw)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, 4)
     }
