@@ -100,7 +100,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   board/goal-reset-inventory.md): Settings → Journey → Your goal (Perfect · Before closing · Before it ends · Made up counts,
   under the old `prayerStreakMode` key; Design 2026-10-19, board/mocks/your-goal v3: a prayer's window as a ring — green
   30 min, yellow half of the rest, red — whose hollow dot is dragged and springs to the end of its color, the goals on a
-  wheel inside; the list strictest first, Made up counts only there (grey dot at the end); no numbers) and Fresh start (one prayer day; the page,
+  wheel inside that a finger also rolls (the dot follows); Settings' plain grouped look, the Salah ring's band and arc; the
+  list strictest first, Made up counts only there (grey dot at the end); no numbers; new installs start on Before closing,
+  existing users keep what an unset goal meant — FirstRunSetup.migrateDefaults) and Fresh start (one prayer day; the page,
   Design 2026-10-19: soft look, 30 pt title; Az-Zumar 39:53 centred in a pressed 256 pt ring that is itself held 1.5 s,
   "Hold the ring" a caption low in it with a light sweeping over it; a sage glow from the bottom, growing with the hold;
   then the ring rises (NeuLiftCard) and holds Day N, the facts give way to "One prayer at a time." + Bukhari 6464,
