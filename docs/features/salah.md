@@ -36,19 +36,16 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word. Middle / Closing were On time / Late until 2026-10-17 (owner: users read "on time" as just inside the window and "late" as outside it). The words live only in `PrayerScoring.Grade` (setup's legend and the tour read them there; the watch keeps a copy in `WatchScoring.word`); a shown number never passes its band (`points(for:)`: Middle ≤ 99, Closing ≤ 79). Siri and the Live Activity's VoiceOver say `spokenMark`: "Asr marked as prayed during the Closing window. Score: 66." (Qaza: "after its window, as Qaza"). The "usually Perfect" fact on Prayer scores stays Perfect-only (owner).
-- **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; Design / Zoe's N2 bento, owner 2026-10-19 "i love
-  n2", round 3): a Liquid Glass sheet (`EditorSheetGlass`) at ONE fitted height (no .large: the keyboard would jump to it),
-  header only — no ✕, no ✓; swipe down or tap outside closes (not during the tour's step). Grid: left, the ring's big square
-  (`PrayerTimeEditor` boxed, `PrayerWindowRing` + compact `PrayerTimeWheel` + score, an impossible time's reason in the
-  score's slot ~1.6 s then back) over the note (90 pt); right, two smaller squares: the map (`PrayerSpotSnapshot`, ~500 m,
-  cached; tap = Move) over the photo (the day page's squircle inset + a grey time line; none taken → the box's fill with a
-  dashed squircle in the same place). Tap the note: the boxes crossfade to one note box in the same room, the sheet rides
-  up over the keyboard at its size; the keyboard's ✓ saves and the boxes come back. Every box saves itself: the time on
-  release / wheel rest (once), Move on Set location, Remove photo → "Photo deleted · Undo" 4 s, the note on ✓ or close.
-  A grey-glass ↺ on the ring box / the map while the time / place differ from the recorded ones (revertPrayerTime /
-  revertPrayerLocation). PrayerButton applies each save now, or holds it (`HeldEdit`) for the day page until the sheet
-  closes; the tour's fix step fires on the release that lands its yellow time and closes the sheet. AX sizes stack the boxes.
-  The map's prayer page embeds `PrayerTimeEditor` (240 pt ring, its own Cancel / Save).
+- **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; the N2 bento, owner 2026-10-19, spec
+  shukrGit/board/mocks/prayer-editor/spec-n2.md): a Liquid Glass partial sheet (nothing painted on iOS 26, a material before),
+  the map sheet's header (name, "start – end · when did you pray?", round ✕ — no ✓ ever). A grid: the ring box | the photo box
+  as two equal squares, then the map strip | the note strip. Ring box: `PrayerWindowRing` (green 30 min · yellow to the middle
+  + 15 · red) with the dot to drag and a compact wheel inside; an invalid time's reason takes the score's slot and never saves.
+  **Every box saves itself:** the time on release (never per tick), Move on the picker's confirm, the photo when taken / removed
+  (Undo in the box), the note on Done; ✕ just closes. An edited time or place shows one grey-glass **↺** chip (icon only) in
+  its box — tap = back to how it was marked (`revertTime`, `recordedSpot`); it stays until tapped. Map strip: a street-level
+  snapshot (~500 m, cached) with the place's name; the photo sits inside its square (the day page's card) with its time under
+  it. AX sizes fall back to stacked rows. The tour's fix step fires on a valid release. The map's prayer page embeds `PrayerTimeEditor`.
 - **Place names** (`PrayerPlaceNames`, PrayerPhotos.swift): one name per prayer's place — the masjid, else the city — named
   after each mark (`.journeyChanged`) and on activation (last 30 days, queued, retried when offline); read through
   `place(for:)` (redraws on `PlaceNameRevision`).
