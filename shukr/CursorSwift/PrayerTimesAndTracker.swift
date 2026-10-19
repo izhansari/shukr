@@ -737,6 +737,7 @@ struct PrayerTimesView: View {
                         .id(NavPage.settings)
                 }
                 .scrollTargetLayout()
+                .modifier(PagerStretch())
                 .background { PagerPanLock(live: live) }
             }
             .scrollTargetBehavior(.paging)
@@ -3818,6 +3819,24 @@ struct ChevronTap2: View {
 /// Behind the pager: one panel per page (Zikr, Salah plain; Settings grouped-gray in light mode)
 /// offset by the live scroll position, so each page's colour — status-bar strip included —
 /// moves with its page. Its own view so only it re-renders per scroll frame.
+/// A pull past either end page stretches further than the scroll view's own rubber-band (owner, 2026-10-19: "increase
+/// rubber bandness on edges"): while the pager is past an end, the pages are drawn `extra` more of the overscroll in
+/// the same direction; the spring back is the system's. The scroll view can't be told its own stretch. PagerBackdrop's
+/// panels past each end cover what this uncovers. A visual effect: no body reads it.
+struct PagerStretch: ViewModifier {
+    /// On top of the system's give: 0.8 → about 1.8× as far.
+    static let extra: CGFloat = 0.8
+
+    func body(content: Content) -> some View {
+        content.visualEffect { view, proxy in
+            let f = proxy.frame(in: .scrollView(axis: .horizontal))
+            let width = proxy.bounds(of: .scrollView(axis: .horizontal))?.width ?? f.width / 3
+            let over = f.minX > 0 ? f.minX : (f.maxX < width ? f.maxX - width : 0)
+            return view.offset(x: over * Self.extra)
+        }
+    }
+}
+
 /// The Salah page stays anchored while you page (owner, 2026-10-19: "salah tab stays more anchored than others rather
 /// than drag pushing it out as much pulling the others in"): it moves at `follows` of the finger and fades out by `goneAt`
 /// of the way, so the side page comes in over nothing. A visual effect read per frame by the render pass, not a body:
