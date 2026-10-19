@@ -282,45 +282,25 @@ struct PrayerGoalPage: View {
         }
     }
 
-    /// Save, at the bottom (filled sage only when there's something to save), and under it a quiet "Cancel" back to yours — shown
-    /// only while another goal is tried, its space kept so nothing moves.
+    /// Save and Cancel at the bottom, onboarding's own pair (PrimaryButton / SecondaryButton; owner, 2026-10-19: "not a sage
+    /// button. copy the buttons we use in onboarding"): Save only works (and only looks it) once the goal tried differs from
+    /// yours; "Cancel" back to yours shows only then, its space kept so nothing moves.
     private var saveBar: some View {
         let changed = goal != current
-        return VStack(spacing: 2) {
-            Button {
+        return VStack(spacing: 0) {
+            PrimaryButton(title: "Save", enabled: changed) {
                 PrayerGoal.set(goal)
                 current = goal
                 dismiss()
-            } label: {
-                // Filled in only when it does something (owner, 2026-10-19: "save also only fills in as clickable when
-                // differs from current set goal"); else a quiet grey outline.
-                Text("Save")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .foregroundStyle(changed ? Color.white : Color.secondary)
-                    .background {
-                        Capsule().fill(Color.sage).opacity(changed ? 1 : 0)
-                        Capsule().strokeBorder(Color(.separator), lineWidth: 1).opacity(changed ? 0 : 1)
-                    }
-                    .contentShape(Capsule())
             }
-            .disabled(!changed)
-            Button { pick(current) } label: {
-                Text("Cancel")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 36)
-                    .contentShape(Rectangle())
-            }
-            .opacity(changed ? 1 : 0)
-            .allowsHitTesting(changed)
-            .accessibilityHidden(!changed)
+            SecondaryButton(title: "Cancel") { pick(current) }
+                .opacity(changed ? 1 : 0)
+                .allowsHitTesting(changed)
+                .accessibilityHidden(!changed)
         }
-        .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.2), value: changed)
-        .padding(.horizontal, 20)
         .padding(.top, 8)
+        .padding(.bottom, 4)
         .background(Color(.systemGroupedBackground))
     }
 
