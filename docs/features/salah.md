@@ -36,13 +36,16 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word. Middle / Closing were On time / Late until 2026-10-17 (owner: users read "on time" as just inside the window and "late" as outside it). The words live only in `PrayerScoring.Grade` (setup's legend and the tour read them there; the watch keeps a copy in `WatchScoring.word`); a shown number never passes its band (`points(for:)`: Middle ≤ 99, Closing ≤ 79). Siri and the Live Activity's VoiceOver say `spokenMark`: "Asr marked as prayed during the Closing window. Score: 66." (Qaza: "after its window, as Qaza"). The "usually Perfect" fact on Prayer scores stays Perfect-only (owner).
-- **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; Design's direction A, owner 2026-10-19): the map sheet's
-  header (name, "6:36 – 7:46 PM · when did you pray?", round ✕, and ✓ only when the time, the place or the note changed);
-  `PrayerWindowRing` — the window as a ring (green 30 min · yellow to the middle + 15 · red), the hollow dot dragged round it
-  (never past the end), a compact `PrayerTimeWheel` inside (AM/PM only when the range crosses noon or midnight; past the end
-  the dot rests grey), the score under it; then one card: Where (`PrayerPlaceNames.place`, Move → PrayerLocationPicker) ·
-  Photo (saves at once, "Saved") · Note (`PrayerPhotos.setNote`; Done or ✓ saves). No swipe to dismiss; ✕ with an edit →
-  "Discard your changes?". The tour's fix step shows the ring alone. The map's prayer page embeds `PrayerTimeEditor`.
+- **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; Design / Zoe's N2 bento, owner 2026-10-19 "i love
+  n2", round 2): a Liquid Glass sheet (`EditorSheetGlass`), header with ✕ only — no ✓, no discard alert. Grid A: two equal
+  squares (the ring box: `PrayerTimeEditor` boxed, `PrayerWindowRing` + compact `PrayerTimeWheel` + score, an impossible time's
+  reason in the score's slot ~1.6 s then back; the photo box: the day page's square inset, its time a grey line), then the map
+  strip (`PrayerSpotSnapshot`, ~500 m, cached; tap = Move) | the note (grows full width with the keyboard, Done saves). Every
+  box saves itself: the time on release / wheel rest (once), Move on Set location, Remove photo → "Photo deleted · Undo" 4 s.
+  A grey-glass ↺ on the ring box / the map while the time / place differ from the recorded ones (revertPrayerTime /
+  revertPrayerLocation). PrayerButton applies each save now, or holds it (`HeldEdit`) for the day page until the sheet
+  closes; the tour's fix step fires on the release that lands its yellow time and closes the sheet. AX sizes stack the boxes.
+  The map's prayer page embeds `PrayerTimeEditor` (240 pt ring, its own Cancel / Save).
 - **Place names** (`PrayerPlaceNames`, PrayerPhotos.swift): one name per prayer's place — the masjid, else the city — named
   after each mark (`.journeyChanged`) and on activation (last 30 days, queued, retried when offline); read through
   `place(for:)` (redraws on `PlaceNameRevision`).
