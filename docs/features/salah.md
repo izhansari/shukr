@@ -37,11 +37,14 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word. Middle / Closing were On time / Late until 2026-10-17 (owner: users read "on time" as just inside the window and "late" as outside it). The words live only in `PrayerScoring.Grade` (setup's legend and the tour read them there; the watch keeps a copy in `WatchScoring.word`); a shown number never passes its band (`points(for:)`: Middle ≤ 99, Closing ≤ 79). Siri and the Live Activity's VoiceOver say `spokenMark`: "Asr marked as prayed during the Closing window. Score: 66." (Qaza: "after its window, as Qaza"). The "usually Perfect" fact on Prayer scores stays Perfect-only (owner).
 - **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; Design / Zoe's N2 bento, owner 2026-10-19 "i love
-  n2", round 2): a Liquid Glass sheet (`EditorSheetGlass`), header with ✕ only — no ✓, no discard alert. Grid A: two equal
-  squares (the ring box: `PrayerTimeEditor` boxed, `PrayerWindowRing` + compact `PrayerTimeWheel` + score, an impossible time's
-  reason in the score's slot ~1.6 s then back; the photo box: the day page's square inset, its time a grey line), then the map
-  strip (`PrayerSpotSnapshot`, ~500 m, cached; tap = Move) | the note (grows full width with the keyboard, Done saves). Every
-  box saves itself: the time on release / wheel rest (once), Move on Set location, Remove photo → "Photo deleted · Undo" 4 s.
+  n2", round 3): a Liquid Glass sheet (`EditorSheetGlass`) at ONE fitted height (no .large: the keyboard would jump to it),
+  header only — no ✕, no ✓; swipe down or tap outside closes (not during the tour's step). Grid: left, the ring's big square
+  (`PrayerTimeEditor` boxed, `PrayerWindowRing` + compact `PrayerTimeWheel` + score, an impossible time's reason in the
+  score's slot ~1.6 s then back) over the note (90 pt); right, two smaller squares: the map (`PrayerSpotSnapshot`, ~500 m,
+  cached; tap = Move) over the photo (the day page's squircle inset + a grey time line; none taken → the box's fill with a
+  dashed squircle in the same place). Tap the note: the boxes crossfade to one note box in the same room, the sheet rides
+  up over the keyboard at its size; the keyboard's ✓ saves and the boxes come back. Every box saves itself: the time on
+  release / wheel rest (once), Move on Set location, Remove photo → "Photo deleted · Undo" 4 s, the note on ✓ or close.
   A grey-glass ↺ on the ring box / the map while the time / place differ from the recorded ones (revertPrayerTime /
   revertPrayerLocation). PrayerButton applies each save now, or holds it (`HeldEdit`) for the day page until the sheet
   closes; the tour's fix step fires on the release that lands its yellow time and closes the sheet. AX sizes stack the boxes.

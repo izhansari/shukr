@@ -2,11 +2,10 @@
 //  PrayerTimeEditSheet.swift
 //  shukr
 //
-//  Long-press a completed prayer → "when did you pray?" (Design's direction A, owner 2026-10-19: "this my favorite by far";
-//  spec board/mocks/prayer-editor/spec.md). The map sheet's header (the name in light type over one quiet line, round ✕ and
-//  ✓ on the right), the prayer's window as a ring with the marked dot you drag round it, a small time wheel and the score
-//  inside the ring, then one flat card: Where · Photo · Note. ✓ shows only when the time, the place or the note changed;
-//  photos save at once. No swipe to dismiss: ✕ with an unsaved edit asks first ("A").
+//  Long-press a completed prayer → "when did you pray?" (N2 bento, owner 2026-10-19: "i love n2"; spec
+//  board/mocks/prayer-editor/spec-n2.md). The map sheet's header (the name in light type over one quiet line), then boxes
+//  that each save themselves: the prayer's window as a ring with the marked dot you drag round it (a small wheel and the
+//  score inside), the note, the map, the photo. An edited time or place shows a ↺. Swipe down or tap outside to close.
 //
 
 import SwiftUI
@@ -58,8 +57,9 @@ struct PrayerTimeEditSheet: View {
     @State private var writingNote = false
     @FocusState private var noteFocused: Bool
 
-    @State private var contentHeight: CGFloat = 0
-    @State private var detent: PresentationDetent = .large
+    /// The sheet's one height, from the first frame: the grid's own sum (header ~80 + the two squares + the gap), measured
+    /// right after. Starting at .large and switching to a height closed the sheet the moment it opened.
+    @State private var contentHeight: CGFloat = 84 + 2 * Self.small(for: UIScreen.main.bounds.width - 32) + Self.gap
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.colorScheme) private var scheme
 
@@ -112,31 +112,37 @@ struct PrayerTimeEditSheet: View {
     var body: some View {
         VStack(spacing: 14) {
             // The tour's words for this step are in its panel, over the sheet (TourEditorPanelWindow).
-            MapSheetHeader(title: prayer.displayName, subtitle: subtitle) {
-                MapSheetCircleButton(symbol: "xmark", label: "Close") { close() }
-            }
-            .padding(.top, 20)
-            .padding(.horizontal, 4)
+            // No ✕ (owner, 2026-10-19: "get rid of the x and allow swiping to dismiss again. or tapping out of sheet to
+            // dismiss"): every box has already saved itself.
+            MapSheetHeader(title: prayer.displayName, subtitle: subtitle)
+                .padding(.top, 20)
+                .padding(.horizontal, 4)
 
-            if writingNote {
-                noteEditor
-            } else if tourTip {
-                ringBox(size: 240)
-            } else if typeSize.isAccessibilitySize {
-                // Large text can't fit the grid: the boxes stacked, the ring at its full size.
-                VStack(spacing: 8) {
+            // Writing a note crossfades the boxes to the note's box in the same room (owner, 2026-10-19: "id rather the current
+            // sheet's bentos just crossfades to show the note editor box at the size the sheet is at"): the sheet never moves.
+            Group {
+                if tourTip {
                     ringBox(size: 240)
-                    noteBox.frame(minHeight: 62)
-                    HStack(spacing: 8) { mapBox; photoBox }.frame(height: 150)
+                } else if typeSize.isAccessibilitySize {
+                    // Large text can't fit the grid: the boxes stacked, the ring at its full size.
+                    VStack(spacing: 8) {
+                        ringBox(size: 240)
+                        noteBox.frame(minHeight: 62)
+                        HStack(spacing: 8) { mapBox; photoBox }.frame(height: 150)
+                    }
+                } else {
+                    grid
                 }
-            } else {
-                grid
             }
+            .opacity(writingNote ? 0 : 1)
+            .allowsHitTesting(!writingNote)
+            // An overlay, so the note's box is exactly the boxes' room and never sizes the sheet.
+            .overlay { if writingNote { noteEditor.transition(.opacity) } }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 4)   // the home bar's own inset is under it (Design saw ~50 pt spare at 16 + 8)
         .fontDesign(.rounded)
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if abs($0 - contentHeight) > 0.5 { contentHeight = $0 } }
         .frame(maxHeight: .infinity, alignment: .top)
         // The Liquid Glass sheet (owner, 2026-10-19: "should we be using the translucent sheet, like the liquid glass sheet that
         // we use in a lot of other places in the app?"): nothing painted on iOS 26, a material before; the boxes keep their fill.
@@ -152,9 +158,6 @@ struct PrayerTimeEditSheet: View {
             TourRuntime.shared.editorInYellow = inYellow(now)
             TourRuntime.shared.editorScore = PrayerScoring.points(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: now))
         }
-        // Writing a note needs the keyboard's room: the sheet goes full height while the field is up.
-        .onChange(of: writingNote) { _, on in withAnimation(.smooth(duration: 0.3)) { detent = on ? .large : fitted } }
-        .onChange(of: contentHeight) { _, _ in if !writingNote { detent = fitted } }
         // The keyboard went away some other way: the note is done.
         .onChange(of: noteFocused) { was, now in if was && !now && writingNote { finishNote() } }
         .sheet(isPresented: $pickingSpot) {
@@ -182,18 +185,18 @@ struct PrayerTimeEditSheet: View {
             Button("Retake") { photoTarget = PrayerPhotoTarget.forMarked(prayer) }
             Button("Remove", role: .destructive) { startRemoving() }
         }
-        // The tour's tip at the largest text: the full height.
-        .presentationDetents(tourTip && typeSize.isAccessibilitySize ? [.large] : [fitted, .large], selection: $detent)
+        // One height, the boxes': with a .large detent too, iOS jumped the sheet to full height when the note's keyboard came
+        // (owner, 2026-10-19: "at the size the sheet is at"). Large text can still pull it up; the tour's tip there is full height.
+        .presentationDetents(tourTip && typeSize.isAccessibilitySize ? [.large]
+                             : typeSize.isAccessibilitySize ? [fitted, .large] : [fitted])
         .presentationDragIndicator(.hidden)
-        .interactiveDismissDisabled()
+        // The tour's step is the time alone (only the intended move): no swipe away mid-step.
+        .interactiveDismissDisabled(tourTip)
         .presentationCornerRadius(28)
     }
 
     /// The sheet fitted to what it holds.
-    private var fitted: PresentationDetent { contentHeight > 0 ? .height(min(contentHeight, 760)) : .large }
-
-    /// Nothing ever waits (every box saved itself), so ✕ just closes.
-    private func close() { onClose() }
+    private var fitted: PresentationDetent { .height(min(contentHeight, 760)) }
 
     // MARK: Saving
 
@@ -274,27 +277,33 @@ struct PrayerTimeEditSheet: View {
         removing = nil
     }
 
-    // MARK: The grid (N2: owner 2026-10-19, "i love n2"; round 2, "more rectangular than it is square")
+    // MARK: The grid (N2: owner 2026-10-19, "i love n2"; round 3, "where the two squares were stacked on the right (map and
+    // photo) and then score ring and notes stacked on left. square for all of them except the note. ring a little bigger square
+    // so it doesnt look like evenly divided quadrants")
 
     /// The screen less the sheet's sides from the first frame: a guess (370) measured right a moment later grew the sheet
     /// ~20 pt after it opened (Zoe's check; owner's no-layout-shift rule).
     @State private var gridWidth: CGFloat = UIScreen.main.bounds.width - 32
     private static let gap: CGFloat = 8
-    private static let lowRow: CGFloat = 90
-    private var side: CGFloat { max((gridWidth - Self.gap) / 2, 120) }
+    private static let noteHeight: CGFloat = 90
+    /// The right column's squares: ring + gap + small = the width, ring + gap + note = two smalls + gap.
+    private var small: CGFloat { Self.small(for: gridWidth) }
+    private static func small(for width: CGFloat) -> CGFloat { max((width - gap + noteHeight) / 3, 100) }
+    private var ringSide: CGFloat { 2 * small - Self.noteHeight }
 
-    /// Grid A: two equal squares on top, the ring box | the photo box; under them the map | the note, side by side.
+    /// The ring's square with the note under it on the left; the map over the photo on the right, two smaller squares.
     private var grid: some View {
-        VStack(spacing: Self.gap) {
-            HStack(spacing: Self.gap) {
-                ringBox(size: side - 12).frame(width: side, height: side)
-                photoBox.frame(width: side, height: side)
+        HStack(alignment: .top, spacing: Self.gap) {
+            VStack(spacing: Self.gap) {
+                ringBox(size: ringSide - 14).frame(width: ringSide, height: ringSide)
+                noteBox.frame(width: ringSide, height: Self.noteHeight)
             }
-            HStack(spacing: Self.gap) {
-                if showsLocation { mapBox }
-                noteBox
+            VStack(spacing: Self.gap) {
+                if showsLocation { mapBox.frame(width: small, height: small) }
+                photoBox.frame(width: small)
+                    .frame(maxHeight: showsLocation ? small : .infinity)
             }
-            .frame(height: Self.lowRow)
+            .frame(height: 2 * small + Self.gap, alignment: .top)
         }
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
@@ -367,11 +376,11 @@ struct PrayerTimeEditSheet: View {
         }
     }
 
-    /// Writing a note: the note grows to full width above the keyboard; the keyboard's Done saves it and brings the grid back.
+    /// Writing a note: one box in the boxes' room; the keyboard's ✓ (or the keyboard going) saves it and the boxes come back.
     private var noteEditor: some View {
         TextField("Add a note", text: $draftNote, axis: .vertical)
             .font(.body)
-            .lineLimit(3...6)
+            .lineLimit(1...8)
             .focused($noteFocused)
             .submitLabel(.done)
             .onChange(of: draftNote) { _, text in
@@ -383,7 +392,10 @@ struct PrayerTimeEditSheet: View {
             }
             .onSubmit(finishNote)
             .padding(14)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .contentShape(Rectangle())
+            .onTapGesture { noteFocused = true }
             .onAppear { DispatchQueue.main.async { noteFocused = true } }
     }
 
@@ -447,17 +459,12 @@ struct PrayerTimeEditSheet: View {
         } else if has {
             // The photo sits in its box (owner, 2026-10-19: "prayer photos should still look like they're in a box. not just
             // take up the box"): the day page's rounded square with the front camera's inset, its time a grey line under it.
-            card {
-                GeometryReader { geo in
-                    let w = max(min(geo.size.width, geo.size.height - 18) - 28, 40)
-                    VStack(spacing: 6) {
-                        PrayerPhotoCard(key: photoKey, width: w, opens: !photoInWindow)
-                        Text(photoSaved ? "Saved" : takenLine)
-                            .font(.caption2).foregroundStyle(photoSaved ? Color.sage : .secondary)
-                            .contentTransition(.opacity)
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                }
+            photoFrame { w in
+                PrayerPhotoCard(key: photoKey, width: w, opens: !photoInWindow)
+            } line: {
+                Text(photoSaved ? "Saved" : takenLine)
+                    .foregroundStyle(photoSaved ? Color.sage : .secondary)
+                    .contentTransition(.opacity)
             }
             .overlay {
                 if photoInWindow {
@@ -472,23 +479,45 @@ struct PrayerTimeEditSheet: View {
                 triggerSomeVibration(type: .light)
                 photoTarget = PrayerPhotoTarget.forMarked(prayer)
             } label: {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .overlay {
-                        VStack(spacing: 4) {
-                            Image(systemName: "camera").font(.title3).foregroundStyle(.secondary)
-                            Text(photoInWindow ? "Add a photo" : "No photo").font(.footnote)
-                            Text(photoInWindow ? "While \(prayer.displayName) is on" : "Only while \(prayer.displayName) is on")
-                                .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                // No photo: the box keeps its fill like the others, a dashed squircle where the photo would sit (owner,
+                // 2026-10-19: "a photo placeholder inside in same shape of our photos squircle thing with maybe like a dashed
+                // border to show visually photo not taken").
+                photoFrame { w in
+                    RoundedRectangle(cornerRadius: w * 0.22, style: .continuous)
+                        .strokeBorder(Color.secondary.opacity(photoInWindow ? 0.5 : 0.3), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
+                        .frame(width: w, height: w)
+                        .overlay {
+                            VStack(spacing: 4) {
+                                Image(systemName: "camera").font(.title3)
+                                Text(photoInWindow ? "Add a photo" : "No photo").font(.caption)
+                            }
+                            .foregroundStyle(photoInWindow ? .primary : .secondary)
                         }
-                        .padding(8)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .contentShape(Rectangle())
+                } line: {
+                    Text(photoInWindow ? "While \(prayer.displayName) is on" : "Only while \(prayer.displayName) is on")
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!photoInWindow)
-            .opacity(photoInWindow ? 1 : 0.55)
+        }
+    }
+
+    /// The photo's place in its box: the day page's squircle with an inset, a grey line under it — the same with or without a
+    /// photo, so taking one moves nothing.
+    private func photoFrame<Photo: View, Line: View>(@ViewBuilder _ photo: @escaping (CGFloat) -> Photo,
+                                                     @ViewBuilder line: () -> Line) -> some View {
+        let line = line()
+        return card {
+            GeometryReader { geo in
+                let w = max(min(geo.size.width, geo.size.height - 18) - 28, 40)
+                VStack(spacing: 6) {
+                    photo(w)
+                    line.font(.caption2).lineLimit(1).minimumScaleFactor(0.8)
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+            }
         }
     }
 
