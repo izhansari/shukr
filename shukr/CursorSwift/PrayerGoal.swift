@@ -401,13 +401,16 @@ struct PrayerGoalDial: View, Animatable {
         let r = Self.radius, d = r * 2
         ZStack {
             track.frame(width: d, height: d)
+            // The day ring's thickness: half the prayer arc's band (owner, 2026-10-19: "change color ring thickness on goal page
+            // to match thickness of rings shows on the day ring. it's too thick rn").
+            let band = theme.arc.width * 0.5
             ForEach(Array(Self.zones.enumerated()), id: \.offset) { _, z in
                 let color = PrayerScoring.color(for: z.score)
                 let a0 = z.from + Self.gap / 2, a1 = z.to - Self.gap / 2, lit = min(a1, angle)
-                arc(a0, a1).stroke(color.opacity(0.16), style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
+                arc(a0, a1).stroke(color.opacity(0.16), style: StrokeStyle(lineWidth: band, lineCap: theme.arc.cap))
                     .frame(width: d, height: d)
                 if lit > a0 + 0.5 {
-                    arc(a0, lit).stroke(color, style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
+                    arc(a0, lit).stroke(color, style: StrokeStyle(lineWidth: band, lineCap: theme.arc.cap))
                         .frame(width: d, height: d)
                         .shadow(color: color.opacity(theme.arc.glow), radius: 6)
                 }
