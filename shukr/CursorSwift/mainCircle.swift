@@ -41,6 +41,12 @@ struct MainCircleView: View {
     /// it. It read `ogText` too, whose own 3 s timer then nudged it again — a buzz with no touch, and sometimes a second
     /// flip (audit A, bug 1).
     @State private var timeFlipPulse = false
+    /// The missed face (after Isha, until Fajr), tapped: the line says the total owed and "See all ›" opens To make up
+    /// (owner, 2026-10-19: "make tap show total amount of prayers to make up with link to “to make up”"). Back on a second
+    /// tap; never on its own.
+    @State private var makeUpShowsAll = false
+    @State private var makeUpTotal: Int?
+    @Environment(\.modelContext) private var circleContext
     /// A prayer was just marked done: the flourish plays over the circle, then clears.
     @State private var flourish: PrayerCompletionEvent?
     @State private var flourishID = 0
@@ -354,11 +360,10 @@ struct MainCircleView: View {
                                     )
                                     .foregroundStyle(.secondary)
                                 }else {
-                                    Text("missed")
-                                        .font(.subheadline)
-                                        .fontDesign(.rounded)
-                                        .fontWeight(.thin)
-                                        .foregroundStyle(.secondary)
+                                    // Owed: "to make up" / "and more to make up"; tapped, the total (MakeUpLine).
+                                    MakeUpLine(text: makeUpShowsAll && !shownIsPreview
+                                               ? "\(makeUpTotal ?? missedToday) to make up in all"
+                                               : missedToday > 1 ? "and more to make up" : "to make up")
                                 }
                             }
                         }
@@ -444,9 +449,19 @@ struct MainCircleView: View {
                             }
                         }
                 )
-            
-            
-            
+
+            // The missed face tapped open: "See all ›" at the bottom inside the ring, over the tap layer so it takes its own
+            // tap (a tap anywhere else in the ring flips back). Opens To make up, as the day page's pill does.
+            if makeUpShowsAll && missedFaceShown {
+                MakeUpSeeAll {
+                    JourneyPresenter.shared.makeUp = true
+                    JourneyPresenter.shared.open = true
+                }
+                .offset(y: 64)
+                .transition(.asymmetric(
+                    insertion: .opacity.animation(.easeOut(duration: CircleMomentTiming.in).delay(CircleMomentTiming.out)),
+                    removal: .opacity.animation(.easeOut(duration: CircleMomentTiming.out))))
+            }
 
             if morningShown == nil && lostShown == nil && !openingHides {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
@@ -480,6 +495,10 @@ struct MainCircleView: View {
         .onChange(of: TourRuntime.shared.closeMapRequests) { _, _ in showQiblaMap = false }
         .onChange(of: TourRuntime.shared.openMapRequests) { _, _ in showQiblaMap = true }   // the qibla's →
         .onChange(of: showQiblaMap) { _, open in if !open { TourRuntime.shared.mapClosed() } }
+        // Off the missed face (marked, Fajr, a page change underneath): the line starts over on "to make up".
+        .onChange(of: missedFaceShown) { _, shown in if !shown { makeUpShowsAll = false } }
+        // A prayer marked (or unmarked) under the total: back to the line, so the total is never stale.
+        .onChange(of: missedToday) { _, _ in if makeUpShowsAll { withAnimation(.easeOut(duration: CircleMomentTiming.out)) { makeUpShowsAll = false } } }
         .fullScreenCover(isPresented: $showQiblaMap) {
             // A cover on the stage: a widget open closes it and waits until it's gone (it pushed its page under the
             // closing map — tr-final), and moments wait for it.
@@ -872,6 +891,34 @@ struct MainCircleView: View {
     /// with the same moments as the real data — a swap into "next", the begins moment, a swap back — so what's played
     /// is what he sees at a real start. With every prayer done, today's Fajr row is held on the circle for it. Visual
     /// only: no rows, times or notifications are touched.
+    /// Today's prayers owed: ended, not marked, not excused — more than one and the missed face says "and more to make up".
+    private var missedToday: Int {
+        let now = Date(), excused = Excused.ranges
+        return viewModel.todaysPrayers.filter {
+            !$0.isCompleted && $0.endTime < now && !Excused.covers(start: $0.startTime, end: $0.endTime, in: excused)
+        }.count
+    }
+    /// The circle is on a missed prayer (after Isha ends, until Fajr turns the day).
+    private var missedFaceShown: Bool {
+        guard case .prayer(_, let status, let preview) = displayedFace ?? derivedFace else { return false }
+        return status == .missed && !preview
+    }
+    /// The missed face's tap: the total owed (Journey's To make up count, read off the main thread) and "See all ›"; again,
+    /// back. A light buzz each way.
+    private func toggleMakeUp() {
+        triggerSomeVibration(type: .light)
+        guard !makeUpShowsAll else {
+            withAnimation(.easeOut(duration: CircleMomentTiming.out)) { makeUpShowsAll = false }
+            return
+        }
+        let container = circleContext.container
+        Task { @MainActor in
+            makeUpTotal = await JourneyMakeUpPage.openCount(container: container)
+            guard missedFaceShown else { return }
+            withAnimation(.easeOut(duration: CircleMomentTiming.in)) { makeUpShowsAll = true }
+        }
+    }
+
     private func playBeginsPreview() {
         var held: PrayerModel?
         if viewModel.relevantPrayer == nil {
@@ -961,6 +1008,8 @@ struct MainCircleView: View {
         // ExternalToggleText that buzzes by itself (this used to buzz a second time).
         let flipsOwnText: Bool   // true = ExternalToggleText, haptic included
         if let prayer = viewModel.relevantPrayer, !(prayer.status() == .upcoming && prayer.name == "Fajr") {
+            // Owed (after Isha, until Fajr): the line flips to the total owed and back (toggleMakeUp).
+            if prayer.status() == .missed { toggleMakeUp(); return }
             guard prayer.status() == .current || prayer.status() == .upcoming else { return }
             flipsOwnText = true
         } else {
@@ -1611,4 +1660,58 @@ struct PrayerTimeLine: View {
 
     private static let lastHourSeconds: TimeInterval = 60 * 60
     private static let flipSeconds: Double = 3
+}
+
+
+/// The missed face's line (owner, 2026-10-19, decision circle-make-up-wording): "to make up", "and more to make up", or
+/// tapped, "N to make up in all" — the same type and place as "ends 11:59 PM" / "at 5:52", so nothing moves. A new line
+/// swaps the circle's way: out, then in.
+struct MakeUpLine: View {
+    let text: String
+    @State private var shown: String?
+    @State private var away = false
+    @State private var swap: Task<Void, Never>?
+
+    var body: some View {
+        Text(shown ?? text)
+            .font(.subheadline)
+            .fontDesign(.rounded)
+            .fontWeight(.thin)
+            .foregroundStyle(.secondary)
+            .modifier(CircleWordsAway(away: away))
+            .onChange(of: text) { old, new in
+                swap?.cancel()
+                if shown == nil { shown = old }
+                away = true
+                swap = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
+                    guard !Task.isCancelled else { return }
+                    shown = new
+                    away = false
+                }
+            }
+    }
+}
+
+/// "See all ›" at the bottom inside the ring, the day page pill's look (DayMakeUpPill): opens To make up.
+struct MakeUpSeeAll: View {
+    let action: () -> Void
+    var body: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            action()
+        } label: {
+            HStack(spacing: 4) {
+                Text("See all")
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
+            }
+            .font(.system(size: 13, weight: .light, design: .rounded))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Capsule().fill(Color.primary.opacity(0.07)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("See all prayers to make up")
+    }
 }
