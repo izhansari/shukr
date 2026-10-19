@@ -14,159 +14,173 @@ import MapKit
 
 struct PrayerTimeEditSheet: View {
     let prayer: PrayerModel
-    @Binding var time: Date
-    /// The time being picked lives here until ✓ (owner saw the bar hang on device: every minute scrubbed wrote the parent's
-    /// state and re-rendered the prayer row behind the sheet).
-    @State private var draft: Date
-    /// From the prayer's start (never earlier) to now or the next Fajr (the day's rollover), whichever is first. After the
-    /// window it's Qaza, e.g. Isha at 12:30 AM.
+    /// The day's earliest and latest time it can be marked at: from the prayer's start (never earlier) to now or the next
+    /// Fajr (the day's rollover), whichever is first. After the window it's Qaza, e.g. Isha at 12:30 AM.
     let range: ClosedRange<Date>
-    var onCancel: () -> Void
-    /// The time, and the new spot if the pin was moved (nil = where it was).
-    var onSave: (Date, CLLocationCoordinate2D?) -> Void
-
-    /// Where it was prayed: the Where row opens `PrayerLocationPicker`; the picked spot waits here and is saved with ✓, like
-    /// the time. Off when the sheet is opened from the prayer map, which moves pins on the map itself.
+    /// Every box saves itself (owner, 2026-10-19: "stay away from the check mark altogether and just fix the time so that it
+    /// just always saves"): the row behind applies each one (or holds it for the day page until the sheet is gone).
+    var onTime: (Date) -> Void
+    var onRevertTime: () -> Void
+    var onSpot: (CLLocationCoordinate2D) -> Void
+    var onRevertSpot: () -> Void
+    var onClose: () -> Void
+    /// Where it was prayed: the map box opens `PrayerLocationPicker`. Off when the sheet is opened from the prayer map, which
+    /// moves pins on the map itself.
     var showsLocation = true
-    @State private var draftSpot: CLLocationCoordinate2D?
-    @State private var pickingSpot = false
-    @State private var spotName: String?
-    private var savedSpot: CLLocationCoordinate2D? {
-        guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return nil }
-        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-    }
-    private var shownSpot: CLLocationCoordinate2D? { draftSpot ?? savedSpot }
 
-    /// The prayer's photo (PrayerPhotos.swift): added or retaken while the prayer's window is on and it's marked (owner: "they
-    /// can add photos any time in that window so long as its marked"), seen any time after. Saved at once, never by ✓.
+    /// The time on the dot and the wheel; `saved` what's in the model (or held for it). A release on a valid, different
+    /// time saves it; an invalid one springs back to `saved`.
+    @State private var draft: Date
+    @State private var saved: Date
+    /// What the app recorded, for the ↺ (the prayer's own recorded time / spot, else what it opened with).
+    private let recordedTime: Date
+    @State private var spot: CLLocationCoordinate2D?
+    private let recordedSpot: CLLocationCoordinate2D?
+    @State private var spotName: String?
+    @State private var pickingSpot = false
+
+    /// The prayer's photo (PrayerPhotos.swift): added or retaken while the prayer's window is on and it's marked (owner:
+    /// "they can add photos any time in that window so long as its marked"), seen any time after. Saved at once.
     @State private var photoTarget: PrayerPhotoTarget?
     @State private var askPhoto = false
     @State private var photoSaved = false
+    /// Removed, but the file waits ~4 s for Undo (it goes for good then, or when the sheet closes).
+    @State private var removing: Task<Void, Never>?
     private var photoKey: String { PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name) }
     private var photoInWindow: Bool { prayer.isCompleted && Date() < prayer.endTime }
 
-    /// The note (the photos' note file, PrayerPhotos.note — the day page and Journey read it): edited in its row, saved by ✓
-    /// or the keyboard's Done.
+    /// The note (the photos' note file, PrayerPhotos.note — the day page and Journey read it): saved on the keyboard's Done
+    /// and on close.
     @State private var draftNote = ""
     @State private var savedNote = ""
+    @State private var noteSaved = false
+    /// The note box grown to full width (its field focuses once it's there).
+    @State private var writingNote = false
     @FocusState private var noteFocused: Bool
 
-    @State private var askDiscard = false
     @State private var contentHeight: CGFloat = 0
     @State private var detent: PresentationDetent = .large
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.colorScheme) private var scheme
 
-    init(prayer: PrayerModel, time: Binding<Date>, range: ClosedRange<Date>, showsLocation: Bool = true,
-         onCancel: @escaping () -> Void, onSave: @escaping (Date, CLLocationCoordinate2D?) -> Void) {
+    init(prayer: PrayerModel, range: ClosedRange<Date>, showsLocation: Bool = true,
+         onTime: @escaping (Date) -> Void, onRevertTime: @escaping () -> Void,
+         onSpot: @escaping (CLLocationCoordinate2D) -> Void, onRevertSpot: @escaping () -> Void,
+         onClose: @escaping () -> Void) {
         self.prayer = prayer
-        self.showsLocation = showsLocation
-        self._time = time
-        // Open on the time saved for this prayer (owner, 2026-09-26). The parent's binding isn't enough: it's written in the
-        // same long-press that presents the sheet, and the sheet came up with the value from before — the device's time.
-        // Kept within what can be saved.
-        let saved = prayer.timeAtComplete ?? time.wrappedValue
-        self._draft = State(initialValue: min(max(saved, range.lowerBound), range.upperBound))
         self.range = range
-        self.onCancel = onCancel
-        self.onSave = onSave
+        self.showsLocation = showsLocation
+        self.onTime = onTime
+        self.onRevertTime = onRevertTime
+        self.onSpot = onSpot
+        self.onRevertSpot = onRevertSpot
+        self.onClose = onClose
+        // Open on the time saved for this prayer (owner, 2026-09-26), kept within what can be saved.
+        let marked = prayer.timeAtComplete ?? range.lowerBound
+        let start = min(max(marked, range.lowerBound), range.upperBound)
+        self._draft = State(initialValue: start)
+        self._saved = State(initialValue: start)
+        self.recordedTime = prayer.recordedTimeAtComplete ?? marked
+        let here = prayer.latPrayedAt.flatMap { lat in prayer.longPrayedAt.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) } }
+        self._spot = State(initialValue: here)
+        self.recordedSpot = prayer.recordedSpot ?? here
         let note = PrayerPhotos.note(PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name)) ?? ""
         self._draftNote = State(initialValue: note)
         self._savedNote = State(initialValue: note)
     }
 
-    private var isValid: Bool { range.contains(draft) }
-    /// The time the sheet opened with; ✓ stays away until a different (valid) one is picked.
-    @State private var openedWith: Date?
-    private var timeChanged: Bool {
-        guard let openedWith else { return false }
-        return abs(draft.timeIntervalSince(openedWith)) >= 30
-    }
-    private var noteChanged: Bool { draftNote.trimmingCharacters(in: .whitespacesAndNewlines) != savedNote }
-    private var hasEdits: Bool { timeChanged || draftSpot != nil || noteChanged }
-    /// The tour's fix step saves any changed time (tour v2, owner: "change its time, and save"). The tour's Fajr fix saves
-    /// only a time in the yellow (owner, 2026-10-06), until it's done.
-    private var canSave: Bool {
-        isValid && hasEdits && (!TourRuntime.shared.needsYellow(prayer) || draftInYellow)
-    }
-    private var draftInYellow: Bool {
-        PrayerScoring.grade(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)) == .onTime
+    /// The ↺s: edited from how it was marked (they stay until tapped, across reopens — the model keeps the recorded ones).
+    private var timeEdited: Bool { abs(saved.timeIntervalSince(recordedTime)) >= 30 }
+    private var spotEdited: Bool {
+        guard let spot, let recordedSpot else { return false }
+        return CLLocation(latitude: spot.latitude, longitude: spot.longitude)
+            .distance(from: CLLocation(latitude: recordedSpot.latitude, longitude: recordedSpot.longitude)) > 3
     }
 
-    @Environment(\.dynamicTypeSize) private var typeSize
     /// The tour's fix step is in this sheet: its tip continues here (audit J: "nothing goes silent"). The step is the time
-    /// alone (owner: only the intended thing): no card.
+    /// alone (owner: only the intended thing): the ring box only.
     private var tourTip: Bool { TourRuntime.shared.step == .list && TourRuntime.isPracticeAnywhere(prayer) }
     private var shift: TimeInterval { PracticeClock.shift(for: prayer) }
+    private func inYellow(_ t: Date) -> Bool {
+        PrayerScoring.grade(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: t)) == .onTime
+    }
 
     private var subtitle: String {
         "\(shortTimePM(prayer.startTime.addingTimeInterval(shift))) – \(shortTimePM(prayer.endTime.addingTimeInterval(shift))) · when did you pray?"
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             // The tour's words for this step are in its panel, over the sheet (TourEditorPanelWindow).
             MapSheetHeader(title: prayer.displayName, subtitle: subtitle) {
-                HStack(spacing: 10) {
-                    MapSheetCircleButton(symbol: "xmark", label: "Close") { close() }
-                    if canSave {
-                        MapSheetCircleButton(symbol: "checkmark", label: "Save", tint: .sage, fill: Color.sage.opacity(0.16)) { save() }
-                            .transition(.scale(scale: 0.6).combined(with: .opacity))
-                    }
-                }
-                .animation(.snappy(duration: 0.22), value: canSave)
+                MapSheetCircleButton(symbol: "xmark", label: "Close") { close() }
             }
-            .padding(.top, 22)
+            .padding(.top, 20)
+            .padding(.horizontal, 4)
 
-            PrayerTimeEditor(prayer: prayer, draft: $draft, range: range)
-
-            if !tourTip { card }
+            if writingNote {
+                noteEditor
+            } else if tourTip {
+                ringBox(size: 240)
+            } else if typeSize.isAccessibilitySize {
+                // Large text can't fit the grid: the boxes stacked, the ring at its full size.
+                VStack(spacing: 8) {
+                    ringBox(size: 240)
+                    noteBox.frame(minHeight: 62)
+                    HStack(spacing: 8) { mapBox; photoBox }.frame(height: 150)
+                }
+            } else {
+                grid
+            }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 16)
         .padding(.bottom, 16)
         .fontDesign(.rounded)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
         .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .onAppear {
-            if openedWith == nil { openedWith = draft }
-            if tourTip { TourEditorPanelWindow.show() }
+        .onAppear { if tourTip { TourEditorPanelWindow.show() } }
+        .onDisappear {
+            TourEditorPanelWindow.hide()
+            finishRemoving()
+            if draftNote.trimmingCharacters(in: .whitespacesAndNewlines) != savedNote { commitNote() }
         }
-        .onDisappear { TourEditorPanelWindow.hide() }
-        .onChange(of: draftInYellow, initial: true) { _, now in if tourTip { TourRuntime.shared.editorInYellow = now } }
         .onChange(of: draft, initial: true) { _, now in
             guard tourTip else { return }
+            TourRuntime.shared.editorInYellow = inYellow(now)
             TourRuntime.shared.editorScore = PrayerScoring.points(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: now))
         }
         // Writing a note needs the keyboard's room: the sheet goes full height while the field is up.
-        .onChange(of: noteFocused) { _, on in withAnimation(.smooth(duration: 0.3)) { detent = on ? .large : fitted } }
-        .onChange(of: contentHeight) { _, _ in if !noteFocused { detent = fitted } }
+        .onChange(of: writingNote) { _, on in withAnimation(.smooth(duration: 0.3)) { detent = on ? .large : fitted } }
+        .onChange(of: contentHeight) { _, _ in if !writingNote { detent = fitted } }
+        // The keyboard went away some other way: the note is done.
+        .onChange(of: noteFocused) { was, now in if was && !now && writingNote { finishNote() } }
         .sheet(isPresented: $pickingSpot) {
-            PrayerLocationPicker(prayerName: prayer.displayName, original: shownSpot,
-                                 recorded: prayer.recordedSpot ?? savedSpot,
+            PrayerLocationPicker(prayerName: prayer.displayName, original: spot,
+                                 recorded: recordedSpot,
                                  onCancel: { pickingSpot = false },
-                                 onPick: { spot in draftSpot = spot; pickingSpot = false })
+                                 onPick: { picked in
+                                     pickingSpot = false
+                                     spot = picked
+                                     onSpot(picked)
+                                     triggerSomeVibration(type: .soft)
+                                 })
                 .presentationDetents([.large])
                 .interactiveDismissDisabled()
         }
-        .task(id: shownSpot.map { "\($0.latitude),\($0.longitude)" }) {
+        .task(id: spot.map { "\($0.latitude),\($0.longitude)" }) {
             spotName = nil
-            if let spot = shownSpot { spotName = await PrayerPlaceNames.named(spot) }
+            if prayer.atMasjid, !spotEdited, let masjid = prayer.mosqueName { spotName = masjid; return }
+            if let spot { spotName = await PrayerPlaceNames.named(spot) }
         }
-        .fullScreenCover(item: $photoTarget, onDismiss: flashPhotoSaved) { target in
+        .fullScreenCover(item: $photoTarget, onDismiss: { flash($photoSaved) }) { target in
             PrayerPhotoCapture(target: target) { photoTarget = nil }
         }
         .confirmationDialog("Your photo", isPresented: $askPhoto, titleVisibility: .hidden) {
             Button("Retake") { photoTarget = PrayerPhotoTarget.forMarked(prayer) }
-            Button("Remove", role: .destructive) {
-                PrayerPhotos.delete(photoKey)
-                flashPhotoSaved()
-            }
+            Button("Remove", role: .destructive) { startRemoving() }
         }
-        // ✕ with an unsaved edit (owner, 2026-10-19: "A").
-        .alert("Discard your changes?", isPresented: $askDiscard) {
-            Button("Discard", role: .destructive) { onCancel() }
-            Button("Keep editing", role: .cancel) {}
-        }
-        // The tour's tip at the largest text: the full height, else ✓ fell off the sheet (Sami, AX XXXL).
+        // The tour's tip at the largest text: the full height.
         .presentationDetents(tourTip && typeSize.isAccessibilitySize ? [.large] : [fitted, .large], selection: $detent)
         .presentationDragIndicator(.hidden)
         .interactiveDismissDisabled()
@@ -176,14 +190,48 @@ struct PrayerTimeEditSheet: View {
     /// The sheet fitted to what it holds.
     private var fitted: PresentationDetent { contentHeight > 0 ? .height(min(contentHeight + 8, 760)) : .large }
 
-    private func close() {
-        if hasEdits { askDiscard = true } else { onCancel() }
+    /// Nothing ever waits (every box saved itself), so ✕ just closes.
+    private func close() { onClose() }
+
+    // MARK: Saving
+
+    /// A finger lifted off the dot, or the wheel came to rest: a valid, different time saves (once — the scores, the streak
+    /// and the Live Activity plan recount then, never per tick); an invalid one springs back to the saved time.
+    private func release() {
+        guard range.contains(draft) else {
+            // The reason shows in the ring long enough to read, then the last saved time comes back.
+            let wrong = draft
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.6))
+                if draft == wrong { withAnimation(.smooth(duration: 0.35)) { draft = saved } }
+            }
+            return
+        }
+        let needsYellow = TourRuntime.shared.needsYellow(prayer)
+        guard abs(draft.timeIntervalSince(saved)) >= 30 else { return }
+        if needsYellow && !inYellow(draft) { return }   // the tour's Fajr fix saves only a yellow time
+        saved = draft
+        onTime(draft)
+        triggerSomeVibration(type: .soft)
+        if tourTip {
+            // The tour's fix step completes on the release that lands its time, as ✓ did — and the sheet goes, as it did.
+            TourRuntime.shared.event(.editorSaved(prayer.name))
+            onClose()
+        }
     }
 
-    private func save() {
-        guard canSave else { return }
-        if noteChanged { commitNote() }
-        onSave(draft, draftSpot)
+    private func revertTime() {
+        triggerSomeVibration(type: .light)
+        let back = min(max(recordedTime, range.lowerBound), range.upperBound)
+        withAnimation(.smooth(duration: 0.35)) { draft = back }
+        saved = back
+        onRevertTime()
+    }
+
+    private func revertSpot() {
+        triggerSomeVibration(type: .light)
+        spot = recordedSpot
+        onRevertSpot()
     }
 
     private func commitNote() {
@@ -192,123 +240,285 @@ struct PrayerTimeEditSheet: View {
         draftNote = savedNote
     }
 
-    private func flashPhotoSaved() {
-        withAnimation(.easeOut(duration: 0.2)) { photoSaved = true }
+    private func flash(_ flag: Binding<Bool>) {
+        withAnimation(.easeOut(duration: 0.2)) { flag.wrappedValue = true }
         Task {
             try? await Task.sleep(for: .seconds(1.5))
-            withAnimation(.easeOut(duration: 0.3)) { photoSaved = false }
+            withAnimation(.easeOut(duration: 0.3)) { flag.wrappedValue = false }
         }
     }
 
-    // MARK: The card
-
-    /// One flat card under the ring: Where · Photo · Note.
-    private var card: some View {
-        VStack(spacing: 0) {
-            if showsLocation {
-                whereRow
-                Divider().padding(.leading, 52)
+    /// Remove: the box says "Photo deleted" with Undo for ~4 s; the file goes after that (or when the sheet closes).
+    private func startRemoving() {
+        removing?.cancel()
+        let key = photoKey
+        withAnimation(.easeOut(duration: 0.2)) {
+            removing = Task { @MainActor in
+                try? await Task.sleep(for: .seconds(4))
+                guard !Task.isCancelled else { return }
+                PrayerPhotos.delete(key)
+                withAnimation(.easeOut(duration: 0.2)) { removing = nil }
             }
-            photoRow
-            Divider().padding(.leading, 52)
-            noteRow
         }
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+    }
+    private func undoRemoving() {
+        removing?.cancel()
+        withAnimation(.easeOut(duration: 0.2)) { removing = nil }
+    }
+    private func finishRemoving() {
+        guard let task = removing else { return }
+        task.cancel()
+        PrayerPhotos.delete(photoKey)
+        removing = nil
     }
 
-    private func cardRow<Lead: View, Trail: View>(@ViewBuilder lead: () -> Lead, title: String, detail: String?,
-                                                  titleTint: Color = .primary,
-                                                  @ViewBuilder trailing: () -> Trail) -> some View {
-        HStack(spacing: 12) {
-            lead().frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.body).foregroundStyle(titleTint).lineLimit(1)
-                if let detail {
-                    Text(detail).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+    // MARK: The grid (N2: owner 2026-10-19, "i love n2")
+
+    private static let ringSide: CGFloat = 204
+    private static let noteHeight: CGFloat = 62
+    private static let gap: CGFloat = 8
+
+    /// Left: the ring box over the note; right: the map over the photo, each half the column.
+    private var grid: some View {
+        HStack(alignment: .top, spacing: Self.gap) {
+            VStack(spacing: Self.gap) {
+                ringBox(size: 188).frame(width: Self.ringSide, height: Self.ringSide)
+                noteBox.frame(width: Self.ringSide, height: Self.noteHeight)
+            }
+            VStack(spacing: Self.gap) {
+                if showsLocation { mapBox }
+                photoBox
+            }
+            .frame(height: Self.ringSide + Self.gap + Self.noteHeight)
+        }
+    }
+
+    private func card<Content: View>(radius: CGFloat = 22, @ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+    }
+
+    /// The ↺: "edited, tap to go back to how it was marked" — an icon only (owner, 2026-10-19: "let's just make it an undo
+    /// symbol. no other data for it just to save space"), sitting on its box so nothing moves when it comes and goes.
+    private func undoChip(onGlass: Bool, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "arrow.uturn.backward")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(onGlass ? Color.white : Color.sage)
+                .frame(width: 24, height: 24)
+                .background {
+                    if onGlass { Circle().fill(.ultraThinMaterial).environment(\.colorScheme, .dark) }
+                    else { Circle().fill(Color.sage.opacity(0.12)) }
                 }
-            }
-            Spacer(minLength: 8)
-            trailing()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(minHeight: 56)
-        .contentShape(Rectangle())
-    }
-
-    /// Where: the masjid, else the place's name (PrayerPlaceNames — the name every "where" reads); Move opens the picker.
-    private var whereRow: some View {
-        // Before a move the stored masjid is right; after one, only your own masajid are known yet.
-        let masjid = draftSpot == nil ? (prayer.atMasjid ? prayer.mosqueName : nil)
-                                      : draftSpot.flatMap { MasjidDetector.favoriteMasjid(near: $0) }
-        let title = shownSpot == nil ? "Add where you prayed" : (masjid ?? spotName ?? "Pinned on the map")
-        let detail: String? = draftSpot != nil ? "Moved · saves with ✓" : (prayer.spotEdited ? "Edited" : nil)
-        return Button { pickingSpot = true } label: {
-            cardRow(lead: {
-                Image(systemName: masjid != nil ? "building.columns.fill" : "mappin.and.ellipse")
-                    .font(.system(size: 17)).foregroundStyle(masjid != nil ? Color.sage : .secondary)
-            }, title: title, detail: detail) {
-                HStack(spacing: 4) {
-                    Text(shownSpot == nil ? "Add" : "Move")
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            }
+                .contentShape(Circle().inset(by: -8))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
     }
 
-    /// Photo: added, retaken or removed while the prayer is on; each saves at once (a quiet "Saved"), never through ✓.
-    private var photoRow: some View {
-        let _ = PrayerPhotoRevision.shared.value
-        let has = PrayerPhotos.has(photoKey)
-        let detail: String = photoSaved ? "Saved"
-            : has ? (photoInWindow ? "Retake or remove while \(prayer.displayName) is on" : takenLine)
-                  : (photoInWindow ? "While \(prayer.displayName) is on" : "Only while \(prayer.displayName) is on")
-        return Button {
-            guard photoInWindow else { return }
-            triggerSomeVibration(type: .light)
-            if has { askPhoto = true } else { photoTarget = PrayerPhotoTarget.forMarked(prayer) }
-        } label: {
-            cardRow(lead: {
-                if has {
-                    PrayerPhotoCard(key: photoKey, width: 28)
+    private func ringBox(size: CGFloat) -> some View {
+        card {
+            PrayerTimeEditor(prayer: prayer, draft: $draft, range: range, ringSize: size, boxed: true, onRelease: release)
+        }
+        .overlay(alignment: .topLeading) {
+            if timeEdited && !tourTip {
+                undoChip(onGlass: false, label: "Undo edited time, back to \(shortTimePM(recordedTime.addingTimeInterval(shift)))",
+                         action: revertTime)
+                    .padding(10)
+            }
+        }
+        .animation(.snappy(duration: 0.22), value: timeEdited)
+    }
+
+    private var noteBox: some View {
+        card(radius: 18) {
+            Button { withAnimation(.smooth(duration: 0.25)) { writingNote = true } } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "text.quote").font(.footnote).foregroundStyle(.secondary).padding(.top, 2)
+                    Text(savedNote.isEmpty ? "Add a note" : savedNote)
+                        .font(.subheadline)
+                        .foregroundStyle(savedNote.isEmpty ? .secondary : .primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 12)
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .overlay(alignment: .topTrailing) {
+            if noteSaved {
+                Text("Saved").font(.caption2.weight(.medium)).foregroundStyle(Color.sage).padding(8).transition(.opacity)
+            }
+        }
+    }
+
+    /// Writing a note: the note grows to full width above the keyboard; the keyboard's Done saves it and brings the grid back.
+    private var noteEditor: some View {
+        TextField("Add a note", text: $draftNote, axis: .vertical)
+            .font(.body)
+            .lineLimit(3...6)
+            .focused($noteFocused)
+            .submitLabel(.done)
+            .onChange(of: draftNote) { _, text in
+                // A vertical field takes Return as a new line: Done is the end of the note.
+                if text.contains("\n") {
+                    draftNote = text.replacingOccurrences(of: "\n", with: "")
+                    finishNote()
+                }
+            }
+            .onSubmit(finishNote)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .onAppear { DispatchQueue.main.async { noteFocused = true } }
+    }
+
+    private func finishNote() {
+        guard writingNote else { return }
+        let changed = draftNote.trimmingCharacters(in: .whitespacesAndNewlines) != savedNote
+        if changed { commitNote() }
+        noteFocused = false
+        withAnimation(.smooth(duration: 0.25)) { writingNote = false }
+        if changed { flash($noteSaved) }
+    }
+
+    /// The saved spot as a map (MKMapSnapshotter), the place's name on a glass label; tap = Move.
+    private var mapBox: some View {
+        Button { pickingSpot = true } label: {
+            card {
+                if let spot {
+                    PrayerSpotSnapshot(spot: spot, dark: scheme == .dark)
+                        .overlay(alignment: .bottomLeading) {
+                            if let spotName {
+                                Text(spotName)
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 8).padding(.vertical, 4)
+                                    .background(Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark))
+                                    .padding(8)
+                                    .transition(.opacity)
+                            }
+                        }
                 } else {
-                    Image(systemName: "camera").font(.system(size: 16)).foregroundStyle(.secondary)
-                }
-            }, title: has ? "Your photo" : "Add a photo", detail: detail,
-               titleTint: has || photoInWindow ? .primary : .secondary) {
-                if photoInWindow {
-                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                    VStack(spacing: 4) {
+                        Image(systemName: "mappin.and.ellipse").font(.title3).foregroundStyle(.secondary)
+                        Text("No place saved").font(.footnote)
+                        Text("Add ›").font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
             }
-            .animation(.easeOut(duration: 0.2), value: photoSaved)
         }
         .buttonStyle(.plain)
-        .disabled(!photoInWindow)
+        .overlay(alignment: .topLeading) {
+            if spotEdited {
+                undoChip(onGlass: true, label: "Undo moved place, back to where you marked", action: revertSpot).padding(8)
+            }
+        }
+        .animation(.snappy(duration: 0.22), value: spotEdited)
+        .accessibilityLabel(spot == nil ? "Add where you prayed" : "Where you prayed: \(spotName ?? "on the map"). Move it")
     }
 
-    /// "Taken at 6:58 PM": the photo file's own time.
+    /// The photo itself, its time on a glass label; empty, a camera and "Add a photo"; after the window, dimmed.
+    @ViewBuilder private var photoBox: some View {
+        let _ = PrayerPhotoRevision.shared.value
+        let has = PrayerPhotos.has(photoKey) && removing == nil
+        if removing != nil {
+            card {
+                VStack(spacing: 6) {
+                    Text("Photo deleted").font(.footnote)
+                    Button("Undo", action: undoRemoving).font(.footnote.weight(.semibold)).foregroundStyle(Color.sage)
+                }
+            }
+        } else if has {
+            card {
+                GeometryReader { geo in
+                    PrayerPhotoCard(key: photoKey, width: geo.size.width, opens: !photoInWindow)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
+            }
+            .overlay(alignment: .bottomLeading) {
+                Text(photoSaved ? "Saved" : takenLine)
+                    .font(.caption2.weight(.medium)).foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Capsule().fill(.ultraThinMaterial).environment(\.colorScheme, .dark))
+                    .padding(8)
+                    .contentTransition(.opacity)
+            }
+            .overlay {
+                if photoInWindow {
+                    Color.clear.contentShape(Rectangle())
+                        .onTapGesture { triggerSomeVibration(type: .light); askPhoto = true }
+                        .accessibilityAddTraits(.isButton)
+                        .accessibilityLabel("Your photo. Retake or remove")
+                }
+            }
+        } else {
+            Button {
+                triggerSomeVibration(type: .light)
+                photoTarget = PrayerPhotoTarget.forMarked(prayer)
+            } label: {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .overlay {
+                        VStack(spacing: 4) {
+                            Image(systemName: "camera").font(.title3).foregroundStyle(.secondary)
+                            Text(photoInWindow ? "Add a photo" : "No photo").font(.footnote)
+                            Text(photoInWindow ? "While \(prayer.displayName) is on" : "Only while \(prayer.displayName) is on")
+                                .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                        }
+                        .padding(8)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!photoInWindow)
+            .opacity(photoInWindow ? 1 : 0.55)
+        }
+    }
+
+    /// "6:58 PM": the photo file's own time.
     private var takenLine: String {
         let url = PrayerPhotos.url(photoKey, front: false)
         let at = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.creationDate] as? Date
-        return at.map { "Taken at \(shortTimePM($0))" } ?? "Seen any time"
+        return at.map { shortTimePM($0) } ?? "Your photo"
     }
+}
 
-    /// Note: one line; a tap makes it the text field (the keyboard's Done saves it, as ✓ does).
-    private var noteRow: some View {
-        cardRow(lead: {
-            Image(systemName: "text.quote").font(.system(size: 16)).foregroundStyle(.secondary)
-        }, title: "", detail: nil) { EmptyView() }
-        .overlay(alignment: .leading) {
-            TextField("Add a note", text: $draftNote)
-                .font(.body)
-                .focused($noteFocused)
-                .submitLabel(.done)
-                .onSubmit { if noteChanged { commitNote() } }
-                .padding(.leading, 52)
-                .padding(.trailing, 12)
+/// The saved spot as a still map (MKMapSnapshotter, the dark style in dark mode), the pin in the middle.
+struct PrayerSpotSnapshot: View {
+    let spot: CLLocationCoordinate2D
+    let dark: Bool
+    @State private var image: UIImage?
+    @State private var size: CGSize = .zero
+
+    var body: some View {
+        ZStack {
+            Color(.tertiarySystemFill)
+            if let image { Image(uiImage: image).resizable().scaledToFill().transition(.opacity) }
+            Image(systemName: "mappin.circle.fill")
+                .font(.system(size: 22))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(.white, Color.sage)
+                .shadow(color: .black.opacity(0.3), radius: 3, y: 1)
+        }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .task(id: "\(spot.latitude),\(spot.longitude),\(dark),\(Int(size.width))x\(Int(size.height))") {
+            guard size.width > 1 else { return }
+            let options = MKMapSnapshotter.Options()
+            options.region = MKCoordinateRegion(center: spot, latitudinalMeters: 450, longitudinalMeters: 450)
+            options.size = size
+            options.traitCollection = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
+            options.pointOfInterestFilter = .excludingAll
+            let shot = try? await MKMapSnapshotter(options: options).start()
+            withAnimation(.easeOut(duration: 0.2)) { image = shot?.image }
         }
     }
 }
@@ -323,6 +533,13 @@ struct PrayerTimeEditor: View {
     let range: ClosedRange<Date>
     /// The score inside the ring (the map's prayer page shows the score in its header instead).
     var showsScore = true
+    /// The ring's size (the editor sheet's bento box draws it at 188 pt).
+    var ringSize: CGFloat = PrayerWindowRing.size
+    /// In the sheet's ring box (N2): nothing under the ring — an impossible time says why in the score's slot, and the ↺ on
+    /// the box replaces "You marked it at … · use that".
+    var boxed = false
+    /// A finger lifted off the dot, or the wheel came to rest: the sheet saves then (never per tick).
+    var onRelease: () -> Void = {}
 
     var isValid: Bool { range.contains(draft) }
     /// The tour's practice clock (0 for a real prayer).
@@ -375,21 +592,30 @@ struct PrayerTimeEditor: View {
         VStack(spacing: 12) {
             ZStack {
                 PrayerWindowRing(start: prayer.startTime, end: prayer.endTime, marked: draft, valid: isValid,
-                                 onPick: pickFromRing)
+                                 size: ringSize, onPick: pickFromRing, onRelease: onRelease)
                 VStack(spacing: 2) {
                     // The tour's practice prayer reads on its plain clock (PracticeClock): the wheel shows, and picks,
                     // shifted times.
-                    PrayerTimeWheel(time: Binding(get: { draft.addingTimeInterval(shift) }, set: { draft = $0.addingTimeInterval(-shift) }),
+                    // The wheel sets it only when it comes to rest (didSelectRow): that's the release.
+                    PrayerTimeWheel(time: Binding(get: { draft.addingTimeInterval(shift) },
+                                                  set: { draft = $0.addingTimeInterval(-shift); onRelease() }),
                                     day: prayer.startTime.addingTimeInterval(shift),
                                     range: range.lowerBound.addingTimeInterval(shift)...range.upperBound.addingTimeInterval(shift),
                                     compact: true, meridiem: showsMeridiem)
-                        .frame(width: showsMeridiem ? 132 : 92, height: 110)
+                        .frame(width: showsMeridiem ? 132 : 92, height: boxed ? 84 : 110)
                         // The wheel keeps to its box (UIPickerView draws past it), its rows fading out top and bottom.
                         .clipped()
                         .mask(LinearGradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.28),
                                                      .init(color: .black, location: 0.72), .init(color: .clear, location: 1)],
                                              startPoint: .top, endPoint: .bottom))
-                    if showsScore {
+                    if boxed && !isValid {
+                        // Why it can't be saved, in the score's slot (let go and it springs back to the saved time).
+                        Text(invalidReason)
+                            .font(.caption2).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
+                            .frame(width: ringSize * 0.62, height: 30)
+                            .transition(.opacity)
+                    } else if showsScore {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(isValid ? "\(PrayerScoring.points(for: score))" : "–")
                                 .font(.system(size: 20, weight: .light, design: .rounded))
@@ -406,9 +632,17 @@ struct PrayerTimeEditor: View {
                 // little smaller by moving the score line inside just a tad higher").
                 .offset(y: showsScore ? 4 : 0)
             }
-            .frame(width: PrayerWindowRing.size, height: PrayerWindowRing.size)
+            .frame(width: ringSize, height: ringSize)
             .frame(maxWidth: .infinity)
 
+            if !boxed { underRing }
+        }
+        .sensoryFeedback(.selection, trigger: grade)
+    }
+
+    /// Under the ring, outside the bento (the map's prayer page): the recorded time to go back to, and one line kept for the
+    /// date or the reason.
+    @ViewBuilder private var underRing: some View {
             // Edited before: what the app recorded, one tap to go back to it.
             if let recorded = prayer.recordedTimeAtComplete, abs(draft.timeIntervalSince(recorded)) >= 30 {
                 Button {
@@ -438,8 +672,6 @@ struct PrayerTimeEditor: View {
                 .opacity(!isValid || otherDay ? 1 : 0)
                 .animation(.easeInOut(duration: 0.2), value: !isValid || otherDay)
                 .accessibilityHidden(isValid && !otherDay)
-        }
-        .sensoryFeedback(.selection, trigger: grade)
     }
 }
 
@@ -452,8 +684,11 @@ struct PrayerWindowRing: View {
     let end: Date
     let marked: Date
     var valid = true
+    var size: CGFloat = Self.size
     /// The finger on the ring: the fraction of the window under it, 0…1 (never past the end).
     var onPick: (Double) -> Void = { _ in }
+    /// The finger lifted after moving the dot.
+    var onRelease: () -> Void = {}
     @Environment(\.circleTheme) private var theme
     @State private var dragging = false
 
@@ -479,7 +714,7 @@ struct PrayerWindowRing: View {
     }
 
     var body: some View {
-        let r = Self.radius, d = r * 2
+        let r = size * Self.radius / Self.size, d = r * 2
         ZStack {
             track.frame(width: d, height: d)
             ForEach(Array(zones.enumerated()), id: \.offset) { _, z in
@@ -502,14 +737,14 @@ struct PrayerWindowRing: View {
                 .animation(.snappy(duration: 0.12), value: angle)
                 .animation(.snappy(duration: 0.2), value: dragging)
         }
-        .frame(width: Self.size, height: Self.size)
+        .frame(width: size, height: size)
         // Only the band takes the finger (the wheel inside sits above it and takes its own): a touch that starts near the ring
         // drags the dot; anywhere else it does nothing.
         .contentShape(Circle())
         .gesture(
             DragGesture(minimumDistance: 0, coordinateSpace: .local)
                 .onChanged { v in
-                    let c = CGPoint(x: Self.size / 2, y: Self.size / 2)
+                    let c = CGPoint(x: size / 2, y: size / 2)
                     let start = hypot(v.startLocation.x - c.x, v.startLocation.y - c.y)
                     guard abs(start - r) < 34 else { return }
                     if !dragging { dragging = true; triggerSomeVibration(type: .light) }
@@ -519,7 +754,10 @@ struct PrayerWindowRing: View {
                     if angle > 300 && a < 60 { a = 360 } else if angle < 60 && a > 300 { a = 0 }
                     onPick(a / 360)
                 }
-                .onEnded { _ in dragging = false }
+                .onEnded { _ in
+                    if dragging { onRelease() }
+                    dragging = false
+                }
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("The prayer's window")
