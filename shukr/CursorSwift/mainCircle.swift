@@ -1035,8 +1035,13 @@ struct MainCircleView: View {
         // ExternalToggleText that buzzes by itself (this used to buzz a second time).
         let flipsOwnText: Bool   // true = ExternalToggleText, haptic included
         if let prayer = viewModel.relevantPrayer, !(prayer.status() == .upcoming && prayer.name == "Fajr") {
-            // Owed (after Isha, until Fajr): the line flips to the total owed and back (toggleMakeUp).
-            if prayer.status() == .missed { toggleMakeUp(); return }
+            // Owed (after Isha, until Fajr): the total owed in the name's place and back (toggleMakeUp) — only once a
+            // prayer is marked today: To make up counts a day from its first mark, so before that the total would leave
+            // today out (owner, 2026-10-19: "do B").
+            if prayer.status() == .missed {
+                if viewModel.todaysPrayers.contains(where: \.isCompleted) { toggleMakeUp() }
+                return
+            }
             guard prayer.status() == .current || prayer.status() == .upcoming else { return }
             flipsOwnText = true
         } else {
