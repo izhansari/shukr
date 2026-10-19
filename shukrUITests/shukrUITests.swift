@@ -61,6 +61,33 @@ final class shukrUITests: XCTestCase {
 
     /// Salah → Zikr → Salah → Settings → Salah, the owner's left / right swipes.
     @available(iOS 26.0, *)
+    /// The map's Prayers layer, opened the way he does (owner, 2026-10-19: "i literally tap arrow to open map. click
+    /// explore, then prayers"), MAP_ROUNDS times (default 4), the app relaunched each round. A Debug build writes each
+    /// main-thread stall over 150 ms with the map events before it to Library/Caches/map-stalls.log (MapStallLog):
+    /// xcodebuild test -scheme shukrPerf -configuration Debug -destination id=<udid> -only-testing:shukrUITests/shukrUITests/testMapPrayersLayer
+    func testMapPrayersLayer() throws {
+        let rounds = Int(ProcessInfo.processInfo.environment["MAP_ROUNDS"] ?? "") ?? 4
+        let app = XCUIApplication()
+        // His own data, nothing seeded; the map opens on Qibla, as the circle's arrow opens it (a test's tap misses the
+        // arrow's small rotated hit area).
+        app.launchArguments += ["-demoLand", "salah", "-demoMapLayer", "qibla"]
+        app.launch(); sleep(3); app.terminate()   // demo flags miss on the first launch after an install
+        for _ in 0..<rounds {
+            app.launch()
+            let explore = app.buttons["Explore: qibla, prayer spots, mosques"]
+            XCTAssertTrue(explore.waitForExistence(timeout: 20), "the map's Explore button")
+            sleep(3)   // let the map settle on the dot, as he would
+            explore.tap()
+            let prayers = app.buttons["Prayers"]
+            if !prayers.waitForExistence(timeout: 4) { explore.tap() }   // a tap right after a screen change is often dropped
+            XCTAssertTrue(prayers.waitForExistence(timeout: 5), "Explore's Prayers")
+            prayers.tap()
+            sleep(6)
+            app.terminate()
+        }
+    }
+
+    @available(iOS 26.0, *)
     func testPagingHitches() throws {
         let app = launchForPerf()
         let window = app.windows.firstMatch

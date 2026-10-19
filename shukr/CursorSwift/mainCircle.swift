@@ -1469,6 +1469,9 @@ private struct QiblaArrow: View {
                 .animation(CircleMotion.arrowSnap, value: aligned)
                 .onChange(of: aligned) { _, isAligned in onAligned(isAligned) }
                 .onTapGesture(perform: tap)
+                // VoiceOver had nothing to read or press here; UI tests find it by this too (testMapPrayersLayer).
+                .accessibilityLabel("Qibla map")
+                .accessibilityAddTraits(.isButton)
 
             // Aligned: a dot above the arrow.
             Circle()

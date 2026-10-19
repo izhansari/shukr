@@ -406,7 +406,9 @@ struct PrayerSpotsHome: View {
                 // top threw the 20 pt top padding away, so the small bar's header sat high with an
                 // empty band under it (owner, map-one-sheet — the mosques' bar was fine).
                 Color.clear.frame(height: 0).id("top")
-                VStack(alignment: .leading, spacing: 14) {
+                // Lazy: only the day cards on screen are built. A plain VStack built and measured all 80 rows (~16 day
+                // cards) the moment Prayers opened — the 300–380 ms stall on his phone (map-stalls.log, 2026-10-19).
+                LazyVStack(alignment: .leading, spacing: 14) {
                     header
                     let shown = self.days   // once a redraw (it was built twice)
                     Group {
