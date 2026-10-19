@@ -3827,14 +3827,20 @@ struct PagerBackdrop: View {
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
+            let settings = Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground)
             HStack(spacing: 0) {
+                // Past the ends: the edge page's own colour. A rubber-band pull past Zikr (or Settings) slid the panels off
+                // and showed the window's stark white (owner, 2026-10-19: "need to fix background of app when swiping zikr
+                // (edge most page) all the way. see stark white").
+                theme.backdrop.frame(width: width)
                 // Zikr and Salah: the theme's page, status-bar strip included.
                 theme.backdrop.frame(width: width)
                 theme.backdrop.frame(width: width)
-                Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: width)   // Settings' page
+                settings.frame(width: width)   // Settings' page
+                settings.frame(width: width)   // past Settings
             }
-            .frame(width: width * 3, alignment: .leading)
-            .offset(x: -live.scrollProgress * width)
+            .frame(width: width * 5, alignment: .leading)
+            .offset(x: -(live.scrollProgress + 1) * width)
         }
         .ignoresSafeArea()
     }
