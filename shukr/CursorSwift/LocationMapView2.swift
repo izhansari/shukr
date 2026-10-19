@@ -1103,18 +1103,35 @@ struct LocationMapContentView: View {
         return here.distance(from: CLLocation(latitude: centre.latitude, longitude: centre.longitude)) < 3000
     }
 
-    private var statusText: String {
-        if viewModel.showPrayers {
-            let n = viewModel.visiblePrayerCount
-            return n == 1 ? "1 prayer in view" : "\(n) prayers in view"
+    /// The top pill's words with mosques on.
+    private var mosqueStatus: String {
+        if viewModel.mosqueSearching { return "Finding mosques…" }
+        let n = viewModel.mosques.filter { !MosqueHiding.isHidden($0) }.count
+        let place = searchedNearYou ? "nearby" : "in this area"
+        return n == 0 ? "No mosques found here" : n == 1 ? "1 mosque \(place)" : "\(n) mosques \(place)"
+    }
+    private var pillMode: MapPillMode { viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla }
+    /// Each mode's pill words — all three are always laid out (MapStatusPill measures them), only the current one shows.
+    @ViewBuilder private func pillWords(_ mode: MapPillMode) -> some View {
+        switch mode {
+        case .qibla:
+            Text(compassHint).font(.subheadline.weight(.medium))
+                .foregroundStyle(compass.qibla.aligned ? Color.green : Color.primary)
+        case .mosques:
+            Text(mosqueStatus).font(.subheadline.weight(.medium))
+        case .prayers:
+            // Az-Zalzalah 99:4 in the count's place — the sheet already says how many are in view (owner, 2026-10-19:
+            // "that quote. lets move it here instead"); the filter under it when one is on.
+            VStack(spacing: 1) {
+                PrayerSpotsVerse()
+                if viewModel.filtersActive {
+                    Text(viewModel.filterSentence.replacingOccurrences(of: "Showing ", with: "").replacingOccurrences(of: "prayers from ", with: ""))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.green)
+                        .lineLimit(1)
+                }
+            }
         }
-        if viewModel.showMosques {
-            if viewModel.mosqueSearching { return "Finding mosques…" }
-            let n = viewModel.mosques.filter { !MosqueHiding.isHidden($0) }.count
-            let place = searchedNearYou ? "nearby" : "in this area"
-            return n == 0 ? "No mosques found here" : n == 1 ? "1 mosque \(place)" : "\(n) mosques \(place)"
-        }
-        return compassHint
     }
 
     private func centreOnUser() {
@@ -1299,28 +1316,9 @@ struct LocationMapContentView: View {
                         // Prayer spots: the count, and the filter under it when one is on;
                         // tap → the filters (this replaced the bottom filter pill — Explore and
                         // this pill cover it).
-                        VStack(spacing: 1) {
-                            // Prayers: Az-Zalzalah 99:4 in the count's place — the sheet already says how many are in
-                            // view (owner, 2026-10-19: "that quote. lets move it here instead").
-                            if viewModel.showPrayers { PrayerSpotsVerse() } else {
-                                Text(statusText)
-                                    .font(.subheadline.weight(.medium))
-                            }
-                            if viewModel.showPrayers && viewModel.filtersActive {
-                                Text(viewModel.filterSentence.replacingOccurrences(of: "Showing ", with: "").replacingOccurrences(of: "prayers from ", with: ""))
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(Color.green)
-                                    .lineLimit(1)
-                            }
-                        }
-                        .monospacedDigit()
-                        .fontDesign(.rounded)
-                        .foregroundStyle(inQiblaMode && compass.qibla.aligned ? Color.green : Color.primary)
-                        .padding(.horizontal, viewModel.showPrayers ? 16 : 18)
-                        .padding(.vertical, viewModel.showPrayers ? 7 : 0)
-                        .frame(minHeight: 46)
-                        .frame(maxWidth: viewModel.showPrayers ? 272 : 230)
-                        .mapGlass(Capsule())
+                        // One glass bubble that reshapes between the modes (MapStatusPill; owner, 2026-10-19: "a nice
+                        // liquid glass transition of bubble opening thing that stock apple stuff uses").
+                        MapStatusPill(mode: pillMode, words: pillWords)
                         .contentShape(Capsule())
                         .onTapGesture { if viewModel.showMosques && !viewModel.mosques.isEmpty { viewModel.openMosqueList() } }
                             .overlay(Capsule().stroke(inQiblaMode && compass.qibla.aligned ? Color.green : Color.clear, lineWidth: 1.5))
@@ -1795,6 +1793,92 @@ extension View {
     }
 }
 
+
+/// What the map's top pill is saying: the compass hint, the prayers' verse, or the mosques.
+enum MapPillMode: CaseIterable { case qibla, prayers, mosques }
+
+/// The map's top pill: one glass capsule that springs from one mode's size to the next while the words go out, then in
+/// (a crossfade at the new size let the verse spill past the old pill — owner's recording, 2026-10-19: "looks sloppy").
+/// Every mode's words are measured off-screen at their own size (the widest capped), so the capsule knows where it's
+/// going; within a mode (the compass hint's degrees) it just follows the words.
+struct MapStatusPill<Words: View>: View {
+    let mode: MapPillMode
+    @ViewBuilder let words: (MapPillMode) -> Words
+    @State private var sizes: [MapPillMode: CGSize] = [:]
+    /// The size the capsule is at / going to, and whose words show (nil between modes). Driven step by step from `mode`
+    /// with their own transactions — left to the map's own switch animation, the old words stayed solid while the
+    /// capsule shrank over them and slid inside it.
+    @State private var shape: MapPillMode
+    @State private var shown: MapPillMode?
+    @State private var step = 0
+
+    init(mode: MapPillMode, @ViewBuilder words: @escaping (MapPillMode) -> Words) {
+        self.mode = mode
+        self.words = words
+        _shape = State(initialValue: mode)
+        _shown = State(initialValue: mode)
+    }
+
+    /// Stock Liquid Glass's give: a quick spring with a touch of bounce.
+    static var morph: Animation { .spring(response: 0.42, dampingFraction: 0.8) }
+    static var wordsOut: Animation { .easeOut(duration: 0.1) }
+    static var wordsIn: Animation { .easeOut(duration: 0.22) }
+    /// The new words wait until the capsule has nearly settled (in earlier, the verse came in clipped by it).
+    static var wordsInAfter: Double { 0.28 }
+
+    private func cap(_ m: MapPillMode) -> CGFloat { m == .prayers ? 272 : 230 }
+    private func padded(_ m: MapPillMode) -> some View {
+        words(m)
+            .monospacedDigit()
+            .fontDesign(.rounded)
+            .padding(.horizontal, m == .prayers ? 16 : 18)
+            .padding(.vertical, m == .prayers ? 7 : 0)
+            .frame(minHeight: 46)
+    }
+    private func size(_ m: MapPillMode) -> CGSize {
+        let s = sizes[m] ?? CGSize(width: 160, height: 46)
+        return CGSize(width: min(s.width, cap(m)), height: s.height)
+    }
+
+    var body: some View {
+        let box = size(shape)
+        ZStack {
+            ForEach(MapPillMode.allCases, id: \.self) { m in
+                padded(m)
+                    .frame(width: size(m).width, height: size(m).height)
+                    .opacity(m == shown ? 1 : 0)
+                    .accessibilityHidden(m != shown)
+            }
+        }
+        .frame(width: box.width, height: box.height)
+        .clipShape(Capsule())
+        .mapGlass(Capsule())
+        // Their own sizes, unsqueezed: a copy of each mode's words, never seen.
+        .background {
+            ZStack {
+                ForEach(MapPillMode.allCases, id: \.self) { m in
+                    padded(m).fixedSize()
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { sizes[m] = $0 }
+                }
+            }
+            .hidden()
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+        .onChange(of: mode) { _, new in
+            // Out, then the bubble reshapes, then in.
+            step += 1
+            let mine = step
+            withAnimation(Self.wordsOut) { shown = nil }
+            withAnimation(Self.morph.delay(0.05)) { shape = new }   // a beat after the words start out: none get clipped
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(Self.wordsInAfter))
+                guard mine == step else { return }
+                withAnimation(Self.wordsIn) { shown = new }
+            }
+        }
+    }
+}
 
 // MARK: - CircleWithArrowOverlay
 struct CircleWithArrowOverlay: View {
