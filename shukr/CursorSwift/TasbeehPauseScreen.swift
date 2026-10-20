@@ -23,12 +23,14 @@ extension tasbeehView {
         /// The set size: the zikr's own (`quickAddStep`), or this for sessions with no zikr.
         @AppStorage(QuickAddSteps.noMantraKey) private var noMantraSetStep = 0
         @Environment(\.modelContext) private var setsContext
-        @State private var showSetsPage = false
+        private var showSetsPage: Bool { get { ui.showSetsPage } nonmutating set { ui.showSetsPage = newValue } }
         /// The page was opened by a tap with no size set: Done with a size turns sets on (owner, sets-tap).
-        @State private var setsPageTurnsOn = false
-        @State private var showSleepIntro = false
-        @State private var showGoalIntro = false
+        private var setsPageTurnsOn: Bool { get { ui.setsPageTurnsOn } nonmutating set { ui.setsPageTurnsOn = newValue } }
+        private var showSleepIntro: Bool { get { ui.showSleepIntro } nonmutating set { ui.showSleepIntro = newValue } }
+        private var showGoalIntro: Bool { get { ui.showGoalIntro } nonmutating set { ui.showGoalIntro = newValue } }
         @Environment(SharedStateClass.self) var sharedState
+        /// The screen's own state in one @Observable (cleanup-map tangle 5, step 4); the properties below forward to it.
+        @State private var ui = PauseScreenState()
         let paused: Bool
         let mantra: MantraModel?
         let tasbeeh: Int
@@ -78,32 +80,35 @@ extension tasbeehView {
         }
 
         // UI state
-        @State private var showHistory = false
-        @State private var wellRoom: CGFloat = 148
+        private var showHistory: Bool { get { ui.showHistory } nonmutating set { ui.showHistory = newValue } }
+        private var wellRoom: CGFloat { get { ui.wellRoom } nonmutating set { ui.wellRoom = newValue } }
         /// The well's words' own height: the well is no taller than them (the space under it is the page's, not an
         /// empty well), and shrinks to scroll them where the page is short.
-        @State private var wellTextHeight: CGFloat = 0
+        private var wellTextHeight: CGFloat { get { ui.wellTextHeight } nonmutating set { ui.wellTextHeight = newValue } }
         /// The well's scroll: at the top for a new zikr or a new height.
+        /// Stays the view's own @State, not in PauseScreenState: the ScrollView writes its position back through this
+        /// binding, and from an @Observable each write invalidated the screen and re-ran the scroll request — a loop at
+        /// 100 % CPU that froze the app (Fable's sim, 2026-10-20).
         @State private var wellScroll = ScrollPosition(edge: .top)
         /// The zikr's own page, opened by a tap on its card.
         /// The zikr's card editor over the pause screen.
-        @State private var cardEditing: ZikrCardRequest?
-        @State private var bottomInset: CGFloat = 0
+        private var cardEditing: ZikrCardRequest? { get { ui.cardEditing } nonmutating set { ui.cardEditing = newValue } }
+        private var bottomInset: CGFloat { get { ui.bottomInset } nonmutating set { ui.bottomInset = newValue } }
         /// The page's height inside the safe area: how much room the gaps get (`airScale`).
-        @State private var pageHeight: CGFloat = 900
+        private var pageHeight: CGFloat { get { ui.pageHeight } nonmutating set { ui.pageHeight = newValue } }
         /// The rate tile's side: per count, or per tasbeeh (a tap flips it).
-        @State private var showingPerTasbeeh = false
+        private var showingPerTasbeeh: Bool { get { ui.showingPerTasbeeh } nonmutating set { ui.showingPerTasbeeh = newValue } }
         /// The two rate numbers' opacities, each changed in its own animation (a quick fade out, a gentler fade in) —
         /// one transaction for the whole flip gave both the spring's length, and they overlapped.
-        @State private var perCountOpacity: Double = 1
-        @State private var perTasbeehOpacity: Double = 0
+        private var perCountOpacity: Double { get { ui.perCountOpacity } nonmutating set { ui.perCountOpacity = newValue } }
+        private var perTasbeehOpacity: Double { get { ui.perTasbeehOpacity } nonmutating set { ui.perTasbeehOpacity = newValue } }
         /// Finish (the counter's −, changed in place — MinusFinishButton) is asking for its second tap: the session's
         /// line steps aside for its words.
         var finishArmed = false
-        @State private var showMantraPicker = false
-        @State private var chosenMantraName: String? = ""
-        @State private var chosenMantraObject: MantraModel? = nil
-        @State private var fullTextExpanded = false
+        private var showMantraPicker: Bool { get { ui.showMantraPicker } nonmutating set { ui.showMantraPicker = newValue } }
+        private var chosenMantraName: String? { get { ui.chosenMantraName } nonmutating set { ui.chosenMantraName = newValue } }
+        private var chosenMantraObject: MantraModel? { get { ui.chosenMantraObject } nonmutating set { ui.chosenMantraObject = newValue } }
+        private var fullTextExpanded: Bool { get { ui.fullTextExpanded } nonmutating set { ui.fullTextExpanded = newValue } }
 
         // Computed variables for est time completion (only for target count mode)
         private var remainingCount: Int{
@@ -175,7 +180,7 @@ extension tasbeehView {
 
         private var cardShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
         /// The pause card's scroll view height: its content fills it, so empty space there resumes.
-        @State private var scrollHeight: CGFloat = 0
+        private var scrollHeight: CGFloat { get { ui.scrollHeight } nonmutating set { ui.scrollHeight = newValue } }
 
         var body: some View {
             Group {
@@ -240,11 +245,11 @@ extension tasbeehView {
                     }
                 }
             }
-            .sheet(isPresented: $showMantraPicker) {
+            .sheet(isPresented: Bindable(ui).showMantraPicker) {
                 MantraPickerView(
-                    isPresented: $showMantraPicker,
-                    selectedMantra: $chosenMantraName,
-                    selectedMantraObject: $chosenMantraObject,
+                    isPresented: Bindable(ui).showMantraPicker,
+                    selectedMantra: Bindable(ui).chosenMantraName,
+                    selectedMantraObject: Bindable(ui).chosenMantraObject,
                     presentation: [.large]
                 )
             }
@@ -295,7 +300,7 @@ extension tasbeehView {
                         triggerSomeVibration(type: .light)
                         cardEditing = ZikrCardRequest(mantra: mantra)
                     }
-                    .zikrCardEditor($cardEditing, allowDelete: false, blursPage: true)
+                    .zikrCardEditor(Bindable(ui).cardEditing, allowDelete: false, blursPage: true)
                     .modifier(PauseLayerFade(shown: pauseShown, finishing: results != nil, resultsDelay: 0.22))
                     .allowsHitTesting(pauseShown)
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.notes", $0) }
@@ -324,15 +329,15 @@ extension tasbeehView {
                     }
                 }
             }
-            .sheet(isPresented: $showMantraPicker) {
+            .sheet(isPresented: Bindable(ui).showMantraPicker) {
                 MantraPickerView(
-                    isPresented: $showMantraPicker,
-                    selectedMantra: $chosenMantraName,
-                    selectedMantraObject: $chosenMantraObject,
+                    isPresented: Bindable(ui).showMantraPicker,
+                    selectedMantra: Bindable(ui).chosenMantraName,
+                    selectedMantraObject: Bindable(ui).chosenMantraObject,
                     presentation: [.large]
                 )
             }
-            .sheet(isPresented: $showHistory) {
+            .sheet(isPresented: Bindable(ui).showHistory) {
                 NavigationStack {
                     HistoryPageView()
                         .toolbar {
@@ -1018,7 +1023,7 @@ extension tasbeehView {
                     // goal; plain = it stops at the goal — like the sleep and haptics chips beside it.
                     chip("continuous", icon: "arrow.clockwise", on: !autoStop, locked: goalReached,
                          info: ("About continuous", { showGoalIntro = true }), onHold: { showGoalIntro = true }) { autoStop.toggle() }
-                    .fullScreenCover(isPresented: $showGoalIntro) {
+                    .fullScreenCover(isPresented: Bindable(ui).showGoalIntro) {
                         GoalIntroView(autoStop: $autoStop, locked: goalReached, goal: goalText,
                                       subtitle: goalSubtitle) { showGoalIntro = false }
                     }
@@ -1034,7 +1039,7 @@ extension tasbeehView {
                     // On: dark. Off: back to the app's own look (there's no light / dark chip).
                     tasbeehColorMode = toggleInactivityTimer ? true : appLookDark
                 }
-                .fullScreenCover(isPresented: $showSleepIntro) {
+                .fullScreenCover(isPresented: Bindable(ui).showSleepIntro) {
                     SleepIntroView(isOn: toggleInactivityTimer, dimmer: $inactivityDimmer, onTurnOn: {
                         sleepIntroConfirmed = true
                         toggleInactivityTimer = true
@@ -1092,7 +1097,7 @@ extension tasbeehView {
                         .font(.system(size: 19, weight: .light))
                 }
             }
-            .fullScreenCover(isPresented: $showSetsPage) {
+            .fullScreenCover(isPresented: Bindable(ui).showSetsPage) {
                 CountInSetsPage(step: setStepBinding, zikrName: mantra?.name) {
                     if setsPageTurnsOn && setStep > 1 { countingInSets = true }
                     showSetsPage = false
@@ -1247,4 +1252,28 @@ extension tasbeehView {
         private static let infoReach: CGFloat = 18
 
     }
+}
+
+/// The pause screen's own state (`tasbeehView.pauseScreen_StatsSettingsBG`): one object for the screen's life, as its
+/// @State were, so the screen redraws for exactly the properties its body reads (cleanup-map tangle 5, step 4). What
+/// each one means is documented where the screen forwards it.
+@MainActor @Observable final class PauseScreenState {
+    var showSetsPage: Bool = false
+    var setsPageTurnsOn: Bool = false
+    var showSleepIntro: Bool = false
+    var showGoalIntro: Bool = false
+    var showHistory: Bool = false
+    var wellRoom: CGFloat = 148
+    var wellTextHeight: CGFloat = 0
+    var cardEditing: ZikrCardRequest? = nil
+    var bottomInset: CGFloat = 0
+    var pageHeight: CGFloat = 900
+    var showingPerTasbeeh: Bool = false
+    var perCountOpacity: Double = 1
+    var perTasbeehOpacity: Double = 0
+    var showMantraPicker: Bool = false
+    var chosenMantraName: String? = ""
+    var chosenMantraObject: MantraModel? = nil
+    var fullTextExpanded: Bool = false
+    var scrollHeight: CGFloat = 0
 }
