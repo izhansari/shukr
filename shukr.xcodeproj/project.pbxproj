@@ -56,7 +56,6 @@
 		36E0E0AB2D41A26C005C62BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
 		36E0E0AD2D41ECEB005C62BB /* PrayersWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */; };
 		36E0E0AF2D41F930005C62BB /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36E0E0AE2D41F930005C62BB /* Adhan */; };
-		36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */; };
 		36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */; };
 		FAB1E0000000000000000002 /* PrayerViewModel+DayScore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000001 /* PrayerViewModel+DayScore.swift */; };
 		FAB1E0000000000000000004 /* PrayerViewModel+Streaks.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000003 /* PrayerViewModel+Streaks.swift */; };
@@ -197,7 +196,6 @@
 		FAB1E0000000000000000012 /* PrayerUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerUtils.swift; sourceTree = "<group>"; };
 		FAB1E0000000000000000009 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
 		36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayersWidget.swift; sourceTree = "<group>"; };
-		36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerEditorView.swift; sourceTree = "<group>"; };
 		36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerViewModel.swift; sourceTree = "<group>"; };
 		FAB1E0000000000000000001 /* PrayerViewModel+DayScore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PrayerViewModel+DayScore.swift"; sourceTree = "<group>"; };
 		FAB1E0000000000000000003 /* PrayerViewModel+Streaks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PrayerViewModel+Streaks.swift"; sourceTree = "<group>"; };
@@ -338,7 +336,6 @@
 				FAB1E0000000000000000007 /* PrayerViewModel+Demos.swift */,
 				FAB1E0000000000000000005 /* PrayerViewModel+Location.swift */,
 				360B85952C7112A2000385F3 /* tasbeehView.swift */,
-				36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */,
 				365AC48E2D532658002DDCE7 /* english_ar.sqlite */,
 				365AC48F2D532658002DDCE7 /* english_hilali.sqlite */,
 				365AC4902D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf */,
@@ -690,7 +687,6 @@
 				5A7C0E000000000000000B02 /* PrayerMethods.swift in Sources */,
 				360B85962C7112A2000385F3 /* tasbeehView.swift in Sources */,
 				369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */,
-				36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */,
 				36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */,
 				FAB1E0000000000000000002 /* PrayerViewModel+DayScore.swift in Sources */,
 				FAB1E0000000000000000004 /* PrayerViewModel+Streaks.swift in Sources */,

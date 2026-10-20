@@ -21,8 +21,6 @@ extension PrayerTimesView {
         @Binding var showMapPage: Bool
         @Binding var showDailyAyahPage: Bool
         @Binding var showMantrasPage: Bool
-        @Binding var showSalahHistoryV1: Bool
-        @Binding var showSalahHistoryV2: Bool
         @Binding var showZikrHistory: Bool
         @Binding var showInsightsPage: Bool
         @Binding var showOldInsights: Bool

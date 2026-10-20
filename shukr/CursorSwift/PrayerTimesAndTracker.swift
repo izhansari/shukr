@@ -79,8 +79,6 @@ struct PrayerTimesView: View {
     @State private var showMapPage = false
     @State var showDailyAyahPage = false
     @State var showMantrasPage = false
-    @State private var showSalahHistoryV1 = false
-    @State private var showSalahHistoryV2 = false
     @State var showZikrHistory = false
     /// A session sleep mode ended: shown round the Salah circle the next time the page is up.
     @State private var morningSession: SessionDataModel?
@@ -250,15 +248,15 @@ struct PrayerTimesView: View {
 
     // (CircleCover's closers: the stage, CircleMoments.swift.)
     var somethingCovers: Bool {
-        showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
-            || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights
+        showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage
+            || showZikrHistory || showInsightsPage || showOldInsights
             || showNamesPage || showMantraSheetFromHomePage || JourneyPresenter.shared.open
             || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
 
     private func dismissCovers() {
         showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
-        showSalahHistoryV1 = false; showSalahHistoryV2 = false; showZikrHistory = false
+        showZikrHistory = false
         showInsightsPage = false; showOldInsights = false; showNamesPage = false
         showMantraSheetFromHomePage = false; JourneyPresenter.shared.open = false
         healthCard = nil
@@ -611,8 +609,7 @@ struct PrayerTimesView: View {
             PagerChromeView(
                 live: live,
                 showMapPage: $showMapPage, showDailyAyahPage: $showDailyAyahPage,
-                showMantrasPage: $showMantrasPage, showSalahHistoryV1: $showSalahHistoryV1,
-                showSalahHistoryV2: $showSalahHistoryV2, showZikrHistory: $showZikrHistory,
+                showMantrasPage: $showMantrasPage, showZikrHistory: $showZikrHistory,
                 showInsightsPage: $showInsightsPage, showOldInsights: $showOldInsights,
                 showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage
             )
@@ -920,8 +917,6 @@ struct PrayerTimesView: View {
         }
         .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
         .navigationDestination(isPresented: $showMantrasPage) { ZikrAreaPage(start: .azkar) }
-        .navigationDestination(isPresented: $showSalahHistoryV1) { SimpleDailyScoreView() }
-        .navigationDestination(isPresented: $showSalahHistoryV2) { PrayerEditorView() }
         .navigationDestination(isPresented: $showZikrHistory) { ZikrAreaPage(start: .history) }
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
