@@ -3868,9 +3868,15 @@ struct SalahPageAnchor: ViewModifier {
     static let follows: CGFloat = 0.3
     /// Fully faded this far through the swipe (the incoming page's ring is still off its side).
     static let goneAt: CGFloat = 0.45
+    @Environment(SharedStateClass.self) private var sharedState
 
     func body(content: Content) -> some View {
         content
+            // Resting on Zikr or Settings, the faded page is still drawn 70 % over it (the offset below) and above Zikr in
+            // the pager's order, and a faded view still takes touches: it swallowed the Zikr ring's tap and marked / unmarked
+            // prayers from the Zikr tab (owner, 2026-10-20: "same for me … i could unmark prayers while on zikr tab"). It
+            // takes touches only while it's the page you're on (`horizontalPage` changes on a settled swipe, never per frame).
+            .allowsHitTesting(sharedState.horizontalPage == .main)
             .visualEffect { view, proxy in
                 let x = proxy.frame(in: .scrollView(axis: .horizontal)).minX
                 let moved = min(abs(x) / max(proxy.size.width, 1), 1)
