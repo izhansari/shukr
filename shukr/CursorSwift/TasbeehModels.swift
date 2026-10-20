@@ -28,3 +28,36 @@ import SwiftData
     var totalPauseInSession: Double = 0
     var secsToReport: TimeInterval = 0
 }
+
+@MainActor @Observable final class TasbeehCount {
+    var sessionMantra: MantraModel? = nil
+    var countingInSets: Bool = false
+    var finishArmed: Bool = false
+    var finishArmToken: Int = 0
+    var tasbeeh: Int = 0
+    var countOffset: Int = 0
+    var autoStop: Bool = true
+    var endedAsleep: Bool = false
+    var newAvrgTPC: TimeInterval = 0
+    var secsAtLastTap: TimeInterval = 0
+    var lastTapAt: Date? = nil
+    var sleptSaved: Bool = false
+    var sleepResume: tasbeehView.SleepResume? = nil
+    var resumeWanted: Bool = false
+    var sleepResumeReady: Bool = false
+    var stopCleanupPending: Bool = false
+    var finishBuzzPlayed: Bool = false
+    var savedSession: SessionDataModel? = nil
+    var strokesThisTouch: Int = 0
+    var postSalahPhase: Int = 0
+    var tasbeehColorMode: Bool = false
+    var goalFinishArmed: Bool = false
+    var goalFinishToken: Int = 0
+    var reminderVariant: Int = {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments   // -reminderVariant N (screenshots)
+        if let i = args.firstIndex(of: "-reminderVariant"), i + 1 < args.count, let n = Int(args[i + 1]) { return n }
+        #endif
+        return Int.random(in: 0..<PostSalahReminder.count)
+    }()
+}

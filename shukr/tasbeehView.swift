@@ -66,6 +66,8 @@ struct tasbeehView: View {
     @Environment(SharedStateClass.self) var sharedState
     /// TasbeehClock (TasbeehModels.swift, cleanup-map tangle 5 step 6): the properties that forward to `clockModel` live there.
     @State private var clockModel = TasbeehClock()
+    /// TasbeehCount (TasbeehModels.swift, cleanup-map tangle 5 step 6): the properties that forward to `countModel` live there.
+    @State private var countModel = TasbeehCount()
     
     // AppStorage properties
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
@@ -73,12 +75,11 @@ struct tasbeehView: View {
     @AppStorage(QuickAddSteps.noMantraKey) private var noMantraQuickAdd = 0
     /// The session's mantra row: the picked object, else looked up by the session title
     /// (post-salah sequences and older launchers only set the title).
-    @State private var sessionMantra: MantraModel?
+    private var sessionMantra: MantraModel? { get { countModel.sessionMantra } nonmutating set { countModel.sessionMantra = newValue } }
     private var secondaryStep: Int { sessionMantra?.quickAddStep ?? noMantraQuickAdd }
     /// Count in sets: with the "+N" button switched on, every tap / drag (and −) is worth N
     /// (owner, 2026-09-25: it was a one-shot +N button). Per session, off at the start.
-    @State private var countingInSets = false
-    /// Counting in sets right now (a size set and switched on): +N in the top bar and the line at the bottom.
+    private var countingInSets: Bool { get { countModel.countingInSets } nonmutating set { countModel.countingInSets = newValue } }   /// Counting in sets right now (a size set and switched on): +N in the top bar and the line at the bottom.
     private var setsOn: Bool { countingInSets && secondaryStep > 1 }
     /// The counter's top bar's height (the pause screen's top row matches it).
     @State private var topBarHeight: CGFloat = 0
@@ -90,8 +91,8 @@ struct tasbeehView: View {
         return pauseScreen_StatsSettingsBG.resultsLiftBase + (finishLine ? 0 : 48)
     }
     /// Finish asked for its second tap (it lets go after 3 s, or on resuming).
-    @State private var finishArmed = false
-    @State private var finishArmToken = 0
+    private var finishArmed: Bool { get { countModel.finishArmed } nonmutating set { countModel.finishArmed = newValue } }
+    private var finishArmToken: Int { get { countModel.finishArmToken } nonmutating set { countModel.finishArmToken = newValue } }
     private var tapWorth: Int { countingInSets && secondaryStep > 1 ? secondaryStep : 1 }
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
@@ -104,16 +105,14 @@ struct tasbeehView: View {
     private var timerIsActive: Bool { get { clockModel.timerIsActive } nonmutating set { clockModel.timerIsActive = newValue } }
     private var timerbb: Timer? { get { clockModel.timerbb } nonmutating set { clockModel.timerbb = newValue } }
     private var paused: Bool { get { clockModel.paused } nonmutating set { clockModel.paused = newValue } }
-    @State private var tasbeeh = 0
-    /// Counts / seconds already done today when continuing a task: on the ring, not saved again.
-    @State private var countOffset = 0
+    private var tasbeeh: Int { get { countModel.tasbeeh } nonmutating set { countModel.tasbeeh = newValue } }   /// Counts / seconds already done today when continuing a task: on the ring, not saved again.
+    private var countOffset: Int { get { countModel.countOffset } nonmutating set { countModel.countOffset = newValue } }
     private var timeOffset: TimeInterval { get { clockModel.timeOffset } nonmutating set { clockModel.timeOffset = newValue } }   /// What this session itself counted (the saved total).
     private var sessionCount: Int { tasbeeh - countOffset }
     private var startTime: Date? { get { clockModel.startTime } nonmutating set { clockModel.startTime = newValue } }
     private var endTime: Date? { get { clockModel.endTime } nonmutating set { clockModel.endTime = newValue } }
     private var pauseStartTime: Date? { get { clockModel.pauseStartTime } nonmutating set { clockModel.pauseStartTime = newValue } }
-    @State private var autoStop = true
-
+    private var autoStop: Bool { get { countModel.autoStop } nonmutating set { countModel.autoStop = newValue } }
     private var secsPassedAtPause: TimeInterval { get { clockModel.secsPassedAtPause } nonmutating set { clockModel.secsPassedAtPause = newValue } }
     private var progressFraction: CGFloat { get { clockModel.progressFraction } nonmutating set { clockModel.progressFraction = newValue } }   /// One ring (SessionHandoff's landing base): where the ring started, where it stood when the session stopped (the
     /// stop empties it), and the ring kept up while the session goes, until its arc has landed.
@@ -166,55 +165,37 @@ struct tasbeehView: View {
     private var showInactivityAlert: Bool { get { clockModel.showInactivityAlert } nonmutating set { clockModel.showInactivityAlert = newValue } }
     private var countDownForAlert: Int { get { clockModel.countDownForAlert } nonmutating set { clockModel.countDownForAlert = newValue } }
     private var stoppedDueToInactivity: Bool { get { clockModel.stoppedDueToInactivity } nonmutating set { clockModel.stoppedDueToInactivity = newValue } }   /// Set by `finishAsleep`; saved on the session (`SessionDataModel.endedAsleep`).
-    @State private var endedAsleep = false
-    @State private var newAvrgTPC: TimeInterval = 0 //calculated on increment and decrement by secondsPassed / tasbeeh
+    private var endedAsleep: Bool { get { countModel.endedAsleep } nonmutating set { countModel.endedAsleep = newValue } }
+    private var newAvrgTPC: TimeInterval { get { countModel.newAvrgTPC } nonmutating set { countModel.newAvrgTPC = newValue } }   //calculated on increment and decrement by secondsPassed / tasbeeh
     /// Session seconds (pauses excluded) at the last tap: a session sleep mode ends is saved as
     /// ending here, not at the countdown's end or when the phone was locked (owner, idea F3BR).
-    @State private var secsAtLastTap: TimeInterval = 0
-    /// The clock time of the last tap, for the morning card's "ended around" (the session's own
+    private var secsAtLastTap: TimeInterval { get { countModel.secsAtLastTap } nonmutating set { countModel.secsAtLastTap = newValue } }   /// The clock time of the last tap, for the morning card's "ended around" (the session's own
     /// seconds leave pauses out).
-    @State private var lastTapAt: Date?
-    /// Sleep mode saved the session while the app was up: the screen stays black ("saved") until the
+    private var lastTapAt: Date? { get { countModel.lastTapAt } nonmutating set { countModel.lastTapAt = newValue } }   /// Sleep mode saved the session while the app was up: the screen stays black ("saved") until the
     /// phone locks — nothing bright lights up while he sleeps (owner, sleep-mode-fixes).
-    @State private var sleptSaved = false
-    /// The results after a sleep finish have been up a while: black until the lock (or a tap).
+    private var sleptSaved: Bool { get { countModel.sleptSaved } nonmutating set { countModel.sleptSaved = newValue } }   /// The results after a sleep finish have been up a while: black until the lock (or a tap).
     @State private var sleptDark = false
     static let sleptResultsSeconds: Double = 15
     /// What "Keep counting" needs to carry the session on after sleep mode saved it (owner,
     /// sleep-keep-going): taken just before the save, since the stop clears these a beat later.
-    private struct SleepResume {
+    struct SleepResume {
         var startTime: Date?, endTime: Date?, totalPause: Double
         var targetCount: String, task: TaskModel?, lastTapAt: Date?
     }
-    @State private var sleepResume: SleepResume?
-    /// Keep counting was tapped before the stop's cleanup ran: resume as soon as it has.
-    @State private var resumeWanted = false
-    /// The results came from a sleep finish: dimmed (stays through their fade-out on Keep counting).
+    private var sleepResume: SleepResume? { get { countModel.sleepResume } nonmutating set { countModel.sleepResume = newValue } }   /// Keep counting was tapped before the stop's cleanup ran: resume as soon as it has.
+    private var resumeWanted: Bool { get { countModel.resumeWanted } nonmutating set { countModel.resumeWanted = newValue } }   /// The results came from a sleep finish: dimmed (stays through their fade-out on Keep counting).
     @State private var resultsDimmed = false
     /// The stop's cleanup has run, so resuming can't be undone by it.
-    @State private var sleepResumeReady = false
-    /// A saved stop's cleanup (`finishStopCleanup`) waits for the results to land — or runs at once with no frames to wait for.
-    @State private var stopCleanupPending = false
-    /// The finish buzz already played on the goal's own tap / tick (stopTimer(goal:)): the cleanup doesn't play it again.
-    @State private var finishBuzzPlayed = false
+    private var sleepResumeReady: Bool { get { countModel.sleepResumeReady } nonmutating set { countModel.sleepResumeReady = newValue } }   /// A saved stop's cleanup (`finishStopCleanup`) waits for the results to land — or runs at once with no frames to wait for.
+    private var stopCleanupPending: Bool { get { countModel.stopCleanupPending } nonmutating set { countModel.stopCleanupPending = newValue } }   /// The finish buzz already played on the goal's own tap / tick (stopTimer(goal:)): the cleanup doesn't play it again.
+    private var finishBuzzPlayed: Bool { get { countModel.finishBuzzPlayed } nonmutating set { countModel.finishBuzzPlayed = newValue } }
     private var totalPauseInSession: Double { get { clockModel.totalPauseInSession } nonmutating set { clockModel.totalPauseInSession = newValue } }
     private var secsToReport: TimeInterval { get { clockModel.secsToReport } nonmutating set { clockModel.secsToReport = newValue } }
-    @State private var savedSession: SessionDataModel? = nil
-    /// Counts made by the current drag (the session tour's "three in one stroke").
-    @State private var strokesThisTouch = 0
-    
-    /// Post-salah: which of the three phrases the count is in (for the phase-change haptic).
-    @State private var postSalahPhase = 0
-    /// Which reminder the post-salah session shows (one per session, picked at random).
-    @State private var reminderVariant: Int = {
-        #if DEBUG
-        let args = ProcessInfo.processInfo.arguments   // -reminderVariant N (screenshots)
-        if let i = args.firstIndex(of: "-reminderVariant"), i + 1 < args.count, let n = Int(args[i + 1]) { return n }
-        #endif
-        return Int.random(in: 0..<PostSalahReminder.count)
-    }()
-    @State private var tasbeehColorMode = false
-    /// The app's own look (Light / Dark / Auto) when the session opened: the counter follows it,
+    private var savedSession: SessionDataModel? { get { countModel.savedSession } nonmutating set { countModel.savedSession = newValue } }   /// Counts made by the current drag (the session tour's "three in one stroke").
+    private var strokesThisTouch: Int { get { countModel.strokesThisTouch } nonmutating set { countModel.strokesThisTouch = newValue } }   /// Post-salah: which of the three phrases the count is in (for the phase-change haptic).
+    private var postSalahPhase: Int { get { countModel.postSalahPhase } nonmutating set { countModel.postSalahPhase = newValue } }   /// Which reminder the post-salah session shows (one per session, picked at random).
+    private var reminderVariant: Int { get { countModel.reminderVariant } nonmutating set { countModel.reminderVariant = newValue } }
+    private var tasbeehColorMode: Bool { get { countModel.tasbeehColorMode } nonmutating set { countModel.tasbeehColorMode = newValue } }   /// The app's own look (Light / Dark / Auto) when the session opened: the counter follows it,
     /// fixed for the session (Auto passing Maghrib mid-count doesn't flip it); sleep mode goes dark
     /// and turning sleep off comes back here (owner: the light / dark chip is gone).
     @State private var appLookDark = false
@@ -252,10 +233,8 @@ struct tasbeehView: View {
             && timerIsActive && progressFraction >= 1
     }
     /// "goal reached" tapped once: "Tap again to finish" (disarms after 3 s, like Finish early).
-    @State private var goalFinishArmed = false
-    @State private var goalFinishToken = 0
-    
-    /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
+    private var goalFinishArmed: Bool { get { countModel.goalFinishArmed } nonmutating set { countModel.goalFinishArmed = newValue } }
+    private var goalFinishToken: Int { get { countModel.goalFinishToken } nonmutating set { countModel.goalFinishToken = newValue } }   /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
     /// 10 s "You still there?" countdown, then the session is saved ending at the last tap.
     var inactivityLimit: TimeInterval {
         #if DEBUG
@@ -602,12 +581,12 @@ struct tasbeehView: View {
                     takingNotes: takingNotes,
                     toggleInactivityTimer: $toggleInactivityTimer,
                     inactivityDimmer: $inactivityDimmer,
-                    autoStop: $autoStop,
-                    tasbeehColorMode: $tasbeehColorMode,
+                    autoStop: Bindable(countModel).autoStop,
+                    tasbeehColorMode: Bindable(countModel).tasbeehColorMode,
                     appLookDark: appLookDark,
                     goalReached: goalReached,
                     currentVibrationMode: $currentVibrationMode,
-                    countingInSets: $countingInSets,
+                    countingInSets: Bindable(countModel).countingInSets,
                     ringAbove: ringAbove,
                     timeOffset: timeOffset,
                     results: ringAbove ? savedSession.map { session in
