@@ -12,7 +12,6 @@ import MapKit
 /// edge stays the system's back. The doors a day opens (its prayer sheet, the note, the place, the map, the zikr, the
 /// pile, To make up) live here, so a day piece only says which.
 struct JourneyDayPage: View {
-    @Environment(\.journeyInPager) private var inPager
     @State var date: Date
     let firstDay: Date?
     @Environment(\.circleTheme) private var theme
@@ -131,11 +130,7 @@ struct JourneyDayPage: View {
         .background(theme.surface.modifier(JourneyDayEntranceFade(part: .page)).ignoresSafeArea())
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
-        .modifier(JourneyDayHeading(inPager: inPager, heading: heading))
-        // In the pager its heading is drawn in Journey's band, beside the host's ‹ (JourneyHostBar): it says which day shows.
-        .onChange(of: shownDate, initial: true) { _, d in if inPager { JourneyDayShown.shared.date = d } }
-        .onDisappear { if inPager { JourneyDayShown.shared.date = nil } }
-        .onAppear { if inPager { JourneyDayShown.shared.date = shownDate } }   // back from a push over the day
+        .toolbar { ToolbarItem(placement: .principal) { heading } }
         .fullScreenCover(item: $dayPile) { route in
             PrayerPhotoViewer(key: route.keys[0], pile: route.keys, from: route.from) {
                 var quiet = Transaction()
@@ -656,22 +651,6 @@ struct JourneyDayPhotoStack: View {
     }
 }
 
-
-/// A day's heading: the system bar's middle (pushed); in the pager, Journey's band draws it (JourneyHostBar, from
-/// JourneyDayShown) beside the ‹ — the day page reaches up past its own frame, so it can't place one there itself.
-private struct JourneyDayHeading<Heading: View>: ViewModifier {
-    let inPager: Bool
-    let heading: Heading
-    func body(content: Content) -> some View {
-        if inPager { content } else { content.toolbar { ToolbarItem(placement: .principal) { heading } } }
-    }
-}
-
-/// The day shown on the in-place day page, for Journey's band in the pager (nil: no day open).
-@MainActor @Observable final class JourneyDayShown {
-    static let shared = JourneyDayShown()
-    var date: Date?
-}
 
 /// "Thursday, October 1" over "2 weeks ago": a day page's heading, swapping as the days page.
 struct JourneyDayHeadingText: View {

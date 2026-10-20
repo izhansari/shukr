@@ -7,7 +7,6 @@ import SwiftUI
 // month page: the card's top and bottom, and between them the same weeks — a week a row, seven columns — as rings.
 
 struct JourneyExpandedPage: View {
-    @Environment(\.journeyInPager) private var inPager
     let log: JourneyLog
     let stats: YourJourneyStats
     /// The month it opened on, and whether it opened focused on it (a month name, This month) or not (the ↗: the weeks the
@@ -46,10 +45,7 @@ struct JourneyExpandedPage: View {
     /// The month rail (hold the names' column, as on the card): the month the finger's on.
     @State private var rail: Int?
     @State private var scrub = JourneyCardScrub()
-    /// Pinched in: the card's tiles in place of the rings, rows the card's pitch, so many more weeks show (owner, 2026-10-17:
-    /// "we can still pinch it to make ting smaller into tiles on this expanded view"); spread, the rings again.
-    @State private var tiles = false
-    /// The week in the middle of the view (what a pinch keeps in place).
+    /// The week in the middle of the view.
     @State private var middleWeek: Date?
     @Environment(\.journeyDayOpener) private var dayOpener
     @Environment(\.journeyMonthOpen) private var monthOpen
@@ -104,7 +100,7 @@ struct JourneyExpandedPage: View {
         // A weeks ↔ year flight drives the page's own pieces (its cells, words, the flying squares); at rest, the host's.
         .modifier(JourneyYearFlightDriver(dials: yearDials, flight: yearFlight, clearWhenIdle: false))
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .modifier(JourneyExpandedToggle(inPager: inPager, toggle: yearToggle))
+        .modifier(JourneyExpandedToggle(toggle: yearToggle))
         .modifier(JourneyExtrasPresenter(tap: $extraTap))
         .background(theme.surface.journeyFlightMonthSurface().ignoresSafeArea())   // clear while it opens over Journey
         .fontDesign(.rounded)
@@ -164,9 +160,9 @@ struct JourneyExpandedPage: View {
         let monthWeeks = stats.weeks.compactMap { $0.month == nil ? nil : $0.id }
         let labels = Self.labelRows(stats.weeks)
         return ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(spacing: tiles ? JourneyHomeCard.pitch - 11 : Self.rowGap) {
+            LazyVStack(spacing: Self.rowGap) {
                 ForEach(Array(stats.weeks.enumerated()), id: \.element.id) { i, week in
-                    JourneyExpandedRow(week: week, index: i, log: log, today: today, cell: cell, tiles: tiles,
+                    JourneyExpandedRow(week: week, index: i, log: log, today: today, cell: cell,
                                        labelMonth: labels[week.id]?.month, labelBetween: labels[week.id]?.between ?? false,
                                        focus: focus, streak: streakShown ? stats.bestStreakDays : nil, lit: keyLit,
                                        picked: picked.flatMap { p in week.days.contains { $0?.date == p } ? p : nil },
@@ -190,13 +186,12 @@ struct JourneyExpandedPage: View {
             JourneyFlightGeometry.shared.follow()
         }
         // Pinch in: the year (owner, 2026-10-18: "make pinching the calendar go to year view. not the tile year thing") —
-        // the toggle's flight; a spread in the year comes back (JourneyYearView's onSpread). The tiles look is no longer
-        // reached by a pinch (a spread still leaves it, if it's ever on).
+        // the toggle's flight; a spread in the year comes back (JourneyYearView's onSpread).
         .simultaneousGesture(MagnifyGesture().onEnded { v in
             if v.magnification < 0.85, !showYear, yearFlight == nil {
                 triggerSomeVibration(type: .light)
                 toYear()
-            } else if v.magnification > 1.15, tiles { setTiles(false) }
+            }
         })
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }   // inside its padding: = the guess
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrub.gridHeight = $0 }
@@ -245,21 +240,6 @@ struct JourneyExpandedPage: View {
             out[weeks[first + (rows - 1) / 2].id] = (m, rows % 2 == 0)
         }
         return out
-    }
-
-    private func setTiles(_ on: Bool) {
-        JourneyPerf.began(on ? "expanded → tiles" : "expanded → rings")
-        triggerSomeVibration(type: .light)
-        let keep = middleWeek
-        withAnimation(.smooth(duration: 0.45)) {
-            tiles = on
-            if let keep { position.scrollTo(id: keep, anchor: .center) }
-        } completion: {
-            // The rows changed size under that scroll and the lazy stack went by its estimates (a spread from tiles landed
-            // months early — the helper's check): again, now they're built at their new size.
-            guard let keep else { return }
-            withAnimation(.easeOut(duration: 0.2)) { position.scrollTo(id: keep, anchor: .center) }
-        }
     }
 
     /// Opened on a month (a name, This month): that month in the middle; from the ↗, the card's weeks — its middle week in the
@@ -424,12 +404,11 @@ struct JourneyExpandedPage: View {
     /// nearest column), if it's one that can be picked.
     private func day(at p: CGPoint, fromRow i: Int) -> Date? {
         guard !stats.weeks.isEmpty else { return nil }
-        let height: CGFloat = tiles ? 11 : cell
-        let gap: CGFloat = tiles ? JourneyHomeCard.pitch - 11 : Self.rowGap
-        let spacing: CGFloat = tiles ? 6 : 0
+        let height = cell
+        let gap = Self.rowGap
         let row = min(max(i + Int(((p.y + gap / 2) / (height + gap)).rounded(.down)), 0), stats.weeks.count - 1)
-        let slot = (cellsWidth + spacing) / 7
-        let col = min(max(Int(((p.x + spacing / 2) / slot).rounded(.down)), 0), 6)
+        let slot = cellsWidth / 7
+        let col = min(max(Int((p.x / slot).rounded(.down)), 0), 6)
         guard let date = Calendar.current.date(byAdding: .day, value: col, to: stats.weeks[row].start),
               let first = log.firstDay, date >= first, date <= today else { return nil }
         return date
@@ -664,26 +643,15 @@ struct JourneyExpandedPage: View {
     }
 }
 
-/// Month | Year top right: the system bar's (pushed), or in Journey's band where the bar was (the pager: the page sits under
-/// the band, so the toggle is lifted into it).
+/// Month | Year top right, in the system bar.
 private struct JourneyExpandedToggle<Toggle: View>: ViewModifier {
-    let inPager: Bool
     let toggle: Toggle
     func body(content: Content) -> some View {
-        if inPager {
-            content.overlay(alignment: .topTrailing) {
-                toggle
-                    .frame(height: JourneyBar.height)
-                    .padding(.trailing, 14)
-                    .offset(y: -JourneyBar.height)
-            }
-        } else {
-            content.toolbar {
-                if #available(iOS 26.0, *) {
-                    ToolbarItem(placement: .topBarTrailing) { toggle }.sharedBackgroundVisibility(.hidden)
-                } else {
-                    ToolbarItem(placement: .topBarTrailing) { toggle }
-                }
+        content.toolbar {
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .topBarTrailing) { toggle }.sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .topBarTrailing) { toggle }
             }
         }
     }
@@ -700,8 +668,6 @@ struct JourneyExpandedRow: View, Equatable {
     let log: JourneyLog
     let today: Date
     let cell: CGFloat
-    /// The card's tiles in place of the rings (pinched in).
-    let tiles: Bool
     /// The month whose name sits on this row (its middle row), and whether it sits halfway down to the next (an even number
     /// of rows).
     let labelMonth: Date?
@@ -749,42 +715,33 @@ struct JourneyExpandedRow: View, Equatable {
 
     static func == (a: Self, b: Self) -> Bool {
         a.week.start == b.week.start && a.index == b.index && a.log.version == b.log.version && a.today == b.today && a.cell == b.cell
-            && a.tiles == b.tiles && a.labelMonth == b.labelMonth && a.labelBetween == b.labelBetween
+            && a.labelMonth == b.labelMonth && a.labelBetween == b.labelBetween
             && a.picked == b.picked && a.focusMask == b.focusMask && a.streakMask == b.streakMask && a.litMask == b.litMask
     }
-
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let _ = JourneyPerf.body("expandedRow")
         let cal = Calendar.current
         let scale = cell / JourneyDayRing.size
-        let height = tiles ? 11 : cell
+        let height = cell
         let excused = Excused.Days()
         HStack(spacing: 0) {
             label
                 // Centred on its row, or on the gap below it when the month's rows are even.
-                .offset(y: labelBetween ? (height + (tiles ? JourneyHomeCard.pitch - 11 : JourneyExpandedPage.rowGap)) / 2 : 0)
+                .offset(y: labelBetween ? (height + JourneyExpandedPage.rowGap) / 2 : 0)
                 .frame(width: JourneyExpandedPage.labelColumn - 8, height: height, alignment: .trailing)
                 .padding(.trailing, 8)
-            HStack(spacing: tiles ? 6 : 0) {
+            HStack(spacing: 0) {
                 ForEach(0..<7, id: \.self) { i in
                     let date = cal.date(byAdding: .day, value: i, to: week.start) ?? week.start
                     let day = log.day(date)
                     let noRows = date < today && log.days[PrayerNotificationID.dayKey(date)] == nil && excused.excludes(date)
-                    // The ring and the card's tile, one over the other: a pinch fades one into the other as the row
-                    // resizes — the tiles of the compact card, grown, and back.
-                    ZStack {
-                        JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, usesExcused: log.usesExcused,
-                                       excusedNoRows: noRows)
-                            .scaleEffect(scale * (tiles ? 0.4 : 1))
-                            // A scale isn't layout: unframed, each ring kept its 46 pt and the 7th column ran off a 17 Pro
-                            // (the helper's check); in tiles mode it takes no room at all.
-                            .frame(width: tiles ? 0 : cell, height: tiles ? 0 : cell)
-                            .opacity(tiles ? 0 : 1)
-                        tile(week.days[i])
-                            .opacity(tiles ? 1 : 0)
-                    }
+                    JourneyDayCell(day: day, date: date, today: today, first: log.firstDay, usesExcused: log.usesExcused,
+                                   excusedNoRows: noRows)
+                        .scaleEffect(scale)
+                        // A scale isn't layout: unframed, each ring kept its 46 pt and the 7th column ran off a 17 Pro
+                        // (the helper's check).
+                        .frame(width: cell, height: cell)
                     .frame(maxWidth: .infinity)
                     .frame(height: height)
                     .journeyFlightCell(date, scale: scale)   // the card's tiles land on it (JourneyTransitions.swift)
@@ -792,17 +749,11 @@ struct JourneyExpandedRow: View, Equatable {
                              ?? focus.map { JourneyLog.monthStart(date) == $0 ? 1 : 0.22 } ?? 1)
                     .overlay {
                         if picked == date {
-                            if tiles {
-                                RoundedRectangle(cornerRadius: JourneyHomeCard.corner + 2.5, style: .continuous)
-                                    .strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
-                                    .padding(-3)
-                            } else {
-                                Circle().strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
-                                    .frame(width: cell + 2, height: cell + 2)
-                            }
+                            Circle().strokeBorder(Color.primary.opacity(0.85), lineWidth: 1.5)
+                                .frame(width: cell + 2, height: cell + 2)
                         }
                     }
-                    .contentShape(Rectangle().inset(by: tiles ? -1.5 : 0))
+                    .contentShape(Rectangle())
                     .onTapGesture { onDay(date) }
                 }
             }
@@ -810,23 +761,6 @@ struct JourneyExpandedRow: View, Equatable {
             // moves first, fails it, and the weeks scroll).
             .gesture(JourneyHoldPick(hold: JourneyHomeCard.holdTime) { state, p, _ in onHold(state, p) })
             .journeyFlightWeek(week.start, scale: scale)   // one place for its seven days (the flights work them out)
-        }
-    }
-
-    /// The card's tile for a day (JourneyCardRow's bar): its kind and heat, an unmarked day its hairline; nothing outside the
-    /// journey.
-    @ViewBuilder private func tile(_ day: YourJourneyStats.GridDay?) -> some View {
-        let shape = RoundedRectangle(cornerRadius: JourneyHomeCard.corner, style: .continuous)
-        if let day {
-            let dark = scheme == .dark
-            shape.fill(JourneyTileColor.of(day.kind, rank: day.rank, dark: dark))
-                .overlay {
-                    if day.kind == .none { shape.strokeBorder(JourneyTileColor.outline(dark: dark), lineWidth: JourneyTileColor.outlineWidth) }
-                }
-                .opacity(day.counted ? 1 : JourneyTileColor.beforeFreshStart)
-                .frame(height: 11)
-        } else {
-            Color.clear.frame(height: 11)
         }
     }
 
@@ -842,7 +776,7 @@ struct JourneyExpandedRow: View, Equatable {
                         .font(.system(size: 13, weight: on ? .semibold : .regular, design: .rounded))
                         .foregroundStyle(on ? Color.primary : Color.secondary)
                         .journeyFlightLabel(start)   // the card's name lands here (JourneyTransitions.swift)
-                    if numbers.activeDays > 0, !tiles {
+                    if numbers.activeDays > 0 {
                         Text(numbers.activeDays == 1 ? "1 day" : "\(numbers.activeDays) days")
                         if let score = numbers.averageScore { Text("score \(score)") }
                     }

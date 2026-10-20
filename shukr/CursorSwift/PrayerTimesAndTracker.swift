@@ -3930,7 +3930,7 @@ struct PagerPanLock: UIViewRepresentable {
         // the pager: that reached every scroll view in the pages, and Journey's grid and calendar wouldn't scroll with no
         // location (sim, 2026-10-18).
         view.locked = live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating
-            || JourneyPagerHold.shared.held || CircleStage.shared.lost != nil
+            || CircleStage.shared.lost != nil
     }
 
     /// Sits in the pager's content: the nearest UIScrollView above it is the pager.

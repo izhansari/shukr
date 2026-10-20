@@ -327,8 +327,6 @@ extension JourneyLog.Day {
 }
 
 struct JourneyPage: View {
-    /// The pager rests on it (JourneyPagerPage): a reload waits for it, as one under a pushed page waits for the way back.
-    var visible = true
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @State private var log = JourneyLog.last ?? JourneyLog()
@@ -424,8 +422,6 @@ struct JourneyPage: View {
             arrive()
         }
         .onDisappear { appeared = false; onScreen = false }
-        // In the pager it stays built: each arrival on its page is an appearance.
-        .onChange(of: visible) { _, _ in arrive() }
         .task {
             reload(first: true)   // read at once, even built ahead of a swipe, so it's ready when it's shown
             takeMakeUp()
@@ -491,9 +487,9 @@ struct JourneyPage: View {
         if next != fit { fit = next } else { checkFit(needed) }
     }
 
-    /// On screen now (appeared, and the pager on it): what waited reloads.
+    /// On screen now (appeared): what waited reloads.
     private func arrive() {
-        onScreen = appeared && visible
+        onScreen = appeared
         guard onScreen else { return }
         JourneyPerf.began("journey appears")
         if dirty { reload() }

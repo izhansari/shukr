@@ -126,7 +126,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
 - Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the
-  pager's right page; the in-pager band (JourneyPager.swift, `journeyInPager`) is left unused.
+  pager's right page (its in-pager band and pager hold were deleted 2026-10-20, cleanup tangle 4).
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in
   view) · the current streak ("N-day streak" / "Start a streak today"; it and "best streak" are the Salah page's streak at
   the goal, from the fresh start; today never breaks it), the expand button; under the grid prayers marked · % of days met

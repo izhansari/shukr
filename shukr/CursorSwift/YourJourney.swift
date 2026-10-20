@@ -721,40 +721,6 @@ struct JourneyCardRow: View, Equatable {
     }
 }
 
-/// The This month row's measure (build-plan "B", canvas v6): touch and hold the row to choose; the choice sticks
-/// (`journey.thisMonth`). Owner: "on time or better" is his pick, so it's the default — "Perfect or Middle" since the
-/// grades became Perfect · Middle · Closing (2026-10-17); the case keeps its saved name `onTime`.
-enum ThisMonthMeasure: String, CaseIterable, Identifiable {
-    case inWindow, onTime, perfect, average
-    static let key = "journey.thisMonth"
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .inWindow: "In their window"
-        case .onTime: "Perfect or Middle"
-        case .perfect: "Perfect"
-        case .average: "Average score"
-        }
-    }
-    /// What it counts, in the menu.
-    var counts: String {
-        switch self {
-        case .inWindow: "Perfect, Middle and Closing"
-        case .onTime: "Perfect and Middle"
-        case .perfect: "Perfect only"
-        case .average: "Every prayer by its score; a missed one is 0"
-        }
-    }
-    func value(_ m: YourJourneyStats.ThisMonth) -> String {
-        switch self {
-        case .inWindow: "\(m.inWindow)%"
-        case .onTime: "\(m.onTime)%"
-        case .perfect: "\(m.perfect)%"
-        case .average: "\(m.average)"
-        }
-    }
-}
-
 /// A picked day's line — the card's, and the year's (owner, 2026-10-16: "when the year is shown, let's make it work the
 /// same way that the card works, where tapping a tile shows that day information at the bottom, which we can then open
 /// into"). Two lines (owner, 2026-10-17: "we have enough space to use the two lines"): the date, then its kind and the day
@@ -1318,9 +1284,6 @@ struct YourJourneyStats {
         }
         return nil
     }
-    /// This month so far, four ways (every prayer whose time has come; nil before any is due) — the This month row.
-    struct ThisMonth { let inWindow: Int; let onTime: Int; let perfect: Int; let average: Int }
-    var thisMonth: ThisMonth?
 
     struct MonthRow: Identifiable {
         let id: String
@@ -1455,30 +1418,6 @@ struct YourJourneyStats {
                 weekStart = next
             }
         }
-        // This month, on time or better (owner's This month row): every prayer whose time has come.
-        var window = 0, onTime = 0, perfect = 0, owed = 0, scoreSum = 0.0
-        for date in JourneyLog.daysOf(month: JourneyLog.monthStart(today)) where date <= today {
-            for mark in log.day(date).marks {
-                if case .done(let score) = mark {
-                    owed += 1
-                    scoreSum += score
-                    switch PrayerScoring.grade(for: score) {
-                    case .perfect: perfect += 1; onTime += 1; window += 1
-                    case .onTime: onTime += 1; window += 1
-                    case .late: window += 1
-                    case .qaza: break
-                    }
-                } else if mark == .missed {
-                    owed += 1
-                }
-            }
-        }
-        if owed > 0 {
-            func pct(_ n: Int) -> Int { Int((Double(n) / Double(owed) * 100).rounded()) }
-            thisMonth = ThisMonth(inWindow: pct(window), onTime: pct(onTime), perfect: pct(perfect),
-                                  average: Int((scoreSum / Double(owed) * 100).rounded()))
-        }
-
         milestones = JourneyMilestone.earned(log: log, today: today, excused: excused)
         if let first = log.firstDay {
             buildMonths(log: log, first: cal.startOfDay(for: first), today: today, excused: excused)
