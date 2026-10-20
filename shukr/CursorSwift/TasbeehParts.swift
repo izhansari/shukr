@@ -154,7 +154,6 @@ extension tasbeehView {
                             sharedState.mantraForSession = nil   // audit A8: a stale pick outlived a deleted zikr
                         }
                         CountTips.shared.resultsDone()
-                        ZikrTour.shared.resultsDone()
                         isPresented = false
                     } label: {
                         Text("Done")

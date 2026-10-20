@@ -181,13 +181,12 @@ struct ZikrCircleWheel: View {
         wheel
             .overlay(alignment: .bottom) {
                 // "2 of 9 daily goals done · about 14 min to go": the way to Your azkar (owner, 2026-10-15 — the books
-                // door top right went). During a tour only its own step opens it.
+                // door top right went). Not during the app tour.
                 Button {
-                    if (TourRuntime.shared.active || ZikrTour.shared.active) && ZikrTour.shared.step != .timeLeft {
+                    if TourRuntime.shared.active {
                         TourRuntime.shared.nudge()
                         return
                     }
-                    ZikrTour.shared.summaryTapped()
                     triggerSomeVibration(type: .light)
                     showTasksPage = true
                 } label: {
@@ -206,9 +205,6 @@ struct ZikrCircleWheel: View {
             .sheet(item: $tasksSheetOn) { NewTaskFlow(editing: $0) }
             .navigationDestination(isPresented: $showTasksPage) {
                 ZikrAreaPage(start: .azkar)   // Your azkar (the Zikr area, 2026-10-14)
-                    // The Zikr Tour's "Hold and drag to change their order" (ZikrTour.swift), then back.
-                    .overlay { ZikrTourInline(place: .yourTasks) }
-                    .onChange(of: ZikrTour.shared.popPage) { _, _ in showTasksPage = false }
             }
             // The wheel's own pages say how to close them, so a reminder / widget / a start from elsewhere closes them
             // and waits until they've gone (the host's clearCovers) — it centred the task under Your tasks (audit E6).
@@ -433,21 +429,14 @@ struct ZikrCircleWheel: View {
         #if DEBUG
         .task { await TaskSharing.demo(context) }
         #endif
-        // A shared task waits until Zikr is unlocked and no tour runs (ZikrLock), then opens.
-        .onChange(of: TaskSharing.shared.ready && ZikrLock.shared.unlocked && !ZikrTour.shared.active, initial: true) { _, open in
+        // A shared task waits until Zikr is unlocked (ZikrLock), then opens.
+        .onChange(of: TaskSharing.shared.ready && ZikrLock.shared.unlocked, initial: true) { _, open in
             if open, let shared = TaskSharing.shared.take(in: context) { importing = shared }
         }
-        .sheet(isPresented: $showAddTask, onDismiss: { ZikrTour.shared.taskFlowClosed() }) {
+        .sheet(isPresented: $showAddTask) {
             NewTaskFlow {
                 newTaskScrollTarget = $0.id   // the wheel centres it
-                ZikrTour.shared.taskCreated($0)
             }
-        }
-        // The Zikr Tour centres what its step is about (New task, its task).
-        .onChange(of: ZikrTour.shared.centre.1) { _, _ in
-            let id = ZikrTour.shared.centre.0
-            guard items.contains(where: { $0.id == id }) else { return }
-            withAnimation(CircleMotion.wheelCentre) { centered = id }
         }
         #if DEBUG
         .task {   // -demoYourTasks: Your tasks open (with -demoZikrTasksEdit N, task N's review over it)
@@ -818,11 +807,8 @@ struct ZikrCircleWheel: View {
             withAnimation(CircleMotion.wheelStep) { centered = item.id }
             return
         }
-        // The tours: nothing starts from the wheel — except what the Zikr Tour's step asks for (New task, its task).
-        if ZikrTour.shared.active || TourRuntime.shared.active {
-            guard ZikrTour.shared.allowsWheelTap(item.id) else { TourRuntime.shared.nudge(); return }
-            ZikrTour.shared.wheelTapped(item.id)
-        }
+        // The app tour: nothing starts from the wheel.
+        if TourRuntime.shared.active { TourRuntime.shared.nudge(); return }
         triggerSomeVibration(type: .light)
         switch item {
         case .freestyle:

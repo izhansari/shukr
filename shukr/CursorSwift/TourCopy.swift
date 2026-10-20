@@ -259,89 +259,19 @@ enum TourCopy {
         static let doneButton = "Done"
     }
 
-    // MARK: The Zikr Tour (chapter 3's "Show me", the first Zikr visit, ☰ → Zikr Tour)
+    // MARK: The Zikr lock (ZikrLock.swift): its practice page (CounterWelcome) and, in the app tour, its way past
 
-    enum ZikrTour {
-        static let title = "Zikr"
-        static let menuRow = "Zikr Tour"            // in the ☰ menu until it's finished
-        static let offer = "Want to learn Zikr properly? About 2 minutes."
-        static let showMe = "Show me"
-        static let skipToSettings = "Skip to Settings"   // in the app tour
-        static let notNow = "Not now"                    // on its own
-
-        // The first step carries on from the lock's narration ("take the first step" — decision zikr-lock-bridge A); the
-        // freestyle / task difference is learned on the page later, not explained up front.
-        static let kindsStep = "Your first step"
-        static let kindsLead = "Your first step: one zikr, every day."
-        static let kindsTodo = "Tap New task"
-        static let reuseLead = "Your first step is already here."
-        static let reuseDoneLead = "You already have an Astaghfirullah task, and today’s is done."
-
-        static let taskStep = "Your first task"
-        static let pickLead = "Every task is one zikr."
-        static let pickTodo = "Pick Astaghfirullah"
-        static let goalLead = "A goal can be a count or minutes."
-        static let goalTodo = "Make it 33, then Continue"
-        static let placeLead = "Put it where you like on your list, or leave it at the end."
-        static let placeTodo = "Continue"
-        static let reviewLead = "Name: optional, like “After Fajr”. Reminder: optional — a daily nudge at a time or around a prayer."
-        static let reviewTodo = "Tap Add to my day"
-
-        static let countStep = "Count it"
-        // The counter's welcome, before the first lesson — its own moment, no bubble (owner: "a nice welcome and just
-        // explains we gonna show them the different ways to count and we'll do it together").
+    enum ZikrPractice {
+        static let skipToSettings = "Skip to Settings"   // the lock page in the app tour
+        // The practice page, before the first zikr (owner: "a nice welcome and just explains we gonna show them the
+        // different ways to count and we'll do it together").
         static let welcomeKicker = "Your counter"
-        static let welcomeTitle = "Welcome"
         static let welcomeBody = "There are three ways to count. Try each one here first — we’ll do it together."
         /// The practice boxes (owner: "three different boxed areas in an hstack that has each ghost finger graphic").
         static let practiceTap = "Tap"
         static let practiceDrag = "Drag down, then lift"
         static let practiceStroke = "Keep pressed, drag up and down"
         static let welcomeButton = "Let’s begin"
-        static let startLead = "Your task is on the wheel."
-        static let startTodo = "Tap your zikr to carry on"
-        static let tapLead = "The whole screen counts."
-        static let tapTodo = "Tap anywhere, 3 times"
-        static let dragLead = "Drag down anywhere, then lift."
-        static let dragTodo = "3 separate drags"
-        static let strokeLead = "You can keep your finger pressed and drag up and down."
-        static let strokeTodo = "3 drags without lifting"
-        static func goLead(_ goal: Int) -> String { "Keep going — it ends by itself at \(goal)." }
-        static func goTodo(_ goal: Int) -> String { "Reach \(goal)" }
-
-        static let streakStep = "Your streak and pace"
-        /// The results' line, as it went (owner: "user can finish early so write that streak phrase dynamically"; then
-        /// "they don't gotta do the 100. they can end it and it'll show how we save tasks with progress in their tab").
-        static func streakLead(counted: Int, goal: Int, streak: Int, met: Bool, task: String) -> String {
-            if met {
-                return streak <= 1 ? "Goal met — that’s day 1 of your streak. Every day you meet it, your streak grows."
-                                   : "Goal met — that’s day \(streak) of your streak. Every day you meet it, it grows."
-            }
-            return "\(counted) done — \(task) is waiting on your wheel to finish today."
-        }
-        static func paceLine(_ seconds: Double) -> String {
-            "Your pace: \(String(format: "%.1f", seconds))s a count — shukr learns it as you go."
-        }
-        static let streakTodo = "Tap Done"
-
-        static let timeStep = "How long it takes"
-        static let timeLead = "With your pace, the line under the wheel knows how long your tasks will take."
-        static let timeTodo = "Tap it"
-        static let tasksLead = "All your tasks. Hold and drag to change their order."
-
-        static let whereStep = "Where things live"
-        static let historyLead = "Every session you finish lives in History."
-        static let historyTodo = "Open History, top left"
-        static let historyPageLead = "Today’s session is at the top."
-        static let azkarLead = "Your zikr live in Azkar."
-        static let azkarTodo = "Open Azkar, top right"
-        static let azkarPageLead = "The built-in ones, and your own — ＋ adds one."
-
-        static func doneLine(met: Bool, counted: Int, goal: Int) -> String {
-            met ? "That’s your first day of remembrance. Your zikr will be waiting for you tomorrow."
-                : "Your \(counted) are saved — its ring shows \(counted) of \(goal). Finish it here anytime today."
-        }
-        static let doneButton = "Done"
     }
 
     // MARK: The first counting session's tips (a freestyle session, after the tour)

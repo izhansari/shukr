@@ -499,11 +499,8 @@ struct tasbeehView: View {
                                 .frame(width: geometry.size.width, height: geometry.size.height) // Fill the entire geometry
                                 .onTapGesture {
                                     //                                            print("Tap gesture detected")
-                                    // The Zikr Tour's lessons let only their own move count (ZikrTour.allows).
-                                    guard ZikrTour.shared.allows(byDrag: false, total: sessionCount) else { return }
                                     incrementTasbeeh() // Increment on tap
                                     CountTips.shared.counted(byDrag: false)
-                                    ZikrTour.shared.counted(byDrag: false, inTouch: 0, total: sessionCount)
                                 }
                                 .gesture(
                                     DragGesture(minimumDistance: 0) // Set to 0 for immediate tracking
@@ -523,12 +520,9 @@ struct tasbeehView: View {
                                             // Check if dragged down from highest point by a value of incrementThreshold
                                             if dragToIncrementBool && offsetY - highestPoint > incrementThreshold {
                                                 dragToIncrementBool = false
-                                                if ZikrTour.shared.allows(byDrag: true, total: sessionCount) {
-                                                    incrementTasbeeh()
-                                                    strokesThisTouch += 1
-                                                    CountTips.shared.counted(byDrag: true, inTouch: strokesThisTouch)
-                                                    ZikrTour.shared.counted(byDrag: true, inTouch: strokesThisTouch, total: sessionCount)
-                                                }
+                                                incrementTasbeeh()
+                                                strokesThisTouch += 1
+                                                CountTips.shared.counted(byDrag: true, inTouch: strokesThisTouch)
                                                 lowestPoint = value.translation.height // need to set it otherwise it will always be the lowest point of the entire drag sesh
                                                 // Check if dragged up from lowest point by a value of incrementThreshold/2
                                             } else if !dragToIncrementBool && lowestPoint - offsetY > incrementThreshold/2 {
@@ -538,7 +532,6 @@ struct tasbeehView: View {
                                         }
                                         .onEnded { _ in
                                             CountTips.shared.dragEnded(strokes: strokesThisTouch)   // the session tour
-                                            ZikrTour.shared.dragEnded(strokes: strokesThisTouch)
                                             strokesThisTouch = 0
                                             // Reset offsets after drag ends
                                             dragToIncrementBool = true
@@ -790,8 +783,6 @@ struct tasbeehView: View {
             .animation(.easeInOut(duration: 0.5), value: toggleInactivityTimer)
 
             // The session tour (CountTips): tapping, dragging, the pause screen, the results.
-            // The Zikr Tour: counting its task, then its results (ZikrTour.swift).
-            ZikrTourSessionLayer(paused: paused, results: savedSession != nil)
             CountTipsLayer(paused: paused,
                            clear: !showInactivityAlert && (countIn || savedSession != nil) && !leaving,
                            results: savedSession != nil,
@@ -1033,7 +1024,6 @@ struct tasbeehView: View {
         }
         .onDisappear {
             CountTips.shared.sessionClosed()
-            ZikrTour.shared.sessionClosed()
             finishStopCleanup()
             CircleCover.set("tasbeeh", false)
             if sleptSaved { SleepMorning.clear() }   // Done on the results after a sleep finish: awake, no card
@@ -1208,7 +1198,6 @@ struct tasbeehView: View {
             savedSession = saveSession()
             if let saved = savedSession {
                 CountTips.shared.sessionSaved(saved.id, count: saved.totalCount)   // the session tour's practice session
-                ZikrTour.shared.sessionSaved(saved)                                 // the Zikr Tour: the results
             }
             
             print("saved session: \(savedSession == nil ? "nil" : "\(savedSession!.title) with \(savedSession!.totalCount)")")
@@ -1439,7 +1428,6 @@ struct tasbeehView: View {
     /// Done on the soft results (ResultsView's Done).
     private func finishFromResults() {
         CountTips.shared.resultsDone()
-        ZikrTour.shared.resultsDone()
         // Cleared once the session has gone: under a soft close the results are still fading.
         SessionHandoff.shared.afterClose {
             sharedState.titleForSession = ""

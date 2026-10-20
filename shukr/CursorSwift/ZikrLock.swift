@@ -16,10 +16,13 @@ import SwiftData
 @MainActor @Observable final class ZikrLock {
     static let shared = ZikrLock()
 
-    /// The Zikr Tour has been taken to its end (its own key, so an earlier finish counts), or Zikr was already theirs
-    /// when the lock arrived (decision zikr-lock-existing B).
-    private(set) var unlocked = UserDefaults.standard.bool(forKey: ZikrTour.completedKey)
+    /// The lock's flow has been taken to its end, or Zikr was already theirs when the lock arrived (decision
+    /// zikr-lock-existing B).
+    private(set) var unlocked = UserDefaults.standard.bool(forKey: ZikrLock.completedKey)
         || UserDefaults.standard.bool(forKey: ZikrLock.alreadyUsedKey)
+
+    /// Its flow taken to its end. The old Zikr Tour's key (removed 2026-10-20), so a finish of either counts.
+    static let completedKey = "zikrTour.v1.completed"
 
     /// Had Zikr history (tasks or sessions) the first time this version ran: never locked.
     static let alreadyUsedKey = "zikrLock.alreadyUsed"
@@ -44,8 +47,7 @@ import SwiftData
     func setLockedForTesting(_ on: Bool) {
         let d = UserDefaults.standard
         if on {
-            d.set(false, forKey: ZikrTour.completedKey)
-            d.set(false, forKey: ZikrTour.offeredKey)
+            d.set(false, forKey: Self.completedKey)
             d.set(false, forKey: Self.alreadyUsedKey)
             unlocked = false
         } else {
@@ -63,13 +65,13 @@ import SwiftData
 
     /// Locked now: not unlocked (or the tour being replayed), and no tour is running on the page.
     var locked: Bool {
-        if replaying { return !ZikrTour.shared.active }
+        if replaying { return true }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-zikrUnlocked") { return false }
         // `-demoLand <page>` lands past the lock too, unless `-zikrLocked` asks for it.
         if DemoLand.page != nil, !ProcessInfo.processInfo.arguments.contains("-zikrLocked") { return false }
         #endif
-        return !unlocked && !ZikrTour.shared.active && (!TourRuntime.shared.active || fromAppTour)
+        return !unlocked && (!TourRuntime.shared.active || fromAppTour)
     }
 
     /// The app tour's Zikr chapter is this page (owner: "Show me should open the new Zikr tour … let that zikr tour
@@ -344,7 +346,7 @@ struct ZikrLockCover: View {
             }
             // In the app tour, a way past it (the audit: only Show me was offered).
             if lock.fromAppTour {
-                Button(TourCopy.ZikrTour.skipToSettings) { lock.skipFromAppTour() }
+                Button(TourCopy.ZikrPractice.skipToSettings) { lock.skipFromAppTour() }
                     .buttonStyle(.plain)
                     .font(.system(size: 14, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.primary.opacity(0.55))
@@ -1103,8 +1105,7 @@ struct ZikrLockCover: View {
             try? await Task.sleep(for: .seconds(2.4))
             guard !Task.isCancelled else { return }
             // Theirs now: the tour counts as done, the page goes (ZikrPageView fades the cover, lifts the blur).
-            UserDefaults.standard.set(true, forKey: ZikrTour.completedKey)
-            UserDefaults.standard.set(true, forKey: ZikrTour.offeredKey)
+            UserDefaults.standard.set(true, forKey: ZikrLock.completedKey)
             withAnimation(.easeInOut(duration: 0.6)) { lock.focus = false }
             lock.unlock()
         }

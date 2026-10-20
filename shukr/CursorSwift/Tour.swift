@@ -2642,11 +2642,11 @@ struct BubbleShape: Shape {
         case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): endChapter(.list) { self.go(to: .settings) }
 
         // 3 · Zikr: go there, then learn it.
-        // The Zikr page: the Zikr Tour takes chapter 3 from here (its offer first: Show me / Skip to Settings).
+        // The Zikr page: the lock's flow takes chapter 3 from here (unreached: the tour goes List → Settings).
         case (.zikr, .go, .zikrPage):
             withAnimation(.smooth(duration: CircleMotion.standard)) { phase = .deep }
             if ZikrLock.shared.unlocked {
-                ZikrTour.shared.offer(inAppTour: true)
+                go(to: .settings)
             } else {
                 // Still locked: the lock page is the chapter (the new Zikr Tour), with its own Skip to Settings.
                 ZikrLock.shared.fromAppTour = true
@@ -2922,7 +2922,7 @@ struct TourLayer: View {
         ZStack {
             // Only the card's own moves (owner: "only the intended thing"): while the tour runs the app takes no touch
             // except through the card's openings — no buzz on the others (owner): the thing to touch pulses instead.
-            // Chapter 3's Zikr Tour draws its own bubble, guard and Skip (ZikrTour.swift).
+            // Chapter 3's lock page draws its own guard and Skip (ZikrLock.swift).
             let zikrTour = runtime.step == .zikr && runtime.phase == .deep
             if runtime.active, !covered, !zikrTour {
                 TourInputGuard(openings: openings(runtime.step)) { runtime.nudge() }
@@ -3751,7 +3751,7 @@ struct TourMenuBadge: View {
     /// showing (owner, 2026-10-11: "dont show it until it matters"); never while the invitation or a tour is up.
     @AppStorage(TourRuntime.doneKey) private var answered = false
     var body: some View {
-        let show = answered && !completed && !TourRuntime.shared.active && !ZikrTour.shared.active
+        let show = answered && !completed && !TourRuntime.shared.active
         Circle()
             .fill(TourInk.green)
             .frame(width: 8, height: 8)

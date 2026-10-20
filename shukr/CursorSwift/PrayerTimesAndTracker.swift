@@ -905,9 +905,6 @@ struct PrayerTimesView: View {
             // The session tour's last tips, on the Zikr page (CountTips: History, then "your turn").
             ZikrPageTipsLayer(covered: somethingCovers || showTasbeehPage || !CircleStage.shared.covers.isEmpty,
                               onZikr: sharedState.horizontalPage == .zikr)
-            // The Zikr Tour on the Zikr page (ZikrTour.swift): its offer and its steps there.
-            ZikrTourLayer(covered: somethingCovers || showTasbeehPage || !CircleStage.shared.covers.isEmpty,
-                          onZikr: sharedState.horizontalPage == .zikr && CircleStage.shared.restingPage == .zikr)
 
             #if DEBUG
             TourDemoLayer()   // `-demoTour circle|list|swipe|count|hintMark [-tourStyle line|callout]`: the pictures
