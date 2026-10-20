@@ -2,19 +2,22 @@
 
 iOS SwiftUI app (iOS 18.0+, SwiftData, WidgetKit extension, adhan-swift). Prayer times +
 tracker, qibla, tasbeeh/zikr counter, daily zikr tasks, duas, daily ayah. No CI, no tests
-beyond Xcode templates. Build/run happens in Xcode on the owner's machine. scripts/: whatsnew.py, testflight.sh,
-pull-feedback.sh, asc.py, circle-check.sh; the team's board scripts live in shukrGit/board/. A local agent can build with
+beyond Xcode templates. Build/run happens in Xcode on the owner's machine. scripts/: install.sh (his phones), testflight.sh,
+asc.py, whatsnew.py, pull-feedback.sh, circle-check.sh, sim-sign.sh (team-signed sim build, for App Shortcuts),
+perf-paging.sh + perf-frames.py (swipe hitches on his phone); the team's board scripts live in shukrGit/board/. A local agent can build with
 `xcodebuild -project shukr.xcodeproj -scheme shukr -destination 'id=<your own sim's udid>'`.
 
-Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehView.swift`),
+Layout: `shukr/` app target (most UI in `CursorSwift/` — `PrayerTimesAndTracker.swift` is the Salah page + pager —
+plus `tasbeehView.swift`; `Utils.swift` holds what's left of the shared pieces after the 2026-10-18 cleanup),
 `shukr/Models/AllModels.swift` (SwiftData models + `SharedStateClass`), `shukrWidget/`
 (PrayersWidget + AppIntents shared with the app via `SharedTargetForIntents.swift`).
 Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")`.
 
 ## Team (owner 2026-10-15: lean, fast, accurate)
 
-**Who:** Izhan (owner) decides and tests. He gives Frank, Sami and Bradley one task each and they work in parallel, any
-area. Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch`, Bradley in `shukrGit/shukr-bradley`, Zoe (design)
+**Who:** Izhan (owner) decides and tests. He gives the builders — Frank (organizer), Sami, Zoe (design; builds
+when he says) — one task each and they work in parallel, any area; Bradley takes his dumps (/dump), Fable reviews and
+builds patches that Frank checks and pushes. Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch`, Bradley in `shukrGit/shukr-bradley`, Zoe (design)
 in `shukrGit/shukr-zoe`, Fable in `shukrGit/shukr-fable`: one top-level folder each, never a worktree inside another's
 (owner, 2026-10-19).
 
@@ -114,13 +117,14 @@ upload). Written only by `scripts/whatsnew.py`; the page and tool in full: `docs
 ## Build, install, ship
 
 - **ASC API key** (all signing / uploads; no Xcode sign-in): ID `6K2RUXRJ92`, issuer `60a885ac-0315-4323-974d-57783a7392a2`, file `~/.appstoreconnect/private_keys/AuthKey_6K2RUXRJ92.p8`. Never read it out, print it or commit it; scripts only pass its path.
-- **Device build:** add `-allowProvisioningUpdates -authenticationKeyPath <that file> -authenticationKeyID 6K2RUXRJ92 -authenticationKeyIssuerID <issuer>` and `SHUKR_BUILD_STAMP="$(git rev-parse --short HEAD)"` (add "+" if dirty; commit first so the hash is real; it feeds `BuildInfo.line`, the stamp at the bottom of ☰ / Settings, and the watch's `WatchBuildInfo.line` at the bottom of its Settings — shukrWatchInfo.plist has the same `ShukrBuildStamp` key).
-- **Phones:** 13 Pro Max `00008110-001C041C2203801E`; 15 Pro `00008130-00027DDE0AE8001C` (often unavailable). Install: `xcrun devicectl device install app --device <udid> build/device/Build/Products/Debug-iphoneos/shukr.app`; CoreDeviceError 4016 = the phone is away or locked: say so, move on. Install only right after pulling the team line.
+- **Device build:** `zsh scripts/install.sh` does it all for his phones (from origin, with the key and the stamp). A
+  build by hand (the watch, a one-off) adds `-allowProvisioningUpdates -authenticationKeyPath <that file> -authenticationKeyID 6K2RUXRJ92 -authenticationKeyIssuerID <issuer>` and `SHUKR_BUILD_STAMP="$(git rev-parse --short HEAD)"` (add "+" if dirty; commit first so the hash is real; it feeds `BuildInfo.line`, the stamp at the bottom of ☰ / Settings, and the watch's `WatchBuildInfo.line` at the bottom of its Settings — shukrWatchInfo.plist has the same `ShukrBuildStamp` key).
+- **Phones:** 13 Pro Max `00008110-001C041C2203801E`; 15 Pro `00008130-00027DDE0AE8001C` (often unavailable). A hand install: `xcrun devicectl device install app --device <udid> <path>.app`. CoreDeviceError 4016 = the phone is away or locked: say so, move on.
 - **His phones get Debug (dev) builds, always `install.sh`** (owner, 2026-10-19: "dev builds are easier so that when we're testing features, we have all the different tests in there. And the agents can tap into my phone easier"): My Dev Stuff, What's new and the logs we pull stay on. **Release only when he asks** ("I'll ask for it if I want release build"; `CONFIG=Release zsh scripts/install.sh me`). A bug that may be Release-only (on iOS 26.6 dead Settings rows were): say so and let him choose.
 - **TestFlight** (only after Izhan says go; Frank confirms first): `scripts/testflight.sh` bumps `CURRENT_PROJECT_VERSION` (12 places), archives Release with the watch, uploads (system PATH: Homebrew rsync breaks export), records the build (`whatsnew.py build`); commit the bump. Notes: `whatsnew.py testflight --since last` → `TestFlightNotes-<ver>.<build>.md` with a "What to Test (paste this)" block, **≤ 4000 chars, no emoji** (Apple rejects non-BMP). `scripts/asc.py builds` → VALID; `scripts/asc.py release <build> <notes.txt>` sets What to Test, adds every external group ("test" = public link https://testflight.apple.com/join/GW5j85jk), submits for beta review (`IN_BETA_TESTING` = testers have it). App id `6743040873`, team `7R387XZ2Y7`.
 - **App Store archive:** `SHUKR_APPSTORE=1 scripts/testflight.sh` leaves out the What's new shots; check `ls build/shukr-*.xcarchive/Products/Applications/shukr.app | grep -c wn-` → 0.
 - **"Push to TestFlight" = share by link (owner, 2026-10-17):** "i just mean i want it so i can share the newest version of our stuff to more people with a link … external group and internal group is fine … As long as it doesnt bog down." Upload, then `asc.py release <n> <notes>` (every group; the public links stay the same). No internal-only stop: both phones and her watch run dev builds. One lean run; Apple's beta review is the only wait.
-- Latest: 2.0 (22) from e9589d0, 2026-10-06, to everyone: groups "test" (https://testflight.apple.com/join/GW5j85jk) and "Everyone" (new, https://testflight.apple.com/join/ws2MUvWN; `asc.py newgroup`), notes TestFlightNotes-2.0.22.md.
+- Latest: 2.0 (23) from be7d924, 2026-10-10, to everyone (after Sami's onboarding go): groups "test" (https://testflight.apple.com/join/GW5j85jk) and "Everyone" (https://testflight.apple.com/join/ws2MUvWN; `asc.py newgroup`), notes TestFlightNotes-2.0.23.md.
 
 ## Architecture rules and traps
 
@@ -193,7 +197,7 @@ a prayer checks `Excused.covers(start:end:)` (Excused.swift). Read `Excused.rang
 - Zikr card notes / memo / photo = ONE fixed-height box with `switch pane`, never stacked hidden layers; in Save / Cancel editors media wait in drafts.
 
 **Simulator & testing**
-- **Every sim command and tool call names its device id** — never "booted" or a default: three sessions share this Mac, and a stray tap once landed on another engineer's sim. Use your own sims (named "<engineer> – iPhone <model>"); all were deleted 2026-10-18 (owner: "whoever needs a simulator can make one"): `xcrun simctl create` one when you need it.
+- **Every sim command and tool call names its device id** — never "booted" or a default: five or six sessions share this Mac, and a stray tap once landed on another engineer's sim. Use your own sims (named "<engineer> – iPhone <model>"); all were deleted 2026-10-18 (owner: "whoever needs a simulator can make one"): `xcrun simctl create` one when you need it.
 - **His real data** for sim tests: `~/Library/Application Support/shukr-team/izhan-data-copies/` (README there; `2026-10-02-original/` 2,151 rows, `2026-10-18-latest/` 2,466). Copy shukr.store + -wal + -shm into your own sim's app group; never edit the copies.
 - Demo flags miss on the first launch after an install: launch twice — on his phone too (devicectl's first launch after an install fails with LaunchServicesDataMismatch: automated runs do a plain launch first). A fresh install opens on the welcome, setup, the tour or the zikr unlock (owner, 2026-10-17: "you'll get stuck by the zikr unlock or the onboarding or the tour"): check the first screen before driving it, or start with a `-demo…` arg, which skips welcome / prompts / setup. **To test the real app, launch with `-demoLand salah|zikr|journey|settings`** (owner, 2026-10-18: "skip this whole intro and opening animation so we can land straight to the salah tab or whatever page the agents need to test"): no welcome / opening, setup, prompts, tour or zikr lock (`-zikrLocked` keeps the lock), straight onto that page, its own data, nothing seeded — never wait out the opening. It's the real app, fully usable, and
 the args last that one launch: opened again from the Home Screen it's the plain app (a fresh install still shows the welcome).
