@@ -39,8 +39,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; the N2 bento, owner 2026-10-19; the knob, owner
   2026-10-20, specs board/mocks/prayer-editor/spec-knob.md + spec-knob-v2.md): a Liquid Glass partial sheet at ONE fitted height,
   header only (no ✕ / ✓); swipe down or tap outside closes (not in the tour's step, nor while writing a note). Grid: left, the
-  ring box (a big square) over the note (90 pt); right, the map over the photo. Boxes fill: the palette's "Editor boxes" (`EditorBoxFill`) —
-  See-through `tertiarySystemFill` (default; a solid grey vanished on his phone's glass) or Solid grey (Zoe's) — while he picks. **The knob** (PrayerTimeKnob.swift): a slice of a big ring (R 0.9 S,
+  ring box (a big square) over the note (90 pt); right, the map over the photo. Boxes fill: `tertiarySystemFill`, see-through (his pick, 2026-10-20;
+  a solid grey vanished on his phone's glass). **The knob** (PrayerTimeKnob.swift): a slice of a big ring (R 0.9 S,
   1.2° a minute) down the box's left side, a fixed hollow dot at mid-height, the time ("6:59" + PM) and score beside it; bands
   green → yellow → red → grey (Qaza, end → now), bright from the start to the dot, ticks every 5 min, "starts / ends / now"
   labels off the text; drag up / down anywhere in the box (up = later; a UIKit pan the sheet's own pans wait on, so a drag

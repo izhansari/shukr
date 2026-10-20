@@ -337,9 +337,9 @@ struct PrayerTimeEditSheet: View {
     /// always stand off the glass. A solid grey didn't: the glass takes its colour from what's behind the sheet and came out
     /// as light as the grey on his phone, so the boxes vanished there and not in the sim (owner, 2026-10-20: "your fix to
     /// bento color didn't work on my phone. let's just use something reliable but still nice"; tried and dropped: the
-    /// grouped grey, then the same pinned to its elevated shade, 893e46fc).
-    private var boxFill: Color { (EditorBoxFill(rawValue: boxFillRaw) ?? .standard).color }
-    @AppStorage(EditorBoxFill.key) private var boxFillRaw = EditorBoxFill.standard.rawValue
+    /// grouped grey, then the same pinned to its elevated shade, 893e46fc; then a solid `tertiarySystemBackground` side by
+    /// side in the palette — "see through option looks better on my phone", owner 2026-10-20).
+    private var boxFill: Color { Color(.tertiarySystemFill) }
 
     private func card<Content: View>(radius: CGFloat = 22, @ViewBuilder _ content: () -> Content) -> some View {
         content()
@@ -570,19 +570,6 @@ struct PrayerTimeEditSheet: View {
         let at = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.creationDate] as? Date
         return at.map { shortTimePM($0) } ?? "Your photo"
     }
-}
-
-/// The editor's box fill while he picks between two (owner, 2026-10-20: "put it as an option in the top right palette thing
-/// for me and ill decide after looking"; the palette's "Editor boxes"): see-through (`tertiarySystemFill`, lightens or
-/// darkens whatever the glass shows — Frank, 0a064cdf) or solid grey (`tertiarySystemBackground`, #3A3A3C on a dark sheet —
-/// Zoe's spec-knob). Once he picks, the other goes and so does this.
-enum EditorBoxFill: String, CaseIterable, Identifiable {
-    case seeThrough, solid
-    static let key = "editor.boxFill"
-    static let standard: EditorBoxFill = .seeThrough
-    var id: String { rawValue }
-    var title: String { self == .seeThrough ? "See-through" : "Solid grey" }
-    var color: Color { self == .seeThrough ? Color(.tertiarySystemFill) : Color(.tertiarySystemBackground) }
 }
 
 /// The tour's fix step shows the real bento (owner, 2026-10-19, B: the tour should teach the sheet they'll use), but the
