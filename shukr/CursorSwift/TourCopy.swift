@@ -184,7 +184,7 @@ enum TourCopy {
             : "Say you prayed Fajr earlier than you marked it: drag the color bar or turn the wheel into the yellow, then save. It’s practice — nothing is kept." }
         static let editorTodo = "Move it into the yellow, then save"
         /// The editor's to-dos in the top panel (owner: the first ticks as soon as it's in the yellow).
-        static let editorTodos = ["Move it into the yellow", "Tap Save"]
+        static let editorTodos = ["Move it into the yellow", "Let go to save"]   // no Save since the bento: a release saves
         /// Held under the first once it's in the yellow (owner: "its own moment"): the score the draft would keep.
         static func editorInYellow(_ score: Int) -> String { "\(PrayerScoring.Grade.onTime.rawValue) · \(score) — that’s the score it’ll keep." }
     }

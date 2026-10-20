@@ -121,8 +121,8 @@ struct PrayerTimeEditSheet: View {
             // Writing a note crossfades the boxes to the note's box in the same room (owner, 2026-10-19: "id rather the current
             // sheet's bentos just crossfades to show the note editor box at the size the sheet is at"): the sheet never moves.
             Group {
-                if tourTip {
-                    ringBox(size: 240)
+                if tourTip && typeSize.isAccessibilitySize {
+                    ringBox(size: 240)   // the tour at the largest text: the ring alone, full height
                 } else if typeSize.isAccessibilitySize {
                     // Large text can't fit the grid: the boxes stacked, the ring at its full size.
                     VStack(spacing: 8) {
@@ -297,12 +297,14 @@ struct PrayerTimeEditSheet: View {
             VStack(spacing: Self.gap) {
                 ringBox(size: ringSide - 14).frame(width: ringSide, height: ringSide)
                 noteBox.frame(width: ringSide, height: Self.noteHeight)
+                    .modifier(TourLocked(on: tourTip))
             }
             VStack(spacing: Self.gap) {
                 if showsLocation { mapBox.frame(width: small, height: small) }
                 photoBox.frame(width: small)
                     .frame(maxHeight: showsLocation ? small : .infinity)
             }
+            .modifier(TourLocked(on: tourTip))
             .frame(height: 2 * small + Self.gap, alignment: .top)
         }
         .frame(maxWidth: .infinity)
@@ -526,6 +528,18 @@ struct PrayerTimeEditSheet: View {
         let url = PrayerPhotos.url(photoKey, front: false)
         let at = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.creationDate] as? Date
         return at.map { shortTimePM($0) } ?? "Your photo"
+    }
+}
+
+/// The tour's fix step shows the real bento (owner, 2026-10-19, B: the tour should teach the sheet they'll use), but the
+/// step is the time alone (only the intended move): the other boxes are dimmed and take no touches.
+private struct TourLocked: ViewModifier {
+    let on: Bool
+    func body(content: Content) -> some View {
+        content
+            .opacity(on ? 0.35 : 1)
+            .allowsHitTesting(!on)
+            .accessibilityHidden(on)
     }
 }
 
