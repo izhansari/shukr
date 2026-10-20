@@ -61,3 +61,41 @@ import SwiftData
         return Int.random(in: 0..<PostSalahReminder.count)
     }()
 }
+
+@MainActor @Observable final class TasbeehStage {
+    var entryFrom: CGRect? = SessionHandoff.shared.freshEntry?.frame
+    var landingBase: Double? = SessionHandoff.shared.freshEntry?.landingBase
+    var entryOffset: CGSize = .zero
+    var pageIn: Bool = SessionHandoff.shared.freshEntry == nil && !SessionHandoff.shared.enteringInPlace
+    var countIn: Bool = SessionHandoff.shared.freshEntry == nil && !SessionHandoff.shared.enteringInPlace
+    var chromeIn: Bool = SessionHandoff.shared.freshEntry == nil && !SessionHandoff.shared.enteringInPlace
+    var sequence: Task<Void, Never>? = nil
+    var resultsTask: Task<Void, Never>? = nil
+    var openingStyle: SessionOpening = .current
+    var leaving: Bool = false
+    var topBarHeight: CGFloat = 0
+    var startFraction: CGFloat = 0
+    var ringAtStop: CGFloat? = nil
+    var ringHeld: Bool = false
+    var arcSettled: Bool = false
+    var ringOut: Bool = SessionHandoff.shared.enteringInPlace
+    var resultsIn: Bool = false
+    var ringSize: CGSize = .zero
+    var ringHomeMid: CGPoint = .zero
+    var cardsBottomTop: CGFloat = 0
+    var ringLift: CGFloat = 0
+    var ringMoveTask: Task<Void, Never>? = nil
+    var sleepChipFrame: CGRect = .zero
+    var pauseButtonFrame: CGRect = .zero
+    var chipsFrame: CGRect = .zero
+    var ringDimmed: Bool = false
+    var cardsStay: Bool = false
+    var ringToCentre: Bool = false
+    var offsetY: CGFloat = 0
+    var highestPoint: CGFloat = 0
+    var lowestPoint: CGFloat = 0
+    var dragToIncrementBool: Bool = true
+    var sleptDark: Bool = false
+    var resultsDimmed: Bool = false
+    var appLookDark: Bool = false
+}
