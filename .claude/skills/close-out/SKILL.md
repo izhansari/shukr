@@ -17,20 +17,23 @@ commit; the board is `/Users/izhanansari/Coding and Tinkering/shukrGit/board/` (
 2. **Docs:** replace the feature's lines in `docs/features/<area>.md` (current behaviour only); CLAUDE.md only if a rule /
    trap / index line changed; `docs/app-store-features.md` if a user-facing feature changed; `docs/design-language.md` + a
    picture if he approved a new pattern.
-3. **How he wants us to work → sorted three ways** (owner, 2026-10-19: memory only for "things they think should be
-   shared"). Go through this conversation for every new rule or preference about *how to work* (not code facts — those
-   live in git and docs), drop any already written down (MEMORY.md + the matching files, your `board/roles/<name>.md`),
-   then sort each:
-   - **Only your role** (your area, your tools, how he wants *you* to run) → add it to `board/roles/<name>.md` yourself,
-     no question: a `## <slug>` section with his words, **Why:** and **How to apply:**. Edit line by line; never rewrite
-     or shorten the file.
-   - **Every agent** (would change how Frank *and* Zoe *and* Bradley work) → shared memory, with his OK: ask with
-     **AskUserQuestion** — "Save these N rules to shared memory?" — **Save all** · **Skip all** · **Pick one by one**, each
-     rule a line in the text; "Pick one by one" = multi-select questions, up to 4 rules each. Save only what he ticks (one
-     file per rule, frontmatter, `**Why:**` + `**How to apply:**` with his words, a line in MEMORY.md; update an existing
-     file rather than duplicating). Unsure which? It's role-only.
-   - **Just this task** → nowhere (the commit message and handoff carry it).
-   No shared rules → no question. The write-up lists what went where.
+3. **How he wants us to work → sorted, then asked** (owner, 2026-10-19: memory only for "things they think should be
+   shared"; "i want to be asked an role file btw. and i want that to be a close out question"). Go through this
+   conversation for every new rule or preference about *how to work* (not code facts — those live in git and docs), drop
+   any already written down (MEMORY.md + the matching files, your `board/roles/<name>.md`), then sort each:
+   - **Only your role** (your area, your tools, how he wants *you* to run) → your `board/roles/<name>.md`.
+   - **Every agent** (would change how Frank *and* Zoe *and* Bradley work) → shared memory. Unsure which? Role.
+   - **Just this task** → nowhere (the commit message and handoff carry it); not asked.
+   **Ask before saving anything**, in ONE **AskUserQuestion** call, one question per group that has rules (skip an empty
+   group and say so in the write-up):
+   - "Save these N rules to your role file (roles/<name>.md)?" and "Save these M rules to shared memory?" — each with
+     **Save all** · **Skip all** · **Pick one by one**, every rule a line in the question's text (slug + one line). He can
+     use Other to move a rule to the other group.
+   - "Pick one by one" = follow-up multi-select questions, up to 4 rules each as checkboxes (≤ 4 questions per call).
+   Save only what he ticks. Role file: a `## <slug>` section with his words, **Why:** and **How to apply:** — edit line by
+   line, never rewrite or shorten the file. Shared memory: one file per rule, frontmatter, `**Why:**` + `**How to
+   apply:**` with his words, a line in MEMORY.md; update an existing file rather than duplicating. No rules at all → no
+   question. The write-up lists what went where.
 4. **Parked ideas:** go through the conversation for everything he said "later", "park", "keep in mind", "come back to",
    "push to the side" about. For each one not already on the Plan page (`idea.sh` / the board) or in a handoff's open list:
    `idea.sh dump "<his words, verbatim>" --from chat` → `idea.sh add <id> --dump <dump> --kind new --area <AREA> --title …
