@@ -37,6 +37,8 @@
 		369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9582CB09280003A58B7 /* DuaPageView.swift */; };
 		36E0E0A72D417F17005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
 		36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
+		FAB1E0000000000000000010 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000009 /* SharedStore.swift */; };
+		FAB1E0000000000000000011 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000009 /* SharedStore.swift */; };
 		36E0E0AB2D41A26C005C62BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
 		36E0E0AD2D41ECEB005C62BB /* PrayersWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */; };
 		36E0E0AF2D41F930005C62BB /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36E0E0AE2D41F930005C62BB /* Adhan */; };
@@ -172,6 +174,7 @@
 		369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTasksView.swift; sourceTree = "<group>"; };
 		369BE9582CB09280003A58B7 /* DuaPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuaPageView.swift; sourceTree = "<group>"; };
 		36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTargetForIntents.swift; sourceTree = "<group>"; };
+		FAB1E0000000000000000009 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
 		36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayersWidget.swift; sourceTree = "<group>"; };
 		36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerEditorView.swift; sourceTree = "<group>"; };
 		36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerViewModel.swift; sourceTree = "<group>"; };
@@ -367,6 +370,7 @@
 			isa = PBXGroup;
 			children = (
 				36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */,
+				FAB1E0000000000000000009 /* SharedStore.swift */,
 				5A7C0E000000000000000B01 /* PrayerMethods.swift */,
 				369A05FE2C5E8635002CD697 /* shukrWidgetBundle.swift */,
 				369A06002C5E8635002CD697 /* shukrWidgetLiveActivity.swift */,
@@ -667,6 +671,7 @@
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
 				36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */,
+				FAB1E0000000000000000010 /* SharedStore.swift in Sources */,
 				5A7C0E000000000000000C01 /* PrayersWidget.swift in Sources */,
 				5A7C0E000000000000000C02 /* AppIntent.swift in Sources */,
 				5A7C0E000000000000000C03 /* MoreWidgets.swift in Sources */,
@@ -701,6 +706,7 @@
 				A1B2C3D4E5F60718293A4B5C /* MoreWidgets.swift in Sources */,
 				369A06012C5E8635002CD697 /* shukrWidgetLiveActivity.swift in Sources */,
 				36E0E0A72D417F17005C62BB /* SharedTargetForIntents.swift in Sources */,
+				FAB1E0000000000000000011 /* SharedStore.swift in Sources */,
 				369A06052C5E8635002CD697 /* AppIntent.swift in Sources */,
 				369A05FF2C5E8635002CD697 /* shukrWidgetBundle.swift in Sources */,
 			);
