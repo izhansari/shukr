@@ -36,19 +36,22 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word. Middle / Closing were On time / Late until 2026-10-17 (owner: users read "on time" as just inside the window and "late" as outside it). The words live only in `PrayerScoring.Grade` (setup's legend and the tour read them there; the watch keeps a copy in `WatchScoring.word`); a shown number never passes its band (`points(for:)`: Middle ≤ 99, Closing ≤ 79). Siri and the Live Activity's VoiceOver say `spokenMark`: "Asr marked as prayed during the Closing window. Score: 66." (Qaza: "after its window, as Qaza"). The "usually Perfect" fact on Prayer scores stays Perfect-only (owner).
-- **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; the N2 bento, owner 2026-10-19; the knob, Zoe's K2,
-  owner 2026-10-20 "k2 then", spec board/mocks/prayer-editor/spec-knob.md): a Liquid Glass partial sheet at ONE fitted height,
+- **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; the N2 bento, owner 2026-10-19; the knob, owner
+  2026-10-20, specs board/mocks/prayer-editor/spec-knob.md + spec-knob-v2.md): a Liquid Glass partial sheet at ONE fitted height,
   header only (no ✕ / ✓); swipe down or tap outside closes (not in the tour's step, nor while writing a note). Grid: left, the
   ring box (a big square) over the note (90 pt); right, the map over the photo. Boxes fill: the palette's "Editor boxes" (`EditorBoxFill`) —
-  See-through `tertiarySystemFill` (default; a solid grey vanished on his phone's glass) or Solid grey (Zoe's) — while he picks. **The knob** (PrayerTimeKnob.swift): the time ("6:59" + PM) and score centred;
-  a slice of a big ring (R 0.9 S, 1.2° a minute) along the bottom under a fixed hollow dot, bands green → yellow → red → grey
-  (Qaza, end → now), bright from the start to the dot, ticks every 5 min, "starts / ends / now" labels near the dot; drag
-  left / right anywhere in the box (a UIKit pan that begins only sideways, so a vertical swipe goes to the sheet), coasts
-  (capped 0.6 min/ms), settles on a minute, soft stops at the start and now; a tick per minute, a light bump at each colour
-  change. **Every box saves itself:** the time when the knob comes to rest, Move on the picker's confirm, the photo when
+  See-through `tertiarySystemFill` (default; a solid grey vanished on his phone's glass) or Solid grey (Zoe's) — while he picks. **The knob** (PrayerTimeKnob.swift): a slice of a big ring (R 0.9 S,
+  1.2° a minute) down the box's left side, a fixed hollow dot at mid-height, the time ("6:59" + PM) and score beside it; bands
+  green → yellow → red → grey (Qaza, end → now), bright from the start to the dot, ticks every 5 min, "starts / ends / now"
+  labels off the text; drag up / down anywhere in the box (up = later; a UIKit pan the sheet's own pans wait on, so a drag
+  there never closes the sheet), coasts (capped 0.6 min/ms), settles on a minute, soft stops at the start and now; a tick per
+  minute, a light bump at each colour change. "Originally marked 6:59 PM" — a full-width bar along the box's bottom — while
+  the time differs from the mark; tap = back to it. The arc runs the box's full height, and fades out above the bar while
+  it's up. **Every box saves itself:** the time when the knob comes to rest, Move on the picker's confirm, the photo when
   taken / removed (Undo in the box), the note on the keyboard's ✓ or close. Writing a note: the boxes crossfade to one 4-line
-  note box and the sheet comes down to fit it above the keyboard. A grey-glass ↺ on the ring box / the map while the time /
-  place differ from the recorded ones. Photo: the day page's squircle, or a dashed squircle when none. AX sizes stack the
+  note box and the sheet comes down to fit it above the keyboard. A grey-glass ↺: the ring box's (top right) only after the time
+  changed in this visit, back to the time the sheet opened with (never shown on a fresh open); the map's while the place
+  differs from where it was marked. Photo: the day page's squircle, or a dashed squircle when none. AX sizes stack the
   boxes. The tour's fix step fires on the knob's rest in the yellow. The map's prayer page keeps `PrayerTimeEditor` (ring +
   wheel, its own Cancel / Save).
 - **Place names** (`PrayerPlaceNames`, PrayerPhotos.swift): one name per prayer's place — the masjid, else the city — named

@@ -31,8 +31,13 @@ struct PrayerTimeEditSheet: View {
     /// time saves it; an invalid one springs back to `saved`.
     @State private var draft: Date
     @State private var saved: Date
-    /// What the app recorded, for the ↺ (the prayer's own recorded time / spot, else what it opened with).
+    /// What the app recorded (the prayer's own recorded time / spot, else what it opened with): the time's "Originally
+    /// marked" bar, the place's ↺.
     private let recordedTime: Date
+    /// The saved time when this sheet opened: the time's ↺ goes back to it (owner, 2026-10-20: "undo my changes that I just
+    /// did in this instance" — not all the way back to the mark). @State, not a let: a save re-creates this view with the
+    /// prayer's new time, and a let would follow it.
+    @State private var openedWith: Date
     @State private var spot: CLLocationCoordinate2D?
     private let recordedSpot: CLLocationCoordinate2D?
     @State private var spotName: String?
@@ -80,6 +85,7 @@ struct PrayerTimeEditSheet: View {
         let start = min(max(marked, range.lowerBound), range.upperBound)
         self._draft = State(initialValue: start)
         self._saved = State(initialValue: start)
+        self._openedWith = State(initialValue: start)
         self.recordedTime = prayer.recordedTimeAtComplete ?? marked
         let here = prayer.latPrayedAt.flatMap { lat in prayer.longPrayedAt.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) } }
         self._spot = State(initialValue: here)
@@ -89,8 +95,9 @@ struct PrayerTimeEditSheet: View {
         self._savedNote = State(initialValue: note)
     }
 
-    /// The ↺s: edited from how it was marked (they stay until tapped, across reopens — the model keeps the recorded ones).
-    private var timeEdited: Bool { abs(saved.timeIntervalSince(recordedTime)) >= 30 }
+    /// The time's ↺: only once the time changed in this visit (a fresh open never shows it, however often it was edited
+    /// before). The place's ↺: moved from where it was marked (stays across reopens — the model keeps the recorded spot).
+    private var timeChangedHere: Bool { abs(saved.timeIntervalSince(openedWith)) >= 30 }
     private var spotEdited: Bool {
         guard let spot, let recordedSpot else { return false }
         return CLLocation(latitude: spot.latitude, longitude: spot.longitude)
@@ -229,6 +236,17 @@ struct PrayerTimeEditSheet: View {
         }
     }
 
+    /// The ↺: back to the time this sheet opened with. When that was the marked time, it's the model's own revert (its
+    /// "edited" flag clears too).
+    private func undoThisVisit() {
+        guard abs(openedWith.timeIntervalSince(recordedTime)) >= 30 else { return revertTime() }
+        triggerSomeVibration(type: .light)
+        withAnimation(.smooth(duration: 0.35)) { draft = openedWith }
+        saved = openedWith
+        onTime(openedWith)
+    }
+
+    /// Back to the marked time (the "Originally marked" bar).
     private func revertTime() {
         triggerSomeVibration(type: .light)
         let back = min(max(recordedTime, range.lowerBound), range.upperBound)
@@ -353,20 +371,22 @@ struct PrayerTimeEditSheet: View {
 
     private func ringBox(size: CGFloat) -> some View {
         card {
-            // The knob (Zoe's K2, owner 2026-10-20: "k2 then"): drag left / right anywhere in the box; it saves at rest.
-            // The map's prayer page keeps PrayerTimeEditor's ring + wheel.
-            PrayerTimeKnob(prayer: prayer, draft: $draft, range: range, onRelease: release, liveDraft: tourTip)
+            // The knob (owner 2026-10-20: the dial on the left, "matches the look of our actual ring"): drag up / down anywhere
+            // in the box; it saves at rest. "Originally marked …" along its bottom. The map's prayer page keeps PrayerTimeEditor.
+            PrayerTimeKnob(prayer: prayer, draft: $draft, range: range, onRelease: release, liveDraft: tourTip,
+                           marked: tourTip ? nil : recordedTime, onMarked: revertTime)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(minHeight: size)
         }
-        .overlay(alignment: .topLeading) {
-            if timeEdited && !tourTip {
-                undoChip(onGlass: false, label: "Undo edited time, back to \(shortTimePM(recordedTime.addingTimeInterval(shift)))",
-                         action: revertTime)
+        // Top right: clear of the arc's top end.
+        .overlay(alignment: .topTrailing) {
+            if timeChangedHere && !tourTip {
+                undoChip(onGlass: false, label: "Undo this change, back to \(shortTimePM(openedWith.addingTimeInterval(shift)))",
+                         action: undoThisVisit)
                     .padding(10)
             }
         }
-        .animation(.snappy(duration: 0.22), value: timeEdited)
+        .animation(.snappy(duration: 0.22), value: timeChangedHere)
     }
 
     private var noteBox: some View {

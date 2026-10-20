@@ -2,11 +2,12 @@
 //  PrayerTimeKnob.swift
 //  shukr
 //
-//  The editor sheet's ring box as a knob (Zoe's K2, owner 2026-10-20: "i often slide the thing to choose my time. it's
-//  annoying to slide the wheel by hour and min… i guess i imagine just scrolling up and down to change a wheel like turning
-//  a knob. … like a part of the arc in view with bottom grayed out"; "k2 then"). Spec: board/mocks/prayer-editor/spec-knob.md.
-//  The time and score centred; a slice of a big ring along the bottom with a fixed hollow dot; drag left / right anywhere in
-//  the box and the window turns under the dot. The map's prayer page keeps PrayerTimeEditor.
+//  The editor sheet's ring box as a knob (owner 2026-10-20: "i often slide the thing to choose my time. it's annoying to
+//  slide the wheel by hour and min… i guess i imagine just scrolling up and down to change a wheel like turning a knob";
+//  then "I want the dial on the left-hand side so that it matches the look of our actual ring"). Specs:
+//  board/mocks/prayer-editor/spec-knob.md, spec-knob-v2.md. A slice of a big ring down the box's left side with a fixed
+//  hollow dot, the time and score beside it; drag up / down anywhere in the box and the window turns under the dot. Under
+//  them, "Originally marked …" whenever the time differs from the mark. The map's prayer page keeps PrayerTimeEditor.
 //
 
 import SwiftUI
@@ -22,6 +23,10 @@ struct PrayerTimeKnob: View {
     /// Write `draft` every minute while it turns (the tour reads it live). Otherwise only at rest: a write re-renders the
     /// whole sheet (map, photo, note), which a flick would do every frame.
     var liveDraft = false
+    /// When he marked it (`recordedTimeAtComplete`); nil hides the bar (the tour).
+    var marked: Date? = nil
+    /// The bar was tapped: back to the marked time.
+    var onMarked: () -> Void = {}
 
     @State private var knob = KnobModel()
     @State private var side: CGFloat = 0
@@ -44,23 +49,45 @@ struct PrayerTimeKnob: View {
         prayer.isJumuah ? 1 : PrayerScoring.score(start: start, end: end, markedAt: shownDate)
     }
 
-    // The geometry (S = the box side; spec: R ≈ 0.9 S, the dot's centre S − 38, 1.2° a minute).
+    // The geometry (S = the box side; spec v2: R ≈ 0.9 S, the dot's centre (46/211 S, S/2), the ring's centre off the box to
+    // the left, 1.2° a minute).
     private static let degPerMin = 1.2
     private var radius: CGFloat { side * 0.9 }
-    private var dotY: CGFloat { side - side * 38 / 211 }
+    private var dot: CGPoint { CGPoint(x: side * 46 / 211, y: side / 2) }
     private var ptPerMin: CGFloat { radius * CGFloat(Self.degPerMin * .pi / 180) }
+
+    /// "Originally marked …" shows while the time on the knob isn't the marked one (live, as it turns).
+    private var barShown: Bool {
+        guard let marked else { return false }
+        return abs(shownDate.timeIntervalSince(marked)) >= 30
+    }
 
     var body: some View {
         // Read here, in body, so every frame of a drag or a coast redraws the arc: read only inside Canvas's closure it went
         // untracked and the arc stepped a whole minute (~4 pt) at a time (Zoe's check, 2026-10-20).
         let value = knob.value
         ZStack {
-            Canvas { ctx, size in draw(&ctx, size: size, value: value) }
-            readout
+            ZStack {
+                // The arc runs the box's full height; with the bar up it fades out above the bar (animated, never behind it).
+                KnobArcLayer(value: value, tail: barShown ? 1 : 0) { ctx, size, v, tail in draw(&ctx, size: size, value: v, tail: tail) }
+                    .animation(.easeOut(duration: 0.25), value: barShown)
+                readout
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Time you prayed")
+            .accessibilityValue("\(shortTimePM(shownDate.addingTimeInterval(shift))), \(PrayerScoring.points(for: score)) \(gradeWord)")
+            .accessibilityAdjustableAction { direction in
+                let step: Double = direction == .increment ? 1 : -1
+                let next = min(max(knob.value.rounded() + step, lowMin), highMin)
+                knob.value = next
+                draft = date(next)
+                onRelease()
+            }
+            markedBar
         }
         .contentShape(Rectangle())
         .onGeometryChange(for: CGFloat.self) { min($0.size.width, $0.size.height) } action: { side = $0 }
-        .gesture(HorizontalPan(onBegan: began, onChanged: moved, onEnded: ended))
+        .gesture(KnobPan(onBegan: began, onChanged: moved, onEnded: ended))
         .onAppear {
             knob.value = minutes(draft)
             knob.bounds = lowMin...highMin
@@ -77,15 +104,35 @@ struct PrayerTimeKnob: View {
             if !knob.busy, abs(minutes(d) - knob.value) >= 0.5 { knob.animate(to: minutes(d)) }
         }
         .onChange(of: range) { _, _ in knob.bounds = lowMin...highMin }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Time you prayed")
-        .accessibilityValue("\(shortTimePM(shownDate.addingTimeInterval(shift))), \(PrayerScoring.points(for: score)) \(gradeWord)")
-        .accessibilityAdjustableAction { direction in
-            let step: Double = direction == .increment ? 1 : -1
-            let next = min(max(knob.value.rounded() + step, lowMin), highMin)
-            knob.value = next
-            draft = date(next)
-            onRelease()
+    }
+
+    /// "Originally marked 6:59 PM" across the bottom of the box (owner, 2026-10-20: "maybe the original marked time, we show it
+    /// at the bottom of the bento box. That way they know that whatever time is being shown in the bento box is actually
+    /// different from when they marked it"; "the pill takes up the whole bottom and centered nicely"; "change it to originally
+    /// marked 6:59 p.m."). Its own slot: hidden = clear, nothing moves. Tap = back to the marked time.
+    @ViewBuilder private var markedBar: some View {
+        if let marked {
+            Button(action: onMarked) {
+                Text("Originally marked \(shortTimePM(marked.addingTimeInterval(shift)))")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 32)
+                    .background(Capsule().fill(scheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.05)))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .padding(10)
+            .frame(maxHeight: .infinity, alignment: .bottom)
+            .opacity(barShown ? 1 : 0)
+            .allowsHitTesting(barShown)
+            .accessibilityHidden(!barShown)
+            .accessibilityLabel("Originally marked \(shortTimePM(marked.addingTimeInterval(shift)))")
+            .accessibilityHint("Goes back to the time you marked")
+            .animation(.easeOut(duration: 0.2), value: barShown)
         }
     }
 
@@ -103,7 +150,7 @@ struct PrayerTimeKnob: View {
         return VStack(spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(Self.clock.string(from: shown))
-                    .font(.system(size: side * 46 / 211, weight: .thin, design: .rounded))
+                    .font(.system(size: side * 44 / 211, weight: .thin, design: .rounded))
                     .monospacedDigit()
                 Text(Self.meridiem.string(from: shown))
                     .font(.system(size: 15, weight: .light, design: .rounded))
@@ -122,26 +169,30 @@ struct PrayerTimeKnob: View {
         }
         .lineLimit(1)
         .minimumScaleFactor(0.7)
-        // Its centre a little above the box's middle, clear of the arc (spec: time top S/2 − 70, score top S/2 − 14).
-        .offset(y: -side * 0.13)
+        // Right of the arc, the time level with the dot (spec v2: x from 66/211 S; time top S/2 − 34, score top S/2 + 22).
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.leading, side * 66 / 211)
+        .offset(y: side * 8 / 211)
     }
 
     // MARK: The arc
 
-    private func draw(_ ctx: inout GraphicsContext, size: CGSize, value: Double) {
+    /// `tail`: 0 = the arc runs the box's full height; 1 = it fades out above the "Originally marked" bar.
+    private func draw(_ ctx: inout GraphicsContext, size: CGSize, value: Double, tail: Double) {
         guard side > 0 else { return }
-        let cx = size.width / 2
-        let centre = CGPoint(x: cx, y: dotY + radius)
+        // The right-hand edge of a big ring whose centre is off the box to the left; later minutes lie below the dot
+        // (clockwise, as the rings run).
+        let centre = CGPoint(x: dot.x - radius, y: dot.y)
         // Minutes from the dot either way that fit in the box (and a little past, faded by the mask).
-        let span = Double((size.width / 2) / ptPerMin) + 2
+        let span = Double((size.height / 2) / ptPerMin) + 2
         let from = max(lowMin, value - span), to = min(highMin, value + span)
-        func angle(_ m: Double) -> Angle { .degrees(-90 + (m - value) * Self.degPerMin) }
+        func angle(_ m: Double) -> Angle { .degrees((m - value) * Self.degPerMin) }
         func point(_ m: Double, _ r: CGFloat) -> CGPoint {
             let a = angle(m).radians
             return CGPoint(x: centre.x + r * cos(a), y: centre.y + r * sin(a))
         }
 
-        // The ends fade over the outer 20 % of the box (drawn into a layer, masked by a horizontal gradient).
+        // The ends fade over the top and bottom of the box (drawn into a layer, masked by a vertical gradient).
         ctx.drawLayer { layer in
             // Bands: green → yellow → red → grey (Qaza) after the end; dim, then bright from the start up to the dot.
             for band in bands() where band.to > from && band.from < to {
@@ -164,26 +215,33 @@ struct PrayerTimeKnob: View {
                 layer.stroke(t, with: .color(tickColor.opacity(quarter ? 0.5 : 0.25)), lineWidth: 1.4)
                 m += 5
             }
-            // The labels at the window's start, its end and now — only 7–26 min from the dot, clear of the box's sides.
+            // The labels at the window's start, its end and now, beside the arc: only above the time or between the score
+            // and the bottom (the bar's top when it's up), never on the text.
             let marks: [(Double, String)] = [
                 (0, "starts \(shortTimePM(start.addingTimeInterval(shift)))"),
                 (minutes(end), "ends \(shortTimePM(end.addingTimeInterval(shift)))"),
                 (highMin, "now")]
+            let floor = size.height - (tail > 0.5 ? 50 : 14)
             for (at, words) in marks where abs(at - value) >= 7 && abs(at - value) <= 26 && at >= lowMin - 0.5 && at <= highMin + 0.5 {
-                let p = point(at, radius + 22)
-                guard p.x > 34, p.x < size.width - 34 else { continue }
+                let p = point(at, radius + 16)
+                guard p.y > 12, p.y < side / 2 - 42 || (p.y > side / 2 + 54 && p.y < floor) else { continue }
                 let text = layer.resolve(Text(words).font(.system(size: 10, design: .rounded)).foregroundStyle(.secondary))
-                layer.draw(text, at: p, anchor: .center)
+                layer.draw(text, at: p, anchor: .leading)
             }
+            // Top: fades over the first 20 %. Bottom: over the last 20 %, or, with the bar up, gone ~46 pt above the box's
+            // bottom (the bar's top) — `tail` animates between the two.
+            let h = max(size.height, 1)
+            func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * CGFloat(tail) }
             let fade = Gradient(stops: [.init(color: .clear, location: 0), .init(color: .black, location: 0.2),
-                                        .init(color: .black, location: 0.8), .init(color: .clear, location: 1)])
+                                        .init(color: .black, location: mix(0.8, (h - 70) / h)),
+                                        .init(color: .clear, location: mix(1, (h - 46) / h))])
             layer.blendMode = .destinationIn
             layer.fill(Path(CGRect(origin: .zero, size: size)),
-                       with: .linearGradient(fade, startPoint: .zero, endPoint: CGPoint(x: size.width, y: 0)))
+                       with: .linearGradient(fade, startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)))
         }
 
         // The dot never moves: hollow, in the score's colour, the arc cut out under it (the box shows through).
-        let dot = CGRect(x: cx - 8.5, y: dotY - 8.5, width: 17, height: 17)
+        let dot = CGRect(x: self.dot.x - 8.5, y: self.dot.y - 8.5, width: 17, height: 17)
         ctx.blendMode = .clear
         ctx.fill(Path(ellipseIn: dot.insetBy(dx: -1, dy: -1)), with: .color(.black))
         ctx.blendMode = .normal
@@ -210,12 +268,12 @@ struct PrayerTimeKnob: View {
     // MARK: The gesture
 
     private func began() { knob.grab() }
-    private func moved(_ dx: CGFloat) {
-        // Finger left → later times come in from the right (clockwise, as the rings).
-        knob.drag(to: -Double(dx / ptPerMin))
+    private func moved(_ dy: CGFloat) {
+        // Finger up → later times come up from below (clockwise, as the rings).
+        knob.drag(to: -Double(dy / ptPerMin))
     }
-    private func ended(_ vx: CGFloat, _ resting: Bool) {
-        let minPerMs = resting ? 0 : -Double(vx / ptPerMin) / 1000
+    private func ended(_ vy: CGFloat, _ resting: Bool) {
+        let minPerMs = resting ? 0 : -Double(vy / ptPerMin) / 1000
         knob.release(velocity: minPerMs)
     }
 }
@@ -353,11 +411,13 @@ private final class DisplayLinkProxy: NSObject {
     @objc func tick() { model?.frame() }
 }
 
-// MARK: - A horizontal-only pan
+// MARK: - The knob's pan (vertical)
 
-/// Takes a drag only when it starts sideways (the axis locks at ~6 pt, as the pager does): a vertical drag is left to the
-/// sheet, so swipe-down still closes it from the ring box.
-struct HorizontalPan: UIGestureRecognizerRepresentable {
+/// Takes a drag only when it starts up / down (the axis locks at ~6 pt, as the pager does). The sheet's own swipe-down waits
+/// for it to fail, so a drag that starts in the ring box turns the knob and never closes the sheet (owner, 2026-10-20:
+/// "account for the drag gesture on the bento box versus the sheet, so we don't accidentally dismiss it from here"); a
+/// sideways drag fails it and is left alone.
+struct KnobPan: UIGestureRecognizerRepresentable {
     var onBegan: () -> Void
     var onChanged: (CGFloat) -> Void
     /// The finger's speed (pt / s) and whether it rested > 80 ms before lifting (no coast then).
@@ -372,33 +432,53 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
     }
 
     func handleUIGestureRecognizerAction(_ pan: UIPanGestureRecognizer, context: Context) {
-        let x = pan.translation(in: pan.view).x
+        let y = pan.translation(in: pan.view).y
         switch pan.state {
         case .began:
             // The ~10 pt the finger moved before the pan was recognised would jump the arc 2–3 min at once: start from here.
             pan.setTranslation(.zero, in: pan.view)
             context.coordinator.lastMove = CACurrentMediaTime()
-            context.coordinator.lastX = 0
+            context.coordinator.lastY = 0
             onBegan()
         case .changed:
-            if abs(x - context.coordinator.lastX) > 0.5 { context.coordinator.lastMove = CACurrentMediaTime() }
-            context.coordinator.lastX = x
-            onChanged(x)
+            if abs(y - context.coordinator.lastY) > 0.5 { context.coordinator.lastMove = CACurrentMediaTime() }
+            context.coordinator.lastY = y
+            onChanged(y)
         case .ended, .cancelled, .failed:
             let resting = CACurrentMediaTime() - context.coordinator.lastMove > 0.08
-            context.coordinator.lastX = 0
-            onEnded(pan.state == .ended ? pan.velocity(in: pan.view).x : 0, resting || pan.state != .ended)
+            context.coordinator.lastY = 0
+            onEnded(pan.state == .ended ? pan.velocity(in: pan.view).y : 0, resting || pan.state != .ended)
         default: break
         }
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var lastMove: CFTimeInterval = 0
-        var lastX: CGFloat = 0
+        var lastY: CGFloat = 0
         func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
             guard let pan = g as? UIPanGestureRecognizer else { return true }
             let v = pan.velocity(in: pan.view)
-            return abs(v.x) > abs(v.y)
+            return abs(v.y) > abs(v.x)
         }
+        /// Any other pan (the sheet's swipe-down above all) waits until this one fails.
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+            other is UIPanGestureRecognizer && other !== g
+        }
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { false }
+    }
+}
+
+/// The arc's Canvas, with the bottom fade (`tail`) animatable: the arc shortens smoothly when the bar comes up.
+private struct KnobArcLayer: View, Animatable {
+    var value: Double
+    var tail: Double
+    let render: (inout GraphicsContext, CGSize, Double, Double) -> Void
+    var animatableData: Double {
+        get { tail }
+        set { tail = newValue }
+    }
+    var body: some View {
+        let value = value, tail = tail
+        return Canvas { ctx, size in render(&ctx, size, value, tail) }
     }
 }
