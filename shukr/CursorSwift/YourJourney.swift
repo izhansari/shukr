@@ -1246,7 +1246,6 @@ struct YourJourneyStats {
     /// The streak going now, the number the Salah page shows: streak days up to yesterday, plus today once it counts (today
     /// never breaks it; from the fresh start, as the Salah page).
     var currentStreak = 0
-    /// The last 84 prayer days, oldest first, today last.
     /// A day on the card: its color and its line.
     struct GridDay: Equatable {
         let date: Date; let kind: Kind; let prayed: Int; let inTime: Int; let excused: Bool
@@ -1285,18 +1284,6 @@ struct YourJourneyStats {
         return nil
     }
 
-    struct MonthRow: Identifiable {
-        let id: String
-        /// The month it opens (an Away row: the month it began in).
-        let month: Date
-        let title: String
-        let note: String?
-        /// % in time on that month's active days; nil for an Away row.
-        let rate: Int?
-        /// Where it sorts (newest first): the month's start, or the break's first day.
-        let at: Date
-    }
-    var monthRows: [MonthRow] = []
     /// Every milestone earned, newest first.
     var milestones: [JourneyMilestone] = []
 
@@ -1331,51 +1318,6 @@ struct YourJourneyStats {
         if d.metCount + excused == 5 { return .metGoal }
         if d.prayed + excused == 5 { return .allFive }
         return .some
-    }
-
-    /// The months with a marked day, and every break (≥ 7 days in a row with no mark; a fully excused day isn't away).
-    private mutating func buildMonths(log: JourneyLog, first: Date, today: Date, excused: Excused.Days) {
-        let cal = Calendar.current
-        var perMonth: [Date: (inTime: Int, due: Int, days: Int)] = [:]
-        var rows: [MonthRow] = []
-        var gapStart: Date?
-        var gapLength = 0
-        func closeGap(endingBefore day: Date) {
-            defer { gapStart = nil; gapLength = 0 }
-            guard let start = gapStart, gapLength >= 7, let end = cal.date(byAdding: .day, value: -1, to: day) else { return }
-            let fmt = Date.FormatStyle.dateTime.month(.abbreviated).day()
-            let length = gapLength >= 14 ? "\(Int((Double(gapLength) / 7).rounded())) weeks" : "\(gapLength) days"
-            rows.append(MonthRow(id: "away-\(PrayerNotificationID.dayKey(start))", month: JourneyLog.monthStart(start), title: "Away",
-                                 note: "\(start.formatted(fmt)) – \(end.formatted(fmt)) · \(length)", rate: nil, at: start))
-        }
-        var date = first
-        while date <= today {
-            let d = log.day(date)
-            let excusedAll = Self.excusedAll(d, on: date, in: log, excused)
-            if d.active {
-                closeGap(endingBefore: date)
-                let m = JourneyLog.monthStart(date)
-                perMonth[m, default: (0, 0, 0)].inTime += d.inTime
-                perMonth[m, default: (0, 0, 0)].due += d.due
-                perMonth[m, default: (0, 0, 0)].days += 1
-            } else if excusedAll {
-                closeGap(endingBefore: date)
-            } else if date < today || !d.marks.contains(.toCome) {
-                if gapStart == nil { gapStart = date }
-                gapLength += 1
-            }
-            guard let next = cal.date(byAdding: .day, value: 1, to: date) else { break }
-            date = next
-        }
-        if let next = cal.date(byAdding: .day, value: 1, to: today) { closeGap(endingBefore: next) }
-
-        for (m, t) in perMonth where t.due > 0 {
-            let rate = Int((Double(t.inTime) / Double(t.due) * 100).rounded())
-            rows.append(MonthRow(id: "month-\(PrayerNotificationID.dayKey(m))", month: m,
-                                 title: m.formatted(.dateTime.month(.wide).year()),
-                                 note: t.days == 1 ? "1 day" : "\(t.days) days", rate: rate, at: m))
-        }
-        monthRows = rows.sorted { $0.at > $1.at }
     }
 
     init(log: JourneyLog, today: Date, excused: Excused.Days = Excused.Days()) {
@@ -1420,7 +1362,6 @@ struct YourJourneyStats {
         }
         milestones = JourneyMilestone.earned(log: log, today: today, excused: excused)
         if let first = log.firstDay {
-            buildMonths(log: log, first: cal.startOfDay(for: first), today: today, excused: excused)
             // The streak is the Salah page's (owner, 2026-10-17, his pick: "Salah page's" — the card said "Start a streak
             // today" over a 25-day streak there): its rule, and today never breaks it. It counted only all-in-time days, and
             // a prayer missed so far today reset it.
