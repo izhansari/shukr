@@ -3024,39 +3024,6 @@ struct TodaysPrayerListView: View {
 
 }
 
-/*
-struct SomedaysPrayerListView: View {
-
-    @Environment(PrayerViewModel.self) var viewModel
-    @Binding var showDailyAyahView: Bool
-    let selectedDate: Date
-    let spacing: CGFloat = 6
-    
-    var body: some View {
-        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
-        VStack{
-            VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
-                ForEach(viewModel.orderedPrayerNames, id: \.self) { prayerName in
-                    PrayerButton(forDate: selectedDate, name: prayerName, viewModel: viewModel)
-                    .padding(.bottom, prayerName == "Isha" ? 0 : spacing)
-                    
-                    if prayerName != "Isha" {
-                        Divider()
-                            .frame(height: 1)
-                            .background(Color(.secondarySystemFill))
-                            .padding(.top, -spacing / 2 - 0.5)
-                            .padding(.horizontal, 25)
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
-        }
-    }
- 
-}
-*/
-
 #if DEBUG
 /// `-debugHitAreas old|new` tints where a tap marks a prayer in the list (to compare the old dot
 /// with the new circle). DEBUG only.
@@ -3113,14 +3080,10 @@ struct PrayerButton: View {
     @AppStorage(PrayerDotStyle.key) private var dotStyleRaw = PrayerDotStyle.muted.rawValue
     @Environment(\.circleTheme) private var theme
     @State private var showMarkIncompleteAlert = false // State for showing alert
-    @State private var isMarkingIncomplete = false // Track if we are marking incomplete
     @State private var showTimePicker = false
     /// The day page: a saved edit waits for the sheet to go down, then plays (CircleMotion.dayEdit) where it can be seen.
     /// The editor's saves held while the day page is up: its ring and score move once the sheet is out of the way.
     @State private var pendingEdit: HeldEdit?
-    @State private var selectedEditTimeDate = Date()
-    @State private var selectedLocation: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 0, longitude: 0)
-    @State private var searchQuery = ""
     
     private func handlePrayerButtonPress() {
         // Not a prayer to come, unless it's marked: a marked prayer always unmarks (mark audit #8).
@@ -3142,7 +3105,6 @@ struct PrayerButton: View {
                 if let container = prayerObject.modelContext?.container { MilestoneCelebration.shared.check(container: container) }
             }
             else if !UnmarkPrompt.ask(for: prayerObject, onUnmark: {
-                isMarkingIncomplete = true
                 withAnimation(Self.unmarkFade) { viewModel.togglePrayerCompletion(for: prayerObject) }
             }) {
                 showMarkIncompleteAlert = true   // another overlay up: the system alert
@@ -3164,39 +3126,6 @@ struct PrayerButton: View {
         self.name = name
     }
   
-    // added this so we can get the prayerList for another date other than today.
-    init?(forDate: Date, name: String, viewModel: PrayerViewModel) {
-        let updatingToday = Calendar.current.isDate(forDate, inSameDayAs: Date())
-        let objectsToCheck: [PrayerModel] = updatingToday ? viewModel.todaysPrayers : viewModel.loadPrayerObjects(for: forDate)
-        self.name = name
-        // check if the prayerObect is not nil
-        // if so, make it. use some viewmodel function.
-        if let foundPrayer = objectsToCheck.first(where: { $0.name == name }){
-            self.prayerObject = foundPrayer
-        } else if let newPrayer = viewModel.createPrayerModel(name: name, at: forDate) {
-            self.prayerObject = newPrayer
-        } else {
-            return nil
-        }
-    }
-        
-    private func searchLocation() {
-        let searchRequest = MKLocalSearch.Request()
-        searchRequest.naturalLanguageQuery = searchQuery
-        
-        let search = MKLocalSearch(request: searchRequest)
-        search.start { response, error in
-            guard let response = response else {
-                print("Error: \(error?.localizedDescription ?? "Unknown error").")
-                return
-            }
-            
-            if let firstItem = response.mapItems.first {
-                selectedLocation = firstItem.placemark.coordinate
-            }
-        }
-    }
-
     private var nameToDisplay: String{
         let isTodayFriday = Calendar.current.component(.weekday, from: Date()) == 6
         if (name == "Dhuhr" && isTodayFriday){ return "Jummah" }
@@ -3459,11 +3388,6 @@ struct PrayerButton: View {
             TourRuntime.shared.nudge()   // the tour: not yet / not this one — a pulse, no buzz
             return
         }
-        // Open on the prayer's own day. The wheel only edits hour/minute and keeps the date it
-        // starts with: starting from a tap after midnight (rollover) put every picked time on the
-        // next day — always Qaza.
-        let marked = prayerObject.timeAtComplete ?? Date()
-        selectedEditTimeDate = min(max(marked, editTimeRange.lowerBound), editTimeRange.upperBound)
         showTimePicker = true
         TourRuntime.shared.event(.editorOpened(prayerObject.name))   // the tour's "change the time or place" step
     }
@@ -3620,7 +3544,6 @@ struct PrayerButton: View {
                             message: Text("Are you sure you want to mark this prayer as incomplete?"
                                           + (PrayerPhotos.exists(for: prayerObject) ? " Its photo will be deleted too." : "")),
                             primaryButton: .destructive(Text("Yes")) {
-                                isMarkingIncomplete = true
                                 // A 0.1 s spring snapped the whole page (score → prayer, the list 5 rows → 1); an
                                 // ease lets it settle (Sami's audit, finding 7; his verified fix).
                                 withAnimation(Self.unmarkFade) {
@@ -3737,61 +3660,7 @@ struct PrayerButton: View {
     }
 
         
-    struct MiniMapView: View {
-        @Binding var coordinate: CLLocationCoordinate2D
-        @State private var region: MKCoordinateRegion
-        
-        init(coordinate: Binding<CLLocationCoordinate2D>) {
-            self._coordinate = coordinate
-            _region = State(initialValue: MKCoordinateRegion(
-                center: coordinate.wrappedValue,
-                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-            ))
-        }
-        
-        var body: some View {
-            Map(coordinateRegion: $region, interactionModes: .all, showsUserLocation: true, userTrackingMode: .none)
-                .onTapGesture { location in
-                    let coordinate = region.center
-                    self.coordinate = coordinate
-                }
-        }
-    }
 }
-
-struct ChevronTap: View {
-    var body: some View {
-//        Image(systemName: "chevron.right")
-//            .foregroundColor(.gray)
-//            .onTapGesture {
-//                triggerSomeVibration(type: .medium)
-//                print("chevy hit")
-//            }
-        
-        NavigationLink(destination: /*PrayerEditorView*//*ScrollablePrayerScoreView*/SimpleDailyScoreView()) {
-            Image(systemName: "chevron.right")
-                .foregroundColor(.gray)
-        }
-    }
-}
-
-struct ChevronTap2: View {
-    var body: some View {
-//        Image(systemName: "chevron.right")
-//            .foregroundColor(.gray)
-//            .onTapGesture {
-//                triggerSomeVibration(type: .medium)
-//                print("chevy hit")
-//            }
-        
-        NavigationLink(destination: PrayerEditorView()) {
-            Image(systemName: "chevron.right")
-                .foregroundColor(.gray)
-        }
-    }
-}
-
-
 
 // MARK: - Pager live state + salah page geometry
 
