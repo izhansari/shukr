@@ -311,10 +311,19 @@ struct PrayerTimeEditSheet: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
     }
 
+    /// The boxes' fill: the grouped grey a sheet gets (iOS's "elevated" shade), pinned. Left to iOS, his phone drew the
+    /// base shade, almost the glass's own colour, so the boxes all but vanished (owner, 2026-10-19: "why is the bento still
+    /// hard to see on my phone"); the sim drew the elevated one.
+    private var boxFill: Color {
+        Color(UIColor.secondarySystemGroupedBackground.resolvedColor(with: UITraitCollection(traitsFrom: [
+            UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light),
+            UITraitCollection(userInterfaceLevel: .elevated)])))
+    }
+
     private func card<Content: View>(radius: CGFloat = 22, @ViewBuilder _ content: () -> Content) -> some View {
         content()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(boxFill))
             .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
     }
 
@@ -395,7 +404,7 @@ struct PrayerTimeEditSheet: View {
             .onSubmit(finishNote)
             .padding(14)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(boxFill))
             .contentShape(Rectangle())
             .onTapGesture { noteFocused = true }
             .onAppear { DispatchQueue.main.async { noteFocused = true } }
@@ -502,7 +511,10 @@ struct PrayerTimeEditSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(!photoInWindow)
+            // Not .disabled: a disabled button fades, fill and all (owner, 2026-10-19: "the photo one should be the same
+            // color as the others... not dulled out"). Only its words say it can't be taken now.
+            .allowsHitTesting(photoInWindow)
+            .accessibilityAddTraits(photoInWindow ? [] : .isStaticText)
         }
     }
 
