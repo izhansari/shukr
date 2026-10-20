@@ -514,6 +514,7 @@ struct SalahLookSwitcher: View {
     @AppStorage(SalahLook.linesKey) private var lines = CircleTheme.standard.lines
     @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.sink.rawValue
     @AppStorage(SalahSheetDrag.key) private var sheetFollows = SalahSheetDrag.defaultOn
+    @AppStorage(EditorBoxFill.key) private var boxFillRaw = EditorBoxFill.standard.rawValue
 
     /// Everything as the main build (TestFlight / App Store) has it.
     private var isMainLook: Bool {
@@ -537,6 +538,12 @@ struct SalahLookSwitcher: View {
             Button { useMainLook() } label: {
                 Label("Main build's look", systemImage: isMainLook ? "checkmark" : "arrow.uturn.backward")
             }
+            // Out in the open while he picks (owner, 2026-10-20: "put it as an option in the top right palette thing for me
+            // and ill decide after looking"): the prayer editor's boxes, see-through (Frank) or solid grey (Zoe).
+            Picker("Editor boxes", selection: $boxFillRaw) {
+                ForEach(EditorBoxFill.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
             Menu {
                 Section("List") {
                     Menu("Prayer list") {
