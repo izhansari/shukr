@@ -119,7 +119,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   `PrayerStats.rulesChanged` → a silent recount (no hearts, milestones recorded as seen), Max recounted from rows. From
   the date: the whole card (days and prayers marked, the rate "N% of days met your goal" after 3 finished days, best),
   the streak, rank, runs, Prayer scores' All time (the line under its chart "since Oct 17"; the chip stays "All time") and trends, Journey's ring; the header line
-  "Since your fresh start, Oct 17 ⇄" flips the card to lifetime and back (`JourneyLens`); lifetime always: month lines,
+  "Since your fresh start, Oct 17 ⇄" flips the card to lifetime and back (`JourneyStore.lifetime`); lifetime always: month lines,
   firsts; kept: Moments, and To make up unless Start fresh. Days before it draw at
   0.35 everywhere (`JourneyTileColor.beforeFreshStart`); a quiet "Fresh start" milestone (never celebrated). Both travel
   in Your Data's copy. Not built: "Show earlier" (the calendar still scrolls back).
@@ -176,8 +176,11 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   badges and keys only once `Excused.ranges` isn't empty.
 - Off the main thread: `JourneyLog.load` and `JourneyMakeUpPage.entries` read on a detached task with their own
   `ModelContext` and return values; Journey reads the log once per open and builds Prayer scores' row from it (one `now`,
-  one set of excused ranges); the last results are kept (`JourneyLog.last`, `PrayerScores.lastBySpan`) so pages never open
-  blank; a newer load drops an older one (`loadToken`); a page under another reloads on its return (`dirty`).
+  one set of excused ranges). **JourneyStore** (JourneyStore.swift, 2026-10-20) is the one owner of Journey's numbers: the log,
+  the card's stats, the header ring, To make up's count and list, Prayer scores' spans, the lens; one loader (`load`, landing
+  via `JourneyFlights.whenIdle`, a newer load drops an older one); a mark / outside mark / Excused change marks it stale, a
+  goal or fresh-start change also empties the spans and resets the lens; `loadIfNeeded` (the map day sheet's "Day N" reads
+  without Journey opened first). Pages never open blank; a page under another reloads on its return (`dirty`).
 - Transitions (JourneyTransitions.swift, the host `journeyMonthHost`): card ↔ expanded (every tile in view flies into its ring
   by its place, the card's month names to their labels; the card's rows report their own place — `.cardWeek`; the page
   comes down 0.35 s after the flight back lands), expanded ↔ year (a month's days fly to their squares), a ring → its day page (from its ring in the expanded weeks or
