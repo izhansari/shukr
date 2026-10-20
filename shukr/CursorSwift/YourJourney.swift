@@ -1588,7 +1588,9 @@ struct JourneyMilestone: Identifiable, Equatable {
 
         var total = 0
         var perName: [Int] = Array(repeating: 0, count: 5)
-        var run = 0, best = 0, bestAtRunStart = 0
+        // The run and the best: StreakWalk, the Salah page's and the card's rule (today never breaks a run).
+        var walk = StreakWalk.Forward(today: today)
+        var bestAtRunStart = 0
         var runLastDay: Date?
         var runFirstDay: Date?
         var gap = 0
@@ -1599,6 +1601,7 @@ struct JourneyMilestone: Identifiable, Equatable {
             // Keyed by the run's first day: a best still growing is one milestone, celebrated once, not one a day.
             // From 7 days (was 3): a goal flip to Pray all five turned every early 3-, 4-, 5-day improvement into its own
             // milestone (owner, 2026-10-18: "got hella milestones … 3 days in a row prayed or something... that was weird").
+            let run = walk.run
             if run >= 7, run > bestAtRunStart, let last = runLastDay, let firstOfRun = runFirstDay {
                 out.removeAll { $0.id == "run.\(run)\(era)" && cal.isDate($0.date, inSameDayAs: last) }   // the same news twice
                 add("best.\(PrayerNotificationID.dayKey(firstOfRun))", "\(run) days in a row, \(goal.runWords)", last, .inTime,
@@ -1610,8 +1613,7 @@ struct JourneyMilestone: Identifiable, Equatable {
                     out[k].detail = "\(from) – \(last.formatted(.dateTime.month(.abbreviated).day().year()))"
                 }
             }
-            run = 0
-            bestAtRunStart = best
+            bestAtRunStart = walk.best
             runLastDay = nil
             runFirstDay = nil
         }
@@ -1679,27 +1681,27 @@ struct JourneyMilestone: Identifiable, Equatable {
             // before it and the best starts over; the day itself is a quiet milestone.
             if let from = log.countsFrom, cal.isDate(date, inSameDayAs: from) {
                 closeRun()
-                best = 0
+                walk = StreakWalk.Forward(today: today)
                 bestAtRunStart = 0
                 add("fresh.\(d.key)", "Fresh start", date, .quiet, symbol: "leaf",
                     about: "You began again: your streak, scores and rank count from this day. Your history stays.")
             }
-            if !d.counted {
-                // before the fresh start: no runs
-            } else if excusedAll {
-                // neither counts nor breaks
-            } else if YourJourneyStats.kind(d) == .metGoal {
-                run += 1
-                if run == 1 { runFirstDay = date }
-                runLastDay = date
-                best = max(best, run)
-                if Self.runs.contains(run) {
-                    add("run.\(run)\(era)", run == 7 ? "A full week, \(goal.runWords)" : "\(run) days in a row, \(goal.runWords)", date, .inTime,
-                        symbol: "calendar", about: "\(run) days in a row with all five prayers \(goal.prayersWords).",
-                        how: runFirstDay.map { "\($0.formatted(span)) – \(date.formatted(span))" })
+            if d.counted {   // before the fresh start: no runs
+                // An excused day neither counts nor breaks; a day that breaks closes the run before the walk starts over.
+                // Today never breaks it: a today that ended short is closed by the closeRun after the walk.
+                let verdict = YourJourneyStats.verdict(d, on: date, in: log, excused, goal: goal)
+                if verdict == .breaks, date != today { closeRun() }
+                walk.add(date, verdict)
+                if verdict == .counts {
+                    let run = walk.run
+                    if run == 1 { runFirstDay = date }
+                    runLastDay = date
+                    if Self.runs.contains(run) {
+                        add("run.\(run)\(era)", run == 7 ? "A full week, \(goal.runWords)" : "\(run) days in a row, \(goal.runWords)", date, .inTime,
+                            symbol: "calendar", about: "\(run) days in a row with all five prayers \(goal.prayersWords).",
+                            how: runFirstDay.map { "\($0.formatted(span)) – \(date.formatted(span))" })
+                    }
                 }
-            } else if !unfinishedToday {
-                closeRun()
             }
             guard let next = cal.date(byAdding: .day, value: 1, to: date) else { break }
             date = next
