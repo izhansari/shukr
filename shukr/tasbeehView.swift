@@ -62,7 +62,7 @@ struct tasbeehView: View {
     /// of moving the ring"): the ring and its count fade where they stand while paused and come back on Resume. A close
     /// or a finish from the pause brings it back first (the close lands it on the wheel; the results raise it).
     private var ringAwayForPause: Bool { ringAbove && paused && savedSession == nil && !ringToCentre }
-    @Environment(\.modelContext) private var context
+    @Environment(\.modelContext) var context
     @Environment(SharedStateClass.self) var sharedState
     /// TasbeehClock (TasbeehModels.swift, cleanup-map tangle 5 step 6): the properties that forward to `clockModel` live there.
     @State private var clockModel = TasbeehClock()
@@ -105,21 +105,21 @@ struct tasbeehView: View {
     
     // State properties
 //    @FocusState private var isNumberEntryFocused
-    private var timerIsActive: Bool { get { clockModel.timerIsActive } nonmutating set { clockModel.timerIsActive = newValue } }
+    var timerIsActive: Bool { get { clockModel.timerIsActive } nonmutating set { clockModel.timerIsActive = newValue } }
     private var timerbb: Timer? { get { clockModel.timerbb } nonmutating set { clockModel.timerbb = newValue } }
-    private var paused: Bool { get { clockModel.paused } nonmutating set { clockModel.paused = newValue } }
+    var paused: Bool { get { clockModel.paused } nonmutating set { clockModel.paused = newValue } }
     private var tasbeeh: Int { get { countModel.tasbeeh } nonmutating set { countModel.tasbeeh = newValue } }
     /// Counts / seconds already done today when continuing a task: on the ring, not saved again.
     private var countOffset: Int { get { countModel.countOffset } nonmutating set { countModel.countOffset = newValue } }
-    private var timeOffset: TimeInterval { get { clockModel.timeOffset } nonmutating set { clockModel.timeOffset = newValue } }
+    var timeOffset: TimeInterval { get { clockModel.timeOffset } nonmutating set { clockModel.timeOffset = newValue } }
     /// What this session itself counted (the saved total).
     private var sessionCount: Int { tasbeeh - countOffset }
-    private var startTime: Date? { get { clockModel.startTime } nonmutating set { clockModel.startTime = newValue } }
-    private var endTime: Date? { get { clockModel.endTime } nonmutating set { clockModel.endTime = newValue } }
+    var startTime: Date? { get { clockModel.startTime } nonmutating set { clockModel.startTime = newValue } }
+    var endTime: Date? { get { clockModel.endTime } nonmutating set { clockModel.endTime = newValue } }
     private var pauseStartTime: Date? { get { clockModel.pauseStartTime } nonmutating set { clockModel.pauseStartTime = newValue } }
     private var autoStop: Bool { get { countModel.autoStop } nonmutating set { countModel.autoStop = newValue } }
     private var secsPassedAtPause: TimeInterval { get { clockModel.secsPassedAtPause } nonmutating set { clockModel.secsPassedAtPause = newValue } }
-    private var progressFraction: CGFloat { get { clockModel.progressFraction } nonmutating set { clockModel.progressFraction = newValue } }
+    var progressFraction: CGFloat { get { clockModel.progressFraction } nonmutating set { clockModel.progressFraction = newValue } }
     /// One ring (SessionHandoff's landing base): where the ring started, where it stood when the session stopped (the
     /// stop empties it), and the ring kept up while the session goes, until its arc has landed.
     private var startFraction: CGFloat { get { stageModel.startFraction } nonmutating set { stageModel.startFraction = newValue } }
@@ -158,50 +158,44 @@ struct tasbeehView: View {
     /// cards (or the count and buttons) go, the arc lands where the wheel's stands, the page goes, then the ring fades
     /// over the wheel's — only once the page has gone, so the wheel's ring is whole under it (the two differ a touch in
     /// glow: removed at once it stepped; faded while the page still was, it dimmed).
-    private var offsetY: CGFloat { get { stageModel.offsetY } nonmutating set { stageModel.offsetY = newValue } }
+    var offsetY: CGFloat { get { stageModel.offsetY } nonmutating set { stageModel.offsetY = newValue } }
     private var highestPoint: CGFloat { get { stageModel.highestPoint } nonmutating set { stageModel.highestPoint = newValue } }   // Track highest point during drag
     private var lowestPoint: CGFloat { get { stageModel.lowestPoint } nonmutating set { stageModel.lowestPoint = newValue } }   // Track lowest point during drag
     private var dragToIncrementBool: Bool { get { stageModel.dragToIncrementBool } nonmutating set { stageModel.dragToIncrementBool = newValue } }
-    private var inactivityTimer: Timer? { get { clockModel.inactivityTimer } nonmutating set { clockModel.inactivityTimer = newValue } }
-    private var timeSinceLastInteraction: TimeInterval { get { clockModel.timeSinceLastInteraction } nonmutating set { clockModel.timeSinceLastInteraction = newValue } }
-    private var showInactivityAlert: Bool { get { clockModel.showInactivityAlert } nonmutating set { clockModel.showInactivityAlert = newValue } }
-    private var countDownForAlert: Int { get { clockModel.countDownForAlert } nonmutating set { clockModel.countDownForAlert = newValue } }
-    private var stoppedDueToInactivity: Bool { get { clockModel.stoppedDueToInactivity } nonmutating set { clockModel.stoppedDueToInactivity = newValue } }
+    var inactivityTimer: Timer? { get { clockModel.inactivityTimer } nonmutating set { clockModel.inactivityTimer = newValue } }
+    var timeSinceLastInteraction: TimeInterval { get { clockModel.timeSinceLastInteraction } nonmutating set { clockModel.timeSinceLastInteraction = newValue } }
+    var showInactivityAlert: Bool { get { clockModel.showInactivityAlert } nonmutating set { clockModel.showInactivityAlert = newValue } }
+    var countDownForAlert: Int { get { clockModel.countDownForAlert } nonmutating set { clockModel.countDownForAlert = newValue } }
+    var stoppedDueToInactivity: Bool { get { clockModel.stoppedDueToInactivity } nonmutating set { clockModel.stoppedDueToInactivity = newValue } }
     /// Set by `finishAsleep`; saved on the session (`SessionDataModel.endedAsleep`).
-    private var endedAsleep: Bool { get { countModel.endedAsleep } nonmutating set { countModel.endedAsleep = newValue } }
+    var endedAsleep: Bool { get { countModel.endedAsleep } nonmutating set { countModel.endedAsleep = newValue } }
     private var newAvrgTPC: TimeInterval { get { countModel.newAvrgTPC } nonmutating set { countModel.newAvrgTPC = newValue } }   //calculated on increment and decrement by secondsPassed / tasbeeh
     /// Session seconds (pauses excluded) at the last tap: a session sleep mode ends is saved as
     /// ending here, not at the countdown's end or when the phone was locked (owner, idea F3BR).
     private var secsAtLastTap: TimeInterval { get { countModel.secsAtLastTap } nonmutating set { countModel.secsAtLastTap = newValue } }
     /// The clock time of the last tap, for the morning card's "ended around" (the session's own
     /// seconds leave pauses out).
-    private var lastTapAt: Date? { get { countModel.lastTapAt } nonmutating set { countModel.lastTapAt = newValue } }
+    var lastTapAt: Date? { get { countModel.lastTapAt } nonmutating set { countModel.lastTapAt = newValue } }
     /// Sleep mode saved the session while the app was up: the screen stays black ("saved") until the
     /// phone locks — nothing bright lights up while he sleeps (owner, sleep-mode-fixes).
-    private var sleptSaved: Bool { get { countModel.sleptSaved } nonmutating set { countModel.sleptSaved = newValue } }
+    var sleptSaved: Bool { get { countModel.sleptSaved } nonmutating set { countModel.sleptSaved = newValue } }
     /// The results after a sleep finish have been up a while: black until the lock (or a tap).
-    private var sleptDark: Bool { get { stageModel.sleptDark } nonmutating set { stageModel.sleptDark = newValue } }
+    var sleptDark: Bool { get { stageModel.sleptDark } nonmutating set { stageModel.sleptDark = newValue } }
     static let sleptResultsSeconds: Double = 15
-    /// What "Keep counting" needs to carry the session on after sleep mode saved it (owner,
-    /// sleep-keep-going): taken just before the save, since the stop clears these a beat later.
-    struct SleepResume {
-        var startTime: Date?, endTime: Date?, totalPause: Double
-        var targetCount: String, task: TaskModel?, lastTapAt: Date?
-    }
-    private var sleepResume: SleepResume? { get { countModel.sleepResume } nonmutating set { countModel.sleepResume = newValue } }
+    var sleepResume: SleepResume? { get { countModel.sleepResume } nonmutating set { countModel.sleepResume = newValue } }
     /// Keep counting was tapped before the stop's cleanup ran: resume as soon as it has.
-    private var resumeWanted: Bool { get { countModel.resumeWanted } nonmutating set { countModel.resumeWanted = newValue } }
+    var resumeWanted: Bool { get { countModel.resumeWanted } nonmutating set { countModel.resumeWanted = newValue } }
     /// The results came from a sleep finish: dimmed (stays through their fade-out on Keep counting).
     private var resultsDimmed: Bool { get { stageModel.resultsDimmed } nonmutating set { stageModel.resultsDimmed = newValue } }
     /// The stop's cleanup has run, so resuming can't be undone by it.
-    private var sleepResumeReady: Bool { get { countModel.sleepResumeReady } nonmutating set { countModel.sleepResumeReady = newValue } }
+    var sleepResumeReady: Bool { get { countModel.sleepResumeReady } nonmutating set { countModel.sleepResumeReady = newValue } }
     /// A saved stop's cleanup (`finishStopCleanup`) waits for the results to land — or runs at once with no frames to wait for.
     private var stopCleanupPending: Bool { get { countModel.stopCleanupPending } nonmutating set { countModel.stopCleanupPending = newValue } }
     /// The finish buzz already played on the goal's own tap / tick (stopTimer(goal:)): the cleanup doesn't play it again.
     private var finishBuzzPlayed: Bool { get { countModel.finishBuzzPlayed } nonmutating set { countModel.finishBuzzPlayed = newValue } }
-    private var totalPauseInSession: Double { get { clockModel.totalPauseInSession } nonmutating set { clockModel.totalPauseInSession = newValue } }
+    var totalPauseInSession: Double { get { clockModel.totalPauseInSession } nonmutating set { clockModel.totalPauseInSession = newValue } }
     private var secsToReport: TimeInterval { get { clockModel.secsToReport } nonmutating set { clockModel.secsToReport = newValue } }
-    private var savedSession: SessionDataModel? { get { countModel.savedSession } nonmutating set { countModel.savedSession = newValue } }
+    var savedSession: SessionDataModel? { get { countModel.savedSession } nonmutating set { countModel.savedSession = newValue } }
     /// Counts made by the current drag (the session tour's "three in one stroke").
     private var strokesThisTouch: Int { get { countModel.strokesThisTouch } nonmutating set { countModel.strokesThisTouch = newValue } }
     /// Post-salah: which of the three phrases the count is in (for the phase-change haptic).
@@ -213,11 +207,11 @@ struct tasbeehView: View {
     /// fixed for the session (Auto passing Maghrib mid-count doesn't flip it); sleep mode goes dark
     /// and turning sleep off comes back here (owner: the light / dark chip is gone).
     private var appLookDark: Bool { get { stageModel.appLookDark } nonmutating set { stageModel.appLookDark = newValue } }
-    private var totalTime:  Int {
+    var totalTime:  Int {
         sharedState.selectedMinutes*60
     }
     
-    private var secsPassed: TimeInterval{
+    var secsPassed: TimeInterval{
         if let beg = startTime{
             return Date().timeIntervalSince(beg) - totalPauseInSession
         } else { return 999 }
@@ -247,16 +241,6 @@ struct tasbeehView: View {
     /// "goal reached" tapped once: "Tap again to finish" (disarms after 3 s, like Finish early).
     private var goalFinishArmed: Bool { get { countModel.goalFinishArmed } nonmutating set { countModel.goalFinishArmed = newValue } }
     private var goalFinishToken: Int { get { countModel.goalFinishToken } nonmutating set { countModel.goalFinishToken = newValue } }
-    /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
-    /// 10 s "You still there?" countdown, then the session is saved ending at the last tap.
-    var inactivityLimit: TimeInterval {
-        #if DEBUG
-        // -sleepLimit N: a shorter wait for testing sleep mode in the simulator.
-        let args = ProcessInfo.processInfo.arguments
-        if let i = args.firstIndex(of: "-sleepLimit"), i + 1 < args.count, let n = Double(args[i + 1]) { return n }
-        #endif
-        return 45
-    }
 
     private var incrementThreshold: CGFloat = 50 // Threshold for tasbeeh increment
     
@@ -293,46 +277,6 @@ struct tasbeehView: View {
         }
         let timeLeft = Int(roundToTwo(val: Double(totalTime) - secsPassed))
         return "\(timeLeft)s"
-    }
-    
-    func inactivityTimerHandler(run: String) {
-        if(toggleInactivityTimer){
-            switch run{
-            case "restart": do {
-                print("start inactivity timer with limit of \(inactivityLimit)")
-                inactivityTimer?.invalidate() // Invalidate any existing timer
-                showInactivityAlert = false // set it to false just to be sure.
-                timeSinceLastInteraction = 0 // Reset time since last interaction
-                var localCountDown = 11
-                
-                inactivityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
-                    timeSinceLastInteraction += 1.0
-                    if(offsetY != 0) {
-                        print("touching screen -- resetting from \(timeSinceLastInteraction) out of  \(inactivityLimit) AND showInactivityAlert = \(showInactivityAlert)")
-                        timeSinceLastInteraction = 0
-                        showInactivityAlert = false
-                    }
-                    if timeSinceLastInteraction >= inactivityLimit{ // run if tasbeeh hasnt changed for span of our limit
-                        showInactivityAlert = true
-                        localCountDown -= 1
-                        countDownForAlert = localCountDown
-                    }
-                    if localCountDown <= 0 {
-                        finishAsleep()
-//                        isPresented = false
-                    }
-                    
-                }
-            }
-            case "stop": do {
-                print("stopping inactivity timer")
-                inactivityTimer?.invalidate()
-                showInactivityAlert = false
-            }
-            default:
-                print("yo bro invalid use of inactivityTimerHandler func")
-            }
-        }
     }
     
 
@@ -986,25 +930,7 @@ struct tasbeehView: View {
             // than left waiting for the app to come back.
             if newScenePhase == .background, leaving { sequence?.cancel() }
             if newScenePhase == .background { finishStopCleanup() }   // no frames, so the results' fade won't end
-            // Sleep mode on and counting: the phone locking or leaving the app means he's asleep —
-            // finish and save, ending at the last tap (he woke up on the pause screen before:
-            // pausing stopped the inactivity timer).
-            // Saved by the countdown and now the phone has locked: close quietly in the background.
-            if sleptSaved {
-                if newScenePhase == .background {
-                    NotificationCenter.default.post(name: WelcomeGate.raiseCurtain, object: nil)   // black before iOS's picture
-                    closeAfterSleep()
-                }
-                return
-            }
-            // Paused with sleep on counts too: auto-lock would leave him on the pause screen (or iOS
-            // would kill the app and lose the session).
-            // Inactive alone (the task switcher, Control Center) pauses as usual — he brings the pause
-            // screen up that way (owner); the lock (inactive, then background) then finishes it.
-            if toggleInactivityTimer && timerIsActive && newScenePhase == .background {
-                finishAsleep()
-                return
-            }
+            if sleepModeTookScenePhase(newScenePhase) { return }   // sleep mode's own (SleepMode.swift)
             if newScenePhase == .inactive || newScenePhase == .background {
                 writeDraft()   // audit A7: iOS may evict the suspended app
                 !paused ? togglePause() : ()
@@ -1099,7 +1025,7 @@ struct tasbeehView: View {
 
     /// Keep the screen awake only while a session is actively counting.
     /// Paused, stopped, or dismissed → hand control back to the system auto-lock.
-    private func updateIdleTimer() {
+    func updateIdleTimer() {
         UIApplication.shared.isIdleTimerDisabled = timerIsActive && !paused
     }
     
@@ -1137,7 +1063,7 @@ struct tasbeehView: View {
     }
 
     /// The 0.1 s tick: the timed ring and the stop at the goal.
-    private func startTicker() {
+    func startTicker() {
         timerbb?.invalidate()
         timerbb = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
         
@@ -1160,7 +1086,7 @@ struct tasbeehView: View {
         
     /// `goal`: the count goal's tap or the timed goal's tick ended it — the finish buzz plays now, on that tap, not a
     /// second later when the results' fade-in runs the cleanup (owner: "it feels like a visible hang"; zikr-goal-haptic).
-    private func stopTimer(goal: Bool = false) {
+    func stopTimer(goal: Bool = false) {
         ZikrAudio.stopAll()     // a memo started on the pause card doesn't play on into the results
         guard timerIsActive else {
             print("Timer is not active")
@@ -1214,58 +1140,10 @@ struct tasbeehView: View {
         ControlCenter.shared.reloadControls(ofKind: WidgetKinds.zikrControl)   // its "N tasks left" line
     }
 
-    /// Sleep mode ended the session (no tap for a while, or the app left while counting): saved now
-    /// — the app may be suspended any moment — ending at the last tap, marked `endedAsleep`.
-    private func finishAsleep() {
-        guard timerIsActive else { return }
-        stoppedDueToInactivity = true
-        endedAsleep = true
-        sleepResume = SleepResume(startTime: startTime, endTime: endTime, totalPause: totalPauseInSession,
-                                  targetCount: sharedState.targetCount, task: sharedState.selectedTask,
-                                  lastTapAt: lastTapAt)
-        sleepResumeReady = false
-        stopTimer()
-        try? context.save()
-        // Off now, not 0.5 s later in completeStopTimer: iOS can kill the app before that runs, and
-        // sleep mode was still on for the next session (seen on his phone). The countdown timer is
-        // stopped first — the handler does nothing once sleep is off, so completeStopTimer can't.
-        inactivityTimerHandler(run: "stop")
-        toggleInactivityTimer = false
-        let inBackground = UIApplication.shared.applicationState == .background
-        if let savedSession {
-            SleepMorning.remember(savedSession, endedAt: lastTapAt ?? Date(), armed: inBackground)
-        }
-        // iOS's own auto-lock takes over from here: the screen must never stay on after he's
-        // asleep (owner: "so long as we dont risk the screen never turning off").
-        UIApplication.shared.isIdleTimerDisabled = false
-        if inBackground {
-            NotificationCenter.default.post(name: WelcomeGate.raiseCurtain, object: nil)   // black before iOS's picture
-            closeAfterSleep()          // locked while counting: no results screen on wake
-        } else {
-            sleptSaved = true          // the countdown ended it: the results screen until the lock…
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.sleptResultsSeconds) {
-                if sleptSaved { withAnimation(.easeInOut(duration: 1.2)) { sleptDark = true } }   // …then black
-            }
-        }
-        #if DEBUG
-        print("😴 finished asleep · background \(inBackground) · idle timer disabled: \(UIApplication.shared.isIdleTimerDisabled)")
-        #endif
-    }
-
-    /// Close the counter after sleep mode ended a session — never through the results screen.
-    private func closeAfterSleep() {
-        sleptSaved = false
-        sleptDark = false
-        sleepResume = nil
-        resumeWanted = false
-        isPresented = false
-        resetSharedState()
-    }
-
     /// The ring for a counted session: freestyle goes round every 100 (never quite full — a full
     /// ring means the goal), a count goal fills to it. Timed sessions follow the ticker. Tasbih
     /// Fatimah follows the phrase — 33, 33, 34 — empty again with the big number at each switch (owner).
-    private func refreshCountProgress() {
+    func refreshCountProgress() {
         if sharedState.isDoingPostNamazZikr {
             progressFraction = CGFloat(PostSalahTasbeeh.ringFraction(at: tasbeeh))
         } else if sharedState.selectedMode == 0 {
@@ -1275,54 +1153,6 @@ struct tasbeehView: View {
             let target = Int(sharedState.targetCount) ?? 0   // a goal of 0 (or none) gave an infinite ring
             progressFraction = target > 0 ? CGFloat(tasbeeh) / CGFloat(target) : 0
         }
-    }
-
-    private func requestKeepCounting() {
-        if sleepResumeReady { keepCountingAfterSleep() } else { resumeWanted = true }
-    }
-
-    /// "Keep counting" on the results after a sleep finish: he was only dozing. The saved row goes and
-    /// the same session carries on at the same count with sleep still on; the doze (last tap → now)
-    /// counts as a pause, so it's saved once at its real end and the pace stays honest.
-    private func keepCountingAfterSleep() {
-        guard let r = sleepResume, sleepResumeReady else { return }
-        let toDelete = savedSession
-        savedSession = nil   // audit A9: the results card is still on screen for its fade; it must not read a deleted row
-        if let toDelete {
-            // Once the results (which read it) have faded off — then it can go.
-            Task { @MainActor in
-                _ = await CircleGate.pause(CircleMomentTiming.outDone + CircleMotion.quick)
-                SessionDeletion.delete([toDelete], in: context)
-            }
-        }
-        SleepMorning.clear()
-        let doze = Date().timeIntervalSince(r.lastTapAt ?? Date())
-        savedSession = nil
-        sleptSaved = false
-        sleptDark = false
-        sleepResume = nil
-        sleepResumeReady = false
-        startTime = r.startTime ?? Date()
-        totalPauseInSession = r.totalPause + max(doze, 0)
-        endTime = r.endTime?.addingTimeInterval(max(doze, 0))
-        sharedState.targetCount = r.targetCount
-        sharedState.selectedTask = r.task
-        // The ring where it was (the stop emptied it; it used to wait for the next tap).
-        if sharedState.selectedMode == 1 {
-            if totalTime > 0 { progressFraction = CGFloat(Int(secsPassed + timeOffset)) / TimeInterval(totalTime) }   // the ticker's own
-        } else {
-            refreshCountProgress()
-        }
-        paused = false
-        timerIsActive = true
-        // The counter's dim on at once, under the results' own (fading with them): never a frame
-        // without either — its usual 0.5 s fade-in was the bright flash (owner).
-        var quiet = Transaction(); quiet.disablesAnimations = true
-        withTransaction(quiet) { toggleInactivityTimer = true }
-        startTicker()
-        inactivityTimerHandler(run: "restart")
-        updateIdleTimer()
-        triggerSomeVibration(type: .light)
     }
 
     private func completeStopTimer() {

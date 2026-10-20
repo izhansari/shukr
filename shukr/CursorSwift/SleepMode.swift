@@ -482,6 +482,249 @@ struct MorningCurtain: View {
     }
 }
 
+// MARK: - The session's half (tasbeehView)
+
+/// Sleep mode inside a counting session: the inactivity countdown, the finish that saves the session asleep, the
+/// quiet close after it, "Keep counting", and what leaving the app does (cleanup-map tangle 5, step 7: moved out of
+/// tasbeehView.swift; the session's state stays in its models, TasbeehModels.swift).
+extension tasbeehView {
+    /// What "Keep counting" needs to carry the session on after sleep mode saved it (owner,
+    /// sleep-keep-going): taken just before the save, since the stop clears these a beat later.
+    struct SleepResume {
+        var startTime: Date?, endTime: Date?, totalPause: Double
+        var targetCount: String, task: TaskModel?, lastTapAt: Date?
+    }
+
+    /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
+    /// 10 s "You still there?" countdown, then the session is saved ending at the last tap.
+    var inactivityLimit: TimeInterval {
+        #if DEBUG
+        // -sleepLimit N: a shorter wait for testing sleep mode in the simulator.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-sleepLimit"), i + 1 < args.count, let n = Double(args[i + 1]) { return n }
+        #endif
+        return 45
+    }
+
+    func inactivityTimerHandler(run: String) {
+        if(toggleInactivityTimer){
+            switch run{
+            case "restart": do {
+                print("start inactivity timer with limit of \(inactivityLimit)")
+                inactivityTimer?.invalidate() // Invalidate any existing timer
+                showInactivityAlert = false // set it to false just to be sure.
+                timeSinceLastInteraction = 0 // Reset time since last interaction
+                var localCountDown = 11
+                
+                inactivityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+                    timeSinceLastInteraction += 1.0
+                    if(offsetY != 0) {
+                        print("touching screen -- resetting from \(timeSinceLastInteraction) out of  \(inactivityLimit) AND showInactivityAlert = \(showInactivityAlert)")
+                        timeSinceLastInteraction = 0
+                        showInactivityAlert = false
+                    }
+                    if timeSinceLastInteraction >= inactivityLimit{ // run if tasbeeh hasnt changed for span of our limit
+                        showInactivityAlert = true
+                        localCountDown -= 1
+                        countDownForAlert = localCountDown
+                    }
+                    if localCountDown <= 0 {
+                        finishAsleep()
+//                        isPresented = false
+                    }
+                    
+                }
+            }
+            case "stop": do {
+                print("stopping inactivity timer")
+                inactivityTimer?.invalidate()
+                showInactivityAlert = false
+            }
+            default:
+                print("yo bro invalid use of inactivityTimerHandler func")
+            }
+        }
+    }
+
+    /// Sleep mode ended the session (no tap for a while, or the app left while counting): saved now
+    /// — the app may be suspended any moment — ending at the last tap, marked `endedAsleep`.
+    private func finishAsleep() {
+        guard timerIsActive else { return }
+        stoppedDueToInactivity = true
+        endedAsleep = true
+        sleepResume = SleepResume(startTime: startTime, endTime: endTime, totalPause: totalPauseInSession,
+                                  targetCount: sharedState.targetCount, task: sharedState.selectedTask,
+                                  lastTapAt: lastTapAt)
+        sleepResumeReady = false
+        stopTimer()
+        try? context.save()
+        // Off now, not 0.5 s later in completeStopTimer: iOS can kill the app before that runs, and
+        // sleep mode was still on for the next session (seen on his phone). The countdown timer is
+        // stopped first — the handler does nothing once sleep is off, so completeStopTimer can't.
+        inactivityTimerHandler(run: "stop")
+        toggleInactivityTimer = false
+        let inBackground = UIApplication.shared.applicationState == .background
+        if let savedSession {
+            SleepMorning.remember(savedSession, endedAt: lastTapAt ?? Date(), armed: inBackground)
+        }
+        // iOS's own auto-lock takes over from here: the screen must never stay on after he's
+        // asleep (owner: "so long as we dont risk the screen never turning off").
+        UIApplication.shared.isIdleTimerDisabled = false
+        if inBackground {
+            NotificationCenter.default.post(name: WelcomeGate.raiseCurtain, object: nil)   // black before iOS's picture
+            closeAfterSleep()          // locked while counting: no results screen on wake
+        } else {
+            sleptSaved = true          // the countdown ended it: the results screen until the lock…
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.sleptResultsSeconds) {
+                if sleptSaved { withAnimation(.easeInOut(duration: 1.2)) { sleptDark = true } }   // …then black
+            }
+        }
+        #if DEBUG
+        print("😴 finished asleep · background \(inBackground) · idle timer disabled: \(UIApplication.shared.isIdleTimerDisabled)")
+        #endif
+    }
+
+    /// Close the counter after sleep mode ended a session — never through the results screen.
+    private func closeAfterSleep() {
+        sleptSaved = false
+        sleptDark = false
+        sleepResume = nil
+        resumeWanted = false
+        isPresented = false
+        resetSharedState()
+    }
+
+    func requestKeepCounting() {
+        if sleepResumeReady { keepCountingAfterSleep() } else { resumeWanted = true }
+    }
+
+    /// "Keep counting" on the results after a sleep finish: he was only dozing. The saved row goes and
+    /// the same session carries on at the same count with sleep still on; the doze (last tap → now)
+    /// counts as a pause, so it's saved once at its real end and the pace stays honest.
+    func keepCountingAfterSleep() {
+        guard let r = sleepResume, sleepResumeReady else { return }
+        let toDelete = savedSession
+        savedSession = nil   // audit A9: the results card is still on screen for its fade; it must not read a deleted row
+        if let toDelete {
+            // Once the results (which read it) have faded off — then it can go.
+            Task { @MainActor in
+                _ = await CircleGate.pause(CircleMomentTiming.outDone + CircleMotion.quick)
+                SessionDeletion.delete([toDelete], in: context)
+            }
+        }
+        SleepMorning.clear()
+        let doze = Date().timeIntervalSince(r.lastTapAt ?? Date())
+        savedSession = nil
+        sleptSaved = false
+        sleptDark = false
+        sleepResume = nil
+        sleepResumeReady = false
+        startTime = r.startTime ?? Date()
+        totalPauseInSession = r.totalPause + max(doze, 0)
+        endTime = r.endTime?.addingTimeInterval(max(doze, 0))
+        sharedState.targetCount = r.targetCount
+        sharedState.selectedTask = r.task
+        // The ring where it was (the stop emptied it; it used to wait for the next tap).
+        if sharedState.selectedMode == 1 {
+            if totalTime > 0 { progressFraction = CGFloat(Int(secsPassed + timeOffset)) / TimeInterval(totalTime) }   // the ticker's own
+        } else {
+            refreshCountProgress()
+        }
+        paused = false
+        timerIsActive = true
+        // The counter's dim on at once, under the results' own (fading with them): never a frame
+        // without either — its usual 0.5 s fade-in was the bright flash (owner).
+        var quiet = Transaction(); quiet.disablesAnimations = true
+        withTransaction(quiet) { toggleInactivityTimer = true }
+        startTicker()
+        inactivityTimerHandler(run: "restart")
+        updateIdleTimer()
+        triggerSomeVibration(type: .light)
+    }
+
+    /// Leaving the app mid-session, sleep mode's part (true when it took the change):
+    /// Sleep mode on and counting: the phone locking or leaving the app means he's asleep —
+    /// finish and save, ending at the last tap (he woke up on the pause screen before:
+    /// pausing stopped the inactivity timer).
+    func sleepModeTookScenePhase(_ newScenePhase: ScenePhase) -> Bool {
+        // Saved by the countdown and now the phone has locked: close quietly in the background.
+        if sleptSaved {
+            if newScenePhase == .background {
+                NotificationCenter.default.post(name: WelcomeGate.raiseCurtain, object: nil)   // black before iOS's picture
+                closeAfterSleep()
+            }
+            return true
+        }
+        // Paused with sleep on counts too: auto-lock would leave him on the pause screen (or iOS
+        // would kill the app and lose the session).
+        // Inactive alone (the task switcher, Control Center) pauses as usual — he brings the pause
+        // screen up that way (owner); the lock (inactive, then background) then finishes it.
+        if toggleInactivityTimer && timerIsActive && newScenePhase == .background {
+            finishAsleep()
+            return true
+        }
+        return false
+    }
+}
+
+// MARK: - The morning card's hand-off (PrayerTimesView)
+
+/// The Salah page's half: be on it while the app is away, then open the card once nothing covers the circle
+/// (cleanup-map tangle 5, step 7: moved out of PrayerTimesAndTracker.swift; `morningSession` stays its @State).
+extension PrayerTimesView {
+    /// A morning card is waiting: be on the Salah page (circle showing) while the app is away, so the
+    /// next open's welcome and the card draw on the real circle from the first frame. Left on the Zikr
+    /// page (where the session started), the circle's last frame was off screen and the welcome
+    /// started half off the screen (owner, sleep morning). Behind the black curtain, so unseen.
+    func goToSalahForMorningCard() {
+        guard SleepMorning.pendingID != nil else { return }
+        sharedState.go(to: .main, animated: false)   // in this turn: the curtain's snapshot is next
+        SalahSheetDrag.closeQuietly(sharedState)
+    }
+
+    /// Sleep mode ended a session: once nothing is over the Salah page, go to it (circle showing) and
+    /// open the morning card on its circle — under the welcome while it plays, which lands on the card. It waits on the
+    /// stage (the app active; no cover — the session, a pushed page, a sheet, the setup, the map), waking when that
+    /// changes: it retried every 0.5 s, 40 times (tr-final).
+    func showMorningCardWhenClear() {
+        guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed else { return }
+        morningWait?.cancel()
+        morningWait = Task { await showMorningCard() }
+    }
+
+    private func showMorningCard() async {
+        let stage = CircleStage.shared
+        // Not waiting for the welcome: the card goes up under it, so the welcome lands on its ring.
+        guard await stage.until(deadline: Self.morningCardDeadline, { stage.sceneActive && CircleCover.nothingOverCircle }),
+              morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed,
+              let session = SleepMorning.pending(in: context) else { return }
+        SalahSheetDrag.closeQuietly(sharedState)
+        // The card draws round the circle's frame: mount it once the pager rests on Salah (at once — the page change
+        // is quiet — but measured, not guessed: audit D, finding 2).
+        await sharedState.navigate(to: .main, animated: false)
+        guard !Task.isCancelled, morningSession == nil, SleepMorning.pendingID != nil else { return }
+        morningSession = session
+    }
+
+    private static let morningCardDeadline: Double = 20
+
+    /// The card itself, over the page while `morningSession` is set.
+    @ViewBuilder var morningCard: some View {
+        if let morningSession {
+            MorningCurtain(session: morningSession, onDone: {
+                SleepMorning.clear()
+                self.morningSession = nil
+            }, onHistory: {
+                SleepMorning.clear()
+                self.morningSession = nil
+                // History is the Zikr tab's: locked, the Zikr page and its lock instead (ZikrLock).
+                if ZikrLock.shared.locked { sharedState.go(to: .zikr) } else { showZikrHistory = true }
+            })
+            .transition(.identity)
+        }
+    }
+}
+
 extension CircleMotion {
     /// The morning card round the circle (MorningCurtain).
     enum Morning {

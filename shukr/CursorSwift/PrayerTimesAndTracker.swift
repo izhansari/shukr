@@ -81,7 +81,7 @@ struct PrayerTimesView: View {
     @State var showMantrasPage = false
     @State var showZikrHistory = false
     /// A session sleep mode ended: shown round the Salah circle the next time the page is up.
-    @State private var morningSession: SessionDataModel?
+    @State var morningSession: SessionDataModel?
     @State private var showInsightsPage = false
     @State private var showOldInsights = false
     @State var showNamesPage = false
@@ -108,40 +108,7 @@ struct PrayerTimesView: View {
     @State var demoSadaqah = false   // DEBUG `-demoSadaqah`: the Sadaqah page over the page
     #endif
 
-    /// A morning card is waiting: be on the Salah page (circle showing) while the app is away, so the
-    /// next open's welcome and the card draw on the real circle from the first frame. Left on the Zikr
-    /// page (where the session started), the circle's last frame was off screen and the welcome
-    /// started half off the screen (owner, sleep morning). Behind the black curtain, so unseen.
-    private func goToSalahForMorningCard() {
-        guard SleepMorning.pendingID != nil else { return }
-        sharedState.go(to: .main, animated: false)   // in this turn: the curtain's snapshot is next
-        SalahSheetDrag.closeQuietly(sharedState)
-    }
-
-    /// Sleep mode ended a session: once nothing is over the Salah page, go to it (circle showing) and
-    /// open the morning card on its circle — under the welcome while it plays, which lands on the card. It waits on the
-    /// stage (the app active; no cover — the session, a pushed page, a sheet, the setup, the map), waking when that
-    /// changes: it retried every 0.5 s, 40 times (tr-final).
-    private func showMorningCardWhenClear() {
-        guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed else { return }
-        morningWait?.cancel()
-        morningWait = Task { await showMorningCard() }
-    }
-
-    private func showMorningCard() async {
-        let stage = CircleStage.shared
-        // Not waiting for the welcome: the card goes up under it, so the welcome lands on its ring.
-        guard await stage.until(deadline: Self.morningCardDeadline, { stage.sceneActive && CircleCover.nothingOverCircle }),
-              morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed,
-              let session = SleepMorning.pending(in: context) else { return }
-        SalahSheetDrag.closeQuietly(sharedState)
-        // The card draws round the circle's frame: mount it once the pager rests on Salah (at once — the page change
-        // is quiet — but measured, not guessed: audit D, finding 2).
-        await sharedState.navigate(to: .main, animated: false)
-        guard !Task.isCancelled, morningSession == nil, SleepMorning.pendingID != nil else { return }
-        morningSession = session
-    }
-    @State private var morningWait: Task<Void, Never>?
+    @State var morningWait: Task<Void, Never>?
     @State private var tourWait: Task<Void, Never>?
     /// Nothing else owns the Salah page: the tour may start, or show (audit A4).
     private var tourCanStart: Bool {
@@ -149,7 +116,6 @@ struct PrayerTimesView: View {
         return !stage.pageHidden && stage.sceneActive && stage.lost == nil && morningSession == nil
             && !somethingCovers && !showTasbeehPage && !FirstRunSetup.isShowing && !WelcomeTarget.playing
     }
-    private static let morningCardDeadline: Double = 20
 
     /// The tour's invitation, a breath after the page is the user's (the welcome landed, or the setup ended).
     private func inviteToTour(after seconds: Double) {
@@ -835,20 +801,7 @@ struct PrayerTimesView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.raiseCurtain)) { _ in goToSalahForMorningCard() }
-        .overlay {
-            if let morningSession {
-                MorningCurtain(session: morningSession, onDone: {
-                    SleepMorning.clear()
-                    self.morningSession = nil
-                }, onHistory: {
-                    SleepMorning.clear()
-                    self.morningSession = nil
-                    // History is the Zikr tab's: locked, the Zikr page and its lock instead (ZikrLock).
-                    if ZikrLock.shared.locked { sharedState.go(to: .zikr) } else { showZikrHistory = true }
-                })
-                .transition(.identity)
-            }
-        }
+        .overlay { morningCard }
         // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.
         .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
             viewModel.reconcileAfterWidgetWrites()
