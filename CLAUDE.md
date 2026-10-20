@@ -222,6 +222,8 @@ it — launch with a `-demo…` arg (they never ask), or erase your sim. On his 
   26.1+, else the Shortcut).
 - **setup-tour.md** — First-run setup (FirstRunSetup.swift: hadith → steps → review → bismillah → opening; Skip = the
   next step; the permission pages' frost), lost location, the App tour (Tour.swift).
+- **new-user-moments.md** — everything a user sees once (setup, tours, the Zikr lock, first-time hints, celebrations)
+  and how to see it again; a new one-time screen adds its row there in the same commit.
 - **map-mosques.md** — Map & qibla (UIKit MKMapView, one sheet, the Explore dock), mosques, My masajid, masjid-aware
   prayers (MasjidDetector, Jumu'ah, arrival duas).
 - **widgets-shortcuts.md** — Widgets (Prayers, Lock Screen, Zikr, Name, Ayah, Control Center), Shortcuts & Siri (ten
