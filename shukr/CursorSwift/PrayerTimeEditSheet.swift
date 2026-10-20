@@ -118,8 +118,12 @@ struct PrayerTimeEditSheet: View {
                 .padding(.top, 20)
                 .padding(.horizontal, 4)
 
-            // Writing a note crossfades the boxes to the note's box in the same room (owner, 2026-10-19: "id rather the current
-            // sheet's bentos just crossfades to show the note editor box at the size the sheet is at"): the sheet never moves.
+            // Writing a note crossfades the boxes to one note box of four lines, and the sheet comes down to fit it, above the
+            // keyboard (owner, 2026-10-20: "make it smaller like 1/3 or 3/8 the height…? idk something that fits 4 lines or
+            // so"; was the boxes' full room, 2026-10-19: "at the size the sheet is at").
+            if writingNote {
+                noteEditor.transition(.opacity)
+            } else {
             Group {
                 if tourTip && typeSize.isAccessibilitySize {
                     ringBox(size: 240)   // the tour at the largest text: the ring alone, full height
@@ -134,10 +138,8 @@ struct PrayerTimeEditSheet: View {
                     grid
                 }
             }
-            .opacity(writingNote ? 0 : 1)
-            .allowsHitTesting(!writingNote)
-            // An overlay, so the note's box is exactly the boxes' room and never sizes the sheet.
-            .overlay { if writingNote { noteEditor.transition(.opacity) } }
+            .transition(.opacity)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 4)   // the home bar's own inset is under it (Design saw ~50 pt spare at 16 + 8)
@@ -191,7 +193,9 @@ struct PrayerTimeEditSheet: View {
                              : typeSize.isAccessibilitySize ? [fitted, .large] : [fitted])
         .presentationDragIndicator(.hidden)
         // The tour's step is the time alone (only the intended move): no swipe away mid-step.
-        .interactiveDismissDisabled(tourTip)
+        // No swipe away mid-step in the tour, nor while writing a note (owner, 2026-10-20: "make no swipe to dismiss on note
+        // editor"): the keyboard's ✓ saves and brings the boxes back.
+        .interactiveDismissDisabled(tourTip || writingNote)
         .presentationCornerRadius(28)
     }
 
@@ -348,7 +352,11 @@ struct PrayerTimeEditSheet: View {
 
     private func ringBox(size: CGFloat) -> some View {
         card {
-            PrayerTimeEditor(prayer: prayer, draft: $draft, range: range, ringSize: size, boxed: true, onRelease: release)
+            // The knob (Zoe's K2, owner 2026-10-20: "k2 then"): drag left / right anywhere in the box; it saves at rest.
+            // The map's prayer page keeps PrayerTimeEditor's ring + wheel.
+            PrayerTimeKnob(prayer: prayer, draft: $draft, range: range, onRelease: release)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minHeight: size)
         }
         .overlay(alignment: .topLeading) {
             if timeEdited && !tourTip {
@@ -389,7 +397,9 @@ struct PrayerTimeEditSheet: View {
     private var noteEditor: some View {
         TextField("Add a note", text: $draftNote, axis: .vertical)
             .font(.body)
-            .lineLimit(1...8)
+            .lineLimit(1...4)
+            // Four lines of room whatever is written (`reservesSpace` hid the "Add a note" placeholder).
+            .frame(minHeight: UIFont.preferredFont(forTextStyle: .body).lineHeight * 4, alignment: .topLeading)
             .focused($noteFocused)
             .submitLabel(.done)
             .onChange(of: draftNote) { _, text in
@@ -401,7 +411,7 @@ struct PrayerTimeEditSheet: View {
             }
             .onSubmit(finishNote)
             .padding(14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(boxFill))
             .contentShape(Rectangle())
             .onTapGesture { noteFocused = true }
