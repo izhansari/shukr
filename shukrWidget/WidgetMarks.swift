@@ -44,9 +44,10 @@ struct MarkCompleteIntent: LiveActivityIntent {
 }
 
 extension SharedStore {
-    /// Marks the prayer `name` on the day of `start` complete, scored at the tap. The widget's
-    /// checkmark (`MarkCompleteIntent`) and the notification action "I already prayed"
-    /// (`NotificationDelegate`) both come here. Writes through its own container and sets
+    /// Marks the prayer `name` on the day of `start` complete, scored at the tap. The widget's ✓
+    /// (`MarkCompleteIntent`) runs in shukr through `PrayerWindowHooks.widgetMark`; this is the store
+    /// path for a background launch (the hook isn't set yet) and the notification action "I already
+    /// prayed" (`NotificationDelegate`). Writes through its own container and sets
     /// `widgetWroteStoreKey`, so the app re-reads on its next activation. Returns false when
     /// the prayer hasn't started, is already complete, or the store can't be opened.
     @discardableResult
