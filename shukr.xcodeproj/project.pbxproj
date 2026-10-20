@@ -37,6 +37,8 @@
 		369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9582CB09280003A58B7 /* DuaPageView.swift */; };
 		36E0E0A72D417F17005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
 		36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
+		FAB1E0000000000000000019 /* ShortcutIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000018 /* ShortcutIntents.swift */; };
+		FAB1E0000000000000000020 /* ShortcutIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000018 /* ShortcutIntents.swift */; };
 		FAB1E0000000000000000016 /* WidgetMarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000015 /* WidgetMarks.swift */; };
 		FAB1E0000000000000000017 /* WidgetMarks.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000015 /* WidgetMarks.swift */; };
 		FAB1E0000000000000000013 /* PrayerUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAB1E0000000000000000012 /* PrayerUtils.swift */; };
@@ -178,6 +180,7 @@
 		369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTasksView.swift; sourceTree = "<group>"; };
 		369BE9582CB09280003A58B7 /* DuaPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuaPageView.swift; sourceTree = "<group>"; };
 		36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTargetForIntents.swift; sourceTree = "<group>"; };
+		FAB1E0000000000000000018 /* ShortcutIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutIntents.swift; sourceTree = "<group>"; };
 		FAB1E0000000000000000015 /* WidgetMarks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetMarks.swift; sourceTree = "<group>"; };
 		FAB1E0000000000000000012 /* PrayerUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerUtils.swift; sourceTree = "<group>"; };
 		FAB1E0000000000000000009 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
@@ -376,6 +379,7 @@
 			isa = PBXGroup;
 			children = (
 				36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */,
+				FAB1E0000000000000000018 /* ShortcutIntents.swift */,
 				FAB1E0000000000000000015 /* WidgetMarks.swift */,
 				FAB1E0000000000000000012 /* PrayerUtils.swift */,
 				FAB1E0000000000000000009 /* SharedStore.swift */,
@@ -679,6 +683,7 @@
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
 				36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */,
+				FAB1E0000000000000000019 /* ShortcutIntents.swift in Sources */,
 				FAB1E0000000000000000016 /* WidgetMarks.swift in Sources */,
 				FAB1E0000000000000000013 /* PrayerUtils.swift in Sources */,
 				FAB1E0000000000000000010 /* SharedStore.swift in Sources */,
@@ -716,6 +721,7 @@
 				A1B2C3D4E5F60718293A4B5C /* MoreWidgets.swift in Sources */,
 				369A06012C5E8635002CD697 /* shukrWidgetLiveActivity.swift in Sources */,
 				36E0E0A72D417F17005C62BB /* SharedTargetForIntents.swift in Sources */,
+				FAB1E0000000000000000020 /* ShortcutIntents.swift in Sources */,
 				FAB1E0000000000000000017 /* WidgetMarks.swift in Sources */,
 				FAB1E0000000000000000014 /* PrayerUtils.swift in Sources */,
 				FAB1E0000000000000000011 /* SharedStore.swift in Sources */,
