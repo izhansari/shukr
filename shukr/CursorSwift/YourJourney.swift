@@ -1355,6 +1355,13 @@ struct YourJourneyStats {
         }
     }
 
+    /// A day for StreakWalk: all excused skips (neither counts nor breaks), a streak day counts, anything else breaks.
+    static func verdict(_ d: JourneyLog.Day, on date: Date, in log: JourneyLog, _ excused: Excused.Days,
+                        goal: PrayerGoal) -> Excused.StreakDay {
+        if excusedAll(d, on: date, in: log, excused) { return .skip }
+        return streakDay(d, goal: goal) ? .counts : .breaks
+    }
+
     static func kind(_ d: JourneyLog.Day) -> Kind {
         guard d.active else { return .none }
         let excused = d.marks.filter { $0 == .excused }.count
@@ -1479,34 +1486,19 @@ struct YourJourneyStats {
             // today" over a 25-day streak there): its rule, and today never breaks it. It counted only all-in-time days, and
             // a prayer missed so far today reset it.
             let goal = PrayerGoal.current
-            var run = 0
-            var runStart: Date?
             // Every day, the lifetime best; from the fresh start, its own best and the streak (owner's pick, 2026-10-18).
-            var freshRun = 0
-            var freshStart: Date?
+            var all = StreakWalk.Forward(today: today), fromFresh = StreakWalk.Forward(today: today)
             var date = cal.startOfDay(for: first)
             while date <= today {
-                let d = log.day(date)
-                let counted = log.countsFrom.map { date >= $0 } ?? true
-                if Self.excusedAll(d, on: date, in: log, excused) {
-                    // An excused day neither counts nor breaks.
-                } else if Self.streakDay(d, goal: goal) {
-                    if run == 0 { runStart = date }
-                    run += 1
-                    if run >= lifetime.best, let s = runStart { lifetime.best = run; lifetime.bestDays = s...date }
-                    if counted {
-                        if freshRun == 0 { freshStart = date }
-                        freshRun += 1
-                        if freshRun >= fresh.best, let s = freshStart { fresh.best = freshRun; fresh.bestDays = s...date }
-                    }
-                } else if date != today {
-                    run = 0
-                    freshRun = 0
-                }
+                let verdict = Self.verdict(log.day(date), on: date, in: log, excused, goal: goal)
+                all.add(date, verdict)
+                if log.countsFrom.map({ date >= $0 }) ?? true { fromFresh.add(date, verdict) }
                 guard let next = cal.date(byAdding: .day, value: 1, to: date) else { break }
                 date = next
             }
-            currentStreak = freshRun
+            lifetime.best = all.best; lifetime.bestDays = all.bestDays
+            fresh.best = fromFresh.best; fresh.bestDays = fromFresh.bestDays
+            currentStreak = fromFresh.run
         }
     }
 }

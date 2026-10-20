@@ -175,21 +175,14 @@ extension PrayerViewModel {
         let excused = Excused.Days(ranges)
         let calendar = Calendar.current
         let ok = { (p: PrayerModel) in p.isCompleted && goal.meets(score: p.numberScore ?? 0) }
-        var run = 0, best = 0
-        var bestEnd = todayStart
+        var walk = StreakWalk.Forward(today: todayStart)
         var day = first
         while day <= todayStart {
-            switch Excused.streakDay(byDay[day] ?? [], ok: ok, ranges: ranges, touched: excused.excludes(day)) {
-            case .counts:
-                run += 1
-                if run >= best { best = run; bestEnd = day }
-            case .skip: break
-            case .breaks: if day != todayStart { run = 0 }
-            }
+            walk.add(day, Excused.streakDay(byDay[day] ?? [], ok: ok, ranges: ranges, touched: excused.excludes(day)))
             guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
             day = next
         }
-        return (best, bestEnd)
+        return (walk.best, walk.bestDays?.upperBound ?? todayStart)
     }
 
     /// Runs on app activation and at the start of every streak update. It used to only zero the
@@ -223,8 +216,7 @@ extension PrayerViewModel {
         // Walk back from yesterday a week at a time and stop at the first day that breaks both runs
         // (a typical call reads one or two weeks of rows, not 1000 days — it runs on every Salah
         // page appear and every mark). Rows are keyed by the calendar day their prayers start on.
-        var streakRun = 0, inTimeRun = 0
-        var streakAlive = true, inTimeAlive = true
+        var streak = StreakWalk.Backward(), inTime = StreakWalk.Backward()
         var batchEnd = todayStart                     // exclusive
         var day = yesterdayStart
         // Excused days by Excused.streakDay: a partly excused day with the rest prayed adds to a run, a fully excused one is
@@ -253,21 +245,13 @@ extension PrayerViewModel {
                 if let countsFrom, day < countsFrom { break batches }
                 let dayRows = byDay[day] ?? []
                 let touched = excused.excludes(day)
-                if streakAlive {
-                    switch Excused.streakDay(dayRows, ok: { self.gradingCriteria(for: $0) }, ranges: ranges, touched: touched) {
-                    case .counts: streakRun += 1
-                    case .skip: break
-                    case .breaks: streakAlive = false
-                    }
+                if streak.alive {
+                    streak.add(Excused.streakDay(dayRows, ok: { self.gradingCriteria(for: $0) }, ranges: ranges, touched: touched))
                 }
-                if inTimeAlive {
-                    switch Excused.streakDay(dayRows, ok: inWindow, ranges: ranges, touched: touched) {
-                    case .counts: inTimeRun += 1
-                    case .skip: break
-                    case .breaks: inTimeAlive = false
-                    }
+                if inTime.alive {
+                    inTime.add(Excused.streakDay(dayRows, ok: inWindow, ranges: ranges, touched: touched))
                 }
-                if !streakAlive && !inTimeAlive { break batches }
+                if !streak.alive && !inTime.alive { break batches }
                 guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break batches }
                 day = previous
             }
@@ -279,7 +263,7 @@ extension PrayerViewModel {
         // The day streak (by the chosen streak mode). Only changed values are written: each write
         // re-renders the views bound to these keys.
         let todayCounted = PrayerDay.start(for: lastStreakDate) == todayStart
-        let newStreak = todayCounted ? streakRun + 1 : streakRun
+        let newStreak = todayCounted ? streak.run + 1 : streak.run
         if prayerStreak != newStreak { prayerStreak = newStreak }
         if !todayCounted && PrayerDay.start(for: lastStreakDate) != yesterdayStart { lastStreakDate = yesterdayStart }
         if prayerStreak > maxPrayerStreak {
@@ -289,7 +273,7 @@ extension PrayerViewModel {
 
         // In-time days (all five within their windows).
         let inTimeTodayCounted = PrayerDay.start(for: Date(timeIntervalSince1970: lastOnTimeStreakDate_TI)) == todayStart
-        let newInTime = inTimeTodayCounted ? inTimeRun + 1 : inTimeRun
+        let newInTime = inTimeTodayCounted ? inTime.run + 1 : inTime.run
         if onTimeStreak != newInTime { onTimeStreak = newInTime }
         if !inTimeTodayCounted && lastOnTimeStreakDate_TI != yesterdayStart.timeIntervalSince1970 {
             lastOnTimeStreakDate_TI = yesterdayStart.timeIntervalSince1970
