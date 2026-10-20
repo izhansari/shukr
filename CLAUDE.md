@@ -79,8 +79,10 @@ text of your message, so I can find it from that at least, along with my respons
 **Context:** state lives in files (this file, `docs/features/`, the board, memory), so a fresh start loses nothing.
 Compact or start fresh at an item boundary (after commit + push); first overwrite `shukrGit/board/handoff-<name>.md`
 (≤ 20 lines: now, next, half-done, traps). Your role's own rules live in `shukrGit/board/roles/<name>.md` (only ever
-edited line by line, never overwritten; shared memory holds only rules for every agent — owner, 2026-10-19). On every
-start and after a compaction, re-read this file, your handoff and your role file from disk, and open your next reply with "Compacted — picked up from <handoff>" (owner, 2026-10-17: he couldn't tell it had happened).
+edited line by line, never overwritten; shared memory holds only rules for every agent — owner, 2026-10-19). A hook
+(`board/role-hook.py`) shows you your role file at every start and after a compaction — by your folder, or in
+`shukrGit/shukr` by the name you register (`zsh board/agent.sh register <name>`, so register first). On every start and
+after a compaction, re-read this file and your handoff from disk, and open your next reply with "Compacted — picked up from <handoff>" (owner, 2026-10-17: he couldn't tell it had happened).
 A hook (`board/context-hook.py`, in ~/.claude/settings.json) measures the chat's real context and tells you once at
 60, 70, 80 and 90 % of 1M (it compacts itself at ~967k): at the next item boundary offer him close-out + a compact, once
 — never stop mid-item for it (owner, 2026-10-19: "if context is getting high the agents suggest to close out and compact").
