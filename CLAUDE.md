@@ -18,8 +18,8 @@ Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidg
 ## Team (owner 2026-10-15: lean, fast, accurate)
 
 **Who:** Izhan (owner) decides and tests. He gives the builders — Frank (organizer), Sami, Zoe (design; builds
-when he says) — one task each and they work in parallel, any area; Bradley takes his dumps (/dump), Fable reviews and
-builds patches that Frank checks and pushes. Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch`, Bradley in `shukrGit/shukr-bradley`, Zoe (design)
+when he says) — one task each and they work in parallel, any area; Bradley takes his dumps (/dump), Fable reviews, audits and does the
+big behaviour-unchanged refactors, pushing them himself (Frank reviews after; rules in `board/roles/fable.md`). Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch`, Bradley in `shukrGit/shukr-bradley`, Zoe (design)
 in `shukrGit/shukr-zoe`, Fable in `shukrGit/shukr-fable`: one top-level folder each, never a worktree inside another's
 (owner, 2026-10-19).
 
