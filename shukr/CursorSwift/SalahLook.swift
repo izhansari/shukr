@@ -97,8 +97,18 @@ extension SalahLook {
         // old install's move, and run in this order on a new one the last (v1) put it back on Sunken well (Sami, 2026-10-19:
         // a new sim came up on the well, its card rising from pressed to raised).
         if !d.bool(forKey: "salahLook.seeded.v1") {
-            for v in 1...5 { d.set(true, forKey: "salahLook.seeded.v\(v)") }
+            for v in 1...6 { d.set(true, forKey: "salahLook.seeded.v\(v)") }
             return
+        }
+        // Installs made before that fix (every team sim, recreated 2026-10-18) were left on Sunken well by the seeding
+        // order, not by a pick (owner, 2026-10-19: "why is the recessed look everywhere for the list instead of the new look
+        // we've made … it keeps popping up in different sim tests"): once, back to the main build's look.
+        if !d.bool(forKey: "salahLook.seeded.v6") {
+            d.set(true, forKey: "salahLook.seeded.v6")
+            if d.string(forKey: key) == SalahLook.well.rawValue {
+                d.removeObject(forKey: key)
+                d.removeObject(forKey: linesKey)
+            }
         }
         // The accordion became the rows' motion (owner, 2026-10-14): once, onto it.
         if !d.bool(forKey: "salahLook.seeded.v3") {
