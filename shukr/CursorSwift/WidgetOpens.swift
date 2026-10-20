@@ -276,3 +276,21 @@ extension PrayerTimesView {
         OverlayAlert.show(alert)
     }
 }
+
+/// A marked row tapped in the Prayers widget's times list: which prayer, on which day
+/// (`WidgetListMarks.unmarkKey`, "Asr|<start, seconds since 1970>").
+struct WidgetUnmarkRequest: Identifiable {
+    let name: String
+    let start: Date
+    /// What the alert calls it: "Jumu'ah" for a Friday Dhuhr prayed at a masjid.
+    var displayName: String
+    var id: String { "\(name)|\(start.timeIntervalSince1970)" }
+
+    init?(_ raw: String) {
+        let parts = raw.split(separator: "|")
+        guard parts.count == 2, let seconds = Double(parts[1]) else { return nil }
+        name = String(parts[0])
+        start = Date(timeIntervalSince1970: seconds)
+        displayName = name
+    }
+}
