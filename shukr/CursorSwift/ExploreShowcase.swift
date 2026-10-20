@@ -927,7 +927,7 @@ struct ShowcasePicture: View {
             Image(systemName: "moon.fill").font(.system(size: 40)).foregroundStyle(Color(red: 0.91, green: 0.89, blue: 0.78))
         case .tasbihFatimah:
             Text("33 · 33 · 34").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(.primary.opacity(0.85))
-        // The real cards (SharedTargetForIntents.swift, PlaceShortcuts.swift) in a Shortcuts sheet, or the tile for an action
+        // The real cards (ShortcutIntents.swift, PlaceShortcuts.swift) in a Shortcuts sheet, or the tile for an action
         // without one (owner: "show the tile or the intent recipe or the card").
         case .siriTimeLeft:
             ShortcutSheetShot(dialog: "\(p.left) left for \(p.name).") {

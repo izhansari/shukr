@@ -5,7 +5,7 @@
 //  shukr's built-in shortcuts (the Shortcuts app's tiles, Siri's phrases, Spotlight). In the app target ONLY: an app
 //  has one AppShortcutsProvider — it was compiled into the widget extension too, and the Shortcuts app showed the tiles
 //  without their colour (owner: "I don't see the colors"). The intents themselves stay shared
-//  (shukrWidget/SharedTargetForIntents.swift).
+//  (shukrWidget/ShortcutIntents.swift, ShortcutCardIntents.swift, OpenShukrIntents.swift).
 //
 
 import AppIntents

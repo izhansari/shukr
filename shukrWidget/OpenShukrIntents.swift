@@ -1,3 +1,10 @@
+//
+//  OpenShukrIntents.swift
+//  shukr (app and widget extension)
+//
+//  The "open shukr to …" intents (widgets, controls, Shortcuts), DeepLinkSignal, WidgetPerf and the DEBUG WidgetSpeedTest.
+//  What was left of SharedTargetForIntents.swift after the split (cleanup-map tangle 3, 2026-10-20).
+//
 
 // MARK: - Intents
 

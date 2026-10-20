@@ -82,7 +82,7 @@ extension shukrWidgetAttributes.ContentState {
 
 
 /// A prayer window's card (Lock Screen) and Dynamic Island. Its views (and `LATuning`, the look's numbers) live in
-/// SharedTargetForIntents.swift so the app's DEBUG tuner can preview the very same card.
+/// LiveActivityCard.swift so the app's DEBUG tuner can preview the very same card.
 struct PrayerWindowLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: PrayerWindowAttributes.self) { context in

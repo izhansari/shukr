@@ -11,7 +11,7 @@
 //  - prayer notifications, Live Activities and the Fajr alarm are not planned; zikr reminders keep coming unless she
 //    pauses them,
 //  - on her estimated day, then 2 and 4 days later, one gentle check-in ("Ready to start again?").
-//  Nothing ends by itself. The record is one JSON list in the app group (`Excused` in SharedTargetForIntents.swift),
+//  Nothing ends by itself. The record is one JSON list in the app group (`Excused` in ExcusedRecord.swift),
 //  so no schema change. Anything new that counts prayers must read its days through `Excused.counts(day:)`.
 //
 

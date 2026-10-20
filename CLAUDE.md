@@ -10,9 +10,9 @@ perf-paging.sh + perf-frames.py (swipe hitches on his phone); the team's board s
 Layout: `shukr/` app target (most UI in `CursorSwift/` — `PrayerTimesAndTracker.swift` is the Salah page + pager —
 plus `tasbeehView.swift`; `Utils.swift` holds what's left of the shared pieces after the 2026-10-18 cleanup),
 `shukr/Models/AllModels.swift` (SwiftData models + `SharedStateClass`), `shukrWidget/`
-(PrayersWidget + the code compiled into BOTH targets — split out of `SharedTargetForIntents.swift` 2026-10-20: SharedStore,
+(PrayersWidget + the code compiled into BOTH targets — split out of SharedTargetForIntents.swift 2026-10-20: SharedStore,
 PrayerUtils, WidgetMarks, ShortcutIntents, ShortcutCardIntents, LiveActivityIntents, LiveActivityCard, ExcusedRecord;
-the old file keeps the "open shukr to …" intents).
+the rest, the "open shukr to …" intents, is OpenShukrIntents.swift).
 Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")`.
 
 ## Team (owner 2026-10-15: lean, fast, accurate)

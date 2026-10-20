@@ -43,7 +43,7 @@ struct shukrApp: App {
 
     var sharedModelContainer: ModelContainer = {
         // Store lives in the app group so the widget can read/write it too. Schema + location
-        // are defined once in SharedStore (SharedTargetForIntents.swift), shared with the widget.
+        // are defined once in SharedStore (SharedStore.swift), shared with the widget.
         // Before anything computes prayer times: a method written for installs that never picked one
         // (Automatic for new installs), and Auto appearance for new installs (the setup recommends it).
         FirstRunSetup.migrateDefaults()
