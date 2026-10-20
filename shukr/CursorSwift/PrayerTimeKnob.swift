@@ -19,6 +19,9 @@ struct PrayerTimeKnob: View {
     let range: ClosedRange<Date>
     /// The knob came to rest after a turn: the sheet saves then (never per minute).
     var onRelease: () -> Void = {}
+    /// Write `draft` every minute while it turns (the tour reads it live). Otherwise only at rest: a write re-renders the
+    /// whole sheet (map, photo, note), which a flick would do every frame.
+    var liveDraft = false
 
     @State private var knob = KnobModel()
     @State private var side: CGFloat = 0
@@ -34,8 +37,11 @@ struct PrayerTimeKnob: View {
     private func date(_ minutes: Double) -> Date { start.addingTimeInterval(minutes * 60) }
     private func minutes(_ d: Date) -> Double { d.timeIntervalSince(start) / 60 }
 
+    /// The minute under the dot (inside the stops, while a rubber band pulls past them): the readout follows the knob
+    /// frame by frame, not the draft.
+    private var shownDate: Date { date(min(max(knob.value.rounded(), lowMin.rounded(.up)), highMin.rounded(.down))) }
     private var score: Double {
-        prayer.isJumuah ? 1 : PrayerScoring.score(start: start, end: end, markedAt: draft)
+        prayer.isJumuah ? 1 : PrayerScoring.score(start: start, end: end, markedAt: shownDate)
     }
 
     // The geometry (S = the box side; spec: R ≈ 0.9 S, the dot's centre S − 38, 1.2° a minute).
@@ -45,8 +51,11 @@ struct PrayerTimeKnob: View {
     private var ptPerMin: CGFloat { radius * CGFloat(Self.degPerMin * .pi / 180) }
 
     var body: some View {
+        // Read here, in body, so every frame of a drag or a coast redraws the arc: read only inside Canvas's closure it went
+        // untracked and the arc stepped a whole minute (~4 pt) at a time (Zoe's check, 2026-10-20).
+        let value = knob.value
         ZStack {
-            Canvas { ctx, size in draw(&ctx, size: size, value: knob.value) }
+            Canvas { ctx, size in draw(&ctx, size: size, value: value) }
             readout
         }
         .contentShape(Rectangle())
@@ -55,6 +64,7 @@ struct PrayerTimeKnob: View {
         .onAppear {
             knob.value = minutes(draft)
             knob.bounds = lowMin...highMin
+            knob.live = liveDraft
             knob.onMinute = { m in
                 let d = date(Double(m))
                 if d != draft { draft = d }
@@ -69,7 +79,7 @@ struct PrayerTimeKnob: View {
         .onChange(of: range) { _, _ in knob.bounds = lowMin...highMin }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Time you prayed")
-        .accessibilityValue("\(shortTimePM(draft.addingTimeInterval(shift))), \(PrayerScoring.points(for: score)) \(gradeWord)")
+        .accessibilityValue("\(shortTimePM(shownDate.addingTimeInterval(shift))), \(PrayerScoring.points(for: score)) \(gradeWord)")
         .accessibilityAdjustableAction { direction in
             let step: Double = direction == .increment ? 1 : -1
             let next = min(max(knob.value.rounded() + step, lowMin), highMin)
@@ -89,7 +99,7 @@ struct PrayerTimeKnob: View {
 
     /// The time ("6:59" + "PM", always: a Qaza can cross noon or midnight) and the score line, centred.
     private var readout: some View {
-        let shown = draft.addingTimeInterval(shift)
+        let shown = shownDate.addingTimeInterval(shift)
         return VStack(spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(Self.clock.string(from: shown))
@@ -100,15 +110,15 @@ struct PrayerTimeKnob: View {
                     .foregroundStyle(.secondary)
             }
             HStack(alignment: .firstTextBaseline, spacing: 6) {
+                // No roll or fade: a turn changes it every frame or two, and an animation behind the finger showed half-rolled
+                // digits and the old word in the new colour (Zoe's check, 2026-10-20). It keeps pace with the time above it.
                 Text("\(PrayerScoring.points(for: score))")
                     .font(.system(size: 24, weight: .light, design: .rounded))
-                    .contentTransition(.numericText(value: score))
+                    .monospacedDigit()
                 Text(gradeWord)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(PrayerScoring.color(for: score))
-                    .contentTransition(.opacity)
             }
-            .animation(.snappy, value: score)
         }
         .lineLimit(1)
         .minimumScaleFactor(0.7)
@@ -222,6 +232,7 @@ final class KnobModel {
     @ObservationIgnored var onMinute: (Int) -> Void = { _ in }
     @ObservationIgnored var onRest: () -> Void = {}
     @ObservationIgnored private(set) var busy = false
+    @ObservationIgnored var live = false
 
     @ObservationIgnored private var grabbedAt: Double = 0
     @ObservationIgnored private var velocity: Double = 0          // minutes per ms
@@ -278,6 +289,7 @@ final class KnobModel {
     private func start() {
         lastFrame = CACurrentMediaTime()
         let l = CADisplayLink(target: DisplayLinkProxy(self), selector: #selector(DisplayLinkProxy.tick))
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: 80, maximum: 120, preferred: 120)   // ProMotion: coast at 120
         l.add(to: .main, forMode: .common)
         link = l
     }
@@ -323,7 +335,7 @@ final class KnobModel {
         let m = Int(v.rounded())
         guard m != lastMinute else { return }
         lastMinute = m
-        if v >= bounds.lowerBound - 0.5, v <= bounds.upperBound + 0.5 { onMinute(min(max(m, Int(bounds.lowerBound.rounded(.up))), Int(bounds.upperBound.rounded(.down)))) }
+        if live, v >= bounds.lowerBound - 0.5, v <= bounds.upperBound + 0.5 { onMinute(min(max(m, Int(bounds.lowerBound.rounded(.up))), Int(bounds.upperBound.rounded(.down)))) }
         let now = CACurrentMediaTime()
         if boundaries.contains(where: { (old - $0) * (v - $0) < 0 }) {
             light.impactOccurred()
@@ -363,9 +375,11 @@ struct HorizontalPan: UIGestureRecognizerRepresentable {
         let x = pan.translation(in: pan.view).x
         switch pan.state {
         case .began:
+            // The ~10 pt the finger moved before the pan was recognised would jump the arc 2–3 min at once: start from here.
+            pan.setTranslation(.zero, in: pan.view)
             context.coordinator.lastMove = CACurrentMediaTime()
+            context.coordinator.lastX = 0
             onBegan()
-            onChanged(x)
         case .changed:
             if abs(x - context.coordinator.lastX) > 0.5 { context.coordinator.lastMove = CACurrentMediaTime() }
             context.coordinator.lastX = x

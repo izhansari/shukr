@@ -354,7 +354,7 @@ struct PrayerTimeEditSheet: View {
         card {
             // The knob (Zoe's K2, owner 2026-10-20: "k2 then"): drag left / right anywhere in the box; it saves at rest.
             // The map's prayer page keeps PrayerTimeEditor's ring + wheel.
-            PrayerTimeKnob(prayer: prayer, draft: $draft, range: range, onRelease: release)
+            PrayerTimeKnob(prayer: prayer, draft: $draft, range: range, onRelease: release, liveDraft: tourTip)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(minHeight: size)
         }
