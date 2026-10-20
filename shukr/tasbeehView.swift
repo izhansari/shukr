@@ -64,6 +64,8 @@ struct tasbeehView: View {
     private var ringAwayForPause: Bool { ringAbove && paused && savedSession == nil && !ringToCentre }
     @Environment(\.modelContext) private var context
     @Environment(SharedStateClass.self) var sharedState
+    /// TasbeehClock (TasbeehModels.swift, cleanup-map tangle 5 step 6): the properties that forward to `clockModel` live there.
+    @State private var clockModel = TasbeehClock()
     
     // AppStorage properties
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
@@ -99,24 +101,21 @@ struct tasbeehView: View {
     
     // State properties
 //    @FocusState private var isNumberEntryFocused
-    @State private var timerIsActive = false
-    @State private var timerbb: Timer? = nil
-    @State private var paused = false
+    private var timerIsActive: Bool { get { clockModel.timerIsActive } nonmutating set { clockModel.timerIsActive = newValue } }
+    private var timerbb: Timer? { get { clockModel.timerbb } nonmutating set { clockModel.timerbb = newValue } }
+    private var paused: Bool { get { clockModel.paused } nonmutating set { clockModel.paused = newValue } }
     @State private var tasbeeh = 0
     /// Counts / seconds already done today when continuing a task: on the ring, not saved again.
     @State private var countOffset = 0
-    @State private var timeOffset: TimeInterval = 0
-    /// What this session itself counted (the saved total).
+    private var timeOffset: TimeInterval { get { clockModel.timeOffset } nonmutating set { clockModel.timeOffset = newValue } }   /// What this session itself counted (the saved total).
     private var sessionCount: Int { tasbeeh - countOffset }
-    @State private var startTime: Date? = nil
-    @State private var endTime: Date? = nil
-    @State private var pauseStartTime: Date? = nil
+    private var startTime: Date? { get { clockModel.startTime } nonmutating set { clockModel.startTime = newValue } }
+    private var endTime: Date? { get { clockModel.endTime } nonmutating set { clockModel.endTime = newValue } }
+    private var pauseStartTime: Date? { get { clockModel.pauseStartTime } nonmutating set { clockModel.pauseStartTime = newValue } }
     @State private var autoStop = true
 
-    @State private var timePassedAtPauseString: String = ""
-    @State private var secsPassedAtPause: TimeInterval = 0
-    @State private var progressFraction: CGFloat = 0
-    /// One ring (SessionHandoff's landing base): where the ring started, where it stood when the session stopped (the
+    private var secsPassedAtPause: TimeInterval { get { clockModel.secsPassedAtPause } nonmutating set { clockModel.secsPassedAtPause = newValue } }
+    private var progressFraction: CGFloat { get { clockModel.progressFraction } nonmutating set { clockModel.progressFraction = newValue } }   /// One ring (SessionHandoff's landing base): where the ring started, where it stood when the session stopped (the
     /// stop empties it), and the ring kept up while the session goes, until its arc has landed.
     @State private var startFraction: CGFloat = 0
     @State private var ringAtStop: CGFloat?
@@ -162,12 +161,11 @@ struct tasbeehView: View {
     @State private var showNotesModal: Bool = false
     @State private var noteModalText = ""
     @State private var takingNotes: Bool = false
-    @State private var inactivityTimer: Timer? = nil
-    @State private var timeSinceLastInteraction: TimeInterval = 0
-    @State private var showInactivityAlert = false
-    @State private var countDownForAlert = 0
-    @State private var stoppedDueToInactivity: Bool = false
-    /// Set by `finishAsleep`; saved on the session (`SessionDataModel.endedAsleep`).
+    private var inactivityTimer: Timer? { get { clockModel.inactivityTimer } nonmutating set { clockModel.inactivityTimer = newValue } }
+    private var timeSinceLastInteraction: TimeInterval { get { clockModel.timeSinceLastInteraction } nonmutating set { clockModel.timeSinceLastInteraction = newValue } }
+    private var showInactivityAlert: Bool { get { clockModel.showInactivityAlert } nonmutating set { clockModel.showInactivityAlert = newValue } }
+    private var countDownForAlert: Int { get { clockModel.countDownForAlert } nonmutating set { clockModel.countDownForAlert = newValue } }
+    private var stoppedDueToInactivity: Bool { get { clockModel.stoppedDueToInactivity } nonmutating set { clockModel.stoppedDueToInactivity = newValue } }   /// Set by `finishAsleep`; saved on the session (`SessionDataModel.endedAsleep`).
     @State private var endedAsleep = false
     @State private var newAvrgTPC: TimeInterval = 0 //calculated on increment and decrement by secondsPassed / tasbeeh
     /// Session seconds (pauses excluded) at the last tap: a session sleep mode ends is saved as
@@ -199,8 +197,8 @@ struct tasbeehView: View {
     @State private var stopCleanupPending = false
     /// The finish buzz already played on the goal's own tap / tick (stopTimer(goal:)): the cleanup doesn't play it again.
     @State private var finishBuzzPlayed = false
-    @State private var totalPauseInSession: Double = 0
-    @State private var secsToReport: TimeInterval = 0
+    private var totalPauseInSession: Double { get { clockModel.totalPauseInSession } nonmutating set { clockModel.totalPauseInSession = newValue } }
+    private var secsToReport: TimeInterval { get { clockModel.secsToReport } nonmutating set { clockModel.secsToReport = newValue } }
     @State private var savedSession: SessionDataModel? = nil
     /// Counts made by the current drag (the session tour's "three in one stroke").
     @State private var strokesThisTouch = 0
@@ -1534,7 +1532,6 @@ struct tasbeehView: View {
             inactivityTimerHandler(run: "stop")
             pauseStartTime = Date()
             secsPassedAtPause = secsPassed
-            timePassedAtPauseString = formatTimePassed // cant use calc var bc keeps changing if view ever updated
         }else{
             inactivityTimerHandler(run: "restart")
             let thisPauseSesh = Date().timeIntervalSince(pauseStartTime ?? Date())
