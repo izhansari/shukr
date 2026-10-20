@@ -355,9 +355,11 @@ struct AliveRingFill: View {   // also the Salah ring's Perfect window under the
     var tuning = AliveRingTuning()
     /// Who mounted it (the frame log's "alive ring on / off" lines, -perfFrames).
     var tag = ""
+    /// Hold the last frame while nobody can see it (the Salah ring under a session, or on another page).
+    var paused = false
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             let k = tuning
             ZStack {

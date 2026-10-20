@@ -284,7 +284,7 @@ struct MainCircleView: View {
                             && PrayerScoring.grade(for: PrayerScoring.score(
                             start: prayer.startTime, end: prayer.endTime, markedAt: currentTime)) == .perfect
                         if perfectNow {
-                            AliveRingFill(dark: colorScheme == .dark, tuning: .fine, tag: "salah ring \(prayer.name)")
+                            SalahRingAlive(dark: colorScheme == .dark, tag: "salah ring \(prayer.name)")
                                 .frame(width: 230, height: 230)
                                 .mask {
                                     Circle()
@@ -1750,5 +1750,22 @@ struct MakeUpSeeAll: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("See all prayers to make up")
+    }
+}
+
+
+/// The Salah ring's living Perfect fill, held still while it can't be seen: under a zikr session (its full-screen cover)
+/// or with another page showing. It kept drawing at 30 fps behind a session's results, ~20 % CPU (Fable, 2026-10-20);
+/// owner, 2026-10-20: "if it's not going to mess up with anything else, then let's fix that … it doesn't look any
+/// different than it does right now". Paused, not removed: the same frame is there when it shows again, and it moves on
+/// from the next tick. Reads the cover and the page here, so only this view redraws when they change.
+private struct SalahRingAlive: View {
+    let dark: Bool
+    let tag: String
+    @Environment(SharedStateClass.self) private var sharedState
+
+    var body: some View {
+        let hidden = CircleStage.shared.covers.contains("tasbeeh") || sharedState.horizontalPage != .main
+        AliveRingFill(dark: dark, tuning: .fine, tag: tag, paused: hidden)
     }
 }
