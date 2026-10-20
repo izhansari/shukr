@@ -539,6 +539,9 @@ struct JourneyMakeUpPage: View {
     }
 
     /// The last entries read: the page opens with them while fresh ones are read.
+    /// Who writes it: only this page's `apply`, when a read lands; a fresh start begun, restored or undone empties it
+    /// (FreshStart.swift: no flash of the old count). Who reads it: this page's first `open` / `madeUp` on a push.
+    /// Stale: a mark made elsewhere shows once the page's own read lands.
     @MainActor static var last: (open: [Entry], madeUp: [Entry])?
 
     /// `entries` off the main thread, from its own context on the store. `nonisolated`, as the two below: a View's statics

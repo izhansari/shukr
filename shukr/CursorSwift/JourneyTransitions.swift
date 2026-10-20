@@ -171,6 +171,18 @@ enum JourneyMotion {
 
 /// Where the card's tiles and names, the month's cells and title are on screen, read when a transition starts or lands —
 /// never observed (no redraw on every scroll frame). Each piece reports itself through its modifier.
+/// Who writes what (measurement, not state — every value is overwritten as it's laid out again):
+/// - `card`, `grid`, `gridOffset`, `weekStarts`, `names`: the card's report modifiers (`journeyFlightCard` / `…Grid` /
+///   `…MonthName`, below) → read by `tile(_:)` and `JourneyMonthFlight.expanded` (the card's tiles flying to the
+///   calendar).
+/// - `cells`, `labels`, `cardRows`: `resolve`, from the host's anchors (the calendar's week rows and month labels, the
+///   card's rows) → read by the flights' landings and `tile(_:)` / `cardWeeksInView`.
+/// - `yearGrids`, `yearNames`, `yearShowing`, `yearBack`: the year (`journeyFlightYearSquares` / `…YearName`;
+///   JourneyExpandedPage's `toYear` / `fromYear`, cleared by the host's `close`) → read by
+///   `JourneyMonthFlight.fromYear` and the host's ‹ / edge swipe.
+/// - `topRing`: a picked day's ring at the top (JourneyFlightTopRing) → read by the day's flight.
+/// - `expandedWeeks`, `expandedPick`: JourneyExpandedPage as it scrolls / picks → `follow()` (the card follows them).
+/// - `cardShow` (JourneyHomeCard), `onFollow` (JourneyMonthHost's `openMonth`), `onWeeks` (`afterWeeks`): callbacks.
 @MainActor final class JourneyFlightGeometry {
     static let shared = JourneyFlightGeometry()
     var card: CGRect = .zero
@@ -498,6 +510,8 @@ struct JourneyMonthOpen: Equatable {
 
 /// Whether any Journey flight is running (a dial animating): a reload that lands mid-flight waits for it (his phone,
 /// 2026-10-17: back from the background, the new log rebuilt the page during a weeks → year flight — 14 late, 131 ms).
+/// Who counts: `JourneyMonthDial` only (`began` / `ended`, fileprivate — its `animate` and `tick`). Who waits
+/// (`whenIdle`): JourneyPage's `reload` (the log and the scores land after the flight) and the host's `follow`.
 @MainActor enum JourneyFlights {
     private(set) static var running = 0
     private static var waiting: [() -> Void] = []

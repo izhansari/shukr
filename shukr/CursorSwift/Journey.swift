@@ -7,6 +7,11 @@ import SwiftData
 // Rules: a day counts once it has a mark (an "active day"); rates count active days only; excused prayers are never due.
 
 /// ☰ → Journey and the day page's "Journey ›" (pushed on the root stack, as Moments).
+/// Who writes it: `open` — ☰'s Journey row, the day page's "Journey ›" (SalahLook), What's new's "Open in shukr"
+/// ("insights", "journey"), `-demoLand journey`, `-demoJourney` / `-demoJourneyFlightRun`; `open` + `makeUp` — the
+/// ring's make-up pill and the missed face's "See all ›" (mainCircle.swift). Who reads it: PrayerTimesView's
+/// `navigationDestination` (the push) and its `somethingCovers` / `clearCovers` (a widget open closes Journey first);
+/// `makeUp` only JourneyPage, which clears it once it has opened To make up (`takeMakeUp`).
 @MainActor @Observable final class JourneyPresenter {
     static let shared = JourneyPresenter()
     var open = false
@@ -111,6 +116,11 @@ struct JourneyLog {
     }
 
     /// The last log built, shown at once while a fresh one is read (the page never opens blank).
+    /// Who writes it: only JourneyPage's `reload`, when a load lands (inside `JourneyFlights.whenIdle`, never
+    /// mid-flight). Who reads it: JourneyPage's first `log` on a push; the flight host when its copy was taken before
+    /// the load (JourneyTransitions.swift, `JourneyLog.last ?? log`); the map sheet's day header ("Day N",
+    /// MapLayerSheet.swift). Stale: from the moment anything marks until Journey loads again — never cleared; nil until
+    /// Journey has loaded once since launch (the map's header then shows no "Day N").
     @MainActor static var last: JourneyLog?
 
     /// The log built off the main thread, from its own context on the store (Frank's trace, 2026-10-15: `build` took
@@ -292,6 +302,9 @@ struct JourneyLog {
 
 /// After a fresh start, which way Journey's card counts: from it (the default, each launch and after any change) or over
 /// every day — the header's toggle (YourJourneyStats.Numbers).
+/// Who writes it: only the header's ⇄ (JourneyPage); a goal or fresh-start change (`PrayerStats.rulesChanged`) puts it
+/// back. Who reads it: `YourJourneyStats.shown` (the card's numbers), the header's ring, a picked day's "Day N"
+/// (YourJourney.swift) — through computed properties inside a body, so Observation still sees the access and redraws.
 @Observable final class JourneyLens {
     static let shared = JourneyLens()
     var lifetime = false

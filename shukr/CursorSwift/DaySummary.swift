@@ -19,6 +19,10 @@ extension DayPrayer {
 
 /// Whether the circle is showing the day's page (summaryCircle is up): the list's card rises with it, not at the mark
 /// (Izhan: "have it rise together with the page").
+/// The Salah page's own state (mainCircle.swift, PrayerTimesAndTracker.swift, SalahLook.swift write and read it).
+/// Journey reads only its measured rests — `salahRing`, `salahList`, `salahPill`, `salahBarTop` (written by the Salah
+/// page's layout) — so its day page lines up with the Salah page's on every phone (JourneyDayPage.layout); it never
+/// writes here.
 @MainActor @Observable final class DayPageState {
     static let shared = DayPageState()
     private(set) var up = false

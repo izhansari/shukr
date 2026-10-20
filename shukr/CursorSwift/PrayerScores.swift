@@ -115,6 +115,10 @@ struct PrayerScores {
 
     @MainActor static var last: PrayerScores?
     /// The page's last build for each span (all time is `last`), shown at once while a fresh one is read.
+    /// Who writes them: JourneyPage's `reload` (all time, from the log it just read — Prayer scores then opens on it)
+    /// and PrayerScoresPage's own reads (each span). Who reads them: PrayerScoresPage only — its first `data`, and a
+    /// span switch (shown at once, then read again). Stale: until either page reads again; emptied when the goal or the
+    /// fresh start changes (`PrayerStats.rulesChanged`, PrayerScoresPage), since they were counted the old way.
     @MainActor static var lastBySpan: [Span: PrayerScores] = [:]
 
     /// Read off the main thread, at the goal and from the fresh start as they are now (PrayerStats).
