@@ -113,13 +113,6 @@ struct PrayerScores {
     /// ones that we prayed"; Frank's check: the ring said 77 over a row saying 59 for the same prayer). Nothing prayed: last.
     var ranked: [String] { Self.names.sorted { (prayers[$0]?.prayedRaw ?? -1) > (prayers[$1]?.prayedRaw ?? -1) } }
 
-    @MainActor static var last: PrayerScores?
-    /// The page's last build for each span (all time is `last`), shown at once while a fresh one is read.
-    /// Who writes them: JourneyPage's `reload` (all time, from the log it just read — Prayer scores then opens on it)
-    /// and PrayerScoresPage's own reads (each span). Who reads them: PrayerScoresPage only — its first `data`, and a
-    /// span switch (shown at once, then read again). Stale: until either page reads again; emptied when the goal or the
-    /// fresh start changes (`PrayerStats.rulesChanged`, PrayerScoresPage), since they were counted the old way.
-    @MainActor static var lastBySpan: [Span: PrayerScores] = [:]
 
     /// Read off the main thread, at the goal and from the fresh start as they are now (PrayerStats).
     static func load(container: ModelContainer, ranges: [ExcusedRange], now: Date = Date(), span: Span = .all,
@@ -343,8 +336,8 @@ struct PrayerScoresPage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("prayerScores.span") private var spanRaw = PrayerScores.Span.all.rawValue
     private var span: PrayerScores.Span { PrayerScores.Span(rawValue: spanRaw) ?? .all }
-    @State private var data = PrayerScores.lastBySpan[PrayerScores.Span(rawValue: UserDefaults.standard.string(forKey: "prayerScores.span") ?? "") ?? .all]
-        ?? PrayerScores.last ?? PrayerScores()
+    @State private var data = JourneyStore.shared.scoresBySpan[PrayerScores.Span(rawValue: UserDefaults.standard.string(forKey: "prayerScores.span") ?? "") ?? .all]
+        ?? JourneyStore.shared.scoresBySpan[.all] ?? PrayerScores()
     @State private var loadToken = 0
 
     // The transition's state (A = all five, B = one prayer). The picked row is one view the whole way: the others fade, then
@@ -458,12 +451,7 @@ struct PrayerScoresPage: View {
         .task { reload() }
         .onChange(of: spanRaw) { switchSpan() }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
-        // The goal or the fresh start changed: what's kept was counted the old way (PrayerStats).
-        // Only the caches go here: the .journeyChanged posted right after reloads, once (audit #9).
-        .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
-            PrayerScores.lastBySpan = [:]
-            PrayerScores.last = nil
-        }
+        // A goal or fresh-start change empties the kept spans (JourneyStore); the .journeyChanged after it reloads, once.
         #if DEBUG
         .task {
             guard let pick = Self.demoPick else { return }
@@ -484,8 +472,7 @@ struct PrayerScoresPage: View {
             JourneyPerf.took("scores.load", since: t)
             guard token == loadToken else { return }
             data = built
-            PrayerScores.lastBySpan[span] = built
-            if span == .all { PrayerScores.last = built }
+            JourneyStore.shared.scoresBySpan[span] = built
         }
     }
 
@@ -501,7 +488,7 @@ struct PrayerScoresPage: View {
         let span = self.span
         loadToken += 1
         let token = loadToken
-        let cached = PrayerScores.lastBySpan[span]
+        let cached = JourneyStore.shared.scoresBySpan[span]
         Task { @MainActor in
             let next: PrayerScores
             if let cached { next = cached } else { next = await read(span) }
@@ -517,8 +504,7 @@ struct PrayerScoresPage: View {
         let t = JourneyPerf.now
         let built = await PrayerScores.load(container: container, ranges: ranges, span: span)
         JourneyPerf.took("scores.load", since: t)
-        PrayerScores.lastBySpan[span] = built
-        if span == .all { PrayerScores.last = built }
+        JourneyStore.shared.scoresBySpan[span] = built
         return built
     }
 

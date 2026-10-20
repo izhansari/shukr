@@ -115,13 +115,6 @@ struct JourneyLog {
         return days[key] ?? Day(key: key, date: start, counted: countsFrom.map { start >= $0 } ?? true)
     }
 
-    /// The last log built, shown at once while a fresh one is read (the page never opens blank).
-    /// Who writes it: only JourneyPage's `reload`, when a load lands (inside `JourneyFlights.whenIdle`, never
-    /// mid-flight). Who reads it: JourneyPage's first `log` on a push; the flight host when its copy was taken before
-    /// the load (JourneyTransitions.swift, `JourneyLog.last ?? log`); the map sheet's day header ("Day N",
-    /// MapLayerSheet.swift). Stale: from the moment anything marks until Journey loads again — never cleared; nil until
-    /// Journey has loaded once since launch (the map's header then shows no "Day N").
-    @MainActor static var last: JourneyLog?
 
     /// The log built off the main thread, from its own context on the store (Frank's trace, 2026-10-15: `build` took
     /// 71–80 ms on the main thread on every open of Journey — the whole fetch of the prayer rows). Plain values come back.
@@ -300,21 +293,6 @@ struct JourneyLog {
 
 // MARK: - The page
 
-/// After a fresh start, which way Journey's card counts: from it (the default, each launch and after any change) or over
-/// every day — the header's toggle (YourJourneyStats.Numbers).
-/// Who writes it: only the header's ⇄ (JourneyPage); a goal or fresh-start change (`PrayerStats.rulesChanged`) puts it
-/// back. Who reads it: `YourJourneyStats.shown` (the card's numbers), the header's ring, a picked day's "Day N"
-/// (YourJourney.swift) — through computed properties inside a body, so Observation still sees the access and redraws.
-@Observable final class JourneyLens {
-    static let shared = JourneyLens()
-    var lifetime = false
-    private init() {
-        NotificationCenter.default.addObserver(forName: PrayerStats.rulesChanged, object: nil, queue: .main) { [weak self] _ in
-            self?.lifetime = false
-        }
-    }
-}
-
 /// The card's two day counts light their days up and dim the rest (as Insights did — owner: it helps most in the grid).
 enum JourneyHighlight: Equatable {
     case metGoal, allFive
@@ -342,18 +320,16 @@ extension JourneyLog.Day {
 struct JourneyPage: View {
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
-    @State private var log = JourneyLog.last ?? JourneyLog()
-    /// Your journey's numbers (YourJourney.swift), worked out once per log, not per redraw.
-    @State private var stats: YourJourneyStats?
-    /// Prayer scores' row: the page's lifetime score and its strongest prayer (PrayerScores, read off the main thread).
-    @State private var scores: (score: Int?, strongest: String?)?
+    /// Journey's numbers live in JourneyStore (the log, the card's stats, the header ring, To make up's count).
+    private var store: JourneyStore { .shared }
+    private var log: JourneyLog { store.log ?? JourneyLog() }
+    private var stats: YourJourneyStats? { store.stats }
+    private var scores: (score: Int?, strongest: String?)? { store.headerScores }
     /// The same over every day, while a fresh start is on: the ring follows the header's ⇄ (Fable's audit #5).
-    @State private var lifetimeScores: (score: Int?, strongest: String?)?
-    /// To make up's row: every unmarked prayer on a day shukr was used (the page's own count).
-    @State private var makeUpTotal: Int?
-    /// The log is read off the main thread (JourneyLog.load); a newer request drops an older result, and a change while
-    /// another page is over this one waits for its return (`dirty`) — no rebuild under To make up on every Made up.
-    @State private var loadToken = 0
+    private var lifetimeScores: (score: Int?, strongest: String?)? { store.lifetimeHeaderScores }
+    private var makeUpTotal: Int? { store.makeUpTotal }
+    /// The store reads off the main thread; a change while another page is over this one waits for its return (`dirty`) —
+    /// no rebuild under To make up on every Made up.
     @State private var onScreen = false
     @State private var appeared = false
     @State private var dirty = false
@@ -431,7 +407,7 @@ struct JourneyPage: View {
         }
         .onAppear {
             appeared = true
-            if stats == nil { stats = JourneyPerf.time("stats") { YourJourneyStats(log: log, today: today) } }
+            store.fillStats(today: today)
             arrive()
         }
         .onDisappear { appeared = false; onScreen = false }
@@ -522,56 +498,7 @@ struct JourneyPage: View {
     private func reload(first: Bool = false) {
         guard onScreen || first else { dirty = true; return }   // under another page, or paged away: read it on the way back
         dirty = false
-        loadToken += 1
-        let token = loadToken
-        let container = context.container
-        let ranges = Excused.ranges
-        let day = today
-        // The log once: the card's, and Prayer scores' row from the same one (it built its own — every prayer row read three
-        // times off the main thread per open, perf sweep). To make up's count reads its rows alongside.
-        Task {
-            let t = JourneyPerf.now, now = Date()   // one moment for all three (a Fajr turn mid-load can't split them)
-            let built = await JourneyLog.load(container: container, ranges: ranges, now: now)
-            JourneyPerf.took("log.load", since: t)
-            guard token == loadToken else { return }
-            // The card's numbers off the main thread too (42 ms on main on his 13 Pro Max per reload, a goal flip's worst
-            // frame — journey-perf.log, 2026-10-18), alongside the scores. The excused days from the ranges read on main
-            // (Excused.ranges' cache isn't safe off it).
-            let t2 = JourneyPerf.now
-            let statsTask = Task.detached(priority: .userInitiated) {
-                YourJourneyStats(log: built, today: day, excused: Excused.Days(ranges))
-            }
-            let scoresTask = Task.detached(priority: .userInitiated) {
-                let context = ModelContext(container)
-                // At the log's own goal and fresh start (the header ring then reads since it, as Prayer scores does).
-                let s = PrayerScores.build(log: built, context: context, now: now, countsFrom: built.countsFrom, goal: built.goal)
-                let all = built.countsFrom == nil ? nil : PrayerScores.build(log: built, context: context, now: now, countsFrom: nil, goal: built.goal)
-                return (s, all, JourneyMakeUpPage.entries(in: context, ranges: ranges, now: now).open.count)
-            }
-            let builtStats = await statsTask.value
-            JourneyPerf.took("stats.load", since: t2)
-            guard token == loadToken else { return }
-            // Never mid-flight: a new log redraws the page and the card (JourneyTransitions.swift, JourneyFlights). The log
-            // and its numbers land together.
-            JourneyFlights.whenIdle {
-                guard token == loadToken else { return }
-                log = built
-                JourneyLog.last = built
-                stats = builtStats
-            }
-            let (s, all, open) = await scoresTask.value
-            JourneyPerf.took("scores+makeUp.load", since: t2)
-            guard token == loadToken else { return }
-            JourneyFlights.whenIdle {
-                guard token == loadToken else { return }
-                scores = (s.prayedScore, s.prayed > 0 ? s.ranked.first : nil)
-                lifetimeScores = all.map { ($0.prayedScore, $0.prayed > 0 ? $0.ranked.first : nil) }
-                makeUpTotal = open
-                // Prayer scores opens on these at once (its own load then refreshes them).
-                PrayerScores.lastBySpan[.all] = s
-                PrayerScores.last = s
-            }
-        }
+        store.load(container: context.container, today: today)
     }
     #if DEBUG
     @MainActor private static var demoDone = false
@@ -631,10 +558,10 @@ struct JourneyPage: View {
                     // 2026-10-18: "i still want it to show lifetime maybe off a toggle somewhere"). Ink, no sage (Journey).
                     Button {
                         triggerSomeVibration(type: .light)
-                        withAnimation(.easeOut(duration: CircleMotion.quick)) { JourneyLens.shared.lifetime.toggle() }
+                        withAnimation(.easeOut(duration: CircleMotion.quick)) { store.lifetime.toggle() }
                     } label: {
                         HStack(spacing: 6) {
-                            Text(JourneyLens.shared.lifetime
+                            Text(store.lifetime
                                  ? "Lifetime, since \(first.formatted(.dateTime.month(.abbreviated).day().year()))"
                                  : "Since your fresh start, \(from.formatted(.dateTime.month(.abbreviated).day()))")
                                 .contentTransition(.opacity)
@@ -646,7 +573,7 @@ struct JourneyPage: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityHint(JourneyLens.shared.lifetime ? "Shows since your fresh start" : "Shows lifetime")
+                    .accessibilityHint(store.lifetime ? "Shows since your fresh start" : "Shows lifetime")
                 } else {
                     Text(log.firstDay.map { "Since \($0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))" }
                          ?? "It starts with your first prayer")
@@ -663,7 +590,7 @@ struct JourneyPage: View {
                 triggerSomeVibration(type: .light)
                 showScores = true
             } label: {
-                let ring = JourneyLens.shared.lifetime ? lifetimeScores ?? scores : scores
+                let ring = store.lifetime ? lifetimeScores ?? scores : scores
                 JourneyMiniRing(score: ring?.strongest != nil ? ring?.score : nil, size: 54)
                     .contentShape(Circle())
             }

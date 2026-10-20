@@ -25,8 +25,8 @@ struct JourneyMakeUpPage: View {
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @Environment(PrayerViewModel.self) private var viewModel
-    @State private var open: [Entry] = JourneyMakeUpPage.last?.open ?? []
-    @State private var madeUp: [Entry] = JourneyMakeUpPage.last?.madeUp ?? []
+    @State private var open: [Entry] = JourneyStore.shared.makeUp?.open ?? []
+    @State private var madeUp: [Entry] = JourneyStore.shared.makeUp?.madeUp ?? []
     /// One prayer only (a tap on its count).
     @State private var only: String?
     /// The top's folded height and how far it folds (JourneyMakeUpHead measures it): the list's top margin and the
@@ -531,18 +531,13 @@ struct JourneyMakeUpPage: View {
         let leftNow = { (list: [Entry]) in list.filter { self.inScope($0) && !self.isSettling($0) }.count }
         let before = leftNow(open)
         (open, madeUp) = result
-        Self.last = result
+        JourneyStore.shared.makeUp = result
         if celebrate, before > 0, leftNow(open) == 0, settling.isEmpty {
             cleared += 1
             triggerSomeVibration(type: .success)
         }
     }
 
-    /// The last entries read: the page opens with them while fresh ones are read.
-    /// Who writes it: only this page's `apply`, when a read lands; a fresh start begun, restored or undone empties it
-    /// (FreshStart.swift: no flash of the old count). Who reads it: this page's first `open` / `madeUp` on a push.
-    /// Stale: a mark made elsewhere shows once the page's own read lands.
-    @MainActor static var last: (open: [Entry], madeUp: [Entry])?
 
     /// `entries` off the main thread, from its own context on the store. `nonisolated`, as the two below: a View's statics
     /// are main-actor isolated, and without it the detached task hopped back to the main thread to run the fetch (Frank's

@@ -744,7 +744,7 @@ struct JourneyDayLine: View {
             : day.kind == .metGoal ? "Goal met"   // the goal's words since 2026-10-18 (was Complete · With Qaza)
             : day.kind == .allFive ? "All five"
             : "Incomplete"   // the score is in the ring
-        let number = log.dayNumber(day.date, lifetime: JourneyLens.shared.lifetime)
+        let number = log.dayNumber(day.date, lifetime: JourneyStore.shared.lifetime)
         // The whole line opens the day (owner, 2026-10-17: "Clicking the whole bottom row should open the selected
         // prayers day ring page").
         return Button {
@@ -1012,7 +1012,7 @@ struct JourneyDayTop: View {
         let d = day
         let date = d.date.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
         // Both by the header's ⇄: since the fresh start, or over every day (Fable's audit #5).
-        let lifetime = JourneyLens.shared.lifetime
+        let lifetime = JourneyStore.shared.lifetime
         let number = log.dayNumber(d.date, lifetime: lifetime).map { "Day \($0)" }
         let rank = log.dayRank(d.date, lifetime: lifetime).map { "\(Self.ordinal($0)) of \(log.rankedCount(lifetime: lifetime))" }
         let second = d.unfinished ? [number, "today, so far"] : [number, rank]
@@ -1223,7 +1223,7 @@ struct YourJourneyStats {
 
     /// The card's numbers, counted two ways: from the fresh start (or all days, with none) and over every day. After a fresh
     /// start the card counts from it (owner, 2026-10-18: "A", the mixed card "looks really funny"); its header's toggle
-    /// shows lifetime ("i still want it to show lifetime maybe off a toggle somewhere") — JourneyLens.
+    /// shows lifetime ("i still want it to show lifetime maybe off a toggle somewhere") — JourneyStore.lifetime.
     struct Numbers {
         var days = 0, prayers = 0
         /// The share of finished days that met the goal, 0…100; nil before there are 3 (one bad first day read "0%").
@@ -1236,13 +1236,14 @@ struct YourJourneyStats {
     var fresh = Numbers()
     var lifetime = Numbers()
     var hasFreshStart = false
-    /// The numbers on show: lifetime only while there's a fresh start and the header's toggle says so.
-    private var shown: Numbers { hasFreshStart && JourneyLens.shared.lifetime ? lifetime : fresh }
-    var activeDays: Int { shown.days }
-    var prayersMarked: Int { shown.prayers }
-    var goalRate: Int? { shown.rate }
-    var bestStreak: Int { shown.best }
-    var bestStreakDays: ClosedRange<Date>? { shown.bestDays }
+    /// The numbers on show: lifetime only while there's a fresh start and the header's toggle says so (JourneyStore,
+    /// main actor: the views read these, the off-main build never does).
+    @MainActor private var shown: Numbers { hasFreshStart && JourneyStore.shared.lifetime ? lifetime : fresh }
+    @MainActor var activeDays: Int { shown.days }
+    @MainActor var prayersMarked: Int { shown.prayers }
+    @MainActor var goalRate: Int? { shown.rate }
+    @MainActor var bestStreak: Int { shown.best }
+    @MainActor var bestStreakDays: ClosedRange<Date>? { shown.bestDays }
     /// The streak going now, the number the Salah page shows: streak days up to yesterday, plus today once it counts (today
     /// never breaks it; from the fresh start, as the Salah page).
     var currentStreak = 0

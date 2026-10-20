@@ -250,6 +250,7 @@ struct PrayerSpotsHome: View {
     let custom: () -> Void
     /// The day page's map: no title, no filter — the day's own heading over its prayers (owner, 2026-10-16).
     var dayOnly: Date? = nil
+    @Environment(\.modelContext) private var context
 
     private var subtitle: String {
         let n = viewModel.visiblePrayerCount
@@ -362,7 +363,7 @@ struct PrayerSpotsHome: View {
             // ring, top right (owner, 2026-10-17: "show the day's score. On the right side of the sheet, top right. In a
             // ring. Using our fifths. And also in the second line leading it, let's put like day number").
             if let dayOnly {
-                let log = JourneyLog.last
+                let log = JourneyStore.shared.log
                 let day = log?.day(dayOnly)
                 let n = onMap.count, places = dayPlaces.count
                 // No prayer count: the ring's fifths show it (owner: "get rid of how many prayers there are").
@@ -392,10 +393,18 @@ struct PrayerSpotsHome: View {
     }
 
     var body: some View {
-        if collapsed {
-            MapSheetCollapsed { header }
-        } else {
-            list
+        Group {
+            if collapsed {
+                MapSheetCollapsed { header }
+            } else {
+                list
+            }
+        }
+        // The day header's "Day N" comes from Journey's log: read it if Journey hasn't yet this launch (it was missing
+        // until Journey had been opened once — JourneyStore).
+        .task(id: dayOnly) {
+            guard dayOnly != nil else { return }
+            JourneyStore.shared.loadIfNeeded(container: context.container, today: PrayerDay.start())
         }
     }
 

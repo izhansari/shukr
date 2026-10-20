@@ -42,7 +42,7 @@ enum FreshStart {
         let key = calendarDay > PrayerDay.start(for: now) ? PrayerNotificationID.dayKey(calendarDay) : PrayerDay.key(for: now)
         UserDefaults.standard.set(key, forKey: Self.key)
         UserDefaults.standard.set(clearMakeUp, forKey: makeUpKey)
-        JourneyMakeUpPage.last = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
+        JourneyStore.shared.makeUp = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
         NotificationCenter.default.post(name: changed, object: nil)
         PrayerStats.changed()
     }
@@ -51,7 +51,7 @@ enum FreshStart {
     @MainActor static func restore(dayKey: String, clearsMakeUp: Bool) {
         UserDefaults.standard.set(dayKey, forKey: Self.key)
         UserDefaults.standard.set(clearsMakeUp, forKey: makeUpKey)
-        JourneyMakeUpPage.last = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
+        JourneyStore.shared.makeUp = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
         NotificationCenter.default.post(name: changed, object: nil)
         PrayerStats.changed()
     }
@@ -59,7 +59,7 @@ enum FreshStart {
     @MainActor static func undo() {
         UserDefaults.standard.removeObject(forKey: key)
         UserDefaults.standard.removeObject(forKey: makeUpKey)
-        JourneyMakeUpPage.last = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
+        JourneyStore.shared.makeUp = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
         NotificationCenter.default.post(name: changed, object: nil)
         PrayerStats.changed()
     }

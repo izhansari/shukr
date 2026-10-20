@@ -1184,7 +1184,7 @@ struct JourneyMonthHost: ViewModifier {
         await wait(3)
         let latest = JourneyLog.monthStart(today)
         let previous = Calendar.current.date(byAdding: .month, value: -1, to: latest) ?? latest
-        let log = JourneyLog.last ?? log   // the task's copy of the host was taken before the log loaded
+        let log = JourneyStore.shared.log ?? log   // the task's copy of the host was taken before the log loaded
         let m = log.month(latest).activeDays >= 14 ? latest : previous
         for _ in 0..<n {
             month = JourneyMonthRoute(month: m)
@@ -1255,7 +1255,7 @@ struct JourneyMonthHost: ViewModifier {
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
                 withTransaction(quiet) {
-                    flight = JourneyMonthFlight.expanded(f.start, log: JourneyLog.last ?? log, today: today, weeks: stats?.weeks ?? [])
+                    flight = JourneyMonthFlight.expanded(f.start, log: JourneyStore.shared.log ?? log, today: today, weeks: stats?.weeks ?? [])
                 }
                 done()
             }
@@ -1311,7 +1311,7 @@ struct JourneyMonthHost: ViewModifier {
     // MARK: Month → day
 
     private func openDay(_ date: Date, fromTop: Bool = false) {
-        let log = JourneyLog.last ?? log   // the auto run's copy of the host was taken before the log loaded
+        let log = JourneyStore.shared.log ?? log   // the auto run's copy of the host was taken before the log loaded
         guard day == nil, date <= today, log.day(date).active, date < today || log.day(date).allFive else { return }
         JourneyPerf.began("day opens")   // the day page's build and load: its own window (the flight's begins once it's in)
         // No tick here: every way in (the card's and the month's top, the year's day line) is a button that already ticked —
