@@ -9,7 +9,8 @@ perf-paging.sh + perf-frames.py (swipe hitches on his phone); the team's board s
 
 Layout: `shukr/` app target (most UI in `CursorSwift/` — `PrayerTimesAndTracker.swift` is the Salah page + pager's view, its parts beside it since 2026-10-20: Pager, PagerChrome,
   PrayerList, WidgetOpens, AppOverlays, PrayerTimesView+Demos —
-plus `tasbeehView.swift`; `Utils.swift` holds what's left of the shared pieces after the 2026-10-18 cleanup),
+plus `tasbeehView.swift`, the session — its parts in CursorSwift/: TasbeehModels, TasbeehPauseScreen, TasbeehControls,
+TasbeehParts, SessionResults, PostSalah, SleepMode; `Utils.swift` holds what's left of the shared pieces after the 2026-10-18 cleanup),
 `shukr/Models/AllModels.swift` (SwiftData models + `SharedStateClass`), `shukrWidget/`
 (PrayersWidget + the code compiled into BOTH targets — split out of SharedTargetForIntents.swift 2026-10-20: SharedStore,
 PrayerUtils, WidgetMarks, ShortcutIntents, ShortcutCardIntents, LiveActivityIntents, LiveActivityCard, ExcusedRecord;
@@ -241,7 +242,7 @@ it — launch with a `-demo…` arg (they never ask), or erase your sim. On his 
 
 **Needs a real device:** Fajr rollover (yesterday's prayers up until Fajr) and the 15 Pro's first V2 launch (`✅ schema V2 data pass`, no ❌); the Always upgrade prompt (once); travel updates and background relaunch; the Shortcut alarm description; a real Jumu'ah at a masjid and the arrival dua with the app killed; nudge cancel from the widget extension; mic / camera; paging lag re-measure (Release); the watch list under Apple Watch; real Summary / Time Sensitive / Background App Refresh settings.
 
-**Backlog:** Infinity button → user step; cleanup-map Part 2 (`shukrGit/board/cleanup-map.md`: the five tangles split 2026-10-20; left: tangle 5 steps 5 / 7, and unreferenced SimpleDailyScoreView / PrayerEditorView — Izhan's call); "How scoring works" card; Umrah companion and personalised 99 Names duas (plan first; the owner has the prompt, don't invent one); post-salah "points" (a separate layer, never in the prayer score).
+**Backlog:** Infinity button → user step; cleanup-map Part 2 done 2026-10-20 (`shukrGit/board/cleanup-map.md`); "How scoring works" card; Umrah companion and personalised 99 Names duas (plan first; the owner has the prompt, don't invent one); post-salah "points" (a separate layer, never in the prayer score).
 
 **Share card:** `AyahShareCard.footer` says "download on the App Store" (owner 2026-10-15, no link).
 
