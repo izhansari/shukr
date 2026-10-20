@@ -24,7 +24,7 @@ struct JourneyMakeUpPage: View {
     @State private var started = false
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
     @State private var open: [Entry] = JourneyMakeUpPage.last?.open ?? []
     @State private var madeUp: [Entry] = JourneyMakeUpPage.last?.madeUp ?? []
     /// One prayer only (a tap on its count).
@@ -132,6 +132,7 @@ struct JourneyMakeUpPage: View {
     private static let madeID = "madeUp"
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         let shown = shown()
         let months = shown.months
         let scrubber = months.count > 3

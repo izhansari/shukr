@@ -30,7 +30,7 @@ struct MainCircleView: View {
     /// The soft ring (the theme, CircleTheme.swift).
     @Environment(\.circleTheme) private var theme
     @Environment(SharedStateClass.self) var sharedState
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @EnvironmentObject var locationManager: EnvLocationManager   // only to start updates; publishes rarely
     @Environment(\.colorScheme) var colorScheme
     
@@ -189,6 +189,7 @@ struct MainCircleView: View {
     let animationStyle: Animation = .spring
     
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack {
             // The soft ring's raised band, under everything and always there — for a prayer still to come too, with
             // the dashes drawn in it (owner, 2026-10-02: "make the future ring also soft… dashed ring inside the
@@ -1085,7 +1086,7 @@ struct summaryCircle: View, Equatable {
 
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
     // FIXME: think this through more and make sure it makes sense.
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @Environment(SharedStateClass.self) var sharedState
 
     @Binding var ogText: Bool  // to control the toggle text in the middle
@@ -1351,6 +1352,7 @@ struct summaryCircle: View, Equatable {
     }
 
     var body: some View{
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
 
                         
         // Score ↔ next Fajr take turns — one goes out, then the other comes in (CircleMoments.swift), in every look;

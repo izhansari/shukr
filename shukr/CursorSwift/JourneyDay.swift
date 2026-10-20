@@ -16,7 +16,7 @@ struct JourneyDayPage: View {
     @State var date: Date
     let firstDay: Date?
     @Environment(\.circleTheme) private var theme
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
     @State private var sheetRow: PrayerModel?
     @State private var noteRow: PrayerModel?
     @State private var placeSheet: PrayerModel?
@@ -100,6 +100,7 @@ struct JourneyDayPage: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack(alignment: .top) {
             // Keyed by the date, not the slot: the day coming in stays the same piece as it becomes this page's day (keyed by
             // slot it was rebuilt at the swap, and its score, caption and pill flashed — owner).
@@ -146,7 +147,7 @@ struct JourneyDayPage: View {
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(date)) }
         .sheet(item: $sheetRow) { row in
             JourneyPrayerSheet(prayer: row)
-                .environmentObject(viewModel)
+                .environment(viewModel)
                 .environment(\.circleTheme, theme)
         }
         .fullScreenCover(isPresented: Binding(get: { mapDay != nil }, set: { if !$0 { mapDay = nil } })) {

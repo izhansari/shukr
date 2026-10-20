@@ -14,7 +14,7 @@ import SwiftData
 struct PrayerEditorView: View { //prayerstreak_flag main viewer for the streaks. mostly for debugging reasons
     @Environment(\.modelContext) private var context
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @AppStorage("prayerStreak") var prayerStreak: Int = 0
     @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1
@@ -125,6 +125,7 @@ struct PrayerEditorView: View { //prayerstreak_flag main viewer for the streaks.
 
     
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         VStack {
             HStack{
                 Text("Streak: \(prayerStreak)")

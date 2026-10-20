@@ -8,12 +8,18 @@ import WidgetKit
 import Combine
 
 // MARK: - PrayerViewModel
-class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationManager stuff from here. one less location manager!
+/// `@Observable` (cleanup-map tangle 2, step 8; was an ObservableObject): a view redraws only for the properties its body
+/// reads, not for every change here. Read it with `@Environment(PrayerViewModel.self)`; a binding needs `@Bindable`.
+/// The saved settings below are computed over UserDefaults (an @Observable class can't hold @AppStorage), so they always
+/// read the store and tell their readers when they change. After a change to data that isn't observable on its own,
+/// `contentChanged()` bumps `revision` (what `contentChanged()` did).
+@Observable
+class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from here. one less location manager!
     
     // MARK: - Arguments & Init
     
-    private(set) var context: ModelContext // Inject the ModelContext in the initializer
-    var ENV_LocationManager: EnvLocationManager // Inject the EnvLocationManager in the initializer
+    @ObservationIgnored private(set) var context: ModelContext // Inject the ModelContext in the initializer
+    @ObservationIgnored var ENV_LocationManager: EnvLocationManager // Inject the EnvLocationManager in the initializer
     /// The app's one view model, for code that runs in shukr's process without a view (a Live Activity's Mark prayed
     /// marks through it — the widget's separate-container path lost a mark when the app later saved over it).
     static weak var current: PrayerViewModel?
@@ -92,18 +98,47 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
     
-    // MARK: - AppStorage
-    @AppStorage("calculationMethod", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var calculationMethod: Int = 2
-    @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var school: Int = 0
+    // MARK: - Saved settings (were @AppStorage; same keys, stores and defaults)
+    private static let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") ?? .standard
+    private static let standard = UserDefaults.standard
+    /// @AppStorage took its default once, when the view model was made; a missing date key still reads that moment.
+    private let madeAt = Date().timeIntervalSince1970
 
-    @AppStorage("lastLatitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLatitude: Double = 0
-    @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
-    @AppStorage("lastCityName", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastCityName: String = "Wonderland"
-    
-    /// App Storage doesnt use Date types. So we use timeIntervalSince1970 to convert to Date. Then use a computed var to get and set it. (which deals with the unwrapping for us)
-    @AppStorage("prayerStreak") var prayerStreak: Int = 0 //prayerstreak_flag
-    @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
-    @AppStorage("dateOfMaxPrayerStreak") var dateOfMaxPrayerStreakTimeInterval: Double = Date().timeIntervalSince1970
+    var calculationMethod: Int {
+        get { access(keyPath: \.calculationMethod); return Self.group.object(forKey: "calculationMethod") as? Int ?? 2 }
+        set { withMutation(keyPath: \.calculationMethod) { Self.group.set(newValue, forKey: "calculationMethod") } }
+    }
+    var school: Int {
+        get { access(keyPath: \.school); return Self.group.object(forKey: "school") as? Int ?? 0 }
+        set { withMutation(keyPath: \.school) { Self.group.set(newValue, forKey: "school") } }
+    }
+
+    var lastLatitude: Double {
+        get { access(keyPath: \.lastLatitude); return Self.group.object(forKey: "lastLatitude") as? Double ?? 0 }
+        set { withMutation(keyPath: \.lastLatitude) { Self.group.set(newValue, forKey: "lastLatitude") } }
+    }
+    var lastLongitude: Double {
+        get { access(keyPath: \.lastLongitude); return Self.group.object(forKey: "lastLongitude") as? Double ?? 0 }
+        set { withMutation(keyPath: \.lastLongitude) { Self.group.set(newValue, forKey: "lastLongitude") } }
+    }
+    var lastCityName: String {
+        get { access(keyPath: \.lastCityName); return Self.group.object(forKey: "lastCityName") as? String ?? "Wonderland" }
+        set { withMutation(keyPath: \.lastCityName) { Self.group.set(newValue, forKey: "lastCityName") } }
+    }
+
+    /// Dates are kept as timeIntervalSince1970 (UserDefaults has no Date here); the Date vars unwrap them.
+    var prayerStreak: Int { //prayerstreak_flag
+        get { access(keyPath: \.prayerStreak); return Self.standard.object(forKey: "prayerStreak") as? Int ?? 0 }
+        set { withMutation(keyPath: \.prayerStreak) { Self.standard.set(newValue, forKey: "prayerStreak") } }
+    }
+    var maxPrayerStreak: Int {
+        get { access(keyPath: \.maxPrayerStreak); return Self.standard.object(forKey: "maxPrayerStreak") as? Int ?? 0 }
+        set { withMutation(keyPath: \.maxPrayerStreak) { Self.standard.set(newValue, forKey: "maxPrayerStreak") } }
+    }
+    var dateOfMaxPrayerStreakTimeInterval: Double {
+        get { access(keyPath: \.dateOfMaxPrayerStreakTimeInterval); return Self.standard.object(forKey: "dateOfMaxPrayerStreak") as? Double ?? madeAt }
+        set { withMutation(keyPath: \.dateOfMaxPrayerStreakTimeInterval) { Self.standard.set(newValue, forKey: "dateOfMaxPrayerStreak") } }
+    }
     var dateOfMaxPrayerStreak: Date {
         get { return Date(timeIntervalSince1970: dateOfMaxPrayerStreakTimeInterval) }
         set { dateOfMaxPrayerStreakTimeInterval = newValue.timeIntervalSince1970 }
@@ -111,37 +146,67 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// In-time days: days in a row with all five prayed within their windows (no Qaza, none
     /// missed; score ≥ 60), and the last day that counted. Keys keep their old "onTime" names.
     /// (Was all five Early / On time until 2026-09-25.)
-    @AppStorage("onTimeStreak") var onTimeStreak: Int = 0
-    @AppStorage("maxOnTimeStreak") var maxOnTimeStreak: Int = 0
-    @AppStorage("lastOnTimeStreakDate") var lastOnTimeStreakDate_TI: Double = 0
+    var onTimeStreak: Int {
+        get { access(keyPath: \.onTimeStreak); return Self.standard.object(forKey: "onTimeStreak") as? Int ?? 0 }
+        set { withMutation(keyPath: \.onTimeStreak) { Self.standard.set(newValue, forKey: "onTimeStreak") } }
+    }
+    var maxOnTimeStreak: Int {
+        get { access(keyPath: \.maxOnTimeStreak); return Self.standard.object(forKey: "maxOnTimeStreak") as? Int ?? 0 }
+        set { withMutation(keyPath: \.maxOnTimeStreak) { Self.standard.set(newValue, forKey: "maxOnTimeStreak") } }
+    }
+    var lastOnTimeStreakDate_TI: Double {
+        get { access(keyPath: \.lastOnTimeStreakDate_TI); return Self.standard.object(forKey: "lastOnTimeStreakDate") as? Double ?? 0 }
+        set { withMutation(keyPath: \.lastOnTimeStreakDate_TI) { Self.standard.set(newValue, forKey: "lastOnTimeStreakDate") } }
+    }
     /// Last day celebrated as a perfect day (all five within their windows), so it fires once.
-    @AppStorage("lastPerfectDay") var lastPerfectDay_TI: Double = 0
-    @AppStorage("lastStreakDate") var lastStreakDate_TI: Double = 0   // audit B15: "today" by default made a fresh install count today (1 Day Streak)
+    var lastPerfectDay_TI: Double {
+        get { access(keyPath: \.lastPerfectDay_TI); return Self.standard.object(forKey: "lastPerfectDay") as? Double ?? 0 }
+        set { withMutation(keyPath: \.lastPerfectDay_TI) { Self.standard.set(newValue, forKey: "lastPerfectDay") } }
+    }
+    /// audit B15: "today" by default made a fresh install count today (1 Day Streak)
+    var lastStreakDate_TI: Double {
+        get { access(keyPath: \.lastStreakDate_TI); return Self.standard.object(forKey: "lastStreakDate") as? Double ?? 0 }
+        set { withMutation(keyPath: \.lastStreakDate_TI) { Self.standard.set(newValue, forKey: "lastStreakDate") } }
+    }
     var lastStreakDate: Date {
         get { return Date(timeIntervalSince1970: lastStreakDate_TI) }
         set { lastStreakDate_TI = newValue.timeIntervalSince1970 }
     }
 
-    // used appstorage for persistence purposes. but otherwise really not needed.
-    @AppStorage("locationPrints") var locationPrints: Bool = false
-    @AppStorage("schedulePrints") var schedulePrints: Bool = false
-    @AppStorage("calculationPrints") var calculationPrints: Bool = false
+    // Debug print switches (Settings → My Dev Stuff), kept across launches.
+    var locationPrints: Bool {
+        get { access(keyPath: \.locationPrints); return Self.standard.object(forKey: "locationPrints") as? Bool ?? false }
+        set { withMutation(keyPath: \.locationPrints) { Self.standard.set(newValue, forKey: "locationPrints") } }
+    }
+    var schedulePrints: Bool {
+        get { access(keyPath: \.schedulePrints); return Self.standard.object(forKey: "schedulePrints") as? Bool ?? false }
+        set { withMutation(keyPath: \.schedulePrints) { Self.standard.set(newValue, forKey: "schedulePrints") } }
+    }
+    var calculationPrints: Bool {
+        get { access(keyPath: \.calculationPrints); return Self.standard.object(forKey: "calculationPrints") as? Bool ?? false }
+        set { withMutation(keyPath: \.calculationPrints) { Self.standard.set(newValue, forKey: "calculationPrints") } }
+    }
 
     let orderedPrayerNames: [String] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
         
-    // MARK: - Published & State
-    @Published var cityName: String?
-    @Published var useTestPrayers: Bool = false  // Add this property
-    @Published var prayerTimesForDateDict: [String: (start: Date, end: Date, window: TimeInterval)] = [:]
-    @Published var todaysPrayers: [PrayerModel] = []
-    @Published var todaysScore: Double = 0.0
+    // MARK: - Observed state
+    var cityName: String?
+    var useTestPrayers: Bool = false  // Add this property
+    var prayerTimesForDateDict: [String: (start: Date, end: Date, window: TimeInterval)] = [:]
+    /// A reload of today's rows redraws every holder too (statics like DayHistory follow the rows), as it did before.
+    var todaysPrayers: [PrayerModel] = [] { didSet { revision &+= 1 } }
+    var todaysScore: Double = 0.0
+    /// Bumped by `contentChanged()` after rows were rescored or moved: a view whose body draws from something that isn't
+    /// observable by itself (DayHistory, a fetch in body, …) reads it to redraw then, as every view did on objectWillChange.
+    private(set) var revision = 0
+    func contentChanged() { revision &+= 1 }
 
 
-    private var refreshTimer: Timer?   // a plain property (audit B2): `@State` does nothing outside a View, so the timer could never be re-planned
+    @ObservationIgnored private var refreshTimer: Timer?   // a plain property (audit B2): `@State` does nothing outside a View, so the timer could never be re-planned
 
     /// While excusedChanged re-scores 60 days: one save at the end, not one a day (perf-recheck, 2026-10-14: ~60 saves on
     /// the main thread in one go when Excused Mode went on or off).
-    var batchingScores = false
+    @ObservationIgnored var batchingScores = false
 
     // MARK: - Computed Vars
     var relevantPrayer: PrayerModel? {
@@ -168,9 +233,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     // MARK: - Location Stuff
     let geocoder = CLGeocoder()
-    var lastGeocodeRequestTime: Date?
-    var lastAppLocation: CLLocation?
-    private var cancellables = Set<AnyCancellable>()
+    @ObservationIgnored var lastGeocodeRequestTime: Date?
+    @ObservationIgnored var lastAppLocation: CLLocation?
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
 
 
     // MARK: - Potential Utils
@@ -395,7 +460,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         if TourRuntime.shared.isPractice(prayer) {   // the tour's pretend prayer: nothing saved
             prayer.latPrayedAt = spot.latitude
             prayer.longPrayedAt = spot.longitude
-            objectWillChange.send()
+            contentChanged()
             return
         }
         // Keep where the app recorded it, the first time it's moved (so it can be put back).
@@ -410,14 +475,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         calculateDayScore(for: prayer.dayStart)
         calculatePrayerStreak()
         pushCompletionsToWidget()
-        objectWillChange.send()
+        contentChanged()
         guard prayer.mosqueName == nil else { return }
         Task { @MainActor in
             let days = await MasjidDetector.check([prayer], in: context)
             guard !days.isEmpty else { return }
             for day in days { calculateDayScore(for: day) }
             pushCompletionsToWidget()
-            objectWillChange.send()
+            contentChanged()
         }
     }
 
@@ -433,7 +498,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     func editPrayerTime(_ prayer: PrayerModel, to date: Date) {
         if TourRuntime.isPracticeAnywhere(prayer) {   // the tour's pretend prayer: nothing saved
             prayer.editTime(to: date)
-            objectWillChange.send()
+            contentChanged()
             return
         }
         prayer.editTime(to: date)
@@ -447,7 +512,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         calculateDayScore(for: prayer.dayStart)
         calculatePrayerStreak()
         pushCompletionsToWidget()
-        objectWillChange.send()
+        contentChanged()
         JourneyChange.post()
     }
 
@@ -474,7 +539,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         DayHistory.invalidate()
         pushCompletionsToWidget()
         PhotoDevelop.check(todaysPrayers)
-        objectWillChange.send()
+        contentChanged()
         JourneyChange.post()
         return true
     }
@@ -502,7 +567,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 triggerSomeVibration(type: .medium)
                 prayer.resetPrayer()
             }
-            objectWillChange.send()
+            contentChanged()
             return
         }
         // Excused from prayer (Excused.swift): a prayer she's excused from can't be marked (unmarking one marked before
@@ -562,7 +627,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                     for day in days { calculateDayScore(for: day) }
                     if !days.isEmpty {
                         pushCompletionsToWidget()
-                        objectWillChange.send()
+                        contentChanged()
                         JourneyChange.post()   // rescored
                         // It turned out to be Jumu'ah: the moment, corrected (the right name and score), not replayed.
                         let window = prayer.endTime.timeIntervalSince(prayer.startTime)
@@ -585,7 +650,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             for day in days { self.calculateDayScore(for: day) }
             self.calculatePrayerStreak()
             self.pushCompletionsToWidget()
-            self.objectWillChange.send()
+            self.contentChanged()
         }
     }
     

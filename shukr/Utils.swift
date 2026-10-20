@@ -1032,7 +1032,7 @@ private struct FloatingSymbols: View {
 }
 
 struct TopBar: View {
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @Environment(SharedStateClass.self) var sharedState
     @Environment(\.modelContext) private var context
     
@@ -1073,6 +1073,7 @@ struct TopBar: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack(alignment: .top){
             VStack{
                 if let cityName = viewModel.cityName {

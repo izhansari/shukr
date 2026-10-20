@@ -258,9 +258,10 @@ struct TourOverlay: View {
 /// `-tourWidgetWrote`, `-tourAwayAfter`; `-demoTourHint` / `-demoTourTip` for the old pictures.
 struct TourDemoLayer: View {
     @Environment(SharedStateClass.self) private var sharedState
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         Color.clear.frame(width: 0, height: 0)
         .task {
             // `-armFirstMark YES`: the next real mark is celebrated (as after the first-run setup) — the pictures.
@@ -1878,7 +1879,7 @@ struct BubbleShape: Shape {
         if card == .circle || card == .list { markFajrLate() }
         clearPill += 1
         if PrayerListFold.shared.showDone { PrayerListFold.shared.showDone = false }
-        viewModel?.objectWillChange.send()
+        viewModel?.contentChanged()
     }
 
     /// The circle card's colours demo (owner: "user triggered … they see the whole sweep and then the continue button
@@ -2902,7 +2903,7 @@ struct TourLayer: View {
     static let topInset: CGFloat = 112
     let covered: Bool
     @Environment(SharedStateClass.self) private var sharedState
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
     @EnvironmentObject private var compass: CompassState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -2911,6 +2912,7 @@ struct TourLayer: View {
     private var runtime: TourRuntime { TourRuntime.shared }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         watching(layers)
     }
 

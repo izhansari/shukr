@@ -59,7 +59,7 @@ extension PrayerViewModel {
         DayHistory.invalidate()
         calculatePrayerStreak()
         pushCompletionsToWidget()
-        objectWillChange.send()
+        contentChanged()
     }
 
     // Add this method to PrayerViewModel to save a daily score to SwiftData

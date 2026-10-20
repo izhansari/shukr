@@ -13,7 +13,7 @@ import Charts
 struct SimpleDailyScoreView: View {
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     @Environment(\.modelContext) private var context
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @Query private var scores: [DailyPrayerScore]
     
     @State private var selectedDate = Date()
@@ -21,6 +21,7 @@ struct SimpleDailyScoreView: View {
     private let calendar = Calendar.current
     
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         VStack(spacing: 20) {
             // Date navigation
             HStack {

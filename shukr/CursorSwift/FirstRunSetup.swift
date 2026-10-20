@@ -247,7 +247,7 @@ struct FirstRunSetupView: View {
     var mode: Mode = .full
     var onFinish: () -> Void = {}
 
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
     @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -304,6 +304,7 @@ struct FirstRunSetupView: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack {
             // Gone once the welcome takes over (it has its own background).
             Color(.systemBackground).ignoresSafeArea()
@@ -650,7 +651,7 @@ struct LostWords: View {
 struct LostPageLayer: View {
     @EnvironmentObject private var location: EnvLocationManager
     @Environment(SharedStateClass.self) private var sharedState
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pickingCity = false
 
@@ -659,6 +660,7 @@ struct LostPageLayer: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack {
             // Always there (an empty Group never appears, so its tasks never ran); takes no taps.
             Color.clear.allowsHitTesting(false)
@@ -2137,7 +2139,7 @@ private struct PrayerTimesStep: View {
     let next: () -> Void
     /// Back to the method: part 2's method line.
     let change: () -> Void
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
     @EnvironmentObject private var location: EnvLocationManager
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
@@ -2148,6 +2150,7 @@ private struct PrayerTimesStep: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         VStack(spacing: 0) {
             // One title for both steps (owner): the two questions are its numbered parts, so nothing at the top swaps.
             StepTitle(title: "Your prayer times", subtitle: nil)
@@ -2725,7 +2728,7 @@ struct NotificationTile: View {
     var accent: Color = .sage
     var inList = false
     var onTap: () -> Void = {}
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
 
     private var state: Int { notifIsOn ? (nudgeIsOn ? 2 : 1) : 0 }
 
@@ -2736,6 +2739,7 @@ struct NotificationTile: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         Button {
             switch state {
             case 0: notifIsOn = true; nudgeIsOn = false

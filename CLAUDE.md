@@ -154,6 +154,7 @@ a prayer checks `Excused.covers(start:end:)` (Excused.swift). Read `Excused.rang
 
 **Re-render hygiene**
 - Never create a publisher / Timer inline in `body` (froze the ring): `static let ticker`.
+- `PrayerViewModel` is `@Observable` (2026-10-19, cleanup step 8): read it with `@Environment(PrayerViewModel.self)`, bind with `Bindable(viewModel)`. Its saved settings are computed over UserDefaults (same keys; no `@AppStorage` in it). A view redraws only for what its body reads, so every holder reads `viewModel.revision`; after changing data that isn't observable on its own (rows rescored, statics like DayHistory), call `contentChanged()`, never a bare mutation and hope.
 - Heading / qibla live in `CompassState` (never on `EnvLocationManager`, which the root holds — 4789a97, the picker flicker),
   published only on change; the circle's arrow is its own view (`QiblaArrow`). The heading (LocMans.swift, compass audit
   2026-09-30): Core Motion's fused heading (true north with location, magnetic without), Core Location's as the fallback;

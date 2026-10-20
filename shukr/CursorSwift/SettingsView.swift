@@ -25,7 +25,7 @@ struct SettingsView: View {
     #if DEBUG
     @AppStorage("firstZikrChoice") private var firstZikrChoice = "cards"
     #endif
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     /// Whether notifications can arrive at all: off or not yet allowed hides the per-prayer tiles.
     @ObservedObject private var notificationHealth = NotificationHealth.shared
     /// Settings → Reminders' switch: which side shows (kept), and whether each side needs a look (its orange dot).
@@ -352,6 +352,7 @@ struct SettingsView: View {
     @State private var listTop: CGFloat = 0
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack{
             VStack{
                 ScrollViewReader { proxy in
@@ -840,10 +841,10 @@ struct SettingsView: View {
                                 Toggle("Widget: fewest updates", isOn: $widgetFewestEntries)
                                     .onChange(of: widgetFewestEntries) { WidgetCenter.shared.reloadAllTimelines() }
                                 Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
-                                Toggle("Location printer", isOn: $viewModel.locationPrints)
-                                Toggle("Scheduling printer", isOn: $viewModel.schedulePrints)
-                                Toggle("Calculation printer", isOn: $viewModel.calculationPrints)
-                                Toggle("Use test prayer times", isOn: $viewModel.useTestPrayers)
+                                Toggle("Location printer", isOn: Bindable(viewModel).locationPrints)
+                                Toggle("Scheduling printer", isOn: Bindable(viewModel).schedulePrints)
+                                Toggle("Calculation printer", isOn: Bindable(viewModel).calculationPrints)
+                                Toggle("Use test prayer times", isOn: Bindable(viewModel).useTestPrayers)
                                     .onChange(of: viewModel.useTestPrayers) { _, _ in
                                         viewModel.fetchPrayerTimes(cameFrom: "toggle Use Test Prayer Times")
                                     }
@@ -1102,7 +1103,7 @@ struct headerWithInfoButton: View {
 /// One prayer's notifications: a single button that cycles off → start → nudge (nudge includes the
 /// start). Also used by the first-run setup's Reminders step (with its sage `accent`).
 struct prayerCol: View {
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     let prayerName: String
     @Binding var notifIsOn: Bool
     @Binding var nudgeIsOn: Bool
@@ -1112,6 +1113,7 @@ struct prayerCol: View {
     var dots = false
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
             // Unified Bell Button
             Button(action:{
                 let wasOn = notifIsOn, wasNudge = nudgeIsOn
@@ -1189,7 +1191,7 @@ struct prayerCol: View {
 
 
 struct NotificationDropdownInfo: View {
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @AppStorage("fajrNotif") private var fajrNotif = NotificationDefaults.notify("Fajr")
     @AppStorage("fajrNudges") private var fajrNudges = NotificationDefaults.nudges("Fajr")
     @AppStorage("maghribNotif") private var maghribNotif = NotificationDefaults.notify("Maghrib")
@@ -1204,6 +1206,7 @@ struct NotificationDropdownInfo: View {
     /// A small version of setup's notifications page (owner: "baby versions of their onboarding pages"): its line, its
     /// preview (Asr), and Off / Start / Nudge, each playing in the preview when tapped.
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         VStack(alignment: .leading, spacing: 14) {
             Text("Not just when it starts: if you haven’t prayed, we’ll nudge you at halfway and 30 minutes left.")
                 .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
@@ -1251,7 +1254,7 @@ struct NotificationDropdownInfo: View {
 /// fajr-tab-height C3: about the other two sides' height; the wheels made it twice as tall). A change is saved and
 /// re-planned a beat after it.
 struct AlarmSettingsView: View {
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     
     
     // Local state to manage alert presentation
@@ -1543,6 +1546,7 @@ struct AlarmSettingsView: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         Group {
             if FajrAlarms.supported && status.allowed != true {
                 // Not allowed yet (asks, and turns the alarm on) or refused in iOS Settings (the way back there): as the

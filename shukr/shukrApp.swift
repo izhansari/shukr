@@ -26,7 +26,7 @@ struct shukrApp: App {
     
     // First define the two @StateObject properties *without* immediate assignment:
     @StateObject var environmentLocationManager: EnvLocationManager
-    @StateObject var prayerViewModel: PrayerViewModel
+    @State var prayerViewModel: PrayerViewModel
     /// Notifications turned off while shukr is in the background: the welcome screen asks again
     /// when it comes back, same as at launch.
     @ObservedObject private var notificationStatus = NotificationStatus.shared
@@ -330,11 +330,18 @@ struct shukrApp: App {
         // 2) Assign the local var to the @StateOobject...
         _environmentLocationManager = StateObject(wrappedValue: manager)
         // 2b) Assign both them badboys (context and the @StateObject envmanager) to the @StateObject
-        _prayerViewModel = StateObject(
-            wrappedValue: PrayerViewModel( context: context, envLocationManager: manager )
+        _prayerViewModel = State(
+            initialValue: PrayerViewModel( context: context, envLocationManager: manager )
         )
     }
     
+    /// Sun: light after Fajr, dark at Maghrib. Reads `revision` too, so a rows reload (opening the app after Maghrib)
+    /// flips it as the old @StateObject's every-publish redraw did (Fable's step-8 inventory).
+    private var sunLook: ColorScheme {
+        _ = prayerViewModel.revision
+        return prayerViewModel.isDaytime ? .light : .dark
+    }
+
     var body: some Scene {
 
         WindowGroup {
@@ -358,7 +365,7 @@ struct shukrApp: App {
                     Color(.systemBackground).ignoresSafeArea()
                 }
             }
-            .environmentObject(prayerViewModel)
+            .environment(prayerViewModel)
             // The ⓘ cards float over everything the stack shows, pushed pages too (Your reminders) — on PrayerTimesView
             // they opened under a pushed page (InfoModal.swift).
             .infoModalHost()
@@ -376,7 +383,7 @@ struct shukrApp: App {
                         // Any widget / control deep link that came in meanwhile, now (PrayerTimesView).
                         NotificationCenter.default.post(name: FirstRunSetup.finished, object: nil)
                     })
-                    .environmentObject(prayerViewModel)
+                    .environment(prayerViewModel)
                     .transition(.opacity)
                 }
             }
@@ -449,7 +456,7 @@ struct shukrApp: App {
                 colorModeToggleNew == 0 ? .light :
                     colorModeToggleNew == 1 ? .dark :
                     colorModeToggleNew == 3 ? nil :   // System: the iPhone's own (owner)
-                    (prayerViewModel.isDaytime ? .light : .dark)
+                    sunLook
             )
             // The watch follows the same setting (Settings' toggle, the setup's step).
             .onChange(of: colorModeToggleNew) { _, _ in WatchSync.shared.send() }
@@ -466,7 +473,7 @@ struct shukrApp: App {
         .environmentObject(environmentLocationManager.compass)   // compass views subscribe to this, nothing else does
         .environmentObject(environmentLocationManager.health)    // "needs calibrating": the ☰ badge / row, the line
         .environment(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
-//            .environmentObject(prayerViewModel) // Inject PrayerViewModel
+//            .environment(prayerViewModel) // Inject PrayerViewModel
         /*
          Inject `sharedState` as an EnvironmentObject at the top level of the app.
          This makes `sharedState` globally accessible to any view within the view hierarchy

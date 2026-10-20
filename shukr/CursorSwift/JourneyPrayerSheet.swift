@@ -37,7 +37,7 @@ enum JourneyChange {
 
 struct JourneyPrayerSheet: View {
     let prayer: PrayerModel
-    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var viewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.circleTheme) private var theme
     @Namespace private var mapSpace
@@ -96,6 +96,7 @@ struct JourneyPrayerSheet: View {
     private var edited: Bool { timeChanged || draftSpot != nil || note != savedNote }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         VStack(spacing: 0) {
             header.padding(.horizontal, 22).padding(.top, 20)
             ZStack(alignment: .top) {

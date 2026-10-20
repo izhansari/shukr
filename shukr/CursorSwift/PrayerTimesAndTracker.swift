@@ -22,7 +22,7 @@ struct PrayerTimesView: View {
     @State private var perfExplore = false
     #endif
     @Environment(SharedStateClass.self) var sharedState
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @Environment(\.presentationMode) var presentationMode
     @Environment(\.modelContext) var context
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
@@ -698,6 +698,7 @@ struct PrayerTimesView: View {
     #endif
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack {
             // The backdrop, status-bar strip included: pages are clipped to the pager, which
             // starts below the top safe area, and the Salah page is transparent. It slides with
@@ -731,7 +732,7 @@ struct PrayerTimesView: View {
                     // a fan of having Journey there … put Journey back in the hamburger menu only").
                     SettingsPage { sharedState.horizontalPage = .main }
                         .equatable()
-                        .environmentObject(viewModel)
+                        .environment(viewModel)
                         .containerRelativeFrame(.horizontal)
                         .clipped()
                         .id(NavPage.settings)
@@ -1577,7 +1578,7 @@ struct PrayerTimesView: View {
                     }
                     else { p.startTime = now.addingTimeInterval(3600 * Double(i - target)); p.endTime = p.startTime.addingTimeInterval(1800) }
                 }
-                viewModel.objectWillChange.send()
+                viewModel.contentChanged()
                 // `-demoPrayerStartThenMark`: mark it 4 s after it starts → the circle moves on to the
                 // next (not started) prayer and the track shrinks back to dashed after the sweep.
                 if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartThenMark") {
@@ -1789,7 +1790,7 @@ struct PrayerTimesView: View {
     /// asked for this pop back (2026-09-24). `live.pull` is the resisted drag nudge.
     struct SalahPageContent: View {
         @Environment(SharedStateClass.self) var sharedState
-        @EnvironmentObject var viewModel: PrayerViewModel
+        @Environment(PrayerViewModel.self) var viewModel
         @Environment(\.circleTheme) private var theme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         /// The look prototype's row motion, read as state so a change redraws the page (it was read from
@@ -1823,6 +1824,7 @@ struct PrayerTimesView: View {
         @State private var restsReady = false
 
         var body: some View {
+            let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
             if follows { followingBody } else { poppingBody }
         }
 
@@ -2081,7 +2083,7 @@ struct PrayerTimesView: View {
         @State private var showWhatsNew = false
         /// The compass calibration sheet (the line under the circle, or ☰ → Calibrate compass).
         @State private var showCalibration = false
-        @EnvironmentObject private var viewModel: PrayerViewModel
+        @Environment(PrayerViewModel.self) private var viewModel
         #if DEBUG
         @State private var demoViewer = false
         @State private var demoAlarmCheck = false
@@ -2166,6 +2168,7 @@ struct PrayerTimesView: View {
         @AppStorage(SalahSheetDrag.key) private var sheetFollows = SalahSheetDrag.defaultOn
 
         var body: some View {
+            let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
             VStack(spacing: 0) {
                 ZStack(alignment: .top) {
                     // The two titles push each other with the pager (owner, 2026-10-01): swiping to Zikr
@@ -2797,7 +2800,7 @@ struct ContentView3_Previews: PreviewProvider {
 
 struct TodaysPrayerListView: View {
 
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @Binding var showDailyAyahView: Bool
     @Environment(\.circleTheme) private var theme
     /// Pills stand apart; the other looks keep their rows close with dividers.
@@ -2904,6 +2907,7 @@ struct TodaysPrayerListView: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         // Only prayers that are loaded: PrayerButton fatalErrors on a missing one, and
         // this list is now in the tree from launch, before loadTodaysPrayerObjects runs.
         let loaded = viewModel.orderedPrayerNames.filter { name in viewModel.todaysPrayers.contains { $0.name == name } }
@@ -3026,12 +3030,13 @@ struct TodaysPrayerListView: View {
 /*
 struct SomedaysPrayerListView: View {
 
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @Binding var showDailyAyahView: Bool
     let selectedDate: Date
     let spacing: CGFloat = 6
     
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         VStack{
             VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
                 ForEach(viewModel.orderedPrayerNames, id: \.self) { prayerName in
@@ -3082,7 +3087,7 @@ struct PrayerButton: View {
     /// An unmark from the row's alert: the page settles back (score → prayer, the list's rows) in one ease.
     private static let unmarkFade = Animation.easeInOut(duration: 0.4)
     @Environment(SharedStateClass.self) var sharedState
-    @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) var viewModel
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
 
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var calculationMethod: Int = 2
@@ -3467,6 +3472,7 @@ struct PrayerButton: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
             // Where a tap marks (owner, 2026-09-29: testers kept missing the dot): a 44 pt circle round the
             // dot (`markRadius`), stopping short of the name; the rest of the row flips the time as before.
             // The dot used to be a Button round its 14 pt circle, the only place a tap marked.

@@ -1048,7 +1048,7 @@ struct LocationMapContentView: View {
     private var appDark: Bool {
         colorMode == 1 || (colorMode == 2 && !prayerViewModel.isDaytime) || (colorMode == 3 && systemScheme == .dark)
     }
-    @EnvironmentObject private var prayerViewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var prayerViewModel
     @Environment(\.modelContext) private var context
     @EnvironmentObject var compass: CompassState
     @EnvironmentObject var envLocation: EnvLocationManager
@@ -1309,6 +1309,7 @@ struct LocationMapContentView: View {
     }
 
     var body: some View {
+        let _ = prayerViewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack {
             MapView(viewModel: viewModel, envLocation: envLocation, anchor: anchor, dark: appDark, dayOnly: dayMode)
                 .ignoresSafeArea()
@@ -2248,7 +2249,7 @@ struct PrayerSpotDetail: View {
     @ObservedObject var viewModel: LocationViewModel
     /// ‹: to the cluster's list, or the home list for a single pin.
     let back: () -> Void
-    @EnvironmentObject private var prayerViewModel: PrayerViewModel
+    @Environment(PrayerViewModel.self) private var prayerViewModel
     @State private var address: String?
     /// Editing: the picked time and spot wait here until Save.
     @State private var draftTime = Date()
@@ -2295,6 +2296,7 @@ struct PrayerSpotDetail: View {
     @Environment(\.mapSheetCollapsed) private var collapsed
 
     var body: some View {
+        let _ = prayerViewModel.revision   // redraw after marks / edits, as on objectWillChange (step 8)
         ZStack {
             if collapsed && !editing {
                 MapSheetCollapsed { header }
