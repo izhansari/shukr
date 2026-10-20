@@ -311,14 +311,12 @@ struct PrayerTimeEditSheet: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
     }
 
-    /// The boxes' fill: the grouped grey a sheet gets (iOS's "elevated" shade), pinned. Left to iOS, his phone drew the
-    /// base shade, almost the glass's own colour, so the boxes all but vanished (owner, 2026-10-19: "why is the bento still
-    /// hard to see on my phone"); the sim drew the elevated one.
-    private var boxFill: Color {
-        Color(UIColor.secondarySystemGroupedBackground.resolvedColor(with: UITraitCollection(traitsFrom: [
-            UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light),
-            UITraitCollection(userInterfaceLevel: .elevated)])))
-    }
+    /// The boxes' fill: iOS's translucent fill, which lightens (dark) or darkens (light) whatever is behind it, so the boxes
+    /// always stand off the glass. A solid grey didn't: the glass takes its colour from what's behind the sheet and came out
+    /// as light as the grey on his phone, so the boxes vanished there and not in the sim (owner, 2026-10-20: "your fix to
+    /// bento color didn't work on my phone. let's just use something reliable but still nice"; tried and dropped: the
+    /// grouped grey, then the same pinned to its elevated shade, 893e46fc).
+    private var boxFill: Color { Color(.tertiarySystemFill) }
 
     private func card<Content: View>(radius: CGFloat = 22, @ViewBuilder _ content: () -> Content) -> some View {
         content()
