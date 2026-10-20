@@ -20,17 +20,23 @@ struct tasbeehView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Opened out of a Zikr ring under the soft look (SessionHandoff): the counter ring starts on that ring's
     /// place and glides to its own while the page, the count and the buttons fade in; nil = the usual sheet.
-    private var entryFrom: CGRect? { get { stageModel.entryFrom } nonmutating set { stageModel.entryFrom = newValue } }   /// The task's share before the session (the ring's arc lands there as it closes); nil = a plain close.
+    private var entryFrom: CGRect? { get { stageModel.entryFrom } nonmutating set { stageModel.entryFrom = newValue } }
+    /// The task's share before the session (the ring's arc lands there as it closes); nil = a plain close.
     private var landingBase: Double? { get { stageModel.landingBase } nonmutating set { stageModel.landingBase = newValue } }
-    private var entryOffset: CGSize { get { stageModel.entryOffset } nonmutating set { stageModel.entryOffset = newValue } }   /// The soft entry in steps (SessionOpening): the page and the ring, then the count (where the Zikr ring's label
+    private var entryOffset: CGSize { get { stageModel.entryOffset } nonmutating set { stageModel.entryOffset = newValue } }
+    /// The soft entry in steps (SessionOpening): the page and the ring, then the count (where the Zikr ring's label
     /// was), then the buttons; all on at once for the usual sheet.
     private var pageIn: Bool { get { stageModel.pageIn } nonmutating set { stageModel.pageIn = newValue } }
     private var countIn: Bool { get { stageModel.countIn } nonmutating set { stageModel.countIn = newValue } }
-    private var chromeIn: Bool { get { stageModel.chromeIn } nonmutating set { stageModel.chromeIn = newValue } }   /// The opening's and the close's sequences (one at a time; a close cancels an opening still playing).
-    private var sequence: Task<Void, Never>? { get { stageModel.sequence } nonmutating set { stageModel.sequence = newValue } }   /// The counter ⇄ results hand-over (out, then in), cancelled by a newer one.
+    private var chromeIn: Bool { get { stageModel.chromeIn } nonmutating set { stageModel.chromeIn = newValue } }
+    /// The opening's and the close's sequences (one at a time; a close cancels an opening still playing).
+    private var sequence: Task<Void, Never>? { get { stageModel.sequence } nonmutating set { stageModel.sequence = newValue } }
+    /// The counter ⇄ results hand-over (out, then in), cancelled by a newer one.
     private var resultsTask: Task<Void, Never>? { get { stageModel.resultsTask } nonmutating set { stageModel.resultsTask = newValue } }
-    private var openingStyle: SessionOpening { get { stageModel.openingStyle } nonmutating set { stageModel.openingStyle = newValue } }   /// Closing softly: the same steps backwards over the wheel before the cover goes.
-    private var leaving: Bool { get { stageModel.leaving } nonmutating set { stageModel.leaving = newValue } }   /// The Salah look prototype (SalahLook.swift): under the soft look the counter ring sits at the screen's true
+    private var openingStyle: SessionOpening { get { stageModel.openingStyle } nonmutating set { stageModel.openingStyle = newValue } }
+    /// Closing softly: the same steps backwards over the wheel before the cover goes.
+    private var leaving: Bool { get { stageModel.leaving } nonmutating set { stageModel.leaving = newValue } }
+    /// The Salah look prototype (SalahLook.swift): under the soft look the counter ring sits at the screen's true
     /// centre — where the Zikr wheel's and the Salah page's circles are — not the safe area's (≈14 pt lower: the
     /// ring "shifts down ever so slightly", owner), and the page is the picked palette's surface.
     @Environment(\.circleTheme) private var theme
@@ -75,10 +81,12 @@ struct tasbeehView: View {
     private var secondaryStep: Int { sessionMantra?.quickAddStep ?? noMantraQuickAdd }
     /// Count in sets: with the "+N" button switched on, every tap / drag (and −) is worth N
     /// (owner, 2026-09-25: it was a one-shot +N button). Per session, off at the start.
-    private var countingInSets: Bool { get { countModel.countingInSets } nonmutating set { countModel.countingInSets = newValue } }   /// Counting in sets right now (a size set and switched on): +N in the top bar and the line at the bottom.
+    private var countingInSets: Bool { get { countModel.countingInSets } nonmutating set { countModel.countingInSets = newValue } }
+    /// Counting in sets right now (a size set and switched on): +N in the top bar and the line at the bottom.
     private var setsOn: Bool { countingInSets && secondaryStep > 1 }
     /// The counter's top bar's height (the pause screen's top row matches it).
-    private var topBarHeight: CGFloat { get { stageModel.topBarHeight } nonmutating set { stageModel.topBarHeight = newValue } }   /// How far the results' tiles rise (as the pause view lifts them — the finish line's room at its fullest when
+    private var topBarHeight: CGFloat { get { stageModel.topBarHeight } nonmutating set { stageModel.topBarHeight = newValue } }
+    /// How far the results' tiles rise (as the pause view lifts them — the finish line's room at its fullest when
     /// there's none): the finished ring keeps its room above them. Worked out here, not reported up: setting this
     /// from the pause view as it laid out lost the sleep finish's results.
     private var resultsTilesLift: CGFloat {
@@ -100,40 +108,53 @@ struct tasbeehView: View {
     private var timerIsActive: Bool { get { clockModel.timerIsActive } nonmutating set { clockModel.timerIsActive = newValue } }
     private var timerbb: Timer? { get { clockModel.timerbb } nonmutating set { clockModel.timerbb = newValue } }
     private var paused: Bool { get { clockModel.paused } nonmutating set { clockModel.paused = newValue } }
-    private var tasbeeh: Int { get { countModel.tasbeeh } nonmutating set { countModel.tasbeeh = newValue } }   /// Counts / seconds already done today when continuing a task: on the ring, not saved again.
+    private var tasbeeh: Int { get { countModel.tasbeeh } nonmutating set { countModel.tasbeeh = newValue } }
+    /// Counts / seconds already done today when continuing a task: on the ring, not saved again.
     private var countOffset: Int { get { countModel.countOffset } nonmutating set { countModel.countOffset = newValue } }
-    private var timeOffset: TimeInterval { get { clockModel.timeOffset } nonmutating set { clockModel.timeOffset = newValue } }   /// What this session itself counted (the saved total).
+    private var timeOffset: TimeInterval { get { clockModel.timeOffset } nonmutating set { clockModel.timeOffset = newValue } }
+    /// What this session itself counted (the saved total).
     private var sessionCount: Int { tasbeeh - countOffset }
     private var startTime: Date? { get { clockModel.startTime } nonmutating set { clockModel.startTime = newValue } }
     private var endTime: Date? { get { clockModel.endTime } nonmutating set { clockModel.endTime = newValue } }
     private var pauseStartTime: Date? { get { clockModel.pauseStartTime } nonmutating set { clockModel.pauseStartTime = newValue } }
     private var autoStop: Bool { get { countModel.autoStop } nonmutating set { countModel.autoStop = newValue } }
     private var secsPassedAtPause: TimeInterval { get { clockModel.secsPassedAtPause } nonmutating set { clockModel.secsPassedAtPause = newValue } }
-    private var progressFraction: CGFloat { get { clockModel.progressFraction } nonmutating set { clockModel.progressFraction = newValue } }   /// One ring (SessionHandoff's landing base): where the ring started, where it stood when the session stopped (the
+    private var progressFraction: CGFloat { get { clockModel.progressFraction } nonmutating set { clockModel.progressFraction = newValue } }
+    /// One ring (SessionHandoff's landing base): where the ring started, where it stood when the session stopped (the
     /// stop empties it), and the ring kept up while the session goes, until its arc has landed.
     private var startFraction: CGFloat { get { stageModel.startFraction } nonmutating set { stageModel.startFraction = newValue } }
     private var ringAtStop: CGFloat? { get { stageModel.ringAtStop } nonmutating set { stageModel.ringAtStop = newValue } }
-    private var ringHeld: Bool { get { stageModel.ringHeld } nonmutating set { stageModel.ringHeld = newValue } }   /// Closing onto the wheel: the living fill settles into the wheel's solid arc as it lands (decision
+    private var ringHeld: Bool { get { stageModel.ringHeld } nonmutating set { stageModel.ringHeld = newValue } }
+    /// Closing onto the wheel: the living fill settles into the wheel's solid arc as it lands (decision
     /// circle-ring-handover B).
-    private var arcSettled: Bool { get { stageModel.arcSettled } nonmutating set { stageModel.arcSettled = newValue } }   /// A soft close from the pause screen or the results: the ring under their cards waits hidden until they've gone
+    private var arcSettled: Bool { get { stageModel.arcSettled } nonmutating set { stageModel.arcSettled = newValue } }
+    /// A soft close from the pause screen or the results: the ring under their cards waits hidden until they've gone
     /// (circle rule 3, out then in — it showed through them as they faded, its arc sweeping over the tiles; Sami's
     /// step-5 check, 2026-10-02).
     private var ringOut: Bool { get { stageModel.ringOut } nonmutating set { stageModel.ringOut = newValue } }   // an in-place entry brings the ring in after the page
     /// The results are in: they come once the counter under them (its ring, count and buttons) has gone — out, then in
     /// (owner, 2026-10-02: "from ring to completion page" — the "11" ring showed through the cards as they faded in).
-    private var resultsIn: Bool { get { stageModel.resultsIn } nonmutating set { stageModel.resultsIn = newValue } }   /// The soft look's one ring through pause and finish (decision session-flow-build A): where it's laid out (global,
+    private var resultsIn: Bool { get { stageModel.resultsIn } nonmutating set { stageModel.resultsIn = newValue } }
+    /// The soft look's one ring through pause and finish (decision session-flow-build A): where it's laid out (global,
     /// the screen's centre, and its size), where the pause cards want it, the cards' bottom block's top, and how far it's lifted now.
     private var ringSize: CGSize { get { stageModel.ringSize } nonmutating set { stageModel.ringSize = newValue } }
     private var ringHomeMid: CGPoint { get { stageModel.ringHomeMid } nonmutating set { stageModel.ringHomeMid = newValue } }
     private var cardsBottomTop: CGFloat { get { stageModel.cardsBottomTop } nonmutating set { stageModel.cardsBottomTop = newValue } }
-    private var ringLift: CGFloat { get { stageModel.ringLift } nonmutating set { stageModel.ringLift = newValue } }   /// The ring's move in flight (a wait for the cards, Reduce Motion's fade): a newer move cancels it.
-    private var ringMoveTask: Task<Void, Never>? { get { stageModel.ringMoveTask } nonmutating set { stageModel.ringMoveTask = newValue } }   /// The pause screen's sleep chip (global): the sleep dim has a hole there while paused.
-    private var sleepChipFrame: CGRect { get { stageModel.sleepChipFrame } nonmutating set { stageModel.sleepChipFrame = newValue } }   /// Where ⏸ and the pause screen's chips are, for the first session's tips (CountTips).
+    private var ringLift: CGFloat { get { stageModel.ringLift } nonmutating set { stageModel.ringLift = newValue } }
+    /// The ring's move in flight (a wait for the cards, Reduce Motion's fade): a newer move cancels it.
+    private var ringMoveTask: Task<Void, Never>? { get { stageModel.ringMoveTask } nonmutating set { stageModel.ringMoveTask = newValue } }
+    /// The pause screen's sleep chip (global): the sleep dim has a hole there while paused.
+    private var sleepChipFrame: CGRect { get { stageModel.sleepChipFrame } nonmutating set { stageModel.sleepChipFrame = newValue } }
+    /// Where ⏸ and the pause screen's chips are, for the first session's tips (CountTips).
     private var pauseButtonFrame: CGRect { get { stageModel.pauseButtonFrame } nonmutating set { stageModel.pauseButtonFrame = newValue } }
-    private var chipsFrame: CGRect { get { stageModel.chipsFrame } nonmutating set { stageModel.chipsFrame = newValue } }   /// Reduce Motion: the ring fades out, changes place, and fades back in instead of travelling.
-    private var ringDimmed: Bool { get { stageModel.ringDimmed } nonmutating set { stageModel.ringDimmed = newValue } }   /// Finished from the pause screen: its tiles and buttons stay up into the results (only the ring moves).
-    private var cardsStay: Bool { get { stageModel.cardsStay } nonmutating set { stageModel.cardsStay = newValue } }   /// A soft close from the pause screen or the results: the ring comes home to the centre before it lands.
-    private var ringToCentre: Bool { get { stageModel.ringToCentre } nonmutating set { stageModel.ringToCentre = newValue } }   /// The close's steps (`playClose`), each awaited to its end — no step is timed off another's guessed length: the
+    private var chipsFrame: CGRect { get { stageModel.chipsFrame } nonmutating set { stageModel.chipsFrame = newValue } }
+    /// Reduce Motion: the ring fades out, changes place, and fades back in instead of travelling.
+    private var ringDimmed: Bool { get { stageModel.ringDimmed } nonmutating set { stageModel.ringDimmed = newValue } }
+    /// Finished from the pause screen: its tiles and buttons stay up into the results (only the ring moves).
+    private var cardsStay: Bool { get { stageModel.cardsStay } nonmutating set { stageModel.cardsStay = newValue } }
+    /// A soft close from the pause screen or the results: the ring comes home to the centre before it lands.
+    private var ringToCentre: Bool { get { stageModel.ringToCentre } nonmutating set { stageModel.ringToCentre = newValue } }
+    /// The close's steps (`playClose`), each awaited to its end — no step is timed off another's guessed length: the
     /// cards (or the count and buttons) go, the arc lands where the wheel's stands, the page goes, then the ring fades
     /// over the wheel's — only once the page has gone, so the wheel's ring is whole under it (the two differ a touch in
     /// glow: removed at once it stepped; faded while the page still was, it dimmed).
@@ -145,16 +166,20 @@ struct tasbeehView: View {
     private var timeSinceLastInteraction: TimeInterval { get { clockModel.timeSinceLastInteraction } nonmutating set { clockModel.timeSinceLastInteraction = newValue } }
     private var showInactivityAlert: Bool { get { clockModel.showInactivityAlert } nonmutating set { clockModel.showInactivityAlert = newValue } }
     private var countDownForAlert: Int { get { clockModel.countDownForAlert } nonmutating set { clockModel.countDownForAlert = newValue } }
-    private var stoppedDueToInactivity: Bool { get { clockModel.stoppedDueToInactivity } nonmutating set { clockModel.stoppedDueToInactivity = newValue } }   /// Set by `finishAsleep`; saved on the session (`SessionDataModel.endedAsleep`).
+    private var stoppedDueToInactivity: Bool { get { clockModel.stoppedDueToInactivity } nonmutating set { clockModel.stoppedDueToInactivity = newValue } }
+    /// Set by `finishAsleep`; saved on the session (`SessionDataModel.endedAsleep`).
     private var endedAsleep: Bool { get { countModel.endedAsleep } nonmutating set { countModel.endedAsleep = newValue } }
     private var newAvrgTPC: TimeInterval { get { countModel.newAvrgTPC } nonmutating set { countModel.newAvrgTPC = newValue } }   //calculated on increment and decrement by secondsPassed / tasbeeh
     /// Session seconds (pauses excluded) at the last tap: a session sleep mode ends is saved as
     /// ending here, not at the countdown's end or when the phone was locked (owner, idea F3BR).
-    private var secsAtLastTap: TimeInterval { get { countModel.secsAtLastTap } nonmutating set { countModel.secsAtLastTap = newValue } }   /// The clock time of the last tap, for the morning card's "ended around" (the session's own
+    private var secsAtLastTap: TimeInterval { get { countModel.secsAtLastTap } nonmutating set { countModel.secsAtLastTap = newValue } }
+    /// The clock time of the last tap, for the morning card's "ended around" (the session's own
     /// seconds leave pauses out).
-    private var lastTapAt: Date? { get { countModel.lastTapAt } nonmutating set { countModel.lastTapAt = newValue } }   /// Sleep mode saved the session while the app was up: the screen stays black ("saved") until the
+    private var lastTapAt: Date? { get { countModel.lastTapAt } nonmutating set { countModel.lastTapAt = newValue } }
+    /// Sleep mode saved the session while the app was up: the screen stays black ("saved") until the
     /// phone locks — nothing bright lights up while he sleeps (owner, sleep-mode-fixes).
-    private var sleptSaved: Bool { get { countModel.sleptSaved } nonmutating set { countModel.sleptSaved = newValue } }   /// The results after a sleep finish have been up a while: black until the lock (or a tap).
+    private var sleptSaved: Bool { get { countModel.sleptSaved } nonmutating set { countModel.sleptSaved = newValue } }
+    /// The results after a sleep finish have been up a while: black until the lock (or a tap).
     private var sleptDark: Bool { get { stageModel.sleptDark } nonmutating set { stageModel.sleptDark = newValue } }
     static let sleptResultsSeconds: Double = 15
     /// What "Keep counting" needs to carry the session on after sleep mode saved it (owner,
@@ -163,19 +188,28 @@ struct tasbeehView: View {
         var startTime: Date?, endTime: Date?, totalPause: Double
         var targetCount: String, task: TaskModel?, lastTapAt: Date?
     }
-    private var sleepResume: SleepResume? { get { countModel.sleepResume } nonmutating set { countModel.sleepResume = newValue } }   /// Keep counting was tapped before the stop's cleanup ran: resume as soon as it has.
-    private var resumeWanted: Bool { get { countModel.resumeWanted } nonmutating set { countModel.resumeWanted = newValue } }   /// The results came from a sleep finish: dimmed (stays through their fade-out on Keep counting).
-    private var resultsDimmed: Bool { get { stageModel.resultsDimmed } nonmutating set { stageModel.resultsDimmed = newValue } }   /// The stop's cleanup has run, so resuming can't be undone by it.
-    private var sleepResumeReady: Bool { get { countModel.sleepResumeReady } nonmutating set { countModel.sleepResumeReady = newValue } }   /// A saved stop's cleanup (`finishStopCleanup`) waits for the results to land — or runs at once with no frames to wait for.
-    private var stopCleanupPending: Bool { get { countModel.stopCleanupPending } nonmutating set { countModel.stopCleanupPending = newValue } }   /// The finish buzz already played on the goal's own tap / tick (stopTimer(goal:)): the cleanup doesn't play it again.
+    private var sleepResume: SleepResume? { get { countModel.sleepResume } nonmutating set { countModel.sleepResume = newValue } }
+    /// Keep counting was tapped before the stop's cleanup ran: resume as soon as it has.
+    private var resumeWanted: Bool { get { countModel.resumeWanted } nonmutating set { countModel.resumeWanted = newValue } }
+    /// The results came from a sleep finish: dimmed (stays through their fade-out on Keep counting).
+    private var resultsDimmed: Bool { get { stageModel.resultsDimmed } nonmutating set { stageModel.resultsDimmed = newValue } }
+    /// The stop's cleanup has run, so resuming can't be undone by it.
+    private var sleepResumeReady: Bool { get { countModel.sleepResumeReady } nonmutating set { countModel.sleepResumeReady = newValue } }
+    /// A saved stop's cleanup (`finishStopCleanup`) waits for the results to land — or runs at once with no frames to wait for.
+    private var stopCleanupPending: Bool { get { countModel.stopCleanupPending } nonmutating set { countModel.stopCleanupPending = newValue } }
+    /// The finish buzz already played on the goal's own tap / tick (stopTimer(goal:)): the cleanup doesn't play it again.
     private var finishBuzzPlayed: Bool { get { countModel.finishBuzzPlayed } nonmutating set { countModel.finishBuzzPlayed = newValue } }
     private var totalPauseInSession: Double { get { clockModel.totalPauseInSession } nonmutating set { clockModel.totalPauseInSession = newValue } }
     private var secsToReport: TimeInterval { get { clockModel.secsToReport } nonmutating set { clockModel.secsToReport = newValue } }
-    private var savedSession: SessionDataModel? { get { countModel.savedSession } nonmutating set { countModel.savedSession = newValue } }   /// Counts made by the current drag (the session tour's "three in one stroke").
-    private var strokesThisTouch: Int { get { countModel.strokesThisTouch } nonmutating set { countModel.strokesThisTouch = newValue } }   /// Post-salah: which of the three phrases the count is in (for the phase-change haptic).
-    private var postSalahPhase: Int { get { countModel.postSalahPhase } nonmutating set { countModel.postSalahPhase = newValue } }   /// Which reminder the post-salah session shows (one per session, picked at random).
+    private var savedSession: SessionDataModel? { get { countModel.savedSession } nonmutating set { countModel.savedSession = newValue } }
+    /// Counts made by the current drag (the session tour's "three in one stroke").
+    private var strokesThisTouch: Int { get { countModel.strokesThisTouch } nonmutating set { countModel.strokesThisTouch = newValue } }
+    /// Post-salah: which of the three phrases the count is in (for the phase-change haptic).
+    private var postSalahPhase: Int { get { countModel.postSalahPhase } nonmutating set { countModel.postSalahPhase = newValue } }
+    /// Which reminder the post-salah session shows (one per session, picked at random).
     private var reminderVariant: Int { get { countModel.reminderVariant } nonmutating set { countModel.reminderVariant = newValue } }
-    private var tasbeehColorMode: Bool { get { countModel.tasbeehColorMode } nonmutating set { countModel.tasbeehColorMode = newValue } }   /// The app's own look (Light / Dark / Auto) when the session opened: the counter follows it,
+    private var tasbeehColorMode: Bool { get { countModel.tasbeehColorMode } nonmutating set { countModel.tasbeehColorMode = newValue } }
+    /// The app's own look (Light / Dark / Auto) when the session opened: the counter follows it,
     /// fixed for the session (Auto passing Maghrib mid-count doesn't flip it); sleep mode goes dark
     /// and turning sleep off comes back here (owner: the light / dark chip is gone).
     private var appLookDark: Bool { get { stageModel.appLookDark } nonmutating set { stageModel.appLookDark = newValue } }
@@ -212,7 +246,8 @@ struct tasbeehView: View {
     }
     /// "goal reached" tapped once: "Tap again to finish" (disarms after 3 s, like Finish early).
     private var goalFinishArmed: Bool { get { countModel.goalFinishArmed } nonmutating set { countModel.goalFinishArmed = newValue } }
-    private var goalFinishToken: Int { get { countModel.goalFinishToken } nonmutating set { countModel.goalFinishToken = newValue } }   /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
+    private var goalFinishToken: Int { get { countModel.goalFinishToken } nonmutating set { countModel.goalFinishToken = newValue } }
+    /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
     /// 10 s "You still there?" countdown, then the session is saved ending at the last tap.
     var inactivityLimit: TimeInterval {
         #if DEBUG
