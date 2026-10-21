@@ -125,6 +125,14 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   in Your Data's copy. Not built: "Show earlier" (the calendar still scrolls back).
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
+- **The week card** (JourneyWeekHero.swift; prayer-metrics rethink phase 5, owner's pick 2026-10-20 "yeah do it" on B · A · A;
+  behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): the card is this week — `JourneyWeekRing`, 35 arcs
+  Sunday → Saturday (prayed in its grade colour via `PrayerScoring.color`, not marked a faint track, to come fainter, excused
+  frosted, a no-record day dotted), "N done · this week" Sun–Wed, "N left · for a strong week" Thu–Sat (only while made up +
+  not marked ≤ 3), "Your usual week: N", the last two finished weeks banked ("34 of 35 · strong ✓" / "complete week ✓");
+  all from `PrayerMetrics`, read off the main thread on `log.version`. Its ↗ opens the calendar as before; this week's days
+  fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). The header's ring: `JourneyPrayersMiniRing`, the
+  last 7 days by prayer, no number, the same zoom into Prayer scores.
 - Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the
   pager's right page (its in-pager band and pager hold were deleted 2026-10-20, cleanup tangle 4).
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in

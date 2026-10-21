@@ -193,6 +193,10 @@ enum JourneyMotion {
     /// out forever: 100 % CPU, the page never drew).
     var gridOffset: CGFloat = 0
     var weekStarts: [Date] = []
+    /// The week card's days on its ring (JourneyWeekCard, the prayer-metrics rethink): where this week's days fly from into
+    /// the calendar — the old card's tiles' part, so the open has something in flight (Zoe's sim check: with no tiles the
+    /// page went blank for ~0.25 s between Journey's words leaving and the month's arriving). Empty with the grid card.
+    var ringTiles: [Date: CGRect] = [:]
     var names: [Date: CGRect] = [:]
     /// The year's small months: each one's squares area and its name (global), written as they're laid out.
     var yearGrids: [Date: CGRect] = [:]
@@ -310,6 +314,7 @@ enum JourneyMotion {
     /// Where a day's bar is on the card now, from the card's row layout (JourneyHomeCard.row: a `nameColumn` pt name column,
     /// then seven bars 11 pt tall with 6 pt between; rows `pitch` apart under 12 pt of top room).
     func tile(_ date: Date) -> CGRect? {
+        if !ringTiles.isEmpty { return ringTiles[Calendar.current.startOfDay(for: date)] }
         guard grid.width > 0, let row = weekStarts.lastIndex(where: { $0 <= date }) else { return nil }
         // Its row's own place when it's laid out: seven bars 6 pt apart across it, 11 pt tall.
         if let r = cardRows[weekStarts[row]] {

@@ -197,6 +197,7 @@ struct JourneyHomeCard: View {
             // they do (`scrub.pinned`, the scroll geometry below).
             .onAppear {
                 scrub.pinned = true; toToday()
+                JourneyFlightGeometry.shared.ringTiles = [:]   // the week card's (JourneyWeekHero.swift) never steer this grid's flights
                 JourneyFlightGeometry.shared.cardShow = { show($0, pick: $1) }
             }
             .onChange(of: streakShown) { _, on in

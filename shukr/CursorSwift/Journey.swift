@@ -511,15 +511,10 @@ struct JourneyPage: View {
     private func home(rowHeight: CGFloat, tight: Bool, rowsScroll: Bool) -> some View {
         JourneyPerf.body("home")
         let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
-        let card = JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
-                                   onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
-                                   onMonth: { openMonth = JourneyMonthRoute(month: $0) },
-                                   onExpand: { openMonth = JourneyMonthRoute(month: $0, focus: false) },
-                                   onExtra: { extraTap = $0 })
         return VStack(alignment: .leading, spacing: 0) {
             header
             if rowsScroll {
-                card.fixedSize(horizontal: false, vertical: true).padding(.top, 10)
+                card(s, tight: tight).fixedSize(horizontal: false, vertical: true).padding(.top, 10)
                 ScrollView(.vertical, showsIndicators: false) { rows(s, height: rowHeight) }
                     .scrollBounceBehavior(.basedOnSize)
                     .onScrollGeometryChange(for: Bool.self) { geo in
@@ -536,7 +531,7 @@ struct JourneyPage: View {
                     }
                     .padding(.top, 6)
             } else {
-                card.padding(.top, tight ? 10 : 16)
+                card(s, tight: tight).padding(.top, tight ? 10 : 16)
                 rows(s, height: rowHeight).fixedSize(horizontal: false, vertical: true).padding(.top, tight ? 6 : 10)
             }
         }
@@ -546,6 +541,21 @@ struct JourneyPage: View {
         // layout that doesn't fit is taller than the room (ViewThatFits' test); one that fits fills it exactly.
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { checkFit($0) }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// The card: this week's ring (the prayer-metrics rethink, MetricsLook — owner's pick B, 2026-10-20: the calendar one tap
+    /// down behind its ↗), else the weeks grid as built.
+    @ViewBuilder private func card(_ s: YourJourneyStats, tight: Bool) -> some View {
+        if MetricsLook.on {
+            JourneyWeekCard(log: log, compact: small, tight: tight,
+                            onExpand: { openMonth = JourneyMonthRoute(month: $0, focus: false) })
+        } else {
+            JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
+                            onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
+                            onMonth: { openMonth = JourneyMonthRoute(month: $0) },
+                            onExpand: { openMonth = JourneyMonthRoute(month: $0, focus: false) },
+                            onExtra: { extraTap = $0 })
+        }
     }
 
     private var header: some View {
@@ -590,12 +600,16 @@ struct JourneyPage: View {
                 showScores = true
             } label: {
                 let ring = store.lifetime ? lifetimeScores ?? scores : scores
-                JourneyMiniRing(score: ring?.strongest != nil ? ring?.score : nil, size: 54)
-                    .contentShape(Circle())
+                Group {
+                    // No 0–100 (the rethink): the last 7 days by prayer, the way into Your prayers (owner's pick A).
+                    if MetricsLook.on { JourneyPrayersMiniRing(log: log, size: 54) }
+                    else { JourneyMiniRing(score: ring?.strongest != nil ? ring?.score : nil, size: 54) }
+                }
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .matchedTransitionSource(id: "scores", in: scoresZoom)
-            .accessibilityLabel(scores?.score.map { "Prayer scores, \($0)" } ?? "Prayer scores")
+            .accessibilityLabel(MetricsLook.on ? "Your prayers" : scores?.score.map { "Prayer scores, \($0)" } ?? "Prayer scores")
         }
         .journeyFlightWords(.page)   // lifts away as a month opens (JourneyTransitions.swift)
     }
