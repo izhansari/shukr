@@ -133,10 +133,11 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   not marked ≤ 3), "Your usual week: N", the last two finished weeks banked ("34 of 35 · strong ✓" / "complete week ✓");
   all from `PrayerMetrics`, read off the main thread on `log.version`. Its ↗ opens the calendar as before; this week's days
   fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that day: it opens like an accordion
-  to a quarter of the ring, evenly either side of its middle, the other six closing up (`JourneyWeekRing.layout`: a day
-  weighs 1 + its split), its five prayers as the Salah page's fifths — thinner, each in its grade colour, a hollow dot where in
-  its window it was prayed (owner, 2026-10-21; five coloured blocks in place were tried first: "so ugly"); the rest dim to
-  0.55, the middle reads "Wednesday · all five prayed" (or "4 of 5 prayed", "no record"); the same arc again
+  to a third of the ring, evenly either side of its middle, the other six closing up (`JourneyWeekRing.layout`: a day
+  weighs 1 + 2 × its split), its five prayers as fifths at the band's own thickness inside one faint rounded track, each in
+  its grade colour with a hollow dot (wider than the band) where in its window it was prayed (owner, 2026-10-21: "make it the
+  same thickness. show it contained in some arc"; tried first: five blocks in place, then thinner fifths over a quarter);
+  the rest dim to 0.25, the middle reads "Wednesday · all five prayed" (or "4 of 5 prayed", "no record"); the same arc again
   opens that day's page, a tap in the middle lets it
   go. A day with no record (NoRecordDays.next, Frank's flow) is asked in the banked weeks' slot ("Yesterday has no record.
   Did you pray?" · Pick which · Not now — the card never changes height; unanswered, it steps aside after 3 visits to

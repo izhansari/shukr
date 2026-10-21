@@ -47,7 +47,9 @@ struct AnimatableNumbers: VectorArithmetic {
 /// its five prayers as the Salah page's fifths, each with its hollow dot where in its window it was prayed (owner,
 /// 2026-10-21: "maybe we expand it like an accordion a little (like to maybe take up 1/4 of the ring expanding evenly on both
 /// sides - so 1/8 left and 1/8 right) to show the same kinda fifth lines on the salah page with their hollow dots"; tried
-/// first: the day broken into five coloured blocks in place — "so ugly").
+/// first: the day broken into five coloured blocks in place — "so ugly"). Then (owner, 2026-10-21: "make it the same
+/// thickness. show it contained in some arc. so we know they belong together. Expand the accordion more … dull out the other
+/// days more"): a third of the ring, the fifths at the band's own thickness inside one faint rounded track, the rest at 0.25.
 struct JourneyWeekRing: View, Animatable {
     let days: [PrayerMetrics.Day]
     /// Today's index in the week (its initial in ink), nil for a finished week.
@@ -56,7 +58,7 @@ struct JourneyWeekRing: View, Animatable {
     var labels = true
     /// Each day's prayers' places in their windows (0 the start … 1 the end, past 1 made up), nil without a clock.
     var places: [[Double?]] = []
-    /// How far each day has opened (0 its seventh … 1 a quarter), animatable: the picked day's 1.
+    /// How far each day has opened (0 its seventh … 1 a third), animatable: the picked day's 1.
     var splits: AnimatableNumbers
     var animatableData: AnimatableNumbers {
         get { splits }
@@ -79,10 +81,10 @@ struct JourneyWeekRing: View, Animatable {
     /// The gap between an open day's prayers, degrees (the day ring's fifths' share of theirs).
     private static let prayerGap = 3.0
 
-    /// Each day's room (start, end) in degrees from the top, clockwise: a day weighs 1 + its split, so an open day's 2 of 8
-    /// is a quarter; turned so the opening days keep their middles where they were.
+    /// Each day's room (start, end) in degrees from the top, clockwise: a day weighs 1 + 2 × its split, so an open day's 3 of
+    /// 9 is a third; turned so the opening days keep their middles where they were.
     static func layout(_ splits: [Double]) -> [(Double, Double)] {
-        let w = (0..<7).map { 1 + (splits.indices.contains($0) ? min(max(splits[$0], 0), 1) : 0) }
+        let w = (0..<7).map { 1 + 2 * (splits.indices.contains($0) ? min(max(splits[$0], 0), 1) : 0) }
         let total = w.reduce(0, +)
         var at = 0.0
         var rooms: [(Double, Double)] = []
@@ -171,10 +173,9 @@ struct JourneyWeekRing: View, Animatable {
             for (i, day) in days.enumerated() {
                 let split = open[i]
                 var ctx = ctx
-                // The others step back a little while one is open.
-                ctx.opacity = 1 - 0.45 * max(0, anyOpen - split)
-                // An open day's lines thin to the Salah page's fifths.
-                let width = lineWidth * (1 - 0.45 * split)
+                // The others step back while one is open.
+                ctx.opacity = 1 - 0.75 * max(0, anyOpen - split)
+                let width = lineWidth
                 // Round ends inside the room: drawn short by the cap's angle at each end.
                 let cap = Double(width / 2 / r) * 180 / .pi
                 let a0 = rooms[i].0 + Self.dayGap / 2 + cap, a1 = rooms[i].1 - Self.dayGap / 2 - cap
@@ -183,12 +184,19 @@ struct JourneyWeekRing: View, Animatable {
                     if split < 0.01 {
                         ctx.stroke(arc(a0, a1), with: .color(one), style: StrokeStyle(lineWidth: width, lineCap: .round))
                     } else {
-                        // Five fifths, the gaps opening as it opens; each rounded, in its own colour.
+                        // One faint rounded track holds them (they belong together), a little wider than the band.
+                        let track = width + 8 * split
+                        let tcap = Double(track / 2 / r) * 180 / .pi
+                        ctx.stroke(arc(rooms[i].0 + Self.dayGap / 2 + tcap, rooms[i].1 - Self.dayGap / 2 - tcap),
+                                   with: .color(ink.opacity(0.09 * split)), style: StrokeStyle(lineWidth: track, lineCap: .round))
+                        // Five fifths inside it, the gaps opening as it opens; each rounded, in its own colour.
                         let gap = Self.prayerGap * split
-                        let span = rooms[i].1 - rooms[i].0 - Self.dayGap
+                        // Inside the track's ends by the same 4 pt it stands out at the sides.
+                        let inset = Self.dayGap / 2 + Double(4 * split / r) * 180 / .pi
+                        let span = rooms[i].1 - rooms[i].0 - 2 * inset
                         let piece = (span - 4 * gap) / 5
                         for j in 0..<5 {
-                            let from = rooms[i].0 + Self.dayGap / 2 + Double(j) * (piece + gap)
+                            let from = rooms[i].0 + inset + Double(j) * (piece + gap)
                             let p0 = from + cap, p1 = from + piece - cap
                             let color = one.mix(with: prayerColor(states[j], ink: ink), by: split)
                             if p1 > p0 {
@@ -200,7 +208,8 @@ struct JourneyWeekRing: View, Animatable {
                             // Its hollow dot where in its window it was prayed (past the end: at the end), as it opens.
                             if states[j].prayed, places.indices.contains(i), places[i].indices.contains(j), let at = places[i][j] {
                                 let d = point(p0 + (p1 - p0) * min(max(at, 0), 1))
-                                let size = 11 * split, stroke = 2.2 * split
+                                // Wider than the band, as the Salah page's dot is (the band's own width read as a hole).
+                                let size = (width + 5) * split, stroke = 2.8 * split
                                 ctx.fill(Path(ellipseIn: CGRect(x: d.x - size / 2, y: d.y - size / 2, width: size, height: size)),
                                          with: .color(theme.surface))
                                 let inner = size - stroke   // its border inside, as the day ring's strokeBorder
