@@ -431,7 +431,7 @@ struct GetPrayerTimeIntent: AppIntent {
         case .relevant:
             IntentDialog(stringLiteral: Self.prayedFirst(now: now, moving: w)
                 + (on ? "\(w.name) is on until \(shortTimePM(w.end))."
-                   : w.end <= now ? "\(w.name) isn’t marked yet. Its time ended at \(shortTimePM(w.end))."
+                   : w.end <= now ? "\(w.name) isn’t marked yet. Its window ended at \(shortTimePM(w.end))."
                    : "\(w.name) is next, at \(shortTimePM(w.start))\(Self.day(w.start))."))
         }
         return .result(value: w.start, dialog: line)

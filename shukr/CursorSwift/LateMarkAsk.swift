@@ -142,9 +142,9 @@ struct LateMarkSheet: View {
             let sameDay = Calendar.current.isDate(at, inSameDayAs: row.endTime)
             let when = sameDay ? "at " + at.formatted(date: .omitted, time: .shortened)
                 : at.formatted(.dateTime.weekday(.abbreviated).hour().minute())
-            return "Marked \(when), after its time ended at \(ended)."
+            return "Marked \(when), after its window ended at \(ended)."
         }
-        return "Its time ended at \(ended)."
+        return "Its window ended at \(ended)."
     }
 
     var body: some View {

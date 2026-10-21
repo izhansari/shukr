@@ -75,7 +75,7 @@ struct PrayerTimeKnob: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Time you prayed")
-            .accessibilityValue("\(shortTimePM(shownDate.addingTimeInterval(shift))), \(PrayerScoring.points(for: score)) \(gradeWord)")
+            .accessibilityValue("\(shortTimePM(shownDate.addingTimeInterval(shift))), \(MetricsLook.on ? "" : "\(PrayerScoring.points(for: score)) ")\(gradeWord)")
             .accessibilityAdjustableAction { direction in
                 let step: Double = direction == .increment ? 1 : -1
                 let next = min(max(knob.value.rounded() + step, lowMin), highMin)
@@ -159,9 +159,12 @@ struct PrayerTimeKnob: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 // No roll or fade: a turn changes it every frame or two, and an animation behind the finger showed half-rolled
                 // digits and the old word in the new colour (Zoe's check, 2026-10-20). It keeps pace with the time above it.
-                Text("\(PrayerScoring.points(for: score))")
-                    .font(.system(size: 24, weight: .light, design: .rounded))
-                    .monospacedDigit()
+                // No 0–100 with the rethink (MetricsLook; owner, 2026-10-21, row 12: "get rid of it"): the word alone.
+                if !MetricsLook.on {
+                    Text("\(PrayerScoring.points(for: score))")
+                        .font(.system(size: 24, weight: .light, design: .rounded))
+                        .monospacedDigit()
+                }
                 Text(gradeWord)
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(PrayerScoring.color(for: score))

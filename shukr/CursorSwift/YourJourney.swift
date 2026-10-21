@@ -1529,7 +1529,7 @@ struct JourneyMilestone: Identifiable, Equatable {
                         if !madeUpDone {
                             madeUpDone = true
                             add("madeUp.first", "First make-up", at, .inTime, symbol: "arrow.uturn.backward.circle",
-                                about: "The first prayer you made up after its time. Making up what was missed is how it's set right.",
+                                about: "The first prayer you made up after its window. Making up what was missed is how it's set right.",
                                 how: JourneyLog.names[i] + " of " + date.formatted(span))
                         }
                         if makeUpFrom.map({ d.key >= $0 }) ?? true, lastMadeUp.map({ at > $0.date }) ?? true {

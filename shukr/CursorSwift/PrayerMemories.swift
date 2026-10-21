@@ -1846,8 +1846,10 @@ struct MemoriesDeck: View {
                                 Circle().trim(from: 0, to: max(score, 0.02))
                                     .stroke(PrayerScoring.color(for: score), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                                     .rotationEffect(.degrees(-90))
-                                Text("\(PrayerScoring.points(for: score))")
-                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                if !MetricsLook.on {   // no 0–100 with the rethink (row 12): the ring and the word
+                                    Text("\(PrayerScoring.points(for: score))")
+                                        .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                }
                             }
                             .frame(width: 24, height: 24)
                             Text(PrayerScoring.grade(for: score).rawValue)

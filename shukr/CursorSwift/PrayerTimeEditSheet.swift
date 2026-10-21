@@ -802,9 +802,12 @@ struct PrayerTimeEditor: View {
                             .transition(.opacity)
                     } else if showsScore {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(isValid ? "\(PrayerScoring.points(for: score))" : "–")
-                                .font(.system(size: 20, weight: .light, design: .rounded))
-                                .contentTransition(.numericText(value: score))
+                            // No 0–100 with the rethink (MetricsLook, row 12): the word alone.
+                            if !MetricsLook.on || !isValid {
+                                Text(isValid ? "\(PrayerScoring.points(for: score))" : "–")
+                                    .font(.system(size: 20, weight: .light, design: .rounded))
+                                    .contentTransition(.numericText(value: score))
+                            }
                             Text(isValid ? (prayer.isJumuah ? "Jumu'ah" : grade.rawValue) : "not a valid time")
                                 .font(.footnote.weight(.medium))
                                 .foregroundStyle(isValid ? PrayerScoring.color(for: score) : .secondary)

@@ -103,11 +103,11 @@ enum TourCopy {
             "Tap again to see when it ends. In its last hour it shows the time left by itself.",
             "You’re facing the qibla. Compasses can be off, so let’s check it on a map.",
             "That’s the qibla, whatever your compass says. Your prayers are pinned on this map too, and it finds mosques near you.",
-            "Opening, prayed in the first third of its time. See how it moved on to Maghrib? Once you’ve prayed, it moves on to the next one.",
+            "Opening, prayed in the first third of its window. See how it moved on to Maghrib? Once you’ve prayed, it moves on to the next one.",
         ] : [
             "Tap it any time. In a prayer's last hour it shows the time left on its own.",
             "Straight up means you're facing the qibla. How strict that is lives in Settings.",
-            "The first third of its time is the Opening, 100. After that the score eases down until the time ends.",
+            "The first third of its window is the Opening, then the Middle, then Closing as the window ends.",
         ] }
         /// The button beside the chapter's name on "What it shows": on to trying it (owner: not "Continue").
         static let tryButton = "Try it"
@@ -157,7 +157,7 @@ enum TourCopy {
         static var todoAfters: [String] { TourFlow.v2 ? [
             "Your full day: what you’ve prayed, and what you haven’t yet.",
             "That’s a countdown to when it starts. Tap again for the time.",
-            "“Qaza · 40” means it was prayed after its time. Its dot’s color shows it too.",
+            "“Qaza” means it was prayed after its window. Its dot’s color shows it too.",
             "Saved. Fajr counts as Middle now, and your day’s score is updated.",   // Save's own moment; → ends the chapter
         ] : [
             "The times follow your location and calculation method, both in Settings.",
@@ -186,7 +186,10 @@ enum TourCopy {
         /// The editor's to-dos in the top panel (owner: the first ticks as soon as it's in the yellow).
         static let editorTodos = ["Move it into the yellow", "Let go to save"]   // no Save since the bento: a release saves
         /// Held under the first once it's in the yellow (owner: "its own moment"): the score the draft would keep.
-        static func editorInYellow(_ score: Int) -> String { "\(PrayerScoring.Grade.onTime.rawValue) · \(score) — that’s the score it’ll keep." }
+        static func editorInYellow(_ score: Int) -> String {
+            MetricsLook.on ? "\(PrayerScoring.Grade.onTime.rawValue): that’s where it’ll stay."   // no 0–100 (row 12)
+                : "\(PrayerScoring.Grade.onTime.rawValue) · \(score) — that’s the score it’ll keep."
+        }
     }
 
     // MARK: 3 · Zikr

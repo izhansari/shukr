@@ -148,11 +148,11 @@ enum DayInsight {
             } else if !p.inTime {
                 out.append(Line(id: "fix.qaza.\(p.name)", text: phrase([
                     "\(p.name) counted as Qaza today.\(tomorrow)",
-                    "\(p.name) was made up after its time today.\(tomorrow)",
+                    "\(p.name) was made up after its window today.\(tomorrow)",
                 ], input), offersFajrAlarm: alarm))
             } else if let marked = p.markedAt {
                 out.append(Line(id: "fix.late.\(p.name)", text: phrase([
-                    "\(p.name) came as its time was closing, at \(time(marked)).\(tomorrow)",   // was "came late" (owner 2026-10-17: Late read as outside the window)
+                    "\(p.name) came as its window was closing, at \(time(marked)).\(tomorrow)",   // was "came late" (owner 2026-10-17: Late read as outside the window)
                     "\(p.name) was close today: \(time(marked)), its window ended at \(time(p.end)).",
                 ], input), offersFajrAlarm: alarm))
             }
@@ -180,7 +180,7 @@ enum DayInsight {
         // 3 · Something noticed.
         if today.count == 5, today.allSatisfy(\.perfect) {
             out.append(Line(id: "notice.allEarly", text: phrase([
-                "All five in the opening of their time. Alhamdulillah.",
+                "All five in the opening of their windows. Alhamdulillah.",
                 "All five in the Opening today. Alhamdulillah.",
             ], input), offersFajrAlarm: false))
         }
@@ -193,7 +193,7 @@ enum DayInsight {
             }
             if run >= 3, !out.contains(where: { $0.id.hasPrefix("notice.run.") }) {
                 out.append(Line(id: "notice.run.\(p.name)", text: phrase([
-                    "\(p.name) in the opening of its time, \(run) days running.",
+                    "\(p.name) in the opening of its window, \(run) days running.",
                     "\(run) days of \(p.name) in its Opening, in a row.",
                 ], input), offersFajrAlarm: false))
             }
