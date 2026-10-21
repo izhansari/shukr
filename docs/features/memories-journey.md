@@ -131,8 +131,11 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   frosted, a no-record day dotted), "N done · this week" Sun–Wed, "N left · for a strong week" Thu–Sat (only while made up +
   not marked ≤ 3), "Your usual week: N", the last two finished weeks banked ("34 of 35 · strong ✓" / "complete week ✓");
   all from `PrayerMetrics`, read off the main thread on `log.version`. Its ↗ opens the calendar as before; this week's days
-  fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). The header's ring: `JourneyPrayersMiniRing`, the
-  last 7 days by prayer, no number, the same zoom into Prayer scores.
+  fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that prayer (owner,
+  2026-10-20: "journey hero should allow clicking on to the individual prayer in the ring"): it stays, wider, the rest dim,
+  the middle reads "Dhuhr · Tue · Middle · 2:27 PM"; the same arc again opens that day's page, a tap in the middle lets it
+  go. No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is
+  the first row ("35 of 35 in their time · last 7 days"), the page zooming out of it.
 - Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the
   pager's right page (its in-pager band and pager hold were deleted 2026-10-20, cleanup tangle 4).
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in

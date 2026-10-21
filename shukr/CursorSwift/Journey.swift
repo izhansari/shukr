@@ -422,6 +422,7 @@ struct JourneyPage: View {
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in reload() }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in reload() }
+        .task(id: store.log?.version) { if MetricsLook.on { YourPrayersRecent.shared.read(store.log) } }
         #if DEBUG
         .task {
             guard !Self.demoDone else { return }   // once per launch, not on every return to the page
@@ -552,7 +553,8 @@ struct JourneyPage: View {
     @ViewBuilder private func card(_ s: YourJourneyStats, tight: Bool) -> some View {
         if MetricsLook.on {
             JourneyWeekCard(log: log, compact: small, tight: tight,
-                            onExpand: { openMonth = JourneyMonthRoute(month: $0, focus: false) })
+                            onExpand: { openMonth = JourneyMonthRoute(month: $0, focus: false) },
+                            onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) })
         } else {
             JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
                             onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
@@ -596,6 +598,7 @@ struct JourneyPage: View {
                 }
             }
             Spacer(minLength: 0)
+            if !MetricsLook.on {
             // Prayer scores' way in (owner, 2026-10-18: "on the Journey page, just move the prayer score ring to the top right,
             // next to where it says Journey on the trailing side. Just leave that ring there, and that's our entrance into
             // the prayer scores") — its row is gone.
@@ -604,16 +607,13 @@ struct JourneyPage: View {
                 showScores = true
             } label: {
                 let ring = store.lifetime ? lifetimeScores ?? scores : scores
-                Group {
-                    // No 0–100 (the rethink): the last 7 days by prayer, the way into Your prayers (owner's pick A).
-                    if MetricsLook.on { JourneyPrayersMiniRing(log: log, size: 54) }
-                    else { JourneyMiniRing(score: ring?.strongest != nil ? ring?.score : nil, size: 54) }
-                }
-                .contentShape(Circle())
+                JourneyMiniRing(score: ring?.strongest != nil ? ring?.score : nil, size: 54)
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .matchedTransitionSource(id: "scores", in: scoresZoom)
-            .accessibilityLabel(MetricsLook.on ? "Your prayers" : scores?.score.map { "Prayer scores, \($0)" } ?? "Prayer scores")
+            .accessibilityLabel(scores?.score.map { "Prayer scores, \($0)" } ?? "Prayer scores")
+            }
         }
         .journeyFlightWords(.page)   // lifts away as a month opens (JourneyTransitions.swift)
     }
@@ -622,7 +622,21 @@ struct JourneyPage: View {
         let photos = PrayerPhotos.all().count
         let owed = makeUpTotal ?? 0
         let latest = s.milestones.first
+        let recent = YourPrayersRecent.shared
         return VStack(spacing: 0) {
+            if MetricsLook.on {
+                // Your prayers as a row with the others (owner, 2026-10-20: "looks weird to have the upper right ring so busy
+                // on journey … you can get rid of it and make it a list item"); the page still zooms out of it.
+                JourneyHomeRow(title: "Your prayers",
+                               line: recent.asked > 0 ? "\(recent.inTime) of \(recent.asked) in their time · last 7 days"
+                                   : "Each prayer, lately",
+                               height: rowHeight, quiet: recent.asked == 0) {
+                    Image(systemName: "chart.bar").font(.system(size: 19, weight: .light)).foregroundStyle(.secondary)
+                } value: {
+                    EmptyView()
+                } action: { showScores = true }
+                .matchedTransitionSource(id: "scores", in: scoresZoom)
+            }
             // The This month row went with the goal (owner, 2026-10-18: "I only kept it so i could toggle to see my stats.
             // I never used it for actually opening the month ever since we fixed the compact card").
             JourneyHomeRow(title: "To make up",
