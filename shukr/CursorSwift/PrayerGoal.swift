@@ -88,37 +88,28 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         }
     }
 
-    /// The grade it reaches down to, in PrayerScoring's own words (Design's v7, owner 2026-10-19: "Perfect Middle Closing Qaza
-    /// as the items"): Settings' row, Your Data and the goal page read it. Was "Made up counts / Before it ends / Before
-    /// closing / Perfect".
+    /// The step's name on the ladder (outstanding row 10, owner's go 2026-10-21: "Prayed · In its window · Middle · Opening"):
+    /// Settings' row, Journey's row, Your Data and the goal page read it. Was the grade it reaches down to ("Qaza / Closing /
+    /// Middle / Opening", Design's v7, 2026-10-19).
     var title: String {
         switch self {
-        case .prayed: PrayerScoring.Grade.qaza.rawValue
-        case .inWindow: PrayerScoring.Grade.late.rawValue
-        case .onTime: PrayerScoring.Grade.onTime.rawValue
-        case .perfect: PrayerScoring.Grade.perfect.rawValue
+        case .prayed: "Prayed"
+        case .inWindow: "In its window"
+        case .onTime: "Middle"
+        case .perfect: "Opening"
         }
     }
-    /// Its time, the goal page's second line ("I aim to complete my prayers…").
+    /// What the step asks of each prayer: the dial's grey line on the goal page.
     var line: String {
         switch self {
-        case .prayed: "Even made up later"
-        case .inWindow: "Before it ends"
-        case .onTime: "Before its last third"
-        case .perfect: "In the first third of its time"
+        case .prayed: "Prayed, even if made up later"
+        case .inWindow: "Prayed before its window ends"
+        case .onTime: "Prayed before its last third"
+        case .perfect: "Prayed in the first third of its window"
         }
     }
     /// The goal page's order: strictest first.
     static let strictestFirst: [PrayerGoal] = [.perfect, .onTime, .inWindow, .prayed]
-    /// Where it stops counting on the welcome's window (the Prayer circle card): the Opening a third, Middle two thirds,
-    /// Closing to the end, Qaza the end and grey (it's after the window).
-    var arcEnd: Double {
-        switch self {
-        case .perfect: WelcomeWindow.edges.opening
-        case .onTime: WelcomeWindow.edges.middle
-        case .inWindow, .prayed: 1
-        }
-    }
     /// A day that met it, in a few words (the legend, the runs): "All five prayed", "All five in the Opening" …
     var dayWords: String {
         switch self {
@@ -202,35 +193,29 @@ struct PrayerGoalSettingsRow: View {
     }
 }
 
-/// Your goal (Design's v7, 2026-10-19; spec board/mocks/your-goal/spec.md, canvas tab v7 S1 — owner: "Let's try using the
-/// graphic that we have in the onboarding setup with that demo of the prayer ring … as the display of our goal"; "there's no
-/// more spinning the dial thing"; "I want them to have to press a save button that only turns on when it's necessary"; "Maybe
-/// say 'I aim to complete my prayers...' Perfect Middle Closing Qaza as the items"; "close out the list and leave only the
-/// selected option with a bit of text above it"). Settings' plain grouped look: the title and the streaks sentence; the
-/// welcome's Prayer circle card, its arc ending where the goal being tried stops counting (Qaza grey) round your CURRENT
-/// streak; the four goals strictest first, each with its time; Save (onboarding's, live only when the goal tried differs),
-/// and one line under it saying what your streak would become. Save closes out the list to your pick, rolls the number,
-/// swells the arc once, then opens the list back out — the page never leaves on its own. Tried and dropped: the dial (a ring, its dot as a slider, a wheel of words) and
-/// Cancel.
+/// Your goal (owner, 2026-10-21; spec board/mocks/your-goal-v2/spec.md, drawn by Zoe, canvas
+/// https://claude.ai/artifact/XWVw6Pz8pzbVUtBiMs9UDJ): the title and the rule in his words; the editor's dial with no
+/// clock (GoalHero.swift), its dot parked where the step tried stops counting — tap a step and it glides there, or drag the
+/// dial ("option to drag the dial"); the four steps; what the step would have made of last week (GoalLastWeek.swift); and
+/// "Aim for <step>" ("when they click the button, they feel like they're agreeing to something"), live only off your goal.
+/// The page never leaves on its own. Tried and dropped: v7's Prayer circle card over a radio list with the streak in the
+/// ring and a "what if" line under Save (round 1), three rings over a list ("so ugly … looks really boring"), a line of
+/// "you'd have had 25 of 35" (round 2's Y3), "Fill in Friday" under the chips ("dont wanna send the user down a rabit hole").
 struct PrayerGoalPage: View {
-    /// The goal being tried — only Save makes it yours.
+    /// The goal being tried — only the button makes it yours.
     @State private var goal = PrayerGoal.current
-    /// Yours, as saved: its radio keeps an outline of its own while you try others.
+    /// Yours, as saved: a small dot under its step while you try others.
     @State private var current = PrayerGoal.current
-    /// The arc's end and grey, animated between goals (PrayerGoal.arcEnd).
-    @State private var arcEnd = PrayerGoal.current.arcEnd
-    @State private var arcGrey: Double = PrayerGoal.current == .prayed ? 1 : 0
-    @State private var arcSwell: Double = 0
-    /// The number in the ring: your saved goal's streak (it moves only on Save).
-    @State private var shownStreak: Int?
-    /// Each goal's streak, counted once when the page opens (GoalPreview); nil until then.
+    /// The dial's place, in windows (PrayerGoal.edge): it glides between steps and follows a drag.
+    @State private var dial = PrayerGoal.current.edge
+    @State private var dragFrom: Double?
+    /// Each goal counted once when the page opens (GoalPreview); nil until then.
     @State private var previews: [PrayerGoal: GoalPreview]?
-    /// Save's moment is playing: the list closes out to the pick; nothing takes a tap.
+    @State private var excusedOpen = false
+    /// The button's moment is playing: nothing takes a tap.
     @State private var saving = false
     @State private var checkDrawn: CGFloat = 0
     @State private var savedTick = 0
-    /// The line under Save as it was when Save was tapped: it fades out with those words.
-    @State private var savedLine = ""
     /// The back button and swipe are off during the moment (NavPopGuard) — the button stays where it is: hiding it collapsed
     /// the bar and the page jumped up ~40 pt (Design's check of fb59050f).
     @State private var navLocked = false
@@ -243,9 +228,8 @@ struct PrayerGoalPage: View {
                 VStack(spacing: 8) {
                     // The app's page title (Give to Causes, Fresh start): 30 pt light rounded.
                     Text("Your goal").font(.system(size: 30, weight: .light, design: .rounded))
-                    Text(MetricsLook.on
-                         ? "Your streak is strong weeks in a row: every prayer prayed, with at most three below your goal. Changing your goal recounts your past weeks."
-                         : "Your streak grows by a day each time all five prayers meet your goal. Changing your goal recounts your past days. Your prayers' scores stay the same.")
+                    // The same for every step, verbatim (owner, 2026-10-21; no closing period, as he wrote it).
+                    Text("Set a goal for how early you aim to pray. Don\u{2019}t miss a prayer, and keep nearly all at your goal: that\u{2019}s a strong week")
                         .font(.subheadline).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 20)
@@ -253,18 +237,30 @@ struct PrayerGoalPage: View {
                 .multilineTextAlignment(.center)
                 .padding(.top, 8)
 
-                PrayerCircleCard(ringSize: 140, ringPadding: 16) {
-                    WelcomeSweep(gone: arcEnd, grey: arcGrey, swell: arcSwell, size: 140, endsPure: true)
-                        .overlay { streakInRing }
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 16)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Prayer circle, \(goal.title). Current streak \(Self.streakWords(shownStreak ?? 0)).")
+                GoalKnobBox(goal: goal, value: dial, line: goal.line, height: 300)
+                    .contentShape(Rectangle())
+                    // Over the page's scroll: a drag in the box turns the dial.
+                    .highPriorityGesture(dialDrag)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Your goal dial, \(goal.title)")
+                    .accessibilityValue(goal.line)
+                    .accessibilityAdjustableAction { direction in
+                        let steps = PrayerGoal.strictestFirst
+                        guard let i = steps.firstIndex(of: goal) else { return }
+                        let j = direction == .increment ? min(i + 1, steps.count - 1) : max(i - 1, 0)
+                        pick(steps[j])
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
 
-                header.padding(.top, 18)
-                list.padding(.top, 7)
-                    .padding(.bottom, 24)
+                GoalStepRow(goal: goal, current: current, pick: pick)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 14)
+
+                GoalLastWeek(week: previews?[goal]?.lastWeek, ready: previews != nil, goal: goal) { excusedOpen = true }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 22)
+                    .padding(.bottom, 16)
             }
             .fontDesign(.rounded)
         }
@@ -272,19 +268,19 @@ struct PrayerGoalPage: View {
         .safeAreaInset(edge: .bottom) { saveBar }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
-        // Back never saves; during Save's moment nothing is touched, the back button and swipe included.
+        // Back never saves; during the moment nothing is touched, the back button and swipe included.
         .background { NavPopGuard(locked: navLocked) }
         .allowsHitTesting(!saving)
         .sensoryFeedback(.selection, trigger: goal)
         .sensoryFeedback(.success, trigger: savedTick)
+        .sheet(isPresented: $excusedOpen) {
+            if let week = previews?[goal]?.lastWeek { GoalExcusedSheet(week: week) }
+        }
         .task {
             let container = context.container
             let ranges = Excused.ranges
             let counted = await GoalPreview.all(container: container, ranges: ranges)
-            withAnimation(.easeOut(duration: 0.25)) {
-                previews = counted
-                shownStreak = counted[current].map(Self.streakOf) ?? 0
-            }
+            withAnimation(.easeOut(duration: 0.25)) { previews = counted }
         }
         .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
             // Changed elsewhere (a restore, another device): follow it, unless another goal is being tried here.
@@ -296,165 +292,78 @@ struct PrayerGoalPage: View {
         }
     }
 
-    /// Your current streak in the ring (your saved goal's — what "current" says), and its word.
-    private var streakInRing: some View {
-        VStack(spacing: 0) {
-            Text("\(shownStreak ?? 0)")
-                .font(.system(size: 36, weight: .light, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(shownStreak ?? 0)))
-            Text(MetricsLook.on ? ((shownStreak ?? 0) == 1 ? "strong week" : "strong weeks") : "current streak")
-                .font(.caption2).foregroundStyle(.secondary)
-        }
-        .opacity(shownStreak == nil ? 0 : 1)
-    }
-
-    /// The list's header, the Settings header spot; at Save it says what the one row left means.
-    private var header: some View {
-        // Out, then in (they overlapped as a crossfade).
-        ZStack(alignment: .leading) {
-            Text("I aim to complete my prayers…").opacity(saving ? 0 : 1)
-                .animation(saving ? .easeOut(duration: 0.14) : .easeOut(duration: 0.24).delay(0.16), value: saving)
-            Text("Your goal is now").opacity(saving ? 1 : 0)
-                .animation(saving ? .easeOut(duration: 0.24).delay(0.16) : .easeOut(duration: 0.14), value: saving)
-        }
-        .font(.footnote).foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 36)
-    }
-
-    /// The four goals in a Settings card, strictest first: a radio (sage on the one tried, an ink outline on yours), the
-    /// grade's name over its time. At Save the others go and the card closes round your pick.
-    private var list: some View {
-        let rows = saving && !reduceMotion ? [goal] : PrayerGoal.strictestFirst
-        return VStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.element) { i, option in
-                Button { pick(option) } label: {
-                    HStack(spacing: 14) {
-                        GoalRadio(on: option == goal, current: option == current && !saving)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(option.title).foregroundStyle(.primary)
-                            Text(option.line).font(.footnote).foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 8)
-                    }
-                    .frame(minHeight: 56)
-                    .padding(.horizontal, 16)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                // Reduce Motion: the others fade where they are, nothing moves.
-                .opacity(saving && reduceMotion && option != goal ? 0 : 1)
-                // Going: out at once. Coming back: in once your pick has glided back to its place (they overlapped).
-                .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.22).delay(0.3)),
-                                        removal: .opacity.animation(.easeOut(duration: 0.2))))
-                .accessibilityLabel("\(option.title). \(option.line)")
-                .accessibilityAddTraits(option == goal ? .isSelected : [])
-                .accessibilityHint(option == current ? "Your goal now" : "")
-                if i < rows.count - 1 { Divider().padding(.leading, 52) }
+    /// Finger up → later edges come up from below (the editor's way round); the nearest step goes live as you pass it (the
+    /// selection buzz, the step row follows); let go → it settles on that step.
+    private var dialDrag: some Gesture {
+        DragGesture(minimumDistance: 2)
+            .onChanged { v in
+                if dragFrom == nil { dragFrom = dial }
+                dial = min(max((dragFrom ?? dial) - Double(v.translation.height) / 380, 0.2), 1.45)
+                let near = PrayerGoal.nearest(to: dial)
+                if near != goal { goal = near }
             }
-        }
-        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-        .padding(.horizontal, 20)
+            .onEnded { _ in
+                dragFrom = nil
+                pick(goal)
+            }
     }
 
-    /// Try a goal: the arc sweeps steadily to where it stops counting, its colour turning as it crosses each boundary.
+    /// Try a goal: the dial glides to where it stops counting.
     private func pick(_ g: PrayerGoal) {
         goal = g
-        let distance = abs(g.arcEnd - arcEnd)
-        let sweep = reduceMotion ? Animation.easeOut(duration: 0.2) : .easeInOut(duration: 0.35 + 1.1 * distance)
-        withAnimation(sweep) { arcEnd = g.arcEnd }
-        withAnimation(.easeInOut(duration: 0.3)) { arcGrey = g == .prayed ? 1 : 0 }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 0.75, dampingFraction: 0.84)) { dial = g.edge }
     }
 
-    /// What Save would do to your streak, in one line (its height always kept).
-    private var whatIf: String {
-        guard goal != current, let previews, let n = previews[goal].map(Self.streakOf),
-              let m = previews[current].map(Self.streakOf) else {
-            return "Tap a goal to see what your streak would be."
-        }
-        if n == m { return "Switching to \(goal.title) keeps your streak at \(Self.streakWords(m))." }
-        if n == 0 { return "Switching to \(goal.title) starts your streak over." }
-        return "Switching to \(goal.title) makes your streak \(Self.streakWords(n))."
-    }
-
-    /// The streak this page shows: strong weeks with the rethink (MetricsLook), else days.
-    private static func streakOf(_ p: GoalPreview) -> Int { MetricsLook.on ? p.weeks : p.streak }
-    private static func streakWords(_ k: Int) -> String {
-        MetricsLook.on ? (k == 1 ? "1 strong week" : "\(k) strong weeks") : (k == 1 ? "1 day" : "\(k) days")
-    }
-
-    /// Save — onboarding's PrimaryButton look, faded and off until the goal tried differs from yours — and the line under
-    /// it. At Save the check draws in and it says "Saved".
+    /// "Aim for <step>" — onboarding's PrimaryButton look, faded and off on your goal. At a tap the check draws in and it says
+    /// "Saved".
     private var saveBar: some View {
         let changed = goal != current
-        return VStack(spacing: 0) {
-            Button(action: save) {
+        return Button(action: save) {
+            // Out, then in: "Aim for Middle" never sits over "Aim for Prayed".
+            OutThenIn(value: saving ? "Saved" : "Aim for \(goal.stepLabel)") { label in
                 HStack(spacing: 7) {
-                    if saving {
+                    if label == "Saved" {
                         SaveCheck(drawn: checkDrawn).frame(width: 17, height: 13)
                     }
-                    Text(saving ? "Saved" : "Save")
+                    Text(label)
                 }
-                .font(.system(.body, design: .rounded, weight: .medium))
-                .foregroundStyle(Color.sage)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 54)
-                .background(Capsule().fill(Color.sage.opacity(0.14)))
-                .overlay(Capsule().stroke(Color.sage.opacity(0.45), lineWidth: 1))
-                .contentShape(Capsule())
             }
-            .buttonStyle(.plain)
-            // "✓ Saved" at full strength: disabled, it drew at the faded look (save() ignores a second tap).
-            .opacity(changed || saving ? 1 : 0.4)
-            .disabled(!changed && !saving)
-            .padding(.horizontal, 24)
-            Text(saving ? savedLine : whatIf)
-                .font(.subheadline).foregroundStyle(.secondary)
-                .lineLimit(1).minimumScaleFactor(0.75)
-                .padding(.horizontal, 24)
-                .frame(height: 40)
-                .opacity(saving ? 0 : 1)
-                .animation(.easeOut(duration: 0.2), value: saving)
-                .contentTransition(.opacity)
-                .animation(.easeOut(duration: 0.2), value: whatIf)
+            .font(.system(.body, design: .rounded, weight: .medium))
+            .foregroundStyle(Color.sage)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 54)
+            .background(Capsule().fill(Color.sage.opacity(0.14)))
+            .overlay(Capsule().stroke(Color.sage.opacity(0.45), lineWidth: 1))
+            .contentShape(Capsule())
         }
+        .buttonStyle(.plain)
+        // "✓ Saved" at full strength: disabled, it drew at the faded look (save() ignores a second tap).
+        .opacity(changed || saving ? 1 : 0.4)
+        .disabled(!changed && !saving)
         .animation(.easeInOut(duration: 0.2), value: changed)
+        .animation(.easeInOut(duration: 0.25), value: saving)
+        .padding(.horizontal, 24)
         .padding(.top, 8)
+        .padding(.bottom, 12)
         .background(Color(.systemGroupedBackground))
     }
 
-    /// Save's moment (about 1.7 s): a success buzz, the check draws in, the list closes out to your pick under "Your goal is
-    /// now", the number rolls to the new streak, the arc swells once; then the list opens back out and the page stays.
-    /// Reduce Motion: crossfades only.
+    /// The moment (about 1.2 s): a success buzz, the check draws in, "Saved"; then the button fades back off on your new
+    /// goal and the page stays (owner, 2026-10-19: "i don't want it to exit the page on its own").
     private func save() {
         guard goal != current, !saving else { return }
-        let newStreak = previews?[goal].map(Self.streakOf)
-        savedLine = whatIf
         navLocked = true
         PrayerGoal.set(goal)
         current = goal
         savedTick += 1
-        withAnimation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.42, dampingFraction: 0.8)) { saving = true }
-        withAnimation(.easeOut(duration: 0.3)) { checkDrawn = 1 }
+        saving = true
+        // The check draws in once "Saved" has come in.
+        withAnimation(.easeOut(duration: 0.3).delay(0.14)) { checkDrawn = 1 }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.15))
-            if reduceMotion { shownStreak = newStreak ?? shownStreak } else {
-                withAnimation(.smooth(duration: 0.5)) { shownStreak = newStreak ?? shownStreak }
-            }
-            if !reduceMotion {
-                try? await Task.sleep(for: .seconds(0.25))
-                withAnimation(.easeOut(duration: 0.25)) { arcSwell = 1 }
-                try? await Task.sleep(for: .seconds(0.25))
-                withAnimation(.easeInOut(duration: 0.3)) { arcSwell = 0 }
-                try? await Task.sleep(for: .seconds(0.8))
-            } else {
-                try? await Task.sleep(for: .seconds(1.35))
-            }
-            // It stays (owner, 2026-10-19: "i don't want it to exit the page on its own"): the list opens back out round
-            // your new goal, the header comes back, Save turns back off.
+            try? await Task.sleep(for: .seconds(1.2))
             navLocked = false
-            withAnimation(reduceMotion ? .easeInOut(duration: 0.25) : .spring(response: 0.42, dampingFraction: 0.8)) { saving = false }
+            saving = false
+            try? await Task.sleep(for: .seconds(0.15))
             checkDrawn = 0
         }
     }
@@ -484,6 +393,9 @@ struct GoalPreview: Equatable {
     var weeks = 0
     var met = 0
     var judged = 0
+    /// Your last finished week counted at this goal (the page's "At this goal, last week"); nil before a full week — one
+    /// that started on or after your first day (and the fresh start), so days before you used shukr never read as excused.
+    var lastWeek: PrayerMetrics.Week?
     var rate: Int? { judged >= 3 ? Int((Double(met) / Double(judged) * 100).rounded()) : nil }
 
     @MainActor static func all(container: ModelContainer, ranges: [ExcusedRange]) async -> [PrayerGoal: GoalPreview] {
@@ -523,34 +435,16 @@ struct GoalPreview: Equatable {
             var atGoal = log
             atGoal.goal = goal
             p.weeks = PrayerMetrics.strongWeeks(in: atGoal, excused: excused, now: now).current
+            if let began = [log.firstDay, log.countsFrom].compactMap({ $0 }).max().map(cal.startOfDay) {
+                p.lastWeek = PrayerMetrics.weeks(in: atGoal, excused: excused, now: now)
+                    .last { $0.finished && $0.start >= began }
+            }
             out[goal] = p
         }
         return out
     }
 }
 
-
-/// A goal's radio circle on the goal page's list (owner, 2026-10-19: "checkmarks just appear. make those check marks radio
-/// buttons instead"): a quiet ring; yours turns sage and its dot springs in, the old one's shrinks away.
-struct GoalRadio: View {
-    let on: Bool
-    /// Your saved goal: an ink outline while another is tried, so you can see which one you have (owner, 2026-10-19:
-    /// "put diff color outline on the radio button of our current goal so we know as we change").
-    var current = false
-    var body: some View {
-        ZStack {
-            Circle().strokeBorder(on ? Color.sage : current ? Color.primary.opacity(0.85) : Color.secondary.opacity(0.4),
-                                  lineWidth: current && !on ? 2 : 1.6)
-            Circle().fill(Color.sage)
-                .padding(5)
-                .scaleEffect(on ? 1 : 0.2)
-                .opacity(on ? 1 : 0)
-        }
-        .frame(width: 22, height: 22)
-        .animation(.spring(response: 0.32, dampingFraction: 0.68), value: on)
-        .accessibilityHidden(true)
-    }
-}
 
 /// The navigation stack's back button and swipe, switched off and on in UIKit without hiding anything (hiding the back button
 /// collapsed the bar and moved the page). Back on when it goes away, whatever.

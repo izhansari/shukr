@@ -74,7 +74,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   UserDefaults, recounted off the main thread after every `revision` bump, hearts only when the run grows under the same
   goal and fresh start). With no streak it says this week's count in the goal's words instead ("28 in their windows this
   week"; owner, 2026-10-21, B: a broken streak on display lowers repeat behaviour — Silverman & Barasch 2023). Your goal's
-  ring and "Switching to X makes your streak N strong weeks" count the same (`GoalPreview.weeks`); the day page's "N days
+  "At this goal, last week" reads the same weeks (`GoalPreview.lastWeek`, PrayerMetrics.weeks); the day page's "N days
   in a row" line is off (Milestones has the strong weeks; owner: "A"); Journey's tiles shade by the day order
   (`JourneyLog.Day.tileOrder`), not an average score.
 - Streaks (without MetricsLook): one streak at the user's goal (`PrayerGoal`, Settings → Journey; owner 2026-10-18 — the "In-Time Days" line went; a tap on the label goes streak ↔ Max), from the fresh start (`PrayerStats.countsFrom`); a day counts once; earlier days are recounted from rows (`refreshStreaksFromHistory`), Max from rows on a rule change or a restore (`recountBestStreak`); a rule change never celebrates (`rulesChanged`); perfect day = five Perfect. The day turns at Fajr (`PrayerDay.fajr`; no location → 3 AM); Isha ends 11:59 PM; zikr sessions follow the day (`sessionDayStart()`).

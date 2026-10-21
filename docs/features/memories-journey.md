@@ -97,16 +97,23 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   YourJourney.swift); three rows (`JourneyHomeRow`): To make up · Moments · Milestones (→ `JourneyMilestonesPage`); This
   month went with the goal (owner 2026-10-18). The card's streak and best streak are the Salah page's rule (`PrayerGoal`).
 - **The goal and the fresh start** (PrayerGoal.swift, FreshStart.swift; owner 2026-10-18, his picks for
-  board/goal-reset-inventory.md): Settings → Journey → Your goal (Perfect · Middle · Closing · Qaza — the grade words,
-  `PrayerGoal.title`; under the old `prayerStreakMode` key; Design's v7, 2026-10-19, board/mocks/your-goal/spec.md): the
-  title and the streaks sentence; the setup welcome's Prayer circle card (`PrayerCircleCard` + `WelcomeSweep`, shared with
-  the welcome, which keeps its Play demo) whose arc ends where the goal tried stops counting (`arcEnd` 0.2 / 0.6 / 1, Qaza
-  grey), round YOUR current streak; "I aim to complete my prayers…" over the four rows (radio + name over its time); a tap
-  only tries a goal — Save (onboarding's PrimaryButton look, off until it differs) and one line under it ("Switching to
-  Middle makes your streak 3 days." …, `GoalPreview`); Save's moment: success buzz, "✓ Saved", the list closes to the pick
-  under "Your goal is now", the number rolls, the arc swells, then at ~1.7 s the list opens back out and the page stays
-  (owner: never leaves on its own; Reduce Motion: crossfades); the back button stays put, off during it; Back never saves; new installs start on Middle,
-  existing users keep what an unset goal meant — FirstRunSetup.migrateDefaults) and Fresh start (one prayer day; the page,
+  board/goal-reset-inventory.md): Your goal — Settings → Journey, or Journey's own row (Opening · Middle · In its window ·
+  Prayed, `PrayerGoal.title`; under the old `prayerStreakMode` key; v2, owner 2026-10-21, spec
+  board/mocks/your-goal-v2/spec.md + spec-pics/): the title and the rule, verbatim, the same for every step ("Set a goal for
+  how early you aim to pray. Don't miss a prayer, and keep nearly all at your goal: that's a strong week"); the editor's
+  dial with no clock (GoalHero.swift: `GoalKnobBox` 300 pt — the thirds unbroken, made-up grey, the hollow dot where the
+  step stops counting, `PrayerGoal.edge`), the step's name + one line ("Prayed before its window ends" …); the steps
+  (`GoalStepRow`: Opening · Middle · In Window · Prayed, a dot under yours); a tap glides the dial (spring 0.75 / 0.84), a
+  drag in the box turns it and the nearest step goes live (selection buzz); "At this goal, last week" (GoalLastWeek.swift,
+  the last finished full week at the step tried, `GoalPreview.lastWeek`): "was strong" (green, ✓ None missed · ✓ N later
+  than goal · 3 allowed) / "wasn't strong" (ink outlines, only what broke it: N missed — unmarked + 5 a no-record day —,
+  later only past 3, never on Prayed) / "was excused" ("Nothing was asked of you.") / before a full week "After your
+  first full week…"; excused prayers as a frosted "Tuesday excused ›" chip → "How excused plays towards goal:" (a measured
+  sheet, the week's own numbers, "Got it"). No link off the page (owner: "just say 7 missed"). "Aim for <step>" (live
+  only off your goal) → success buzz, "✓ Saved", the page stays; the back button off during it; Back never saves.
+  Words, verdicts and the button swap out, then in (`OutThenIn`). Tried and dropped: v7's Prayer circle card over a radio
+  list with the streak in the ring (round 1); three rings over a list; "you'd have had 25 of 35". New installs start on
+  In its window, existing users keep what an unset goal meant — FirstRunSetup.migrateDefaults) and Fresh start (one prayer day; the page,
   Design 2026-10-19: soft look, 30 pt title; Az-Zumar 39:53 centred in a pressed 256 pt ring that is itself held 1.5 s,
   "Hold the ring" a caption low in it with a light sweeping over it; a sage glow from the bottom, growing with the hold;
   then the ring rises (NeuLiftCard) and holds Day N, the facts give way to "One prayer at a time." + Bukhari 6464,
