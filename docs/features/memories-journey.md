@@ -139,7 +139,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   still to come (`UpcomingTrack`, the Salah ring's own). From the top going left: excused (frost, crosshatched), below your
   goal (light grey), then one hollow pill, "not marked" — the missed prayers and the days with no record together (owner,
   option B: simpler, and it never calls a day with no record missed), past below. The "strong" tick sits on it while any are
-  left, else 3 short of the week (none on Prayed). Days before the first mark ever are left off the ring. A tap on a pill or the tick
+  left, else 3 short of the week (none on Prayed). All of it sits in the Salah circle's raised band (11 pt, NeuRingTrack's
+  surface, shade and light), the parts 6 pt inside it, the green with the Salah arc's glow (owner: "looks very similar to
+  the Salah ring"). Days before the first mark ever are left off the ring. A tap on a pill or the tick
   dims the rest; the centre says its count and words, and its line takes the line slot under the days ("17 · not marked" —
   "Sun – Tue: fill them in. Today: make up 2."; the tick: "32 · for a strong week" — "Fill in Sun – Tue and make up 2
   first…"); the same part or off a pill puts it back.

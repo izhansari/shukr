@@ -50,7 +50,8 @@ struct AnimatableNumbers: VectorArithmetic {
 /// not marked" — simpler to read, and it never calls a day with no record missed), past below ("put the pill of missed further
 /// to the left than below your goal"). The strong tick sits on it while any are left ("put the strong marker on top of the
 /// missed ones … the user knows that they have to make up the missed ones"), else where the back may reach for a strong week
-/// (3 in from the end; none on Prayed). A tap on a pill or the tick picks it: the others
+/// (3 in from the end; none on Prayed). All of it inside the Salah circle's raised band, the parts at the Salah arc's 6 pt,
+/// the green with its glow. A tap on a pill or the tick picks it: the others
 /// dim and the card's centre says what it counts. Was one track with a back end (16060f54), before that seven day arcs.
 struct JourneyGoalRing: View, Animatable {
     enum Part: Int, CaseIterable { case met, toCome, below, notMarked, excused, tick }
@@ -68,7 +69,10 @@ struct JourneyGoalRing: View, Animatable {
         set { values = newValue }
     }
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.circleTheme) private var theme
     @State private var size: CGSize = .zero
+    /// The parts' own width inside the band (6 pt at the card's 11: the Salah arc's `AliveRingTuning.fine.band`).
+    private var arcWidth: CGFloat { (lineWidth * 0.55).rounded() }
 
     init(counts: [Int], picked: Part?, slack: Int, lineWidth: CGFloat, tickShown: Bool = true,
          onPick: @escaping (Part?) -> Void = { _ in }) {
@@ -134,7 +138,7 @@ struct JourneyGoalRing: View, Animatable {
             let ink = scheme == .dark ? Color.white : Color.black
             let L = Self.layout(count, slack: slack, tick: tickShown)
             let unit = 360 / L.total
-            let cap = Double(lineWidth / 2 / r) * 180 / .pi, gap = Double(Self.gap / r) * 180 / .pi
+            let cap = Double(arcWidth / 2 / r) * 180 / .pi, gap = Double(Self.gap / r) * 180 / .pi
             func arc(_ from: Double, _ to: Double) -> Path {
                 var p = Path()
                 p.addArc(center: c, radius: r, startAngle: .degrees(from - 90), endAngle: .degrees(to - 90), clockwise: false)
@@ -145,13 +149,17 @@ struct JourneyGoalRing: View, Animatable {
             func pill(_ u0: Double, _ u1: Double, inset: CGFloat = 0) -> Path {
                 var s = u0 * unit + gap / 2 + cap, e = u1 * unit - gap / 2 - cap
                 if e < s { s = (u0 + u1) / 2 * unit; e = s }
-                return arc(s, e + 0.01).strokedPath(StrokeStyle(lineWidth: lineWidth - inset, lineCap: .round))
+                return arc(s, e + 0.01).strokedPath(StrokeStyle(lineWidth: arcWidth - inset, lineCap: .round))
             }
             for run in L.runs where run.to - run.from > 0.02 {
                 let a = alpha(run.part)
                 switch run.part {
                 case .met:
-                    ctx.fill(pill(run.from, run.to), with: .color(.green.opacity(a)))
+                    // The Salah arc's green and its soft glow.
+                    ctx.drawLayer { layer in
+                        layer.addFilter(.shadow(color: .green.opacity(AliveRingTuning.fine.glow * a), radius: 6))
+                        layer.fill(pill(run.from, run.to), with: .color(.green.opacity(a)))
+                    }
                 case .toCome:
                     // A hairline, not a pill: from past the green (or the top) to the back's first pill.
                     let s = run.from * unit + gap / 2, e = run.to * unit - gap / 2
@@ -161,9 +169,9 @@ struct JourneyGoalRing: View, Animatable {
                 case .below:
                     ctx.fill(pill(run.from, run.to), with: .color(ink.opacity(0.22 * a)))
                 case .notMarked:
-                    ctx.stroke(pill(run.from, run.to, inset: 1.5), with: .color(Color.secondary.opacity(0.6 * a)), lineWidth: 1.4)
+                    ctx.stroke(pill(run.from, run.to, inset: 1.2), with: .color(Color.secondary.opacity(0.6 * a)), lineWidth: 1.2)
                 case .excused:
-                    let shape = pill(run.from, run.to, inset: 1.5)
+                    let shape = pill(run.from, run.to, inset: 1.2)
                     ctx.drawLayer { layer in
                         layer.clip(to: shape)
                         var hatch = Path()
@@ -172,11 +180,11 @@ struct JourneyGoalRing: View, Animatable {
                         while x < box.maxX {
                             hatch.move(to: CGPoint(x: x, y: box.minY)); hatch.addLine(to: CGPoint(x: x + box.height, y: box.maxY))
                             hatch.move(to: CGPoint(x: x + box.height, y: box.minY)); hatch.addLine(to: CGPoint(x: x, y: box.maxY))
-                            x += 5
+                            x += 4
                         }
-                        layer.stroke(hatch, with: .color(Self.frost.opacity(0.8 * a)), lineWidth: 0.8)
+                        layer.stroke(hatch, with: .color(Self.frost.opacity(0.8 * a)), lineWidth: 0.7)
                     }
-                    ctx.stroke(shape, with: .color(Self.frost.opacity(a)), lineWidth: 1.4)
+                    ctx.stroke(shape, with: .color(Self.frost.opacity(a)), lineWidth: 1.2)
                 case .tick: break
                 }
             }
@@ -198,7 +206,25 @@ struct JourneyGoalRing: View, Animatable {
         .contentShape(Rectangle())
         .gesture(SpatialTapGesture().onEnded { pick(at: $0.location) })
         .padding(-Self.spill)
+        .background { band }
         .accessibilityHidden(true)
+    }
+
+    /// The Salah circle's own band under the parts (owner, 2026-10-21, A on the soft-ring pictures: "mimic our soft ring
+    /// style … complements or looks very similar to the Salah ring"): the soft look's raised surface (NeuRingTrack's shade
+    /// and light), or Today's grey band. Round the ring's middle, at the card's width.
+    private var band: some View {
+        Group {
+            if theme.track.lifted {
+                Circle().stroke(theme.surface, lineWidth: lineWidth)
+                    .shadow(color: theme.shade, radius: 4, x: 2, y: 2)
+                    .shadow(color: theme.light, radius: 6, x: -2, y: -2)
+            } else {
+                Circle().stroke(Color(.secondarySystemFill), lineWidth: lineWidth)
+            }
+        }
+        .padding(Self.labelRoom + lineWidth / 2)
+        .allowsHitTesting(false)
     }
 
     /// What's under a tap: the tick (within a finger of it; on a pill, only its word outside the band — a single missed prayer
