@@ -60,7 +60,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - **The counting** (prayer-metrics rethink, board/scoring-rethink/plan-v3.md + build-plan.md; 2026-10-20/21): every count
   reads `PrayerState` (Models/PrayerState.swift — Opening · Middle · Closing · in its window with no clock · made up ·
   not marked · excused · to come; the one meaning of "missed") and `PrayerMetrics` (CursorSwift/PrayerMetrics.swift —
-  a day with nothing logged is "no record", never missed, today always on record; weeks, strong weeks = every due prayer
+  a day with nothing logged is "no record", never missed, today always on record, a day before the first mark
+  ever asks nothing; weeks, strong weeks = every due prayer
   prayed with at most 3 below the step and no gap, complete weeks, the usual week, each prayer's recent, the Sunday step
   offer — up after 3 strong weeks, down after 2 fully logged weeks that weren't —, the mid-week and morning-after lines).
   **Your goal's step sets the bar for all of it** (owner, 2026-10-21: Prayed · In its window · Middle (before Closing) ·

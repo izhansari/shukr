@@ -105,13 +105,15 @@ enum PrayerMetrics {
         return (PrayerNotificationID.dayKey(d), Calendar.current.startOfDay(for: d))
     }
 
-    /// A day from the log: no record when nothing was marked and it isn't today. A day before the fresh start, or inside
-    /// an excused range with no rows, asks nothing (all excused) — it never blocks a week.
+    /// A day from the log: no record when nothing was marked and it isn't today. A day before the fresh start, before the
+    /// first mark ever (the app wasn't in use: a new user's first week can still be strong), or inside an excused range
+    /// with no rows, asks nothing (all excused) — it never blocks a week.
     static func day(_ date: Date, in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date) -> Day {
         let d = log.day(date)
         let (todayKey, todayStart) = today(now)
         if d.date > todayStart { return Day(key: d.key, date: d.date, states: Array(repeating: .toCome, count: 5), goal: log.goal) }
-        if !d.counted || (!d.active && excused.excludes(d.date)) {
+        let beforeFirst = log.firstDay.map { d.date < Calendar.current.startOfDay(for: $0) } ?? false
+        if !d.counted || beforeFirst || (!d.active && excused.excludes(d.date)) {
             return Day(key: d.key, date: d.date, states: Array(repeating: .excused, count: 5), goal: log.goal)
         }
         let states = (0..<5).map { i -> PrayerState? in d.marks[i].state(end: d.slots[i]?.end, now: now, noTime: d.slots[i]?.noTime ?? false) }
