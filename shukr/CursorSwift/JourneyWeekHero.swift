@@ -43,13 +43,14 @@ struct AnimatableNumbers: VectorArithmetic {
 
 /// This week as one ring toward a strong week, each kind of prayer its own pill with a gap between, no shared track (owner,
 /// 2026-10-21, on https://claude.ai/artifact/XowC56NDXsAUPk2NzcvbGt: "different arcs pills instead of sharing a common track …
-/// no overlap of the different pills"). From the top going right: the goal's pill — green for the prayers that met your goal,
-/// then a dashed hairline for those still to come, the Salah ring's own upcoming dashes ("to be consistent … a dashed hairline
-/// matching what our future prayers show inside of the Salah ring"). From the top going left: excused (frost, crosshatched),
-/// below your goal (light grey), missed (hollow), no record (dotted), missed past below ("put the pill of missed further to
-/// the left than below your goal"). The strong tick: on the missed pill while any are left ("put the strong marker on top of
-/// the missed ones … the user knows that they have to make up the missed ones"), then on a day with no record, else where the
-/// back may reach for a strong week (3 in from the end; none on Prayed). A tap on a pill or the tick picks it: the others
+/// no overlap of the different pills"). From the top going right: green for the prayers that met your goal, then two
+/// hairlines, each its own: solid for the days with no record, then dashed for the prayers still to come, the Salah ring's own
+/// upcoming dashes ("days with no record should be at the beginning of the hairline, closer to the green section … prayers
+/// that don't have a mark … a solid hairline … both separate hairlines"). From the top going left: excused (frost,
+/// crosshatched), below your goal (light grey), missed (hollow), missed past below ("put the pill of missed further to the left
+/// than below your goal"). The strong tick: on the missed pill while any are left ("put the strong marker on top of the missed
+/// ones … the user knows that they have to make up the missed ones"), then on the no-record line, else where the back may reach
+/// for a strong week (3 in from the end; none on Prayed). A tap on a pill or the tick picks it: the others
 /// dim and the card's centre says what it counts. Was one track with a back end (16060f54), before that seven day arcs.
 struct JourneyGoalRing: View, Animatable {
     enum Part: Int, CaseIterable { case met, toCome, below, missed, noRecord, excused, tick }
@@ -92,17 +93,22 @@ struct JourneyGoalRing: View, Animatable {
         var total: Double
         var runs: [(part: Part, from: Double, to: Double)]
         var tick: Double?
-        /// The tick sits on the missed (or no-record) pill: a tap on the band there is the pill's, the tick's is its word.
+        /// The tick sits on the missed pill (or the no-record line): a tap on the band there is the pill's, the tick's is its
+        /// word.
         var tickOnPill = false
     }
     static func layout(_ n: (Part) -> Double, slack: Int) -> Layout {
         let total = max(Part.allCases.dropLast().reduce(0) { $0 + n($1) }, 0.0001)
         var runs: [(Part, Double, Double)] = []
-        let front = n(.met) + n(.toCome)
-        runs.append((.met, 0, n(.met)))
-        runs.append((.toCome, n(.met), front))
-        var u = total, at: [Part: Double] = [:]
-        for p in [Part.excused, .below, .missed, .noRecord] {
+        var at: [Part: Double] = [:]
+        var u = 0.0
+        for p in [Part.met, .noRecord, .toCome] {
+            runs.append((p, u, u + n(p)))
+            at[p] = u + n(p) / 2
+            u += n(p)
+        }
+        u = total
+        for p in [Part.excused, .below, .missed] {
             runs.append((p, u - n(p), u))
             at[p] = u - n(p) / 2
             u -= n(p)
@@ -143,19 +149,17 @@ struct JourneyGoalRing: View, Animatable {
                 switch run.part {
                 case .met:
                     ctx.fill(pill(run.from, run.to), with: .color(.green.opacity(a)))
-                case .toCome:
-                    // A hairline, not a pill: from past the green (or the top) to the back's first pill.
+                case .noRecord, .toCome:
+                    // Hairlines, not pills, a gap from whatever's either side: no record solid, still to come dashed.
                     let s = run.from * unit + gap / 2, e = run.to * unit - gap / 2
                     guard e > s else { continue }
-                    let upcoming = UpcomingTrack.style(diameter: 2 * r)
-                    ctx.stroke(arc(s, e), with: .color(Color.secondary.opacity(UpcomingTrack.opacity * a)), style: upcoming)
+                    let style = run.part == .toCome ? UpcomingTrack.style(diameter: 2 * r)
+                        : StrokeStyle(lineWidth: UpcomingTrack.style.lineWidth, lineCap: .round)
+                    ctx.stroke(arc(s, e), with: .color(Color.secondary.opacity(UpcomingTrack.opacity * a)), style: style)
                 case .below:
                     ctx.fill(pill(run.from, run.to), with: .color(ink.opacity(0.22 * a)))
                 case .missed:
                     ctx.stroke(pill(run.from, run.to, inset: 1.5), with: .color(Color.secondary.opacity(0.6 * a)), lineWidth: 1.4)
-                case .noRecord:
-                    ctx.stroke(pill(run.from, run.to, inset: 1.5), with: .color(Color.secondary.opacity(0.6 * a)),
-                               style: StrokeStyle(lineWidth: 1.6, lineCap: .round, dash: [0.1, 4]))
                 case .excused:
                     let shape = pill(run.from, run.to, inset: 1.5)
                     ctx.drawLayer { layer in
