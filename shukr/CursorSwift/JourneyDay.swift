@@ -16,7 +16,11 @@ struct JourneyDayPage: View {
     let firstDay: Date?
     @Environment(\.circleTheme) private var theme
     @Environment(PrayerViewModel.self) private var viewModel
-    @State private var sheetRow: PrayerModel?
+    /// The prayer editor's row (the Salah list's editor — owner, 2026-10-21: "use the same editor as in the salah tab
+    /// prayer list. and delete the old" sheet).
+    @State private var editRow: PrayerModel?
+    /// The dot's unmark, confirmed first (the Salah list's alert).
+    @State private var unmarkRow: PrayerModel?
     @State private var noteRow: PrayerModel?
     @State private var placeSheet: PrayerModel?
     /// The back's map: the app's prayer map on that day's prayers only.
@@ -140,10 +144,27 @@ struct JourneyDayPage: View {
             .presentationBackground(.clear)
         }
         .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(date)) }
-        .sheet(item: $sheetRow) { row in
-            JourneyPrayerSheet(prayer: row)
+        .sheet(item: $editRow) { row in
+            PrayerTimeEditSheet(prayer: row, range: PrayerTimeEditSheet.range(for: row),
+                                onTime: { date in save(row) { $0.time = date } },
+                                onRevertTime: { save(row) { $0.revertTime = true } },
+                                onTimeUnknown: { save(row) { $0.timeUnknown = true } },
+                                onSpot: { spot in save(row) { $0.spot = spot } },
+                                onRevertSpot: { save(row) { $0.revertSpot = true } },
+                                onClose: { editRow = nil })
                 .environment(viewModel)
                 .environment(\.circleTheme, theme)
+        }
+        .alert("Confirm Action", isPresented: Binding(get: { unmarkRow != nil }, set: { if !$0 { unmarkRow = nil } }),
+               presenting: unmarkRow) { row in
+            Button("Yes", role: .destructive) {
+                viewModel.unmarkFromJourney(row)
+                JourneyChange.post()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { row in
+            Text("Are you sure you want to mark this prayer as incomplete?"
+                 + (PrayerPhotos.exists(for: row) ? " Its photo will be deleted too." : ""))
         }
         .fullScreenCover(isPresented: Binding(get: { mapDay != nil }, set: { if !$0 { mapDay = nil } })) {
             LocationMapContentView(dayOnly: mapDay ?? date)
@@ -170,9 +191,40 @@ struct JourneyDayPage: View {
         }
     }
 
+    /// A prayer's hold: a marked one opens the editor; an unmarked one whose window is over gets the late-mark question
+    /// (Set a time · I don't know the time · Making it up now — owner, 2026-10-21: "unmarked past prayer sheet is fine").
+    /// Anything else unmarked (the prayer on now, a row the question skips — a Jumu'ah) is marked now, as the Salah list's dot
+    /// does (Fable's check).
+    private func open(_ row: PrayerModel) {
+        if row.isCompleted { editRow = row; return }
+        guard LateMarkAsk.wouldBeLate(row) else {
+            guard row.startTime <= Date() else { return }
+            viewModel.markFromJourney(row, at: Date())
+            JourneyChange.post()
+            return
+        }
+        let vm = viewModel
+        LateMarkAsk.shared.askBeforeMarking(row) { reply in
+            vm.markFromJourney(row, reply)
+            JourneyChange.post()
+            if let container = row.modelContext?.container { MilestoneCelebration.shared.check(container: container) }
+        }
+    }
+
+    /// One save from the editor, applied at once (Journey has no day-page ring to wait for).
+    private func save(_ row: PrayerModel, _ change: (inout HeldEdit) -> Void) {
+        var edit = HeldEdit()
+        change(&edit)
+        viewModel.applyEditorChange(edit, to: row)
+        JourneyChange.post()
+    }
+
     private var actions: JourneyDayActions {
         JourneyDayActions(
-            openSheet: { sheetRow = $0 },
+            openSheet: { open($0) },
+            dot: { row in
+                if row.isCompleted { unmarkRow = row } else { open(row) }
+            },
             note: { noteRow = $0 },
             place: { placeSheet = $0 },
             map: { mapDay = $0 },
@@ -361,7 +413,10 @@ struct JourneyDayLayout: Equatable {
 
 /// What a day piece asks its page to open.
 struct JourneyDayActions {
+    /// The hold: the editor, or the late-mark question.
     let openSheet: (PrayerModel) -> Void
+    /// A tap on the dot, as the Salah list's: unmark (confirmed), or mark a missed one.
+    let dot: (PrayerModel) -> Void
     let note: (PrayerModel) -> Void
     let place: (PrayerModel) -> Void
     let map: (Date) -> Void
@@ -560,18 +615,26 @@ struct JourneyDayPane: View {
                     DayCardRow(row: row, excused: !row.isCompleted && Excused.covers(start: row.startTime, end: row.endTime, in: ranges),
                                picked: picked != nil && picked == i)
                         .contentShape(Rectangle())
-                        // Hold: the prayer's sheet (a prayer that has started); tap: the pick. Exclusive, as the Salah
+                        // Hold: the prayer editor or the late-mark question (a prayer that has started); a tap on the dot:
+                        // unmark / mark, as the Salah list's; a tap anywhere else: the pick. Exclusive, as the Salah
                         // tab's rows (PrayerButton.rowGesture).
                         .gesture(
                             LongPressGesture(minimumDuration: 0.5)
-                                .exclusively(before: TapGesture())
+                                .exclusively(before: SpatialTapGesture())
                                 .onEnded { value in
                                     switch value {
                                     case .first:
                                         guard row.startTime <= Date() else { return }
                                         triggerSomeVibration(type: .light)
                                         actions.openSheet(row)
-                                    case .second:
+                                    case .second(let tap):
+                                        // The dot: 16 pt in, 24 wide — its circle and a little room, the row's full height.
+                                        if tap.location.x < 52 {
+                                            guard row.startTime <= Date(), !flipped else { return }
+                                            triggerSomeVibration(type: .light)
+                                            actions.dot(row)
+                                            return
+                                        }
                                         guard let i, !flipped else { return }
                                         triggerSomeVibration(type: .light)
                                         withAnimation(CircleMotion.dayPick) { picked = picked == i ? nil : i }

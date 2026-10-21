@@ -513,10 +513,7 @@ struct PrayerButton: View {
     
     /// When the prayer can be marked as prayed: from its start (never before) up to now, and no
     /// later than the day's rollover (past the window is Qaza, e.g. Isha at 12:30 AM).
-    private var editTimeRange: ClosedRange<Date> {
-        let latest = min(Date(), PrayerDay.rolloverInstant(after: prayerObject.startTime))
-        return prayerObject.startTime...max(prayerObject.startTime, latest)
-    }
+    private var editTimeRange: ClosedRange<Date> { PrayerTimeEditSheet.range(for: prayerObject) }
 
     /// "Middle · 88" (PrayerScoring).
     /// The start time as shown: the tour's practice clock moves a practice row's (PracticeClock).
@@ -817,17 +814,7 @@ struct PrayerButton: View {
     }
 
     /// A user edit: the recorded time / spot are kept (revertible), and ↺ puts them back.
-    private func apply(_ edit: HeldEdit) {
-        if edit.revertTime { viewModel.revertPrayerTime(prayerObject) }
-        if edit.timeUnknown { viewModel.markPrayerTimeUnknown(prayerObject) }
-        // A set time always lands on a no-time mark (its tap may be the same clock time, but it wasn't a time).
-        if let date = edit.time,
-           abs(date.timeIntervalSince(prayerObject.timeAtComplete ?? .distantPast)) >= 30 || prayerObject.timeUnknown {
-            viewModel.editPrayerTime(prayerObject, to: date)
-        }
-        if edit.revertSpot { viewModel.revertPrayerLocation(prayerObject) }
-        if let spot = edit.spot { viewModel.movePrayer(prayerObject, to: spot) }
-    }
+    private func apply(_ edit: HeldEdit) { viewModel.applyEditorChange(edit, to: prayerObject) }
 
     /// The time: the start time, flipping to the countdown (a prayer to come) or the score (a marked
     /// one). Its own tap is off: the row's gesture drives it through `toggledText`.

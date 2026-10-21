@@ -6,6 +6,30 @@ import SwiftData
 // the streaks, each day's own page. Phase 1 = the log: this screen, the day page, the entry points; Insights retired.
 // Rules: a day counts once it has a mark (an "active day"); rates count active days only; excused prayers are never due.
 
+extension Notification.Name {
+    /// A prayer was marked, unmarked or edited (anywhere: the Salah page, Journey, a widget / watch mark reconciled): its
+    /// pages read their rows again. Post it through `JourneyChange.post()`.
+    static let journeyChanged = Notification.Name("journeyChanged")
+}
+
+/// One `.journeyChanged` per change: every mark, unmark and time edit posts here, and the posts of one turn of the main
+/// thread go out as one (a mark from Journey runs the view model's path, which posts, and then Journey's own).
+/// A mark on the Salah page posted nothing, and Journey in the pager kept its old numbers until a relaunch (sim,
+/// 2026-10-18). Journey reads it only while it's on screen; under another page it marks itself dirty for the way back.
+enum JourneyChange {
+    /// Main thread only (every mark path runs there).
+    nonisolated(unsafe) private static var pending = false
+    static func post() {
+        assert(Thread.isMainThread)
+        guard !pending else { return }
+        pending = true
+        DispatchQueue.main.async {
+            pending = false
+            NotificationCenter.default.post(name: .journeyChanged, object: nil)
+        }
+    }
+}
+
 /// ☰ → Journey and the day page's "Journey ›" (pushed on the root stack, as Moments).
 /// Who writes it: `open` — ☰'s Journey row, the day page's "Journey ›" (SalahLook), What's new's "Open in shukr"
 /// ("insights", "journey"), `-demoLand journey`, `-demoJourney` / `-demoJourneyFlightRun`; `open` + `makeUp` — the

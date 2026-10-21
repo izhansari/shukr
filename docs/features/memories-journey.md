@@ -87,7 +87,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   times, run on a phone with `devicectl … process launch --console`). **Sim trap:** the simulator hangs decoding HEIC
   (never returns, starving the task pool so even JPEGs stop loading), so `encoded` writes JPEG there; phones decode it in ~30 ms.
 
-**Journey** (Journey.swift, JourneyDay.swift, JourneyPrayerSheet.swift, JourneyMakeUp.swift; spec + phases board/mocks/journey/spec.md, mock-ups v5; Bradley builds it)
+**Journey** (Journey.swift, JourneyDay.swift, JourneyMakeUp.swift; spec + phases board/mocks/journey/spec.md, mock-ups v5; Bradley builds it)
 - ☰ → Journey (`JourneyPresenter.open`, pushed on the root stack) replaces Insights and the Moments row; the day page's pill
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
   link "journey" ("insights" too). InsightsView is kept in code, unreached. iOS 26's back button shows no page name.
@@ -232,7 +232,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - The day page (`JourneyDayPage`, on the Salah tab's day page pieces — the day page merge, owner 2026-10-15, DayPage.swift;
   the full behaviour in salah.md "The day page merge"): the date centred on top ("Thursday, October 15" / "Today · Jumada I 4"),
   `DayRing` + `DayCentre` on a raised 222 pt disc, the picked prayer's note and place under it (`DayPickLines`), the list card
-  (dot · name · time prayed with the grade under it; a tap picks, a hold opens the prayer sheet) between two plain chevrons
+  (dot · name · time prayed with the grade under it; a tap picks, a hold opens the prayer editor) between two plain chevrons
   (owner: no soft-ring chevrons), the pill under it ("Your day" / "Prayers", placeholders) fades the card to the day's rows
   and back (`DayFadeCard`: out, then in, on one card surface — owner 2026-10-16, it flipped before; `DayBackCard`: Notes ·
   Photos · On the map · Zikr); the side shown belongs to the page, so the next day comes in on it; a drag sideways moves a day (the left edge stays the system's back);
@@ -240,23 +240,14 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   live rows. The back's Photos row → that day's pile (`MemoriesPage(openPile:leaveWithPile: true)`, pushed without a slide),
   On the map → `JourneyDayMapSheet`, Zikr → `ZikrDaySessionsPage`; a missed prayer picked → "N to make up ›" → To make up.
   A whole excused day: `ExcusedDayCard("Excused that day")`.
-- The prayer sheet (`JourneyPrayerSheet`, any day, marked or not): ~half height (`resting` 480; `withButtons` 548 once edited
-  or unmarked; large while the wheel or the map is open); top right only the trash (unmark: Sami's `UnmarkPrompt`, the
-  system alert if another overlay is up); once the time, place or note differs, the Salah editor's `SaveCancelButtons` come
-  in at the bottom (owner); a swipe down is held while edited; the date line says "not saved"; no sage anywhere on it
-  (owner) — the Mark pill is Save's green edge. Score ring + `PrayerWindowBar` (tap / drag sets the time); with MetricsLook
-  the ring is closed in the grade's colour with the grade word alone (no 0–100; owner 2026-10-21), and a no-time mark
-  always reads "In its window" in its own colour, "Prayed at · Time not recorded" until a time is picked — no
-  sentence (owner: it got old); "Prayed at ⌄" → a date + time wheel inline (start…now) with "Prayed it on <its day>? ›" /
-  "Made up today instead ›"; the place as a map card with its name on it (`JourneyPlaceMap`: grows in place, movable, pin
-  kept, "Move the pin" → `PrayerLocationPicker`; no spot → "Add where you prayed") and the photo as itself (`PrayerPhotoCard`,
-  the viewer in place; a dashed camera only while marked and on) — never the same box (owner); note (an alert, a draft).
-  Unmarked: the "Mark <prayer>" pill. **An unmarked past prayer defaults to
-  made up now = Qaza, wheel closed, the time grey** (owner: another day / time is there, never the main choice). Marks go
-  through `PrayerViewModel.markFromJourney` (the prayer on now, marked now → the list's own path; else scored at the
-  picked time, no spot, `mosqueName = ""`, streaks / day score / DayHistory / widgets / Live Activities) and
-  `unmarkFromJourney`; edits through `editPrayerTime` / `movePrayer` (recorded time / spot kept). `.journeyChanged` reloads
-  the pages.
+- A day row (owner, 2026-10-21: "use the same editor as in the salah tab prayer list. and delete the old" sheet): a hold on a
+  marked prayer opens the Salah list's editor (`PrayerTimeEditSheet`, the same range and saves — `PrayerTimeEditSheet.range`,
+  `PrayerViewModel.applyEditorChange`; applied at once, no day-page wait); a hold on an unmarked prayer whose window is over
+  asks the late-mark question (Set a time · I don't know the time · Making it up now) and marks through
+  `markFromJourney(_:_:)` — Journey's own path, no spot (where it was prayed then isn't known; the editor can add one). A tap
+  on the dot does what the Salah list's does: a marked prayer unmarks after the same "Are you sure…" alert
+  (`unmarkFromJourney`), an unmarked one gets the question; a tap anywhere else picks. `.journeyChanged` reloads the pages.
+  (The old Journey prayer sheet, 2026-10-15 — ring, window bar, wheel, map card, trash — was deleted.)
 - To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused; Made up = Qaza now. From
   Prayer scores (`startOnly:`) it opens with that prayer's tile on. Always all months (owner, 2026-10-17: no "<month> | All
   months"). Top: the total missed, made up · % left, the bar, then five raised prayer tiles — Prayer scores' grade tiles,

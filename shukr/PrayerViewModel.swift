@@ -600,7 +600,21 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         JourneyChange.post()
     }
 
-    /// An unmark from Journey's prayer sheet: the list's own path (its photo goes too).
+    /// A past prayer marked from Journey's day page, answered by the late-mark question: at a set time, in its window with
+    /// no time, or made up now — Journey's own path (no spot: where it was prayed then isn't known; the editor can add one).
+    @MainActor func markFromJourney(_ prayer: PrayerModel, _ reply: LateMarkAsk.Reply) {
+        switch reply {
+        case .at(let date): markFromJourney(prayer, at: date)
+        case .madeUp: markFromJourney(prayer, at: Date())
+        case .noTime:
+            // Set first so its score is the window's (setPrayerScore reads it); at the window's end, never after, so it
+            // isn't read as a make-up.
+            prayer.markKind = MarkKind.timeUnknown.rawValue
+            if !markFromJourney(prayer, at: prayer.endTime) { prayer.markKind = nil }
+        }
+    }
+
+    /// An unmark from Journey's day page (the dot): the list's own path (its photo goes too).
     @MainActor func unmarkFromJourney(_ prayer: PrayerModel) {
         guard prayer.isCompleted else { return }
         togglePrayerCompletion(for: prayer)
