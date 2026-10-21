@@ -777,7 +777,7 @@ struct PrayerTimeEditor: View {
 }
 
 /// The prayer's window as a ring (as PrayerGoalDial draws a window, Design's direction A): clockwise from the top, green the
-/// first 30 minutes, yellow to the window's middle plus 15, red to the end (PrayerScoring), small gaps between them, each
+/// first third, yellow to two thirds, Closing's colour to the end (PrayerScoring), small gaps between them, each
 /// lit up to the marked dot. The dot is the marked ring's hollow one; drag it round the window to move the time. Past the
 /// end (a Qaza, picked on the wheel) the whole ring is lit and the dot rests at the end, grey.
 struct PrayerWindowRing: View {
@@ -799,7 +799,7 @@ struct PrayerWindowRing: View {
 
     private var zones: [(from: Double, to: Double, score: Double)] {
         let total = max(end.timeIntervalSince(start), 1)
-        let early = min(PrayerScoring.earlyWindow / total, 1)
+        let early = PrayerScoring.openingShare   // the Opening: a third of the window
         let mid = early + (1 - early) / 2
         return early >= 1 ? [(0, 360, 1)] : [(0, early * 360, 1), (early * 360, mid * 360, 0.9), (mid * 360, 360, 0.7)]
     }
@@ -919,7 +919,7 @@ struct SaveCancelButtons: View {
     }
 }
 
-/// The prayer's window as a bar: Perfect (first 30 min) green, Middle yellow, Closing red, with a
+/// The prayer's window as a bar: Opening (first third) green, Middle yellow, Closing #C93B10, with a
 /// marker where the picked time falls. A time after the window (Qaza) parks the marker at the
 /// end, gray, with "qaza" under it — the bar itself only shows the window.
 struct PrayerWindowBar: View {
@@ -934,7 +934,7 @@ struct PrayerWindowBar: View {
 
     var body: some View {
         let total = max(end.timeIntervalSince(start), 1)
-        let early = min(PrayerScoring.earlyWindow / total, 1)
+        let early = PrayerScoring.openingShare   // the Opening: a third of the window
         let mid = early + (1 - early) / 2
         let position = min(max(marked.timeIntervalSince(start) / total, 0), 1)
         let isQaza = marked > end

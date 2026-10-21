@@ -73,6 +73,8 @@ struct shukrApp: App {
             SharedStore.runV2DataPass(in: container)
             // Rows scored by the old rule (fraction of window left) → points, once.
             PrayerScoring.recalculateHistoryIfNeeded(in: container)
+            // Every timed mark regraded once to thirds (Opening = the first third; metrics rethink phase 2), after a backup.
+            PrayerScoring.regradeToThirdsIfNeeded(in: container)
             // Extra unmarked prayer rows from the old 5-row lookup in fetchPrayerTimes (2026-09-27).
             PrayerViewModel.removeDuplicatePrayerRows(in: container)
             // A tasbeeh session the last run never got to save (evicted / swiped away) is saved now (audit A7).

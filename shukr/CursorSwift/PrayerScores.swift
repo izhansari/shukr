@@ -209,10 +209,8 @@ struct PrayerScores {
             p.lifeScore = dueScores.isEmpty ? 0 : Int((dueScores.reduce(0, +) / Double(dueScores.count) * 100).rounded())
             p.topMasjid = mosques.max { $0.value < $1.value }.map { ($0.key, $0.value) }
             p.window = median(windows)
-            if let window = median(windows), window > 0 {
-                let perfect = min(0.9, PrayerScoring.earlyWindow / window)
-                p.bands = (perfect, perfect + (1 - perfect) / 2)
-            }
+            // The chart's bar in thirds, as the score (Opening · Middle · Closing) — the same for every prayer now.
+            p.bands = (PrayerScoring.openingShare, 2 * PrayerScoring.openingShare)
             p.usual = usualLine(positions: recent, fromStart: recentStarts, toEnd: recentEnds)
             out.prayers[name] = p
             allScores += scores
@@ -296,7 +294,7 @@ struct PrayerScores {
         case .prayed: "Prayed, day after day you used shukr"
         case .inWindow: "In time, day after day you used shukr"
         case .onTime: "On time, day after day you used shukr"
-        case .perfect: "Perfect, day after day you used shukr"
+        case .perfect: "In the Opening, day after day you used shukr"
         }
     }
 

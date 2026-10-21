@@ -1900,8 +1900,8 @@ struct BubbleShape: Shape {
         colorSweep = start
         Task { @MainActor in
             let sweep: TimeInterval = 8, top = 0.97, frame: TimeInterval = 1.0 / 60
-            // Where the ring turns each colour: green at once, then the scoring rule's own changes (30 min in, then
-            // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window.
+            // Where the ring turns each colour: green at once, then the scoring rule's own changes (a third in, then two
+            // thirds in — PrayerScoring.gradeChanges), as shares of the practice window.
             let lights: [Double] = [0.005, Self.sweepStops.yellow, Self.sweepStops.red]
             var playing: Bool { run == thisRun && step == .circle && phase == .learnMore }
             var elapsed: TimeInterval = 0

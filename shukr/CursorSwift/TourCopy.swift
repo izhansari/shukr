@@ -103,11 +103,11 @@ enum TourCopy {
             "Tap again to see when it ends. In its last hour it shows the time left by itself.",
             "You’re facing the qibla. Compasses can be off, so let’s check it on a map.",
             "That’s the qibla, whatever your compass says. Your prayers are pinned on this map too, and it finds mosques near you.",
-            "Perfect, prayed in the first 30 minutes. See how it moved on to Maghrib? Once you’ve prayed, it moves on to the next one.",
+            "Opening, prayed in the first third of its time. See how it moved on to Maghrib? Once you’ve prayed, it moves on to the next one.",
         ] : [
             "Tap it any time. In a prayer's last hour it shows the time left on its own.",
             "Straight up means you're facing the qibla. How strict that is lives in Settings.",
-            "First 30 minutes is Perfect, 100. After that the score eases down until the time ends.",
+            "The first third of its time is the Opening, 100. After that the score eases down until the time ends.",
         ] }
         /// The button beside the chapter's name on "What it shows": on to trying it (owner: not "Continue").
         static let tryButton = "Try it"
@@ -162,7 +162,7 @@ enum TourCopy {
         ] : [
             "The times follow your location and calculation method, both in Settings.",
             "Tap “done” again to tuck them back away.",
-            "Perfect is 100, Middle 80 or more, Closing 60 or more, Qaza 40.",
+            "Opening is 100, Middle 80 or more, Closing 60 or more, Qaza 40.",
             "",   // the chapter's own end follows
         ] }
         static var todos: [String] { TourFlow.v2 ? [

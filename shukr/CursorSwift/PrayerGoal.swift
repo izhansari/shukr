@@ -57,27 +57,27 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         case .prayed: "Even made up later"
         case .inWindow: "Before it ends"
         case .onTime: "By 15 minutes past midpoint"
-        case .perfect: "In the first 30 minutes"
+        case .perfect: "In the first third of its time"
         }
     }
     /// The goal page's order: strictest first.
     static let strictestFirst: [PrayerGoal] = [.perfect, .onTime, .inWindow, .prayed]
-    /// Where it stops counting on the welcome's 150-minute window (the Prayer circle card): Perfect 0.2, Middle 0.6, Closing to
-    /// the end, Qaza the end and grey (it's after the window).
+    /// Where it stops counting on the welcome's window (the Prayer circle card): the Opening a third, Middle two thirds,
+    /// Closing to the end, Qaza the end and grey (it's after the window).
     var arcEnd: Double {
         switch self {
-        case .perfect: 0.2
-        case .onTime: 0.6
+        case .perfect: WelcomeWindow.edges.opening
+        case .onTime: WelcomeWindow.edges.middle
         case .inWindow, .prayed: 1
         }
     }
-    /// A day that met it, in a few words (the legend, the runs): "All five prayed", "All five Perfect" …
+    /// A day that met it, in a few words (the legend, the runs): "All five prayed", "All five in the Opening" …
     var dayWords: String {
         switch self {
         case .prayed: "All five prayed"
         case .inWindow: "All five in time"
         case .onTime: "All five on time"
-        case .perfect: "All five Perfect"
+        case .perfect: "All five in the Opening"
         }
     }
 
@@ -87,7 +87,7 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         case .prayed: "all five prayed"
         case .inWindow: "all in time"
         case .onTime: "all on time"
-        case .perfect: "all Perfect"
+        case .perfect: "all in the Opening"
         }
     }
     /// After "all five prayers …" (a milestone's card).
@@ -96,7 +96,7 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         case .prayed: "prayed"
         case .inWindow: "prayed in time"
         case .onTime: "prayed on time"
-        case .perfect: "Perfect"
+        case .perfect: "in the Opening"
         }
     }
 

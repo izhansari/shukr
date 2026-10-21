@@ -672,8 +672,8 @@ struct PrayersWidgetView: View {
         }
 
         /// The app's rule (`PrayerScoring`), the colour the prayer would score if marked now:
-        /// Perfect green for the first 30 min, Middle yellow for the first half of the rest, Closing
-        /// red for the second half, grey once the window has ended. The timeline has an entry at
+        /// Opening green for the first third, Middle yellow to two thirds, Closing (#C93B10) for the last third, grey once
+        /// the window has ended. The timeline has an entry at
         /// each change (`PrayerScoring.gradeChanges`). It used to be a fraction-of-the-window rule
         /// (green to half, yellow to ¾), so it read green while the app's circle was yellow (owner).
         private var progressColor: Color {

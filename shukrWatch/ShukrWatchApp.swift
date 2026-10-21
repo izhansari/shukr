@@ -475,7 +475,7 @@ struct WatchPrayerList: View {
 /// The phone's main circle, small (owner, 2026-09-27: the watch showed a green sliver draining while
 /// the phone showed a nearly full red ring). Same as the phone: a pale band as the track, a thin arc
 /// that *fills* as the window passes (butt cap), coloured by the score you'd get marking it now
-/// (green Perfect · yellow Middle · red Closing). A prayer that hasn't started: an empty arc, a dashed
+/// (green Opening · yellow Middle · #C93B10 Closing). A prayer that hasn't started: an empty arc, a dashed
 /// track, "NEXT" over a dimmed name. Tap: "ends 5:21 PM" ⇄ "31m left" (before it starts: "at 5:35 AM"
 /// ⇄ "in 1h 51m"), with a click.
 struct WatchPrayerRing: View {

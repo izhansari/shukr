@@ -4,11 +4,12 @@ import SwiftUI
 // hero (PrayerGoalPage) draw the same card and ring (Design's Your goal v7, owner 2026-10-19: "Let's try using the graphic
 // that we have in the onboarding setup with that demo of the prayer ring … as the display of our goal that we choose").
 
-/// The window's three parts, as `PrayerScoring` grades a 150-minute window: Perfect for the first 30 minutes (0.2),
-/// Middle for the first half of the rest (to 0.6), then Closing.
+/// The window's three parts, as `PrayerScoring` grades every window: the Opening for its first third, Middle to two
+/// thirds, then Closing (thirds since 2026-10-20; was the first 30 minutes of a 150-minute window, 0.2 and 0.6).
 enum WelcomeWindow {
-    static func part(_ gone: Double) -> Int { gone < 0.2 ? 0 : gone < 0.6 ? 1 : 2 }
-    static let colours: [Color] = [.green, .yellow, .red]
+    static let edges = (opening: PrayerScoring.openingShare, middle: 2 * PrayerScoring.openingShare)
+    static func part(_ gone: Double) -> Int { gone < edges.opening ? 0 : gone < edges.middle ? 1 : 2 }
+    static let colours: [Color] = [.green, .yellow, PrayerScoring.closing]
 }
 
 /// The card: "Prayer circle" (and, on the welcome, its Play demo) on the sage gradient, and in it the page's own soft
@@ -63,7 +64,7 @@ struct WelcomeSweep: View, Animatable {
     /// A one-off swell of the arc (Your goal's Save): its width and glow grow, then settle.
     var swell: Double = 0
     var size: CGFloat = 112
-    /// Your goal: each goal's end (0.2, 0.6, 1.0) is its own pure colour; the colour blends only just past a boundary while
+    /// Your goal: each goal's end (⅓, ⅔, 1.0) is its own pure colour; the colour blends only just past a boundary while
     /// it sweeps. The welcome blends either side of each boundary as its ring fills.
     var endsPure = false
     var animatableData: AnimatablePair<AnimatablePair<Double, Double>, AnimatablePair<Double, Double>> {
@@ -81,14 +82,16 @@ struct WelcomeSweep: View, Animatable {
                 guard gone > edge, gone < edge + 2 * band else { return nil }
                 return a.mix(with: b, by: (gone - edge) / (2 * band))
             }
-            base = past(.green, .yellow, at: 0.2) ?? past(.yellow, .red, at: 0.6)
-                ?? WelcomeWindow.colours[gone <= 0.2 ? 0 : gone <= 0.6 ? 1 : 2]
+            let (o, m) = WelcomeWindow.edges
+            base = past(.green, .yellow, at: o) ?? past(.yellow, PrayerScoring.closing, at: m)
+                ?? WelcomeWindow.colours[gone <= o ? 0 : gone <= m ? 1 : 2]
         } else {
             func mix(_ a: Color, _ b: Color, at edge: Double) -> Color? {
                 guard abs(gone - edge) < band else { return nil }
                 return a.mix(with: b, by: (gone - edge + band) / (2 * band))
             }
-            base = mix(.green, .yellow, at: 0.2) ?? mix(.yellow, .red, at: 0.6)
+            let (o, m) = WelcomeWindow.edges
+            base = mix(.green, .yellow, at: o) ?? mix(.yellow, PrayerScoring.closing, at: m)
                 ?? WelcomeWindow.colours[WelcomeWindow.part(gone)]
         }
         return grey > 0 ? base.mix(with: PrayerScoring.color(for: PrayerScoring.qaza), by: min(grey, 1)) : base

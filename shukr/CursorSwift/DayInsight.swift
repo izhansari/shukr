@@ -174,12 +174,12 @@ enum DayInsight {
         // 3 · Something noticed.
         if today.count == 5, today.allSatisfy(\.perfect) {
             out.append(Line(id: "notice.allEarly", text: phrase([
-                "All five in their first 30 minutes. Alhamdulillah.",
-                "All five Perfect today. Alhamdulillah.",
+                "All five in the opening of their time. Alhamdulillah.",
+                "All five in the Opening today. Alhamdulillah.",
             ], input), offersFajrAlarm: false))
         }
         for p in today where p.perfect {
-            // An early run: this prayer in its first 30 minutes, days in a row (3+), the longest one only.
+            // An early run: this prayer in its Opening (the first third), days in a row (3+), the longest one only.
             var run = 1
             for day in history {
                 guard let q = day.first(where: { $0.name == p.name }), q.perfect else { break }
@@ -187,8 +187,8 @@ enum DayInsight {
             }
             if run >= 3, !out.contains(where: { $0.id.hasPrefix("notice.run.") }) {
                 out.append(Line(id: "notice.run.\(p.name)", text: phrase([
-                    "\(p.name) in its first 30 minutes, \(run) days running.",
-                    "\(run) days of Perfect \(p.name) in a row.",
+                    "\(p.name) in the opening of its time, \(run) days running.",
+                    "\(run) days of \(p.name) in its Opening, in a row.",
                 ], input), offersFajrAlarm: false))
             }
         }

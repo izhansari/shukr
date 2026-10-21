@@ -8,16 +8,20 @@
 //  (Models/ is in both targets).
 //
 //  A prayer's `numberScore` is its points out of 100, stored as 0...1:
-//    Perfect  marked within 30 min of the adhan            100
-//             (called Early until 2026-09-26; owner: "i dont love early")
-//    Middle   rest of the window, first half                99 → 80
-//    Closing  rest of the window, second half               79 → 60
+//    Opening  the first third of its window                100
+//    Middle   the second third                              99 → 80
+//    Closing  the last third                                79 → 60
 //    Qaza     marked after the window closed                40
+//  Thirds since 2026-10-20 (prayer-metrics rethink, board/scoring-rethink/plan-v3.md; owner: "Opening = the first third of
+//  the window."): a fixed 30 minutes was 31–46 % of Fajr's and Maghrib's window but 10–19 % of Dhuhr's, so the same habit
+//  graded differently by prayer and season. Opening was Perfect until then (owner: "i dont like the word early … we
+//  could maybe do 'Opening'"), Early until 2026-09-26. The points no longer show on screen once phase 3 lands; they
+//  still order and shade.
 //  Middle / Closing were "On time" / "Late" until 2026-10-17 (owner: users read "on time" as just being inside the
 //  window and "late" as prayed outside it). Old rows' `englishScore` keeps whichever word was current; the UI reads
 //  `gradeWord`, never the stored string.
 //    Missed   never marked                                  0 (numberScore stays nil)
-//  After the first 30 minutes the points slide evenly from 100 to 60 at the window's end, so
+//  After the first third the points slide evenly from 100 to 60 at the window's end (80 at two thirds), so
 //  there's no cliff inside the window; the only drop is 60 → 40 when it closes. Qaza still
 //  counts because the app is meant to motivate — praying late beats not praying.
 //  The day score is the average of the five (unmarked = 0).
@@ -32,14 +36,15 @@ import SwiftUI
 import SwiftData
 
 enum PrayerScoring {
-    static let earlyWindow: TimeInterval = 30 * 60
+    /// The Opening's share of a window: the first third (Middle the second, Closing the last).
+    static let openingShare = 1.0 / 3
     static let inWindowFloor = 0.6
     static let qaza = 0.4
 
     /// The one place the grade words live: every screen, the setup legend, Siri and the watch's copy read them from here.
     /// (Case names keep their old meaning — `.onTime` is Middle, `.late` is Closing — so saved keys never change.)
     enum Grade: String, CaseIterable {
-        case perfect = "Perfect", onTime = "Middle", late = "Closing", qaza = "Qaza"
+        case perfect = "Opening", onTime = "Middle", late = "Closing", qaza = "Qaza"
 
         /// Spoken after "Asr marked as prayed …" (Siri, VoiceOver): "during the Middle window" (owner: "user marked as
         /// prayed during the [score text descriptor] window" — one template, plug and play).
@@ -56,10 +61,10 @@ enum PrayerScoring {
     /// Points (0...1) for a prayer whose window is `start...end`, marked at `markedAt`.
     static func score(start: Date, end: Date, markedAt: Date) -> Double {
         if markedAt > end { return qaza }
-        let elapsed = markedAt.timeIntervalSince(start)
-        if elapsed <= earlyWindow { return 1 }
-        let rest = end.timeIntervalSince(start) - earlyWindow
-        guard rest > 0 else { return 1 }
+        let window = end.timeIntervalSince(start)
+        guard window > 0 else { return 1 }
+        if markedAt.timeIntervalSince(start) <= window * openingShare { return 1 }
+        let rest = window * (1 - openingShare)
         let fractionOfRestLeft = min(max(end.timeIntervalSince(markedAt) / rest, 0), 1)
         return inWindowFloor + (1 - inWindowFloor) * fractionOfRestLeft
     }
@@ -71,14 +76,12 @@ enum PrayerScoring {
         return .qaza
     }
 
-    /// When a prayer's colour changes on the clock: Perfect → Middle (30 min in) and Middle →
-    /// Closing (halfway through the rest of the window). The Prayers widget adds a timeline entry at
-    /// each (the watch has the same rule in `WatchScoring.gradeChanges`).
+    /// When a prayer's colour changes on the clock: Opening → Middle (a third in) and Middle → Closing (two thirds in).
+    /// The Prayers widget adds a timeline entry at each (the watch has the same rule in `WatchScoring.gradeChanges`).
     static func gradeChanges(start: Date, end: Date) -> [Date] {
-        let rest = end.timeIntervalSince(start) - earlyWindow
-        guard rest > 0 else { return [] }
-        let perfectEnds = start.addingTimeInterval(earlyWindow)
-        return [perfectEnds, perfectEnds.addingTimeInterval(rest / 2)]
+        let window = end.timeIntervalSince(start)
+        guard window > 0 else { return [] }
+        return [start.addingTimeInterval(window * openingShare), start.addingTimeInterval(window * 2 * openingShare)]
     }
 
     /// The number shown for a score, never above its grade's band ("Middle · 99", not "Middle · 100").
@@ -96,12 +99,15 @@ enum PrayerScoring {
         "\(name) marked as prayed \(grade(for: score).spokenWhen). Score: \(points(for: score))."
     }
 
+    /// Closing's colour, #C93B10 in both looks (owner, 2026-10-20: "both C93B10"; was system red): a red leaning orange.
+    static let closing = Color(red: 0xC9 / 255.0, green: 0x3B / 255.0, blue: 0x10 / 255.0)
+
     static func color(for score: Double?) -> Color {
         guard let score else { return .gray }
         switch grade(for: score) {
         case .perfect: return .green
         case .onTime: return .yellow
-        case .late: return .red
+        case .late: return closing
         case .qaza: return .gray
         }
     }
@@ -167,6 +173,51 @@ enum PrayerScoring {
             print("✅ scoring V2 recalculation: rescored=\(rescored) isha moved=\(ishaMoved) days=\(byDay.count)")
         } catch {
             print("❌ scoring V2 recalculation failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - One-time regrade to thirds (prayer-metrics rethink, phase 2)
+
+    static let thirdsKey = "prayerScoringV3Thirds"
+
+    /// Regrades every timed mark by the thirds rule (Opening = the first third) and rewrites every day's average, once,
+    /// after a store backup ("before-thirds"). Jumu'ah keeps its 100; a mark with no saved tap time keeps its score (it
+    /// can't be placed in its window). A failure leaves the flag unset so the next launch retries. Before 2026-10-20 the
+    /// Opening (Perfect) was the first 30 minutes of every window.
+    static func regradeToThirdsIfNeeded(in container: ModelContainer) {
+        let defaults = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+        guard defaults?.bool(forKey: thirdsKey) != true else { return }
+        backUpStore(label: "before-thirds")
+        let context = ModelContext(container)
+        do {
+            let prayers = try context.fetch(FetchDescriptor<PrayerModel>())
+            var regraded = 0, moved = 0
+            for prayer in prayers where prayer.isCompleted && !prayer.isJumuah {
+                guard let markedAt = prayer.timeAtComplete else { continue }
+                let new = score(start: prayer.startTime, end: prayer.endTime, markedAt: markedAt)
+                if let old = prayer.numberScore, grade(for: old) != grade(for: new) { moved += 1 }
+                prayer.numberScore = new
+                prayer.englishScore = grade(for: new).rawValue
+                regraded += 1
+            }
+            try rewriteDayAverages(prayers, in: context)
+            try context.save()
+            defaults?.set(true, forKey: thirdsKey)
+            print("✅ scoring V3 (thirds) regrade: regraded=\(regraded) changed grade=\(moved)")
+        } catch {
+            print("❌ scoring V3 (thirds) regrade failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// The stored day averages (DailyPrayerScore, read only by Your Data's export) that have one, from their rows by prayer
+    /// day. A day whose average is nil stays nil (Excused clears an excused day's: `clearDailyScore`), and none is added.
+    private static func rewriteDayAverages(_ prayers: [PrayerModel], in context: ModelContext) throws {
+        let calendar = Calendar.current
+        var byDay: [Date: [PrayerModel]] = [:]
+        for prayer in prayers { byDay[prayer.dayStart, default: []].append(prayer) }
+        for daily in try context.fetch(FetchDescriptor<DailyPrayerScore>()) where daily.averageScore != nil {
+            guard let rows = byDay[calendar.startOfDay(for: daily.date)] else { continue }
+            daily.averageScore = dayScore(for: rows)
         }
     }
 

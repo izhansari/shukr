@@ -276,7 +276,7 @@ struct DayCentre: View {
     private var caption: String {
         let inTime = day.filter(\.inTime).count
         let words: String
-        if inTime == 5 { words = day.allSatisfy(\.perfect) ? "all five Perfect" : "all five in time" }
+        if inTime == 5 { words = day.allSatisfy(\.perfect) ? "all five in the Opening" : "all five in time" }
         else { words = "\(inTime) of 5 in time" }
         return yesterday ? "yesterday · \(words)" : words
     }

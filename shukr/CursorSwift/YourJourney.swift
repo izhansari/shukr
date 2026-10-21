@@ -1550,8 +1550,8 @@ struct JourneyMilestone: Identifiable, Equatable {
                 }
                 if !perfectDone, d.marks.allSatisfy({ ($0.score ?? 0) >= 0.9999 }) {
                     perfectDone = true
-                    add("perfect", "A perfect day: all five Perfect", date, .inTime, symbol: "star",
-                        about: "All five prayers prayed in their first 30 minutes on one day, each scored 100.")
+                    add("perfect", "All five in the Opening", date, .inTime, symbol: "star",
+                        about: "All five prayers prayed in the first third of their time on one day.")
                 }
             } else if excusedAll {
                 gap = 0

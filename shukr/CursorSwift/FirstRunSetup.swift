@@ -1824,7 +1824,7 @@ private struct WelcomeStep: View {
 /// The welcome's graphic: the notifications / alarm card ("Prayer circle"), inside it the ring as the Salah page draws it
 /// — the soft look's raised band (`NeuRingTrack`) with the arc on it — filling over a pretend 150-minute window the
 /// real way (owner: "copy same logic of progression our real ring uses"): it fills clockwise from the top as the window
-/// goes, green for the first 30 minutes, yellow for the first half of the rest, red after (`PrayerScoring`'s grades),
+/// goes, green for the first third, yellow to two thirds, Closing's red-orange after (`PrayerScoring`'s grades),
 /// then settles back early in the green. Under the card the three parts light as the ring reaches them. It comes in
 /// gently after the page (owner: "the page before it was so calm"). Reduce Motion: settled at once.
 private struct WelcomeRingDemo: View {
@@ -1902,7 +1902,7 @@ private struct WelcomeSweepParts: View, Animatable {
 
     var body: some View {
         let part = WelcomeWindow.part(gone)
-        let colours: [Color] = [.green, Color(red: 0.83, green: 0.66, blue: 0), .red]
+        let colours: [Color] = [.green, Color(red: 0.83, green: 0.66, blue: 0), PrayerScoring.closing]
         HStack(spacing: 0) {
             // The grade words themselves (owner 2026-10-17: "so that if we ever come back to edit this, then that also gets
             // contained in the fixes"); was "Best time · On time · Almost gone".
@@ -1911,8 +1911,8 @@ private struct WelcomeSweepParts: View, Animatable {
                     Text(word)
                         .font(.system(.caption, design: .rounded, weight: part == i ? .semibold : .regular))
                         .foregroundStyle(part == i ? colours[i] : .secondary)
-                    // The Perfect window's length (owner); the others have none, a blank keeps them level.
-                    Text(i == 0 ? "first 30 min" : " ")
+                    // The Opening's length (owner); the others have none, a blank keeps them level.
+                    Text(i == 0 ? "first third" : " ")
                         .font(.system(.caption2, design: .rounded))
                         .foregroundStyle(.tertiary)
                 }

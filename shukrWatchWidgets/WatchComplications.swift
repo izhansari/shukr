@@ -10,7 +10,7 @@
 //  - Rectangular: name, "ends 6:48 PM" / "at 5:32 AM", a live bar or countdown.
 //  - Inline: "Asr · ends 6:48 PM".
 //  Like the phone (2026-09-27): the ring and bar fill forward (`countsDown: false`) in the colour of
-//  the score you'd get now (green Perfect · yellow Middle · red Closing). The stock timer views can't
+//  the score you'd get now (green Opening · yellow Middle · #C93B10 Closing). The stock timer views can't
 //  change colour inside one entry, so there's an entry at every prayer start / end AND at each grade
 //  change (`WatchScoring.gradeChanges`). Stock views only — custom drawing goes stale.
 //
