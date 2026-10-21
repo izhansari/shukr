@@ -78,6 +78,10 @@ struct PrayerScores {
         var pins: [CLLocationCoordinate2D] = []
         var photos = 0
         var notes = 0
+        /// Prayed in its window (Opening, Middle or Closing) — the rows' "in its time X of Y".
+        var inTime: Int { (grades[.perfect] ?? 0) + (grades[.onTime] ?? 0) + (grades[.late] ?? 0) }
+        /// In its time over what was due (the obligation bar), nil with nothing due.
+        var inTimeShare: Double? { due > 0 ? Double(inTime) / Double(due) : nil }
     }
 
     /// A score now against the same number of days with shukr before (nil: under 5 days on either side).
@@ -120,7 +124,20 @@ struct PrayerScores {
     static let names = JourneyLog.names
     /// Best → worst by the score when prayed — one score everywhere (owner, 2026-10-16: "just make it always be for the
     /// ones that we prayed"; Frank's check: the ring said 77 over a row saying 59 for the same prayer). Nothing prayed: last.
-    var ranked: [String] { Self.names.sorted { (prayers[$0]?.prayedRaw ?? -1) > (prayers[$1]?.prayedRaw ?? -1) } }
+    /// With the rethink, by in its time over due — the number each row shows (Fable's review, owner's yes 2026-10-21: "rank the
+    /// rows and the sentence by in its time"); a tie by more in time, then the day's order.
+    var ranked: [String] {
+        if MetricsLook.on {
+            return Self.names.enumerated().sorted { a, b in
+                let pa = prayers[a.element], pb = prayers[b.element]
+                let sa = pa?.inTimeShare ?? -1, sb = pb?.inTimeShare ?? -1
+                if sa != sb { return sa > sb }
+                if (pa?.inTime ?? 0) != (pb?.inTime ?? 0) { return (pa?.inTime ?? 0) > (pb?.inTime ?? 0) }
+                return a.offset < b.offset
+            }.map(\.element)
+        }
+        return Self.names.sorted { (prayers[$0]?.prayedRaw ?? -1) > (prayers[$1]?.prayedRaw ?? -1) }
+    }
 
 
     /// Read off the main thread, at the goal and from the fresh start as they are now (PrayerStats).
@@ -312,6 +329,16 @@ struct PrayerScores {
     /// All five's sentence: the strongest (top row) and the one that needs you most (missed most often); the latest-prayed
     /// (bottom row) in grey when that's another prayer.
     var sentence: (line: String, sub: String?)? {
+        if MetricsLook.on {
+            // In its time over due, as the rows: the top row is the strongest, the bottom one needs you most; the one you
+            // pray deepest into its window in grey (its usual place, season-proof).
+            let order = ranked.filter { (prayers[$0]?.due ?? 0) >= 5 }
+            guard let top = order.first, let needs = order.last, order.count >= 2 else { return nil }
+            guard prayers[needs]?.inTimeShare != prayers[top]?.inTimeShare else { return ("All five in their time alike.", nil) }
+            let latest = order.filter { prayers[$0]?.usualShare != nil }.max { (prayers[$0]?.usualShare ?? 0) < (prayers[$1]?.usualShare ?? 0) }
+            let sub = latest.flatMap { $0 == top || $0 == needs ? nil : "You pray \($0) latest in its window" }
+            return ("\(top) is your strongest. \(needs) needs you most.", sub)
+        }
         let order = ranked.filter { (prayers[$0]?.prayed ?? 0) >= 5 }
         guard let top = order.first, let bottom = order.last, order.count >= 2 else { return nil }
         let share = { (n: String) -> Double in let p = prayers[n]; return Double(p?.prayed ?? 0) / Double(max(1, p?.due ?? 0)) }
@@ -344,7 +371,9 @@ struct PrayerScores {
             let when = countsFrom == nil ? "Historically your" : "Since your fresh start, your"
             return ("star", "\(when) best-timed prayer: \(s) when you pray it.", "Higher than any other prayer when prayed")
         }
-        if p.bestStreak >= 7, others.allSatisfy({ $0.bestStreak < p.bestStreak }) {
+        // No per-prayer day streak with the rethink: it skipped days without a record and the streak is weekly now (Fable's
+        // review, owner's yes 2026-10-21: "drop the old streak insight").
+        if !MetricsLook.on, p.bestStreak >= 7, others.allSatisfy({ $0.bestStreak < p.bestStreak }) {
             return ("flame", "Your most steady prayer: a \(p.bestStreak)-day streak, your longest.", streakWords)
         }
         if p.masjid >= 3, others.allSatisfy({ $0.masjid < p.masjid }) {
@@ -358,7 +387,7 @@ struct PrayerScores {
         if p.due > 0, others.allSatisfy({ $0.due == 0 || Double($0.prayed) / Double($0.due) < Double(p.prayed) / Double(p.due) }) {
             return ("checkmark.circle", "Your most prayed: \(p.prayed) of \(p.due).", "More often than any other prayer")
         }
-        if p.bestStreak >= 3 {
+        if !MetricsLook.on, p.bestStreak >= 3 {
             return ("flame", "Your best streak: \(p.bestStreak) days in a row.", streakWords)
         }
         return nil
@@ -1056,8 +1085,7 @@ struct PrayerScoresPage: View {
     /// know if that's the metric we should even show").
     private func recentLine(_ name: String) -> String {
         guard let p = data.prayers[name], p.due > 0 else { return "Not enough yet" }
-        let inTime = (p.grades[.perfect] ?? 0) + (p.grades[.onTime] ?? 0) + (p.grades[.late] ?? 0)
-        return "in its time \(inTime) of \(p.due)"
+        return "in its time \(p.inTime) of \(p.due)"
     }
 
     /// "97 · 98% prayed" (a row's line).

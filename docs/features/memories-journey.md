@@ -202,7 +202,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   more about the histogram than anything else"); all five's rows re-rank by sliding. Held until his layout pass (owner 2026-10-18, layout first): the open's scripted beats, the
   first-draw hitch, the bar title snap; 7 days' empty one-liner, "100 · 100% prayed" wrapping. A prayer's page: "Lately, usually…" + its trend, the big chart — tap or hold-drag a slot → "A–B min after it
   starts · N prayers (P%)" (Qaza: "Made up after it ended · …"; no grade word) in the place of the line under the chart
-  ("238 prayed since Nov 2024" — no missed count, the To make up row has it; owner 2026-10-18), crossfaded; grade chips, insight, To make up,
+  ("238 prayed since Nov 2024" — no missed count, the To make up row has it; owner 2026-10-18), crossfaded. Rows and the sentence rank by in its time over due, the rows' own number ("Asr is your strongest. Fajr needs
+  you most."; a grey "You pray Isha latest in its window" when that's a third prayer; all equal: "All five in their time
+  alike.") — Fable's review, owner's yes 2026-10-21; no per-prayer day-streak insight; grade chips, insight, To make up,
   photos, Where you pray it. Thin data: "Not enough yet" (kept steady through the rise).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
