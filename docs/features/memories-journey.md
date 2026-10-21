@@ -134,9 +134,10 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   all from `PrayerMetrics`, read off the main thread on `log.version`. Its ↗ opens the calendar as before; this week's days
   fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that day: it opens like an accordion
   to a third of the ring, evenly either side of its middle, the other six closing up (`JourneyWeekRing.layout`: a day
-  weighs 1 + 2 × its split), its five prayers as fifths at the band's own thickness inside one faint rounded track, each in
-  its grade colour with a hollow dot (wider than the band) where in its window it was prayed (owner, 2026-10-21: "make it the
-  same thickness. show it contained in some arc"; tried first: five blocks in place, then thinner fifths over a quarter);
+  weighs 1 + 2 × its split), the day's own arc turns into a faint track holding its five
+  prayers as the Salah page's thin fifths (DayRing's band, its 12 pt hollow dots) where in its window each was prayed
+  (owner, 2026-10-21: "show it contained in some arc"; "no! the thin on the salah rings"; tried first: five blocks in place,
+  fifths over a quarter, then fifths at the band's full thickness);
   the rest dim to 0.25, the middle reads "Wednesday · all five prayed" (or "4 of 5 prayed", "no record"); the same arc again
   opens that day's page, a tap in the middle lets it
   go. A day with no record (NoRecordDays.next, Frank's flow) is asked in the banked weeks' slot ("Yesterday has no record.

@@ -49,7 +49,8 @@ struct AnimatableNumbers: VectorArithmetic {
 /// sides - so 1/8 left and 1/8 right) to show the same kinda fifth lines on the salah page with their hollow dots"; tried
 /// first: the day broken into five coloured blocks in place — "so ugly"). Then (owner, 2026-10-21: "make it the same
 /// thickness. show it contained in some arc. so we know they belong together. Expand the accordion more … dull out the other
-/// days more"): a third of the ring, the fifths at the band's own thickness inside one faint rounded track, the rest at 0.25.
+/// days more"; "no! the thin on the salah rings"): a third of the ring, the day's own arc turning into a faint track that
+/// holds the five as the Salah page's thin fifths with their hollow dots; the rest at 0.25.
 struct JourneyWeekRing: View, Animatable {
     let days: [PrayerMetrics.Day]
     /// Today's index in the week (its initial in ink), nil for a finished week.
@@ -184,32 +185,26 @@ struct JourneyWeekRing: View, Animatable {
                     if split < 0.01 {
                         ctx.stroke(arc(a0, a1), with: .color(one), style: StrokeStyle(lineWidth: width, lineCap: .round))
                     } else {
-                        // One faint rounded track holds them (they belong together), a little wider than the band.
-                        let track = width + 8 * split
-                        let tcap = Double(track / 2 / r) * 180 / .pi
-                        ctx.stroke(arc(rooms[i].0 + Self.dayGap / 2 + tcap, rooms[i].1 - Self.dayGap / 2 - tcap),
-                                   with: .color(ink.opacity(0.09 * split)), style: StrokeStyle(lineWidth: track, lineCap: .round))
-                        // Five fifths inside it, the gaps opening as it opens; each rounded, in its own colour.
+                        // The day's own arc becomes the faint track that holds them (they belong together)…
+                        ctx.stroke(arc(a0, a1), with: .color(one.mix(with: ink.opacity(0.09), by: split)),
+                                   style: StrokeStyle(lineWidth: width, lineCap: .round))
+                        // …and inside it, its five prayers as the Salah page's thin fifths with their hollow dots (owner,
+                        // 2026-10-21: "no! the thin on the salah rings"), the gaps opening as it opens.
+                        let thin = theme.arc.width * 0.5   // DayRing's band
+                        let tcap = Double(thin / 2 / r) * 180 / .pi
                         let gap = Self.prayerGap * split
-                        // Inside the track's ends by the same 4 pt it stands out at the sides.
-                        let inset = Self.dayGap / 2 + Double(4 * split / r) * 180 / .pi
-                        let span = rooms[i].1 - rooms[i].0 - 2 * inset
-                        let piece = (span - 4 * gap) / 5
+                        let piece = (a1 - a0 - 4 * gap) / 5
                         for j in 0..<5 {
-                            let from = rooms[i].0 + inset + Double(j) * (piece + gap)
-                            let p0 = from + cap, p1 = from + piece - cap
-                            let color = one.mix(with: prayerColor(states[j], ink: ink), by: split)
+                            let from = a0 + Double(j) * (piece + gap)
+                            let p0 = from + tcap, p1 = from + piece - tcap
+                            let color = prayerColor(states[j], ink: ink).opacity(split)
                             if p1 > p0 {
-                                ctx.stroke(arc(p0, p1), with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .round))
-                            } else {
-                                let d = point((from + from + piece) / 2)
-                                ctx.fill(Path(ellipseIn: CGRect(x: d.x - width / 2, y: d.y - width / 2, width: width, height: width)), with: .color(color))
+                                ctx.stroke(arc(p0, p1), with: .color(color), style: StrokeStyle(lineWidth: thin, lineCap: .round))
                             }
-                            // Its hollow dot where in its window it was prayed (past the end: at the end), as it opens.
+                            // Its hollow dot where in its window it was prayed (past the end: at the end): the day ring's.
                             if states[j].prayed, places.indices.contains(i), places[i].indices.contains(j), let at = places[i][j] {
                                 let d = point(p0 + (p1 - p0) * min(max(at, 0), 1))
-                                // Wider than the band, as the Salah page's dot is (the band's own width read as a hole).
-                                let size = (width + 5) * split, stroke = 2.8 * split
+                                let size = 12 * split, stroke = 2.4 * split
                                 ctx.fill(Path(ellipseIn: CGRect(x: d.x - size / 2, y: d.y - size / 2, width: size, height: size)),
                                          with: .color(theme.surface))
                                 let inner = size - stroke   // its border inside, as the day ring's strokeBorder
