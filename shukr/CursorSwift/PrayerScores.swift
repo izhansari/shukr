@@ -334,7 +334,7 @@ struct PrayerScores {
             // pray deepest into its window in grey (its usual place, season-proof).
             let order = ranked.filter { (prayers[$0]?.due ?? 0) >= 5 }
             guard let top = order.first, let needs = order.last, order.count >= 2 else { return nil }
-            guard prayers[needs]?.inTimeShare != prayers[top]?.inTimeShare else { return ("All five in their time alike.", nil) }
+            guard prayers[needs]?.inTimeShare != prayers[top]?.inTimeShare else { return ("All \(order.count == 5 ? "five" : "\(order.count)") in their time alike.", nil) }   // only those with 5+ due (Frank)
             let latest = order.filter { prayers[$0]?.usualShare != nil }.max { (prayers[$0]?.usualShare ?? 0) < (prayers[$1]?.usualShare ?? 0) }
             let sub = latest.flatMap { $0 == top || $0 == needs ? nil : "You pray \($0) latest in its window" }
             return ("\(top) is your strongest. \(needs) needs you most.", sub)
