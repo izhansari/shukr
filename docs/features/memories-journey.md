@@ -126,14 +126,15 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
 - **The week card** (JourneyWeekHero.swift; prayer-metrics rethink phase 5, owner's pick 2026-10-20 "yeah do it" on B · A · A;
-  behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): the card is this week — `JourneyWeekRing`, 35 arcs
-  Sunday → Saturday (prayed in its grade colour via `PrayerScoring.color`, not marked a faint track, to come fainter, excused
+  behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): the card is this week — `JourneyWeekRing`, seven arcs
+  Sunday → Saturday, one colour a day (owner, 2026-10-20: "one solid color per day … green if we prayed all the prayers that
+  day"): all prayed green (made up counts, excused is done), some prayed grey, none fainter, to come a calm track, all excused
   frosted, a no-record day dotted), "N done · this week" Sun–Wed, "N left · for a strong week" Thu–Sat (only while made up +
   not marked ≤ 3), "Your usual week: N", the last two finished weeks banked ("34 of 35 · strong ✓" / "complete week ✓");
   all from `PrayerMetrics`, read off the main thread on `log.version`. Its ↗ opens the calendar as before; this week's days
-  fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that prayer (owner,
-  2026-10-20: "journey hero should allow clicking on to the individual prayer in the ring"): it stays, wider, the rest dim,
-  the middle reads "Dhuhr · Tue · Middle · 2:27 PM"; the same arc again opens that day's page, a tap in the middle lets it
+  fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that day: it stays,
+  wider, the rest dim, the middle reads "Wednesday · all five prayed" (or "4 of 5 prayed", "no record"); the same arc again
+  opens that day's page, a tap in the middle lets it
   go. A day with no record (NoRecordDays.next, Frank's flow) is asked in the banked weeks' slot ("Yesterday has no record.
   Did you pray?" · Pick which · Not now — the card never changes height; unanswered, it steps aside after 3 visits to
   Journey and stays quiet until a newer day has no record — owner, 2026-10-20); a dotted arc picked again opens the same Pick
@@ -173,12 +174,13 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   squares' geometry is one set of statics on `JourneyYearSquares` (drawing, hit test, layout, the flight); ‹, the edge swipe and the toggle go back to the weeks (`JourneyFlightGeometry.yearBack`).
 - **Your prayers** (the rethink's phase 3; behind `MetricsLook.on`): Prayer scores' page as built — its motion, rows,
   chart, chips and back dial — titled "Your prayers", with no ring (owner, 2026-10-20: "get rid of the ring for the your
-  prayers altogether. And the main thing can just be the histogram"); all five's hero (owner, 2026-10-20, A): the day ring's
-  fifths (DayRing), each prayer's hollow dot at its usual place in its window over the chips' span, the fifth in the colour
-  of the third it falls in, "when you usually pray" in the middle, a fifth tapped opens that prayer; an open
-  prayer's hero is its window today (`PrayerWindowHero`, YourPrayers.swift — owner 2026-10-20 "now show this in the hero for
-  the individual prayer page"): thirds faint, lit from the start to today's mark, a hollow dot there, a "usual" tick at the
-  span's place, "6:33 · today · Closing" (or "not yet" / "not marked") in the middle; read-only. The rows'
+  prayers altogether. And the main thing can just be the histogram"); one ring both ways (`YourPrayersRing`, YourPrayers.swift):
+  all five, the day ring's fifths, each prayer's hollow dot at its usual place in its window over the chips' span, the fifth
+  in that third's colour, "when you usually pray" in the middle, a fifth tapped opens that prayer. Open, its fifth unfolds
+  into its whole window (CircleMotion.ringMove; the others gone first): the thirds come apart into their colours (faint past
+  the dot), the dot turns to the same place, "29% · into its window, usually" in the middle; the open ring takes no tap (a tap
+  for the latest mark's time was tried and dropped — owner: "That means nothing to me because I don't even know the window").
+  ‹ / the edge fold it on the dial. The rows'
   and the open prayer's line "in its time 224 of 329" over the span the chips pick; the open prayer's "Usually a third of the way
   in · about 26 minutes in today" (in words, not a percent — Frank's check) (`Prayer.usualShare`, the median place in its window over the span's in-window
   marks — season-proof, owner 2026-10-20; today's window from PrayerMetrics.recent; "1 h 41 min" past an hour) — never a

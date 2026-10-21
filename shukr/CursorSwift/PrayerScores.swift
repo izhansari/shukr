@@ -413,6 +413,8 @@ struct PrayerScoresPage: View {
     @State private var dialing = false
     /// Past the dial's ring swap: the ring shows all five's number again.
     @State private var dialRingAll = false
+    /// The prayer the ring last unfolded: it folds back into its own fifth after `shown` lets go.
+    @State private var ringOpen: String?
     @State private var heroFrames = ScoresHeroFrames()
     @State private var edgeSideways: Bool?
     @State private var dragFrom: CGFloat?
@@ -605,6 +607,7 @@ struct PrayerScoresPage: View {
             // 2 · the others fold away; the picked row rises into the top slot. The ring's words swap while they're out.
             withAnimation(motion(.smooth(duration: 0.45))) {
                 shown = name
+                ringOpen = name
                 folded = true
             }
             // 3 · the ring's words come back as the row lands (the ring sat empty ~0.8 s — Frank); the lines under the title
@@ -650,6 +653,7 @@ struct PrayerScoresPage: View {
             withTransaction(quiet) {
                 selected = name
                 shown = name
+                ringOpen = name
             }
             withAnimation(motion(.easeOut(duration: 0.18))) {
                 swapping = false
@@ -770,20 +774,20 @@ struct PrayerScoresPage: View {
         ZStack {
             NeuRaised(shape: Circle(), radius: 9, offset: 4.5)
                 .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
-            DayRing(day: ringPrayers, picked: MetricsLook.on ? nil : ringShown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
-                let name = DayRing.order[i]
-                guard MetricsLook.on ? data.prayers[name] != nil : data.prayers[name]?.prayedScore != nil else { return }
-                if selected == nil { open(name) } else if name == selected && !swapping { close() } else { switchTo(name) }
-            }
-            .id(data.span)   // a new span's fifths cross-fade in
-            .transition(.opacity)
             if MetricsLook.on {
-                // No number (owner, 2026-10-20): what the dots are.
-                Text("when you\nusually pray")
-                    .font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                // The fifths at your usual places; a prayer open, its fifth unfolded into its window (YourPrayersRing).
+                // A new span's dots turn to their new places.
+                YourPrayersRing(usual: DayRing.order.map { data.prayers[$0]?.usualShare },
+                                open: (shown ?? selected ?? ringOpen).flatMap { DayRing.order.firstIndex(of: $0) },   // from the tap: its fifth stays
+                                unfolded: ringShown != nil, othersShown: ringShown == nil && !ringFaded,
+                                dial: backDial, onPick: pickFifth)
+                ringWords
+                    .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
                     .allowsHitTesting(false)
             } else {
+            DayRing(day: ringPrayers, picked: ringShown.flatMap { DayRing.order.firstIndex(of: $0) }, onPick: pickFifth)
+            .id(data.span)   // a new span's fifths cross-fade in
+            .transition(.opacity)
             VStack(spacing: 1) {
                 Text(ringScore.map { "\($0)" } ?? "–")
                     .font(.system(size: MetricsLook.on ? 46 : 58, weight: .thin, design: .rounded)).monospacedDigit()
@@ -805,27 +809,48 @@ struct PrayerScoresPage: View {
         .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
     }
 
+    /// A tap on a fifth is a tap on that prayer's row.
+    private func pickFifth(_ i: Int) {
+        let name = DayRing.order[i]
+        guard MetricsLook.on ? data.prayers[name] != nil : data.prayers[name]?.prayedScore != nil else { return }
+        if selected == nil { open(name) } else if name == selected && !swapping { close() } else { switchTo(name) }
+    }
+
+    /// The ring's middle: what the dots are; a prayer open, how far into its window you usually pray it over the span
+    /// ("say the % of window we mark at on avg for the 7/30/all period"). The words swap as the day page's centre does.
+    @ViewBuilder private var ringWords: some View {
+        Group {
+            if let s = ringShown {
+                if let u = data.prayers[s]?.usualShare {
+                    ringPair("\(Int((min(max(u, 0), 1) * 100).rounded()))%", "into its window,\nusually")
+                } else {
+                    ringPair("–", "too few times\nto say yet")
+                }
+            } else {
+                // No number (owner, 2026-10-20): what the dots are.
+                Text("when you\nusually pray")
+                    .font(.system(size: 17, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .id(ringShown ?? "")
+        .transition(CircleMotion.dayPickSwap)
+    }
+
+    private func ringPair(_ big: String, _ small: String) -> some View {
+        VStack(spacing: 2) {
+            Text(big).font(.system(size: 50, weight: .thin, design: .rounded)).monospacedDigit()
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Text(small).font(.system(size: 16, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(width: 160)
+    }
+
     /// Each prayer as the day ring draws a day's: its average as the score, its usual place in its window (the middle of
     /// its marks, 0 the start … 1 the end, a Qaza past it) as when it was marked, on a stand-in window.
     private var ringPrayers: [DayPrayer] {
         let start = Date(timeIntervalSinceReferenceDate: 0), length: TimeInterval = 1_000
-        if MetricsLook.on {
-            // The rethink (owner, 2026-10-20: "This ring displays fifths (one for each prayer). Each fifth has the hollow dot
-            // placed at the usual percentage of that prayers window. This changes based on all time, 30 days, 7 days. The
-            // color of that fifth takes the color of the segment that prayer would be in … matching what the salah ring looks
-            // like at end of day"): the dot at the span's usual place, the fifth in the colour of the third it falls in.
-            // The colour is the grade a mark at that place gets (Frank's check: own thresholds were off at the exact edges),
-            // so it follows the scoring rule wherever it moves.
-            return DayRing.order.map { name in
-                let end = start.addingTimeInterval(length)
-                guard let share = data.prayers[name]?.usualShare else {
-                    return DayPrayer(name: name, start: start, end: end, markedAt: nil, score: nil)
-                }
-                let at = start.addingTimeInterval(length * min(max(share, 0), 1))
-                return DayPrayer(name: name, start: start, end: end, markedAt: at,
-                                 score: PrayerScoring.score(start: start, end: end, markedAt: at))
-            }
-        }
         return DayRing.order.map { name in
             let p = data.prayers[name]
             let sorted = (p?.positions ?? []).sorted()
@@ -1011,27 +1036,9 @@ struct PrayerScoresPage: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // No ring with the rethink (owner, 2026-10-20: "Let's just get rid of the ring for the your prayers altogether. And
-            // the main thing can just be the histogram"): the title and its lines take the header.
-            if !MetricsLook.on {
-                ring.scaleEffect(scale)
-                    .frame(width: CircleMotion.dayDiscDiameter * scale, height: CircleMotion.dayDiscDiameter * scale)
-            } else {
-                // One slot, the same size both ways (nothing beside it moves): all five, the fifths at your usual places;
-                // a prayer open, its window today with your usual tick (owner, 2026-10-20: "now show this in the hero for the
-                // individual prayer page"). They swap while faded with the ring's words — the open's beats, the back dial.
-                ZStack {
-                    if let s = ringShown {
-                        PrayerWindowHero(name: s, usualShare: data.prayers[s]?.usualShare)
-                            .scaleEffect(CircleMotion.dayDiscDiameter / 200 * scale)
-                            .transition(.opacity)
-                    } else {
-                        ring.scaleEffect(scale).transition(.opacity)
-                    }
-                }
+            // With MetricsLook one ring both ways (owner, 2026-10-20: "transition the fifth to its ring"): only its middle fades.
+            ring.scaleEffect(scale)
                 .frame(width: CircleMotion.dayDiscDiameter * scale, height: CircleMotion.dayDiscDiameter * scale)
-                .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
-            }
         }
         .padding(.leading, 4)
     }

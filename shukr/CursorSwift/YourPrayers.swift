@@ -2,11 +2,10 @@
 //  YourPrayers.swift
 //  shukr
 //
-//  Prayer scores as "Your prayers" (prayer-metrics rethink, build plan phase 3; the owner's pick A, 2026-10-20: one ring at
-//  the top, the same 35-arc language as Journey's week). No 0–100: each prayer's last 7 days as seven slivers in its fifth,
-//  "29 of 35 in their time" in the middle; a prayer open, "4 of 7 in its time" and "usually by 6:00 · 4 min from your best
-//  month". The page's motion (the row rising into the header, the back dial, the fifths' taps) is PrayerScoresPage's, as
-//  built: only what's drawn changes, behind MetricsLook. Every count from PrayerMetrics.recent (Fable's data layer).
+//  Prayer scores as "Your prayers" (prayer-metrics rethink, behind MetricsLook): the five prayers' last 7 days for Journey's
+//  row (PrayerMetrics.recent, Fable's data layer) and the page's ring — each prayer's usual place in its window, a prayer's
+//  fifth unfolding into its whole window. The page's motion (the row rising into the header, the
+//  back dial) is PrayerScoresPage's.
 //
 
 import SwiftUI
@@ -46,97 +45,154 @@ import SwiftUI
     }
 }
 
-/// One prayer's window as the page's hero (owner, 2026-10-20, on Zoe's demo ring: "now show this in the hero for the
-/// individual prayer page"): its window in thirds (Opening · Middle · Closing, faint), lit from its start to today's mark
-/// with a hollow dot there, a tick where you usually pray it (the span's place in the window), today's time and its place in
-/// the middle. Read-only (the editor's PrayerWindowRing is the one you drag); the same arc style.
-struct PrayerWindowHero: View {
-    let name: String
-    /// Where you usually pray it (0 as it begins, 1 as it ends); nil: no tick.
-    let usualShare: Double?
-    @Environment(\.circleTheme) private var theme
+/// Your prayers' ring (owner, 2026-10-20). All five: the day ring's fifths, each prayer's hollow dot at its usual place in its
+/// window over the span, the fifth in that third's colour; a tap on a fifth opens it. A prayer open, its fifth unfolds into
+/// its whole window — the thirds come apart into their colours and the dot turns round to the same place on the full ring
+/// ("transition the fifth to its ring dividing it into colors and turning the dot smoothly"), the other fifths gone first.
+/// No tap open (tried: a tap swapped in the latest mark's clock time — owner: "That means nothing to me because I don't even
+/// know the window"). The way back folds it on the page's dial (ScoresBack): the fold with the rows, the others in last.
+struct YourPrayersRing: View {
+    /// Each prayer's usual place (DayRing.order), nil before there's one.
+    let usual: [Double?]
+    /// The prayer unfolding or unfolded (kept through the fold back).
+    let open: Int?
+    /// At rest: unfolded, the other fifths shown.
+    let unfolded: Bool
+    let othersShown: Bool
+    let dial: JourneyMonthDial?
+    let onPick: (Int) -> Void
 
-    private static let side: CGFloat = 200
+    var body: some View {
+        // On the dial (the way back), read here so only the ring redraws a frame: the fold with the rows, the others last.
+        let c = dial.map { 1 - $0.dial }
+        let unfold = c.map { 1 - ScoresBack.unfold($0) } ?? (unfolded ? 1 : 0)
+        let others = c.map { ScoresBack.fadeIn($0) } ?? (othersShown ? 1 : 0)
+        ZStack {
+            ForEach(0..<5, id: \.self) { i in
+                let mine = i == open
+                YourPrayersFifth(index: i, usual: usual[i], unfold: mine ? unfold : 0)
+                    .opacity(mine ? 1 : others)
+            }
+        }
+        // The Salah ring's own move for the unfold (CircleMotion.ringMove); the dial drives it frame by frame.
+        .animation(dial == nil ? CircleMotion.ringMove : nil, value: unfolded)
+        .frame(width: 200, height: 200)
+        .contentShape(Circle().stroke(lineWidth: 46))
+        .gesture(SpatialTapGesture().onEnded { tap in
+            guard !unfolded else { return }
+            let dx = tap.location.x - 100, dy = tap.location.y - 100
+            var turn = atan2(dx, -dy) / (2 * .pi)   // 0 at the top, clockwise
+            if turn < 0 { turn += 1 }
+            onPick(min(Int(turn * 5), 4))
+        })
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private var accessibilitySummary: String {
+        if let open, unfolded {
+            let name = DayRing.order[open]
+            return usual[open].map { "\(name): usually \(Int(($0 * 100).rounded())) percent into its window" } ?? "\(name): not enough times yet"
+        }
+        return DayRing.order.indices.map { i in
+            usual[i].map { "\(DayRing.order[i]): usually \(Int(($0 * 100).rounded())) percent into its window" } ?? "\(DayRing.order[i]): not enough times yet"
+        }.joined(separator: ", ")
+    }
+}
+
+/// One prayer's fifth, `unfold` of the way to its whole window (0 its fifth … 1 the full ring, its start at the top). Every
+/// place in the window maps to an angle between the two, so the thirds, the lit part and the dot all travel together.
+private struct YourPrayersFifth: View, Animatable {
+    let index: Int
+    var usual: Double?
+    var unfold: CGFloat
+
+    var animatableData: AnimatablePair<CGFloat, Double> {
+        get { AnimatablePair(unfold, usual ?? 0) }
+        set {
+            unfold = newValue.first
+            if usual != nil { usual = newValue.second }
+        }
+    }
+
+    @Environment(\.circleTheme) private var theme
+    private static let r: CGFloat = 100
+    /// The thirds' gap on the full ring, degrees.
     private static let gap = 2.4
 
-    /// Today's window and mark (Journey's log, which the page already has).
-    private var today: (start: Date, end: Date, markedAt: Date?, mark: JourneyLog.Mark)? {
-        guard let log = JourneyStore.shared.log, let i = JourneyLog.names.firstIndex(of: name) else { return nil }
-        let day = log.day(PrayerDay.start())
-        guard let slot = day.slots[i] else { return nil }
-        return (slot.start, slot.end, slot.markedAt, day.marks[i])
+    /// A place in the window (0…1) as an angle from the top, degrees.
+    private func angle(_ f: Double) -> Double {
+        let u = Double(unfold)
+        let a0 = 360 * (Double(index) / 5 + DayRing.gap), a1 = 360 * (Double(index + 1) / 5 - DayRing.gap)
+        let b0 = Self.gap / 2, b1 = 360 - Self.gap / 2
+        return (a0 + f * (a1 - a0)) * (1 - u) + (b0 + f * (b1 - b0)) * u
+    }
+
+    /// The grade colour a mark at `share` of the window gets (past 1: made up).
+    private static func color(at share: Double) -> Color {
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        return PrayerScoring.color(for: PrayerScoring.score(start: start, end: start.addingTimeInterval(1_000),
+                                                            markedAt: start.addingTimeInterval(1_000 * share)))
     }
 
     var body: some View {
-        let r: CGFloat = 92, w = theme.arc.width
-        let t = today
-        let total = t.map { max($0.end.timeIntervalSince($0.start), 1) } ?? 1
-        let markShare: Double? = t.flatMap { tt in tt.markedAt.map { $0.timeIntervalSince(tt.start) / total } }
-        let lit = min(max(markShare ?? 0, 0), 1) * 360
-        let opening = PrayerScoring.openingShare, mid = opening + (1 - opening) / 2
-        let zones: [(Double, Double, Double)] = [(0, opening * 360, 1), (opening * 360, mid * 360, 0.9), (mid * 360, 360, 0.7)]
+        let u = Double(unfold)
+        let w = theme.arc.width * (0.5 + 0.6 * unfold)
+        let style = StrokeStyle(lineWidth: w, lineCap: theme.arc.cap)
+        let o = PrayerScoring.openingShare, m = o + (1 - o) / 2
+        let zones: [(Double, Double)] = [(0, o), (o, m), (m, 1)]
         ZStack {
-            ForEach(Array(zones.enumerated()), id: \.offset) { _, z in
-                let color = PrayerScoring.color(for: z.2)
-                let a0 = z.0 + Self.gap / 2, a1 = z.1 - Self.gap / 2
-                arc(a0, a1).stroke(color.opacity(0.16), style: StrokeStyle(lineWidth: w, lineCap: theme.arc.cap))
-                if markShare != nil, min(a1, lit) > a0 + 0.5 {
-                    arc(a0, min(a1, lit)).stroke(color, style: StrokeStyle(lineWidth: w, lineCap: theme.arc.cap))
-                }
+            if usual == nil {
+                // No usual yet: the day ring's faint dotted track, the thirds faint as it unfolds.
+                arc(angle(0), angle(1))
+                    .stroke(Color.secondary.opacity(0.18), style: StrokeStyle(lineWidth: w, lineCap: .round, dash: [1, 7]))
+                    .opacity(1 - u)
             }
-            .frame(width: r * 2, height: r * 2)
-            // Your usual: a tick across the band, its word inside the ring (outside, it ran off the edge at 70 %).
-            if let u = usualShare {
-                let a = u * 360 * .pi / 180
-                Capsule().fill(Color.secondary).frame(width: 2, height: w + 10)
-                    .offset(y: -r).rotationEffect(.radians(a))
-                Text("usual").font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    .offset(x: (r - w - 12) * sin(a), y: -(r - w - 12) * cos(a))
+            ForEach(0..<3, id: \.self) { k in
+                let (f0, f1) = zones[k]
+                let a0 = angle(f0) + (k > 0 ? Self.gap / 2 * u : 0), a1 = angle(f1) - (k < 2 ? Self.gap / 2 * u : 0)
+                arc(a0, a1).stroke(Self.color(at: (f0 + f1) / 2).opacity(0.16), style: style).opacity(u)
             }
-            if let m = markShare {
-                let a = min(max(m, 0), 1) * 360 * .pi / 180
-                let color = t.flatMap { $0.mark.score }.map { PrayerScoring.color(for: $0) } ?? .gray
-                Circle().fill(theme.surface)
-                    .overlay(Circle().strokeBorder(color, lineWidth: 2.8))
-                    .frame(width: 15, height: 15)
-                    .offset(x: r * sin(a), y: -r * cos(a))
-            }
-            centre(t)
+            if let usual { mark(usual, zones: zones, style: style) }
         }
-        .frame(width: Self.side, height: Self.side)
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .combine)
+        .frame(width: 200, height: 200)
     }
 
-    /// The hour and minutes in the user's 12 / 24-hour setting, no AM / PM (it fits the middle; the window says when).
-    private static let clock: DateFormatter = {
-        let f = DateFormatter()
-        let format = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current) ?? "h:mm"
-        f.dateFormat = format.replacingOccurrences(of: "a", with: "").trimmingCharacters(in: .whitespaces)
-        return f
-    }()
-
-    @ViewBuilder private func centre(_ t: (start: Date, end: Date, markedAt: Date?, mark: JourneyLog.Mark)?) -> some View {
-        let (big, small): (String, String) = {
-            guard let t else { return ("–", "today · not yet") }   // the day's rows aren't made yet
-            switch t.mark {
-            case .done(let score):
-                let word = t.markedAt.map { $0 > t.end } == true ? "made up" : PrayerScoring.grade(for: score).rawValue
-                return (t.markedAt.map { Self.clock.string(from: $0) } ?? "✓", t.markedAt == nil ? "today · in its time" : "today · \(word)")
-            case .missed: return ("–", "today · not marked")
-            case .excused: return ("–", "today · excused")
-            default: return ("–", Date() < t.start ? "today · to come" : "today · not yet")
+    /// Lit up to your usual place and its hollow dot: one colour as a fifth (the dot's third), coming apart into the thirds'
+    /// as it unfolds.
+    @ViewBuilder private func mark(_ share: Double, zones: [(Double, Double)], style: StrokeStyle) -> some View {
+        let u = Double(unfold)
+        let dot = min(max(share, 0), 1)
+        let dotColor = Self.color(at: share)
+        let litTo = 1 * (1 - u) + dot * u
+        ZStack {
+            ZStack {
+                ForEach(0..<3, id: \.self) { k in
+                    let (f0, f1) = zones[k]
+                    let a0 = angle(f0) + (k > 0 ? Self.gap / 2 * u : 0), a1 = min(angle(f1) - (k < 2 ? Self.gap / 2 * u : 0), angle(litTo))
+                    if a1 > a0 + 0.5 {
+                        arc(a0, a1).stroke(dotColor.mix(with: Self.color(at: (f0 + f1) / 2), by: u), style: style)
+                    }
+                }
             }
-        }()
-        VStack(spacing: 2) {
-            Text(big).font(.system(size: 46, weight: .thin, design: .rounded)).monospacedDigit()
-            Text(small).font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+            .compositingGroup()   // as a fifth, one colour: its pieces' caps never double up
+            .opacity(0.72 + 0.28 * u)
+            let size = 12 + 4.6 * unfold
+            Circle().fill(theme.surface)
+                .overlay(Circle().strokeBorder(dotColor, lineWidth: 2.4 + 0.7 * unfold))
+                .frame(width: size, height: size)
+                .position(point(angle(dot) * .pi / 180, Self.r))
         }
+    }
+
+    /// A point at `radians` from the top, clockwise, `radius` from the centre.
+    private func point(_ radians: Double, _ radius: CGFloat) -> CGPoint {
+        CGPoint(x: 100 + radius * sin(radians), y: 100 - radius * cos(radians))
     }
 
     private func arc(_ from: Double, _ to: Double) -> Path {
         var p = Path()
-        p.addArc(center: CGPoint(x: 92, y: 92), radius: 92, startAngle: .degrees(from - 90), endAngle: .degrees(to - 90), clockwise: false)
+        p.addArc(center: CGPoint(x: 100, y: 100), radius: Self.r, startAngle: .degrees(from - 90), endAngle: .degrees(to - 90), clockwise: false)
         return p
     }
 }
