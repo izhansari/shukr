@@ -138,8 +138,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   `JourneyGoalRing`, from the top going right: green for the prayers that met your goal, then a dashed hairline for those
   still to come (`UpcomingTrack`, the Salah ring's own). From the top going left: excused (frost, crosshatched), below your
   goal (light grey), then one hollow pill, "not marked" — the missed prayers and the days with no record together (owner,
-  option B: simpler, and it never calls a day with no record missed), past below. The "strong" tick sits on it while any are
-  left, else 3 short of the week (none on Prayed). All of it sits in the Salah circle's raised band (11 pt, NeuRingTrack's
+  option B: simpler, and it never calls a day with no record missed), past below. The "strong" tick is the finish line, fixed: 3 short
+  of what the week asks (the top on Prayed: every prayer); it no longer moves onto the not-marked pill (owner, 2026-10-21,
+  Fable's critique: it read as "strong is halfway"). All of it sits in the Salah circle's raised band (11 pt, NeuRingTrack's
   surface, shade and light), the parts 6 pt inside it, the green with the Salah arc's glow (owner: "looks very similar to
   the Salah ring"). Days before the first mark ever are left off the ring. A tap on a pill or the tick
   dims the rest; the centre says its count and words, and its line takes the line slot under the days ("17 · not marked" —
@@ -154,12 +155,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   them, the first that's true: Excused Mode on → "Excused Mode is on. Your week picks up when it ends." (owner, 2026-10-21,
   A; no tick, no make-up / fill-in asks, a picked part keeps this line, no "Did you pray?"); out of reach → the mid-week line ("Your goal this week, every prayer in its window, is out of
   reach now. You've still got 19 prayers left, so make them count." — owner: "account for the messaging for when they miss
-  their strong week"); a missed prayer → "Make up today's Fajr to keep the week strong" (several: "Make up N missed prayers…");
-  a no-record day → "Fill in Monday to keep the week strong"; both → "Make up 2 missed prayers and fill in 3 days to keep
-  the week strong"; enough already → "A strong week, so far"; else the rule in Your
+  their strong week"); a missed prayer → "Make up today's Fajr for a strong week" (several: "Make up N missed prayers…");
+  a no-record day → "Fill in Monday for a strong week"; both → "Make up 2 missed prayers and fill in 3 days for a
+  strong week"; enough already → "A strong week, so far"; else the rule in Your
   goal's words: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. " first; on
   Prayed just "Don't miss a prayer") (a fixed 3-line slot). The last two finished weeks banked
-  ("Oct 4 – 10 · 34 of 35 · strong", "· complete"); a day with no record asked in their slot ("Yesterday has no record. Did
+  ("Oct 4 – 10 · 34 of 35 · strong"; a complete week "35 of 35 · strong" — "complete" was never explained); a day with no record asked in their slot ("Yesterday has no record. Did
   you pray?" · Pick which · Not now — steps aside after 3 visits; owner, 2026-10-20). All from `PrayerMetrics`, off the main
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
   No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes the same `PrayerGoalPage` as Settings' row (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"); Milestones now sits below the fold on a 17 Pro (the rows scroll).

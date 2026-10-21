@@ -48,9 +48,10 @@ struct AnimatableNumbers: VectorArithmetic {
 /// the Salah ring"). From the top going left: excused (frost, crosshatched), below your goal (light grey), then one hollow pill,
 /// "not marked": the missed prayers and the days with no record together (owner, 2026-10-21, option B: "one hollow pill called
 /// not marked" — simpler to read, and it never calls a day with no record missed), past below ("put the pill of missed further
-/// to the left than below your goal"). The strong tick sits on it while any are left ("put the strong marker on top of the
-/// missed ones … the user knows that they have to make up the missed ones"), else where the back may reach for a strong week
-/// (3 in from the end; none on Prayed). All of it inside the Salah circle's raised band, the parts at the Salah arc's 6 pt,
+/// to the left than below your goal"). The strong tick is the finish line, always where it is: what the week asks less the
+/// slack (32 of 35; the top on Prayed, every prayer). It sat on the not-marked pill while any were left ("put the strong
+/// marker on top of the missed ones"), which moved it round the ring — on his data to 9 o'clock, reading as "strong is
+/// halfway" (Fable's critique; owner, 2026-10-21: "alright do 1,2,3"). What's owed first is the line's and the tick's tap. All of it inside the Salah circle's raised band, the parts at the Salah arc's 6 pt,
 /// the green with its glow. A tap on a pill or the tick picks it: the others
 /// dim and the card's centre says what it counts. Was one track with a back end (16060f54), before that seven day arcs.
 struct JourneyGoalRing: View, Animatable {
@@ -107,23 +108,21 @@ struct JourneyGoalRing: View, Animatable {
     static func layout(_ n: (Part) -> Double, slack: Int, tick tickShown: Bool = true) -> Layout {
         let total = max(Part.allCases.dropLast().reduce(0) { $0 + n($1) }, 0.0001)
         var runs: [(Part, Double, Double)] = []
-        var at: [Part: Double] = [:]
         var u = 0.0
         for p in [Part.met, .toCome] {
             runs.append((p, u, u + n(p)))
-            at[p] = u + n(p) / 2
             u += n(p)
         }
         u = total
         for p in [Part.excused, .below, .notMarked] {
             runs.append((p, u - n(p), u))
-            at[p] = u - n(p) / 2
             u -= n(p)
         }
         let asked = total - n(.excused)
-        let tick: Double? = !tickShown ? nil : n(.notMarked) > 0.5 ? at[.notMarked]
-            : (slack > 0 && asked > Double(slack)) ? total - n(.excused) - Double(slack) : nil
-        return Layout(total: total, runs: runs, tick: tick, tickOnPill: n(.notMarked) > 0.5)
+        let tick: Double? = tickShown && asked > Double(slack) ? asked - Double(slack) : nil
+        // On a pill (the not-marked one reaching past the line): a tap on the band there is the pill's, the tick's its word.
+        let onPill = tick.map { t in runs.contains { $0.0 == .notMarked && $0.1 < t && t < $0.2 } } ?? false
+        return Layout(total: total, runs: runs, tick: tick, tickOnPill: onPill)
     }
 
     /// The band's radius in a canvas of this size.
@@ -463,7 +462,7 @@ struct JourneyWeekCard: View {
             if !missedDays.isEmpty { steps.append("\(dayList(missedDays)): make up \(owed.count == 1 ? owed[0].name : "\(owed.count)")") }
             let what = w.finished ? "Not marked that week"
                 : !w.stillPossible ? steps.joined(separator: ". ") + ". A new week starts Sunday."
-                : steps.count == 1 ? steps[0] + " to keep the week strong"
+                : steps.count == 1 ? steps[0] + " for a strong week"
                 : steps.joined(separator: ". ") + "."
             return ("\(n)", "not marked", what)
         case .excused:
@@ -493,7 +492,7 @@ struct JourneyWeekCard: View {
     }
 
     /// The seven days under the ring: a day with every prayer marked filled light grey, the Salah list's done dot; one with
-    /// any still unmarked hollow (owner, 2026-10-21: "switch to hollow gray for unmarked and filled light gray for marked
+    /// any still unmarked hollow (fainter for a day still wholly to come) (owner, 2026-10-21: "switch to hollow gray for unmarked and filled light gray for marked
     /// (matching the color of our salah list mark)"); no record dotted; all excused frosted. Today's initial in ink. A tap
     /// pushes the day's page (a dotted day: its Pick sheet).
     private var dots: some View {
@@ -542,6 +541,10 @@ struct JourneyWeekCard: View {
                 Circle().strokeBorder(Self.edge, lineWidth: 1)
                 Circle().fill(Color.gray.opacity(0.35)).padding(1)   // the Salah list's muted done dot
             }
+        } else if let states = day?.states, states.allSatisfy({ $0 == .toCome || $0 == .excused }) {
+            // A day still to come: fainter than today or a day with a miss, which are both hollow too (Fable's critique:
+            // today with three missed looked like Thursday to Saturday).
+            Circle().strokeBorder(Self.edge.opacity(0.4), lineWidth: 1)
         } else {
             Circle().strokeBorder(Self.edge, lineWidth: 1)
         }
@@ -579,7 +582,8 @@ struct JourneyWeekCard: View {
 
     /// The line under the days, the first that's true:
     /// - out of reach: the mid-week line (it names the goal; owner, 2026-10-21: "explain in regards to their goal");
-    /// - something owed: what to make up and what to fill in, to keep the week strong;
+    /// - something owed: what to make up and what to fill in, for a strong week ("keep" read as already strong at 0 —
+    ///   Fable's critique, row 5);
     /// - already enough: "A strong week, so far";
     /// - else the rule: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. "
     ///   first; on Prayed only "Don't miss a prayer").
@@ -601,7 +605,7 @@ struct JourneyWeekCard: View {
             m.fillable.count == 1 ? "fill in \(dayName(day))" : "fill in \(m.fillable.count) days"
         }
         let ask = [make, fill].compactMap { $0 }.joined(separator: " and ")
-        if !ask.isEmpty { return ask.prefix(1).uppercased() + ask.dropFirst() + " to keep the week strong" }
+        if !ask.isEmpty { return ask.prefix(1).uppercased() + ask.dropFirst() + " for a strong week" }
         if w.met >= target { return "A strong week, so far" }
         // The rule's own words (owner, 2026-10-21, on Your goal: "Don't miss a prayer, and keep nearly all at your goal:
         // that's a strong week"), with the hero's number; on Prayed "don't miss a prayer" is the whole of it.
@@ -710,7 +714,6 @@ struct JourneyWeekCard: View {
     private func bankedWords(_ w: PrayerMetrics.Week) -> String {
         if w.excusedWeek { return "Excused" }
         let count = "\(w.met) of \(w.asked)"
-        if w.complete { return "\(count) · complete" }
         if w.strong { return "\(count) · strong" }
         return count
     }
