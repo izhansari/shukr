@@ -16,15 +16,12 @@ Whoever adds a view that needs a certain state adds its line here in the same co
 
 ## Goal ladder (Journey, the Salah page)
 
-Not on the team line yet: these are in Zoe's work in progress (local on zoe/main, waiting on his look OK); the Dev Stuff
-rows and the `-demoGoalOffer` / `-demoMidweek` / `-demoMorningLine` arguments arrive with it.
-
 | View | Shows for real when | Dev Stuff | Ask / launch arguments |
 |---|---|---|---|
 | Sunday sheet, one step up | First app open on Sunday, after 3 weeks met at your goal | "Sunday sheet: one step up" | "Show me the Sunday step-up sheet" · `-demoLand salah -demoGoalOffer up` |
 | Sunday sheet, one step down | First app open on Sunday, after 2 weeks short of your goal (none on Prayed) | "Sunday sheet: one step down" | "Show me the Sunday step-down sheet" · `-demoLand salah -demoGoalOffer down` |
-| Week out of reach (Journey's week card: "N left · make them count", the days to come hollow) | Mid-week, once your goal can't be met this week | "Week out of reach (Journey)" | "Show me the week out of reach" · `-demoLand journey -demoMidweek` |
-| Morning after a miss (the line under the Salah ring) | Fajr → Dhuhr, the day after an unmarked prayer | "Morning after a miss (Salah page)" | "Show me the morning line" · `-demoLand salah -demoMorningLine` |
+| Morning after a miss ("You missed Isha / 3 prayers yesterday", just above the open prayer list; a tap opens To make up) | Fajr → Dhuhr, the day after an unmarked prayer, with the list open | "Morning after a miss (Salah page)" | "Show me the morning line" · `-demoLand salah -demoMorningLine`, then open the list |
+| Morning ask ("Nothing marked yesterday. Did you pray and forget to mark?"; a tap opens the pick sheet) | Fajr → Dhuhr, after a day with nothing marked, with the list open | "Morning ask: nothing marked yesterday" (its Save writes nothing) | "Show me the morning ask" · `-demoLand salah -demoMorningAsk`, then open the list |
 | Journey counted at another goal | Your goal in Settings → Your goal | — (change your goal, then change it back) | "Show me Journey on Middle" · `-demoLand journey -prayerStreakMode "<integer>3</integer>"` (1 Prayed · 2 In its window · 3 Middle · 4 Opening; your saved goal untouched) |
 
 ## Marking and records (the Salah page, Journey)

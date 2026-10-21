@@ -743,6 +743,13 @@ struct SettingsView: View {
                     // folded into one section. Every existing row is sage, so a NEW dev setting — the default blue — stands
                     // out; give new rows no tint.
                     if showDevStuff {
+                        // The goal ladder's views that only show in a certain week or morning (owner, 2026-10-21: "give me
+                        // links to all these views in the dev settings section … things i wouldn't be able to normally see on
+                        // my phone"); docs/see-it.md lists them all, with the sim's launch arguments.
+                        #if DEBUG
+                        GoalLadderDevSection()
+                        #endif
+
                         Section {
                             // The whole prayer list raised, the one on now a step more (owner, 2026-10-14).
                             NavigationLink("Raised list mock-up") { RaisedListMockPage() }

@@ -319,17 +319,17 @@ extension PrayerMetrics {
         return "Your goal this week, \(week.goal.aim), is out of reach now. You've still got \(n) \(n == 1 ? "prayer" : "prayers") left, so make \(n == 1 ? "it" : "them") count."
     }
 
-    /// The line the morning after a missed prayer (owner's wording A, 2026-10-21): yesterday's unmarked prayers, then
-    /// today's next one. nil when yesterday had none, or had no record (that's the fill-in card's question, not a miss).
+    /// The line the morning after a missed prayer: yesterday's unmarked prayers — one by name, more as a count (owner,
+    /// 2026-10-21, B: "it spans 3 lines at times. Maybe say the count"; was every name, "Fajr, Dhuhr, Asr and Maghrib"),
+    /// then today's next one. nil when yesterday had none, or had no record (that's the fill-in question, not a miss).
     static func morningLine(in log: JourneyLog, excused: Excused.Days = Excused.Days(), next: (name: String, at: Date)?,
                             now: Date = Date()) -> String? {
         guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today(now).start),
               let states = day(yesterday, in: log, excused: excused, now: now).states else { return nil }
         let missed = (0..<5).filter { states[$0] == .notMarked }.map { JourneyLog.names[$0] }
         guard !missed.isEmpty else { return nil }
-        let names = missed.count == 1 ? missed[0]
-            : missed.dropLast().joined(separator: ", ") + " and " + (missed.last ?? "")
-        var line = "You missed \(names) yesterday. You can still make \(missed.count == 1 ? "it" : "them") up."
+        let what = missed.count == 1 ? missed[0] : "\(missed.count) prayers"
+        var line = "You missed \(what) yesterday. You can still make \(missed.count == 1 ? "it" : "them") up."
         if let next { line += " Today's \(next.name) is at \(next.at.formatted(date: .omitted, time: .shortened))." }
         return line
     }

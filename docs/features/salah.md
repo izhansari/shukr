@@ -94,6 +94,13 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   been hard to keep lately. For now, count every prayer you pray, made up ones too.", "Step back for now" · "Keep my goal".
   Answered or swiped away: not again that week. Its look is parked to beautify later (Plan sunday-sheet-beautify). DEBUG
   `-demoGoalOffer up|down`.
+- **The morning line** (GoalLines.swift `MorningMissLine`; words PrayerMetrics.morningLine): Fajr → Dhuhr, just above the open
+  prayer list (an overlay on `BottomSharedView`, zero layout — nothing moves; owner, 2026-10-21: "displayed when the list is
+  visble"), away on the closed page and while the day's page is up. Some of yesterday unmarked: "You missed Isha yesterday." /
+  "You missed 3 prayers yesterday." over "You can still make it (them) up. ›" (one sentence a line), a tap → To make up.
+  Nothing marked yesterday (`NoRecordDays.next` = yesterday): "Nothing marked yesterday." / "Did you pray and forget to
+  mark? ›", a tap → `NoRecordPickSheet`; a save turns it into the count in place (it reloads on `.journeyChanged`). Light
+  rounded 14 pt secondary, 290 pt wide. DEBUG `-demoMorningLine`, `-demoMorningAsk`; My Dev Stuff → Dev · Goal ladder.
 
 **Excused from prayer** (Excused.swift + `ExcusedRange` / `Excused` in ExcusedRecord.swift; owner 2026-10-13, plan board/mocks/excused-days, decisions excused-where B · excused-name A · excused-zikr A)
 - Settings → Prayer Times → "Excused Mode" (renamed from "Excused from prayer", owner 2026-10-14: two words like its card; the page title and ☰ row too) only (`ExcusedSettingsRow`, "Off" / "Day 3") → pushes `ExcusedSheet(pushed: true)` (owner: never two sheets — from ☰ / the circle it's a sheet in its own NavigationStack; the ⓘ always pushes `ExcusedInfoSheet`) — (NewTaskFlow's goal page look — owner): the estimate as a number inside the Excused ring's dashes with `RepeatRoundButton` − / + (tap the number to type; 1–60, default 7), then Keep zikr reminders and, lower, Started (a past day = that day's Fajr, so forgotten days are excused too); no Haid / After childbirth choice (owner; ranges save as haid); the sheet names it plainly — period (haid), bleeding after birth (nifas) — owner: no shame, it was made for her too; the lock screen, Siri and the widget stay neutral; running: "Since … · Day N", the same ring for the estimate (saved as the sheet closes, never below today), zikr editable, "I'm back: end it" → Welcome back (ghusl, the prayer on now, "if it ended during a prayer's time, that prayer is due…", streaks kept). The record: one JSON list in the app group (`excused.ranges`), only the app writes; no schema.

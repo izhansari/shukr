@@ -621,6 +621,13 @@ extension PrayerTimesView {
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .modifier(SalahLookListFrame())   // the look prototype; today's = 260 pt in FlatBorder
             }
+            // The morning after a missed prayer (GoalLines.swift): just above the list, riding in and out with it; its
+            // bottom 8 pt over the list's top, laid out at zero size so the list and the ring never move.
+            .overlay(alignment: .top) {
+                MorningMissLine()
+                    .fixedSize()
+                    .alignmentGuide(.top) { $0[.bottom] + 8 }
+            }
         }
     }
 
