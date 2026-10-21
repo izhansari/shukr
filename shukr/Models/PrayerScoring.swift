@@ -89,7 +89,6 @@ enum PrayerScoring {
         min(Int((score * 100).rounded()), grade(for: score).shownCeiling)
     }
 
-    /// "Middle · 88"
     /// What a mark says where its grade is shown: the word alone, "Middle" (prayer-metrics phase 3: no 0–100 on any screen;
     /// was "Middle · 87"). `points` still orders and shades.
     static func summary(for score: Double) -> String {
