@@ -83,6 +83,16 @@ struct shukrApp: App {
             // `-dumpPrayerStates`: every prayer row's PrayerState to Library/Caches/prayer-states.tsv (the metrics
             // rethink's oracle check: board/scoring-rethink/engines.py reads the same rows and must agree).
             if ProcessInfo.processInfo.arguments.contains("-dumpPrayerStates") { PrayerStateDump.write(container) }
+            // `-demoLateOutsideMark`: the latest prayer whose time ended unmarked is marked the way a widget / notification
+            // does (SharedStore.markPrayerComplete), after its window — the next open asks about it (LateMarkAsk).
+            if ProcessInfo.processInfo.arguments.contains("-demoLateOutsideMark") {
+                LateMarks.startIfNeeded()
+                let ctx = ModelContext(container), now = Date()
+                let late = ((try? ctx.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { !$0.isCompleted && $0.endTime < now },
+                                                                       sortBy: [SortDescriptor(\.endTime, order: .reverse)]))) ?? [])
+                    .first { !Excused.covers(start: $0.startTime, end: $0.endTime) }
+                if let late { SharedStore.markPrayerComplete(named: late.name, start: late.startTime, end: late.endTime) }
+            }
             // `-demoNextLabel on|off`: the "Next prayer" dev toggle, for screenshots.
             if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoNextLabel"),
                i + 1 < ProcessInfo.processInfo.arguments.count {

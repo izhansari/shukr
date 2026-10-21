@@ -669,7 +669,11 @@ struct PrayerTimesView: View {
         }
         // "I already prayed" on a banner while the app is in front (audit B7): the mark lands in the shared store now
         // and the page used to show it unmarked until the next activation (a re-tap then rescored it).
-        .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in openFromWidgetFlags() }
+        .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in
+            openFromWidgetFlags()
+            LateMarkAsk.shared.checkOutsideMarks(in: context)   // a late "I already prayed": in its time, or made up?
+        }
+        .lateMarkAsk()   // the late-mark question (LateMarkAsk, prayer-metrics phase 6)
         // Excused from prayer turned on / off / changed (Excused.swift): the touched days' scores and the streaks.
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { note in
             CircleStage.shared.excused = Excused.current
@@ -693,7 +697,10 @@ struct PrayerTimesView: View {
         }
         .sheet(isPresented: $showExtend) { ExcusedExtendSheet().stageCover("excusedExtend") }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in askIfOverdue() }
-        .onAppear { askIfOverdue() }
+        .onAppear {
+            askIfOverdue()
+            LateMarkAsk.shared.checkOutsideMarks(in: context)   // a cold open: marks made from outside while closed
+        }
         .alert("Prayers are paused", isPresented: $askingResume) {
             Button("I'm back") {
                 Excused.end()
@@ -806,6 +813,7 @@ struct PrayerTimesView: View {
         .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
             viewModel.reconcileAfterWidgetWrites()
             if let day = note.object as? Date { viewModel.calculateDayScore(for: day) }   // a late mark's own day
+            LateMarkAsk.shared.checkOutsideMarks(in: context)
         }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .background || newScenePhase == .active {
@@ -826,6 +834,7 @@ struct PrayerTimesView: View {
                 viewModel.loadTodaysPrayerObjects()
                 viewModel.reconcileAfterWidgetWrites() // prayers completed from the widget while we were closed
                 viewModel.catchUpMasjidChecks()        // …and which prayers were at a masjid
+                LateMarkAsk.shared.checkOutsideMarks(in: context)   // …and any marked after their time: asked once
                 
                 openFromWidgetFlags()
                 maybeShowHealthCard()

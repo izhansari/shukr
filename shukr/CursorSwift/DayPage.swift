@@ -140,6 +140,12 @@ struct DayPickBandLayer: View {
 /// it's stupid that we keep the text scores there too. We don't need that." — was "@ 7:45 PM" over "Closing · 75").
 struct DayRowTime: View {
     let prayedAt: Date
+    /// A no-time mark (MarkKind.timeUnknown) where the time would go: "in its time", in the time's own type.
+    static var noTime: some View {
+        Text("in its time")
+            .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+            .foregroundStyle(.secondary)
+    }
     var body: some View {
         Text(shortTimePM(prayedAt))
             .font(.footnote).fontDesign(.rounded).fontWeight(.light)
@@ -172,8 +178,10 @@ struct DayCardRow: View {
                 Image(systemName: "building.columns").font(.system(size: 11, weight: .light)).foregroundStyle(Color.sage)
             }
             Spacer()
-            if row.isCompleted, let at = row.timeAtComplete {
+            if row.isCompleted, let at = row.markedTime {
                 DayRowTime(prayedAt: at)
+            } else if row.isCompleted {
+                DayRowTime.noTime   // in its time, the time not recorded (MarkKind.timeUnknown)
             } else {
                 Text(excused ? "Excused" : "Missed")
                     .font(.footnote).fontDesign(.rounded).fontWeight(.light)

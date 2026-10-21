@@ -584,7 +584,9 @@ struct JourneyMakeUpPage: View {
             .map(entry)
         let madeUp = kept.values
             .filter { row in
-                guard row.isCompleted, !keeping.contains(row.persistentModelID), let at = row.timeAtComplete else { return false }
+                // A no-time mark is in its time, never a make-up, whenever it was filled in.
+                guard row.isCompleted, !row.timeUnknown, !keeping.contains(row.persistentModelID), let at = row.timeAtComplete
+                else { return false }
                 return PrayerNotificationID.dayKey(PrayerDay.start(for: at)) > row.dayKey
             }
             .sorted { ($0.timeAtComplete ?? .distantPast) > ($1.timeAtComplete ?? .distantPast) }

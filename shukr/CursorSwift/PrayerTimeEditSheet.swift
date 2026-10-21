@@ -20,6 +20,8 @@ struct PrayerTimeEditSheet: View {
     /// just always saves"): the row behind applies each one (or holds it for the day page until the sheet is gone).
     var onTime: (Date) -> Void
     var onRevertTime: () -> Void
+    /// "I don't remember the time": in its time, no clock (MarkKind.timeUnknown; prayer-metrics phase 6, plan-v3 §15).
+    var onTimeUnknown: () -> Void = {}
     var onSpot: (CLLocationCoordinate2D) -> Void
     var onRevertSpot: () -> Void
     var onClose: () -> Void
@@ -34,10 +36,19 @@ struct PrayerTimeEditSheet: View {
     /// What the app recorded (the prayer's own recorded time / spot, else what it opened with): the time's "Originally
     /// marked" bar, the place's ↺.
     private let recordedTime: Date
+    /// The "Originally marked" bar: off for a no-time mark with no timed mark behind it (a late "In its time" — its tap
+    /// isn't a time to go back to).
+    private let showsRecorded: Bool
     /// The saved time when this sheet opened: the time's ↺ goes back to it (owner, 2026-10-20: "undo my changes that I just
     /// did in this instance" — not all the way back to the mark). @State, not a let: a save re-creates this view with the
     /// prayer's new time, and a let would follow it.
     @State private var openedWith: Date
+    /// No time recorded (a no-time mark): the ring box says so, with "Set the time ›" (owner, 2026-10-20: "would they still
+    /// be able to longpress and put in a time?"). `noTimeSaved` is what the model holds now; `openedNoTime` what it held
+    /// when this sheet opened, for the ↺.
+    @State private var noTime: Bool
+    @State private var noTimeSaved: Bool
+    @State private var openedNoTime: Bool
     @State private var spot: CLLocationCoordinate2D?
     private let recordedSpot: CLLocationCoordinate2D?
     @State private var spotName: String?
@@ -70,6 +81,7 @@ struct PrayerTimeEditSheet: View {
 
     init(prayer: PrayerModel, range: ClosedRange<Date>, showsLocation: Bool = true,
          onTime: @escaping (Date) -> Void, onRevertTime: @escaping () -> Void,
+         onTimeUnknown: @escaping () -> Void = {},
          onSpot: @escaping (CLLocationCoordinate2D) -> Void, onRevertSpot: @escaping () -> Void,
          onClose: @escaping () -> Void) {
         self.prayer = prayer
@@ -77,16 +89,24 @@ struct PrayerTimeEditSheet: View {
         self.showsLocation = showsLocation
         self.onTime = onTime
         self.onRevertTime = onRevertTime
+        self.onTimeUnknown = onTimeUnknown
         self.onSpot = onSpot
         self.onRevertSpot = onRevertSpot
         self.onClose = onClose
-        // Open on the time saved for this prayer (owner, 2026-09-26), kept within what can be saved.
-        let marked = prayer.timeAtComplete ?? range.lowerBound
+        // Open on the time saved for this prayer (owner, 2026-09-26), kept within what can be saved. A no-time mark's
+        // knob waits at the window's middle, saving nothing until it's moved (plan-v3 §15).
+        let unknown = prayer.timeUnknown
+        let middle = prayer.startTime.addingTimeInterval(prayer.endTime.timeIntervalSince(prayer.startTime) / 2)
+        let marked = unknown ? middle : (prayer.timeAtComplete ?? range.lowerBound)
         let start = min(max(marked, range.lowerBound), range.upperBound)
+        self._noTime = State(initialValue: unknown)
+        self._noTimeSaved = State(initialValue: unknown)
+        self._openedNoTime = State(initialValue: unknown)
         self._draft = State(initialValue: start)
         self._saved = State(initialValue: start)
         self._openedWith = State(initialValue: start)
         self.recordedTime = prayer.recordedTimeAtComplete ?? marked
+        self.showsRecorded = !unknown || prayer.recordedTimeAtComplete != nil
         let here = prayer.latPrayedAt.flatMap { lat in prayer.longPrayedAt.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) } }
         self._spot = State(initialValue: here)
         self.recordedSpot = prayer.recordedSpot ?? here
@@ -97,7 +117,7 @@ struct PrayerTimeEditSheet: View {
 
     /// The time's ↺: only once the time changed in this visit (a fresh open never shows it, however often it was edited
     /// before). The place's ↺: moved from where it was marked (stays across reopens — the model keeps the recorded spot).
-    private var timeChangedHere: Bool { abs(saved.timeIntervalSince(openedWith)) >= 30 }
+    private var timeChangedHere: Bool { abs(saved.timeIntervalSince(openedWith)) >= 30 || noTimeSaved != openedNoTime }
     private var spotEdited: Bool {
         guard let spot, let recordedSpot else { return false }
         return CLLocation(latitude: spot.latitude, longitude: spot.longitude)
@@ -124,6 +144,25 @@ struct PrayerTimeEditSheet: View {
             MapSheetHeader(title: prayer.displayName, subtitle: subtitle)
                 .padding(.top, 20)
                 .padding(.horizontal, 4)
+                // "I don't remember the time", on a timed mark (never in the tour, never on a Jumu'ah): top right, over the
+                // header's own room, so nothing moves when it goes.
+                .overlay(alignment: .topTrailing) {
+                    if !noTime && !tourTip && !writingNote && prayer.isCompleted && !prayer.isJumuah {
+                        Button(action: forgetTime) {
+                            Text("Don't remember?")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8).padding(.vertical, 8)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("I don't remember the time")
+                        .accessibilityHint("Keeps it in its time, with no time recorded")
+                        .padding(.top, 20)
+                        .transition(.opacity)
+                    }
+                }
+                .animation(.smooth(duration: 0.25), value: noTime)
 
             // Writing a note crossfades the boxes to one note box of four lines, and the sheet comes down to fit it, above the
             // keyboard (owner, 2026-10-20: "make it smaller like 1/3 or 3/8 the height…? idk something that fits 4 lines or
@@ -227,6 +266,7 @@ struct PrayerTimeEditSheet: View {
         guard abs(draft.timeIntervalSince(saved)) >= 30 else { return }
         if needsYellow && !inYellow(draft) { return }   // the tour's Fajr fix saves only a yellow time
         saved = draft
+        noTimeSaved = false
         onTime(draft)
         triggerSomeVibration(type: .soft)
         if tourTip {
@@ -239,11 +279,32 @@ struct PrayerTimeEditSheet: View {
     /// The ↺: back to the time this sheet opened with. When that was the marked time, it's the model's own revert (its
     /// "edited" flag clears too).
     private func undoThisVisit() {
-        guard abs(openedWith.timeIntervalSince(recordedTime)) >= 30 else { return revertTime() }
+        // Opened with no time: back to "Time not recorded".
+        if openedNoTime {
+            triggerSomeVibration(type: .light)
+            withAnimation(.smooth(duration: 0.35)) { draft = openedWith; noTime = true }
+            saved = openedWith
+            noTimeSaved = true
+            onTimeUnknown()
+            return
+        }
+        withAnimation(.smooth(duration: 0.3)) { noTime = false }
+        noTimeSaved = false
+        guard showsRecorded, abs(openedWith.timeIntervalSince(recordedTime)) >= 30 else {
+            return showsRecorded ? revertTime() : ()
+        }
         triggerSomeVibration(type: .light)
         withAnimation(.smooth(duration: 0.35)) { draft = openedWith }
         saved = openedWith
         onTime(openedWith)
+    }
+
+    /// "I don't remember the time": in its time, no clock. The ring box says "Time not recorded".
+    private func forgetTime() {
+        triggerSomeVibration(type: .soft)
+        withAnimation(.smooth(duration: 0.3)) { noTime = true }
+        noTimeSaved = true
+        onTimeUnknown()
     }
 
     /// Back to the marked time (the "Originally marked" bar).
@@ -374,19 +435,42 @@ struct PrayerTimeEditSheet: View {
             // The knob (owner 2026-10-20: the dial on the left, "matches the look of our actual ring"): drag up / down anywhere
             // in the box; it saves at rest. "Originally marked …" along its bottom. The map's prayer page keeps PrayerTimeEditor.
             PrayerTimeKnob(prayer: prayer, draft: $draft, range: range, onRelease: release, liveDraft: tourTip,
-                           marked: tourTip ? nil : recordedTime, onMarked: revertTime)
+                           marked: tourTip || !showsRecorded ? nil : recordedTime, onMarked: revertTime)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(minHeight: size)
+                .opacity(noTime ? 0 : 1)
+                .allowsHitTesting(!noTime)
+                .overlay { if noTime { noTimeFace.transition(.opacity) } }
         }
         // Top right: clear of the arc's top end.
         .overlay(alignment: .topTrailing) {
             if timeChangedHere && !tourTip {
-                undoChip(onGlass: false, label: "Undo this change, back to \(shortTimePM(openedWith.addingTimeInterval(shift)))",
+                undoChip(onGlass: false, label: openedNoTime ? "Undo this change, back to no time recorded"
+                         : "Undo this change, back to \(shortTimePM(openedWith.addingTimeInterval(shift)))",
                          action: undoThisVisit)
                     .padding(10)
             }
         }
         .animation(.snappy(duration: 0.22), value: timeChangedHere)
+    }
+
+    /// A no-time mark's ring box: what it is, and the way to set a time.
+    private var noTimeFace: some View {
+        VStack(spacing: 6) {
+            Text("In its time").font(.system(size: 22, weight: .light, design: .rounded))
+            Text("Time not recorded").font(.footnote).foregroundStyle(.secondary)
+            Button {
+                triggerSomeVibration(type: .soft)
+                withAnimation(.smooth(duration: 0.3)) { noTime = false }   // the knob at the window's middle; moving it saves
+            } label: {
+                Text("Set the time ›").font(.footnote.weight(.medium)).foregroundStyle(.primary)
+                    .padding(.horizontal, 12).padding(.vertical, 8).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 4)
+        }
+        .multilineTextAlignment(.center)
+        .padding(12)
     }
 
     private var noteBox: some View {

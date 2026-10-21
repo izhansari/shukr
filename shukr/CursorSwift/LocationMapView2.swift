@@ -747,7 +747,8 @@ struct MapView: UIViewRepresentable {
                 let a = CustomPrayerAnnotation()
                 a.coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
                 a.title = prayer.name
-                a.subtitle = prayer.timeAtComplete?.formatted(date: .abbreviated, time: .shortened)
+                a.subtitle = prayer.markedTime?.formatted(date: .abbreviated, time: .shortened)
+                    ?? (prayer.timeUnknown ? MarkKind.inTimeWord : nil)
                 a.prayer = prayer
                 return a
             }
@@ -2504,7 +2505,7 @@ struct PrayerSpotDetail: View {
     /// The prayer's window as the time editor's bar, the marker where it was prayed.
     @ViewBuilder private var timeSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let at = prayer.timeAtComplete {
+            if let at = prayer.markedTime {
                 PrayerWindowBar(start: prayer.startTime, end: prayer.endTime, marked: at, color: scoreColor)
                     .allowsHitTesting(false)
                 VStack(alignment: .leading, spacing: 2) {
@@ -2615,7 +2616,7 @@ struct PrayerSpotRow: View {
     private var icon: String { prayerSymbol(prayer.name) }
     /// "12 min in" / "1h 20m in" — how far into the prayer window it was prayed.
     private var intoWindow: String? {
-        guard let at = prayer.timeAtComplete else { return nil }
+        guard let at = prayer.markedTime else { return prayer.timeUnknown ? "time not recorded" : nil }
         let secs = at.timeIntervalSince(prayer.startTime)
         if secs < 0 { return "before it started" }
         if at > prayer.endTime { return "after it ended" }
@@ -2635,7 +2636,7 @@ struct PrayerSpotRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(prayer.displayName).font(.body.weight(.medium))
-                    if let at = prayer.timeAtComplete {
+                    if let at = prayer.markedTime {
                         Text("prayed \(at.formatted(date: .omitted, time: .shortened))")
                             .foregroundStyle(.secondary)
                     }

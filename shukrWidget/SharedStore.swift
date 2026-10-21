@@ -460,6 +460,7 @@ enum SharedStore {
         new.prayerStartedAt = old.prayerStartedAt
         new.prayerCompletedAt = old.prayerCompletedAt
         new.duration = old.duration
+        new.markKind = old.markKind
     }
 
     // MARK: Widget-side helpers (the app uses its own ModelContainer / PrayerViewModel)

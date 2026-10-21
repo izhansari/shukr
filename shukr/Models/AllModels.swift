@@ -117,6 +117,10 @@ class PrayerModel {
     /// stays on its day, and a time-zone change leaves marked rows where they were. Set at creation; rows from
     /// before get theirs from the data pass. Read `dayKey`, never this directly (nil = not filled yet).
     var prayerDayKey: String? = nil
+    /// How the mark was made, when it isn't a plain timed tap — schema 2.10.0 (2026-10-20, prayer-metrics phase 6, owner:
+    /// "one optional markKind field (timeUnknown now, combined later)"). nil = a normal mark at `timeAtComplete`. Read
+    /// `kind`, never this directly.
+    var markKind: String? = nil
     /// The day key, stored or (until the backfill) computed the same way.
     var dayKey: String { prayerDayKey ?? PrayerDay.key(forRow: name, startingAt: startTime) }
     /// Midnight at the start of the prayer day's calendar date, for code that groups by Date.
@@ -137,16 +141,39 @@ class PrayerModel {
         return CLLocation(latitude: r.latitude, longitude: r.longitude)
             .distance(from: CLLocation(latitude: lat, longitude: lon)) > 3
     }
-    /// A user's time edit: keeps the recorded time (once), then rescores at the new one.
+    /// A user's time edit: keeps the recorded time (once), then rescores at the new one. A set time makes it a timed mark.
     func editTime(to date: Date) {
         if recordedTimeAtComplete == nil { recordedTimeAtComplete = timeAtComplete }
+        markKind = Self.kindForTime(date, end: endTime)
         setPrayerScore(atDate: date)
+    }
+    /// A time the user set or went back to: after the window it's a make-up they've said so about (never asked again —
+    /// LateMarks); inside it, a plain timed mark.
+    private static func kindForTime(_ date: Date, end: Date) -> String? {
+        date > end ? MarkKind.madeUp.rawValue : nil
     }
     /// Back to the time the app recorded.
     func revertTime() {
         guard let recorded = recordedTimeAtComplete else { return }
+        markKind = Self.kindForTime(recorded, end: endTime)
         setPrayerScore(atDate: recorded)
         recordedTimeAtComplete = nil
+    }
+
+    /// How it was marked (`markKind`).
+    var kind: MarkKind? { markKind.flatMap(MarkKind.init(rawValue:)) }
+    /// Prayed in its time, the clock not recorded ("I don't remember the time"; the late-mark question's "In its time").
+    var timeUnknown: Bool { kind == .timeUnknown }
+    /// When it was prayed, as a time — nil for a no-time mark, whose `timeAtComplete` is only when it was tapped. Anything
+    /// that reads the mark as a clock time ("usually", the slot chart, the hollow dot, where in the window) reads this.
+    var markedTime: Date? { timeUnknown ? nil : timeAtComplete }
+    /// "I don't remember the time": in its time, no clock. The tap stays as `timeAtComplete` (nothing is faked); the first
+    /// change keeps the recorded time, as an edit does, so it can be reverted.
+    func markTimeUnknown() {
+        guard isCompleted, !isJumuah else { return }
+        if recordedTimeAtComplete == nil { recordedTimeAtComplete = timeAtComplete }
+        markKind = MarkKind.timeUnknown.rawValue
+        setPrayerScore(atDate: timeAtComplete ?? Date())
     }
 
     var atMasjid: Bool { !(mosqueName ?? "").isEmpty }
@@ -161,11 +188,13 @@ class PrayerModel {
     /// than the stored `englishScore`, which older rows wrote as "Early".
     var gradeWord: String? {
         guard let s = numberScore else { return nil }
+        if timeUnknown { return MarkKind.inTimeWord }
         return isJumuah ? "Jumu'ah" : PrayerScoring.grade(for: s).rawValue
     }
     /// "Middle · 88"; a Jumu'ah says "Jumu'ah" (at its masjid) instead of a grade.
     var scoreSummary: String? {
         guard let s = numberScore else { return nil }
+        if timeUnknown { return MarkKind.inTimeWord }
         guard isJumuah else { return PrayerScoring.summary(for: s) }
         return mosqueName.map { "Jumu'ah at \($0)" } ?? "Jumu'ah"
     }
@@ -203,6 +232,7 @@ class PrayerModel {
         self.recordedTimeAtComplete = nil
         self.recordedLat = nil
         self.recordedLon = nil
+        self.markKind = nil
     }
     
     enum prayerStatus {
@@ -228,7 +258,9 @@ class PrayerModel {
     /// Scores the prayer as marked at `atDate` (PrayerScoring has the rule).
     func setPrayerScore(atDate: Date = Date()) {
         timeAtComplete = atDate
-        let score = isJumuah ? 1 : PrayerScoring.score(start: startTime, end: endTime, markedAt: atDate)
+        // A no-time mark is in its time whatever the tap says (the floor keeps every count reading it as in time).
+        let score = isJumuah ? 1 : timeUnknown ? PrayerScoring.inWindowFloor
+            : PrayerScoring.score(start: startTime, end: endTime, markedAt: atDate)
         numberScore = score
         englishScore = gradeWord
     }
@@ -265,7 +297,7 @@ class PrayerModel {
     }
     
     func getColorForPrayerScore() -> Color {
-        PrayerScoring.color(for: numberScore)
+        timeUnknown ? MarkKind.inTimeColor : PrayerScoring.color(for: numberScore)
     }
     
 

@@ -136,6 +136,8 @@ enum PrayerScoring {
                     if newEnd != prayer.endTime { prayer.endTime = newEnd; ishaMoved += 1 }
                 }
                 guard prayer.isCompleted else { continue }
+                // A no-time mark has no clock to rescore from: it stays in its time (MarkKind, phase 6).
+                if prayer.timeUnknown { continue }
                 let markedAt: Date
                 if let tapped = prayer.timeAtComplete {
                     markedAt = tapped
@@ -192,7 +194,8 @@ enum PrayerScoring {
         do {
             let prayers = try context.fetch(FetchDescriptor<PrayerModel>())
             var regraded = 0, moved = 0
-            for prayer in prayers where prayer.isCompleted && !prayer.isJumuah {
+            // A no-time mark (MarkKind.timeUnknown) has no clock to regrade from: it stays in its time.
+            for prayer in prayers where prayer.isCompleted && !prayer.isJumuah && !prayer.timeUnknown {
                 guard let markedAt = prayer.timeAtComplete else { continue }
                 let new = score(start: prayer.startTime, end: prayer.endTime, markedAt: markedAt)
                 if let old = prayer.numberScore, grade(for: old) != grade(for: new) { moved += 1 }

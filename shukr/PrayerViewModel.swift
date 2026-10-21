@@ -503,6 +503,13 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         prayer.editTime(to: date)
         afterTimeChange(prayer)
     }
+    /// "I don't remember the time" (the editor): in its time, no clock (MarkKind.timeUnknown).
+    @MainActor func markPrayerTimeUnknown(_ prayer: PrayerModel) {
+        prayer.markTimeUnknown()
+        if TourRuntime.isPracticeAnywhere(prayer) { contentChanged(); return }
+        afterTimeChange(prayer)
+        DayHistory.invalidate()
+    }
     func revertPrayerTime(_ prayer: PrayerModel) {
         prayer.revertTime()
         afterTimeChange(prayer)
@@ -530,6 +537,9 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         }
         prayer.isCompleted = true
         prayer.mosqueName = ""   // checked: no spot, so no masjid search (a spot added later decides)
+        // Marked at a time after its window (To make up's "Mark made up", a picked time): a make-up, said so — the app
+        // never asks about it (LateMarks).
+        if date > prayer.endTime { prayer.markKind = MarkKind.madeUp.rawValue }
         prayer.setPrayerScore(atDate: date)
         prayer.cancelUpcomingNudges()
         PrayerCompletionHaptics.play()
@@ -541,6 +551,33 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         contentChanged()
         JourneyChange.post()
         return true
+    }
+
+    /// A mark after the window, answered first (LateMarkAsk): "In its time" marks it in its time with no clock (a no-time
+    /// mark), "Making it up now" a make-up. The list's own path otherwise (the spot, the moment, widgets, the day's score).
+    @MainActor func markLate(_ prayer: PrayerModel, inTime: Bool) {
+        guard !prayer.isCompleted else { return }
+        // Set before the mark, so its score and its moment are already the answer (setPrayerScore reads it).
+        prayer.markKind = (inTime ? MarkKind.timeUnknown : MarkKind.madeUp).rawValue
+        togglePrayerCompletion(for: prayer)
+        if !prayer.isCompleted { prayer.markKind = nil }   // not marked after all (excused): no answer kept
+        DayHistory.invalidate()
+    }
+
+    /// An outside mark after the window, answered at the next open (LateMarkAsk): the row is already marked; "In its time"
+    /// makes it a no-time mark (rescored in its time), otherwise it's kept as a make-up and never asked again.
+    @MainActor func answerLateMark(_ prayer: PrayerModel, inTime: Bool) {
+        guard prayer.isCompleted, prayer.markKind == nil else { return }
+        prayer.markKind = (inTime ? MarkKind.timeUnknown : MarkKind.madeUp).rawValue
+        guard inTime else { try? context.save(); return }
+        prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? Date())
+        try? context.save()
+        calculateDayScore(for: prayer.dayStart)
+        calculatePrayerStreak()
+        DayHistory.invalidate()
+        pushCompletionsToWidget()
+        contentChanged()
+        JourneyChange.post()
     }
 
     /// An unmark from Journey's prayer sheet: the list's own path (its photo goes too).

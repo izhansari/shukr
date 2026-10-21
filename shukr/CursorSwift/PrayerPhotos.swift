@@ -113,7 +113,7 @@ enum PrayerPhotos {
         guard let row = rows.first(where: { $0.isCompleted && ($0.name == name || (name == "Dhuhr" && $0.name == "Jumu'ah")) })
         else { return nil }
         let spot = row.latPrayedAt.flatMap { lat in row.longPrayedAt.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) } }
-        return Facts(markedAt: row.timeAtComplete, score: row.numberScore,
+        return Facts(markedAt: row.markedTime, score: row.numberScore,
                      masjid: (row.mosqueName ?? "").isEmpty ? nil : row.mosqueName, spot: spot)
     }
 
@@ -633,9 +633,8 @@ struct PrayerPhotoTarget: Identifiable {
     /// Today's marked row of this prayer (the pill's name may be "Jumu'ah"), if it's still in its window.
     @MainActor static func forMarked(_ row: PrayerModel) -> PrayerPhotoTarget? {
         guard row.isCompleted else { return nil }
-        let at = row.timeAtComplete ?? Date()
         return PrayerPhotoTarget(key: PrayerPhotos.key(dayKey: row.dayKey, name: row.name),
-                                 title: "\(row.displayName) · \(shortTimePM(at))")
+                                 title: row.markedTime.map { "\(row.displayName) · \(shortTimePM($0))" } ?? row.displayName)
     }
 }
 

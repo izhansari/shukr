@@ -695,7 +695,7 @@ struct FajrAlarmCheckView: View {
         let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forRow: "Fajr", startingAt: at)))) ?? []
         guard let fajr = rows.first(where: { $0.name == "Fajr" && $0.isCompleted }) ?? rows.first(where: { $0.name == "Fajr" })
         else { return .unknown }
-        return fajr.isCompleted ? .at(fajr.timeAtComplete) : .notMarked
+        return fajr.isCompleted ? .at(fajr.markedTime) : .notMarked
     }
 
     private func row(_ title: String, _ value: String) -> some View {

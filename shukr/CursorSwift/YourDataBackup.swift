@@ -43,6 +43,8 @@ struct ShukrBackup: Codable {
         var isCompleted: Bool, timeAtComplete: Date?, numberScore: Double?, englishScore: String?
         var lat: Double?, lon: Double?, mosqueName: String?
         var recordedTimeAtComplete: Date?, recordedLat: Double?, recordedLon: Double?, dayKey: String?
+        /// How it was marked (schema 2.10.0); absent in older backups = a normal mark.
+        var markKind: String? = nil
     }
     struct DayScore: Codable { var date: Date, averageScore: Double? }
     /// The best streaks as kept (they're recounted from the rows too, but a record can outlive its rows).
@@ -80,7 +82,7 @@ extension DataExport {
                   isCompleted: p.isCompleted, timeAtComplete: p.timeAtComplete, numberScore: p.numberScore,
                   englishScore: p.englishScore, lat: p.latPrayedAt, lon: p.longPrayedAt, mosqueName: p.mosqueName,
                   recordedTimeAtComplete: p.recordedTimeAtComplete, recordedLat: p.recordedLat, recordedLon: p.recordedLon,
-                  dayKey: p.prayerDayKey)
+                  dayKey: p.prayerDayKey, markKind: p.markKind)
         }
         b.dayScores = ((try? context.fetch(FetchDescriptor<DailyPrayerScore>())) ?? []).map { .init(date: $0.date, averageScore: $0.averageScore) }
         var files: [(String, Data)] = []
@@ -414,6 +416,7 @@ enum DataRestore {
         r.recordedTimeAtComplete = p.recordedTimeAtComplete
         r.recordedLat = p.recordedLat
         r.recordedLon = p.recordedLon
+        r.markKind = p.markKind
     }
 }
 

@@ -150,7 +150,7 @@ struct JourneyDayPage: View {
         }
         .sheet(item: $placeSheet) { row in
             if let spot = DayFacts.spot(row) {
-                PrayerPlaceMapSheet(caption: "\(row.displayName) · \(row.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")",
+                PrayerPlaceMapSheet(caption: "\(row.displayName) · \(row.markedTime.map { $0.formatted(date: .omitted, time: .shortened) } ?? (row.timeUnknown ? MarkKind.inTimeWord : ""))",
                                     place: DayFacts.place(row) ?? "", spot: spot, score: row.numberScore, atMasjid: row.atMasjid)
             }
         }
@@ -165,7 +165,7 @@ struct JourneyDayPage: View {
         .infoModal(isPresented: Binding(get: { noteRow != nil }, set: { if !$0 { noteRow = nil } }),
                    title: noteRow?.displayName ?? "", symbol: prayerIcon(for: noteRow?.name ?? "Fajr"), tint: .secondary) {
             DayNoteInfo(text: noteRow.flatMap(DayFacts.note) ?? "",
-                        line: [noteRow?.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) }, noteRow?.scoreSummary]
+                        line: [noteRow?.markedTime.map { $0.formatted(date: .omitted, time: .shortened) }, noteRow?.scoreSummary]
                             .compactMap { $0 }.joined(separator: " · "))
         }
     }

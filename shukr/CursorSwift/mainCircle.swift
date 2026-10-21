@@ -453,6 +453,17 @@ struct MainCircleView: View {
                                     TourRuntime.shared.nudge()   // the tour: not yet — a pulse, no buzz (owner)
                                     return
                                 }
+                                // Its time over (the missed face): ask first (LateMarkAsk, prayer-metrics phase 6).
+                                if marking, LateMarkAsk.wouldBeLate(prayer) {
+                                    let vm = viewModel
+                                    LateMarkAsk.shared.askBeforeMarking(prayer) { inTime in
+                                        vm.markLate(prayer, inTime: inTime)
+                                        if let container = prayer.modelContext?.container {
+                                            MilestoneCelebration.shared.check(container: container)
+                                        }
+                                    }
+                                    return
+                                }
                                 viewModel.togglePrayerCompletion(for: prayer)
                                 // The tour's Mark step (a practice the user undoes next), or a first mark's celebration.
                                 if marking { TourRuntime.shared.event(.marked(prayer, viewModel)) }
@@ -1157,7 +1168,7 @@ struct summaryCircle: View, Equatable {
     /// "5:31 PM · Middle · 83", under the note on its card.
     private var pickedLine: String {
         guard let row = pickedRow else { return "" }
-        return [row.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) }, row.scoreSummary].compactMap { $0 }.joined(separator: " · ")
+        return [row.markedTime.map { $0.formatted(date: .omitted, time: .shortened) }, row.scoreSummary].compactMap { $0 }.joined(separator: " · ")
     }
 
     @ViewBuilder private var dayLine: some View {
@@ -1488,7 +1499,7 @@ struct summaryCircle: View, Equatable {
         }
         .sheet(item: $placeSheet) { row in
             if let spot = DayFacts.spot(row) {
-                PrayerPlaceMapSheet(caption: "\(row.displayName) · \(row.timeAtComplete.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")",
+                PrayerPlaceMapSheet(caption: "\(row.displayName) · \(row.markedTime.map { $0.formatted(date: .omitted, time: .shortened) } ?? (row.timeUnknown ? MarkKind.inTimeWord : ""))",
                                     place: DayFacts.place(row) ?? "", spot: spot, score: row.numberScore, atMasjid: row.atMasjid)
                     .stageCover("dayPlace")
             }

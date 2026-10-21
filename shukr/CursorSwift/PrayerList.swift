@@ -321,6 +321,15 @@ struct PrayerButton: View {
                    viewModel.todaysPrayers.filter({ !$0.isCompleted }).count > 1 {
                     PrayerRowActions.shared.name = prayerObject.name
                 }
+                // Its time over: ask first, in its time or making it up (LateMarkAsk, prayer-metrics phase 6).
+                if LateMarkAsk.wouldBeLate(prayerObject) {
+                    let row = prayerObject, vm = viewModel
+                    LateMarkAsk.shared.askBeforeMarking(row) { inTime in
+                        vm.markLate(row, inTime: inTime)
+                        if let container = row.modelContext?.container { MilestoneCelebration.shared.check(container: container) }
+                    }
+                    return
+                }
                 viewModel.togglePrayerCompletion(for: prayerObject)   // the post-salah pill follows (.prayerCompleted)
                 TourRuntime.shared.event(.marked(prayerObject, viewModel))   // the tour's Mark step / a first mark
                 if let container = prayerObject.modelContext?.container { MilestoneCelebration.shared.check(container: container) }
@@ -783,8 +792,9 @@ struct PrayerButton: View {
                 // Every box saves itself (N2, owner 2026-10-19: "just fix the time so that it just always saves"): each save
                 // lands now, or — with the day page up — is held until the sheet is gone, so the ring still moves after.
                 PrayerTimeEditSheet(prayer: prayerObject, range: editTimeRange,
-                                    onTime: { date in save { $0.time = date; $0.revertTime = false } },
-                                    onRevertTime: { save { $0.time = nil; $0.revertTime = true } },
+                                    onTime: { date in save { $0.time = date; $0.revertTime = false; $0.timeUnknown = false } },
+                                    onRevertTime: { save { $0.time = nil; $0.revertTime = true; $0.timeUnknown = false } },
+                                    onTimeUnknown: { save { $0.time = nil; $0.revertTime = false; $0.timeUnknown = true } },
                                     onSpot: { spot in save { $0.spot = spot; $0.revertSpot = false } },
                                     onRevertSpot: { save { $0.spot = nil; $0.revertSpot = true } },
                                     onClose: { showTimePicker = false })
@@ -809,7 +819,10 @@ struct PrayerButton: View {
     /// A user edit: the recorded time / spot are kept (revertible), and ↺ puts them back.
     private func apply(_ edit: HeldEdit) {
         if edit.revertTime { viewModel.revertPrayerTime(prayerObject) }
-        if let date = edit.time, abs(date.timeIntervalSince(prayerObject.timeAtComplete ?? .distantPast)) >= 30 {
+        if edit.timeUnknown { viewModel.markPrayerTimeUnknown(prayerObject) }
+        // A set time always lands on a no-time mark (its tap may be the same clock time, but it wasn't a time).
+        if let date = edit.time,
+           abs(date.timeIntervalSince(prayerObject.timeAtComplete ?? .distantPast)) >= 30 || prayerObject.timeUnknown {
             viewModel.editPrayerTime(prayerObject, to: date)
         }
         if edit.revertSpot { viewModel.revertPrayerLocation(prayerObject) }
@@ -834,7 +847,7 @@ struct PrayerButton: View {
                     .allowsHitTesting(false)
 
                 } else if prayerObject.isCompleted && DayPageState.shared.up && !TourRuntime.shared.active,
-                          let prayedAt = prayerObject.timeAtComplete {
+                          let prayedAt = prayerObject.markedTime {
                     // The day page, Jumu'ah too: when it was prayed, "1:22 PM" (DayRowTime — Journey's rows too).
                     DayRowTime(prayedAt: prayedAt)
                         .allowsHitTesting(false)
@@ -847,7 +860,15 @@ struct PrayerButton: View {
                         .fontWeight(.light)
                 } else if prayerObject.isCompleted {
                     // Completed Prayer: Show Completion Time
-                    if let prayedAt = prayerObject.timeAtComplete {
+                    if prayerObject.timeUnknown {
+                        // In its time, no time recorded (MarkKind.timeUnknown): said where the time goes.
+                        Text("in its time")
+                            .font(timeFontSize)
+                            .foregroundColor(.secondary.opacity(statusBasedOpacity))
+                            .fontDesign(.rounded)
+                            .fontWeight(.light)
+                            .allowsHitTesting(false)
+                    } else if let prayedAt = prayerObject.timeAtComplete {
                         if DayPageState.shared.up && !TourRuntime.shared.active {
                             // The day page: when it was prayed, "7:45 PM" (DayRowTime — Journey's rows too).
                             DayRowTime(prayedAt: prayedAt)
@@ -888,6 +909,8 @@ struct PrayerButton: View {
 struct HeldEdit {
     var time: Date?
     var revertTime = false
+    /// "I don't remember the time" (MarkKind.timeUnknown).
+    var timeUnknown = false
     var spot: CLLocationCoordinate2D?
     var revertSpot = false
 }

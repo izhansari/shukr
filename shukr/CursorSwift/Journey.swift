@@ -156,7 +156,7 @@ struct JourneyLog {
             case .opening, .middle, .closing, .madeUp: day.marks[slot] = .done(row.numberScore ?? 0)
             }
             day.slots[slot] = Slot(start: row.startTime, end: row.endTime,
-                                   markedAt: row.isCompleted ? row.timeAtComplete : nil, jumuah: row.isJumuah,
+                                   markedAt: row.isCompleted ? row.markedTime : nil, jumuah: row.isJumuah,
                                    masjid: row.isCompleted && row.atMasjid ? row.mosqueName : nil)
             log.days[key] = day
         }

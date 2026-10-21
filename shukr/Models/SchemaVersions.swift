@@ -38,7 +38,9 @@ enum ShukrSchemaV2: VersionedSchema {
     /// 2.7.0 (2026-09-30): `SessionDataModel.endedAsleep` (a defaulted Bool — lightweight).
     /// 2.8.0 (2026-10-04): `PrayerModel.prayerDayKey` (optional String — lightweight; filled by the data pass).
     /// 2.9.0 (2026-10-14): `TaskModel.pausedAt` (optional Date — lightweight; decision zikr-pause A).
-    static let versionIdentifier = Schema.Version(2, 9, 0)
+    /// 2.10.0 (2026-10-20): `PrayerModel.markKind` (optional String — lightweight; prayer-metrics phase 6, owner's OK:
+    /// "one optional markKind field (timeUnknown now, combined later)").
+    static let versionIdentifier = Schema.Version(2, 10, 0)
     static var models: [any PersistentModel.Type] {
         [SessionDataModel.self, MantraModel.self, TaskModel.self, DuaModel.self, PrayerModel.self, DailyPrayerScore.self]
     }
