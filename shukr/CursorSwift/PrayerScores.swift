@@ -63,6 +63,11 @@ struct PrayerScores {
         var window: TimeInterval?
         /// "Usually 29 minutes after it starts." over the last 30 days (5+ marks), nil otherwise.
         var usual: String?
+        /// "Usually 18 minutes after it starts": the median time since its window began, over the span's in-window marks
+        /// (owner, 2026-10-20: "one metric that really helps with performance … is how much time elapsed since the start …
+        /// something we can compare against with every one of the like prayer"; the clock time "doesn't mean anything about
+        /// my performance because the times of prayers shift").
+        var sinceStart: String?
         var bestStreak = 0
         var masjid = 0
         var topMasjid: (name: String, count: Int)?
@@ -162,6 +167,7 @@ struct PrayerScores {
             var p = Prayer(name: name)
             var scores: [Double] = [], dueScores: [Double] = [], windows: [TimeInterval] = []
             var recent: [Double] = [], recentStarts: [TimeInterval] = [], recentEnds: [TimeInterval] = []
+            var inWindowStarts: [TimeInterval] = []
             var streak = 0
             var mosques: [String: Int] = [:]
             for day in days {
@@ -177,6 +183,7 @@ struct PrayerScores {
                         if let at = slot.markedAt, length > 0 {
                             let pos = at.timeIntervalSince(slot.start) / length
                             p.positions.append(min(max(pos, 0), 1.3))
+                            if pos <= 1 { inWindowStarts.append(at.timeIntervalSince(slot.start)) }
                             if day.date >= recent30 {
                                 recent.append(pos)
                                 recentStarts.append(at.timeIntervalSince(slot.start))
@@ -212,6 +219,7 @@ struct PrayerScores {
             // The chart's bar in thirds, as the score (Opening · Middle · Closing) — the same for every prayer now.
             p.bands = (PrayerScoring.openingShare, 2 * PrayerScoring.openingShare)
             p.usual = usualLine(positions: recent, fromStart: recentStarts, toEnd: recentEnds)
+            if inWindowStarts.count >= 5, let m = median(inWindowStarts) { p.sinceStart = "Usually \(elapsed(m)) after it starts" }
             out.prayers[name] = p
             allScores += scores
             out.prayed += p.prayed
@@ -263,6 +271,13 @@ struct PrayerScores {
         return m == 1 ? "1 minute" : "\(m) minutes"
     }
 
+    /// "28 minutes", "2 h 14 min" (Dhuhr's "134 minutes" read badly — Zoe's sim check).
+    private static func elapsed(_ seconds: TimeInterval) -> String {
+        let m = max(1, Int((seconds / 60).rounded()))
+        if m < 60 { return m == 1 ? "1 minute" : "\(m) minutes" }
+        return m % 60 == 0 ? "\(m / 60) h" : "\(m / 60) h \(m % 60) min"
+    }
+
     private static func median(_ values: [Double]) -> Double? {
         guard !values.isEmpty else { return nil }
         let s = values.sorted(), c = s.count
@@ -301,7 +316,8 @@ struct PrayerScores {
     func insight(_ name: String) -> (symbol: String, line: String, sub: String)? {
         guard let p = prayers[name], p.prayed >= 5 else { return nil }
         let others = Self.names.filter { $0 != name }.compactMap { prayers[$0] }
-        if let s = p.prayedScore, others.allSatisfy({ ($0.prayedScore ?? 0) < s || $0.prayed < 5 }) {
+        // A score (0–100) isn't shown with the rethink (MetricsLook).
+        if !MetricsLook.on, let s = p.prayedScore, others.allSatisfy({ ($0.prayedScore ?? 0) < s || $0.prayed < 5 }) {
             let when = countsFrom == nil ? "Historically your" : "Since your fresh start, your"
             return ("star", "\(when) best-timed prayer: \(s) when you pray it.", "Higher than any other prayer when prayed")
         }
@@ -314,7 +330,7 @@ struct PrayerScores {
         }
         let perfect = p.grades[.perfect] ?? 0, inTime = perfect + (p.grades[.onTime] ?? 0) + (p.grades[.late] ?? 0)
         if inTime >= 10, perfect * 2 > inTime {
-            return ("sparkles", "When you pray \(name) in time, it's usually Perfect: \(perfect) of \(inTime).", "Right after the adhan")
+            return ("sparkles", "When you pray \(name) in time, it's usually \(PrayerScoring.Grade.perfect.rawValue): \(perfect) of \(inTime).", "Right after the adhan")
         }
         if p.due > 0, others.allSatisfy({ $0.due == 0 || Double($0.prayed) / Double($0.due) < Double(p.prayed) / Double(p.due) }) {
             return ("checkmark.circle", "Your most prayed: \(p.prayed) of \(p.due).", "More often than any other prayer")
@@ -840,7 +856,7 @@ struct PrayerScoresPage: View {
     private var usualLines: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let s = shown, let p = data.prayers[s] {
-                Text(MetricsLook.on ? recent.usualWords(s) ?? "Not enough yet to say when you usually pray it."
+                Text(MetricsLook.on ? p.sinceStart ?? "Not enough yet to say when you usually pray it."
                      : p.usual.map { $0.replacingOccurrences(of: "Usually", with: "Lately, usually") }
                      ?? "Not enough yet to say when you usually pray it.")
                     .font(.system(size: 14, weight: .light, design: .rounded))
@@ -961,8 +977,12 @@ struct PrayerScoresPage: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            ring.scaleEffect(scale)
-                .frame(width: CircleMotion.dayDiscDiameter * scale, height: CircleMotion.dayDiscDiameter * scale)
+            // No ring with the rethink (owner, 2026-10-20: "Let's just get rid of the ring for the your prayers altogether. And
+            // the main thing can just be the histogram"): the title and its lines take the header.
+            if !MetricsLook.on {
+                ring.scaleEffect(scale)
+                    .frame(width: CircleMotion.dayDiscDiameter * scale, height: CircleMotion.dayDiscDiameter * scale)
+            }
         }
         .padding(.leading, 4)
     }
@@ -990,10 +1010,13 @@ struct PrayerScoresPage: View {
         return data.prayers[name]?.prayedScore.map { "\($0) · " } ?? ""
     }
 
-    /// "in its time 4 of 7" (MetricsLook: a row's line, and the open prayer's under its name).
+    /// "in its time 224 of 239" over the span the chips pick, as the histogram is (MetricsLook: a row's line, and the open
+    /// prayer's under its name). Was the last 7 days whatever the chip said (owner, 2026-10-20, on "3 of 5": "I don't even
+    /// know if that's the metric we should even show").
     private func recentLine(_ name: String) -> String {
-        guard let r = recent.byName[name], r.asked > 0 else { return "No record lately" }
-        return "in its time \(r.inTime) of \(r.asked)"
+        guard let p = data.prayers[name], p.due > 0 else { return "Not enough yet" }
+        let inTime = (p.grades[.perfect] ?? 0) + (p.grades[.onTime] ?? 0) + (p.grades[.late] ?? 0)
+        return "in its time \(inTime) of \(p.due)"
     }
 
     /// "97 · 98% prayed" (a row's line).
@@ -1047,12 +1070,14 @@ struct PrayerScoresPage: View {
                     Text(statLine(name))
                         .contentTransition(.numericText())
                         .font(.system(size: 12.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.85)
                         .opacity(picked ? 0 : 1)
                         .matchedGeometryEffect(id: picked && !dialing ? "stat" : "stat-\(name)", in: hero, properties: .position,
                                                anchor: .leading, isSource: !folded)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if picked { heroFrames.row[.stat] = $0 } }
                 }
-                .frame(width: 104, alignment: .leading)
+                // Wider with the rethink's count line ("in its time 224 of 329" wrapped at 104 — Zoe's sim check).
+                .frame(width: MetricsLook.on ? 150 : 104, alignment: .leading)
                 Group {
                     if let p, !p.positions.isEmpty {
                         PrayerScoresChart(prayer: p, per: per, big: false, focus: nil)
