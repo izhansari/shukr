@@ -135,14 +135,14 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - **The week card** (JourneyWeekHero.swift; behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): this week as
   one ring toward a strong week, each kind of prayer its own pill with a gap between, no shared track (owner, 2026-10-21, on
   https://claude.ai/artifact/XowC56NDXsAUPk2NzcvbGt: "different arcs pills instead of sharing a common track … no overlap").
-  `JourneyGoalRing`, from the top going right: green for the prayers that met your goal, then two separate hairlines — solid
-  for the days with no record (a day's five), dashed for those still to come (`UpcomingTrack`, the Salah ring's own). From
-  the top going left: excused (frost, crosshatched), below your goal (light grey), missed (hollow) — missed past below ("so
-  the user knows they have to make up the missed ones"). The "strong" tick sits on the missed pill while any are left, then on
-  the no-record line, else
-  3 short of the week (none on Prayed). Days before the first mark ever are left off the ring. A tap on a pill or the tick
-  dims the rest and the centre says its count, its words and one small line ("2 · missed · Today: make them up to keep the
-  week strong"; the tick: "32 · for a strong week · Make up the 2 missed first…"); the same part or off a pill puts it back.
+  `JourneyGoalRing`, from the top going right: green for the prayers that met your goal, then a dashed hairline for those
+  still to come (`UpcomingTrack`, the Salah ring's own). From the top going left: excused (frost, crosshatched), below your
+  goal (light grey), then one hollow pill, "not marked" — the missed prayers and the days with no record together (owner,
+  option B: simpler, and it never calls a day with no record missed), past below. The "strong" tick sits on it while any are
+  left, else 3 short of the week (none on Prayed). Days before the first mark ever are left off the ring. A tap on a pill or the tick
+  dims the rest; the centre says its count and words, and its line takes the line slot under the days ("17 · not marked" —
+  "Sun – Tue: fill them in. Today: make up 2."; the tick: "32 · for a strong week" — "Fill in Sun – Tue and make up 2
+  first…"); the same part or off a pill puts it back.
   No "up to 3" under below your goal (it read as if 3 were allowed with a prayer missed). Centre "15 of 35" over your goal's
   words ("in their windows"); a week that asks
   nothing "– · excused this week". Under it the seven days as dots: every prayer marked → the Salah list's filled light-grey

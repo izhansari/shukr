@@ -43,17 +43,17 @@ struct AnimatableNumbers: VectorArithmetic {
 
 /// This week as one ring toward a strong week, each kind of prayer its own pill with a gap between, no shared track (owner,
 /// 2026-10-21, on https://claude.ai/artifact/XowC56NDXsAUPk2NzcvbGt: "different arcs pills instead of sharing a common track …
-/// no overlap of the different pills"). From the top going right: green for the prayers that met your goal, then two
-/// hairlines, each its own: solid for the days with no record, then dashed for the prayers still to come, the Salah ring's own
-/// upcoming dashes ("days with no record should be at the beginning of the hairline, closer to the green section … prayers
-/// that don't have a mark … a solid hairline … both separate hairlines"). From the top going left: excused (frost,
-/// crosshatched), below your goal (light grey), missed (hollow), missed past below ("put the pill of missed further to the left
-/// than below your goal"). The strong tick: on the missed pill while any are left ("put the strong marker on top of the missed
-/// ones … the user knows that they have to make up the missed ones"), then on the no-record line, else where the back may reach
-/// for a strong week (3 in from the end; none on Prayed). A tap on a pill or the tick picks it: the others
+/// no overlap of the different pills"). From the top going right: green for the prayers that met your goal, then a dashed
+/// hairline for those still to come, the Salah ring's own upcoming dashes ("matching what our future prayers show inside of
+/// the Salah ring"). From the top going left: excused (frost, crosshatched), below your goal (light grey), then one hollow pill,
+/// "not marked": the missed prayers and the days with no record together (owner, 2026-10-21, option B: "one hollow pill called
+/// not marked" — simpler to read, and it never calls a day with no record missed), past below ("put the pill of missed further
+/// to the left than below your goal"). The strong tick sits on it while any are left ("put the strong marker on top of the
+/// missed ones … the user knows that they have to make up the missed ones"), else where the back may reach for a strong week
+/// (3 in from the end; none on Prayed). A tap on a pill or the tick picks it: the others
 /// dim and the card's centre says what it counts. Was one track with a back end (16060f54), before that seven day arcs.
 struct JourneyGoalRing: View, Animatable {
-    enum Part: Int, CaseIterable { case met, toCome, below, missed, noRecord, excused, tick }
+    enum Part: Int, CaseIterable { case met, toCome, below, notMarked, excused, tick }
     /// The counts, in `Part` order up to `.excused` (their sum is the ring's whole), then each part's opacity (a pick dims the
     /// rest), all one animatable value.
     var values: AnimatableNumbers
@@ -93,8 +93,7 @@ struct JourneyGoalRing: View, Animatable {
         var total: Double
         var runs: [(part: Part, from: Double, to: Double)]
         var tick: Double?
-        /// The tick sits on the missed pill (or the no-record line): a tap on the band there is the pill's, the tick's is its
-        /// word.
+        /// The tick sits on the not-marked pill: a tap on the band there is the pill's, the tick's is its word.
         var tickOnPill = false
     }
     static func layout(_ n: (Part) -> Double, slack: Int) -> Layout {
@@ -102,21 +101,21 @@ struct JourneyGoalRing: View, Animatable {
         var runs: [(Part, Double, Double)] = []
         var at: [Part: Double] = [:]
         var u = 0.0
-        for p in [Part.met, .noRecord, .toCome] {
+        for p in [Part.met, .toCome] {
             runs.append((p, u, u + n(p)))
             at[p] = u + n(p) / 2
             u += n(p)
         }
         u = total
-        for p in [Part.excused, .below, .missed] {
+        for p in [Part.excused, .below, .notMarked] {
             runs.append((p, u - n(p), u))
             at[p] = u - n(p) / 2
             u -= n(p)
         }
         let asked = total - n(.excused)
-        let tick: Double? = n(.missed) > 0.5 ? at[.missed] : n(.noRecord) > 0.5 ? at[.noRecord]
+        let tick: Double? = n(.notMarked) > 0.5 ? at[.notMarked]
             : (slack > 0 && asked > Double(slack)) ? total - n(.excused) - Double(slack) : nil
-        return Layout(total: total, runs: runs, tick: tick, tickOnPill: n(.missed) > 0.5 || n(.noRecord) > 0.5)
+        return Layout(total: total, runs: runs, tick: tick, tickOnPill: n(.notMarked) > 0.5)
     }
 
     /// The band's radius in a canvas of this size.
@@ -149,16 +148,15 @@ struct JourneyGoalRing: View, Animatable {
                 switch run.part {
                 case .met:
                     ctx.fill(pill(run.from, run.to), with: .color(.green.opacity(a)))
-                case .noRecord, .toCome:
-                    // Hairlines, not pills, a gap from whatever's either side: no record solid, still to come dashed.
+                case .toCome:
+                    // A hairline, not a pill: from past the green (or the top) to the back's first pill.
                     let s = run.from * unit + gap / 2, e = run.to * unit - gap / 2
                     guard e > s else { continue }
-                    let style = run.part == .toCome ? UpcomingTrack.style(diameter: 2 * r)
-                        : StrokeStyle(lineWidth: UpcomingTrack.style.lineWidth, lineCap: .round)
-                    ctx.stroke(arc(s, e), with: .color(Color.secondary.opacity(UpcomingTrack.opacity * a)), style: style)
+                    ctx.stroke(arc(s, e), with: .color(Color.secondary.opacity(UpcomingTrack.opacity * a)),
+                               style: UpcomingTrack.style(diameter: 2 * r))
                 case .below:
                     ctx.fill(pill(run.from, run.to), with: .color(ink.opacity(0.22 * a)))
-                case .missed:
+                case .notMarked:
                     ctx.stroke(pill(run.from, run.to, inset: 1.5), with: .color(Color.secondary.opacity(0.6 * a)), lineWidth: 1.4)
                 case .excused:
                     let shape = pill(run.from, run.to, inset: 1.5)
@@ -360,12 +358,12 @@ struct JourneyWeekCard: View {
         return Self.line(m)
     }
 
-    /// The ring's parts, in `JourneyGoalRing.Part` order: met, still to come, below your goal, missed, no record (a day's
-    /// five), excused. Days before the first mark ever ask nothing and aren't excused: they're left off the ring.
+    /// The ring's parts, in `JourneyGoalRing.Part` order: met, still to come, below your goal, not marked (missed, and a day
+    /// with no record's five), excused. Days before the first mark ever ask nothing and aren't excused: they're left off the ring.
     private func ringCounts(_ w: PrayerMetrics.Week?) -> [Int] {
-        guard let w else { return [0, 35, 0, 0, 0, 0] }
+        guard let w else { return [0, 35, 0, 0, 0] }
         let before = w.days.filter(beforeFirst).count * 5
-        return [w.met, w.toCome, w.belowStep, w.notMarked, w.noRecordDays * 5, max(w.excused - before, 0)]
+        return [w.met, w.toCome, w.belowStep, w.notMarked + w.noRecordDays * 5, max(w.excused - before, 0)]
     }
 
     /// "15 of 35" over your goal's words ("in their windows"); a week that asks nothing, "–". A part of the ring picked: its
@@ -409,7 +407,6 @@ struct JourneyWeekCard: View {
         let missedDays = owed.map(\.day).reduce(into: [Date]()) { if !$0.contains($1) { $0.append($1) } }
         let noRecordDays = w.days.filter(\.noRecord).map(\.date)
         let n = counts.indices.contains(part.rawValue) ? counts[part.rawValue] : 0
-        let them = n == 1 ? "it" : "them"
         switch part {
         case .met:
             return ("\(n)", w.goal.countWords,
@@ -421,14 +418,16 @@ struct JourneyWeekCard: View {
         case .below:
             let not = w.goal == .inWindow ? (n == 1 ? "not in its window" : "not in their windows") : "not \(w.goal.countWords)"
             return ("\(n)", "below your goal", "Prayed, \(not)")
-        case .missed:
-            return ("\(n)", "missed", w.finished ? "Missed that week"
-                    : w.stillPossible ? "\(dayList(missedDays)): make \(them) up to keep the week strong"
-                    : "\(dayList(missedDays)): you can still make \(them) up. A new week starts Sunday.")
-        case .noRecord:
-            let days = noRecordDays.count == 1 ? "it" : "them"
-            return ("\(n)", "no record", w.finished ? "\(dayList(noRecordDays)): nothing marked"
-                    : "\(dayList(noRecordDays)): fill \(days) in to keep the week strong")
+        case .notMarked:
+            // What each kind needs, in the day order: "Sun – Tue: fill them in. Today: make up 2."
+            var steps: [String] = []
+            if !noRecordDays.isEmpty { steps.append("\(dayList(noRecordDays)): fill \(noRecordDays.count == 1 ? "it" : "them") in") }
+            if !missedDays.isEmpty { steps.append("\(dayList(missedDays)): make up \(owed.count == 1 ? owed[0].name : "\(owed.count)")") }
+            let what = w.finished ? "Not marked that week"
+                : !w.stillPossible ? steps.joined(separator: ". ") + ". A new week starts Sunday."
+                : steps.count == 1 ? steps[0] + " to keep the week strong"
+                : steps.joined(separator: ". ") + "."
+            return ("\(n)", "not marked", what)
         case .excused:
             return ("\(n)", "excused", "Left out of the week")
         case .tick:
@@ -436,6 +435,8 @@ struct JourneyWeekCard: View {
             return ("\(target)", "for a strong week",
                     w.finished ? rule
                     : !w.stillPossible ? "This one can't be strong now. A new week starts Sunday."
+                    : w.notMarked > 0 && w.noRecordDays > 0
+                        ? "Fill in \(dayList(noRecordDays)) and make up \(w.notMarked) first. A strong week has none missed."
                     : w.notMarked > 0 ? "Make up the \(w.notMarked) missed first. A strong week has none missed."
                     : w.noRecordDays > 0 ? "Fill in \(dayList(noRecordDays)) first. A strong week has every day on record."
                     : rule)
