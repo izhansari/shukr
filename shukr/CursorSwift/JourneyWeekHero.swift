@@ -65,10 +65,13 @@ struct JourneyGoalRing: View, Animatable {
 
     /// Room outside the band for the tick's word.
     static let labelRoom: CGFloat = 16
+    /// The canvas reaches this far past the ring's frame (layout unchanged), so the word never clips where the tick sits at
+    /// the side ("trong" at 10 o'clock on a 15-prayer week).
+    static let spill: CGFloat = 26
 
     var body: some View {
         Canvas { ctx, size in
-            let side = min(size.width, size.height)
+            let side = min(size.width, size.height) - 2 * Self.spill
             let r = side / 2 - lineWidth / 2 - Self.labelRoom
             let c = CGPoint(x: size.width / 2, y: size.height / 2)
             let ink = scheme == .dark ? Color.white : Color.black
@@ -103,9 +106,11 @@ struct JourneyGoalRing: View, Animatable {
                 ctx.stroke(tick, with: .color(ink.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
                 let word = ctx.resolve(Text("strong").font(.system(size: 10, weight: .light, design: .rounded))
                     .foregroundStyle(ink.opacity(0.5)))
-                ctx.draw(word, at: p(r + lineWidth / 2 + 11), anchor: .center)
+                // Its inner edge faces the band, whichever way the tick points.
+                ctx.draw(word, at: p(r + lineWidth / 2 + 5), anchor: UnitPoint(x: 0.5 - 0.5 * cos(at), y: 0.5 - 0.5 * sin(at)))
             }
         }
+        .padding(-Self.spill)
         .accessibilityHidden(true)
     }
 }
