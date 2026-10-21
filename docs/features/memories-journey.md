@@ -134,7 +134,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that prayer (owner,
   2026-10-20: "journey hero should allow clicking on to the individual prayer in the ring"): it stays, wider, the rest dim,
   the middle reads "Dhuhr · Tue · Middle · 2:27 PM"; the same arc again opens that day's page, a tap in the middle lets it
-  go. No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is
+  go. A day with no record (NoRecordDays.next, Frank's flow) is asked in the banked weeks' slot ("Yesterday has no record.
+  Did you pray?" · Pick which · Not now — the card never changes height); a dotted arc picked again opens the same Pick
+  sheet (`NoRecordPickSheet`, one fixed height of 486 pt from the first frame, larger text scrolls in it). No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is
   the first row ("35 of 35 in their time · last 7 days"), the page zooming out of it.
 - Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the
   pager's right page (its in-pager band and pager hold were deleted 2026-10-20, cleanup tangle 4).

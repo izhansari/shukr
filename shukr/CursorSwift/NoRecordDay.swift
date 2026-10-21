@@ -120,7 +120,12 @@ struct NoRecordPickSheet: View {
     @State private var picked: Set<String> = []
     @Environment(\.dismiss) private var dismiss
 
+    /// One height from the first frame, sized to what it holds (Frank / Fable: it changed detent right after opening, so a
+    /// tap during the move landed on the wrong row; 560 also left an empty band under the button). Larger text scrolls in it.
+    static let height: CGFloat = 486
+
     var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
         VStack(spacing: 16) {
             VStack(spacing: 6) {
                 Text(day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
@@ -161,11 +166,13 @@ struct NoRecordPickSheet: View {
                     .overlay(Capsule().strokeBorder(Color.primary.opacity(0.35), lineWidth: 1.2))
             }
             .buttonStyle(.plain)
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
+        .padding(.bottom, 20)
+        }
+        .scrollBounceBehavior(.basedOnSize)
         .fontDesign(.rounded)
-        .presentationDetents([.height(560)])
+        .presentationDetents([.height(min(Self.height, UIScreen.main.bounds.height * 0.9))])
         .presentationDragIndicator(.visible)
     }
 }

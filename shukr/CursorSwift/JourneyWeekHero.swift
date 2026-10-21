@@ -134,6 +134,13 @@ struct JourneyWeekCard: View {
     /// A prayer tapped on the ring (owner, 2026-10-20: "journey hero should allow clicking on to the individual prayer in
     /// the ring"): it shows in the middle; again, its day.
     @State private var picked: (day: Int, prayer: Int)?
+    /// The most recent day with no record to ask about (NoRecordDays.next — Frank's flow), and the day the Pick sheet is
+    /// open for. The question sits in the banked weeks' slot: the card never changes height for it.
+    @State private var noRecord: Date?
+    @State private var filling: FillDay?
+    struct FillDay: Identifiable { let day: Date; var id: Date { day } }
+    @Environment(\.modelContext) private var context
+    @Environment(PrayerViewModel.self) private var viewModel
 
     /// What the card shows, read when the log changes (never per frame).
     struct Model: Equatable {
@@ -180,9 +187,13 @@ struct JourneyWeekCard: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, tight ? 4 : 8)
                 .journeyFlightWords(.card)
-            banked
-                .padding(.top, tight ? 8 : 12)
-                .journeyFlightWords(.card)
+            ZStack(alignment: .top) {
+                banked.opacity(noRecord == nil ? 1 : 0)
+                if let day = noRecord { noRecordQuestion(day).transition(.opacity) }
+            }
+            .animation(.smooth(duration: CircleMotion.quick), value: noRecord)
+            .padding(.top, tight ? 8 : 12)
+            .journeyFlightWords(.card)
         }
         .padding(.top, tight ? 14 : 18).padding(.horizontal, 18).padding(.bottom, tight ? 8 : 10)
         .overlay(alignment: .topTrailing) {
@@ -207,7 +218,13 @@ struct JourneyWeekCard: View {
             JourneyFlightGeometry.shared.cardShow = nil   // no grid here to scroll back to after the calendar
             reportFlight()
         }
-        .task(id: log.version) { read() }
+        .task(id: log.version) { read(); noRecord = NoRecordDays.next(in: context) }
+        .sheet(item: $filling) { f in
+            NoRecordPickSheet(day: f.day) { chosen in
+                NoRecordDays.fill(f.day, picked: chosen, viewModel: viewModel)
+                noRecord = NoRecordDays.next(in: context)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in read() }
         .accessibilityElement(children: .contain)
     }
@@ -221,6 +238,12 @@ struct JourneyWeekCard: View {
         }
         // A day with no record only toggles (its day page has little to show; the no-record card is where it's filled in —
         // Frank's check: the hint and the tap agree).
+        if let p = picked, p.day == hit.day, p.prayer == hit.prayer, let day = model?.week.days[hit.day], fillable(day) {
+            // A dotted day picked again: fill it in, as the question's "Pick which" does.
+            triggerSomeVibration(type: .light)
+            filling = FillDay(day: day.date)
+            return
+        }
         if let p = picked, p.day == hit.day, p.prayer == hit.prayer, let day = model?.week.days[hit.day],
            day.states != nil, opens(day.date) {
             let date = day.date
@@ -234,8 +257,14 @@ struct JourneyWeekCard: View {
         }
     }
 
+    /// A dotted day that can be filled in: before today and on or after the first mark ever (Frank's check: a new user's
+    /// days before the app have no rows either — never invite filling those; NoRecordDays.next starts there too).
+    private func fillable(_ day: PrayerMetrics.Day) -> Bool {
+        day.states == nil && day.date < PrayerDay.start() && (log.firstDay.map { day.date >= $0 } ?? false)
+    }
+
     /// The picked prayer's words: "Asr" over "Tue · Middle · 4:52 PM".
-    private func pickedWords(_ m: Model, _ p: (day: Int, prayer: Int)) -> (title: String, line: String, opens: Bool) {
+    private func pickedWords(_ m: Model, _ p: (day: Int, prayer: Int)) -> (title: String, line: String, opens: Bool, fills: Bool) {
         let day = m.week.days[p.day]
         let name = JourneyLog.names[p.prayer]
         let weekday = day.date.formatted(.dateTime.weekday(.abbreviated))
@@ -253,7 +282,7 @@ struct JourneyWeekCard: View {
         }
         let at = log.day(day.date).slots[p.prayer]?.markedAt
         let time = at.map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""
-        return (name, "\(weekday) · \(state)\(time)", opens(day.date) && day.states != nil)
+        return (name, "\(weekday) · \(state)\(time)", opens(day.date) && day.states != nil, fillable(day))
     }
 
     @ViewBuilder private var centre: some View {
@@ -266,7 +295,7 @@ struct JourneyWeekCard: View {
                     .font(.system(size: 14, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
-                Text(w.opens ? "Tap it again for the day" : " ")
+                Text(w.opens ? "Tap it again for the day" : w.fills ? "Tap it again to fill it in" : " ")
                     .font(.system(size: 11, weight: .light, design: .rounded))
                     .foregroundStyle(.tertiary)
                     .padding(.top, 2)
@@ -302,6 +331,34 @@ struct JourneyWeekCard: View {
             .accessibilityElement(children: .combine)
             .accessibilityLabel("This week: \(number), \(words)")
         }
+    }
+
+    /// "Yesterday has no record. Did you pray?" (plan-v3 §3: a day with nothing logged is no record, never missed), in the
+    /// banked weeks' place. "Pick which" opens the day's five; "Not now" isn't asked again for that day.
+    private func noRecordQuestion(_ day: Date) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("\(NoRecordDays.name(of: day)) has no record. Did you pray?")
+                .font(.system(size: 15, weight: .regular, design: .rounded))
+                .lineLimit(2).minimumScaleFactor(0.85)
+            HStack(spacing: 18) {
+                Button {
+                    triggerSomeVibration(type: .light)
+                    filling = FillDay(day: day)
+                } label: {
+                    Text("Pick which").font(.system(size: 15, weight: .medium, design: .rounded)).foregroundStyle(.primary)
+                }
+                Button {
+                    NoRecordDays.dismiss(day)
+                    withAnimation(.smooth(duration: CircleMotion.quick)) { noRecord = NoRecordDays.next(in: context) }
+                } label: {
+                    Text("Not now").font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, tight ? 6 : 8)
+        .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5).offset(y: tight ? -6 : -8) }
     }
 
     /// The last two finished weeks, newest first: past tense, quiet, a ✓ only when it was strong or complete.
