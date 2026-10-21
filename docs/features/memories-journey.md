@@ -173,7 +173,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   squares' geometry is one set of statics on `JourneyYearSquares` (drawing, hit test, layout, the flight); ‹, the edge swipe and the toggle go back to the weeks (`JourneyFlightGeometry.yearBack`).
 - **Your prayers** (the rethink's phase 3; behind `MetricsLook.on`): Prayer scores' page as built — its motion, rows,
   chart, chips and back dial — titled "Your prayers", with no ring (owner, 2026-10-20: "get rid of the ring for the your
-  prayers altogether. And the main thing can just be the histogram"): the title and its lines take the header; an open
+  prayers altogether. And the main thing can just be the histogram"); all five's hero (owner, 2026-10-20, A): the day ring's
+  fifths (DayRing), each prayer's hollow dot at its usual place in its window over the chips' span, the fifth in the colour
+  of the third it falls in, "when you usually pray" in the middle, a fifth tapped opens that prayer; an open
   prayer's hero is its window today (`PrayerWindowHero`, YourPrayers.swift — owner 2026-10-20 "now show this in the hero for
   the individual prayer page"): thirds faint, lit from the start to today's mark, a hollow dot there, a "usual" tick at the
   span's place, "6:33 · today · Closing" (or "not yet" / "not marked") in the middle; read-only. The rows'
