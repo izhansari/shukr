@@ -137,6 +137,8 @@ struct JourneyWeekCard: View {
     /// The most recent day with no record to ask about (NoRecordDays.next — Frank's flow), and the day the Pick sheet is
     /// open for. The question sits in the banked weeks' slot: the card never changes height for it.
     @State private var noRecord: Date?
+    /// This visit to Journey has been counted for the question's 3 (once per page, not per redraw).
+    @State private var visitCounted = false
     @State private var filling: FillDay?
     struct FillDay: Identifiable { let day: Date; var id: Date { day } }
     @Environment(\.modelContext) private var context
@@ -218,11 +220,11 @@ struct JourneyWeekCard: View {
             JourneyFlightGeometry.shared.cardShow = nil   // no grid here to scroll back to after the calendar
             reportFlight()
         }
-        .task(id: log.version) { read(); noRecord = NoRecordDays.next(in: context) }
+        .task(id: log.version) { read(); noRecord = question() }
         .sheet(item: $filling) { f in
             NoRecordPickSheet(day: f.day) { chosen in
                 NoRecordDays.fill(f.day, picked: chosen, viewModel: viewModel)
-                noRecord = NoRecordDays.next(in: context)
+                noRecord = question()
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in read() }
@@ -333,6 +335,30 @@ struct JourneyWeekCard: View {
         }
     }
 
+    /// The day to ask about, if any: NoRecordDays.next, but it steps aside after it's been shown on 3 visits to Journey without
+    /// an answer (owner, 2026-10-20: "Let the no-record question step aside after 3 opens"), and stays quiet until a newer day
+    /// has no record (that one gets its own 3). The day can still be filled from its dotted arc. Counted once per visit.
+    private func question() -> Date? {
+        guard let day = NoRecordDays.next(in: context) else { return nil }
+        let d = UserDefaults.standard
+        let key = PrayerNotificationID.dayKey(day)
+        if let quiet = d.string(forKey: Self.quietKey), key <= quiet { return nil }   // "YYYY-MM-DD" keys sort by date
+        var shown = d.integer(forKey: Self.shownKey + key)
+        if !visitCounted {
+            visitCounted = true
+            shown += 1
+            d.set(shown, forKey: Self.shownKey + key)
+        }
+        if shown > Self.visits {
+            d.set(key, forKey: Self.quietKey)
+            return nil
+        }
+        return day
+    }
+    private static let visits = 3
+    private static let shownKey = "noRecord.shown."
+    private static let quietKey = "noRecord.quietThrough"
+
     /// "Yesterday has no record. Did you pray?" (plan-v3 §3: a day with nothing logged is no record, never missed), in the
     /// banked weeks' place. "Pick which" opens the day's five; "Not now" isn't asked again for that day.
     private func noRecordQuestion(_ day: Date) -> some View {
@@ -349,7 +375,7 @@ struct JourneyWeekCard: View {
                 }
                 Button {
                     NoRecordDays.dismiss(day)
-                    withAnimation(.smooth(duration: CircleMotion.quick)) { noRecord = NoRecordDays.next(in: context) }
+                    withAnimation(.smooth(duration: CircleMotion.quick)) { noRecord = question() }
                 } label: {
                     Text("Not now").font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
                 }

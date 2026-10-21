@@ -135,7 +135,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   2026-10-20: "journey hero should allow clicking on to the individual prayer in the ring"): it stays, wider, the rest dim,
   the middle reads "Dhuhr · Tue · Middle · 2:27 PM"; the same arc again opens that day's page, a tap in the middle lets it
   go. A day with no record (NoRecordDays.next, Frank's flow) is asked in the banked weeks' slot ("Yesterday has no record.
-  Did you pray?" · Pick which · Not now — the card never changes height); a dotted arc picked again opens the same Pick
+  Did you pray?" · Pick which · Not now — the card never changes height; unanswered, it steps aside after 3 visits to
+  Journey and stays quiet until a newer day has no record — owner, 2026-10-20); a dotted arc picked again opens the same Pick
   sheet (`NoRecordPickSheet`, one fixed height of 486 pt from the first frame, larger text scrolls in it). No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is
   the first row ("35 of 35 in their time · last 7 days"), the page zooming out of it.
 - Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the
