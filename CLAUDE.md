@@ -137,7 +137,7 @@ upload). Written only by `scripts/whatsnew.py`; the page and tool in full: `docs
 heroes and block cards only (lists stay flat); light type with a grey line; sage = tap; one soft pill + one quiet line;
 frost, don't scold; show the real thing; "streak", never "run". Data-heavy pages: its "The gap" section.
 
-**UI wording.** Every look picker (app, Live Activity card, Prayers widget, setup, the ⓘ, the watch) says System · Light · Dark · **Sun** in that order (System only in Settings; the watch has iPhone), and Sun is explained in one sentence: "Light after Fajr, dark at Maghrib." (owner, 2026-10-12). Users read "zikr" / "Azkar", never "mantra"; code and SwiftData names keep `Mantra` (a model rename is a schema risk).
+**UI wording.** Every look picker (app, Live Activity card, Prayers widget, setup, the ⓘ, the watch) says System · Light · Dark · **Sun** in that order (System only in Settings; the watch has iPhone), and Sun is explained in one sentence: "Light after Fajr, dark at Maghrib." (owner, 2026-10-12). Users read "zikr" / "Azkar", never "mantra"; code and SwiftData names keep `Mantra` (a model rename is a schema risk). A prayer is "in its window", never "in its time" (owner, 2026-10-21: "we are training people to think of these prayers as windows"); grades are Opening · Middle · Closing (thirds).
 
 **Navigation / pager**
 - `horizontalPage` = pager page: Zikr · Salah · **Settings** (owner 2026-10-19: Journey was the right page 2026-10-17 → 19, "I'm not a fan of having Journey there"; Journey is pushed from ☰ only, `JourneyPresenter.open`); the bottom bar is Zikr · Salah · Settings; `SettingsPresenter.show(jump:)` pages there (a jump once it rests). `navPosition` = the centre page's vertical state only (.main / .bottom); paging never changes it.
@@ -151,6 +151,10 @@ frost, don't scold; show the real thing; "streak", never "run". Data-heavy pages
 
 - Prayer list rows have ONE gesture (`PrayerButton.rowGesture`): don't go back to `onTapGesture` + a simultaneous long press, and the mark area stays the 22 pt circle round the dot (not the name or a full-height box).
 - A task counts only its own linked sessions; freestyle and post-salah never touch tasks. Watch sessions retry by UUID, never double-counted.
+
+**One state per prayer.** Anything that counts prayers (a number, a streak, a week, a rank, a milestone, a new stat) reads
+`PrayerState` / `PrayerMetrics` (salah.md, "The counting") — no screen decides "missed", "in its window" or a week on its
+own (30 numbers on three averages once disagreed); check it with `-dumpPrayerStates` + board/scoring-rethink/oracle.py.
 
 **Excused days (counted days).** Anything that counts prayers (streaks, scores, Insights, day history, task streaks,
 a new stat) reads its days through `Excused.counts(day:)` / skips `Excused.excludesDay`, and anything that marks or plans
@@ -216,7 +220,8 @@ it — launch with a `-demo…` arg (they never ask), or erase your sim. On his 
 - **salah.md** — Salah circle & prayer list (mainCircle.swift, PrayerListLooks.swift: the ring fills with the window in
   the score's colour; marking, the raised list = the public look, the marked row's buttons; the day's page — DayRing,
   DayInsight; the list's drag and motion rules). Scoring, streaks, prayer day (PrayerScoring.swift, PrayerDay.swift:
-  Perfect 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0; the day turns at Fajr). Excused Mode (Excused.swift).
+  thirds of the window — Opening 100 · Middle 99–80 · Closing 79–60 · Qaza 40 · Missed 0, no number on screen; the day
+  turns at Fajr). The counting (PrayerState, PrayerMetrics, the goal ladder). Excused Mode (Excused.swift).
 - **memories-journey.md** — Prayer photos (PrayerPhotos.swift: front + back after a mark, files only, developing, an
   unmark deletes the photo), Memories (PrayerMemories.swift: levels, the deck's zoom, day strip, search), Journey
   (Journey*.swift).

@@ -35,7 +35,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   card"). DEBUG `-demoDayFacts` (with `-demoMarkAll`).
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
-- One rule for app, widget, notification action and editor, by thirds of the window (`PrayerScoring.openingShare`, 2026-10-21; a one-time `regradeToThirdsIfNeeded` regraded old rows, backup `before-thirds`, no-time marks skipped): Opening (first third) 100 · Middle 99–80 · Closing 79–60 (#C93B10) · Qaza 40 · Missed 0; day = mean of five. Isha's window still ends 11:59 PM (owner). No 0–100 on any screen (phase 3): `summary(for:)` is the grade word alone, `spokenMark` has no "Score: N"; `points` still orders and shades. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word. Middle / Closing were On time / Late until 2026-10-17 (owner: users read "on time" as just inside the window and "late" as outside it). The words live only in `PrayerScoring.Grade` (setup's legend and the tour read them there; the watch keeps a copy in `WatchScoring.word`); a shown number never passes its band (`points(for:)`: Middle ≤ 99, Closing ≤ 79). Siri and the Live Activity's VoiceOver say `spokenMark`: "Asr marked as prayed during the Closing window. Score: 66." (Qaza: "after its window, as Qaza"). The "usually Perfect" fact on Prayer scores stays Perfect-only (owner).
+- One rule for app, widget, notification action and editor, by thirds of the window (`PrayerScoring.openingShare`, 2026-10-21; a one-time `regradeToThirdsIfNeeded` regraded old rows, backup `before-thirds`, no-time marks skipped): Opening (first third) 100 · Middle 99–80 · Closing 79–60 (#C93B10) · Qaza 40 · Missed 0; day = mean of five. Isha's window still ends 11:59 PM (owner). No 0–100 on any screen (phase 3): `summary(for:)` is the grade word alone, `spokenMark` has no "Score: N"; `points` still orders and shades. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word. Middle / Closing were On time / Late until 2026-10-17 (owner: users read "on time" as just inside the window and "late" as outside it). The words live only in `PrayerScoring.Grade` (setup's legend and the tour read them there; the watch keeps a copy in `WatchScoring.word`); a shown number never passes its band (`points(for:)`: Middle ≤ 99, Closing ≤ 79). Siri and the Live Activity's VoiceOver say `spokenMark`: "Asr marked as prayed during the Closing window." (Qaza: "after its window, as Qaza"). Users read "in its window", never "in its time" (owner, 2026-10-21: "we are training people to think of these prayers as windows").
 - **The prayer editor** (PrayerTimeEditSheet.swift; a marked row's hold; the N2 bento, owner 2026-10-19; the knob, owner
   2026-10-20, specs board/mocks/prayer-editor/spec-knob.md + spec-knob-v2.md): a Liquid Glass partial sheet at ONE fitted height,
   header only (no ✕ / ✓); swipe down or tap outside closes (not in the tour's step, nor while writing a note). Grid: left, the
@@ -57,6 +57,18 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - **Place names** (`PrayerPlaceNames`, PrayerPhotos.swift): one name per prayer's place — the masjid, else the city — named
   after each mark (`.journeyChanged`) and on activation (last 30 days, queued, retried when offline); read through
   `place(for:)` (redraws on `PlaceNameRevision`).
+- **The counting** (prayer-metrics rethink, board/scoring-rethink/plan-v3.md + build-plan.md; 2026-10-20/21): every count
+  reads `PrayerState` (Models/PrayerState.swift — Opening · Middle · Closing · in its window with no clock · made up ·
+  not marked · excused · to come; the one meaning of "missed") and `PrayerMetrics` (CursorSwift/PrayerMetrics.swift —
+  a day with nothing logged is "no record", never missed, today always on record; weeks, strong weeks = every due prayer
+  prayed with at most 3 below the step and no gap, complete weeks, the usual week, each prayer's recent, the Sunday step
+  offer — up after 3 strong weeks, down after 2 fully logged weeks that weren't —, the mid-week and morning-after lines).
+  **Your goal's step sets the bar for all of it** (owner, 2026-10-21: Prayed · In its window · Middle (before Closing) ·
+  Opening; `PrayerGoal.meets(state)`; new installs start on In its window — `FirstRunSetup.migrateDefaults`). Days rank
+  prayed → in its window → fewest in Closing (`JourneyLog.Day.rankKey`), never by an average. Check any change with DEBUG
+  `-dumpPrayerStates [-dumpNow YYYY-MM-DD]` + board/scoring-rethink/oracle.py on a copy of his data (rows, weeks, recents,
+  milestones, ranks, the nudges must all agree). Still on the old daily streak: the Salah bar's streak / Max, DayInsight's
+  runs, Your goal's preview (board/scoring-rethink/outstanding.md rows 1–3).
 - Streaks: one streak at the user's goal (`PrayerGoal`, Settings → Journey; owner 2026-10-18 — the "In-Time Days" line went; a tap on the label goes streak ↔ Max), from the fresh start (`PrayerStats.countsFrom`); a day counts once; earlier days are recounted from rows (`refreshStreaksFromHistory`), Max from rows on a rule change or a restore (`recountBestStreak`); a rule change never celebrates (`rulesChanged`); perfect day = five Perfect. The day turns at Fajr (`PrayerDay.fajr`; no location → 3 AM); Isha ends 11:59 PM; zikr sessions follow the day (`sessionDayStart()`).
 
 **Honest data — how a mark was made** (prayer-metrics phase 6, 2026-10-21; MarkKind.swift, LateMarkAsk.swift, NoRecordDay.swift; schema 2.10.0)
