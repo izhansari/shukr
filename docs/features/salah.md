@@ -24,7 +24,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   tap on a marked row or its fifth picks the prayer (`DayPageState.picked`, no timer — a second tap, the side swapping
   or a row unmarked clears it): its photo fills the ring (`PrayerPhotoCircle`, the name on a tag that stays over the develop
   veil; the circle's tap layer lets it through, `centreTakesTaps`, a count), else name / "prayed 5:54 PM" / grade; missed →
-  "N to make up ›" as a plain pill (`DayMakeUpPill`, no sage) → Journey's To make up (`JourneyPresenter.makeUp`); excused →
+  "N to make up ›" as a plain pill (`DayMakeUpPill`, no sage) → To make up in one push, its list read first (`JourneyPresenter.makeUpAsked`; owner 2026-10-21: "it double hops pages" — it went through Journey); back returns here; excused →
   "excused". Under the ring the picked prayer's note (one line, cut; a tap → the frosted card, `infoModal(tint: .secondary)`)
   and its place (a tap → `PrayerPlaceMapSheet` on that pin), each a door (`DayPickLines`); neither → nothing; the qibla
   arrow hides over the photo. No day card on the Salah tab (owner, 2026-10-16: "the salah stays simple. the journey one

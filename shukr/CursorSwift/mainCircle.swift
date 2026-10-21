@@ -478,8 +478,7 @@ struct MainCircleView: View {
             // tap (a tap anywhere else in the ring flips back). Opens To make up, as the day page's pill does.
             if makeUpShowsAll && missedFaceShown {
                 MakeUpSeeAll {
-                    JourneyPresenter.shared.makeUp = true
-                    JourneyPresenter.shared.open = true
+                    JourneyPresenter.shared.makeUpAsked = true   // one push (owner: "it double hops pages")
                 }
                 .offset(y: 64)
                 .transition(.asymmetric(
@@ -1371,9 +1370,8 @@ struct summaryCircle: View, Equatable {
             // tells that prayer; one line under the circle.
             DayCentre(day: shownDay, score: countedScore ?? shownScore, picked: picked, yesterday: showingYesterday,
                       makeUpCount: makeUpCount, onMakeUp: {
-                          // To make up, in Journey (the pill in the ring; marking stays the list's dot — owner).
-                          JourneyPresenter.shared.makeUp = true
-                          JourneyPresenter.shared.open = true
+                          // To make up (the pill in the ring; marking stays the list's dot — owner), one push.
+                          JourneyPresenter.shared.makeUpAsked = true
                       }, rank: showingYesterday ? nil : dayRank,
                       showsRank: DayPageState.shared.showsRank && dayRank != nil && !showingYesterday)
                 .animation(CircleMotion.dayPick, value: picked)

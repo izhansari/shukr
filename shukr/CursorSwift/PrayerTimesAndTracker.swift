@@ -214,7 +214,7 @@ struct PrayerTimesView: View {
     var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage
             || showZikrHistory
-            || showNamesPage || showMantraSheetFromHomePage || JourneyPresenter.shared.open
+            || showNamesPage || showMantraSheetFromHomePage || JourneyPresenter.shared.open || JourneyPresenter.shared.makeUpOnly
             || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
 
@@ -222,7 +222,7 @@ struct PrayerTimesView: View {
         showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
         showZikrHistory = false
         showNamesPage = false
-        showMantraSheetFromHomePage = false; JourneyPresenter.shared.open = false
+        showMantraSheetFromHomePage = false; JourneyPresenter.shared.open = false; JourneyPresenter.shared.makeUpOnly = false
         healthCard = nil
     }
 
@@ -887,9 +887,32 @@ struct PrayerTimesView: View {
         // 2026-10-19: "put Journey back in the hamburger menu only" — it was the pager's right page from 2026-10-17).
         .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.open },
                                                     set: { JourneyPresenter.shared.open = $0 })) { JourneyPage() }
+        // To make up on its own (the ring's pill, "See all ›", the morning line): one push, not Journey then To make up.
+        .navigationDestination(isPresented: Binding(get: { JourneyPresenter.shared.makeUpOnly },
+                                                    set: { JourneyPresenter.shared.makeUpOnly = $0 })) {
+            JourneyMakeUpPage(month: JourneyLog.monthStart(PrayerDay.start()))
+        }
+        // Asked for it: read its list off the main thread first, then push, so it never arrives empty.
+        .onChange(of: JourneyPresenter.shared.makeUpAsked) { _, asked in
+            guard asked else { return }
+            JourneyPresenter.shared.makeUpAsked = false
+            let container = context.container
+            Task { @MainActor in
+                JourneyStore.shared.makeUp = await JourneyMakeUpPage.entries(container: container)
+                JourneyPresenter.shared.makeUpOnly = true
+            }
+        }
         // `-demoJourneyFlightRun N`: Journey opened for its flights' auto run (JourneyMonthHost) — a launch argument only, so
         // the frame log can be read in Release on his phone.
         .task {
+            #if DEBUG
+            // `-demoMakeUpOnly`: what the ring's make-up pill and the morning line do — To make up in one push.
+            if ProcessInfo.processInfo.arguments.contains("-demoMakeUpOnly") {
+                try? await Task.sleep(for: .seconds(1.5))
+                JourneyPresenter.shared.makeUpAsked = true
+                return
+            }
+            #endif
             guard ProcessInfo.processInfo.arguments.contains("-demoJourneyFlightRun") else { return }
             try? await Task.sleep(for: .seconds(1))
             JourneyPresenter.shared.open = true

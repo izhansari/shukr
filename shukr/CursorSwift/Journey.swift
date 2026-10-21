@@ -32,13 +32,20 @@ enum JourneyChange {
 
 /// ☰ → Journey and the day page's "Journey ›" (pushed on the root stack, as Moments).
 /// Who writes it: `open` — ☰'s Journey row, the day page's "Journey ›" (SalahLook), What's new's "Open in shukr"
-/// ("insights", "journey"), `-demoLand journey`, `-demoJourney` / `-demoJourneyFlightRun`; `open` + `makeUp` — the
-/// ring's make-up pill and the missed face's "See all ›" (mainCircle.swift). Who reads it: PrayerTimesView's
-/// `navigationDestination` (the push) and its `somethingCovers` / `clearCovers` (a widget open closes Journey first);
-/// `makeUp` only JourneyPage, which clears it once it has opened To make up (`takeMakeUp`).
+/// ("insights", "journey"), `-demoLand journey`, `-demoJourney` / `-demoJourneyFlightRun`; `makeUpAsked` — the ring's
+/// make-up pill, the missed face's "See all ›" (mainCircle.swift) and the morning line: To make up pushed straight from the
+/// Salah page, one push, back to where you were (owner, 2026-10-21, on Journey then To make up sliding in one after the other:
+/// "it double hops pages. fix that"); `open` + `makeUp` was that double hop and stays only for a caller not yet moved. Who
+/// reads them: PrayerTimesView's `navigationDestination`s (the pushes) and its `somethingCovers` / `clearCovers` (a widget
+/// open closes them first); `makeUp` only JourneyPage, which clears it once it has opened To make up (`takeMakeUp`).
 @MainActor @Observable final class JourneyPresenter {
     static let shared = JourneyPresenter()
     var open = false
+    /// Asked for To make up on its own (the callers set this): the Salah page reads its list first, then pushes it
+    /// (`makeUpOnly`), so the page arrives full — pushed empty it read "0 · All caught up" and counted up.
+    var makeUpAsked = false
+    /// To make up on its own, pushed from the Salah page (no Journey under it).
+    var makeUpOnly = false
     /// Open and go straight on to To make up (the day page's "N to make up ›" pill, DayMakeUpPill).
     var makeUp = false
 }
