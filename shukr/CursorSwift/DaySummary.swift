@@ -331,7 +331,7 @@ struct DayRank: Equatable {
         guard let day = log.days[PrayerNotificationID.dayKey(date)], day.allFive, day.excused == 0, !day.unfinished,
               let place = log.dayRank(date), log.rankedDays >= minimumDays else { return nil }
         // Among the ranked days, as `place` and `of` are (only those since a fresh start — Fable's audit #2).
-        let tied = log.days.values.filter { $0.active && !$0.unfinished && $0.counted && $0.dayScore == day.dayScore }.count - 1
+        let tied = log.days.values.filter { $0.active && !$0.unfinished && $0.counted && $0.rankKey == day.rankKey }.count - 1   // ranks' own order
         return DayRank(place: place, of: log.rankedDays, tiedWith: max(tied, 0))
     }
 }

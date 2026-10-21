@@ -39,6 +39,9 @@ enum PrayerStateDump {
         for m in JourneyMilestone.earned(log: log, today: PrayerDay.start(for: now), excused: excused).reversed() {
             weeks += "# milestone \(m.id) \(PrayerNotificationID.dayKey(m.date)) \(m.text)\n"
         }
+        for d in log.days.values.sorted(by: { $0.key < $1.key }) {
+            if let place = log.dayRank(d.date) { weeks += "# rank \(d.key) \(place)\n" }
+        }
         let weeksURL = url.deletingLastPathComponent().appending(path: "prayer-weeks.tsv")
         try? weeks.write(to: weeksURL, atomically: true, encoding: .utf8)
         print("📋 prayer weeks → \(weeksURL.path)")

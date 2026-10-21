@@ -177,8 +177,11 @@ struct JourneyLog {
         let active = log.days.values.filter(\.active).sorted(by: { $0.date < $1.date })
         for (n, d) in active.enumerated() { log.dayNumbers[d.key] = n + 1 }
         for (n, d) in active.filter(\.counted).enumerated() { log.freshDayNumbers[d.key] = n + 1 }
+        // Ordered prayed → in its time → fewest in Closing (prayer-metrics phase 3, plan-v3 §5b): no weights, so a day
+        // with a missed prayer never outranks a complete one (the old ÷5 score put his Jul 16, Fajr missed, above Apr 1,
+        // all five in time). Equal keys share a place.
         func rank(_ days: [Day]) -> [String: Int] {
-            let ranked = days.filter { !$0.unfinished }.map { ($0.key, $0.dayScore) }.sorted { $0.1 > $1.1 }
+            let ranked = days.filter { !$0.unfinished }.map { ($0.key, $0.rankKey) }.sorted { $0.1 > $1.1 }
             var out: [String: Int] = [:]
             for (i, r) in ranked.enumerated() { out[r.0] = i > 0 && ranked[i - 1].1 == r.1 ? out[ranked[i - 1].0] : i + 1 }
             return out
@@ -318,6 +321,18 @@ enum JourneyHighlight: Equatable {
 extension JourneyLog.Day {
     /// The mean of its five scores, an unprayed one 0, 0…100 (JourneyLog.Month.bestDay's measure).
     var dayScore: Int { Int((marks.reduce(0) { $0 + ($1.score ?? 0) } / 5 * 100).rounded()) }
+    /// How it ranks against other days: prayed, then in its time, then fewest in Closing (an excused prayer counts as
+    /// done, as `allFive` does). Compared as a tuple, largest first.
+    var rankKey: RankKey {
+        let closing = (0..<5).filter { i in
+            slots[i]?.noTime != true && (marks[i].score.map { PrayerScoring.grade(for: $0) == .late } ?? false)
+        }.count   // a no-time mark claims no third
+        return RankKey(prayed: prayed + excused, inTime: inTime + excused, notClosing: 5 - closing)
+    }
+    struct RankKey: Comparable {
+        let prayed: Int, inTime: Int, notClosing: Int
+        static func < (a: RankKey, b: RankKey) -> Bool { (a.prayed, a.inTime, a.notClosing) < (b.prayed, b.inTime, b.notClosing) }
+    }
 }
 
 struct JourneyPage: View {
