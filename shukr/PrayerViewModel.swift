@@ -558,7 +558,15 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
     /// "Making it up now" a make-up. The list's own path otherwise (the spot, the moment, widgets, the day's score).
     @MainActor func markLate(_ prayer: PrayerModel, _ reply: LateMarkAsk.Reply) {
         guard !prayer.isCompleted else { return }
-        if case .at(let date) = reply { markFromJourney(prayer, at: date); return }
+        if case .at(let date) = reply {
+            guard markFromJourney(prayer, at: date) else { return }
+            // The completion moment, as "I don't know the time" plays it (owner, 2026-10-21: "A"). Progress 1: its window is
+            // long over, so no post-salah nudge for a prayer prayed hours ago (Frank's note).
+            NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
+                name: prayer.displayName, score: prayer.numberScore ?? 0, progress: 1,
+                summary: prayer.scoreSummary, prayerName: prayer.name))
+            return
+        }
         let inTime = { if case .noTime = reply { true } else { false } }()
         // Set before the mark, so its score and its moment are already the answer (setPrayerScore reads it).
         prayer.markKind = (inTime ? MarkKind.timeUnknown : MarkKind.madeUp).rawValue
