@@ -1013,6 +1013,9 @@ struct PrayerWindowBar: View {
     var labelShift: TimeInterval = 0
     let marked: Date
     let color: Color
+    /// False for a no-time mark (MarkKind.timeUnknown): no marker and no "qaza" — its `marked` is only the tap. A tap or
+    /// drag still picks a time, which shows it.
+    var showsMark = true
     /// Tap or drag on the bar: the fraction of the window under the finger, 0…1.
     var onPick: (Double) -> Void = { _ in }
 
@@ -1021,7 +1024,7 @@ struct PrayerWindowBar: View {
         let early = PrayerScoring.openingShare   // the Opening: a third of the window
         let mid = early + (1 - early) / 2
         let position = min(max(marked.timeIntervalSince(start) / total, 0), 1)
-        let isQaza = marked > end
+        let isQaza = showsMark && marked > end
         VStack(spacing: 6) {
             GeometryReader { geo in
                 let w = geo.size.width
@@ -1040,6 +1043,7 @@ struct PrayerWindowBar: View {
                         .frame(width: 16, height: 16)
                         .shadow(color: color.opacity(0.4), radius: 4)
                         .offset(x: w * position - 8)
+                        .opacity(showsMark ? 1 : 0)
                         .animation(.snappy(duration: 0.12), value: position)
                 }
                 .frame(height: 16)

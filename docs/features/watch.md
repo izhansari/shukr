@@ -37,4 +37,4 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   Every sheet / cover's content gets `.watchLookRoot()`; each root page `.watchPageBackground()`. DEBUG `-watchLook light|dark|auto`, `-watchPage 0|1|2`.
 - The ring's look is `WatchRingFace` and the complication's view `PrayerComplicationView` / entry, both in shukrWatchShared (with `WatchNeu`'s soft colours and `WatchSoftBand`), which the iPhone app also compiles (Explore draws the real watch): `WatchPrayerRing` keeps the taps / hold / haptics on top; nothing watch-only in shukrWatchShared (`#if os(watchOS)` for the corner); `WatchRingFace.drawsStatically` (set in the iPhone's App.init, never on the watch) draws the complication's timer gauges from now.
 - Untried on a real watch: wrist-down runtime, outbox catch-up, compass, memo, complications. DEBUG `-demoWatch`.
-
+- A mark's line (the list's rows, the completion moment; `WatchScoring.summary`) is the grade word alone, "Middle", as on the phone (no 0–100, owner 2026-10-21). The watch doesn't know no-time marks yet: one shows as a Closing dot (outstanding.md row 25, Sami).

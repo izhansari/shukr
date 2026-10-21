@@ -244,7 +244,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   or unmarked; large while the wheel or the map is open); top right only the trash (unmark: Sami's `UnmarkPrompt`, the
   system alert if another overlay is up); once the time, place or note differs, the Salah editor's `SaveCancelButtons` come
   in at the bottom (owner); a swipe down is held while edited; the date line says "not saved"; no sage anywhere on it
-  (owner) — the Mark pill is Save's green edge. Score ring + `PrayerWindowBar` (tap / drag sets the time) — no
+  (owner) — the Mark pill is Save's green edge. Score ring + `PrayerWindowBar` (tap / drag sets the time); with MetricsLook
+  the ring is closed in the grade's colour with the grade word alone (no 0–100; owner 2026-10-21), and a no-time mark
+  always reads "In its window" in its own colour, "Prayed at · Time not recorded" until a time is picked — no
   sentence (owner: it got old); "Prayed at ⌄" → a date + time wheel inline (start…now) with "Prayed it on <its day>? ›" /
   "Made up today instead ›"; the place as a map card with its name on it (`JourneyPlaceMap`: grows in place, movable, pin
   kept, "Move the pin" → `PrayerLocationPicker`; no spot → "Add where you prayed") and the photo as itself (`PrayerPhotoCard`,

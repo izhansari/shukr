@@ -398,12 +398,10 @@ enum WatchScoring {
         return "Qaza"
     }
 
-    /// "Middle · 88", "Qaza" — the completion moment's line, as on the phone; the number never above its band (a 0.996
-    /// read "On time · 100").
+    /// "Middle", "Qaza": a mark's line (the list's rows, the completion moment) — the word alone, as on the phone (no 0–100
+    /// on any screen; owner, 2026-10-21, on Frank's table: "i approve 1"; was "Middle · 88").
     static func summary(forScore s: Double) -> String {
-        let word = word(forScore: s)
-        let ceiling = word == "Opening" ? 100 : word == "Middle" ? 99 : 79
-        return word == "Qaza" ? word : "\(word) · \(min(Int((s * 100).rounded()), ceiling))"
+        word(forScore: s)
     }
 
     /// A marked prayer's colour from its stored score (the phone's PrayerScoring.color(for:)).

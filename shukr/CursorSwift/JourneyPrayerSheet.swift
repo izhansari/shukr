@@ -85,6 +85,16 @@ struct JourneyPrayerSheet: View {
     private var score: Double {
         jumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
     }
+    /// A no-time mark left as it is (MarkKind.timeUnknown): in its window, no clock — its `timeAtComplete` is only the tap,
+    /// so it's never scored or shown from it. Picking a time makes it a timed mark (editPrayerTime → editTime).
+    private var noTime: Bool { marked && prayer.timeUnknown && !timeChanged }
+    private var gradeColor: Color { noTime ? MarkKind.inTimeColor : PrayerScoring.color(for: score) }
+    private var gradeWord: String {
+        excused ? "excused" : jumuah ? "Jumu'ah" : noTime ? MarkKind.inTimeWord : PrayerScoring.grade(for: score).rawValue
+    }
+    /// The word alone, no 0–100 (MetricsLook; owner, 2026-10-21, on Frank's table: "i approve … 4"), and always for a
+    /// no-time mark (it has no number to show).
+    private var wordOnly: Bool { MetricsLook.on || noTime }
     private var photoKey: String { PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name) }
     private var savedSpot: CLLocationCoordinate2D? {
         guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return nil }
@@ -228,29 +238,38 @@ struct JourneyPrayerSheet: View {
     // MARK: Score
 
     private var scoreRow: some View {
-        let color = PrayerScoring.color(for: score)
+        let color = gradeColor
         return HStack(spacing: 16) {
             ZStack {
                 NeuPressed(shape: Circle(), radius: 4, offset: 3)
-                Circle().trim(from: 0, to: excused ? 0 : score)
+                // Word only: the ring closed in the grade's colour (its fill was the score).
+                Circle().trim(from: 0, to: excused ? 0 : wordOnly ? 1 : score)
                     .stroke(color, style: StrokeStyle(lineWidth: 3.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .padding(7)
-                VStack(spacing: 0) {
-                    Text(excused ? "–" : "\(PrayerScoring.points(for: score))")
-                        .font(.system(size: 22, weight: .thin, design: .rounded)).monospacedDigit()
-                        .contentTransition(.numericText(value: score))
-                    Text(excused ? "excused" : jumuah ? "Jumu'ah" : PrayerScoring.grade(for: score).rawValue)
-                        .font(.system(size: 10, weight: .light, design: .rounded))
-                        .foregroundStyle(.secondary)
+                if wordOnly {
+                    Text(gradeWord)
+                        .font(.system(size: 13, weight: .light, design: .rounded))
+                        .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.8)
+                        .frame(width: 50)
+                        .contentTransition(.opacity)
+                } else {
+                    VStack(spacing: 0) {
+                        Text(excused ? "–" : "\(PrayerScoring.points(for: score))")
+                            .font(.system(size: 22, weight: .thin, design: .rounded)).monospacedDigit()
+                            .contentTransition(.numericText(value: score))
+                        Text(gradeWord)
+                            .font(.system(size: 10, weight: .light, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .frame(width: 70, height: 70)
             .animation(.snappy, value: score)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(excused ? "Excused" : PrayerScoring.summary(for: score))
+            .accessibilityLabel(excused ? "Excused" : noTime ? MarkKind.inTimeWord : PrayerScoring.summary(for: score))
             PrayerWindowBar(start: prayer.startTime, end: prayer.endTime, marked: draft,
-                            color: excused ? Color(.tertiaryLabel) : color) { fraction in
+                            color: excused ? Color(.tertiaryLabel) : color, showsMark: !noTime) { fraction in
                 guard !excused, !jumuah else { return }
                 let raw = prayer.startTime.addingTimeInterval(prayer.endTime.timeIntervalSince(prayer.startTime) * fraction)
                 let minute = Date(timeIntervalSinceReferenceDate: (raw.timeIntervalSinceReferenceDate / 60).rounded() * 60)
@@ -299,6 +318,7 @@ struct JourneyPrayerSheet: View {
     /// "6:15 AM" on its own day; "Today, 3:12 PM" / "Sat 6:15 AM" on another.
     private var timeText: String {
         if excused { return "–" }
+        if noTime { return "Time not recorded" }
         if Calendar.current.isDate(draft, inSameDayAs: prayer.startTime) { return shortTimePM(draft) }
         if Calendar.current.isDateInToday(draft) { return "Today, \(shortTimePM(draft))" }
         return "\(draft.formatted(.dateTime.weekday(.abbreviated))) \(shortTimePM(draft))"

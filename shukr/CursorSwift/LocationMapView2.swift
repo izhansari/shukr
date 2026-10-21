@@ -2154,6 +2154,11 @@ struct PrayerSpotSheet: View {
         let scored = prayers.compactMap(\.numberScore)
         return scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
     }
+    /// "12 of 14 in their windows": the prayers prayed here that were in their window (a no-time mark too).
+    private var inWindowLine: String {
+        let n = prayers.filter { $0.state(excusedRanges: []).inTime }.count
+        return "\(n) of \(prayers.count) in \(prayers.count == 1 ? "its window" : "their windows")"
+    }
     /// "Fajr 3 · Dhuhr 5 …" in prayer order.
     private var countsLine: String {
         ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].compactMap { name in
@@ -2198,7 +2203,12 @@ struct PrayerSpotSheet: View {
                     Text(countsLine)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                    if let avg = averageScore {
+                    if MetricsLook.on {
+                        // A count, not an average score (owner, 2026-10-21, on Frank's table: "i approve … 4").
+                        Text(inWindowLine)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else if let avg = averageScore {
                         HStack(spacing: 6) {
                             ScoreDot(score: avg)
                             Text("Average score \(Int((avg * 100).rounded()))%")
