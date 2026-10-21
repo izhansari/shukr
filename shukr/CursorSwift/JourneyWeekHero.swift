@@ -60,6 +60,8 @@ struct JourneyGoalRing: View, Animatable {
     /// How many may miss your goal in a strong week (0 on Prayed — every prayer).
     var slack: Int = PrayerMetrics.strongWeekSlack
     var lineWidth: CGFloat = 14
+    /// The strong tick (off while Excused Mode is on: nothing is asked of the week then).
+    var tickShown = true
     var onPick: (Part?) -> Void = { _ in }
     var animatableData: AnimatableNumbers {
         get { values }
@@ -68,11 +70,13 @@ struct JourneyGoalRing: View, Animatable {
     @Environment(\.colorScheme) private var scheme
     @State private var size: CGSize = .zero
 
-    init(counts: [Int], picked: Part?, slack: Int, lineWidth: CGFloat, onPick: @escaping (Part?) -> Void = { _ in }) {
+    init(counts: [Int], picked: Part?, slack: Int, lineWidth: CGFloat, tickShown: Bool = true,
+         onPick: @escaping (Part?) -> Void = { _ in }) {
         let alphas = Part.allCases.map { picked == nil || picked == $0 ? 1.0 : 0.22 }
         values = AnimatableNumbers(v: counts.map(Double.init) + alphas)
         self.slack = slack
         self.lineWidth = lineWidth
+        self.tickShown = tickShown
         self.onPick = onPick
     }
 
@@ -96,7 +100,7 @@ struct JourneyGoalRing: View, Animatable {
         /// The tick sits on the not-marked pill: a tap on the band there is the pill's, the tick's is its word.
         var tickOnPill = false
     }
-    static func layout(_ n: (Part) -> Double, slack: Int) -> Layout {
+    static func layout(_ n: (Part) -> Double, slack: Int, tick tickShown: Bool = true) -> Layout {
         let total = max(Part.allCases.dropLast().reduce(0) { $0 + n($1) }, 0.0001)
         var runs: [(Part, Double, Double)] = []
         var at: [Part: Double] = [:]
@@ -113,7 +117,7 @@ struct JourneyGoalRing: View, Animatable {
             u -= n(p)
         }
         let asked = total - n(.excused)
-        let tick: Double? = n(.notMarked) > 0.5 ? at[.notMarked]
+        let tick: Double? = !tickShown ? nil : n(.notMarked) > 0.5 ? at[.notMarked]
             : (slack > 0 && asked > Double(slack)) ? total - n(.excused) - Double(slack) : nil
         return Layout(total: total, runs: runs, tick: tick, tickOnPill: n(.notMarked) > 0.5)
     }
@@ -128,7 +132,7 @@ struct JourneyGoalRing: View, Animatable {
             let r = Self.radius(size, lineWidth: lineWidth)
             let c = CGPoint(x: size.width / 2, y: size.height / 2)
             let ink = scheme == .dark ? Color.white : Color.black
-            let L = Self.layout(count, slack: slack)
+            let L = Self.layout(count, slack: slack, tick: tickShown)
             let unit = 360 / L.total
             let cap = Double(lineWidth / 2 / r) * 180 / .pi, gap = Double(Self.gap / r) * 180 / .pi
             func arc(_ from: Double, _ to: Double) -> Path {
@@ -206,7 +210,7 @@ struct JourneyGoalRing: View, Animatable {
         let d = (dx * dx + dy * dy).squareRoot()
         var deg = atan2(dx, -dy) * 180 / .pi
         if deg < 0 { deg += 360 }
-        let L = Self.layout(count, slack: slack)
+        let L = Self.layout(count, slack: slack, tick: tickShown)
         let unit = 360 / L.total
         if let t = L.tick, d > r - lineWidth / 2 - 16, d < r + lineWidth / 2 + 30 {
             var off = abs(deg - t * unit).truncatingRemainder(dividingBy: 360)
@@ -250,6 +254,9 @@ struct JourneyWeekCard: View {
         let owed: [Owed]
         /// This week's days with no record that can be filled in (on or after the first mark ever, before today).
         let fillable: [Date]
+        /// Excused Mode is on now: the week asks nothing until it ends (owner, 2026-10-21, A) — no tick, no make-up or
+        /// fill-in asks, no "Did you pray?".
+        var excusedNow = false
         struct Owed: Equatable { let day: Date; let name: String }
     }
     @State private var model: Model?
@@ -274,7 +281,7 @@ struct JourneyWeekCard: View {
             ZStack {
                 let w = model?.week
                 JourneyGoalRing(counts: ringCounts(w), picked: picked, slack: w.map(Self.slack) ?? PrayerMetrics.strongWeekSlack,
-                                lineWidth: lineWidth) { part in
+                                lineWidth: lineWidth, tickShown: !excusedNow) { part in
                     if part != nil || picked != nil { triggerSomeVibration(type: .light) }
                     picked = part == picked ? nil : part
                 }
@@ -303,10 +310,10 @@ struct JourneyWeekCard: View {
                 .animation(.smooth(duration: CircleMotion.quick), value: lineNow)
                 .journeyFlightWords(.card)
             ZStack(alignment: .top) {
-                banked.opacity(noRecord == nil ? 1 : 0)
-                if let day = noRecord { noRecordQuestion(day).transition(.opacity) }
+                banked.opacity(asking == nil ? 1 : 0)
+                if let day = asking { noRecordQuestion(day).transition(.opacity) }
             }
-            .animation(.smooth(duration: CircleMotion.quick), value: noRecord)
+            .animation(.smooth(duration: CircleMotion.quick), value: asking)
             .padding(.top, tight ? 6 : 10)
             .journeyFlightWords(.card)
         }
@@ -348,10 +355,15 @@ struct JourneyWeekCard: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The line under the days: a picked part's own (when it has one), else the week's.
+    private var excusedNow: Bool { model?.excusedNow ?? false }
+    /// The no-record question, unless Excused Mode is on.
+    private var asking: Date? { excusedNow ? nil : noRecord }
+
+    /// The line under the days: a picked part's own (when it has one), else the week's. While Excused Mode is on, the week's
+    /// (a part's line would ask to make up or fill in).
     private var lineNow: String? {
         guard let m = model else { return nil }
-        if let p = picked {
+        if let p = picked, !m.excusedNow {
             let hint = Self.pickWords(p, week: m.week, counts: ringCounts(m.week), owed: m.owed).hint
             if !hint.isEmpty { return hint }
         }
@@ -541,25 +553,29 @@ struct JourneyWeekCard: View {
 
     /// The line under the days, the first that's true:
     /// - out of reach: the mid-week line (it names the goal; owner, 2026-10-21: "explain in regards to their goal");
-    /// - something owed: what to make up, then what to fill in, to keep the week strong;
+    /// - something owed: what to make up and what to fill in, to keep the week strong;
     /// - already enough: "A strong week, so far";
     /// - else the rule: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. "
     ///   first; on Prayed only "Don't miss a prayer").
     static func line(_ m: Model) -> String {
         let w = m.week
+        // Owner, 2026-10-21, A (over "Excused prayers are left out" and no line): it asked "Fill in Sunday…" while excused.
+        if m.excusedNow { return "Excused Mode is on. Your week picks up when it ends." }
         guard w.asked > 0 else { return "Excused prayers are left out" }
         let target = max(w.asked - slack(w), 0)
         if !w.stillPossible {
             return PrayerMetrics.midweekLine(w) ?? "This one won't be a strong week. A new one starts Sunday."
         }
-        if let first = m.owed.first {
-            return m.owed.count == 1 ? "Make up \(possessive(first.day)) \(first.name) to keep the week strong"
-                : "Make up \(m.owed.count) missed prayers to keep the week strong"
+        // Both asks when both are owed ("Make up 2 missed prayers and fill in 3 days…"): it named only the missed while
+        // Sunday to Tuesday had no record (the week ring's hand-over).
+        let make = m.owed.first.map { first in
+            m.owed.count == 1 ? "make up \(possessive(first.day)) \(first.name)" : "make up \(m.owed.count) missed prayers"
         }
-        if let day = m.fillable.first {
-            return m.fillable.count == 1 ? "Fill in \(dayName(day)) to keep the week strong"
-                : "Fill in \(m.fillable.count) days to keep the week strong"
+        let fill = m.fillable.first.map { day in
+            m.fillable.count == 1 ? "fill in \(dayName(day))" : "fill in \(m.fillable.count) days"
         }
+        let ask = [make, fill].compactMap { $0 }.joined(separator: " and ")
+        if !ask.isEmpty { return ask.prefix(1).uppercased() + ask.dropFirst() + " to keep the week strong" }
         if w.met >= target { return "A strong week, so far" }
         // The rule's own words (owner, 2026-10-21, on Your goal: "Don't miss a prayer, and keep nearly all at your goal:
         // that's a strong week"), with the hero's number; on Prayed "don't miss a prayer" is the whole of it.
@@ -706,9 +722,10 @@ struct JourneyWeekCard: View {
     /// same size, so nothing moves.
     private func read() {
         readToken += 1
-        let mine = readToken, log = log, excused = Excused.Days(), now = Date()
+        let mine = readToken, log = log, excused = Excused.Days(), now = Date(), on = Excused.isActive
         Task.detached(priority: .userInitiated) {
-            let next = Self.model(log: log, excused: excused, now: now)
+            var next = Self.model(log: log, excused: excused, now: now)
+            next.excusedNow = on
             await MainActor.run {
                 guard mine == readToken else { return }
                 if next != model { model = next; reportFlight() }

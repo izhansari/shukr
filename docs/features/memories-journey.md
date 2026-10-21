@@ -149,10 +149,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   done dot, any unmarked (to come, missed, partly) hollow (owner: "hollow gray for unmarked and filled light gray for
   marked"), no record dotted, all excused frosted, today's initial in ink; a tap opens the day's page ("tapping those days
   can just push the day ring page for now"; today only once all five are in), a dotted day its Pick sheet. One line under
-  them, the first that's true: out of reach → the mid-week line ("Your goal this week, every prayer in its window, is out of
+  them, the first that's true: Excused Mode on → "Excused Mode is on. Your week picks up when it ends." (owner, 2026-10-21,
+  A; no tick, no make-up / fill-in asks, a picked part keeps this line, no "Did you pray?"); out of reach → the mid-week line ("Your goal this week, every prayer in its window, is out of
   reach now. You've still got 19 prayers left, so make them count." — owner: "account for the messaging for when they miss
   their strong week"); a missed prayer → "Make up today's Fajr to keep the week strong" (several: "Make up N missed prayers…");
-  a no-record day → "Fill in Monday to keep the week strong"; enough already → "A strong week, so far"; else the rule in Your
+  a no-record day → "Fill in Monday to keep the week strong"; both → "Make up 2 missed prayers and fill in 3 days to keep
+  the week strong"; enough already → "A strong week, so far"; else the rule in Your
   goal's words: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. " first; on
   Prayed just "Don't miss a prayer") (a fixed 3-line slot). The last two finished weeks banked
   ("Oct 4 – 10 · 34 of 35 · strong", "· complete"); a day with no record asked in their slot ("Yesterday has no record. Did
