@@ -24,6 +24,8 @@ enum WatchStore {
         static let city = "watch.city"
         static let completed = "watch.completed", completedDay = "watch.completedDay"
         static let scores = "watch.scores"
+        /// Today's prayers the phone has marked "I don't know the time" (names): in its window, no third.
+        static let noTime = "watch.noTime"
         static let qiblaSensitivity = "watch.qiblaSensitivity"
         /// Prayers marked on this watch, shown at once until the phone reports them:
         /// name → [prayer-day start, score, tapped at].
@@ -75,6 +77,7 @@ enum WatchStore {
         set(context["completed"], Key.completed)
         set(context["completedDay"], Key.completedDay)
         set(context["scores"], Key.scores)
+        set(context["noTime"], Key.noTime)
         set(context["qiblaSensitivity"], Key.qiblaSensitivity)
         set(context["masajid"], Key.masajid)
         set(context["appearance"], Key.appearance)
@@ -302,6 +305,16 @@ enum WatchPrayers {
         return scores
     }
 
+    /// Today's prayers marked "I don't know the time" on the phone (the phone's PrayerState.inTimeNoClock), as it last
+    /// reported. A mark made on this watch has its time, so it isn't one, whatever the phone said before.
+    static func noTime(dayStart: Date) -> Set<String> {
+        let day = Calendar.current.startOfDay(for: dayStart).timeIntervalSince1970
+        guard abs(WatchStore.defaults.double(forKey: WatchStore.Key.completedDay) - day) < 1 else { return [] }
+        var names = Set(WatchStore.defaults.stringArray(forKey: WatchStore.Key.noTime) ?? [])
+        for (name, mark) in WatchStore.localMarks where abs((mark.first ?? -1) - day) < 1 { names.remove(name) }
+        return names
+    }
+
     /// The phone's Jumu'ah rule: a Friday Dhuhr marked at one of your masajid (within 100 m of
     /// where the phone last was, which is where the phone records a watch mark). Its masjid's name.
     /// `near`: the watch's own location when it has one; else the phone's last saved spot. The
@@ -403,6 +416,10 @@ enum WatchScoring {
     static func summary(forScore s: Double) -> String {
         word(forScore: s)
     }
+
+    /// A no-time mark (the phone's MarkKind): its word where a grade would go, and its fill — in its window, no third.
+    static let inTimeWord = "In its window"
+    static let inTimeColor = Color(hue: 0.36, saturation: 0.22, brightness: 0.62)
 
     /// A marked prayer's colour from its stored score (the phone's PrayerScoring.color(for:)).
     static func color(forScore s: Double) -> Color {

@@ -332,7 +332,7 @@ struct WatchPrayerList: View {
     @EnvironmentObject private var session: WatchSession
     @State private var unmarking: WatchPrayer?
     /// Rows whose time is flipped (the phone's PrayerButton `timeTap`): one still to come shows "in 2h 5m", a prayed
-    /// one its grade and score ("Middle · 88"); the current and missed ones don't flip. Back by itself after 3 s.
+    /// one its grade ("Middle", or "In its window" for a no-time mark); the current and missed ones don't flip. Back by itself after 3 s.
     @State private var flipped: Set<String> = []
     @State private var flipTokens: [String: Int] = [:]
     static let flipSeconds: TimeInterval = 3
@@ -342,10 +342,11 @@ struct WatchPrayerList: View {
         let dayStart = prayers[0].start
         let done = WatchPrayers.completed(dayStart: dayStart)
         let scores = WatchPrayers.scores(dayStart: dayStart)
+        let noTime = WatchPrayers.noTime(dayStart: dayStart)
         VStack(spacing: 0) {
             ForEach(Array(prayers.enumerated()), id: \.element.name) { index, p in
                 if index > 0 { Divider().padding(.horizontal, 10) }
-                row(p, done: done.contains(p.name), score: scores[p.name])
+                row(p, done: done.contains(p.name), score: scores[p.name], noTime: noTime.contains(p.name))
             }
         }
         #if DEBUG
@@ -379,11 +380,13 @@ struct WatchPrayerList: View {
         }
     }
 
-    /// The row's time, or what it flips to: a prayer still to come → "in 2h 5m", a prayed one → its grade and score
+    /// The row's time, or what it flips to: a prayer still to come → "in 2h 5m", a prayed one → its grade
     /// (the phone's PrayerButton `timeTap`); the current and missed ones don't flip. Never shrunk: every row's time the
     /// same size (owner: "the first four are really small, and the last one is really big" — they were scaled to fit).
-    private func flipText(_ p: WatchPrayer, future: Bool, done: Bool, score: Double?) -> String? {
-        future ? WatchPrayerRing.until(p.start, now: now) : done ? score.map { WatchScoring.summary(forScore: $0) } : nil
+    private func flipText(_ p: WatchPrayer, future: Bool, done: Bool, score: Double?, noTime: Bool) -> String? {
+        if future { return WatchPrayerRing.until(p.start, now: now) }
+        guard done else { return nil }
+        return noTime ? WatchScoring.inTimeWord : score.map { WatchScoring.summary(forScore: $0) }
     }
 
     private func timeLabel(_ p: WatchPrayer, flip: String?) -> some View {
@@ -431,10 +434,11 @@ struct WatchPrayerList: View {
         return StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [period * 0.18, period * 0.82])
     }()
 
-    private func row(_ p: WatchPrayer, done: Bool, score: Double?) -> some View {
+    /// `noTime`: marked "I don't know the time" on the phone — in its window, no third (its score is only Closing's floor).
+    private func row(_ p: WatchPrayer, done: Bool, score: Double?, noTime: Bool) -> some View {
         let future = now < p.start
         let edge = Color.secondary.opacity(future ? 0.2 : 0.5)
-        let flip = flipText(p, future: future, done: done, score: score)
+        let flip = flipText(p, future: future, done: done, score: score, noTime: noTime)
         return HStack(spacing: 0) {
             ZStack {
                 if future {
@@ -447,7 +451,7 @@ struct WatchPrayerList: View {
                     Circle().strokeBorder(edge, lineWidth: 1)
                 }
                 if done {
-                    Circle().fill(WatchScoring.color(forScore: score ?? 0).opacity(0.35)).padding(1)
+                    Circle().fill((noTime ? WatchScoring.inTimeColor : WatchScoring.color(forScore: score ?? 0)).opacity(0.35)).padding(1)
                 }
             }
             .frame(width: 12, height: 12)

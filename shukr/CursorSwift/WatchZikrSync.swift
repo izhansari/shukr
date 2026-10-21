@@ -128,6 +128,9 @@ enum WatchZikrSync {
         for prayer in marked { scores[prayer.name] = prayer.numberScore ?? 0 }
         return [
             "scores": scores,
+            // Marked "I don't know the time" (MarkKind.timeUnknown): in its window with no third. Their score is Closing's
+            // floor, so without this the watch drew them red (row 25 of the prayer-metrics list, 2026-10-21).
+            "noTime": marked.filter(\.timeUnknown).map(\.name).sorted(),
             "zikrDay": dayStart.timeIntervalSince1970,
             "zikrTasks": rows,
             // Sorted: an unchanged set must compare equal, or every save resends the context.
