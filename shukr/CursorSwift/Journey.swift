@@ -143,13 +143,15 @@ struct JourneyLog {
     var usesExcused = false
     /// The fresh start's day when the log was built (nil: none): days before it are drawn dimmed and count for nothing.
     var countsFrom: Date?
-    /// The goal its days were judged by.
-    var goal: PrayerGoal = .prayed
+    /// The goal its days were judged by. An empty log (a page's placeholder before the real one is built) is at your goal
+    /// too: it read Prayed, and anything reading `goal` early counted at Prayed for those first frames (Zoe, 2026-10-21).
+    var goal: PrayerGoal = PrayerGoal.current
 
     func day(_ date: Date) -> Day {
         let key = PrayerNotificationID.dayKey(date)
         let start = Calendar.current.startOfDay(for: date)
-        return days[key] ?? Day(key: key, date: start, counted: countsFrom.map { start >= $0 } ?? true)
+        // A day with no row is judged at the log's goal like the rest (its own default is Prayed).
+        return days[key] ?? Day(key: key, date: start, goal: goal, counted: countsFrom.map { start >= $0 } ?? true)
     }
 
 
