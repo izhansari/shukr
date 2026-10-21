@@ -90,7 +90,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 **Journey** (Journey.swift, JourneyDay.swift, JourneyMakeUp.swift; spec + phases board/mocks/journey/spec.md, mock-ups v5; Bradley builds it)
 - ☰ → Journey (`JourneyPresenter.open`, pushed on the root stack) replaces Insights and the Moments row; the day page's pill
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
-  link "journey" ("insights" too). InsightsView is kept in code, unreached. iOS 26's back button shows no page name.
+  link "journey" ("insights" too). The old Insights pages are gone (2026-10-21). iOS 26's back button shows no page name.
 - Journey on one screen (owner 2026-10-16, board/mocks/journey-v6/build-plan.md): `JourneyPage` doesn't scroll — "Journey"
   + "Since <date>" with Prayer scores' ring on its right (`JourneyMiniRing` at 54 pt, the way in: the page zooms out of it,
   `.navigationTransition(.zoom)`, and the edge swipe shrinks it back — owner 2026-10-18); the card (`JourneyHomeCard`,

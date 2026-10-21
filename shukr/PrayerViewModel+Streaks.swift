@@ -72,34 +72,11 @@ extension PrayerViewModel {
         prayer.isCompleted && PrayerGoal.current.meets(score: prayer.numberScore ?? 0)
     }
     
-    /// The in-time days streak (all five within their windows: no Qaza, none missed) and the
-    /// perfect day (all five Early), each counted once a day like the main streak. Posted after the main
-    /// streak's notification so the top bar can play them in order.
+    /// The perfect day (all five in the Opening), once a day: the list's celebration.
     private func updateDayMilestones(todayPrayers: [PrayerModel], todayStart: Date, now: Date, ranges: [ExcusedRange]) {
         func doneNames(minScore: Double) -> Set<String> {
             Set(todayPrayers.filter { $0.isCompleted && ($0.numberScore ?? 0) >= minScore - 0.0001 }.map(\.name))
         }
-        let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
-
-        // In-time days (owner, 2026-09-25: "days where there was no qaza"). The days before today
-        // were just recounted from the rows (refreshStreaksFromHistory, via checkToResetStreak);
-        // only today is added / taken back here, which is also where its celebration fires.
-        // Excused prayers count as done here too (Excused.streakDay), like the day streak.
-        let lastOnTime = PrayerDay.start(for: Date(timeIntervalSince1970: lastOnTimeStreakDate_TI))
-        let inTimeToday = Excused.streakDay(todayPrayers, ok: { ($0.numberScore ?? 0) >= PrayerScoring.inWindowFloor - 0.0001 },
-                                            ranges: ranges, touched: Excused.Days(ranges).excludes(todayStart)) == .counts
-        if inTimeToday {
-            if lastOnTime != todayStart {
-                onTimeStreak += 1
-                lastOnTimeStreakDate_TI = now.timeIntervalSince1970
-                maxOnTimeStreak = max(maxOnTimeStreak, onTimeStreak)
-                // No sparkles any more: one streak, at the goal (owner, 2026-10-18); the count stays for Your Data's bests.
-            }
-        } else if lastOnTime == todayStart {   // today had counted; a prayer was unmarked or re-timed
-            onTimeStreak = max(onTimeStreak - 1, 0)
-            lastOnTimeStreakDate_TI = yesterdayStart.timeIntervalSince1970
-        }
-
         // Perfect day: all five Early (owner, 2026-09-25 — "only when everything is green")
         if doneNames(minScore: 1).count == 5,
            PrayerDay.start(for: Date(timeIntervalSince1970: lastPerfectDay_TI)) != todayStart {
@@ -211,12 +188,11 @@ extension PrayerViewModel {
         let calendar = Calendar.current
         guard let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart) else { return }
         let five: Set<String> = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-        let inWindow = { (p: PrayerModel) in (p.numberScore ?? 0) >= PrayerScoring.inWindowFloor - 0.0001 }
 
-        // Walk back from yesterday a week at a time and stop at the first day that breaks both runs
+        // Walk back from yesterday a week at a time and stop at the first day that breaks the run
         // (a typical call reads one or two weeks of rows, not 1000 days — it runs on every Salah
         // page appear and every mark). Rows are keyed by the calendar day their prayers start on.
-        var streak = StreakWalk.Backward(), inTime = StreakWalk.Backward()
+        var streak = StreakWalk.Backward()
         var batchEnd = todayStart                     // exclusive
         var day = yesterdayStart
         // Excused days by Excused.streakDay: a partly excused day with the rest prayed adds to a run, a fully excused one is
@@ -245,20 +221,15 @@ extension PrayerViewModel {
                 if let countsFrom, day < countsFrom { break batches }
                 let dayRows = byDay[day] ?? []
                 let touched = excused.excludes(day)
-                if streak.alive {
-                    streak.add(Excused.streakDay(dayRows, ok: { self.gradingCriteria(for: $0) }, ranges: ranges, touched: touched))
-                }
-                if inTime.alive {
-                    inTime.add(Excused.streakDay(dayRows, ok: inWindow, ranges: ranges, touched: touched))
-                }
-                if !streak.alive && !inTime.alive { break batches }
+                streak.add(Excused.streakDay(dayRows, ok: { self.gradingCriteria(for: $0) }, ranges: ranges, touched: touched))
+                if !streak.alive { break batches }
                 guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break batches }
                 day = previous
             }
             batchEnd = batchStart
         }
 
-        let before = (streak: prayerStreak, inTime: onTimeStreak, maxStreak: maxPrayerStreak, maxInTime: maxOnTimeStreak)
+        let before = (streak: prayerStreak, maxStreak: maxPrayerStreak)
 
         // The day streak (by the chosen streak mode). Only changed values are written: each write
         // re-renders the views bound to these keys.
@@ -271,25 +242,15 @@ extension PrayerViewModel {
             dateOfMaxPrayerStreak = todayCounted ? now : yesterdayStart   // the day that ended the run
         }
 
-        // In-time days (all five within their windows).
-        let inTimeTodayCounted = PrayerDay.start(for: Date(timeIntervalSince1970: lastOnTimeStreakDate_TI)) == todayStart
-        let newInTime = inTimeTodayCounted ? inTime.run + 1 : inTime.run
-        if onTimeStreak != newInTime { onTimeStreak = newInTime }
-        if !inTimeTodayCounted && lastOnTimeStreakDate_TI != yesterdayStart.timeIntervalSince1970 {
-            lastOnTimeStreakDate_TI = yesterdayStart.timeIntervalSince1970
-        }
-        if onTimeStreak > maxOnTimeStreak { maxOnTimeStreak = onTimeStreak }
-
         logFirstRecount(before: before)
     }
 
-    /// Once per install: what the first history recount changed (streak, in-time days, their
-    /// maxes), so the owner can be told exactly — the log in DEBUG, one line in the app group
+    /// Once per install: what the first history recount changed (the streak and its max), so the owner can be told exactly — the log in DEBUG, one line in the app group
     /// ("streakRecount.firstRun") on any build.
-    private func logFirstRecount(before: (streak: Int, inTime: Int, maxStreak: Int, maxInTime: Int)) {
+    private func logFirstRecount(before: (streak: Int, maxStreak: Int)) {
         let key = "streakRecount.firstRun"
         guard let group = UserDefaults(suiteName: SharedStore.appGroup), group.string(forKey: key) == nil else { return }
-        let line = "\(Date().formatted(.iso8601)) streak \(before.streak)→\(prayerStreak), in-time \(before.inTime)→\(onTimeStreak), max streak \(before.maxStreak)→\(maxPrayerStreak), max in-time \(before.maxInTime)→\(maxOnTimeStreak)"
+        let line = "\(Date().formatted(.iso8601)) streak \(before.streak)→\(prayerStreak), max streak \(before.maxStreak)→\(maxPrayerStreak)"
         group.set(line, forKey: key)
         print("📊 first streak recount: \(line)")
     }

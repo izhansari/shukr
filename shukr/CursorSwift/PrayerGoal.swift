@@ -243,7 +243,9 @@ struct PrayerGoalPage: View {
                 VStack(spacing: 8) {
                     // The app's page title (Give to Causes, Fresh start): 30 pt light rounded.
                     Text("Your goal").font(.system(size: 30, weight: .light, design: .rounded))
-                    Text("Your streak grows by a day each time all five prayers meet your goal. Changing your goal recounts your past days. Your prayers' scores stay the same.")
+                    Text(MetricsLook.on
+                         ? "Your streak is strong weeks in a row: every prayer prayed, with at most three below your goal. Changing your goal recounts your past weeks."
+                         : "Your streak grows by a day each time all five prayers meet your goal. Changing your goal recounts your past days. Your prayers' scores stay the same.")
                         .font(.subheadline).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 20)
@@ -258,7 +260,7 @@ struct PrayerGoalPage: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Prayer circle, \(goal.title). Current streak \(shownStreak ?? 0) days.")
+                .accessibilityLabel("Prayer circle, \(goal.title). Current streak \(Self.streakWords(shownStreak ?? 0)).")
 
                 header.padding(.top, 18)
                 list.padding(.top, 7)
@@ -281,7 +283,7 @@ struct PrayerGoalPage: View {
             let counted = await GoalPreview.all(container: container, ranges: ranges)
             withAnimation(.easeOut(duration: 0.25)) {
                 previews = counted
-                shownStreak = counted[current]?.streak ?? 0
+                shownStreak = counted[current].map(Self.streakOf) ?? 0
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in
@@ -301,7 +303,7 @@ struct PrayerGoalPage: View {
                 .font(.system(size: 36, weight: .light, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(shownStreak ?? 0)))
-            Text("current streak")
+            Text(MetricsLook.on ? ((shownStreak ?? 0) == 1 ? "strong week" : "strong weeks") : "current streak")
                 .font(.caption2).foregroundStyle(.secondary)
         }
         .opacity(shownStreak == nil ? 0 : 1)
@@ -367,13 +369,19 @@ struct PrayerGoalPage: View {
 
     /// What Save would do to your streak, in one line (its height always kept).
     private var whatIf: String {
-        guard goal != current, let previews, let n = previews[goal]?.streak, let m = previews[current]?.streak else {
+        guard goal != current, let previews, let n = previews[goal].map(Self.streakOf),
+              let m = previews[current].map(Self.streakOf) else {
             return "Tap a goal to see what your streak would be."
         }
-        func days(_ k: Int) -> String { k == 1 ? "1 day" : "\(k) days" }
-        if n == m { return "Switching to \(goal.title) keeps your streak at \(days(m))." }
+        if n == m { return "Switching to \(goal.title) keeps your streak at \(Self.streakWords(m))." }
         if n == 0 { return "Switching to \(goal.title) starts your streak over." }
-        return "Switching to \(goal.title) makes your streak \(days(n))."
+        return "Switching to \(goal.title) makes your streak \(Self.streakWords(n))."
+    }
+
+    /// The streak this page shows: strong weeks with the rethink (MetricsLook), else days.
+    private static func streakOf(_ p: GoalPreview) -> Int { MetricsLook.on ? p.weeks : p.streak }
+    private static func streakWords(_ k: Int) -> String {
+        MetricsLook.on ? (k == 1 ? "1 strong week" : "\(k) strong weeks") : (k == 1 ? "1 day" : "\(k) days")
     }
 
     /// Save — onboarding's PrimaryButton look, faded and off until the goal tried differs from yours — and the line under
@@ -421,7 +429,7 @@ struct PrayerGoalPage: View {
     /// Reduce Motion: crossfades only.
     private func save() {
         guard goal != current, !saving else { return }
-        let newStreak = previews?[goal]?.streak
+        let newStreak = previews?[goal].map(Self.streakOf)
         savedLine = whatIf
         navLocked = true
         PrayerGoal.set(goal)
@@ -472,6 +480,8 @@ private struct SaveCheck: Shape {
 /// four, so moving the dot only reads it.
 struct GoalPreview: Equatable {
     var streak = 0
+    /// Strong weeks in a row at this goal (PrayerMetrics.strongWeeks, as the Salah bar counts them with MetricsLook).
+    var weeks = 0
     var met = 0
     var judged = 0
     var rate: Int? { judged >= 3 ? Int((Double(met) / Double(judged) * 100).rounded()) : nil }
@@ -484,7 +494,7 @@ struct GoalPreview: Equatable {
         }.value
     }
 
-    nonisolated static func count(log: JourneyLog, today: Date, excused: Excused.Days) -> [PrayerGoal: GoalPreview] {
+    nonisolated static func count(log: JourneyLog, today: Date, excused: Excused.Days, now: Date = Date()) -> [PrayerGoal: GoalPreview] {
         var out: [PrayerGoal: GoalPreview] = [:]
         let cal = Calendar.current
         for goal in PrayerGoal.allCases {
@@ -510,6 +520,9 @@ struct GoalPreview: Equatable {
                 }
                 p.streak = run
             }
+            var atGoal = log
+            atGoal.goal = goal
+            p.weeks = PrayerMetrics.strongWeeks(in: atGoal, excused: excused, now: now).current
             out[goal] = p
         }
         return out

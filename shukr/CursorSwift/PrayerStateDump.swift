@@ -54,6 +54,12 @@ enum PrayerStateDump {
         for d in log.days.values.sorted(by: { $0.key < $1.key }) {
             if let place = log.dayRank(d.date) { weeks += "# rank \(d.key) \(place)\n" }
         }
+        // Your goal's preview (each step's strong weeks, as the page counts them) and the grid's tiles (outstanding rows 3, 4).
+        let previews = GoalPreview.count(log: log, today: PrayerDay.start(for: now), excused: excused, now: now)
+        weeks += "# goalPreview" + PrayerGoal.allCases.map { " \($0.rawValue)=\(previews[$0]?.weeks ?? -1)" }.joined() + "\n"
+        for d in log.days.values.sorted(by: { $0.key < $1.key }) where d.active && !d.unfinished {
+            weeks += "# tile \(d.key) \(d.tileKind) \(d.tileStrength) \(String(format: "%.4f", log.tileRank(d)))\n"
+        }
         let weeksURL = url.deletingLastPathComponent().appending(path: "prayer-weeks.tsv")
         try? weeks.write(to: weeksURL, atomically: true, encoding: .utf8)
         print("📋 prayer weeks → \(weeksURL.path)")

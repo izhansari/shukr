@@ -82,8 +82,6 @@ struct PrayerTimesView: View {
     @State var showZikrHistory = false
     /// A session sleep mode ended: shown round the Salah circle the next time the page is up.
     @State var morningSession: SessionDataModel?
-    @State private var showInsightsPage = false
-    @State private var showOldInsights = false
     @State var showNamesPage = false
     /// The Prayers widget's times list: a marked row opens the app to "Unmark Asr?".
     @State var widgetUnmark: WidgetUnmarkRequest?
@@ -215,7 +213,7 @@ struct PrayerTimesView: View {
     // (CircleCover's closers: the stage, CircleMoments.swift.)
     var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage
-            || showZikrHistory || showInsightsPage || showOldInsights
+            || showZikrHistory
             || showNamesPage || showMantraSheetFromHomePage || JourneyPresenter.shared.open
             || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
@@ -223,7 +221,7 @@ struct PrayerTimesView: View {
     private func dismissCovers() {
         showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
         showZikrHistory = false
-        showInsightsPage = false; showOldInsights = false; showNamesPage = false
+        showNamesPage = false
         showMantraSheetFromHomePage = false; JourneyPresenter.shared.open = false
         healthCard = nil
     }
@@ -576,7 +574,6 @@ struct PrayerTimesView: View {
                 live: live,
                 showMapPage: $showMapPage, showDailyAyahPage: $showDailyAyahPage,
                 showMantrasPage: $showMantrasPage, showZikrHistory: $showZikrHistory,
-                showInsightsPage: $showInsightsPage, showOldInsights: $showOldInsights,
                 showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage
             )
             // The locked Zikr page's narration is the whole app for a moment: the bars step away (ZikrLock.focus).
@@ -880,8 +877,6 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
         .navigationDestination(isPresented: $showMantrasPage) { ZikrAreaPage(start: .azkar) }
         .navigationDestination(isPresented: $showZikrHistory) { ZikrAreaPage(start: .history) }
-        .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
-        .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
         .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }
         // Memories (PrayerMemories.swift), from the ☰ menu or the day page's link: pushed, so it swipes back (decision
         // swipe-back-pages A).

@@ -413,12 +413,11 @@ extension PrayerTimesView {
             return
         }
         if ProcessInfo.processInfo.arguments.contains("-demoDayMilestones") {
-            // Streak (fake 12) + on-time streak (fake 5) in the top bar, perfect day in the list.
+            // Streak (fake 12) in the top bar, perfect day in the list.
             try? await Task.sleep(for: .seconds(1.5))
             withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
             try? await Task.sleep(for: .seconds(1.5))
             NotificationCenter.default.post(name: .prayerStreakContinued, object: 12)
-            NotificationCenter.default.post(name: .onTimeStreakContinued, object: 5)
             NotificationCenter.default.post(name: .perfectDay, object: true)
             return
         }

@@ -24,7 +24,7 @@ extension PrayerViewModel {
         let todayStart = PrayerDay.start(for: Date())
         let savedRanges = Excused.ranges
         let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-        func run(dhuhrMissedOnFifth: Bool) -> (Int, Int) {
+        func run(dhuhrMissedOnFifth: Bool) -> Int {
             var made: [PrayerModel] = []
             var maghribOfFifth = Date(), asrOfTenth = Date()
             // Clear the 13 days first (a day's row range reaches into the next morning: clearing as we go took the
@@ -64,15 +64,15 @@ extension PrayerViewModel {
                 print("STREAKEXCUSED day -\(back): \(rows.count) rows, \(rows.filter(\.isCompleted).count) prayed → \(Excused.streakDay(rows, ok: { self.gradingCriteria(for: $0) }, ranges: ranges, touched: days.excludes(day)))")
             }
             refreshStreaksFromHistory()
-            let out = (prayerStreak, onTimeStreak)
+            let out = prayerStreak
             made.forEach { context.delete($0) }
             try? context.save()
             return out
         }
         let a = run(dhuhrMissedOnFifth: false)
-        print("STREAKEXCUSED owner's case: streak=\(a.0) inTime=\(a.1) (expected 8 / 8, today not counted)")
+        print("STREAKEXCUSED owner's case: streak=\(a) (expected 8, today not counted)")
         let b = run(dhuhrMissedOnFifth: true)
-        print("STREAKEXCUSED Dhuhr missed before the excuse: streak=\(b.0) inTime=\(b.1) (expected 3 / 3)")
+        print("STREAKEXCUSED Dhuhr missed before the excuse: streak=\(b) (expected 3)")
         Excused.save(savedRanges)
         refreshStreaksFromHistory()
         #endif
@@ -100,13 +100,11 @@ extension PrayerViewModel {
         try? context.save()
         prayerStreak = 1
         lastStreakDate = calendar.date(byAdding: .day, value: -3, to: todayStart) ?? todayStart
-        onTimeStreak = 1
-        lastOnTimeStreakDate_TI = lastStreakDate.timeIntervalSince1970
-        print("STREAKBACKFILL before: streak=\(prayerStreak) inTime=\(onTimeStreak)")
+        print("STREAKBACKFILL before: streak=\(prayerStreak)")
         checkToResetStreak()
-        print("STREAKBACKFILL after 1: streak=\(prayerStreak) inTime=\(onTimeStreak) last=\(lastStreakDate)")
+        print("STREAKBACKFILL after 1: streak=\(prayerStreak) last=\(lastStreakDate)")
         checkToResetStreak()
-        print("STREAKBACKFILL after 2: streak=\(prayerStreak) inTime=\(onTimeStreak)")
+        print("STREAKBACKFILL after 2: streak=\(prayerStreak)")
     }
 
     /// `-demoPrayerDayKeyTest` (simulator only; writes then removes rows): schema 2.8.0's reason. Today's Isha is

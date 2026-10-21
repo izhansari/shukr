@@ -48,6 +48,8 @@ struct ShukrBackup: Codable {
     }
     struct DayScore: Codable { var date: Date, averageScore: Double? }
     /// The best streaks as kept (they're recounted from the rows too, but a record can outlive its rows).
+    /// `inTimeStreak` is always 0 now (the in-time days streak is gone, prayer-metrics rethink); kept so copies made by
+    /// other versions still read.
     struct Bests: Codable { var dayStreak: Int, dayStreakDate: Date?, inTimeStreak: Int }
     struct Zikr: Codable {
         var id: UUID, name: String, fullText: String, notes: String, quickAddStep: Int, createdAt: Date, builtInID: String?
@@ -115,7 +117,7 @@ extension DataExport {
         let d = UserDefaults.standard
         let bestOn = d.double(forKey: "dateOfMaxPrayerStreak")
         b.bests = .init(dayStreak: d.integer(forKey: "maxPrayerStreak"), dayStreakDate: bestOn > 0 ? Date(timeIntervalSince1970: bestOn) : nil,
-                        inTimeStreak: d.integer(forKey: "maxOnTimeStreak"))
+                        inTimeStreak: 0)
         b.prayerGoal = PrayerGoal.current.rawValue
         b.freshStartDay = FreshStart.dayKey
         b.freshStartClearsMakeUp = FreshStart.clearsMakeUp ? true : nil
@@ -394,14 +396,7 @@ enum DataRestore {
             d.set(day, forKey: FreshStart.key)
             d.set(b.freshStartClearsMakeUp ?? false, forKey: FreshStart.makeUpKey)
         }
-        // The in-time best if it's higher in the copy; the day streak's best isn't taken from it: it's recounted from the
-        // rows after (apply).
-        if let bests = b.bests {
-            if bests.inTimeStreak > d.integer(forKey: "maxOnTimeStreak") {
-                plan.bests += 1
-                if write { d.set(bests.inTimeStreak, forKey: "maxOnTimeStreak") }
-            }
-        }
+        // The bests aren't taken from the copy: the day streak's is recounted from the rows after (apply).
         return plan
     }
 

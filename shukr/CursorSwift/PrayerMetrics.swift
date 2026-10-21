@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 // The counts every metrics screen reads (prayer-metrics rethink: board/scoring-rethink/plan-v3.md §2c, §10, §11; build plan
 // phase 4's logic, landed early so Journey's hero, Your prayers and the Salah bar can be built against it). Built on
@@ -342,5 +343,41 @@ enum GoalOffers {
         var keys = UserDefaults.standard.stringArray(forKey: key) ?? []
         keys.append(PrayerNotificationID.dayKey(weekStart))
         UserDefaults.standard.set(Array(keys.suffix(26)), forKey: key)
+    }
+}
+
+/// The Salah bar's streak with the rethink (MetricsLook; outstanding.md row 1): strong weeks in a row and the best, from
+/// `PrayerMetrics.strongWeeks` on the whole log at your goal — so the bar, Your goal and Journey can't disagree. Kept in
+/// UserDefaults so the bar reads them at once; recounted off the main thread after a mark, an edit or the day turning, and
+/// written only on change (each write re-renders the bar).
+enum StrongWeekStreak {
+    static let key = "strongWeeks"
+    static let bestKey = "strongWeeks.best"
+    /// The rules the kept count was made under (the goal and the fresh start): a count under other rules is recounted
+    /// silently, never celebrated.
+    static let rulesKey = "strongWeeks.rules"
+    /// This week's count at your goal: what the bar says while there's no streak (owner, 2026-10-21, B: a bar reading
+    /// "0 Strong Weeks" most nights puts a broken streak in front of people, which lowers repeat behaviour — Silverman &
+    /// Barasch 2023; progress toward a near target is what moves people — Koo & Fishbach).
+    static let thisWeekKey = "strongWeeks.thisWeek"
+    /// Posted when the run grows past what was kept (a week finished strong, or a make-up made last week strong): the bar
+    /// celebrates it. Never on the first count, a goal change or a fresh start.
+    static let grew = Notification.Name("strongWeeks.grew")
+
+    @MainActor static func refresh(container: ModelContainer) async {
+        let ranges = Excused.ranges
+        let log = await JourneyLog.load(container: container, ranges: ranges)
+        guard !Task.isCancelled else { return }   // a newer count is on its way
+        let counted = PrayerMetrics.strongWeeks(in: log, excused: Excused.Days(ranges))
+        let now = Date()
+        let thisWeek = PrayerMetrics.week(containing: PrayerDay.date(for: now), in: log, excused: Excused.Days(ranges), now: now).met
+        let rules = "\(log.goal.rawValue)|\(log.countsFrom.map(PrayerNotificationID.dayKey) ?? "")"
+        let d = UserDefaults.standard
+        let kept = d.string(forKey: rulesKey) == rules ? d.object(forKey: key) as? Int : nil
+        if d.object(forKey: key) as? Int != counted.current { d.set(counted.current, forKey: key) }
+        if d.object(forKey: bestKey) as? Int != counted.best { d.set(counted.best, forKey: bestKey) }
+        if d.string(forKey: rulesKey) != rules { d.set(rules, forKey: rulesKey) }
+        if d.object(forKey: thisWeekKey) as? Int != thisWeek { d.set(thisWeek, forKey: thisWeekKey) }
+        if let kept, counted.current > kept { NotificationCenter.default.post(name: grew, object: nil) }
     }
 }

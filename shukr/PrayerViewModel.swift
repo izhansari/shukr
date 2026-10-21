@@ -143,22 +143,7 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         get { return Date(timeIntervalSince1970: dateOfMaxPrayerStreakTimeInterval) }
         set { dateOfMaxPrayerStreakTimeInterval = newValue.timeIntervalSince1970 }
     }
-    /// In-time days: days in a row with all five prayed within their windows (no Qaza, none
-    /// missed; score ≥ 60), and the last day that counted. Keys keep their old "onTime" names.
-    /// (Was all five Early / On time until 2026-09-25.)
-    var onTimeStreak: Int {
-        get { access(keyPath: \.onTimeStreak); return Self.standard.object(forKey: "onTimeStreak") as? Int ?? 0 }
-        set { withMutation(keyPath: \.onTimeStreak) { Self.standard.set(newValue, forKey: "onTimeStreak") } }
-    }
-    var maxOnTimeStreak: Int {
-        get { access(keyPath: \.maxOnTimeStreak); return Self.standard.object(forKey: "maxOnTimeStreak") as? Int ?? 0 }
-        set { withMutation(keyPath: \.maxOnTimeStreak) { Self.standard.set(newValue, forKey: "maxOnTimeStreak") } }
-    }
-    var lastOnTimeStreakDate_TI: Double {
-        get { access(keyPath: \.lastOnTimeStreakDate_TI); return Self.standard.object(forKey: "lastOnTimeStreakDate") as? Double ?? 0 }
-        set { withMutation(keyPath: \.lastOnTimeStreakDate_TI) { Self.standard.set(newValue, forKey: "lastOnTimeStreakDate") } }
-    }
-    /// Last day celebrated as a perfect day (all five within their windows), so it fires once.
+    /// Last day celebrated as a perfect day (all five in the Opening), so it fires once.
     var lastPerfectDay_TI: Double {
         get { access(keyPath: \.lastPerfectDay_TI); return Self.standard.object(forKey: "lastPerfectDay") as? Double ?? 0 }
         set { withMutation(keyPath: \.lastPerfectDay_TI) { Self.standard.set(newValue, forKey: "lastPerfectDay") } }
@@ -957,9 +942,7 @@ extension Notification.Name {
     /// Posted once when today's five prayers continue the streak; the top bar celebrates it.
     /// (object: an Int only from the DEBUG test triggers — a fake streak to show.)
     static let prayerStreakContinued = Notification.Name("prayerStreakContinued")
-    /// Posted once when all five were Early / On time today; the top bar celebrates it.
-    static let onTimeStreakContinued = Notification.Name("onTimeStreakContinued")
-    /// Posted once when all five were Early today; the list celebrates it.
+    /// Posted once when all five were in the Opening today; the list celebrates it.
     static let perfectDay = Notification.Name("perfectDay")
 }
 

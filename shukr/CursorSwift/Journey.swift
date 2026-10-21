@@ -98,6 +98,16 @@ struct JourneyLog {
             guard due > 0 else { return 0 }
             return Int((marks.reduce(0) { $0 + ($1.score ?? 0) } / Double(due) * 100).rounded())
         }
+        /// With the rethink (MetricsLook) a tile's strength is its place in the day order instead (`rankKey`: prayed, then
+        /// in its window, then fewest in Closing — no score), 0…215; a prayer still to come counts as at its best, as
+        /// `tileKind` reads it.
+        var tileOrder: Int {
+            let open = marks.filter { $0 == .toCome }.count
+            let k = rankKey
+            return (k.prayed + open) * 36 + (k.inTime + open) * 6 + k.notClosing
+        }
+        /// What a tile is shaded by: `tileOrder` with MetricsLook, else `tileScore`.
+        var tileStrength: Int { MetricsLook.on ? tileOrder : tileScore }
         /// The kind a tile draws: a finished day's own; today, before its last prayer, by what's been due so far — one
         /// still to come is neither missed nor late (owner, 2026-10-16: "make it so that the current day tile doesn't look
         /// gray").
@@ -223,8 +233,6 @@ struct JourneyLog {
         var scoreSum = 0.0
         /// The average score of the prayers due, 0…100 (nil before anything's due).
         var averageScore: Int? { due == 0 ? nil : Int((scoreSum / Double(due) * 100).rounded()) }
-        /// The day with the best score (the mean of its five, an unprayed one 0; the latest of a tie), 0…100.
-        var bestDay: (date: Date, score: Int)?
         /// Per prayer (Fajr … Isha): prayed and due.
         var perPrayer = Array(repeating: (prayed: 0, due: 0), count: 5)
     }
@@ -264,22 +272,25 @@ struct JourneyLog {
 
     /// A tile's place on its kind's scale, 0…1 (1 with nothing to compare against yet).
     func tileRank(_ d: Day) -> Double {
-        tileRanks[d.tileKind]?[min(max(d.tileScore, 0), 100)] ?? 1
+        tileRanks[d.tileKind]?[min(max(d.tileStrength, 0), Self.tileScale)] ?? 1
     }
+
+    /// The top of `tileStrength` (`tileOrder`'s; a score's is 100).
+    private static let tileScale = 215
 
     private static func ranks(_ days: Dictionary<String, Day>.Values) -> [YourJourneyStats.Kind: [Double]] {
         var scores: [YourJourneyStats.Kind: [Int]] = [:]
-        for d in days where d.active && !d.unfinished { scores[YourJourneyStats.kind(d), default: []].append(d.tileScore) }
+        for d in days where d.active && !d.unfinished { scores[YourJourneyStats.kind(d), default: []].append(d.tileStrength) }
         return scores.mapValues { list in
             let mine = list.sorted()
-            var table = [Double](repeating: 1, count: 101)
+            var table = [Double](repeating: 1, count: tileScale + 1)
             // Your days below this score out of every day below your best: not a mid-rank (that put a best day many
             // share at ~70 %).
             let top = mine.last ?? 0
             let underTop = mine.prefix { $0 < top }.count
             guard underTop > 0 else { return table }
             var i = 0
-            for s in 0...100 {
+            for s in 0...tileScale {
                 while i < mine.count, mine[i] < s { i += 1 }
                 table[s] = min(1, Double(i) / Double(underTop))
             }
@@ -298,8 +309,6 @@ struct JourneyLog {
             m.inTime += d.inTime
             if d.metGoal { m.metGoalDays += 1 }
             if d.allFive { m.allFiveDays += 1 }
-            let dayScore = Int((d.marks.reduce(0) { $0 + ($1.score ?? 0) } / 5 * 100).rounded())
-            if dayScore >= (m.bestDay?.score ?? -1) { m.bestDay = (date, dayScore) }
             for (i, mark) in d.marks.enumerated() {
                 m.scoreSum += mark.score ?? 0
                 if mark.done { m.perPrayer[i].prayed += 1 }
@@ -329,21 +338,18 @@ enum JourneyHighlight: Equatable {
     /// The month's legend (owner, 2026-10-16: "In time · With Qaza · Incomplete … tapping any one focuses those rings";
     /// the goal's words since 2026-10-18): all five prayed but under the goal; a day with prayers that isn't finished.
     case belowGoal, incomplete
-    /// The month's best-scored day(s): every day with that score, a tie lighting each (a tap on the average score — owner).
-    case bestScore(Int)
     func matches(_ d: JourneyLog.Day) -> Bool {
         switch self {
         case .metGoal: d.metGoal
         case .allFive: d.allFive
         case .belowGoal: d.allFive && !d.metGoal
         case .incomplete: d.active && !d.allFive
-        case .bestScore(let score): d.active && d.dayScore == score
         }
     }
 }
 
 extension JourneyLog.Day {
-    /// The mean of its five scores, an unprayed one 0, 0…100 (JourneyLog.Month.bestDay's measure).
+    /// The mean of its five scores, an unprayed one 0, 0…100.
     var dayScore: Int { Int((marks.reduce(0) { $0 + ($1.score ?? 0) } / 5 * 100).rounded()) }
     /// How it ranks against other days: prayed, then in its time, then fewest in Closing (an excused prayer counts as
     /// done, as `allFive` does). Compared as a tuple, largest first.

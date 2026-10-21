@@ -599,10 +599,7 @@ struct SalahPlayButton: View {
             Button("Good morning (after sleep)", systemImage: "moon.zzz") { post(SalahLookPlay.morning) }
             Button("No location", systemImage: "location.slash") { after { location.playLostPreview() } }
             Button("Perfect day", systemImage: "star") { playPerfectDay() }
-            Button("Streaks", systemImage: "flame") {
-                post(.prayerStreakContinued, 12)
-                post(.onTimeStreakContinued, 5)
-            }
+            Button("Streaks", systemImage: "flame") { post(.prayerStreakContinued, 12) }
         } label: {
             ChromeIcon(systemName: "play.circle")
         }
@@ -622,7 +619,7 @@ struct SalahPlayButton: View {
             case "morning": post(SalahLookPlay.morning)
             case "perfect": playPerfectDay()
             case "lost": after { location.playLostPreview() }
-            case "streaks": post(.prayerStreakContinued, 12); post(.onTimeStreakContinued, 5)
+            case "streaks": post(.prayerStreakContinued, 12)
             default: break
             }
         }

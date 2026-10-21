@@ -862,56 +862,45 @@ extension Color {
 // MARK: - Prayer Views
 
 // MARK: - Streak label
-/// "♥ 12 Day Streak" in the top bar. A tap steps it to "✦ 4 In-Time Days" (all five prayed
-/// within their windows — no Qaza), then "Max 20 Days", then back; it returns to the streak on its own after 3 s.
-/// Celebrations, each when its `…Celebration` counter bumps:
-/// - streak continued: the heart bounces and goes green, little hearts float up, the number
-///   rolls up from yesterday's to today's, success haptic;
-/// - on-time streak continued: right after that (or on its own), it flips to the on-time
-///   count, sparkles float up, the number rolls up, a second success haptic.
+/// "♥ 12 Day Streak" in the top bar ("♥ 7 Strong Weeks" with the rethink, `weeks`). A tap steps it to "Max 20 Days",
+/// then back; it returns to the streak on its own after 3 s. When `celebration` bumps (the streak continued): the heart bounces and goes green, little hearts float up,
+/// the number rolls up from yesterday's to today's, success haptic.
 struct StreakLabel: View {
     let streak: Int
     let maxStreak: Int
-    let onTimeStreak: Int
+    /// Strong weeks in a row (MetricsLook: the streak is weekly, plan-v3 §9.1), not days.
+    var weeks = false
+    /// Weekly with no streak yet: this week's count and its goal words instead of "0 Strong Weeks" ("28 in their windows
+    /// this week" — StrongWeekStreak.thisWeekKey says why).
+    var thisWeek: (count: Int, words: String)?
     let celebration: Int
-    let onTimeCelebration: Int
     var onTap: () -> Void = {}
 
-    private enum Mode { case streak, onTime, max }
+    private enum Mode { case streak, max }
     @State private var mode: Mode = .streak
     @State private var revert: Task<Void, Never>?
     @State private var streakRun: Task<Void, Never>?
-    @State private var onTimeRun: Task<Void, Never>?
     @State private var shownStreak: Int?
-    @State private var shownOnTime: Int?
     @State private var celebrating = false
     @State private var heartBurst = 0
-    @State private var sparkleBurst = 0
-
-    /// When the on-time beat plays after the streak's, this long after the streak's starts.
-    private static let secondBeatDelay: Double = 2.4
-
-    private var icon: String { mode == .onTime ? "sparkles" : "heart.fill" }
 
     var body: some View {
         HStack(alignment: .center) {
-            Image(systemName: icon)
+            Image(systemName: "heart.fill")
                 .foregroundColor(celebrating ? .green : .secondary)
-                .symbolEffect(.bounce, value: heartBurst + sparkleBurst)
-                .contentTransition(.symbolEffect(.replace))
-                .overlay {
-                    FloatingSymbols(symbol: "heart.fill", trigger: heartBurst)
-                    FloatingSymbols(symbol: "sparkle", trigger: sparkleBurst)
-                }
+                .symbolEffect(.bounce, value: heartBurst)
+                .overlay { FloatingSymbols(symbol: "heart.fill", trigger: heartBurst) }
             Group {
                 switch mode {
                 case .streak:
-                    count(shownStreak ?? streak, " Day Streak")
-                case .onTime:
-                    let n = shownOnTime ?? onTimeStreak
-                    count(n, n == 1 ? " In-Time Day" : " In-Time Days")
+                    let n = shownStreak ?? streak
+                    if weeks, streak == 0, shownStreak == nil, let thisWeek {
+                        count(thisWeek.count, " \(thisWeek.words) this week")
+                    } else {
+                        count(n, weeks ? (n == 1 ? " Strong Week" : " Strong Weeks") : " Day Streak")
+                    }
                 case .max:
-                    Text("Max \(maxStreak) Days").transition(.blurReplace)
+                    Text("Max \(maxStreak) \(weeks ? (maxStreak == 1 ? "Week" : "Weeks") : "Days")").transition(.blurReplace)
                 }
             }
             .fixedSize()
@@ -926,13 +915,6 @@ struct StreakLabel: View {
             show(next, for: next == .streak ? nil : 3)
         }
         .onChange(of: celebration) { _, _ in celebrate { await celebrateStreak() } }
-        .onChange(of: onTimeCelebration) { _, _ in
-            // Just after the streak's own beat when both fire together (they usually do).
-            celebrate(onTime: true) {
-                guard await CircleGate.pause(Self.secondBeatDelay) else { return }
-                await celebrateOnTime()
-            }
-        }
     }
 
     private func count(_ n: Int, _ suffix: String) -> some View {
@@ -954,12 +936,11 @@ struct StreakLabel: View {
         }
     }
 
-    /// One sequence per celebration (they were `asyncAfter` chains, never cancelled — tr-final): a newer one of the
-    /// same kind replaces it, ended where it stands.
-    private func celebrate(onTime: Bool = false, _ steps: @escaping @MainActor () async -> Void) {
-        if onTime { onTimeRun?.cancel() } else { streakRun?.cancel() }
-        let run = Task { @MainActor in await steps() }
-        if onTime { onTimeRun = run } else { streakRun = run }
+    /// One sequence per celebration (they were `asyncAfter` chains, never cancelled — tr-final): a newer one replaces
+    /// it, ended where it stands.
+    private func celebrate(_ steps: @escaping @MainActor () async -> Void) {
+        streakRun?.cancel()
+        streakRun = Task { @MainActor in await steps() }
     }
 
     private func celebrateStreak() async {
@@ -974,21 +955,6 @@ struct StreakLabel: View {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         withAnimation(T.roll) { shownStreak = streak }   // …and roll up to today's
         _ = await CircleGate.pause(T.heldDuration - T.rollAfterDuration)
-        withAnimation(T.settle) { celebrating = false }
-    }
-
-    private func celebrateOnTime() async {
-        typealias T = CircleMotion.Streak
-        guard onTimeStreak > 0 else { return }
-        shownOnTime = max(onTimeStreak - 1, 0)
-        defer { shownOnTime = nil }
-        show(.onTime, for: T.heldDuration)
-        withAnimation(T.lightUp) { celebrating = true }
-        guard await CircleGate.pause(T.onTimeRollAfterDuration) else { celebrating = false; return }
-        sparkleBurst += 1
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        withAnimation(T.roll) { shownOnTime = onTimeStreak }
-        _ = await CircleGate.pause(T.heldDuration - T.onTimeRollAfterDuration)
         withAnimation(T.settle) { celebrating = false }
     }
 }
@@ -1040,7 +1006,11 @@ struct TopBar: View {
     
     @AppStorage("prayerStreak") var prayerStreak: Int = 0 //prayerstreak_flag
     @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
-    @AppStorage("onTimeStreak") var onTimeStreak: Int = 0
+    /// With the rethink (MetricsLook) the streak is strong weeks in a row (StrongWeekStreak).
+    @AppStorage(StrongWeekStreak.key) var strongWeeks: Int = 0
+    @AppStorage(StrongWeekStreak.bestKey) var bestStrongWeeks: Int = 0
+    @AppStorage(StrongWeekStreak.thisWeekKey) var thisWeek: Int = 0
+    private var weekly: Bool { MetricsLook.on }
 
     /// Tapping the city swaps it for the streak for a few seconds (same slide + fade the streak
     /// label used before it was parked). A continued streak shows it too, with a celebration.
@@ -1050,8 +1020,8 @@ struct TopBar: View {
     /// DEBUG only: the "Test Streak Celebration" menu row / -demoStreakCelebration post a fake
     /// streak (the notification's object) so the roll-up is visible; the real one is untouched.
     @State private var demoStreak: Int?
-    @State private var onTimeCelebration = 0
-    @State private var demoOnTime: Int?
+    /// Bumped by a goal or fresh-start change, which recounts the weeks silently (it bumps no `revision` — Frank's check).
+    @State private var rulesTick = 0
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1107,9 +1077,10 @@ struct TopBar: View {
                         .allowsHitTesting(!streakShowing)
 
                         // streak label //prayerstreak_flag
-                        StreakLabel(streak: demoStreak ?? max(prayerStreak, 0), maxStreak: max(maxPrayerStreak, demoStreak ?? 0),
-                                    onTimeStreak: demoOnTime ?? onTimeStreak,
-                                    celebration: streakCelebration, onTimeCelebration: onTimeCelebration) {
+                        StreakLabel(streak: demoStreak ?? (weekly ? strongWeeks : max(prayerStreak, 0)),
+                                    maxStreak: max(weekly ? bestStrongWeeks : maxPrayerStreak, demoStreak ?? 0),
+                                    weeks: weekly, thisWeek: weekly && demoStreak == nil ? (thisWeek, PrayerGoal.current.countWords) : nil,
+                                    celebration: streakCelebration) {
                             revealStreak(for: 5)   // a tap on it keeps it up a little longer
                         }
                         .opacity(streakShowing ? 1 : 0)
@@ -1121,23 +1092,33 @@ struct TopBar: View {
                     .frame(height: 24, alignment: .center)
                     .animation(CircleMotion.label, value: dayIsDone)
                     .onReceive(NotificationCenter.default.publisher(for: .prayerStreakContinued)) { note in
+                        // Weekly, a complete day isn't the streak growing (a DEBUG fake still plays).
+                        guard !weekly || note.object != nil else { return }
                         demoStreak = note.object as? Int
                         streakCelebration += 1
                         revealStreak(for: 5)
                     }
-                    .onReceive(NotificationCenter.default.publisher(for: .onTimeStreakContinued)) { note in
-                        demoOnTime = note.object as? Int
-                        onTimeCelebration += 1
-                        revealStreak(for: 8)   // long enough for both beats
+                    .onReceive(NotificationCenter.default.publisher(for: StrongWeekStreak.grew)) { _ in
+                        guard weekly else { return }
+                        streakCelebration += 1
+                        revealStreak(for: 5)
+                    }
+                    // The weeks recounted after a mark, an edit or the day turning (all bump `revision`), and after a goal or
+                    // fresh-start change (StrongWeekStreak's rules key keeps that one silent).
+                    .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in rulesTick += 1 }
+                    .task(id: [viewModel.revision, rulesTick]) {
+                        guard weekly else { return }
+                        try? await Task.sleep(for: .seconds(0.3))
+                        guard !Task.isCancelled else { return }
+                        await StrongWeekStreak.refresh(container: context.container)
                     }
                     // A fake streak (DEBUG's celebration) goes after 8 s; a newer one restarts the wait (it was an
                     // un-cancelled timer: audit D, finding 14).
-                    .task(id: [streakCelebration, onTimeCelebration]) {
-                        guard demoStreak != nil || demoOnTime != nil else { return }
+                    .task(id: streakCelebration) {
+                        guard demoStreak != nil else { return }
                         try? await Task.sleep(for: .seconds(8))
                         guard !Task.isCancelled else { return }
                         demoStreak = nil
-                        demoOnTime = nil
                     }
                     #if DEBUG
                     .task {
@@ -1145,7 +1126,6 @@ struct TopBar: View {
                         guard ProcessInfo.processInfo.arguments.contains("-demoStreakCelebration") else { return }
                         try? await Task.sleep(for: .seconds(2.5))
                         NotificationCenter.default.post(name: .prayerStreakContinued, object: 12)
-                        NotificationCenter.default.post(name: .onTimeStreakContinued, object: 5)
                     }
                     #endif
                 } else {
@@ -1217,9 +1197,8 @@ extension CircleMotion {
     enum Streak {
         static let lightUp = Animation.easeOut(duration: 0.25)
         static let rollAfterDuration: Double = 0.45
-        static let onTimeRollAfterDuration: Double = 0.5
         static let roll = Animation.spring(response: 0.45, dampingFraction: 0.7)
-        /// Lit, from its start to settling (the in-time days show this long too).
+        /// Lit, from its start to settling.
         static let heldDuration: Double = 3.2
         static let settle = Animation.easeInOut(duration: 0.6)
     }
