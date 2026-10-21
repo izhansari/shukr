@@ -262,7 +262,7 @@ struct DayCentre: View {
                     .monospacedDigit()
                     .contentTransition(.numericText())
                 Text(due == 0 ? (yesterday ? "yesterday · nothing asked" : "nothing asked")
-                     : showsRank && rank?.place == 1 && rank?.tiedWith == 0 ? "your best day yet"
+                     : showsRank && rank?.place == 1 ? (rank?.tiedWith == 0 ? "your best day yet" : "one of your best days")
                      : yesterday ? "yesterday · in their time" : "in their time")
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
