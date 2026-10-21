@@ -712,6 +712,7 @@ struct PrayerScoresPage: View {
             detailShown = false
             dialRingAll = false
             dialing = false
+            ringOpen = nil   // folded: nothing unfolds any more (Frank's tidy)
         }
         pendingSwitch = nil   // a fifth tapped on the way back: there's no prayer to switch from now
         busy = false

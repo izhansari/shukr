@@ -242,15 +242,18 @@ struct JourneyWeekCard: View {
         day.states == nil && day.date < PrayerDay.start() && (log.firstDay.map { day.date >= $0 } ?? false)
     }
 
-    /// The picked day's words: "Tuesday" over "4 of 5 prayed" (or "all five prayed", "no record", "to come", "excused").
+    /// The picked day's words: "Tuesday" over "4 of 5 prayed" (or "all five prayed", "2 prayed · 3 to come", "no record", "excused").
     private func pickedWords(_ m: Model, _ i: Int) -> (title: String, line: String, opens: Bool, fills: Bool) {
         let day = m.week.days[i]
         let line: String
         if let states = day.states {
             let prayed = states.filter(\.prayed).count, due = states.filter { $0 != .excused }.count
-            line = states.allSatisfy { $0 == .toCome } ? "to come"
+            let toCome = states.filter { $0 == .toCome }.count
+            // Today mid-day: "1 prayed · 4 to come", never "1 of 5" (it read as 4 missed — Frank's check).
+            line = toCome == 5 ? "to come"
                 : due == 0 ? "excused"
                 : JourneyWeekRing.allPrayed(day) ? (due == 5 ? "all five prayed" : "all \(due) prayed")
+                : toCome > 0 ? "\(prayed) prayed · \(toCome) to come"
                 : "\(prayed) of \(due) prayed"
         } else {
             line = "no record"
