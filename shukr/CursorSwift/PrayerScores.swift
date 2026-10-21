@@ -562,21 +562,13 @@ struct PrayerScoresPage: View {
             withAnimation(motion(.smooth(duration: 0.4))) { data = next }
             return
         }
-        swapToken += 1
-        let token = swapToken
-        Task { @MainActor in
-            withAnimation(motion(.easeOut(duration: 0.12))) {
-                linesFaded = true
-                detailShown = false
-            }
-            await beat(0.13)
-            guard token == swapToken else { data = next; return }   // a fifth tapped meanwhile: its swap shows it
+        // Open: everything stays and moves to the new span in one go — numbers roll, the ring's dot turns, the chart's
+        // columns grow or drain, rows that come or go slide in or out (owner, 2026-10-21: "it just takes everything out goes
+        // blank and puts it back in. lets shift or add things nicely"; was: out 0.12, swap, in 0.2).
+        withAnimation(motion(.smooth(duration: 0.45))) {
+            data = next
             focus = nil
-            withAnimation(motion(.easeOut(duration: 0.2))) {
-                data = next
-                linesFaded = false
-                detailShown = true
-            }
+            slotPick = nil
         }
     }
 
@@ -841,6 +833,7 @@ struct PrayerScoresPage: View {
     private func ringPair(_ big: String, _ small: String) -> some View {
         VStack(spacing: 2) {
             Text(big).font(.system(size: 50, weight: .thin, design: .rounded)).monospacedDigit()
+                .contentTransition(.numericText())   // a new span's % rolls
                 .lineLimit(1).minimumScaleFactor(0.7)
             Text(small).font(.system(size: 16, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -865,32 +858,23 @@ struct PrayerScoresPage: View {
 
     /// Two lines under the ring, on both pages: what it covers / when you usually pray it, then the 7 / 30 day trend.
     private var lines: some View {
-        ZStack(alignment: .topLeading) {
-            usualLines.opacity(slotPick == nil ? 1 : 0)
-            if let k = slotPick, let s = shown, let p = data.prayers[s] {
-                // In the usual lines' room (they stay laid out underneath): nothing below moves.
-                Text(slotLine(p, k))
-                    .font(.system(size: 14, weight: .light, design: .rounded))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .transition(.opacity)
-            }
-        }
-        .opacity(linesFaded ? 0 : 1)
+        usualLines.opacity(linesFaded ? 0 : 1)
     }
 
-    /// "38 prayers (12%) · 10–20 min after it starts · Middle" (owner, 2026-10-17, his wording), or "· made up as Qaza".
+    /// "16–33 min after it starts · 41 prayers (9%)" — the minutes first, the count and share last, no grade word (its bar
+    /// says it; owner, 2026-10-18: "it doesn't need to say the score … 16 to 33 minutes after it starts should come first. And
+    /// then we should end it with the 41 prayers, 9%"), or "Made up after it ended · …".
     private func slotLine(_ p: PrayerScores.Prayer, _ k: Int) -> String {
         let (counts, qaza) = PrayerScoresChart.slotCounts(p)
         let n = k == PrayerScoresChart.qazaSlot ? qaza : (counts.indices.contains(k) ? counts[k] : 0)
         let total = max(1, p.positions.count)
-        let head = "\(n) prayer\(n == 1 ? "" : "s") (\(Int((Double(n) / Double(total) * 100).rounded()))%)"
-        if k == PrayerScoresChart.qazaSlot { return head + " · made up as Qaza" }
-        let grade = PrayerScoresChart.zone((Double(k) + 0.5) / Double(PrayerScoresChart.slots), p).word
-        guard let w = p.window, w > 0 else { return "\(head) · \(grade)" }
+        let tail = "\(n) prayer\(n == 1 ? "" : "s") (\(Int((Double(n) / Double(total) * 100).rounded()))%)"
+        if k == PrayerScoresChart.qazaSlot { return "Made up after it ended · " + tail }
+        guard let w = p.window, w > 0 else { return tail }
         let minutes = w / 60
         let a = Int((Double(k) / Double(PrayerScoresChart.slots) * minutes).rounded())
         let b = Int((Double(k + 1) / Double(PrayerScoresChart.slots) * minutes).rounded())
-        return "\(head) · \(Self.span(a, b)) after it starts · \(grade)"
+        return "\(Self.span(a, b)) after it starts · \(tail)"
     }
 
     /// "10–20 min", "1 h 10–1 h 30 min".
@@ -1138,7 +1122,6 @@ struct PrayerScoresPage: View {
                 Group {
                     if let p, !p.positions.isEmpty {
                         PrayerScoresChart(prayer: p, per: per, big: false, focus: nil)
-                            .id(data.span)   // a new span's chart cross-fades in
                             .transition(.opacity)
                     } else {
                         Color.clear
@@ -1176,8 +1159,6 @@ struct PrayerScoresPage: View {
                     }
                     let per = PrayerScoresChart.perDot([p], big: true)
                     PrayerScoresChart(prayer: p, per: per, big: true, focus: focus, slot: slotPick)
-                        .id(data.span)
-                        .transition(.opacity)
                         // As tall as its own tallest column, up to 150: short columns left an empty band under "1 dot =
                         // 1 prayer" (owner, 2026-10-17: "a lot of empty space between the histogram and the priors label").
                         .frame(height: PrayerScoresChart.fittedHeight(p, per: per, big: true))
@@ -1226,19 +1207,33 @@ struct PrayerScoresPage: View {
         }
     }
 
+    /// Under the chart: what it holds, a chip's grade, or the picked slot's answer in the same place — the old line fades
+    /// out and the answer in (owner, 2026-10-18: "that text underneath the histogram … I think that area can be the same
+    /// place … shows that histogram selection text. Like we fade out the other one and put this one in"). The line itself
+    /// leaves the missed count to the To make up row ("get rid of amount missed in the line and only keep it as the to make
+    /// up list item").
     private func chartLine(_ p: PrayerScores.Prayer) -> some View {
-        Group {
-            if let f = focus {
-                // "Closing: 36 of 79 prayed" ("36 Closing of 79 prayed" didn't read once the words were Middle / Closing).
-                Text("\(f.word): \(p.grades[f] ?? 0)").fontWeight(.regular)
-                + Text(" of \(p.prayed) prayed").foregroundStyle(.secondary)
-            } else {
-                Text("\(p.prayed) prayed").foregroundStyle(.primary)
-                + Text("\(sinceWords.map { " \($0)" } ?? "") · \(p.missed) missed").foregroundStyle(.secondary)
+        ZStack {
+            Group {
+                if let f = focus {
+                    // "Closing: 36 of 79 prayed" ("36 Closing of 79 prayed" didn't read once the words were Middle / Closing).
+                    Text("\(f.word): \(p.grades[f] ?? 0)").fontWeight(.regular)
+                    + Text(" of \(p.prayed) prayed").foregroundStyle(.secondary)
+                } else {
+                    Text("\(p.prayed) prayed").foregroundStyle(.primary)
+                    + Text(sinceWords.map { " \($0)" } ?? "").foregroundStyle(.secondary)
+                }
+            }
+            .contentTransition(.numericText())
+            .opacity(slotPick == nil ? 1 : 0)
+            if let k = slotPick {
+                Text(slotLine(p, k))
+                    .contentTransition(.numericText())
+                    .transition(.opacity)
             }
         }
         .font(.system(size: 15, weight: .light, design: .rounded))
-        .contentTransition(.opacity)
+        .lineLimit(1).minimumScaleFactor(0.75)
     }
 
     private func chips(_ p: PrayerScores.Prayer) -> some View {
@@ -1290,7 +1285,9 @@ struct PrayerScoresPage: View {
                 Image(systemName: symbol).font(.system(size: 19, weight: .light)).foregroundStyle(.secondary).frame(width: 30)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 16, weight: .light, design: .rounded)).fixedSize(horizontal: false, vertical: true)
+                        .contentTransition(.numericText())
                     Text(sub).font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
                 }
                 Spacer(minLength: 8)
                 if door { Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.sage) }
@@ -1327,13 +1324,46 @@ private extension View {
 /// A prayer's lifetime as neat blocks of dots on its window's colour bar (owner: "clean, tidy, organized"): 14 slots across
 /// the window, each slot a block a few dots wide, one dot standing for `per` prayers so the tallest block fits; Qaza is its
 /// own block past the end. A focused grade keeps its stretch of the bar and its dots dark and fades the rest.
-struct PrayerScoresChart: View {
+struct PrayerScoresChart: View, Animatable {
     let prayer: PrayerScores.Prayer
     let per: Int
     let big: Bool
     let focus: PrayerScores.Grade?
     /// One picked slot (0…13, or `qazaSlot`): its dots and its stretch of the bar stay, the rest fade.
     var slot: Int? = nil
+    /// Each slot's dots (the window's 14, then Qaza's), animatable: a new span's columns grow or drain a dot at a time, the
+    /// one in between fading (owner, 2026-10-21, on the span switch: "it just takes everything out goes blank and puts it
+    /// back in. lets shift or add things nicely").
+    var dots: DotColumns
+    var animatableData: DotColumns {
+        get { dots }
+        set { dots = newValue }
+    }
+
+    init(prayer: PrayerScores.Prayer, per: Int, big: Bool, focus: PrayerScores.Grade?, slot: Int? = nil) {
+        self.prayer = prayer
+        self.per = per
+        self.big = big
+        self.focus = focus
+        self.slot = slot
+        let (counts, qaza) = Self.slotCounts(prayer)
+        dots = DotColumns(v: (counts + [qaza]).map { n in n == 0 ? 0 : Double(max(1, Int((Double(n) / Double(per)).rounded()))) })
+    }
+
+    /// Several numbers as one animatable value (columns missing on one side count as 0).
+    struct DotColumns: VectorArithmetic {
+        var v: [Double]
+        static var zero: DotColumns { DotColumns(v: []) }
+        private static func zip(_ a: DotColumns, _ b: DotColumns, _ f: (Double, Double) -> Double) -> DotColumns {
+            let n = max(a.v.count, b.v.count)
+            return DotColumns(v: (0..<n).map { f($0 < a.v.count ? a.v[$0] : 0, $0 < b.v.count ? b.v[$0] : 0) })
+        }
+        static func + (a: DotColumns, b: DotColumns) -> DotColumns { zip(a, b, +) }
+        static func - (a: DotColumns, b: DotColumns) -> DotColumns { zip(a, b, -) }
+        mutating func scale(by rhs: Double) { v = v.map { $0 * rhs } }
+        var magnitudeSquared: Double { v.reduce(0) { $0 + $1 * $1 } }
+        subscript(_ i: Int) -> Double { i < v.count ? max(0, v[i]) : 0 }
+    }
 
     static let slots = 14
     static let qazaSlot = slots
@@ -1437,33 +1467,29 @@ struct PrayerScoresChart: View {
             ctx.stroke(dash, with: .color(Color.secondary.opacity(focus == .qaza || slot == Self.qazaSlot ? 0.7 : slot != nil ? 0.15 : 0.35)),
                        style: StrokeStyle(lineWidth: big ? 2 : 1.4, dash: [2, 4]))
 
-            // Blocks inside the window.
-            var counts = Array(repeating: 0, count: Self.slots)
-            var qaza = 0
-            for v in prayer.positions {
-                if v > 1 { qaza += 1 } else { counts[min(Self.slots - 1, max(0, Int(v * Double(Self.slots))))] += 1 }
-            }
+            // Blocks inside the window: whole dots, and the one a column is growing into (or draining) at its share.
             let dotOpacity = big ? 0.8 : 0.72
-            for (k, n) in counts.enumerated() where n > 0 {
-                let dots = min(wide * tall, max(1, Int((Double(n) / Double(per)).rounded())))
+            func column(_ d: Double, cap: Int, _ at: (Int) -> CGPoint, _ opacity: Double) {
+                let whole = min(cap, Int(d)), part = whole < cap ? d - Double(Int(d)) : 0
+                for i in 0..<(whole + (part > 0.02 ? 1 : 0)) {
+                    let c = at(i)
+                    ctx.fill(Path(ellipseIn: CGRect(x: c.x - m.r, y: c.y - m.r, width: m.r * 2, height: m.r * 2)),
+                             with: .color(ink.opacity(opacity * (i < whole ? 1 : part))))
+                }
+            }
+            for k in 0..<Self.slots where dots[k] > 0.02 {
                 let left = x0 + CGFloat(k) * slotW + (slotW - CGFloat(wide) * m.step) / 2 + m.r
                 let g = zone((Double(k) + 0.5) / Double(Self.slots))
-                for i in 0..<dots {
-                    let c = CGPoint(x: left + CGFloat(i % wide) * m.step, y: base - m.r - CGFloat(i / wide) * m.step)
-                    ctx.fill(Path(ellipseIn: CGRect(x: c.x - m.r, y: c.y - m.r, width: m.r * 2, height: m.r * 2)),
-                             with: .color(ink.opacity(dotOpacity * dim(slot: k, g))))
-                }
+                column(dots[k], cap: wide * tall,
+                       { i in CGPoint(x: left + CGFloat(i % wide) * m.step, y: base - m.r - CGFloat(i / wide) * m.step) },
+                       dotOpacity * dim(slot: k, g))
             }
             // Qaza: its own block past the end, filled bottom-up then rightward.
-            if qaza > 0 {
-                let dots = max(1, Int((Double(qaza) / Double(per)).rounded()))
+            if dots[Self.qazaSlot] > 0.02 {
                 let qx = end + m.r * 2 + 2
-                for i in 0..<dots {
-                    let c = CGPoint(x: qx + CGFloat(i / tall) * m.step, y: base - m.r - CGFloat(i % tall) * m.step)
-                    ctx.fill(Path(ellipseIn: CGRect(x: c.x - m.r, y: c.y - m.r, width: m.r * 2, height: m.r * 2)),
-                             with: .color(ink.opacity(dotOpacity * (slot.map { $0 == Self.qazaSlot ? 1 : 0.15 }
-                                                                     ?? (focus == nil ? 0.55 : focus == .qaza ? 1 : 0.15)))))
-                }
+                column(dots[Self.qazaSlot], cap: .max,
+                       { i in CGPoint(x: qx + CGFloat(i / tall) * m.step, y: base - m.r - CGFloat(i % tall) * m.step) },
+                       dotOpacity * (slot.map { $0 == Self.qazaSlot ? 1 : 0.15 } ?? (focus == nil ? 0.55 : focus == .qaza ? 1 : 0.15)))
             }
             if big {
                 let y = barY + m.bandH + 12

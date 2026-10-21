@@ -194,10 +194,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   folds away), the rest after it lands; the way back runs on one dial (`ScoresBack`): ‹ plays it, a left-edge swipe holds
   it under the finger (¼ / a flick finishes, else springs back; cancel-safe), the hero flying by measured frames
   (`ScoresHeroFrames`) and turning white → grey as it lands; another fifth switches straight to that prayer. A span switch
-  keeps what's shown until the new data is in, then the numbers roll, charts cross-fade and rows re-rank (in a prayer: the
-  fifths' quick swap). Held until his layout pass (owner 2026-10-18, layout first): the open's scripted beats, the
-  first-draw hitch, the bar title snap; 7 days' empty one-liner, "100 · 100% prayed" wrapping. A prayer's page: "Lately, usually…" + its trend, the big chart — tap or hold-drag a slot → "N prayers (P%) ·
-  A–B min after it starts · <grade>" (Qaza: "made up as Qaza") in those lines' place; grade chips, insight, To make up,
+  keeps what's shown until the new data is in, then everything moves in place in one smooth 0.45 s, never blank (owner
+  2026-10-21): numbers roll, the ring's dots turn, each chart's columns grow or drain a dot at a time
+  (`PrayerScoresChart.dots`, animatable) as its height eases, rows re-rank by sliding, rows that come or go fade. Held until his layout pass (owner 2026-10-18, layout first): the open's scripted beats, the
+  first-draw hitch, the bar title snap; 7 days' empty one-liner, "100 · 100% prayed" wrapping. A prayer's page: "Lately, usually…" + its trend, the big chart — tap or hold-drag a slot → "A–B min after it
+  starts · N prayers (P%)" (Qaza: "Made up after it ended · …"; no grade word) in the place of the line under the chart
+  ("238 prayed since Nov 2024" — no missed count, the To make up row has it; owner 2026-10-18), crossfaded; grade chips, insight, To make up,
   photos, Where you pray it. Thin data: "Not enough yet" (kept steady through the rise).
 - `JourneyLog.build`: every row once, one per prayer per day (completed wins); a mark = done / missed / to come / excused /
   none; **active day** = ≥ 1 mark, rates and dues only over active days; days before the first mark don't exist; Excused
