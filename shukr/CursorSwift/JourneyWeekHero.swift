@@ -41,77 +41,180 @@ struct AnimatableNumbers: VectorArithmetic {
 }
 
 
-/// This week as one ring toward a strong week (owner, 2026-10-21, pick B on https://claude.ai/artifact/T1hh4B26y7iP93z1h8Ypj4:
-/// "it's simple and easy. and we can fill the back end with arc showing the prayer that don't fit the goal (either missed or
-/// prayed at lower than goal)"). From the top, clockwise: the prayers that met your goal, green. From the top, back the other
-/// way: the ones that didn't — missed (still to make up) darker, prayed below your goal lighter. The gap between is what's
-/// still to come. A tick where the back may reach for a strong week (the slack, 3 in from the end): past it, the week can't
-/// be strong. Each part one round run, never broken at the joins (owner, on the first drawing: "it's like broken at the
-/// divides"). Was seven day arcs with an accordion (Zoe, 2026-10-20 / 21).
+/// This week as one ring toward a strong week, each kind of prayer its own pill with a gap between, no shared track (owner,
+/// 2026-10-21, on https://claude.ai/artifact/XowC56NDXsAUPk2NzcvbGt: "different arcs pills instead of sharing a common track …
+/// no overlap of the different pills"). From the top going right: the goal's pill — green for the prayers that met your goal,
+/// then a dashed hairline for those still to come, the Salah ring's own upcoming dashes ("to be consistent … a dashed hairline
+/// matching what our future prayers show inside of the Salah ring"). From the top going left: excused (frost, crosshatched),
+/// below your goal (light grey), missed (hollow), no record (dotted), missed past below ("put the pill of missed further to
+/// the left than below your goal"). The strong tick: on the missed pill while any are left ("put the strong marker on top of
+/// the missed ones … the user knows that they have to make up the missed ones"), then on a day with no record, else where the
+/// back may reach for a strong week (3 in from the end; none on Prayed). A tap on a pill or the tick picks it: the others
+/// dim and the card's centre says what it counts. Was one track with a back end (16060f54), before that seven day arcs.
 struct JourneyGoalRing: View, Animatable {
-    var met: Double
-    var missed: Double
-    var below: Double
-    /// What the week asks (35, fewer with excused prayers): the ring's whole.
-    let asked: Int
-    /// How many may miss your goal in a strong week: the back reaches the tick at this (0 on Prayed — every prayer).
+    enum Part: Int, CaseIterable { case met, toCome, below, missed, noRecord, excused, tick }
+    /// The counts, in `Part` order up to `.excused` (their sum is the ring's whole), then each part's opacity (a pick dims the
+    /// rest), all one animatable value.
+    var values: AnimatableNumbers
+    /// How many may miss your goal in a strong week (0 on Prayed — every prayer).
     var slack: Int = PrayerMetrics.strongWeekSlack
     var lineWidth: CGFloat = 14
-    var animatableData: AnimatablePair<Double, AnimatablePair<Double, Double>> {
-        get { AnimatablePair(met, AnimatablePair(missed, below)) }
-        set { met = newValue.first; missed = newValue.second.first; below = newValue.second.second }
+    var onPick: (Part?) -> Void = { _ in }
+    var animatableData: AnimatableNumbers {
+        get { values }
+        set { values = newValue }
     }
     @Environment(\.colorScheme) private var scheme
+    @State private var size: CGSize = .zero
+
+    init(counts: [Int], picked: Part?, slack: Int, lineWidth: CGFloat, onPick: @escaping (Part?) -> Void = { _ in }) {
+        let alphas = Part.allCases.map { picked == nil || picked == $0 ? 1.0 : 0.22 }
+        values = AnimatableNumbers(v: counts.map(Double.init) + alphas)
+        self.slack = slack
+        self.lineWidth = lineWidth
+        self.onPick = onPick
+    }
 
     /// Room outside the band for the tick's word.
     static let labelRoom: CGFloat = 16
     /// The canvas reaches this far past the ring's frame (layout unchanged), so the word never clips where the tick sits at
     /// the side ("trong" at 10 o'clock on a 15-prayer week).
     static let spill: CGFloat = 26
+    /// The gap between two pills, along the band.
+    static let gap: CGFloat = 6
+    static let frost = Color(red: 0.55, green: 0.62, blue: 0.75)
+
+    private func count(_ p: Part) -> Double { values[p.rawValue] }
+    private func alpha(_ p: Part) -> Double { min(values[Part.excused.rawValue + 1 + p.rawValue], 1) }
+
+    /// Each part's stretch in prayers from the top, clockwise (the back counted from the end), and where the tick sits.
+    struct Layout {
+        var total: Double
+        var runs: [(part: Part, from: Double, to: Double)]
+        var tick: Double?
+        /// The tick sits on the missed (or no-record) pill: a tap on the band there is the pill's, the tick's is its word.
+        var tickOnPill = false
+    }
+    static func layout(_ n: (Part) -> Double, slack: Int) -> Layout {
+        let total = max(Part.allCases.dropLast().reduce(0) { $0 + n($1) }, 0.0001)
+        var runs: [(Part, Double, Double)] = []
+        let front = n(.met) + n(.toCome)
+        runs.append((.met, 0, n(.met)))
+        runs.append((.toCome, n(.met), front))
+        var u = total, at: [Part: Double] = [:]
+        for p in [Part.excused, .below, .missed, .noRecord] {
+            runs.append((p, u - n(p), u))
+            at[p] = u - n(p) / 2
+            u -= n(p)
+        }
+        let asked = total - n(.excused)
+        let tick: Double? = n(.missed) > 0.5 ? at[.missed] : n(.noRecord) > 0.5 ? at[.noRecord]
+            : (slack > 0 && asked > Double(slack)) ? total - n(.excused) - Double(slack) : nil
+        return Layout(total: total, runs: runs, tick: tick, tickOnPill: n(.missed) > 0.5 || n(.noRecord) > 0.5)
+    }
+
+    /// The band's radius in a canvas of this size.
+    private static func radius(_ size: CGSize, lineWidth: CGFloat) -> CGFloat {
+        (min(size.width, size.height) - 2 * spill) / 2 - lineWidth / 2 - labelRoom
+    }
 
     var body: some View {
         Canvas { ctx, size in
-            let side = min(size.width, size.height) - 2 * Self.spill
-            let r = side / 2 - lineWidth / 2 - Self.labelRoom
+            let r = Self.radius(size, lineWidth: lineWidth)
             let c = CGPoint(x: size.width / 2, y: size.height / 2)
             let ink = scheme == .dark ? Color.white : Color.black
-            let unit = 360 / Double(max(asked, 1))
+            let L = Self.layout(count, slack: slack)
+            let unit = 360 / L.total
+            let cap = Double(lineWidth / 2 / r) * 180 / .pi, gap = Double(Self.gap / r) * 180 / .pi
             func arc(_ from: Double, _ to: Double) -> Path {
                 var p = Path()
                 p.addArc(center: c, radius: r, startAngle: .degrees(from - 90), endAngle: .degrees(to - 90), clockwise: false)
                 return p
             }
-            ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)),
-                       with: .color(ink.opacity(0.07)), lineWidth: lineWidth)
-            // Round ends inside their share: drawn short by the cap's angle at each end.
-            let cap = Double(lineWidth / 2 / r) * 180 / .pi
-            func run(_ from: Double, _ to: Double, _ color: Color) {
-                guard to - from > 0.05 else { return }
-                let a0 = from + cap, a1 = max(to - cap, a0 + 0.01)
-                ctx.stroke(arc(a0, a1), with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            /// A pill over prayers `u0 ..< u1`: its round ends inside its share, a gap's half short at each end; a single
+            /// prayer (or less, mid-animation) is a dot.
+            func pill(_ u0: Double, _ u1: Double, inset: CGFloat = 0) -> Path {
+                var s = u0 * unit + gap / 2 + cap, e = u1 * unit - gap / 2 - cap
+                if e < s { s = (u0 + u1) / 2 * unit; e = s }
+                return arc(s, e + 0.01).strokedPath(StrokeStyle(lineWidth: lineWidth - inset, lineCap: .round))
             }
-            run(0, met * unit, .green)
-            // The back, one run: below your goal (lighter) under, missed (darker) over it nearest the top, so they meet in a
-            // round join, not a gap.
-            run(360 - (missed + below) * unit, 360, ink.opacity(0.22))
-            run(360 - missed * unit, 360, ink.opacity(0.45))
-            // The strong-week tick, across the band, its word outside (none on Prayed: a strong week there is all of it —
-            // Fable's check).
-            if slack > 0, asked > slack {
-                let at = (360 - Double(slack) * unit - 90) * .pi / 180
+            for run in L.runs where run.to - run.from > 0.02 {
+                let a = alpha(run.part)
+                switch run.part {
+                case .met:
+                    ctx.fill(pill(run.from, run.to), with: .color(.green.opacity(a)))
+                case .toCome:
+                    // A hairline, not a pill: from past the green (or the top) to the back's first pill.
+                    let s = run.from * unit + gap / 2, e = run.to * unit - gap / 2
+                    guard e > s else { continue }
+                    let upcoming = UpcomingTrack.style(diameter: 2 * r)
+                    ctx.stroke(arc(s, e), with: .color(Color.secondary.opacity(UpcomingTrack.opacity * a)), style: upcoming)
+                case .below:
+                    ctx.fill(pill(run.from, run.to), with: .color(ink.opacity(0.22 * a)))
+                case .missed:
+                    ctx.stroke(pill(run.from, run.to, inset: 1.5), with: .color(Color.secondary.opacity(0.6 * a)), lineWidth: 1.4)
+                case .noRecord:
+                    ctx.stroke(pill(run.from, run.to, inset: 1.5), with: .color(Color.secondary.opacity(0.6 * a)),
+                               style: StrokeStyle(lineWidth: 1.6, lineCap: .round, dash: [0.1, 4]))
+                case .excused:
+                    let shape = pill(run.from, run.to, inset: 1.5)
+                    ctx.drawLayer { layer in
+                        layer.clip(to: shape)
+                        var hatch = Path()
+                        let box = shape.boundingRect.insetBy(dx: -6, dy: -6)
+                        var x = box.minX - box.height
+                        while x < box.maxX {
+                            hatch.move(to: CGPoint(x: x, y: box.minY)); hatch.addLine(to: CGPoint(x: x + box.height, y: box.maxY))
+                            hatch.move(to: CGPoint(x: x + box.height, y: box.minY)); hatch.addLine(to: CGPoint(x: x, y: box.maxY))
+                            x += 5
+                        }
+                        layer.stroke(hatch, with: .color(Self.frost.opacity(0.8 * a)), lineWidth: 0.8)
+                    }
+                    ctx.stroke(shape, with: .color(Self.frost.opacity(a)), lineWidth: 1.4)
+                case .tick: break
+                }
+            }
+            // The strong tick, across the band, its word outside.
+            if let t = L.tick {
+                let at = (t * unit - 90) * .pi / 180, a = alpha(.tick)
                 func p(_ rr: CGFloat) -> CGPoint { CGPoint(x: c.x + rr * cos(at), y: c.y + rr * sin(at)) }
                 var tick = Path()
                 tick.move(to: p(r - lineWidth / 2 - 3))
                 tick.addLine(to: p(r + lineWidth / 2 + 3))
-                ctx.stroke(tick, with: .color(ink.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                ctx.stroke(tick, with: .color(ink.opacity(0.8 * a)), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
                 let word = ctx.resolve(Text("strong").font(.system(size: 10, weight: .light, design: .rounded))
-                    .foregroundStyle(ink.opacity(0.5)))
+                    .foregroundStyle(ink.opacity(0.5 * a)))
                 // Its inner edge faces the band, whichever way the tick points.
                 ctx.draw(word, at: p(r + lineWidth / 2 + 5), anchor: UnitPoint(x: 0.5 - 0.5 * cos(at), y: 0.5 - 0.5 * sin(at)))
             }
         }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .contentShape(Rectangle())
+        .gesture(SpatialTapGesture().onEnded { pick(at: $0.location) })
         .padding(-Self.spill)
         .accessibilityHidden(true)
+    }
+
+    /// What's under a tap: the tick (within a finger of it; on a pill, only its word outside the band — a single missed prayer
+    /// is no wider than the tick's finger), a pill, the hairline — or nothing (inside or outside the band), which puts the
+    /// ring back.
+    private func pick(at point: CGPoint) {
+        let r = Self.radius(size, lineWidth: lineWidth)
+        let dx = point.x - size.width / 2, dy = point.y - size.height / 2
+        let d = (dx * dx + dy * dy).squareRoot()
+        var deg = atan2(dx, -dy) * 180 / .pi
+        if deg < 0 { deg += 360 }
+        let L = Self.layout(count, slack: slack)
+        let unit = 360 / L.total
+        if let t = L.tick, d > r - lineWidth / 2 - 16, d < r + lineWidth / 2 + 30 {
+            var off = abs(deg - t * unit).truncatingRemainder(dividingBy: 360)
+            off = min(off, 360 - off)
+            if off * .pi / 180 * r < 16, !L.tickOnPill || d > r + lineWidth / 2 { return onPick(.tick) }
+        }
+        guard abs(d - r) < lineWidth / 2 + 16 else { return onPick(nil) }
+        let u = deg / unit
+        let hit = L.runs.first { u >= $0.from && u < $0.to && $0.to - $0.from > 0.5 }
+        onPick(hit?.part)
     }
 }
 
@@ -152,6 +255,8 @@ struct JourneyWeekCard: View {
     @State private var readToken = 0
     /// Each day's dot on screen (global), for the calendar's flight.
     @State private var dotFrames: [Int: CGRect] = [:]
+    /// The ring's part last tapped: the centre says what it counts until it's tapped again (or the ring off a pill).
+    @State private var picked: JourneyGoalRing.Part?
 
     var body: some View {
         let ringSide: CGFloat = compact ? 196 : (tight ? 216 : 232)
@@ -166,10 +271,14 @@ struct JourneyWeekCard: View {
             .journeyFlightWords(.card)
             ZStack {
                 let w = model?.week
-                JourneyGoalRing(met: Double(w?.met ?? 0), missed: Double(w?.notMarked ?? 0), below: Double(w?.belowStep ?? 0),
-                                asked: w?.asked ?? 35, slack: w.map(Self.slack) ?? PrayerMetrics.strongWeekSlack, lineWidth: lineWidth)
+                JourneyGoalRing(counts: ringCounts(w), picked: picked, slack: w.map(Self.slack) ?? PrayerMetrics.strongWeekSlack,
+                                lineWidth: lineWidth) { part in
+                    if part != nil || picked != nil { triggerSomeVibration(type: .light) }
+                    picked = part == picked ? nil : part
+                }
                     .frame(width: ringSide, height: ringSide)
                     .animation(.smooth(duration: CircleMotion.quick), value: model?.week)
+                    .animation(.smooth(duration: 0.2), value: picked)
                 centre
             }
             .padding(.top, tight ? 2 : 6)
@@ -180,7 +289,7 @@ struct JourneyWeekCard: View {
             // One line: what keeps the week strong, or that it can't be now (owner, 2026-10-21: "you have to also account for
             // the messaging for when they miss their strong week"). Three lines' room always (the mid-week line's), centred:
             // nothing moves when it changes.
-            Text(model.map(Self.line) ?? " ")
+            Text(lineNow ?? " ")
                 .font(.system(size: 15, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -189,7 +298,7 @@ struct JourneyWeekCard: View {
                 .padding(.horizontal, 6)
                 .padding(.top, tight ? 8 : 12)
                 .contentTransition(.opacity)
-                .animation(.smooth(duration: CircleMotion.quick), value: model.map(Self.line))
+                .animation(.smooth(duration: CircleMotion.quick), value: lineNow)
                 .journeyFlightWords(.card)
             ZStack(alignment: .top) {
                 banked.opacity(noRecord == nil ? 1 : 0)
@@ -223,6 +332,10 @@ struct JourneyWeekCard: View {
             reportFlight()
         }
         .task(id: log.version) { read(); noRecord = question() }
+        .onChange(of: model?.week) { _, w in
+            // A part the week no longer has puts the ring back.
+            if let p = picked, p != .tick, ringCounts(w)[p.rawValue] == 0 { picked = nil }
+        }
         .sheet(item: $filling) { f in
             NoRecordPickSheet(day: f.day) { chosen in
                 NoRecordDays.fill(f.day, picked: chosen, viewModel: viewModel)
@@ -233,32 +346,107 @@ struct JourneyWeekCard: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// "15 of 35" over your goal's words ("in their windows"); a week that asks nothing, "–".
+    /// The line under the days: a picked part's own (when it has one), else the week's.
+    private var lineNow: String? {
+        guard let m = model else { return nil }
+        if let p = picked {
+            let hint = Self.pickWords(p, week: m.week, counts: ringCounts(m.week), owed: m.owed).hint
+            if !hint.isEmpty { return hint }
+        }
+        return Self.line(m)
+    }
+
+    /// The ring's parts, in `JourneyGoalRing.Part` order: met, still to come, below your goal, missed, no record (a day's
+    /// five), excused. Days before the first mark ever ask nothing and aren't excused: they're left off the ring.
+    private func ringCounts(_ w: PrayerMetrics.Week?) -> [Int] {
+        guard let w else { return [0, 35, 0, 0, 0, 0] }
+        let before = w.days.filter(beforeFirst).count * 5
+        return [w.met, w.toCome, w.belowStep, w.notMarked, w.noRecordDays * 5, max(w.excused - before, 0)]
+    }
+
+    /// "15 of 35" over your goal's words ("in their windows"); a week that asks nothing, "–". A part of the ring picked: its
+    /// count and its words; its line takes the card's line under the days (inside the ring it ran into the pills).
     @ViewBuilder private var centre: some View {
         let w = model?.week
+        let pick = w.flatMap { w in picked.map { Self.pickWords($0, week: w, counts: ringCounts(w), owed: model?.owed ?? []) } }
         VStack(spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(w.map { $0.asked == 0 ? "–" : "\($0.met)" } ?? " ")
+                Text(pick?.number ?? w.map { $0.asked == 0 ? "–" : "\($0.met)" } ?? " ")
                     .font(.system(size: compact ? 44 : 50, weight: .thin, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText())
-                if let w, w.asked > 0 {
+                if let w, w.asked > 0, pick == nil {
                     Text("of \(w.asked)")
                         .font(.system(size: compact ? 18 : 20, weight: .light, design: .rounded))
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
             }
-            Text(w.map { $0.asked == 0 ? "excused this week" : $0.goal.countWords } ?? " ")
+            Text(pick?.words ?? w.map { $0.asked == 0 ? "excused this week" : $0.goal.countWords } ?? " ")
                 .font(.system(size: 14, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
         }
         .lineLimit(1).minimumScaleFactor(0.7)
         .frame(maxWidth: (compact ? 196 : 232) * 0.62)
         .animation(.smooth(duration: CircleMotion.quick), value: w?.met)
+        .animation(.smooth(duration: 0.2), value: picked)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(w.map { $0.asked == 0 ? "Excused this week" : "This week: \($0.met) of \($0.asked) \($0.goal.countWords)" } ?? "")
+        .accessibilityLabel(pick.map { "\($0.number) \($0.words). \($0.hint)" }
+            ?? w.map { $0.asked == 0 ? "Excused this week" : "This week: \($0.met) of \($0.asked) \($0.goal.countWords)" } ?? "")
         .allowsHitTesting(false)
+    }
+
+    /// What a tapped part of the ring says (owner, 2026-10-21, on the mock: "click on each portion to see the copy inside
+    /// change"). No "up to 3" under below your goal: with a prayer missed it reads as if 3 were still allowed, against the
+    /// ring (his comment on the mock).
+    static func pickWords(_ part: JourneyGoalRing.Part, week w: PrayerMetrics.Week, counts: [Int], owed: [Model.Owed])
+        -> (number: String, words: String, hint: String) {
+        let target = max(w.asked - slack(w), 0)
+        let missedDays = owed.map(\.day).reduce(into: [Date]()) { if !$0.contains($1) { $0.append($1) } }
+        let noRecordDays = w.days.filter(\.noRecord).map(\.date)
+        let n = counts.indices.contains(part.rawValue) ? counts[part.rawValue] : 0
+        let them = n == 1 ? "it" : "them"
+        switch part {
+        case .met:
+            return ("\(n)", w.goal.countWords,
+                    w.finished ? (w.strong ? "A strong week" : "Not a strong week")
+                    : !w.stillPossible ? "This one can't be strong now"
+                    : slack(w) == 0 ? "Don't miss a prayer for a strong week" : "Keep \(target) at your goal for a strong week")
+        case .toCome:
+            return ("\(n)", "still to come", "")
+        case .below:
+            let not = w.goal == .inWindow ? (n == 1 ? "not in its window" : "not in their windows") : "not \(w.goal.countWords)"
+            return ("\(n)", "below your goal", "Prayed, \(not)")
+        case .missed:
+            return ("\(n)", "missed", w.finished ? "Missed that week"
+                    : w.stillPossible ? "\(dayList(missedDays)): make \(them) up to keep the week strong"
+                    : "\(dayList(missedDays)): you can still make \(them) up. A new week starts Sunday.")
+        case .noRecord:
+            let days = noRecordDays.count == 1 ? "it" : "them"
+            return ("\(n)", "no record", w.finished ? "\(dayList(noRecordDays)): nothing marked"
+                    : "\(dayList(noRecordDays)): fill \(days) in to keep the week strong")
+        case .excused:
+            return ("\(n)", "excused", "Left out of the week")
+        case .tick:
+            let rule = slack(w) == 0 ? "Don't miss a prayer" : "Don't miss a prayer, and keep nearly all at your goal"
+            return ("\(target)", "for a strong week",
+                    w.finished ? rule
+                    : !w.stillPossible ? "This one can't be strong now. A new week starts Sunday."
+                    : w.notMarked > 0 ? "Make up the \(w.notMarked) missed first. A strong week has none missed."
+                    : w.noRecordDays > 0 ? "Fill in \(dayList(noRecordDays)) first. A strong week has every day on record."
+                    : rule)
+        }
+    }
+
+    /// "Today", "Wed", "Mon and Wed", "Sun – Tue" (three or more in a row), "Mon, Wed, Fri".
+    private static func dayList(_ days: [Date]) -> String {
+        let cal = Calendar.current, today = PrayerDay.start()
+        let names = days.map { cal.isDate($0, inSameDayAs: today) ? "Today" : $0.formatted(.dateTime.weekday(.abbreviated)) }
+        guard names.count > 1 else { return names.first ?? "" }
+        let inRow = zip(days, days.dropFirst()).allSatisfy { cal.dateComponents([.day], from: $0, to: $1).day == 1 }
+        if names.count >= 3, inRow { return "\(names[0]) – \(names[names.count - 1])" }
+        if names.count == 2 { return "\(names[0]) and \(names[1])" }
+        return names.joined(separator: ", ")
     }
 
     /// The seven days under the ring: a day with every prayer marked filled light grey, the Salah list's done dot; one with
