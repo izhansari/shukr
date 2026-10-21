@@ -1,0 +1,157 @@
+import Foundation
+
+// The counts every metrics screen reads (prayer-metrics rethink: board/scoring-rethink/plan-v3.md §2c, §10, §11; build plan
+// phase 4's logic, landed early so Journey's hero, Your prayers and the Salah bar can be built against it). Built on
+// JourneyLog (JourneyStore loads it off the main thread) and PrayerState — no screen decides a week on its own.
+// Rules, in his words where they define them:
+// - The bar is the obligation, all five each in its time ("muslims should pray every day and make every prayer").
+// - A day with nothing logged is "no record", never missed (most of his quiet days were the app, not him); today is
+//   always on record (you're here).
+// - A strong week: every due prayer prayed (a missed one holds the week until it's made up), at most 3 of them below the
+//   bar (made up after its time), and no day without a record. A complete week: every due prayer in its time.
+// - Excused prayers are never due; a fully excused week is neither strong nor complete and never breaks the streak.
+
+extension JourneyLog.Mark {
+    /// This mark as a PrayerState; nil = no row (the app wasn't opened that day).
+    func state(end: Date?, now: Date) -> PrayerState? {
+        switch self {
+        case .done(let score): PrayerState.of(isCompleted: true, score: score, end: end ?? now, excused: false, now: now)
+        case .missed: .notMarked
+        case .toCome: .toCome
+        case .excused: .excused
+        case .none: nil
+        }
+    }
+}
+
+enum PrayerMetrics {
+    /// Below the bar (made up after its time) a strong week can still hold (plan-v3 §10: 32 of 35).
+    static let strongWeekSlack = 3
+
+    /// One prayer day as a week reads it.
+    struct Day: Equatable {
+        let key: String
+        let date: Date
+        /// Fajr … Isha; nil when the day has no record.
+        let states: [PrayerState]?
+        var noRecord: Bool { states == nil }
+        func count(_ test: (PrayerState) -> Bool) -> Int { states?.filter(test).count ?? 0 }
+        var inTime: Int { count(\.inTime) }
+        /// Every due prayer in its time (an excused one isn't due): a complete day. Not before its last prayer is due.
+        var complete: Bool {
+            guard let states, !states.contains(.toCome) else { return false }
+            let due = states.filter { $0 != .excused }
+            return !due.isEmpty && due.allSatisfy(\.inTime)
+        }
+    }
+
+    struct Week: Equatable {
+        /// The week's first day (the calendar's first weekday).
+        let start: Date
+        /// Seven days, first to last; days after today are `.toCome` throughout.
+        let days: [Day]
+        let isCurrent: Bool
+
+        private func count(_ test: (PrayerState) -> Bool) -> Int { days.reduce(0) { $0 + $1.count(test) } }
+        var inTime: Int { count(\.inTime) }
+        var madeUp: Int { count { $0 == .madeUp } }
+        var notMarked: Int { count { $0 == .notMarked } }
+        var excused: Int { count { $0 == .excused } }
+        var toCome: Int { count { $0 == .toCome } }
+        var noRecordDays: Int { days.filter(\.noRecord).count }
+        /// Prayed, in its time or made up.
+        var prayed: Int { inTime + madeUp }
+        /// What the week asks: every prayer not excused (35 in a week with no excused prayers).
+        var asked: Int { days.count * 5 - excused }
+        /// Prayers due so far on days with a record.
+        var due: Int { prayed + notMarked }
+
+        /// Nothing missing so far: no prayer left unmarked, no day without a record, at most the slack below the bar.
+        /// A finished week that is on track is strong.
+        var onTrack: Bool { notMarked == 0 && noRecordDays == 0 && madeUp <= strongWeekSlack && asked > 0 }
+        var finished: Bool { !isCurrent && toCome == 0 }
+        var strong: Bool { finished && onTrack }
+        var complete: Bool { strong && madeUp == 0 && inTime == asked }
+        /// The current week's words (Koo & Fishbach, plan-v3 §9): "12 done" early in the week, "4 left" late in it — what's
+        /// left is every prayer still to pray, an unmarked one included (it's made up to count).
+        var done: Int { prayed }
+        var left: Int { toCome + notMarked }
+        /// A week the streak steps over: every prayer excused (or no record on a fully excused stretch).
+        var excusedWeek: Bool { excused == days.count * 5 }
+    }
+
+    /// The prayer-day key of `now` and the day it's on.
+    private static func today(_ now: Date) -> (key: String, start: Date) {
+        let d = PrayerDay.date(for: now)
+        return (PrayerNotificationID.dayKey(d), Calendar.current.startOfDay(for: d))
+    }
+
+    /// A day from the log: no record when nothing was marked and it isn't today. A day before the fresh start, or inside
+    /// an excused range with no rows, asks nothing (all excused) — it never blocks a week.
+    static func day(_ date: Date, in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date) -> Day {
+        let d = log.day(date)
+        let (todayKey, todayStart) = today(now)
+        if d.date > todayStart { return Day(key: d.key, date: d.date, states: Array(repeating: .toCome, count: 5)) }
+        if !d.counted || (!d.active && excused.excludes(d.date)) {
+            return Day(key: d.key, date: d.date, states: Array(repeating: .excused, count: 5))
+        }
+        let states = (0..<5).map { i -> PrayerState? in d.marks[i].state(end: d.slots[i]?.end, now: now) }
+        let recorded = d.active || d.key == todayKey || d.marks.contains(.excused)
+        guard recorded else { return Day(key: d.key, date: d.date, states: nil) }
+        // A recorded day with a row missing (the app never made it): unmarked and over, or still to come today.
+        return Day(key: d.key, date: d.date, states: states.map { $0 ?? (d.key == todayKey ? .toCome : .notMarked) })
+    }
+
+    /// The week holding `date`.
+    static func week(containing date: Date, in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> Week {
+        let cal = Calendar.current
+        let start = cal.dateInterval(of: .weekOfYear, for: date)?.start ?? cal.startOfDay(for: date)
+        let days = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
+            .map { day($0, in: log, excused: excused, now: now) }
+        let current = cal.isDate(start, equalTo: today(now).start, toGranularity: .weekOfYear)
+        return Week(start: start, days: days, isCurrent: current)
+    }
+
+    /// Every week from the log's first (or the fresh start's) to this one, oldest first.
+    static func weeks(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> [Week] {
+        guard let first = [log.firstDay, log.countsFrom].compactMap({ $0 }).max() else { return [] }
+        var out: [Week] = []
+        var date = first
+        let end = today(now).start
+        while date <= end {
+            let w = week(containing: date, in: log, excused: excused, now: now)
+            out.append(w)
+            guard let next = Calendar.current.date(byAdding: .day, value: 7, to: w.start) else { break }
+            date = next
+        }
+        return out
+    }
+
+    /// Strong weeks in a row: the run ending with the last finished week (the current week never breaks it), and the best.
+    /// A fully excused week is stepped over.
+    static func strongWeeks(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> (current: Int, best: Int) {
+        var run = 0, best = 0
+        for w in weeks(in: log, excused: excused, now: now) where !w.isCurrent {
+            if w.excusedWeek { continue }
+            if w.strong { run += 1; best = max(best, run) } else { run = 0 }
+        }
+        return (run, best)
+    }
+
+    /// Your usual week: the median of your last 8 finished weeks' in-time counts, weeks without a gap in the record only
+    /// (nil before there are 3). The comparison Journey shows instead of last week (Strava's card made normal weeks feel bad).
+    static func usualWeek(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> Int? {
+        let list = weeks(in: log, excused: excused, now: now).filter { !$0.isCurrent && $0.noRecordDays == 0 && !$0.excusedWeek }.suffix(8)
+        guard list.count >= 3 else { return nil }
+        let sorted = list.map(\.inTime).sorted()
+        return sorted[sorted.count / 2]
+    }
+
+    /// "Your typical week": the median in-time week of your first 8 recorded weeks, and of your last 8 (nil until 16).
+    static func typicalWeek(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> (then: Int, now: Int)? {
+        let list = weeks(in: log, excused: excused, now: now).filter { !$0.isCurrent && $0.noRecordDays == 0 && !$0.excusedWeek }
+        guard list.count >= 16 else { return nil }
+        func median(_ w: ArraySlice<Week>) -> Int { let s = w.map(\.inTime).sorted(); return s[s.count / 2] }
+        return (median(list.prefix(8)), median(list.suffix(8)))
+    }
+}
