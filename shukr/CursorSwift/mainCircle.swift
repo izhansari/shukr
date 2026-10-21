@@ -456,8 +456,8 @@ struct MainCircleView: View {
                                 // Its time over (the missed face): ask first (LateMarkAsk, prayer-metrics phase 6).
                                 if marking, LateMarkAsk.wouldBeLate(prayer) {
                                     let vm = viewModel
-                                    LateMarkAsk.shared.askBeforeMarking(prayer) { inTime in
-                                        vm.markLate(prayer, inTime: inTime)
+                                    LateMarkAsk.shared.askBeforeMarking(prayer) { reply in
+                                        vm.markLate(prayer, reply)
                                         if let container = prayer.modelContext?.container {
                                             MilestoneCelebration.shared.check(container: container)
                                         }

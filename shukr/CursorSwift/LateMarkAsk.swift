@@ -4,8 +4,8 @@
 //
 //  The late-mark question (prayer-metrics rethink phase 6; board/scoring-rethink/plan-v3.md §3, §15). A prayer marked
 //  after its window may have been prayed in its time — 81 of his 83 Fajr "Qazas" were tapped hours after sunrise — so
-//  shukr asks once instead of guessing: "In its time" (a no-time mark: in its time, no clock claimed) or "Making it up
-//  now". In the app the question comes before the mark (the list's row, the circle's hold); a mark from outside (widget,
+//  shukr asks once instead of guessing: in its window (at a time they set, or "I don't know the time" — a no-time
+//  mark: in its window, no clock claimed) or "Making it up now". In the app the question comes before the mark (the list's row, the circle's hold); a mark from outside (widget,
 //  notification, watch, Siri, the Live Activity) is asked about at the next open, one at a time (LateMarks). Swiping the
 //  in-app question away marks nothing; an outside one swiped away stays made up and isn't asked again.
 //
@@ -18,11 +18,14 @@ import SwiftData
 @MainActor @Observable final class LateMarkAsk {
     static let shared = LateMarkAsk()
 
+    /// The answer: in its window at a time they set, in its window with no time, or made up.
+    enum Reply { case at(Date), noTime, madeUp }
+
     struct Question: Identifiable {
         let id = UUID()
         let row: PrayerModel
         /// Asked before the mark (nil = the row is already marked, from outside).
-        let mark: ((Bool) -> Void)?
+        let mark: ((Reply) -> Void)?
     }
 
     var current: Question?
@@ -35,7 +38,7 @@ import SwiftData
     }
 
     /// The list's row or the circle's hold, on a prayer whose window has ended: ask, then `mark(inTime)`.
-    func askBeforeMarking(_ row: PrayerModel, mark: @escaping (Bool) -> Void) {
+    func askBeforeMarking(_ row: PrayerModel, mark: @escaping (Reply) -> Void) {
         current = Question(row: row, mark: mark)
     }
 
@@ -69,12 +72,12 @@ import SwiftData
     }
 
     /// The answer. An outside mark is updated in place; an in-app one is marked through `mark`.
-    func answer(_ q: Question, inTime: Bool, viewModel: PrayerViewModel) {
+    func answer(_ q: Question, _ reply: Reply, viewModel: PrayerViewModel) {
         current = nil
         if let mark = q.mark {
-            mark(inTime)
+            mark(reply)
         } else {
-            viewModel.answerLateMark(q.row, inTime: inTime)
+            viewModel.answerLateMark(q.row, reply)
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(0.45))   // the sheet down before the next one comes up
                 nextOutside()
@@ -87,7 +90,7 @@ import SwiftData
         guard current?.id == q.id else { return }
         current = nil
         if q.mark == nil {
-            viewModel.answerLateMark(q.row, inTime: false)
+            viewModel.answerLateMark(q.row, .madeUp)
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(0.45))
                 nextOutside()
@@ -96,10 +99,25 @@ import SwiftData
     }
 }
 
-/// The question itself.
+/// The question itself (Zoe's look, owner 2026-10-21: "too much space at the bottom. add a border on the making it up now part.
+/// and if i click in its time then break the button into two options (something like "set a time, i don't know the time")").
+/// "In its window" breaks into Set a time · I don't know the time; Set a time turns the sheet into the prayer editor's knob
+/// over that window, then Save. The sheet is as tall as what it shows.
 struct LateMarkSheet: View {
     let question: LateMarkAsk.Question
-    let answer: (Bool) -> Void
+    let answer: (LateMarkAsk.Reply) -> Void
+
+    private enum Step { case ask, inWindow, time }
+    @State private var step: Step = .ask
+    @State private var draft: Date
+    @State private var height: CGFloat = 330
+
+    init(question: LateMarkAsk.Question, answer: @escaping (LateMarkAsk.Reply) -> Void) {
+        self.question = question
+        self.answer = answer
+        let r = question.row
+        _draft = State(initialValue: r.startTime.addingTimeInterval(r.endTime.timeIntervalSince(r.startTime) / 2))
+    }
 
     private var row: PrayerModel { question.row }
     private var outside: Bool { question.mark == nil }
@@ -113,9 +131,12 @@ struct LateMarkSheet: View {
         return "\(row.displayName) · \(when)"
     }
 
-    /// The one quiet line: when its time ended, and (from outside) when it was marked.
+    /// The one quiet line: when its time ended, and (from outside) when it was marked; setting a time, the window.
     private var line: String {
         let ended = row.endTime.formatted(date: .omitted, time: .shortened)
+        if step == .time {
+            return "Its window was \(row.startTime.formatted(date: .omitted, time: .shortened)) – \(ended)."
+        }
         if outside, let at = row.timeAtComplete {
             // The day too when it was marked on a later day ("Marked Tue 9:38 PM"), else the clock alone reads backwards.
             let sameDay = Calendar.current.isDate(at, inSameDayAs: row.endTime)
@@ -131,39 +152,80 @@ struct LateMarkSheet: View {
             VStack(spacing: 6) {
                 Text(title).font(.system(size: 28, weight: .light, design: .rounded))
                 Text(line).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    .contentTransition(.opacity)
             }
             .padding(.top, 28)
-            Text("Did you pray it in its window?")
-                .font(.system(size: 17, weight: .regular, design: .rounded))
-            VStack(spacing: 12) {
-                Button { answer(true) } label: {
-                    Text("In its window")
-                        .font(.system(size: 17, weight: .medium, design: .rounded))
-                        .foregroundStyle(.primary)
-                        .frame(width: 240, height: 52)
-                        .background(Capsule().fill(Color.primary.opacity(0.06)))
-                        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.35), lineWidth: 1.2))
+            if step == .time {
+                timeStep.transition(.opacity)
+            } else {
+                Text("Did you pray it in its window?")
+                    .font(.system(size: 17, weight: .regular, design: .rounded))
+                VStack(spacing: 12) {
+                    windowChoice
+                    pill(outside ? "Made it up later" : "Making it up now", primary: false) { answer(.madeUp) }
                 }
-                .buttonStyle(.plain)
-                Button { answer(false) } label: {
-                    Text(outside ? "Made it up later" : "Making it up now")
-                        .font(.system(size: 17, weight: .regular, design: .rounded))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 240, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                .transition(.opacity)
             }
-            Text("In its window counts it as prayed in its window, with no time recorded.")
-                .font(.footnote).foregroundStyle(.tertiary).multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
+        .padding(.bottom, 26)
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        .frame(maxHeight: .infinity, alignment: .top)
         .fontDesign(.rounded)
-        .presentationDetents([.height(400)])
+        .presentationDetents([.height(height)])
         .presentationDragIndicator(.visible)
+    }
+
+    /// "In its window", or once tapped, the same place broken in two: Set a time · I don't know the time.
+    private var windowChoice: some View {
+        ZStack {
+            if step == .ask {
+                pill("In its window", primary: true, width: 240) {
+                    triggerSomeVibration(type: .soft)
+                    withAnimation(.smooth(duration: 0.32)) { step = .inWindow }
+                }
+                .transition(.scale(scale: 1.04).combined(with: .opacity))
+            } else {
+                HStack(spacing: 10) {
+                    pill("Set a time", primary: true, width: 126) {
+                        triggerSomeVibration(type: .soft)
+                        withAnimation(.smooth(duration: 0.35)) { step = .time }
+                    }
+                    .transition(.offset(x: 40).combined(with: .opacity))
+                    pill("I don't know the time", primary: true, width: 196) { answer(.noTime) }
+                        .transition(.offset(x: -40).combined(with: .opacity))
+                }
+            }
+        }
+        .frame(height: 52)
+    }
+
+    /// The prayer editor's knob over its window, then Save.
+    private var timeStep: some View {
+        VStack(spacing: 18) {
+            PrayerTimeKnob(prayer: row, draft: $draft, range: row.startTime...row.endTime)
+                .frame(width: 236, height: 236)
+                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.tertiarySystemFill)))
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            pill("Save", primary: true, width: 240) { answer(.at(draft)) }
+        }
+    }
+
+    /// One soft pill: the main one filled, the other only bordered.
+    private func pill(_ title: String, primary: Bool, width: CGFloat = 240, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 17, weight: primary ? .medium : .regular, design: .rounded))
+                .foregroundStyle(primary ? .primary : .secondary)
+                .lineLimit(1).minimumScaleFactor(0.8)
+                .frame(width: width, height: primary ? 52 : 46)
+                .background(Capsule().fill(Color.primary.opacity(primary ? 0.06 : 0)))
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(primary ? 0.35 : 0.2), lineWidth: 1.2))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -185,7 +247,7 @@ struct LateMarkAskHost: ViewModifier {
         content.sheet(item: Binding(get: { ask.current }, set: {
             if $0 == nil, let q = ask.current, q.id == presentedID { ask.dismissed(q, viewModel: viewModel) }
         })) { q in
-            LateMarkSheet(question: q) { inTime in ask.answer(q, inTime: inTime, viewModel: viewModel) }
+            LateMarkSheet(question: q) { reply in ask.answer(q, reply, viewModel: viewModel) }
                 .onAppear { presentedID = q.id }
                 .stageCover("lateMark")
         }

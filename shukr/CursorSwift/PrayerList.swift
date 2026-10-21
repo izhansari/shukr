@@ -324,8 +324,8 @@ struct PrayerButton: View {
                 // Its time over: ask first, in its time or making it up (LateMarkAsk, prayer-metrics phase 6).
                 if LateMarkAsk.wouldBeLate(prayerObject) {
                     let row = prayerObject, vm = viewModel
-                    LateMarkAsk.shared.askBeforeMarking(row) { inTime in
-                        vm.markLate(row, inTime: inTime)
+                    LateMarkAsk.shared.askBeforeMarking(row) { reply in
+                        vm.markLate(row, reply)
                         if let container = row.modelContext?.container { MilestoneCelebration.shared.check(container: container) }
                     }
                     return

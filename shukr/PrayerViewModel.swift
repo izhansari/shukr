@@ -553,10 +553,13 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         return true
     }
 
-    /// A mark after the window, answered first (LateMarkAsk): "In its time" marks it in its time with no clock (a no-time
-    /// mark), "Making it up now" a make-up. The list's own path otherwise (the spot, the moment, widgets, the day's score).
-    @MainActor func markLate(_ prayer: PrayerModel, inTime: Bool) {
+    /// A mark after the window, answered first (LateMarkAsk): a set time marks it at that time (graded by its place in the
+    /// window, Journey's own mark-at-a-time path); "I don't know the time" in its window with no clock (a no-time mark);
+    /// "Making it up now" a make-up. The list's own path otherwise (the spot, the moment, widgets, the day's score).
+    @MainActor func markLate(_ prayer: PrayerModel, _ reply: LateMarkAsk.Reply) {
         guard !prayer.isCompleted else { return }
+        if case .at(let date) = reply { markFromJourney(prayer, at: date); return }
+        let inTime = { if case .noTime = reply { true } else { false } }()
         // Set before the mark, so its score and its moment are already the answer (setPrayerScore reads it).
         prayer.markKind = (inTime ? MarkKind.timeUnknown : MarkKind.madeUp).rawValue
         togglePrayerCompletion(for: prayer)
@@ -564,13 +567,22 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         DayHistory.invalidate()
     }
 
-    /// An outside mark after the window, answered at the next open (LateMarkAsk): the row is already marked; "In its time"
-    /// makes it a no-time mark (rescored in its time), otherwise it's kept as a make-up and never asked again.
-    @MainActor func answerLateMark(_ prayer: PrayerModel, inTime: Bool) {
+    /// An outside mark after the window, answered at the next open (LateMarkAsk): the row is already marked. A set time
+    /// moves it there (an edit: the tap stays as the recorded time); "I don't know the time" makes it a no-time mark
+    /// (rescored in its window); otherwise it's kept as a make-up. Either way it's never asked again.
+    @MainActor func answerLateMark(_ prayer: PrayerModel, _ reply: LateMarkAsk.Reply) {
         guard prayer.isCompleted, prayer.markKind == nil else { return }
-        prayer.markKind = (inTime ? MarkKind.timeUnknown : MarkKind.madeUp).rawValue
-        guard inTime else { try? context.save(); return }
-        prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? Date())
+        switch reply {
+        case .madeUp:
+            prayer.markKind = MarkKind.madeUp.rawValue
+            try? context.save()
+            return
+        case .noTime:
+            prayer.markKind = MarkKind.timeUnknown.rawValue
+            prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? Date())
+        case .at(let date):
+            prayer.editTime(to: date)
+        }
         try? context.save()
         calculateDayScore(for: prayer.dayStart)
         calculatePrayerStreak()
