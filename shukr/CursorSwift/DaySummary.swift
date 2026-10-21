@@ -236,7 +236,7 @@ struct DayCentre: View {
             } else {
                 VStack(spacing: 3) {
                     Text(name).font(.system(size: 30, weight: .light, design: .rounded))
-                    Text(p?.excused == true ? "excused" : p?.noTime == true ? "prayed in its time"
+                    Text(p?.excused == true ? "excused" : p?.noTime == true ? "prayed in its window"
                          : p?.markedAt.map { "prayed \($0.formatted(date: .omitted, time: .shortened))" } ?? "not marked")
                         .font(.footnote).fontWeight(.thin).fontDesign(.rounded).foregroundStyle(.secondary)
                     if let s = p?.score {
@@ -263,7 +263,7 @@ struct DayCentre: View {
                     .contentTransition(.numericText())
                 Text(due == 0 ? (yesterday ? "yesterday · nothing asked" : "nothing asked")
                      : showsRank && rank?.place == 1 ? (rank?.tiedWith == 0 ? "your best day yet" : "one of your best days")
-                     : yesterday ? "yesterday · in their time" : "in their time")
+                     : yesterday ? "yesterday · in their windows" : "in their windows")
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
@@ -294,8 +294,8 @@ struct DayCentre: View {
     private var caption: String {
         let inTime = day.filter(\.inTime).count
         let words: String
-        if inTime == 5 { words = day.allSatisfy(\.perfect) ? "all five in the Opening" : "all five in time" }
-        else { words = "\(inTime) of 5 in time" }
+        if inTime == 5 { words = day.allSatisfy(\.perfect) ? "all five in the Opening" : "all five in their windows" }
+        else { words = "\(inTime) of 5 in their windows" }
         return yesterday ? "yesterday · \(words)" : words
     }
 }

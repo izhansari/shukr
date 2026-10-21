@@ -367,7 +367,7 @@ struct JourneyWeekCard: View {
             let canBeStrong = w.madeUp + w.notMarked <= PrayerMetrics.strongWeekSlack
             let (number, words): (String, String) =
                 w.asked == 0 ? ("–", "excused this week")   // nothing asked (Excused Mode, or before a fresh start)
-                : w.left == 0 ? ("\(w.inTime) of \(w.asked)", w.madeUp == 0 && w.inTime == w.asked ? "a complete week" : "in their time")
+                : w.left == 0 ? ("\(w.inTime) of \(w.asked)", w.madeUp == 0 && w.inTime == w.asked ? "a complete week" : "in their windows")
                 : late ? ("\(w.left) left", canBeStrong ? "for a strong week" : "this week")
                 : ("\(w.done) done", "this week")
             VStack(spacing: 2) {

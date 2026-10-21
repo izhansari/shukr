@@ -643,7 +643,7 @@ struct JourneyPage: View {
                 // Your prayers as a row with the others (owner, 2026-10-20: "looks weird to have the upper right ring so busy
                 // on journey … you can get rid of it and make it a list item"); the page still zooms out of it.
                 JourneyHomeRow(title: "Your prayers",
-                               line: recent.asked > 0 ? "\(recent.inTime) of \(recent.asked) in their time · last 7 days"
+                               line: recent.asked > 0 ? "\(recent.inTime) of \(recent.asked) in their windows · last 7 days"
                                    : "Each prayer, lately",
                                height: rowHeight, quiet: recent.asked == 0) {
                     Image(systemName: "chart.bar").font(.system(size: 19, weight: .light)).foregroundStyle(.secondary)

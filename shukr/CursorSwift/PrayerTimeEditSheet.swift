@@ -157,7 +157,7 @@ struct PrayerTimeEditSheet: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("I don't remember the time")
-                        .accessibilityHint("Keeps it in its time, with no time recorded")
+                        .accessibilityHint("Keeps it in its window, with no time recorded")
                         .padding(.top, 20)
                         .transition(.opacity)
                     }
@@ -457,7 +457,7 @@ struct PrayerTimeEditSheet: View {
     /// A no-time mark's ring box: what it is, and the way to set a time.
     private var noTimeFace: some View {
         VStack(spacing: 6) {
-            Text("In its time").font(.system(size: 22, weight: .light, design: .rounded))
+            Text("In its window").font(.system(size: 22, weight: .light, design: .rounded))
             Text("Time not recorded").font(.footnote).foregroundStyle(.secondary)
             Button {
                 triggerSomeVibration(type: .soft)

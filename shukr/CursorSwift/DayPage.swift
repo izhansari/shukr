@@ -142,7 +142,7 @@ struct DayRowTime: View {
     let prayedAt: Date
     /// A no-time mark (MarkKind.timeUnknown) where the time would go: "in its time", in the time's own type.
     static var noTime: some View {
-        Text("in its time")
+        Text("in its window")
             .font(.footnote).fontDesign(.rounded).fontWeight(.light)
             .foregroundStyle(.secondary)
     }

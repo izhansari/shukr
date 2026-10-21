@@ -1466,7 +1466,7 @@ struct JourneyMilestone: Identifiable, Equatable {
         /// "Isha, prayed 8:18 PM" — the prayer that earned it ("Isha, in its time" when no time was recorded).
         func prayed(_ d: JourneyLog.Day, _ i: Int) -> String {
             let name = d.slots[i]?.jumuah == true ? "Jumu'ah" : JourneyLog.names[i]
-            if d.slots[i]?.noTime == true { return name + ", in its time" }
+            if d.slots[i]?.noTime == true { return name + ", in its window" }
             return name + (d.slots[i]?.markedAt.map { ", prayed " + $0.formatted(date: .omitted, time: .shortened) } ?? "")
         }
         let span = Date.FormatStyle.dateTime.month(.abbreviated).day()
@@ -1541,7 +1541,7 @@ struct JourneyMilestone: Identifiable, Equatable {
                 if !completeDayDone, d.counted, PrayerMetrics.day(date, in: log, excused: excused, now: now).complete {
                     completeDayDone = true
                     add("completeDay\(era)", "A complete day", date, .inTime, symbol: "checkmark.circle",
-                        about: "All five prayers, each in its time, on one day.")
+                        about: "All five prayers, each in its window, on one day.")
                 }
             } else if excusedAll {
                 gap = 0
@@ -1571,7 +1571,7 @@ struct JourneyMilestone: Identifiable, Equatable {
                 if Self.strongRuns.contains(run), let first = runStart {
                     let name = run == 13 ? "A season of strong weeks" : run == 52 ? "A year of strong weeks" : "\(run) strong weeks in a row"
                     add("strong.\(run).\(PrayerNotificationID.dayKey(first))\(era)", name, last, .inTime, symbol: "calendar",
-                        about: "\(run) weeks in a row with every prayer prayed and at least 32 in their time.",
+                        about: "\(run) weeks in a row with every prayer prayed and at least 32 in their windows.",
                         how: "\(first.formatted(span)) – \(last.formatted(span))")
                 }
             } else {
@@ -1582,7 +1582,7 @@ struct JourneyMilestone: Identifiable, Equatable {
                 if Self.completeCounts.contains(complete) {
                     add("complete.\(complete)\(era)", complete == 1 ? "A complete week" : "Your \(ordinal(complete)) complete week",
                         last, .inTime, symbol: "checkmark.seal",
-                        about: "All five prayers, each in its time, every day of the week.",
+                        about: "All five prayers, each in its window, every day of the week.",
                         how: "Week of \(w.start.formatted(span))")
                 }
             }

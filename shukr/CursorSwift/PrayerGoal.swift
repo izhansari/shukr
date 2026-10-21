@@ -75,8 +75,8 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
     var dayWords: String {
         switch self {
         case .prayed: "All five prayed"
-        case .inWindow: "All five in time"
-        case .onTime: "All five on time"
+        case .inWindow: "All five in their windows"
+        case .onTime: "All five by the Middle"
         case .perfect: "All five in the Opening"
         }
     }
@@ -85,8 +85,8 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
     var runWords: String {
         switch self {
         case .prayed: "all five prayed"
-        case .inWindow: "all in time"
-        case .onTime: "all on time"
+        case .inWindow: "all in their windows"
+        case .onTime: "all by the Middle"
         case .perfect: "all in the Opening"
         }
     }
@@ -94,8 +94,8 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
     var prayersWords: String {
         switch self {
         case .prayed: "prayed"
-        case .inWindow: "prayed in time"
-        case .onTime: "prayed on time"
+        case .inWindow: "prayed in their windows"
+        case .onTime: "prayed by the Middle"
         case .perfect: "in the Opening"
         }
     }

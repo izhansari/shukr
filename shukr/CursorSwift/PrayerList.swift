@@ -862,7 +862,7 @@ struct PrayerButton: View {
                     // Completed Prayer: Show Completion Time
                     if prayerObject.timeUnknown {
                         // In its time, no time recorded (MarkKind.timeUnknown): said where the time goes.
-                        Text("in its time")
+                        Text("in its window")
                             .font(timeFontSize)
                             .foregroundColor(.secondary.opacity(statusBasedOpacity))
                             .fontDesign(.rounded)

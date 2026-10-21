@@ -130,7 +130,7 @@ struct NoRecordPickSheet: View {
             VStack(spacing: 6) {
                 Text(day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()))
                     .font(.system(size: 28, weight: .light, design: .rounded))
-                Text("Which did you pray in their time?").font(.subheadline).foregroundStyle(.secondary)
+                Text("Which did you pray in their windows?").font(.subheadline).foregroundStyle(.secondary)
             }
             .padding(.top, 28)
             VStack(spacing: 0) {

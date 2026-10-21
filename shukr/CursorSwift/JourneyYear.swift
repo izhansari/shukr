@@ -197,7 +197,7 @@ struct JourneyYearView: View {
         let days = m.activeDays == 1 ? "1 day" : "\(m.activeDays) days"
         // The month's average score, the month page's own (owner, 2026-10-17: "change that to the month score … average
         // score of that month"; was the in-time %).
-        if MetricsLook.on { return "\(days) · \(m.inTime) in time" }   // no 0–100 (prayer-metrics phase 3)
+        if MetricsLook.on { return "\(days) · \(m.inTime) in their windows" }   // no 0–100 (prayer-metrics phase 3)
         guard let score = m.averageScore else { return days }
         return "\(days) · score \(score)"
     }

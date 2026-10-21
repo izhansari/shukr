@@ -334,7 +334,7 @@ struct PrayerScores {
             // pray deepest into its window in grey (its usual place, season-proof).
             let order = ranked.filter { (prayers[$0]?.due ?? 0) >= 5 }
             guard let top = order.first, let needs = order.last, order.count >= 2 else { return nil }
-            guard prayers[needs]?.inTimeShare != prayers[top]?.inTimeShare else { return ("All \(order.count == 5 ? "five" : "\(order.count)") in their time alike.", nil) }   // only those with 5+ due (Frank)
+            guard prayers[needs]?.inTimeShare != prayers[top]?.inTimeShare else { return ("All \(order.count == 5 ? "five" : "\(order.count)") in their windows alike.", nil) }   // only those with 5+ due (Frank)
             let latest = order.filter { prayers[$0]?.usualShare != nil }.max { (prayers[$0]?.usualShare ?? 0) < (prayers[$1]?.usualShare ?? 0) }
             let sub = latest.flatMap { $0 == top || $0 == needs ? nil : "You pray \($0) latest in its window" }
             return ("\(top) is your strongest. \(needs) needs you most.", sub)
@@ -357,8 +357,8 @@ struct PrayerScores {
     private var streakWords: String {
         switch goal {
         case .prayed: "Prayed, day after day you used shukr"
-        case .inWindow: "In time, day after day you used shukr"
-        case .onTime: "On time, day after day you used shukr"
+        case .inWindow: "In its window, day after day you used shukr"
+        case .onTime: "By the Middle, day after day you used shukr"
         case .perfect: "In the Opening, day after day you used shukr"
         }
     }
@@ -382,7 +382,7 @@ struct PrayerScores {
         }
         let perfect = p.grades[.perfect] ?? 0, inTime = perfect + (p.grades[.onTime] ?? 0) + (p.grades[.late] ?? 0)
         if inTime >= 10, perfect * 2 > inTime {
-            return ("sparkles", "When you pray \(name) in time, it's usually \(PrayerScoring.Grade.perfect.rawValue): \(perfect) of \(inTime).", "Right after the adhan")
+            return ("sparkles", "When you pray \(name) in its window, it's usually \(PrayerScoring.Grade.perfect.rawValue): \(perfect) of \(inTime).", "Right after the adhan")
         }
         if p.due > 0, others.allSatisfy({ $0.due == 0 || Double($0.prayed) / Double($0.due) < Double(p.prayed) / Double(p.due) }) {
             return ("checkmark.circle", "Your most prayed: \(p.prayed) of \(p.due).", "More often than any other prayer")
@@ -1085,7 +1085,7 @@ struct PrayerScoresPage: View {
     /// know if that's the metric we should even show").
     private func recentLine(_ name: String) -> String {
         guard let p = data.prayers[name], p.due > 0 else { return "Not enough yet" }
-        return "in its time \(p.inTime) of \(p.due)"
+        return "in its window \(p.inTime) of \(p.due)"
     }
 
     /// "97 · 98% prayed" (a row's line).

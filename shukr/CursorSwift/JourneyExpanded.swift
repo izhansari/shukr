@@ -778,7 +778,7 @@ struct JourneyExpandedRow: View, Equatable {
                         .journeyFlightLabel(start)   // the card's name lands here (JourneyTransitions.swift)
                     if numbers.activeDays > 0 {
                         Text(numbers.activeDays == 1 ? "1 day" : "\(numbers.activeDays) days")
-                        if MetricsLook.on { Text("\(numbers.inTime) in time") }   // no 0–100 (prayer-metrics phase 3)
+                        if MetricsLook.on { Text("\(numbers.inTime) in their windows") }   // no 0–100 (prayer-metrics phase 3)
                         else if let score = numbers.averageScore { Text("score \(score)") }
                     }
                 }
@@ -829,7 +829,7 @@ struct JourneyMonthNumbers: View {
                 fact("\(m.metGoalDays)", "days met your goal", ring: true)
                 if log.goal != .prayed { fact("\(belowGoal)", "days all five", ring: false) }
                 if MetricsLook.on {
-                    fact("\(m.inTime) of \(m.due)", "in their time", ring: nil)   // no 0–100 (prayer-metrics phase 3)
+                    fact("\(m.inTime) of \(m.due)", "in their windows", ring: nil)   // no 0–100 (prayer-metrics phase 3)
                 } else {
                     fact(m.averageScore.map { "\($0)" } ?? "–", "average score", ring: nil)
                 }

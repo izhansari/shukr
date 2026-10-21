@@ -21,7 +21,7 @@ enum MarkKind: String {
     case combined
 
     /// What a no-time mark reads as, where a grade word would go.
-    static let inTimeWord = "In its time"
+    static let inTimeWord = "In its window"
     /// Its fill: grey-green, in its time with no third claimed (plan-v3 §2's table; Zoe's demo).
     static let inTimeColor = Color(hue: 0.36, saturation: 0.22, brightness: 0.62)
 }

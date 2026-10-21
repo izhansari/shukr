@@ -133,11 +133,11 @@ struct LateMarkSheet: View {
                 Text(line).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
             }
             .padding(.top, 28)
-            Text("Did you pray it in its time?")
+            Text("Did you pray it in its window?")
                 .font(.system(size: 17, weight: .regular, design: .rounded))
             VStack(spacing: 12) {
                 Button { answer(true) } label: {
-                    Text("In its time")
+                    Text("In its window")
                         .font(.system(size: 17, weight: .medium, design: .rounded))
                         .foregroundStyle(.primary)
                         .frame(width: 240, height: 52)
@@ -154,7 +154,7 @@ struct LateMarkSheet: View {
                 }
                 .buttonStyle(.plain)
             }
-            Text("In its time counts as prayed in its time, with no time recorded.")
+            Text("In its window counts it as prayed in its window, with no time recorded.")
                 .font(.footnote).foregroundStyle(.tertiary).multilineTextAlignment(.center)
                 .padding(.horizontal, 24)
             Spacer(minLength: 0)

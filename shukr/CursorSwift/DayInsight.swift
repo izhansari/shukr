@@ -231,8 +231,8 @@ enum DayInsight {
         if weekDays.count >= 5 {
             let inTime = weekDays.reduce(0) { $0 + $1.filter(\.inTime).count }
             out.append(Line(id: "notice.week", text: phrase([
-                "\(inTime) of \(weekDays.count * 5) prayers in time this week.",
-                "This week: \(inTime) of \(weekDays.count * 5) prayers in their time.",
+                "\(inTime) of \(weekDays.count * 5) prayers in their windows this week.",
+                "This week: \(inTime) of \(weekDays.count * 5) prayers in their windows.",
             ], input), offersFajrAlarm: false))
         }
         if input.tomorrowIsFriday {
