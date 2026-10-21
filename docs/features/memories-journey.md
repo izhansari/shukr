@@ -173,9 +173,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   squares' geometry is one set of statics on `JourneyYearSquares` (drawing, hit test, layout, the flight); ‹, the edge swipe and the toggle go back to the weeks (`JourneyFlightGeometry.yearBack`).
 - **Your prayers** (the rethink's phase 3; behind `MetricsLook.on`): Prayer scores' page as built — its motion, rows,
   chart, chips and back dial — titled "Your prayers", with no ring (owner, 2026-10-20: "get rid of the ring for the your
-  prayers altogether. And the main thing can just be the histogram"): the title and its lines take the header. The rows'
-  and the open prayer's line "in its time 224 of 329" over the span the chips pick; the open prayer's "Usually 37% into its
-  window · about 26 minutes in today" (`Prayer.usualShare`, the median place in its window over the span's in-window
+  prayers altogether. And the main thing can just be the histogram"): the title and its lines take the header; an open
+  prayer's hero is its window today (`PrayerWindowHero`, YourPrayers.swift — owner 2026-10-20 "now show this in the hero for
+  the individual prayer page"): thirds faint, lit from the start to today's mark, a hollow dot there, a "usual" tick at the
+  span's place, "6:33 · today · Closing" (or "not yet" / "not marked") in the middle; read-only. The rows'
+  and the open prayer's line "in its time 224 of 329" over the span the chips pick; the open prayer's "Usually a third of the way
+  in · about 26 minutes in today" (in words, not a percent — Frank's check) (`Prayer.usualShare`, the median place in its window over the span's in-window
   marks — season-proof, owner 2026-10-20; today's window from PrayerMetrics.recent; "1 h 41 min" past an hour) — never a
   clock time ("the times of prayers shift"); no score insight, no score trend.
 - Prayer scores (`PrayerScoresPage`, PrayerScores.swift): its title + the one-liner beside the day page's own ring at 70 %

@@ -276,11 +276,20 @@ struct PrayerScores {
         return m == 1 ? "1 minute" : "\(m) minutes"
     }
 
-    /// "Usually 15% into its window · about 23 min in today": the place (season-proof), then what it is on today's window
+    /// "Usually a third of the way in · about 26 minutes in today": the place (season-proof), then what it is on today's window
     /// (`today`: today's window length, nil when there isn't one).
     static func placeLine(_ share: Double, today: TimeInterval?) -> String {
-        let pct = max(1, Int((share * 100).rounded()))
-        var line = "Usually \(pct)% into its window"
+        // In words, not a percent (Frank's check: "37%" reads like a score on a page that just lost its numbers).
+        let place: String = switch share {
+        case ..<0.12: "near its start"
+        case ..<0.29: "a quarter of the way in"
+        case ..<0.42: "a third of the way in"
+        case ..<0.58: "halfway in"
+        case ..<0.71: "two-thirds of the way in"
+        case ..<0.88: "three-quarters of the way in"
+        default: "near its end"
+        }
+        var line = "Usually \(place)"
         if let today, today > 0 { line += " · about \(elapsed(share * today)) in today" }
         return line
     }
@@ -761,14 +770,6 @@ struct PrayerScoresPage: View {
         ZStack {
             NeuRaised(shape: Circle(), radius: 9, offset: 4.5)
                 .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
-            if MetricsLook.on {
-                // Each prayer's last 7 days (owner's pick A, 2026-10-20): no average, no 0–100. The same taps as DayRing's.
-                YourPrayersRing(recent: recent.byName, picked: ringShown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
-                    let name = DayRing.order[i]
-                    guard data.prayers[name] != nil else { return }
-                    if selected == nil { open(name) } else if name == selected && !swapping { close() } else { switchTo(name) }
-                }
-            } else {
             DayRing(day: ringPrayers, picked: ringShown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
                 let name = DayRing.order[i]
                 guard data.prayers[name]?.prayedScore != nil else { return }
@@ -776,7 +777,6 @@ struct PrayerScoresPage: View {
             }
             .id(data.span)   // a new span's fifths cross-fade in
             .transition(.opacity)
-            }
             VStack(spacing: 1) {
                 Text(MetricsLook.on ? ringCount : ringScore.map { "\($0)" } ?? "–")
                     .font(.system(size: MetricsLook.on ? 46 : 58, weight: .thin, design: .rounded)).monospacedDigit()
@@ -997,6 +997,14 @@ struct PrayerScoresPage: View {
             if !MetricsLook.on {
                 ring.scaleEffect(scale)
                     .frame(width: CircleMotion.dayDiscDiameter * scale, height: CircleMotion.dayDiscDiameter * scale)
+            } else if let s = shown {
+                // An open prayer's hero: its window today, your usual tick (owner, 2026-10-20: "now show this in the hero for
+                // the individual prayer page"). It comes and goes with the ring's words (the open's beats and the back dial).
+                PrayerWindowHero(name: s, usualShare: data.prayers[s]?.usualShare)
+                    .scaleEffect(scale)
+                    .frame(width: 200 * scale, height: 200 * scale)
+                    .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
+                    .transition(.opacity)
             }
         }
         .padding(.leading, 4)

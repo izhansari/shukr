@@ -46,67 +46,97 @@ import SwiftUI
     }
 }
 
-/// The page's ring: five fifths (DayRing's places, order and taps), each its prayer's last 7 days as seven slivers in their
-/// states — prayed in its grade colour, not marked a faint track, no record dotted. Open, its fifth stays and the rest fade.
-struct YourPrayersRing: View {
-    let recent: [String: PrayerMetrics.PrayerRecent]
-    let picked: Int?
-    let onPick: (Int) -> Void
+/// One prayer's window as the page's hero (owner, 2026-10-20, on Zoe's demo ring: "now show this in the hero for the
+/// individual prayer page"): its window in thirds (Opening · Middle · Closing, faint), lit from its start to today's mark
+/// with a hollow dot there, a tick where you usually pray it (the span's place in the window), today's time and its place in
+/// the middle. Read-only (the editor's PrayerWindowRing is the one you drag); the same arc style.
+struct PrayerWindowHero: View {
+    let name: String
+    /// Where you usually pray it (0 as it begins, 1 as it ends); nil: no tick.
+    let usualShare: Double?
     @Environment(\.circleTheme) private var theme
-    @Environment(\.colorScheme) private var scheme
+
+    private static let side: CGFloat = 200
+    private static let gap = 2.4
+
+    /// Today's window and mark (Journey's log, which the page already has).
+    private var today: (start: Date, end: Date, markedAt: Date?, mark: JourneyLog.Mark)? {
+        guard let log = JourneyStore.shared.log, let i = JourneyLog.names.firstIndex(of: name) else { return nil }
+        let day = log.day(PrayerDay.start())
+        guard let slot = day.slots[i] else { return nil }
+        return (slot.start, slot.end, slot.markedAt, day.marks[i])
+    }
 
     var body: some View {
-        // Thicker than DayRing's half band, tighter gaps: at 70 % in the header, seven thin slivers read as a dashed (to come)
-        // ring (Zoe's sim check).
-        let width = theme.arc.width * 0.78
-        Canvas { ctx, size in
-            let c = CGPoint(x: size.width / 2, y: size.height / 2)
-            let r: CGFloat = 100
-            let ink = scheme == .dark ? Color.white : Color.black
-            for (i, name) in DayRing.order.enumerated() {
-                let from = (Double(i) / 5 + DayRing.gap) * 360, to = (Double(i + 1) / 5 - DayRing.gap) * 360
-                let sliver = (to - from) / 7, gap = 0.9
-                let days = recent[name]?.last7 ?? []
-                let on = picked == nil || picked == i
-                for d in 0..<7 {
-                    let a0 = from + Double(d) * sliver + gap / 2 - 90, a1 = a0 + sliver - gap
-                    var p = Path()
-                    p.addArc(center: c, radius: r, startAngle: .degrees(a0), endAngle: .degrees(a1), clockwise: false)
-                    let state: PrayerState?? = days.indices.contains(d) ? days[d] : nil
-                    var shading = ctx
-                    shading.opacity = on ? 1 : 0.25
-                    switch state {
-                    case .some(.some(let s)):
-                        if let color = s.ringColor {
-                            shading.stroke(p, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .butt))
-                        } else if s == .excused {
-                            shading.stroke(p, with: .color(Color(red: 0.55, green: 0.62, blue: 0.75).opacity(0.38)), style: StrokeStyle(lineWidth: width, lineCap: .butt))
-                        } else {
-                            shading.stroke(p, with: .color(ink.opacity(s == .toCome ? 0.07 : 0.17)), style: StrokeStyle(lineWidth: width, lineCap: .butt))
-                        }
-                    case .some(.none):   // no record that day: dotted
-                        shading.stroke(p, with: .color(ink.opacity(0.28)), style: StrokeStyle(lineWidth: width * 0.45, lineCap: .round, dash: [0.1, 5]))
-                    case .none:
-                        shading.stroke(p, with: .color(ink.opacity(0.07)), style: StrokeStyle(lineWidth: width, lineCap: .butt))
-                    }
+        let r: CGFloat = 92, w = theme.arc.width
+        let t = today
+        let total = t.map { max($0.end.timeIntervalSince($0.start), 1) } ?? 1
+        let markShare: Double? = t.flatMap { tt in tt.markedAt.map { $0.timeIntervalSince(tt.start) / total } }
+        let lit = min(max(markShare ?? 0, 0), 1) * 360
+        let opening = PrayerScoring.openingShare, mid = opening + (1 - opening) / 2
+        let zones: [(Double, Double, Double)] = [(0, opening * 360, 1), (opening * 360, mid * 360, 0.9), (mid * 360, 360, 0.7)]
+        ZStack {
+            ForEach(Array(zones.enumerated()), id: \.offset) { _, z in
+                let color = PrayerScoring.color(for: z.2)
+                let a0 = z.0 + Self.gap / 2, a1 = z.1 - Self.gap / 2
+                arc(a0, a1).stroke(color.opacity(0.16), style: StrokeStyle(lineWidth: w, lineCap: theme.arc.cap))
+                if markShare != nil, min(a1, lit) > a0 + 0.5 {
+                    arc(a0, min(a1, lit)).stroke(color, style: StrokeStyle(lineWidth: w, lineCap: theme.arc.cap))
                 }
             }
+            .frame(width: r * 2, height: r * 2)
+            // Your usual: a tick across the band, its word inside the ring (outside, it ran off the edge at 70 %).
+            if let u = usualShare {
+                let a = u * 360 * .pi / 180
+                Capsule().fill(Color.secondary).frame(width: 2, height: w + 10)
+                    .offset(y: -r).rotationEffect(.radians(a))
+                Text("usual").font(.system(size: 11, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    .offset(x: (r - w - 12) * sin(a), y: -(r - w - 12) * cos(a))
+            }
+            if let m = markShare {
+                let a = min(max(m, 0), 1) * 360 * .pi / 180
+                let color = t.flatMap { $0.mark.score }.map { PrayerScoring.color(for: $0) } ?? .gray
+                Circle().fill(theme.surface)
+                    .overlay(Circle().strokeBorder(color, lineWidth: 2.8))
+                    .frame(width: 15, height: 15)
+                    .offset(x: r * sin(a), y: -r * cos(a))
+            }
+            centre(t)
         }
-        .frame(width: 200 + width, height: 200 + width)
-        .frame(width: 200, height: 200)
-        .animation(.smooth(duration: CircleMotion.quick), value: picked)
-        // Only the band takes a tap (DayRing's way).
-        .contentShape(Circle().stroke(lineWidth: 46))
-        .gesture(SpatialTapGesture().onEnded { tap in
-            let dx = tap.location.x - 100, dy = tap.location.y - 100
-            var turn = atan2(dx, -dy) / (2 * .pi)
-            if turn < 0 { turn += 1 }
-            onPick(min(Int(turn * 5), 4))
-        })
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(DayRing.order.map { name in
-            guard let r = recent[name] else { return "\(name): no record yet" }
-            return "\(name): in its time \(r.inTime) of \(r.asked)"
-        }.joined(separator: ", "))
+        .frame(width: Self.side, height: Self.side)
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The hour and minutes in the user's 12 / 24-hour setting, no AM / PM (it fits the middle; the window says when).
+    private static let clock: DateFormatter = {
+        let f = DateFormatter()
+        let format = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .current) ?? "h:mm"
+        f.dateFormat = format.replacingOccurrences(of: "a", with: "").trimmingCharacters(in: .whitespaces)
+        return f
+    }()
+
+    @ViewBuilder private func centre(_ t: (start: Date, end: Date, markedAt: Date?, mark: JourneyLog.Mark)?) -> some View {
+        let (big, small): (String, String) = {
+            guard let t else { return ("–", "today · not yet") }   // the day's rows aren't made yet
+            switch t.mark {
+            case .done(let score):
+                let word = t.markedAt.map { $0 > t.end } == true ? "made up" : PrayerScoring.grade(for: score).rawValue
+                return (t.markedAt.map { Self.clock.string(from: $0) } ?? "✓", t.markedAt == nil ? "today · in its time" : "today · \(word)")
+            case .missed: return ("–", "today · not marked")
+            case .excused: return ("–", "today · excused")
+            default: return ("–", Date() < t.start ? "today · to come" : "today · not yet")
+            }
+        }()
+        VStack(spacing: 2) {
+            Text(big).font(.system(size: 46, weight: .thin, design: .rounded)).monospacedDigit()
+            Text(small).font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+        }
+    }
+
+    private func arc(_ from: Double, _ to: Double) -> Path {
+        var p = Path()
+        p.addArc(center: CGPoint(x: 92, y: 92), radius: 92, startAngle: .degrees(from - 90), endAngle: .degrees(to - 90), clockwise: false)
+        return p
     }
 }
