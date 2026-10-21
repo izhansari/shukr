@@ -155,3 +155,79 @@ enum PrayerMetrics {
         return (median(list.prefix(8)), median(list.suffix(8)))
     }
 }
+
+// MARK: - One prayer, lately (Your prayers; plan-v3 §2d, §10.4)
+
+extension PrayerMetrics {
+    /// Your best month: the calendar month with the earliest usual place in the window (median), from months with at least
+    /// this many timed in-time marks of the prayer.
+    static let bestMonthMinimum = 8
+    /// How many recent in-time marks make "your usual".
+    static let usualSample = 30
+
+    struct BestMonth: Equatable {
+        let start: Date
+        let share: Double
+    }
+
+    struct PrayerRecent: Equatable {
+        let name: String
+        /// The last 7 prayer days, oldest first, today last; nil = no record.
+        let last7: [PrayerState?]
+        /// "in its time 4 of the last 7": in time, of the days it was asked (not excused, not still to come, on record).
+        var inTime: Int { last7.compactMap { $0 }.filter(\.inTime).count }
+        var asked: Int { last7.compactMap { $0 }.filter { $0 != .excused && $0 != .toCome }.count }
+        /// Your usual place in its window (0 = as it begins, 1 = as it ends): the median of your last 30 timed in-time marks;
+        /// nil under 5. Fair across seasons: it's the place, not the minutes.
+        let usualShare: Double?
+        let bestMonth: BestMonth?
+        /// The window your usual is set on: today's, or the latest one there is.
+        let window: DateInterval?
+
+        /// "usually by 6:00": your usual place, as a clock on today's window.
+        var usualClock: Date? {
+            guard let usualShare, let window else { return nil }
+            return window.start.addingTimeInterval(usualShare * window.duration)
+        }
+        /// "4 min from your best month": minutes on today's window between your usual and your best month's (0 when this
+        /// month is your best; nil without either).
+        var minutesFromBestMonth: Int? {
+            guard let usualShare, let best = bestMonth, let window else { return nil }
+            return max(0, Int(((usualShare - best.share) * window.duration / 60).rounded()))
+        }
+        /// "10 min earlier than your usual": minutes on that prayer's own window, positive = earlier. nil without a usual.
+        func minutesEarlier(markedAt: Date, start: Date, end: Date) -> Int? {
+            guard let usualShare, end > start else { return nil }
+            let share = markedAt.timeIntervalSince(start) / end.timeIntervalSince(start)
+            return Int(((usualShare - share) * end.timeIntervalSince(start) / 60).rounded())
+        }
+    }
+
+    static func recent(_ name: String, in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> PrayerRecent {
+        guard let i = JourneyLog.names.firstIndex(of: name) else {
+            return PrayerRecent(name: name, last7: [], usualShare: nil, bestMonth: nil, window: nil)
+        }
+        let cal = Calendar.current
+        let todayStart = today(now).start
+        let last7 = (0..<7).reversed().compactMap { cal.date(byAdding: .day, value: -$0, to: todayStart) }
+            .map { day($0, in: log, excused: excused, now: now).states?[i] }
+        // Every timed in-time mark of this prayer, newest first: its place in its window and its day.
+        var marks: [(date: Date, share: Double)] = []
+        var window: DateInterval?
+        for d in log.days.values.sorted(by: { $0.date > $1.date }) where d.counted {
+            guard let slot = d.slots[i] else { continue }
+            if window == nil, d.date <= todayStart, slot.end > slot.start { window = DateInterval(start: slot.start, end: slot.end) }
+            guard let at = slot.markedAt, d.marks[i].state(end: slot.end, now: now)?.inTime == true, slot.end > slot.start else { continue }
+            marks.append((d.date, min(max(at.timeIntervalSince(slot.start) / slot.end.timeIntervalSince(slot.start), 0), 1)))
+        }
+        func median(_ v: [Double]) -> Double? { v.isEmpty ? nil : v.sorted()[v.count / 2] }
+        let recent = marks.prefix(usualSample).map(\.share)
+        let usual = recent.count >= 5 ? median(recent) : nil
+        var byMonth: [Date: [Double]] = [:]
+        for m in marks { byMonth[JourneyLog.monthStart(m.date), default: []].append(m.share) }
+        let best = byMonth.filter { $0.value.count >= bestMonthMinimum }
+            .compactMap { k, v in median(v).map { BestMonth(start: k, share: $0) } }
+            .min { ($0.share, $1.start) < ($1.share, $0.start) }   // the earliest; a tie goes to the later month
+        return PrayerRecent(name: name, last7: last7, usualShare: usual, bestMonth: best, window: window)
+    }
+}
