@@ -280,7 +280,7 @@ struct JourneyWeekCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(day.map { "\($0.date.formatted(.dateTime.weekday(.wide))), \(Self.dayWords($0))" } ?? "")
+                .accessibilityLabel(day.map { "\($0.date.formatted(.dateTime.weekday(.wide))), \(beforeFirst($0) ? "before you started" : Self.dayWords($0))" } ?? "")
             }
         }
     }
@@ -288,8 +288,16 @@ struct JourneyWeekCard: View {
     private static let edge = Color.secondary.opacity(0.5)
     private static let frost = Color(red: 0.55, green: 0.62, blue: 0.75).opacity(0.38)
 
+    /// A day before the first mark ever (the app wasn't in use yet): it asks nothing, like an excused day, but isn't one.
+    private func beforeFirst(_ day: PrayerMetrics.Day) -> Bool {
+        log.firstDay.map { day.date < Calendar.current.startOfDay(for: $0) } ?? false
+    }
+
     @ViewBuilder private func dot(_ day: PrayerMetrics.Day?) -> some View {
-        if let day, day.states == nil {
+        if let day, beforeFirst(day) {
+            // Not frost (that's Excused Mode): a small faint dot, nothing asked.
+            Circle().fill(Color.secondary.opacity(0.18)).padding(5)
+        } else if let day, day.states == nil {
             Circle().inset(by: 0.7).stroke(Self.edge, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, dash: [0.1, 3.6]))
         } else if let states = day?.states, states.allSatisfy({ $0 == .excused }) {
             Circle().fill(Self.frost)
