@@ -223,9 +223,8 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         let excused = Excused.ranges   // a prayer she was excused from is never "missed" (Excused.swift)
         // 3. The LATEST missed prayer of the day, so after Isha ends the circle stays on Isha (owner, 2026-10-19: "stay on
         // isha is fine. i like that"); the line says when there are more (MainCircleView.missedToday).
-        if let missedPrayer = todaysPrayers.filter({
-            !$0.isCompleted && $0.endTime < now && !Excused.covers(start: $0.startTime, end: $0.endTime, in: excused)
-        }).max(by: { $0.startTime < $1.startTime }) { return missedPrayer }
+        if let missedPrayer = todaysPrayers.filter({ $0.state(excusedRanges: excused, now: now).notMarked })
+            .max(by: { $0.startTime < $1.startTime }) { return missedPrayer }
 
         return nil                                          // No relevant prayer found
     }

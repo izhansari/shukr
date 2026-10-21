@@ -149,12 +149,11 @@ struct JourneyLog {
             // The fresh start read once (log.countsFrom), not per row: a change mid-build gave a mixed log (audit #8).
             let dayStart = row.dayStart
             var day = log.days[key] ?? Day(key: key, date: dayStart, goal: goal, counted: log.countsFrom.map { dayStart >= $0 } ?? true)
-            if row.isCompleted {
-                day.marks[slot] = .done(row.numberScore ?? 0)
-            } else if Excused.covers(start: row.startTime, end: row.endTime, in: ranges) {
-                day.marks[slot] = .excused
-            } else {
-                day.marks[slot] = row.endTime > now ? .toCome : .missed
+            switch row.state(excusedRanges: ranges, now: now) {   // PrayerState: the one place that decides it
+            case .excused: day.marks[slot] = .excused
+            case .toCome: day.marks[slot] = .toCome
+            case .notMarked: day.marks[slot] = .missed
+            case .opening, .middle, .closing, .madeUp: day.marks[slot] = .done(row.numberScore ?? 0)
             }
             day.slots[slot] = Slot(start: row.startTime, end: row.endTime,
                                    markedAt: row.isCompleted ? row.timeAtComplete : nil, jumuah: row.isJumuah,

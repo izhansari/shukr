@@ -909,9 +909,7 @@ struct MainCircleView: View {
     /// Today's prayers owed: ended, not marked, not excused — more than one and the missed face says "and more to make up".
     private var missedToday: Int {
         let now = Date(), excused = Excused.ranges
-        return viewModel.todaysPrayers.filter {
-            !$0.isCompleted && $0.endTime < now && !Excused.covers(start: $0.startTime, end: $0.endTime, in: excused)
-        }.count
+        return viewModel.todaysPrayers.filter { $0.state(excusedRanges: excused, now: now).notMarked }.count
     }
     /// The circle is on a missed prayer (after Isha ends, until Fajr turns the day).
     private var missedFaceShown: Bool {

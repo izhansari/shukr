@@ -78,6 +78,9 @@ struct shukrApp: App {
             // A tasbeeh session the last run never got to save (evicted / swiped away) is saved now (audit A7).
             SessionDraft.restoreIfAny(in: container)
             #if DEBUG
+            // `-dumpPrayerStates`: every prayer row's PrayerState to Library/Caches/prayer-states.tsv (the metrics
+            // rethink's oracle check: board/scoring-rethink/engines.py reads the same rows and must agree).
+            if ProcessInfo.processInfo.arguments.contains("-dumpPrayerStates") { PrayerStateDump.write(container) }
             // `-demoNextLabel on|off`: the "Next prayer" dev toggle, for screenshots.
             if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoNextLabel"),
                i + 1 < ProcessInfo.processInfo.arguments.count {

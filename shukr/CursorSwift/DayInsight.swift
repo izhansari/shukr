@@ -13,11 +13,13 @@ struct DayPrayer {
     var excused = false
 
     var done: Bool { markedAt != nil && score != nil }
+    /// What it is (PrayerState, the one place that decides it).
+    var state: PrayerState { PrayerState.of(isCompleted: done, score: score, end: end, excused: excused, now: Date()) }
     /// Its window over and nothing marked (not excused): the day page offers To make up.
-    var missed: Bool { !done && !excused && end < Date() }
+    var missed: Bool { state.notMarked }
     /// In its window (Perfect, Middle or Closing) — not Qaza, not missed.
-    var inTime: Bool { done && (score ?? 0) >= PrayerScoring.inWindowFloor - 0.0001 }
-    var perfect: Bool { done && (score ?? 0) >= 0.9999 }
+    var inTime: Bool { state.inTime }
+    var perfect: Bool { state == .opening }
     /// Where in its window it was prayed: 0 = as it began, 1 = as it ended; past 1 (Qaza) reads 1.
     var share: Double? {
         guard let markedAt, end > start else { return nil }

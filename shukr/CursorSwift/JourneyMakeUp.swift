@@ -576,8 +576,7 @@ struct JourneyMakeUpPage: View {
         let open = kept.values
             .filter { row in
                 if keeping.contains(row.persistentModelID) { return true }
-                return active.contains(row.dayKey) && !row.isCompleted && row.endTime <= now
-                    && !Excused.covers(start: row.startTime, end: row.endTime, in: ranges)
+                return active.contains(row.dayKey) && row.state(excusedRanges: ranges, now: now).notMarked
             }
             .sorted { $0.startTime > $1.startTime }
             .map(entry)
