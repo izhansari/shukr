@@ -125,26 +125,26 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   in Your Data's copy. Not built: "Show earlier" (the calendar still scrolls back).
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
-- **The week card** (JourneyWeekHero.swift; prayer-metrics rethink phase 5, owner's pick 2026-10-20 "yeah do it" on B · A · A;
-  behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): the card is this week — `JourneyWeekRing`, seven rounded arcs
-  Sunday → Saturday, one colour a day (owner, 2026-10-20: "one solid color per day … green if we prayed all the prayers that
-  day"): all prayed green (made up counts, excused is done), some prayed grey, none fainter, to come a calm track, all excused
-  frosted, a no-record day dotted), "N done · this week" Sun–Wed, "N left · for a strong week" Thu–Sat (only while made up +
-  not marked ≤ 3), "Your usual week: N", the last two finished weeks banked ("34 of 35 · strong ✓" / "complete week ✓");
-  all from `PrayerMetrics`, read off the main thread on `log.version`. Its ↗ opens the calendar as before; this week's days
-  fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that day: it opens like an accordion
-  to a third of the ring, evenly either side of its middle, the other six closing up (`JourneyWeekRing.layout`: a day
-  weighs 1 + 2 × its split), the day's own arc turns into a faint track holding its five
-  prayers as the Salah page's thin fifths (DayRing's band, its 12 pt hollow dots) where in its window each was prayed
-  (owner, 2026-10-21: "show it contained in some arc"; "no! the thin on the salah rings"; tried first: five blocks in place,
-  fifths over a quarter, then fifths at the band's full thickness);
-  the rest dim to 0.25, the middle reads "Wednesday · all five prayed" (or "4 of 5 prayed", "no record"); the same arc again
-  opens that day's page, a tap in the middle lets it
-  go. A day with no record (NoRecordDays.next, Frank's flow) is asked in the banked weeks' slot ("Yesterday has no record.
-  Did you pray?" · Pick which · Not now — the card never changes height; unanswered, it steps aside after 3 visits to
-  Journey and stays quiet until a newer day has no record — owner, 2026-10-20); a dotted arc picked again opens the same Pick
-  sheet (`NoRecordPickSheet`, one fixed height of 486 pt from the first frame, larger text scrolls in it). No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is
-  the first row ("35 of 35 in their time · last 7 days"), the page zooming out of it.
+- **The week card** (JourneyWeekHero.swift; behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): this week as
+  one ring toward a strong week (owner, 2026-10-21, pick B on https://claude.ai/artifact/T1hh4B26y7iP93z1h8Ypj4: "it's simple
+  and easy"; was seven day arcs with an accordion). `JourneyGoalRing`: from the top clockwise the prayers that met your goal,
+  green; from the top back the other way the ones that didn't — missed (to make up) darker, prayed below your goal lighter
+  ("fill the back end with arc showing the prayer that don't fit the goal"); the gap is still to come; a tick labelled
+  "strong" where the back may reach (the slack, 3 in): past it the week can't be strong. Each part one round run, no breaks
+  ("it's like broken at the divides"). Centre "15 of 35" over your goal's words ("in their windows"); a week that asks
+  nothing "– · excused this week". Under it the seven days as dots: every prayer marked → the Salah list's filled light-grey
+  done dot, any unmarked (to come, missed, partly) hollow (owner: "hollow gray for unmarked and filled light gray for
+  marked"), no record dotted, all excused frosted, today's initial in ink; a tap opens the day's page ("tapping those days
+  can just push the day ring page for now"; today only once all five are in), a dotted day its Pick sheet. One line under
+  them, the first that's true: out of reach → the mid-week line ("Your goal this week, every prayer in its window, is out of
+  reach now. You've still got 19 prayers left, so make them count." — owner: "account for the messaging for when they miss
+  their strong week"); a missed prayer → "Make up today's Fajr to keep the week strong" (several: "Make up N missed prayers…");
+  a no-record day → "Fill in Monday to keep the week strong"; enough already → "A strong week, so far"; Sunday → "A new
+  week. 32 makes it a strong one."; else "32 makes a strong week" (a fixed 3-line slot). The last two finished weeks banked
+  ("Oct 4 – 10 · 34 of 35 · strong", "· complete"); a day with no record asked in their slot ("Yesterday has no record. Did
+  you pray?" · Pick which · Not now — steps aside after 3 visits; owner, 2026-10-20). All from `PrayerMetrics`, off the main
+  thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
+  No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is the first row ("35 of 35 in their time · last 7 days"), the page zooming out of it.
 - Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the
   pager's right page (its in-pager band and pager hold were deleted 2026-10-20, cleanup tangle 4).
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in

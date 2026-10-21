@@ -1258,8 +1258,8 @@ struct PrayerTimeWheel: UIViewRepresentable {
 
 
 /// The editor's sheet in Liquid Glass: nothing painted on iOS 26 (the partial sheet is glass), a material before (as the
-/// top-up sheet, AutoTopUp's TopUpSheetGlass).
-private struct EditorSheetGlass: ViewModifier {
+/// top-up sheet, AutoTopUp's TopUpSheetGlass). The Sunday offer's too (SundayOffer.swift; owner, 2026-10-21: "glass sheet").
+struct EditorSheetGlass: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) { content } else { content.presentationBackground(.regularMaterial) }
     }

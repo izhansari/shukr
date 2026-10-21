@@ -2,12 +2,11 @@
 //  JourneyWeekHero.swift
 //  shukr
 //
-//  Journey's hero as the prayer-metrics rethink has it (build plan phase 5, board/scoring-rethink/build-plan.md; Zoe's v3.4
-//  demo, https://claude.ai/artifact/QDykE7fDLe5r3MBPXY21e6). The owner's pick, 2026-10-20 ("yeah do it", on Zoe's B · A · A):
-//  the card is this week — a ring of 35 arcs, Sunday → Saturday — with "12 done" early in the week and "4 left for a strong
-//  week" late in it, your usual week under it, the finished weeks banked below; the 16-week calendar is one tap down, behind
-//  the card's ↗ (the same zoom it always had). Every count reads PrayerMetrics (Fable's data layer): no screen decides a
-//  week on its own. Behind `MetricsLook.on` until he OKs the look.
+//  Journey's hero as the prayer-metrics rethink has it: this week as one ring toward a strong week (owner, 2026-10-21, pick B
+//  on Frank's canvas https://claude.ai/artifact/T1hh4B26y7iP93z1h8Ypj4, after his "i wanna get it to a quality level first
+//  thats clear and easy"), the seven days as dots under it, one line, the finished weeks banked; the 16-week calendar is one
+//  tap down, behind the card's ↗. Every count reads PrayerMetrics (Fable's data layer): no screen decides a week on its own.
+//  Behind `MetricsLook.on` until he OKs the look.
 //
 
 import SwiftUI
@@ -41,212 +40,87 @@ struct AnimatableNumbers: VectorArithmetic {
     subscript(_ i: Int) -> Double { i < v.count ? max(0, v[i]) : 0 }
 }
 
-/// A week as seven rounded arcs, Sunday at the top, clockwise, the days' initials around it. A day all prayed green; some
-/// prayed a grey, none a fainter one; to come a calm track, all excused frosted; a day with no record dotted. A picked day
-/// opens like an accordion to a quarter of the ring, evenly either side of its middle, the other six closing up: inside,
-/// its five prayers as the Salah page's fifths, each with its hollow dot where in its window it was prayed (owner,
-/// 2026-10-21: "maybe we expand it like an accordion a little (like to maybe take up 1/4 of the ring expanding evenly on both
-/// sides - so 1/8 left and 1/8 right) to show the same kinda fifth lines on the salah page with their hollow dots"; tried
-/// first: the day broken into five coloured blocks in place — "so ugly"). Then (owner, 2026-10-21: "make it the same
-/// thickness. show it contained in some arc. so we know they belong together. Expand the accordion more … dull out the other
-/// days more"; "no! the thin on the salah rings"): a third of the ring, the day's own arc turning into a faint track that
-/// holds the five as the Salah page's thin fifths with their hollow dots; the rest at 0.25.
-struct JourneyWeekRing: View, Animatable {
-    let days: [PrayerMetrics.Day]
-    /// Today's index in the week (its initial in ink), nil for a finished week.
-    var today: Int?
+
+/// This week as one ring toward a strong week (owner, 2026-10-21, pick B on https://claude.ai/artifact/T1hh4B26y7iP93z1h8Ypj4:
+/// "it's simple and easy. and we can fill the back end with arc showing the prayer that don't fit the goal (either missed or
+/// prayed at lower than goal)"). From the top, clockwise: the prayers that met your goal, green. From the top, back the other
+/// way: the ones that didn't — missed (still to make up) darker, prayed below your goal lighter. The gap between is what's
+/// still to come. A tick where the back may reach for a strong week (the slack, 3 in from the end): past it, the week can't
+/// be strong. Each part one round run, never broken at the joins (owner, on the first drawing: "it's like broken at the
+/// divides"). Was seven day arcs with an accordion (Zoe, 2026-10-20 / 21).
+struct JourneyGoalRing: View, Animatable {
+    var met: Double
+    var missed: Double
+    var below: Double
+    /// What the week asks (35, fewer with excused prayers): the ring's whole.
+    let asked: Int
+    /// How many may miss your goal in a strong week: the back reaches the tick at this (0 on Prayed — every prayer).
+    var slack: Int = PrayerMetrics.strongWeekSlack
     var lineWidth: CGFloat = 14
-    var labels = true
-    /// Each day's prayers' places in their windows (0 the start … 1 the end, past 1 made up), nil without a clock.
-    var places: [[Double?]] = []
-    /// How far each day has opened (0 its seventh … 1 a third), animatable: the picked day's 1.
-    var splits: AnimatableNumbers
-    var animatableData: AnimatableNumbers {
-        get { splits }
-        set { splits = newValue }
+    var animatableData: AnimatablePair<Double, AnimatablePair<Double, Double>> {
+        get { AnimatablePair(met, AnimatablePair(missed, below)) }
+        set { met = newValue.first; missed = newValue.second.first; below = newValue.second.second }
     }
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.circleTheme) private var theme
 
-    init(days: [PrayerMetrics.Day], today: Int? = nil, lineWidth: CGFloat = 14, labels: Bool = true,
-         places: [[Double?]] = [], picked: Int? = nil) {
-        self.days = days
-        self.today = today
-        self.lineWidth = lineWidth
-        self.labels = labels
-        self.places = places
-        splits = AnimatableNumbers(v: (0..<7).map { $0 == picked ? 1 : 0 })
-    }
-
-    private static let dayGap = 6.0
-    /// The gap between an open day's prayers, degrees (the day ring's fifths' share of theirs).
-    private static let prayerGap = 3.0
-
-    /// Each day's room (start, end) in degrees from the top, clockwise: a day weighs 1 + 2 × its split, so an open day's 3 of
-    /// 9 is a third; turned so the opening days keep their middles where they were.
-    static func layout(_ splits: [Double]) -> [(Double, Double)] {
-        let w = (0..<7).map { 1 + 2 * (splits.indices.contains($0) ? min(max(splits[$0], 0), 1) : 0) }
-        let total = w.reduce(0, +)
-        var at = 0.0
-        var rooms: [(Double, Double)] = []
-        for i in 0..<7 {
-            let span = 360 * w[i] / total
-            rooms.append((at, at + span))
-            at += span
-        }
-        // The turn that keeps an opening day's middle in place (weighted by how open each is).
-        var pull = 0.0, weight = 0.0
-        for i in 0..<7 {
-            let s = splits.indices.contains(i) ? min(max(splits[i], 0), 1) : 0
-            guard s > 0 else { continue }
-            let was = (Double(i) + 0.5) * 360 / 7, now = (rooms[i].0 + rooms[i].1) / 2
-            pull += s * (was - now)
-            weight += s
-        }
-        let turn = weight > 0 ? pull / weight : 0
-        return rooms.map { ($0.0 + turn, $0.1 + turn) }
-    }
-
-    /// The day under a point (in the ring's own frame of `side`), nil off the band; `picked` open as drawn.
-    static func hit(_ p: CGPoint, side: CGFloat, lineWidth: CGFloat, labels: Bool = true, picked: Int? = nil) -> Int? {
-        let r = side / 2 - lineWidth / 2 - (labels ? 16 : 0)
-        let dx = p.x - side / 2, dy = p.y - side / 2
-        guard abs(hypot(dx, dy) - r) <= lineWidth / 2 + 12 else { return nil }
-        var turn = atan2(dx, -dy) / (2 * .pi) * 360   // 0 at the top, clockwise
-        if turn < 0 { turn += 360 }
-        let rooms = layout((0..<7).map { $0 == picked ? 1 : 0 })
-        for (i, room) in rooms.enumerated() {
-            for k in [-360.0, 0, 360] where turn + k >= room.0 && turn + k < room.1 { return i }
-        }
-        return nil
-    }
-
-    /// Every prayer prayed (made up counts; an excused one is done) and at least one prayed.
-    static func allPrayed(_ day: PrayerMetrics.Day) -> Bool {
-        guard let states = day.states else { return false }
-        return states.contains(where: \.prayed) && states.allSatisfy { $0.prayed || $0 == .excused }
-    }
-
-    private static let frost = Color(red: 0.55, green: 0.62, blue: 0.75).opacity(0.38)
-
-    /// A day's one colour.
-    private func dayColor(_ states: [PrayerState], ink: Color, day: PrayerMetrics.Day) -> Color {
-        Self.allPrayed(day) ? .green
-            : states.allSatisfy({ $0 == .toCome }) ? ink.opacity(0.07)                   // to come: a calm track
-            : states.allSatisfy({ $0 == .excused }) ? Self.frost
-            : states.contains(where: \.prayed) ? ink.opacity(0.32)                    // some prayed
-            : ink.opacity(0.14)                                                       // nothing prayed yet
-    }
-
-    /// A prayer's own colour in an open day: prayed in its grade's (the day ring's), the rest as faint tracks.
-    private func prayerColor(_ s: PrayerState, ink: Color) -> Color {
-        switch s {
-        case .opening: PrayerScoring.color(for: 1)
-        case .middle: PrayerScoring.color(for: 0.9)
-        case .closing: PrayerScoring.color(for: 0.7)
-        case .inTimeNoClock: MarkKind.inTimeColor
-        case .madeUp: PrayerScoring.color(for: 0.4)
-        case .excused: Self.frost
-        case .toCome: ink.opacity(0.1)
-        default: ink.opacity(0.18)   // not marked
-        }
-    }
+    /// Room outside the band for the tick's word.
+    static let labelRoom: CGFloat = 16
 
     var body: some View {
         Canvas { ctx, size in
             let side = min(size.width, size.height)
-            let room: CGFloat = labels ? 16 : 0
-            let r = side / 2 - lineWidth / 2 - room
+            let r = side / 2 - lineWidth / 2 - Self.labelRoom
             let c = CGPoint(x: size.width / 2, y: size.height / 2)
             let ink = scheme == .dark ? Color.white : Color.black
-            let open = (0..<7).map { min(splits[$0], 1) }
-            let rooms = Self.layout(open)
-            let anyOpen = open.max() ?? 0
+            let unit = 360 / Double(max(asked, 1))
             func arc(_ from: Double, _ to: Double) -> Path {
                 var p = Path()
                 p.addArc(center: c, radius: r, startAngle: .degrees(from - 90), endAngle: .degrees(to - 90), clockwise: false)
                 return p
             }
-            func point(_ at: Double) -> CGPoint {
-                let a = (at - 90) * .pi / 180
-                return CGPoint(x: c.x + r * cos(a), y: c.y + r * sin(a))
+            ctx.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)),
+                       with: .color(ink.opacity(0.07)), lineWidth: lineWidth)
+            // Round ends inside their share: drawn short by the cap's angle at each end.
+            let cap = Double(lineWidth / 2 / r) * 180 / .pi
+            func run(_ from: Double, _ to: Double, _ color: Color) {
+                guard to - from > 0.05 else { return }
+                let a0 = from + cap, a1 = max(to - cap, a0 + 0.01)
+                ctx.stroke(arc(a0, a1), with: .color(color), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
             }
-            for (i, day) in days.enumerated() {
-                let split = open[i]
-                var ctx = ctx
-                // The others step back while one is open.
-                ctx.opacity = 1 - 0.75 * max(0, anyOpen - split)
-                let width = lineWidth
-                // Round ends inside the room: drawn short by the cap's angle at each end.
-                let cap = Double(width / 2 / r) * 180 / .pi
-                let a0 = rooms[i].0 + Self.dayGap / 2 + cap, a1 = rooms[i].1 - Self.dayGap / 2 - cap
-                if let states = day.states {
-                    let one = dayColor(states, ink: ink, day: day)
-                    if split < 0.01 {
-                        ctx.stroke(arc(a0, a1), with: .color(one), style: StrokeStyle(lineWidth: width, lineCap: .round))
-                    } else {
-                        // The day's own arc becomes the faint track that holds them (they belong together)…
-                        ctx.stroke(arc(a0, a1), with: .color(one.mix(with: ink.opacity(0.09), by: split)),
-                                   style: StrokeStyle(lineWidth: width, lineCap: .round))
-                        // …and inside it, its five prayers as the Salah page's thin fifths with their hollow dots (owner,
-                        // 2026-10-21: "no! the thin on the salah rings"), the gaps opening as it opens.
-                        let thin = theme.arc.width * 0.5   // DayRing's band
-                        let tcap = Double(thin / 2 / r) * 180 / .pi
-                        let gap = Self.prayerGap * split
-                        let piece = (a1 - a0 - 4 * gap) / 5
-                        for j in 0..<5 {
-                            let from = a0 + Double(j) * (piece + gap)
-                            let p0 = from + tcap, p1 = from + piece - tcap
-                            let color = prayerColor(states[j], ink: ink).opacity(split)
-                            if p1 > p0 {
-                                ctx.stroke(arc(p0, p1), with: .color(color), style: StrokeStyle(lineWidth: thin, lineCap: .round))
-                            }
-                            // Its hollow dot where in its window it was prayed (past the end: at the end): the day ring's.
-                            if states[j].prayed, places.indices.contains(i), places[i].indices.contains(j), let at = places[i][j] {
-                                let d = point(p0 + (p1 - p0) * min(max(at, 0), 1))
-                                let size = 12 * split, stroke = 2.4 * split
-                                ctx.fill(Path(ellipseIn: CGRect(x: d.x - size / 2, y: d.y - size / 2, width: size, height: size)),
-                                         with: .color(theme.surface))
-                                let inner = size - stroke   // its border inside, as the day ring's strokeBorder
-                                ctx.stroke(Path(ellipseIn: CGRect(x: d.x - inner / 2, y: d.y - inner / 2, width: inner, height: inner)),
-                                           with: .color(prayerColor(states[j], ink: ink)), lineWidth: stroke)
-                            }
-                        }
-                    }
-                } else {
-                    // No record: dotted, faint (unknown, never "missed").
-                    ctx.stroke(arc(a0 - cap, a1 + cap), with: .color(ink.opacity(0.28)),
-                               style: StrokeStyle(lineWidth: lineWidth * 0.42, lineCap: .round, dash: [0.1, 6]))
-                }
-                if labels {
-                    var ctx = ctx
-                    ctx.opacity = 1
-                    let mid = ((rooms[i].0 + rooms[i].1) / 2 - 90) * .pi / 180
-                    let lr = r + lineWidth / 2 + 9
-                    let initial = Calendar.current.veryShortStandaloneWeekdaySymbols[(Calendar.current.firstWeekday - 1 + i) % 7]
-                    let text = ctx.resolve(Text(initial).font(.system(size: 10.5, weight: i == today ? .semibold : .regular, design: .rounded))
-                        .foregroundStyle(i == today ? ink.opacity(0.85) : ink.opacity(0.35)))
-                    ctx.draw(text, at: CGPoint(x: c.x + lr * cos(mid), y: c.y + lr * sin(mid)), anchor: .center)
-                }
+            run(0, met * unit, .green)
+            // The back, one run: below your goal (lighter) under, missed (darker) over it nearest the top, so they meet in a
+            // round join, not a gap.
+            run(360 - (missed + below) * unit, 360, ink.opacity(0.22))
+            run(360 - missed * unit, 360, ink.opacity(0.45))
+            // The strong-week tick, across the band, its word outside (none on Prayed: a strong week there is all of it —
+            // Fable's check).
+            if slack > 0, asked > slack {
+                let at = (360 - Double(slack) * unit - 90) * .pi / 180
+                func p(_ rr: CGFloat) -> CGPoint { CGPoint(x: c.x + rr * cos(at), y: c.y + rr * sin(at)) }
+                var tick = Path()
+                tick.move(to: p(r - lineWidth / 2 - 3))
+                tick.addLine(to: p(r + lineWidth / 2 + 3))
+                ctx.stroke(tick, with: .color(ink.opacity(0.8)), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                let word = ctx.resolve(Text("strong").font(.system(size: 10, weight: .light, design: .rounded))
+                    .foregroundStyle(ink.opacity(0.5)))
+                ctx.draw(word, at: p(r + lineWidth / 2 + 11), anchor: .center)
             }
         }
         .accessibilityHidden(true)
     }
 }
 
-/// Journey's card as this week (MetricsLook): the ring, its count, your usual week, the last finished weeks banked.
+/// Journey's card as this week (MetricsLook): the ring toward a strong week, its count in your goal's words, one line, the
+/// seven days, the last finished weeks banked.
 struct JourneyWeekCard: View {
     let log: JourneyLog
     var compact = false
     var tight = false
     /// The ↗: the calendar (JourneyExpanded.swift), as the old card's was.
     var onExpand: (Date) -> Void = { _ in }
-    /// A picked day tapped again: its page (only for a day that opens).
+    /// A day's dot tapped: its day page (owner, 2026-10-21: "tapping those days can just push the day ring page for now").
     var onDay: (Date) -> Void = { _ in }
     var opens: (Date) -> Bool = { _ in false }
-    /// A day tapped on the ring: it shows in the middle; again, its day (one arc a day since 2026-10-20 — the prayer pick
-    /// went with the 35 arcs).
-    @State private var picked: Int?
     /// The most recent day with no record to ask about (NoRecordDays.next — Frank's flow), and the day the Pick sheet is
     /// open for. The question sits in the banked weeks' slot: the card never changes height for it.
     @State private var noRecord: Date?
@@ -261,53 +135,63 @@ struct JourneyWeekCard: View {
     struct Model: Equatable {
         let week: PrayerMetrics.Week
         let banked: [PrayerMetrics.Week]
-        let usual: Int?
         let todayIndex: Int
+        /// This week's missed prayers, oldest first: (its prayer day, its name).
+        let owed: [Owed]
+        /// This week's days with no record that can be filled in (on or after the first mark ever, before today).
+        let fillable: [Date]
+        struct Owed: Equatable { let day: Date; let name: String }
     }
     @State private var model: Model?
     /// The latest read (an older one landing after it is dropped).
     @State private var readToken = 0
-    /// The ring's place on screen (global), for the calendar's flight.
-    @State private var ringFrame: CGRect = .zero
+    /// Each day's dot on screen (global), for the calendar's flight.
+    @State private var dotFrames: [Int: CGRect] = [:]
 
     var body: some View {
         let ringSide: CGFloat = compact ? 196 : (tight ? 216 : 232)
+        let lineWidth: CGFloat = compact ? 12 : 14
         VStack(spacing: 0) {
             HStack {
                 Text(rangeLabel)
                 Spacer()
             }
-            .font(.system(size: 11, weight: .light, design: .rounded))
-            .tracking(0.4)
+            .font(.system(size: 13, weight: .light, design: .rounded))
             .foregroundStyle(.secondary)
             .journeyFlightWords(.card)
             ZStack {
-                JourneyWeekRing(days: model?.week.days ?? Self.placeholder, today: model?.todayIndex, lineWidth: compact ? 12 : 14,
-                                places: places, picked: picked)
+                let w = model?.week
+                JourneyGoalRing(met: Double(w?.met ?? 0), missed: Double(w?.notMarked ?? 0), below: Double(w?.belowStep ?? 0),
+                                asked: w?.asked ?? 35, slack: w.map(Self.slack) ?? PrayerMetrics.strongWeekSlack, lineWidth: lineWidth)
                     .frame(width: ringSide, height: ringSide)
-                    .contentShape(Circle())
-                    .gesture(SpatialTapGesture().onEnded { tap in
-                        tapped(JourneyWeekRing.hit(tap.location, side: ringSide, lineWidth: compact ? 12 : 14, picked: picked))
-                    })
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ringFrame = $0; reportFlight() }
                     .animation(.smooth(duration: CircleMotion.quick), value: model?.week)
-                centre.allowsHitTesting(false)   // a tap in the middle reaches the ring's (it lets a pick go)
+                centre
             }
             .padding(.top, tight ? 2 : 6)
             .journeyFlightWords(.card)
-            // Your usual week, never last week (plan-v3 §9.4: Strava's weekly card made normal weeks feel bad). Its slot is
-            // kept before there are 3 weeks to judge by, so nothing moves when it arrives.
-            Text(model?.usual.map { "Your usual week: \($0)" } ?? " ")
+            dots
+                .padding(.top, tight ? 4 : 8)
+                .journeyFlightWords(.card)
+            // One line: what keeps the week strong, or that it can't be now (owner, 2026-10-21: "you have to also account for
+            // the messaging for when they miss their strong week"). Three lines' room always (the mid-week line's), centred:
+            // nothing moves when it changes.
+            Text(model.map(Self.line) ?? " ")
                 .font(.system(size: 15, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
-                .padding(.top, tight ? 4 : 8)
+                .multilineTextAlignment(.center)
+                .lineLimit(3).minimumScaleFactor(0.85)
+                .frame(height: 60)
+                .padding(.horizontal, 6)
+                .padding(.top, tight ? 8 : 12)
+                .contentTransition(.opacity)
+                .animation(.smooth(duration: CircleMotion.quick), value: model.map(Self.line))
                 .journeyFlightWords(.card)
             ZStack(alignment: .top) {
                 banked.opacity(noRecord == nil ? 1 : 0)
                 if let day = noRecord { noRecordQuestion(day).transition(.opacity) }
             }
             .animation(.smooth(duration: CircleMotion.quick), value: noRecord)
-            .padding(.top, tight ? 8 : 12)
+            .padding(.top, tight ? 6 : 10)
             .journeyFlightWords(.card)
         }
         .padding(.top, tight ? 14 : 18).padding(.horizontal, 18).padding(.bottom, tight ? 8 : 10)
@@ -344,110 +228,155 @@ struct JourneyWeekCard: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The week's words (Koo & Fishbach, plan-v3 §9.2): what's done Sunday–Wednesday, what's left Thursday on.
-    /// A tap on the ring: an arc picks its day (the same one again opens it); the middle lets it go.
-    private func tapped(_ hit: Int?) {
-        guard let hit, model != nil else {
-            if picked != nil { withAnimation(CircleMotion.dayPick) { picked = nil } }
-            return
-        }
-        // A day with no record only toggles (its day page has little to show; the no-record card is where it's filled in —
-        // Frank's check: the hint and the tap agree).
-        if picked == hit, let day = model?.week.days[hit], fillable(day) {
-            // A dotted day picked again: fill it in, as the question's "Pick which" does.
-            triggerSomeVibration(type: .light)
-            filling = FillDay(day: day.date)
-            return
-        }
-        if picked == hit, let day = model?.week.days[hit], day.states != nil, opens(day.date) {
-            let date = day.date
-            triggerSomeVibration(type: .light)
-            onDay(date)
-            return
-        }
-        triggerSomeVibration(type: .soft)
-        withAnimation(CircleMotion.dayPick) {
-            picked = picked == hit ? nil : hit
-        }
-    }
-
-    /// A dotted day that can be filled in: before today and on or after the first mark ever (Frank's check: a new user's
-    /// days before the app have no rows either — never invite filling those; NoRecordDays.next starts there too).
-    private func fillable(_ day: PrayerMetrics.Day) -> Bool {
-        day.states == nil && day.date < PrayerDay.start() && (log.firstDay.map { day.date >= $0 } ?? false)
-    }
-
-    /// The picked day's words: "Tuesday" over "4 of 5 prayed" (or "all five prayed", "2 prayed · 3 to come", "no record", "excused").
-    private func pickedWords(_ m: Model, _ i: Int) -> (title: String, line: String, opens: Bool, fills: Bool) {
-        let day = m.week.days[i]
-        let line: String
-        if let states = day.states {
-            let prayed = states.filter(\.prayed).count, due = states.filter { $0 != .excused }.count
-            let toCome = states.filter { $0 == .toCome }.count
-            // Today mid-day: "1 prayed · 4 to come", never "1 of 5" (it read as 4 missed — Frank's check).
-            line = toCome == 5 ? "to come"
-                : due == 0 ? "excused"
-                : JourneyWeekRing.allPrayed(day) ? (due == 5 ? "all five prayed" : "all \(due) prayed")
-                : toCome > 0 ? "\(prayed) prayed · \(toCome) to come"
-                : "\(prayed) of \(due) prayed"
-        } else {
-            line = "no record"
-        }
-        return (day.date.formatted(.dateTime.weekday(.wide)), line, opens(day.date) && day.states != nil, fillable(day))
-    }
-
+    /// "15 of 35" over your goal's words ("in their windows"); a week that asks nothing, "–".
     @ViewBuilder private var centre: some View {
-        if let m = model, let p = picked {
-            let w = pickedWords(m, p)
-            VStack(spacing: 2) {
-                Text(w.title)
-                    .font(.system(size: compact ? 34 : 40, weight: .thin, design: .rounded))
-                    .lineLimit(1).minimumScaleFactor(0.6)
-                Text(w.line)
-                    .font(.system(size: 14, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1).minimumScaleFactor(0.8)
-                Text(w.opens ? "Tap it again for the day" : w.fills ? "Tap it again to fill it in" : " ")
-                    .font(.system(size: 11, weight: .light, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 2)
-            }
-            .frame(maxWidth: (compact ? 196 : 232) * 0.66)
-            .transition(.opacity)
-            .accessibilityElement(children: .combine)
-        } else if let m = model {
-            let w = m.week
-            let late = m.todayIndex >= 4
-            // A day with no record can still be filled in this week ("Pick which"), so only what's below the bar or owed
-            // decides it (Fable's check, 2026-10-20); a finished week's `strong` already asks for no gaps.
-            let canBeStrong = w.madeUp + w.notMarked <= PrayerMetrics.strongWeekSlack
-            let (number, words): (String, String) =
-                w.asked == 0 ? ("–", "excused this week")   // nothing asked (Excused Mode, or before a fresh start)
-                : w.left == 0 ? ("\(w.inTime) of \(w.asked)", w.madeUp == 0 && w.inTime == w.asked ? "a complete week" : "in their windows")
-                : late ? ("\(w.left) left", canBeStrong ? "for a strong week" : "this week")
-                : ("\(w.done) done", "this week")
-            VStack(spacing: 2) {
-                Text(number)
-                    .font(.system(size: compact ? 40 : 46, weight: .thin, design: .rounded))
+        let w = model?.week
+        VStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(w.map { $0.asked == 0 ? "–" : "\($0.met)" } ?? " ")
+                    .font(.system(size: compact ? 44 : 50, weight: .thin, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText())
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                Text(words)
-                    .font(.system(size: 14, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.opacity)
+                if let w, w.asked > 0 {
+                    Text("of \(w.asked)")
+                        .font(.system(size: compact ? 18 : 20, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
             }
-            .animation(.smooth(duration: CircleMotion.quick), value: number)
-            .frame(maxWidth: (compact ? 196 : 232) * 0.62)
-            .transition(.opacity)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("This week: \(number), \(words)")
+            Text(w.map { $0.asked == 0 ? "excused this week" : $0.goal.countWords } ?? " ")
+                .font(.system(size: 14, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
         }
+        .lineLimit(1).minimumScaleFactor(0.7)
+        .frame(maxWidth: (compact ? 196 : 232) * 0.62)
+        .animation(.smooth(duration: CircleMotion.quick), value: w?.met)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(w.map { $0.asked == 0 ? "Excused this week" : "This week: \($0.met) of \($0.asked) \($0.goal.countWords)" } ?? "")
+        .allowsHitTesting(false)
+    }
+
+    /// The seven days under the ring: a day with every prayer marked filled light grey, the Salah list's done dot; one with
+    /// any still unmarked hollow (owner, 2026-10-21: "switch to hollow gray for unmarked and filled light gray for marked
+    /// (matching the color of our salah list mark)"); no record dotted; all excused frosted. Today's initial in ink. A tap
+    /// pushes the day's page (a dotted day: its Pick sheet).
+    private var dots: some View {
+        HStack(spacing: compact ? 12 : 14) {
+            ForEach(0..<7, id: \.self) { i in
+                let day = model?.week.days[i]
+                Button { tappedDay(i) } label: {
+                    VStack(spacing: 4) {
+                        dot(day)
+                            .frame(width: 16, height: 16)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                                dotFrames[i] = $0
+                                reportFlight()
+                            }
+                        Text(initial(i))
+                            .font(.system(size: 10.5, weight: i == model?.todayIndex ? .semibold : .regular, design: .rounded))
+                            .foregroundStyle(i == model?.todayIndex ? Color.primary.opacity(0.85) : Color.secondary)
+                    }
+                    .frame(width: 24, height: 40)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(day.map { "\($0.date.formatted(.dateTime.weekday(.wide))), \(Self.dayWords($0))" } ?? "")
+            }
+        }
+    }
+
+    private static let edge = Color.secondary.opacity(0.5)
+    private static let frost = Color(red: 0.55, green: 0.62, blue: 0.75).opacity(0.38)
+
+    @ViewBuilder private func dot(_ day: PrayerMetrics.Day?) -> some View {
+        if let day, day.states == nil {
+            Circle().inset(by: 0.7).stroke(Self.edge, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, dash: [0.1, 3.6]))
+        } else if let states = day?.states, states.allSatisfy({ $0 == .excused }) {
+            Circle().fill(Self.frost)
+        } else if let day, Self.allMarked(day) {
+            ZStack {
+                Circle().strokeBorder(Self.edge, lineWidth: 1)
+                Circle().fill(Color.gray.opacity(0.35)).padding(1)   // the Salah list's muted done dot
+            }
+        } else {
+            Circle().strokeBorder(Self.edge, lineWidth: 1)
+        }
+    }
+
+    /// Every prayer it asked marked (prayed, made up or with no time; an excused one isn't asked) and none still to come.
+    static func allMarked(_ day: PrayerMetrics.Day) -> Bool {
+        guard let states = day.states else { return false }
+        return states.contains(where: \.prayed) && states.allSatisfy { $0.prayed || $0 == .excused }
+    }
+
+    private static func dayWords(_ day: PrayerMetrics.Day) -> String {
+        guard let states = day.states else { return "no record" }
+        if states.allSatisfy({ $0 == .excused }) { return "excused" }
+        if states.allSatisfy({ $0 == .toCome }) { return "to come" }
+        let prayed = states.filter(\.prayed).count, due = states.filter { $0 != .excused }.count
+        let toCome = states.filter { $0 == .toCome }.count
+        return toCome > 0 ? "\(prayed) prayed, \(toCome) to come" : "\(prayed) of \(due) prayed"
+    }
+
+    private func initial(_ i: Int) -> String {
+        Calendar.current.veryShortStandaloneWeekdaySymbols[(Calendar.current.firstWeekday - 1 + i) % 7]
+    }
+
+    private func tappedDay(_ i: Int) {
+        guard let day = model?.week.days[i] else { return }
+        if day.states == nil, model?.fillable.contains(day.date) == true {
+            triggerSomeVibration(type: .light)
+            filling = FillDay(day: day.date)
+        } else if day.states != nil, opens(day.date) {
+            triggerSomeVibration(type: .light)
+            onDay(day.date)
+        }
+    }
+
+    /// The line under the days, the first that's true:
+    /// - out of reach: the mid-week line (it names the goal; owner, 2026-10-21: "explain in regards to their goal");
+    /// - something owed: what to make up, then what to fill in, to keep the week strong;
+    /// - already enough: "A strong week, so far";
+    /// - Sunday: "A new week. 32 makes it a strong one."; else "32 makes a strong week".
+    static func line(_ m: Model) -> String {
+        let w = m.week
+        guard w.asked > 0 else { return "Excused prayers are left out" }
+        let target = max(w.asked - slack(w), 0)
+        if !w.stillPossible {
+            return PrayerMetrics.midweekLine(w) ?? "This one won't be a strong week. A new one starts Sunday."
+        }
+        if let first = m.owed.first {
+            return m.owed.count == 1 ? "Make up \(possessive(first.day)) \(first.name) to keep the week strong"
+                : "Make up \(m.owed.count) missed prayers to keep the week strong"
+        }
+        if let day = m.fillable.first {
+            return m.fillable.count == 1 ? "Fill in \(dayName(day)) to keep the week strong"
+                : "Fill in \(m.fillable.count) days to keep the week strong"
+        }
+        if w.met >= target { return "A strong week, so far" }
+        return m.todayIndex == 0 ? "A new week. \(target) makes it a strong one." : "\(target) makes a strong week"
+    }
+
+    /// How many may miss the goal in a strong week: the slack above Prayed; on Prayed none (every prayer prayed — Fable's
+    /// check: belowStep is always 0 there, so strong means all of it).
+    static func slack(_ w: PrayerMetrics.Week) -> Int { w.goal == .prayed ? 0 : PrayerMetrics.strongWeekSlack }
+
+    /// "today's", "yesterday's", "Monday's".
+    private static func possessive(_ day: Date) -> String {
+        let cal = Calendar.current, today = PrayerDay.start()
+        if cal.isDate(day, inSameDayAs: today) { return "today's" }
+        if let y = cal.date(byAdding: .day, value: -1, to: today), cal.isDate(day, inSameDayAs: y) { return "yesterday's" }
+        return day.formatted(.dateTime.weekday(.wide)) + "'s"
+    }
+    private static func dayName(_ day: Date) -> String {
+        let cal = Calendar.current, today = PrayerDay.start()
+        if let y = cal.date(byAdding: .day, value: -1, to: today), cal.isDate(day, inSameDayAs: y) { return "yesterday" }
+        return day.formatted(.dateTime.weekday(.wide))
     }
 
     /// The day to ask about, if any: NoRecordDays.next, but it steps aside after it's been shown on 3 visits to Journey without
     /// an answer (owner, 2026-10-20: "Let the no-record question step aside after 3 opens"), and stays quiet until a newer day
-    /// has no record (that one gets its own 3). The day can still be filled from its dotted arc. Counted once per visit.
+    /// has no record (that one gets its own 3). The day can still be filled from its dotted dot. Counted once per visit.
     private func question() -> Date? {
         guard let day = NoRecordDays.next(in: context) else { return nil }
         let d = UserDefaults.standard
@@ -497,7 +426,7 @@ struct JourneyWeekCard: View {
         .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5).offset(y: tight ? -6 : -8) }
     }
 
-    /// The last two finished weeks, newest first: past tense, quiet, a ✓ only when it was strong or complete.
+    /// The last two finished weeks, newest first: past tense, quiet, "strong" only when it was (canvas row B, Sunday).
     private var banked: some View {
         VStack(spacing: 0) {
             if let m = model, m.banked.isEmpty {
@@ -510,7 +439,7 @@ struct JourneyWeekCard: View {
             }
             ForEach(Array((model?.banked ?? []).enumerated()), id: \.offset) { i, w in
                 HStack {
-                    Text("Week of \(w.start.formatted(.dateTime.month(.abbreviated).day()))")
+                    Text(Self.range(w.start))
                     Spacer(minLength: 8)
                     Text(bankedWords(w)).multilineTextAlignment(.trailing)
                 }
@@ -528,57 +457,43 @@ struct JourneyWeekCard: View {
 
     private func bankedWords(_ w: PrayerMetrics.Week) -> String {
         if w.excusedWeek { return "Excused" }
-        let count = "\(w.inTime) of \(w.asked)"
-        if w.complete { return "\(count) · complete week ✓" }
-        if w.strong { return "\(count) · strong ✓" }
+        let count = "\(w.met) of \(w.asked)"
+        if w.complete { return "\(count) · complete" }
+        if w.strong { return "\(count) · strong" }
         return count
     }
 
-    private var rangeLabel: String {
-        guard let w = model?.week, let end = Calendar.current.date(byAdding: .day, value: 6, to: w.start) else { return "THIS WEEK" }
-        let a = w.start.formatted(.dateTime.month(.abbreviated).day())
-        let sameMonth = Calendar.current.isDate(w.start, equalTo: end, toGranularity: .month)
-        let b = sameMonth ? end.formatted(.dateTime.day()) : end.formatted(.dateTime.month(.abbreviated).day())
-        return "THIS WEEK · \(a) – \(b)".uppercased()
+    /// "Oct 18 – 24" (across a month: "Oct 25 – Nov 1").
+    private static func range(_ start: Date) -> String {
+        guard let end = Calendar.current.date(byAdding: .day, value: 6, to: start) else { return "" }
+        let a = start.formatted(.dateTime.month(.abbreviated).day())
+        let sameMonth = Calendar.current.isDate(start, equalTo: end, toGranularity: .month)
+        return "\(a) – \(sameMonth ? end.formatted(.dateTime.day()) : end.formatted(.dateTime.month(.abbreviated).day()))"
     }
 
-    /// This week's days as the calendar's flight takes them (JourneyFlightGeometry.ringTiles): a small square on each day's
-    /// arc, the flight's "tile", flying to the day's ring in the calendar and back. Its weeks: just this one.
+    private var rangeLabel: String {
+        guard let w = model?.week else { return "This week" }
+        return "This week · \(Self.range(w.start))"
+    }
+
+    /// This week's days as the calendar's flight takes them (JourneyFlightGeometry.ringTiles): each day's dot, flying to the
+    /// day's ring in the calendar and back. Its weeks: just this one.
     private func reportFlight() {
-        guard let w = model?.week, ringFrame.width > 0 else { return }
+        guard let w = model?.week, dotFrames.count == 7 else { return }
         let g = JourneyFlightGeometry.shared
-        let lw: CGFloat = compact ? 12 : 14
-        let r = ringFrame.width / 2 - lw / 2 - 16
-        let c = CGPoint(x: ringFrame.midX, y: ringFrame.midY)
         var tiles: [Date: CGRect] = [:]
         for (i, day) in w.days.enumerated() {
-            let mid = (Double(i) * 360 / 7 + 180 / 7 - 90) * .pi / 180
-            let p = CGPoint(x: c.x + r * cos(mid), y: c.y + r * sin(mid))
-            tiles[Calendar.current.startOfDay(for: day.date)] = CGRect(x: p.x - 8, y: p.y - 8, width: 16, height: 16)
+            if let f = dotFrames[i] { tiles[Calendar.current.startOfDay(for: day.date)] = f }
         }
         g.ringTiles = tiles
-        g.grid = ringFrame
+        let all = dotFrames.values.reduce(CGRect.null) { $0.union($1) }
+        g.grid = all
         g.weekStarts = [w.start]
     }
 
-    /// Each day's prayers' places in their windows, from the log (an open day's hollow dots).
-    private var places: [[Double?]] {
-        (model?.week.days ?? []).map { day in
-            let slots = log.day(day.date).slots
-            return (0..<5).map { j in
-                guard let slot = slots[j], let at = slot.markedAt, !slot.noTime else { return nil }
-                return at.timeIntervalSince(slot.start) / max(slot.end.timeIntervalSince(slot.start), 1)
-            }
-        }
-    }
-
-    private static let placeholder: [PrayerMetrics.Day] = (0..<7).map {
-        PrayerMetrics.Day(key: "\($0)", date: .distantPast, states: Array(repeating: .toCome, count: 5))
-    }
-
-    /// Every week since day one (~100 for him) is walked for the banked rows and the usual week: off the main thread, as
-    /// JourneyStore reads the log (Fable's check: Journey's open was a 71–80 ms trace already). The ring shows its empty
-    /// track until it lands, the same size, so nothing moves.
+    /// Every week since day one (~100 for him) is walked for the banked rows: off the main thread, as JourneyStore reads the
+    /// log (Fable's check: Journey's open was a 71–80 ms trace already). The ring shows its empty track until it lands, the
+    /// same size, so nothing moves.
     private func read() {
         readToken += 1
         let mine = readToken, log = log, excused = Excused.Days(), now = Date()
@@ -586,10 +501,7 @@ struct JourneyWeekCard: View {
             let next = Self.model(log: log, excused: excused, now: now)
             await MainActor.run {
                 guard mine == readToken else { return }
-                if next != model {
-                    if next.week.start != model?.week.start { picked = nil }
-                    model = next; reportFlight()
-                }
+                if next != model { model = next; reportFlight() }
             }
         }
     }
@@ -598,8 +510,17 @@ struct JourneyWeekCard: View {
         let all = PrayerMetrics.weeks(in: log, excused: excused, now: now)
         let week = all.last(where: \.isCurrent) ?? PrayerMetrics.week(containing: now, in: log, excused: excused, now: now)
         let finished = all.filter { !$0.isCurrent }
-        let today = Calendar.current.dateComponents([.day], from: week.start, to: PrayerDay.start(for: now)).day ?? 0
-        return Model(week: week, banked: Array(finished.suffix(2).reversed()),
-                     usual: PrayerMetrics.usualWeek(in: log, excused: excused, now: now), todayIndex: min(max(today, 0), 6))
+        let todayStart = PrayerDay.start(for: now)
+        let today = Calendar.current.dateComponents([.day], from: week.start, to: todayStart).day ?? 0
+        var owed: [Model.Owed] = []
+        for day in week.days {
+            guard let states = day.states else { continue }
+            for (j, s) in states.enumerated() where s == .notMarked { owed.append(Model.Owed(day: day.date, name: JourneyLog.names[j])) }
+        }
+        let fillable = week.days.filter { day in
+            day.states == nil && day.date < todayStart && (log.firstDay.map { day.date >= $0 } ?? false)
+        }.map(\.date)
+        return Model(week: week, banked: Array(finished.suffix(2).reversed()), todayIndex: min(max(today, 0), 6),
+                     owed: owed, fillable: fillable)
     }
 }

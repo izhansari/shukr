@@ -671,6 +671,7 @@ struct PrayerTimesView: View {
             LateMarkAsk.shared.checkOutsideMarks(in: context)   // a late "I already prayed": in its time, or made up?
         }
         .lateMarkAsk()   // the late-mark question (LateMarkAsk, prayer-metrics phase 6)
+        .goalOfferAsk()   // the Sunday step up / back (SundayOffer.swift)
         // Excused from prayer turned on / off / changed (Excused.swift): the touched days' scores and the streaks.
         .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { note in
             CircleStage.shared.excused = Excused.current
