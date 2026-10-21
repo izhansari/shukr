@@ -730,6 +730,10 @@ struct PrayerTimeUnavailable: Error, CustomLocalizedStringResourceConvertible {
 /// otherwise Fajr's start, as before. The alarm rule from Settings → Reminders → Fajr Alarm, as the scheduler reads it.
 enum FajrAlarmShown {
     /// shukr rings the Fajr alarm: iOS 26.1+, on, allowed, not excused (Explore only talks about it then — owner).
+    /// "Allowed" is the app's `alarmKitActive`: its plan turns that off whenever AlarmKit permission isn't granted. Never
+    /// ask AlarmManager here: the widget extension has no AlarmKit permission of its own, so it never reads .authorized,
+    /// and the Lock Screen showed Fajr's start in place of the alarm (owner, 2026-10-20: "My phone is showing that Fajr is
+    /// 6:17 on the lock screen widget, even though it should say 6:07 for the alarm").
     static var isOn: Bool {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "demoLockAlarm") { return true }   // `-demoLockAlarm YES` (in the app)
@@ -737,11 +741,19 @@ enum FajrAlarmShown {
         guard #available(iOS 26.1, *) else { return false }
         guard let g = UserDefaults(suiteName: SharedStore.appGroup),
               g.bool(forKey: "alarmEnabled"), g.bool(forKey: "alarmKitActive"), !Excused.isActive else { return false }
-        #if canImport(AlarmKit)
-        guard AlarmManager.shared.authorizationState == .authorized else { return false }
-        #endif
         return true
     }
+
+    #if DEBUG
+    /// What the extension itself reads, for widget-perf.log (the 2026-10-20 check: AlarmKit's state from the widget).
+    static var debugLine: String {
+        var s = "Fajr alarm: on \(isOn)"
+        #if canImport(AlarmKit)
+        if #available(iOS 26.1, *) { s += ", AlarmKit here \(String(describing: AlarmManager.shared.authorizationState))" }
+        #endif
+        return s
+    }
+    #endif
 
     static func time(fajrStart: Date, sunrise: Date) -> Date? {
         guard isOn, let g = UserDefaults(suiteName: SharedStore.appGroup) else { return nil }

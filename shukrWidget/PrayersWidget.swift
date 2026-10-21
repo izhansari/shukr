@@ -215,6 +215,9 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         entries += ahead.map { base.at($0, list: false) }
         let nextRefresh = Date().addingTimeInterval(60)
         WidgetPerf.log("timeline \(context.family) done \(entries.count) entries \(WidgetPerf.ms(since: t0)) ms")
+        #if DEBUG
+        if context.family == .accessoryCircular { WidgetPerf.log(FajrAlarmShown.debugLine) }
+        #endif
         return Timeline(entries: entries.sorted { $0.date < $1.date }, policy: .after(nextRefresh))
     }
 
