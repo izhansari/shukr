@@ -25,19 +25,52 @@ enum MetricsLook {
     }
 }
 
-/// A week as seven arcs, Sunday at the top, clockwise, the days' initials around it. A day all prayed green; some prayed a
-/// grey, none a fainter one; to come a calm track, all excused frosted; a day with no record dotted.
-struct JourneyWeekRing: View {
+/// Several numbers as one animatable value (one missing on a side counts as 0): a chart's columns, a ring's days.
+struct AnimatableNumbers: VectorArithmetic {
+    var v: [Double]
+    static var zero: AnimatableNumbers { AnimatableNumbers(v: []) }
+    private static func zip(_ a: AnimatableNumbers, _ b: AnimatableNumbers, _ f: (Double, Double) -> Double) -> AnimatableNumbers {
+        let n = max(a.v.count, b.v.count)
+        return AnimatableNumbers(v: (0..<n).map { f($0 < a.v.count ? a.v[$0] : 0, $0 < b.v.count ? b.v[$0] : 0) })
+    }
+    static func + (a: AnimatableNumbers, b: AnimatableNumbers) -> AnimatableNumbers { zip(a, b, +) }
+    static func - (a: AnimatableNumbers, b: AnimatableNumbers) -> AnimatableNumbers { zip(a, b, -) }
+    mutating func scale(by rhs: Double) { v = v.map { $0 * rhs } }
+    var magnitudeSquared: Double { v.reduce(0) { $0 + $1 * $1 } }
+    /// The `i`th, never below 0 (a spring's overshoot).
+    subscript(_ i: Int) -> Double { i < v.count ? max(0, v[i]) : 0 }
+}
+
+/// A week as seven rounded arcs, Sunday at the top, clockwise, the days' initials around it. A day all prayed green; some
+/// prayed a grey, none a fainter one; to come a calm track, all excused frosted; a day with no record dotted. A picked day
+/// breaks apart into its five prayers, each in its own state's colour (owner, 2026-10-21: "each fifth, it needs to be
+/// rounded. And then when clicked on, I want it to break apart into each prayer being shown so that we can still see all
+/// those prayers of that day when we click on it, but not the very first thing you see").
+struct JourneyWeekRing: View, Animatable {
     let days: [PrayerMetrics.Day]
     /// Today's index in the week (its initial in ink), nil for a finished week.
     var today: Int?
     var lineWidth: CGFloat = 14
     var labels = true
-    /// A picked day: it stays, a little wider; the rest step back.
-    var picked: Int? = nil
+    /// How far each day has broken into its five (0 one arc … 1 apart), animatable: the picked day's 1.
+    var splits: AnimatableNumbers
+    var animatableData: AnimatableNumbers {
+        get { splits }
+        set { splits = newValue }
+    }
     @Environment(\.colorScheme) private var scheme
 
+    init(days: [PrayerMetrics.Day], today: Int? = nil, lineWidth: CGFloat = 14, labels: Bool = true, picked: Int? = nil) {
+        self.days = days
+        self.today = today
+        self.lineWidth = lineWidth
+        self.labels = labels
+        splits = AnimatableNumbers(v: (0..<7).map { $0 == picked ? 1 : 0 })
+    }
+
     private static let dayGap = 6.0
+    /// The gap between a picked day's prayers, degrees.
+    private static let prayerGap = 2.6
 
     /// The day under a point (in the ring's own frame of `side`), nil off the band.
     static func hit(_ p: CGPoint, side: CGFloat, lineWidth: CGFloat, labels: Bool = true) -> Int? {
@@ -55,6 +88,31 @@ struct JourneyWeekRing: View {
         return states.contains(where: \.prayed) && states.allSatisfy { $0.prayed || $0 == .excused }
     }
 
+    private static let frost = Color(red: 0.55, green: 0.62, blue: 0.75).opacity(0.38)
+
+    /// A day's one colour.
+    private func dayColor(_ states: [PrayerState], ink: Color, day: PrayerMetrics.Day) -> Color {
+        Self.allPrayed(day) ? .green
+            : states.allSatisfy({ $0 == .toCome }) ? ink.opacity(0.07)                   // to come: a calm track
+            : states.allSatisfy({ $0 == .excused }) ? Self.frost
+            : states.contains(where: \.prayed) ? ink.opacity(0.32)                    // some prayed
+            : ink.opacity(0.14)                                                       // nothing prayed yet
+    }
+
+    /// A prayer's own colour once its day breaks apart: prayed in its grade's, the rest as their day would show them.
+    private func prayerColor(_ s: PrayerState, ink: Color) -> Color {
+        switch s {
+        case .opening: PrayerScoring.color(for: 1)
+        case .middle: PrayerScoring.color(for: 0.9)
+        case .closing: PrayerScoring.color(for: 0.7)
+        case .inTimeNoClock: MarkKind.inTimeColor
+        case .madeUp: PrayerScoring.color(for: 0.4)
+        case .excused: Self.frost
+        case .toCome: ink.opacity(0.1)
+        default: ink.opacity(0.2)   // not marked
+        }
+    }
+
     var body: some View {
         Canvas { ctx, size in
             let side = min(size.width, size.height)
@@ -63,29 +121,50 @@ struct JourneyWeekRing: View {
             let c = CGPoint(x: size.width / 2, y: size.height / 2)
             let dayArc = 360.0 / 7
             let ink = scheme == .dark ? Color.white : Color.black
-            for (i, day) in days.enumerated() {
-                // One arc a day, one colour (owner, 2026-10-20: "way too many divisions … make it one solid color per day.
-                // And just make it green if we prayed all the prayers that day").
-                let a0 = Double(i) * dayArc + Self.dayGap / 2 - 90
+            let anySplit = (0..<7).map { splits[$0] }.max() ?? 0
+            func arc(_ from: Double, _ to: Double) -> Path {
                 var p = Path()
-                p.addArc(center: c, radius: r, startAngle: .degrees(a0), endAngle: .degrees(a0 + dayArc - Self.dayGap), clockwise: false)
+                p.addArc(center: c, radius: r, startAngle: .degrees(from - 90), endAngle: .degrees(to - 90), clockwise: false)
+                return p
+            }
+            func dot(_ at: Double, _ width: CGFloat, _ color: Color, in ctx: GraphicsContext) {
+                let a = (at - 90) * .pi / 180
+                let p = CGPoint(x: c.x + r * cos(a), y: c.y + r * sin(a))
+                ctx.fill(Path(ellipseIn: CGRect(x: p.x - width / 2, y: p.y - width / 2, width: width, height: width)), with: .color(color))
+            }
+            for (i, day) in days.enumerated() {
+                let split = min(splits[i], 1)
                 var ctx = ctx
-                let isPicked = picked == i
-                if picked != nil && !isPicked { ctx.opacity = 0.3 }
-                let width = isPicked ? lineWidth * 1.35 : lineWidth
+                // The others step back while one is open.
+                ctx.opacity = 1 - 0.7 * max(0, anySplit - split)
+                let width = lineWidth * (1 + 0.25 * split)
+                // Round ends inside the day's own room: the arc is drawn short by the cap's angle at each end.
+                let cap = Double(width / 2 / r) * 180 / .pi
+                let a0 = Double(i) * dayArc + Self.dayGap / 2 + cap, a1 = Double(i + 1) * dayArc - Self.dayGap / 2 - cap
                 if let states = day.states {
-                    let color: Color =
-                        Self.allPrayed(day) ? .green
-                        : states.allSatisfy({ $0 == .toCome }) ? ink.opacity(0.07)                   // to come: a calm track
-                        : states.allSatisfy({ $0 == .excused }) ? Color(red: 0.55, green: 0.62, blue: 0.75).opacity(0.38)
-                        : states.contains(where: \.prayed) ? ink.opacity(0.32)                    // some prayed
-                        : ink.opacity(0.14)                                                       // nothing prayed yet
-                    ctx.stroke(p, with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .butt))
+                    let one = dayColor(states, ink: ink, day: day)
+                    if split < 0.01 {
+                        ctx.stroke(arc(a0, a1), with: .color(one), style: StrokeStyle(lineWidth: width, lineCap: .round))
+                    } else {
+                        // Five pieces, their gaps opening as it breaks; the outer ends stay round.
+                        let gap = Self.prayerGap * split
+                        let piece = (a1 - a0 - 4 * gap) / 5
+                        for j in 0..<5 {
+                            let from = a0 + Double(j) * (piece + gap), to = from + piece
+                            let color = one.mix(with: prayerColor(states[j], ink: ink), by: split)
+                            ctx.stroke(arc(from, to), with: .color(color), style: StrokeStyle(lineWidth: width, lineCap: .butt))
+                            if j == 0 { dot(from, width, color, in: ctx) }
+                            if j == 4 { dot(to, width, color, in: ctx) }
+                        }
+                    }
                 } else {
                     // No record: dotted, faint (unknown, never "missed").
-                    ctx.stroke(p, with: .color(ink.opacity(0.28)), style: StrokeStyle(lineWidth: lineWidth * 0.42, lineCap: .round, dash: [0.1, 6]))
+                    ctx.stroke(arc(a0 - cap, a1 + cap), with: .color(ink.opacity(0.28)),
+                               style: StrokeStyle(lineWidth: lineWidth * 0.42, lineCap: .round, dash: [0.1, 6]))
                 }
                 if labels {
+                    var ctx = ctx
+                    ctx.opacity = 1
                     let mid = (Double(i) * dayArc + dayArc / 2 - 90) * .pi / 180
                     let lr = r + lineWidth / 2 + 9
                     let initial = Calendar.current.veryShortStandaloneWeekdaySymbols[(Calendar.current.firstWeekday - 1 + i) % 7]
@@ -213,7 +292,7 @@ struct JourneyWeekCard: View {
     /// A tap on the ring: an arc picks its day (the same one again opens it); the middle lets it go.
     private func tapped(_ hit: Int?) {
         guard let hit, model != nil else {
-            if picked != nil { withAnimation(.smooth(duration: CircleMotion.quick)) { picked = nil } }
+            if picked != nil { withAnimation(CircleMotion.dayPick) { picked = nil } }
             return
         }
         // A day with no record only toggles (its day page has little to show; the no-record card is where it's filled in —
@@ -231,7 +310,7 @@ struct JourneyWeekCard: View {
             return
         }
         triggerSomeVibration(type: .soft)
-        withAnimation(.smooth(duration: CircleMotion.quick)) {
+        withAnimation(CircleMotion.dayPick) {
             picked = picked == hit ? nil : hit
         }
     }

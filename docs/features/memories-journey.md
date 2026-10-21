@@ -126,14 +126,15 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
 - **The week card** (JourneyWeekHero.swift; prayer-metrics rethink phase 5, owner's pick 2026-10-20 "yeah do it" on B · A · A;
-  behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): the card is this week — `JourneyWeekRing`, seven arcs
+  behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): the card is this week — `JourneyWeekRing`, seven rounded arcs
   Sunday → Saturday, one colour a day (owner, 2026-10-20: "one solid color per day … green if we prayed all the prayers that
   day"): all prayed green (made up counts, excused is done), some prayed grey, none fainter, to come a calm track, all excused
   frosted, a no-record day dotted), "N done · this week" Sun–Wed, "N left · for a strong week" Thu–Sat (only while made up +
   not marked ≤ 3), "Your usual week: N", the last two finished weeks banked ("34 of 35 · strong ✓" / "complete week ✓");
   all from `PrayerMetrics`, read off the main thread on `log.version`. Its ↗ opens the calendar as before; this week's days
-  fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that day: it stays,
-  wider, the rest dim, the middle reads "Wednesday · all five prayed" (or "4 of 5 prayed", "no record"); the same arc again
+  fly out of the ring into it and back (`JourneyFlightGeometry.ringTiles`). A tap on an arc picks that day: it breaks apart into its
+  five prayers, each in its state's colour (owner, 2026-10-21: "when clicked on, I want it to break apart into each prayer"),
+  a little wider, the rest dim, the middle reads "Wednesday · all five prayed" (or "4 of 5 prayed", "no record"); the same arc again
   opens that day's page, a tap in the middle lets it
   go. A day with no record (NoRecordDays.next, Frank's flow) is asked in the banked weeks' slot ("Yesterday has no record.
   Did you pray?" · Pick which · Not now — the card never changes height; unanswered, it steps aside after 3 visits to
@@ -196,7 +197,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   (`ScoresHeroFrames`) and turning white → grey as it lands; another fifth switches straight to that prayer. A span switch
   keeps what's shown until the new data is in, then everything moves in place in one smooth 0.45 s, never blank (owner
   2026-10-21): numbers roll, the ring's dots turn, each chart's columns grow or drain a dot at a time
-  (`PrayerScoresChart.dots`, animatable) as its height eases, rows re-rank by sliding, rows that come or go fade. Held until his layout pass (owner 2026-10-18, layout first): the open's scripted beats, the
+  (`PrayerScoresChart.dots`, animatable) as its height eases; what sits under the chart (chips, its line, the rows)
+  rides that height and switches its words at once — rolled or faded while sliding they ghosted (owner 2026-10-21: "I care
+  more about the histogram than anything else"); all five's rows re-rank by sliding. Held until his layout pass (owner 2026-10-18, layout first): the open's scripted beats, the
   first-draw hitch, the bar title snap; 7 days' empty one-liner, "100 · 100% prayed" wrapping. A prayer's page: "Lately, usually…" + its trend, the big chart — tap or hold-drag a slot → "A–B min after it
   starts · N prayers (P%)" (Qaza: "Made up after it ended · …"; no grade word) in the place of the line under the chart
   ("238 prayed since Nov 2024" — no missed count, the To make up row has it; owner 2026-10-18), crossfaded; grade chips, insight, To make up,

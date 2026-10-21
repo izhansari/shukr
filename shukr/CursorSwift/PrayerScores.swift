@@ -1186,18 +1186,22 @@ struct PrayerScoresPage: View {
                 VStack(spacing: 0) {
                     if let i = data.insight(s) {
                         listRow(symbol: i.symbol, title: i.line, sub: i.sub, door: false) {}
+                            .transition(.identity)
                     }
                     if p.owed > 0 {
                         listRow(symbol: "clock", title: "\(p.owed) to make up", sub: "Unmarked on days you used shukr", door: true) { showMakeUp = true }
+                            .transition(.identity)
                     }
                     if p.photos > 0 {
                         listRow(symbol: "photo.on.rectangle", title: p.photos == 1 ? "1 photo" : "\(p.photos) photos",
                                 sub: p.notes > 0 ? "\(p.notes) with a note" : "Your moments", door: true) { showMoments = true }
+                            .transition(.identity)
                     }
                     if !p.pins.isEmpty {
                         listRow(symbol: "mappin.and.ellipse", title: "Where you pray it",
                                 sub: p.topMasjid.map { "Most at a masjid: \($0.name) (\($0.count))" } ?? "\(p.pins.count) with a place",
                                 door: true) { showMap = true }
+                            .transition(.identity)
                     }
                 }
                 .padding(.top, 18)
@@ -1224,11 +1228,11 @@ struct PrayerScoresPage: View {
                     + Text(sinceWords.map { " \($0)" } ?? "").foregroundStyle(.secondary)
                 }
             }
-            .contentTransition(.numericText())
+            .contentTransition(.identity)   // rides the chart's height: a roll there ghosted (owner, 2026-10-21)
             .opacity(slotPick == nil ? 1 : 0)
             if let k = slotPick {
                 Text(slotLine(p, k))
-                    .contentTransition(.numericText())
+                    .contentTransition(.identity)
                     .transition(.opacity)
             }
         }
@@ -1247,8 +1251,10 @@ struct PrayerScoresPage: View {
                     VStack(spacing: 2) {
                         HStack(spacing: 6) {
                             Circle().fill(g.color.opacity(0.75)).frame(width: 9, height: 9)
+                            // Switches at once: rolled while the chart's growth slid the chips, the digits ghosted (owner,
+                            // 2026-10-21).
                             Text("\(p.grades[g] ?? 0)").font(.system(size: 18, weight: .light, design: .rounded)).monospacedDigit()
-                                .contentTransition(.numericText(value: Double(p.grades[g] ?? 0)))
+                                .contentTransition(.identity)
                         }
                         Text(g.word).font(.system(size: 12, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     }
@@ -1284,10 +1290,13 @@ struct PrayerScoresPage: View {
             HStack(spacing: 14) {
                 Image(systemName: symbol).font(.system(size: 19, weight: .light)).foregroundStyle(.secondary).frame(width: 30)
                 VStack(alignment: .leading, spacing: 2) {
+                    // A new span's words switch at once (the row still rides the chart's height): crossfaded while sliding
+                    // they ghosted (owner, 2026-10-21: "The bottom list items in that page, we don't need to animate those …
+                    // I care more about the histogram than anything else").
                     Text(title).font(.system(size: 16, weight: .light, design: .rounded)).fixedSize(horizontal: false, vertical: true)
-                        .contentTransition(.numericText())
+                        .contentTransition(.identity)
                     Text(sub).font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
+                        .contentTransition(.identity)
                 }
                 Spacer(minLength: 8)
                 if door { Image(systemName: "chevron.right").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.sage) }
@@ -1350,20 +1359,7 @@ struct PrayerScoresChart: View, Animatable {
         dots = DotColumns(v: (counts + [qaza]).map { n in n == 0 ? 0 : Double(max(1, Int((Double(n) / Double(per)).rounded()))) })
     }
 
-    /// Several numbers as one animatable value (columns missing on one side count as 0).
-    struct DotColumns: VectorArithmetic {
-        var v: [Double]
-        static var zero: DotColumns { DotColumns(v: []) }
-        private static func zip(_ a: DotColumns, _ b: DotColumns, _ f: (Double, Double) -> Double) -> DotColumns {
-            let n = max(a.v.count, b.v.count)
-            return DotColumns(v: (0..<n).map { f($0 < a.v.count ? a.v[$0] : 0, $0 < b.v.count ? b.v[$0] : 0) })
-        }
-        static func + (a: DotColumns, b: DotColumns) -> DotColumns { zip(a, b, +) }
-        static func - (a: DotColumns, b: DotColumns) -> DotColumns { zip(a, b, -) }
-        mutating func scale(by rhs: Double) { v = v.map { $0 * rhs } }
-        var magnitudeSquared: Double { v.reduce(0) { $0 + $1 * $1 } }
-        subscript(_ i: Int) -> Double { i < v.count ? max(0, v[i]) : 0 }
-    }
+    typealias DotColumns = AnimatableNumbers
 
     static let slots = 14
     static let qazaSlot = slots
