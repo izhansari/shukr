@@ -140,8 +140,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   reach now. You've still got 19 prayers left, so make them count." — owner: "account for the messaging for when they miss
   their strong week"); a missed prayer → "Make up today's Fajr to keep the week strong" (several: "Make up N missed prayers…");
   a no-record day → "Fill in Monday to keep the week strong"; enough already → "A strong week, so far"; else the rule in Your
-  goal's words: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. …, and it's a
-  strong one."; on Prayed just "Don't miss a prayer") (a fixed 3-line slot). The last two finished weeks banked
+  goal's words: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. " first; on
+  Prayed just "Don't miss a prayer") (a fixed 3-line slot). The last two finished weeks banked
   ("Oct 4 – 10 · 34 of 35 · strong", "· complete"); a day with no record asked in their slot ("Yesterday has no record. Did
   you pray?" · Pick which · Not now — steps aside after 3 visits; owner, 2026-10-20). All from `PrayerMetrics`, off the main
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
