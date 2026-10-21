@@ -1438,18 +1438,23 @@ struct JourneyMilestone: Identifiable, Equatable {
     var how: String? = nil
     var day: Date? = nil
 
-    /// Days all in time in a row worth a milestone (DayInsight's own list).
-    static let runs: [Int] = [7, 14, 21, 30, 40, 50, 60, 90, 100, 150, 200, 250, 300, 365]
-    /// Every hundred prayers (owner, 2026-10-16: "yeah, sure, that's fine"); the list keeps the 100th, the 500th, every
-    /// thousandth and only the latest of the rest, so it reads as achievements, not a counter.
-    static func keepsTotal(_ n: Int) -> Bool { n == 100 || n == 500 || n % 1000 == 0 }
-    static let perPrayer: [Int] = [100, 500]
+    /// Strong weeks in a row worth a milestone, and their names (plan-v3 §11.4: "13 · a season", "52 · a year").
+    static let strongRuns: [Int] = [4, 8, 13, 26, 52]
+    /// Complete weeks (all five, each in its time, every day) worth a milestone: the 1st, then these.
+    static let completeCounts: [Int] = [1, 4, 13, 26, 52]
+    /// Prayers marked: the 100th, then every thousandth (plan-v3 §11.4: fewer deed counts — Frank's research on 'ujb; the
+    /// per-prayer 100th / 500th and the 500th went, 2026-10-20).
+    static func keepsTotal(_ n: Int) -> Bool { n == 100 || n % 1000 == 0 }
 
+    /// Every milestone earned, newest first (prayer-metrics rethink phase 4, plan-v3 §11.4; owner: "i guess we should also
+    /// relook at milestones"). The obligation is the bar: a complete day (all five in their time), strong and complete
+    /// weeks (PrayerMetrics — the streak is weekly now), making up what was missed; the person's path stays (day one, the
+    /// first Jumu'ah, Welcome back, the fresh start, the years). Past tense, private, dated; nothing ever says "broke".
     static func earned(log: JourneyLog, today: Date, excused: Excused.Days = Excused.Days()) -> [JourneyMilestone] {
         guard let firstDay = log.firstDay else { return [] }
         let cal = Calendar.current
-        let goal = log.goal
-        // Runs after a fresh start are their own (a 7-day run earned again after it is new news, not one already seen).
+        let now = Date()
+        // Runs and counts after a fresh start are their own (earned again after it is new news, not one already seen).
         let era = log.countsFrom.map { "." + PrayerNotificationID.dayKey($0) } ?? ""
         var out: [JourneyMilestone] = []
         func add(_ id: String, _ text: String, _ date: Date, _ tone: Tone,
@@ -1458,9 +1463,10 @@ struct JourneyMilestone: Identifiable, Equatable {
             out.append(JourneyMilestone(id: id, text: text, date: date, tone: tone, order: out.count,
                                         symbol: symbol, about: about, how: how, day: day ?? date))
         }
-        /// "Isha, prayed 8:18 PM" — the prayer that earned it.
+        /// "Isha, prayed 8:18 PM" — the prayer that earned it ("Isha, in its time" when no time was recorded).
         func prayed(_ d: JourneyLog.Day, _ i: Int) -> String {
             let name = d.slots[i]?.jumuah == true ? "Jumu'ah" : JourneyLog.names[i]
+            if d.slots[i]?.noTime == true { return name + ", in its time" }
             return name + (d.slots[i]?.markedAt.map { ", prayed " + $0.formatted(date: .omitted, time: .shortened) } ?? "")
         }
         let span = Date.FormatStyle.dateTime.month(.abbreviated).day()
@@ -1470,36 +1476,11 @@ struct JourneyMilestone: Identifiable, Equatable {
         }
 
         var total = 0
-        var perName: [Int] = Array(repeating: 0, count: 5)
-        // The run and the best: StreakWalk, the Salah page's and the card's rule (today never breaks a run).
-        var walk = StreakWalk.Forward(today: today)
-        var bestAtRunStart = 0
-        var runLastDay: Date?
-        var runFirstDay: Date?
         var gap = 0
-        var masjidDone = false, jumuahDone = false, perfectDone = false
-
-        func closeRun() {
-            // A run that beat the best before it: "N days in a row, all in time" — "your best" while it still is.
-            // Keyed by the run's first day: a best still growing is one milestone, celebrated once, not one a day.
-            // From 7 days (was 3): a goal flip to Pray all five turned every early 3-, 4-, 5-day improvement into its own
-            // milestone (owner, 2026-10-18: "got hella milestones … 3 days in a row prayed or something... that was weird").
-            let run = walk.run
-            if run >= 7, run > bestAtRunStart, let last = runLastDay, let firstOfRun = runFirstDay {
-                out.removeAll { $0.id == "run.\(run)\(era)" && cal.isDate($0.date, inSameDayAs: last) }   // the same news twice
-                add("best.\(PrayerNotificationID.dayKey(firstOfRun))", "\(run) days in a row, \(goal.runWords)", last, .inTime,
-                    symbol: "trophy", about: "A new best: more days in a row with all five \(goal.prayersWords) than ever before.",
-                    how: "\(run) days, \(firstOfRun.formatted(span)) – \(last.formatted(span))")
-                if let k = out.firstIndex(where: { $0.id == "best.\(PrayerNotificationID.dayKey(firstOfRun))" }) {
-                    let sameYear = cal.component(.year, from: firstOfRun) == cal.component(.year, from: last)
-                    let from = firstOfRun.formatted(sameYear ? .dateTime.month(.abbreviated).day() : .dateTime.month(.abbreviated).day().year())
-                    out[k].detail = "\(from) – \(last.formatted(.dateTime.month(.abbreviated).day().year()))"
-                }
-            }
-            bestAtRunStart = walk.best
-            runLastDay = nil
-            runFirstDay = nil
-        }
+        var masjidDone = false, jumuahDone = false, completeDayDone = false, madeUpDone = false
+        var lastMadeUp: (date: Date, how: String)?
+        /// Where To make up starts (a fresh start that cleared it): only make-ups since then date "All made up".
+        let makeUpFrom = FreshStart.makeUpFromKey
 
         var date = cal.startOfDay(for: firstDay)
         while date <= today {
@@ -1526,15 +1507,9 @@ struct JourneyMilestone: Identifiable, Equatable {
                 }
                 for i in 0..<5 where d.marks[i].done {
                     total += 1
-                    perName[i] += 1
-                    if total % 100 == 0 {
+                    if Self.keepsTotal(total) {
                         add("total.\(total)", "\(ordinal(total)) prayer", date, .count, symbol: "number",
                             about: "\(total) prayers marked since day one.", how: prayed(d, i))
-                    }
-                    if Self.perPrayer.contains(perName[i]) {
-                        add("\(JourneyLog.names[i]).\(perName[i])", "\(ordinal(perName[i])) \(JourneyLog.names[i])", date, .count,
-                            symbol: "number", about: "\(perName[i]) \(JourneyLog.names[i]) prayers marked since day one.",
-                            how: prayed(d, i))
                     }
                     let slot = d.slots[i]
                     if !jumuahDone, slot?.jumuah == true {
@@ -1548,11 +1523,25 @@ struct JourneyMilestone: Identifiable, Equatable {
                         add("masjid", "First prayer at a masjid: \(m)", date, .count, symbol: "building.columns",
                             about: "The first prayer you marked at a masjid.", how: "\(prayed(d, i)), at \(m)")
                     }
+                    // Made up: prayed after its time (a Qaza). The first one is celebrated; the latest dates "All made up".
+                    if d.marks[i].state(end: slot?.end, now: now, noTime: slot?.noTime ?? false) == .madeUp {
+                        let at = slot?.markedAt ?? date
+                        if !madeUpDone {
+                            madeUpDone = true
+                            add("madeUp.first", "First make-up", at, .inTime, symbol: "arrow.uturn.backward.circle",
+                                about: "The first prayer you made up after its time. Making up what was missed is how it's set right.",
+                                how: JourneyLog.names[i] + " of " + date.formatted(span))
+                        }
+                        if makeUpFrom.map({ d.key >= $0 }) ?? true, lastMadeUp.map({ at > $0.date }) ?? true {
+                            lastMadeUp = (at, JourneyLog.names[i] + " of " + date.formatted(span))
+                        }
+                    }
                 }
-                if !perfectDone, d.marks.allSatisfy({ ($0.score ?? 0) >= 0.9999 }) {
-                    perfectDone = true
-                    add("perfect", "All five in the Opening", date, .inTime, symbol: "star",
-                        about: "All five prayers prayed in the first third of their time on one day.")
+                // The first complete day: all five, each in its time (the obligation kept for a whole day).
+                if !completeDayDone, d.counted, PrayerMetrics.day(date, in: log, excused: excused, now: now).complete {
+                    completeDayDone = true
+                    add("completeDay\(era)", "A complete day", date, .inTime, symbol: "checkmark.circle",
+                        about: "All five prayers, each in its time, on one day.")
                 }
             } else if excusedAll {
                 gap = 0
@@ -1560,42 +1549,62 @@ struct JourneyMilestone: Identifiable, Equatable {
                 gap += 1
             }
 
-            // Days in a row that met the goal, from the fresh start only (owner's pick, 2026-10-18): its day closes any run
-            // before it and the best starts over; the day itself is a quiet milestone.
+            // The fresh start's day is a quiet milestone; runs and counts after it are their own (`era`).
             if let from = log.countsFrom, cal.isDate(date, inSameDayAs: from) {
-                closeRun()
-                walk = StreakWalk.Forward(today: today)
-                bestAtRunStart = 0
                 add("fresh.\(d.key)", "Fresh start", date, .quiet, symbol: "leaf",
-                    about: "You began again: your streak, scores and rank count from this day. Your history stays.")
-            }
-            if d.counted {   // before the fresh start: no runs
-                // An excused day neither counts nor breaks; a day that breaks closes the run before the walk starts over.
-                // Today never breaks it: a today that ended short is closed by the closeRun after the walk.
-                let verdict = YourJourneyStats.verdict(d, on: date, in: log, excused, goal: goal)
-                if verdict == .breaks, date != today { closeRun() }
-                walk.add(date, verdict)
-                if verdict == .counts {
-                    let run = walk.run
-                    if run == 1 { runFirstDay = date }
-                    runLastDay = date
-                    if Self.runs.contains(run) {
-                        add("run.\(run)\(era)", run == 7 ? "A full week, \(goal.runWords)" : "\(run) days in a row, \(goal.runWords)", date, .inTime,
-                            symbol: "calendar", about: "\(run) days in a row with all five prayers \(goal.prayersWords).",
-                            how: runFirstDay.map { "\($0.formatted(span)) – \(date.formatted(span))" })
-                    }
-                }
+                    about: "You began again: your streak and counts start from this day. Your history stays.")
             }
             guard let next = cal.date(byAdding: .day, value: 1, to: date) else { break }
             date = next
         }
-        closeRun()
 
-        // Every hundred prayers: the round ones stay, of the rest only the latest.
-        let latestTotal = out.last(where: { $0.id.hasPrefix("total.") })?.id
-        out.removeAll { m in
-            guard m.id.hasPrefix("total."), m.id != latestTotal, let n = Int(m.id.dropFirst(6)) else { return false }
-            return !Self.keepsTotal(n)
+        // The weeks (PrayerMetrics): strong weeks in a row, complete weeks, a week in the Opening.
+        let weeks = PrayerMetrics.weeks(in: log, excused: excused, now: now).filter(\.finished)
+        var run = 0, complete = 0
+        var runStart: Date?
+        for w in weeks {
+            guard let last = Calendar.current.date(byAdding: .day, value: 6, to: w.start) else { continue }
+            if w.excusedWeek { continue }
+            if w.strong {
+                if run == 0 { runStart = w.start }
+                run += 1
+                if Self.strongRuns.contains(run), let first = runStart {
+                    let name = run == 13 ? "A season of strong weeks" : run == 52 ? "A year of strong weeks" : "\(run) strong weeks in a row"
+                    add("strong.\(run).\(PrayerNotificationID.dayKey(first))\(era)", name, last, .inTime, symbol: "calendar",
+                        about: "\(run) weeks in a row with every prayer prayed and at least 32 in their time.",
+                        how: "\(first.formatted(span)) – \(last.formatted(span))")
+                }
+            } else {
+                run = 0
+            }
+            if w.complete {
+                complete += 1
+                if Self.completeCounts.contains(complete) {
+                    add("complete.\(complete)\(era)", complete == 1 ? "A complete week" : "Your \(ordinal(complete)) complete week",
+                        last, .inTime, symbol: "checkmark.seal",
+                        about: "All five prayers, each in its time, every day of the week.",
+                        how: "Week of \(w.start.formatted(span))")
+                }
+            }
+            // The Opening, for those who aim for it (Your goal at its top: the stretch above the bar).
+            if log.goal == .perfect, w.asked > 0, w.noRecordDays == 0,
+               w.days.allSatisfy({ ($0.states ?? []).allSatisfy { $0 == .opening || $0 == .excused } }) {
+                add("opening.\(PrayerNotificationID.dayKey(w.start))", "A week in the Opening", last, .inTime, symbol: "sunrise",
+                    about: "Every prayer of the week in the first third of its time.", how: "Week of \(w.start.formatted(span))")
+            }
+        }
+        // All made up: nothing left on To make up, after there was (dated by the last make-up since its start). To make up's
+        // own rule: from where it starts (a fresh start that cleared it), on days you used shukr — today included even
+        // before its first mark (metrics phase 1).
+        if let last = lastMadeUp {
+            let todayKey = PrayerDay.key(for: now)
+            let owed = log.days.values.contains { d in
+                (makeUpFrom.map { d.key >= $0 } ?? true) && (d.active || d.key == todayKey) && d.marks.contains(.missed)
+            }
+            if !owed {
+                add("madeUp.all", "All made up", last.date, .inTime, symbol: "checkmark.circle.fill",
+                    about: "Every prayer you had to make up, made up.", how: "Last: " + last.how)
+            }
         }
 
         // One Welcome back, the latest return (Frank's check on the owner's data: one per break read as a log of breaks, not
@@ -1611,15 +1620,6 @@ struct JourneyMilestone: Identifiable, Equatable {
                 symbol: "calendar.badge.clock", about: "Day one was \(firstDay.formatted(.dateTime.month(.wide).day().year())).")
             if let k = out.firstIndex(where: { $0.id == "year.\(years)" }) { out[k].day = nil }   // no day page for an anniversary
             years += 1
-        }
-
-        // The latest best is "Your best streak: N days" over its dates (the canvas); the ones it beat stay as they were.
-        // After a fresh start only a best earned since it: an older one keeps its dated words (the fresh day's closeRun
-        // adds it; retitled, it read "since your fresh start" over a run from before — Fable's audit #1).
-        if let i = out.lastIndex(where: { $0.id.hasPrefix("best.") }), log.countsFrom.map({ out[i].date >= $0 }) ?? true {
-            let n = out[i].text.split(separator: " ").first.map(String.init) ?? ""
-            out[i].text = "Your best streak: \(n) days"
-            out[i].about = "Your longest streak of days with all five \(goal.prayersWords)\(log.countsFrom == nil ? "" : " since your fresh start")."
         }
         return out.sorted { ($0.date, $0.order) > ($1.date, $1.order) }
     }
@@ -1642,7 +1642,7 @@ struct JourneyMilestone: Identifiable, Equatable {
     @ObservationIgnored var quietNext = false
     /// Bumped when a kind of milestone is added (2: every hundred prayers): the first check after an update records what's
     /// already earned of it without a word — never a run of "200th … 800th" celebrations (Sami's trap, acceptance-2 2b).
-    static let seenVersion = 2
+    static let seenVersion = 3   // 3: the metrics rethink's milestones (complete days, strong / complete weeks, make-ups)
     private(set) var showing: JourneyMilestone?
     @ObservationIgnored private var queue: [JourneyMilestone] = []
     @ObservationIgnored private var checking = false
