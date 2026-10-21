@@ -145,7 +145,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   ("Oct 4 – 10 · 34 of 35 · strong", "· complete"); a day with no record asked in their slot ("Yesterday has no record. Did
   you pray?" · Pick which · Not now — steps aside after 3 visits; owner, 2026-10-20). All from `PrayerMetrics`, off the main
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
-  No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is the first row ("35 of 35 in their time · last 7 days"), the page zooming out of it.
+  No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes the same `PrayerGoalPage` as Settings' row (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"); Milestones now sits below the fold on a 17 Pro (the rows scroll).
 - Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the
   pager's right page (its in-pager band and pager hold were deleted 2026-10-20, cleanup tangle 4).
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in

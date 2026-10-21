@@ -398,6 +398,10 @@ struct JourneyPage: View {
     /// Prayer scores zooms out of the header's ring and back into it (iOS's zoom transition: the way back follows the finger).
     @Namespace private var scoresZoom
     @State private var showMilestones = false
+    /// Your goal, pushed from its row (owner, 2026-10-21: "bring the your goal page into journey somewhere so its not tucked
+    /// away in settings" → "Make it a list item for now"); Settings keeps its row too.
+    @State private var showGoal = false
+    @State private var goal = PrayerGoal.current
     /// The picked day's notes, photos, map and zikr, opened from the card's bottom — where the day page's back card opens
     /// them (owner, 2026-10-17: "we can use the same tap destinations as we do in the day ring's page for the flipped card").
     @State private var extraTap: JourneyExtraTap?
@@ -459,6 +463,8 @@ struct JourneyPage: View {
             PrayerScoresPage().navigationTransition(.zoom(sourceID: "scores", in: scoresZoom))
         }
         .modifier(JourneyExtrasPresenter(tap: $extraTap))
+        .navigationDestination(isPresented: $showGoal) { PrayerGoalPage() }
+        .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in goal = PrayerGoal.current }
         .navigationDestination(isPresented: $showMilestones) {
             JourneyMilestonesPage(milestones: stats?.milestones ?? [], firstDay: log.firstDay, opens: { opens($0) })
         }
@@ -679,6 +685,11 @@ struct JourneyPage: View {
         let recent = YourPrayersRecent.shared
         return VStack(spacing: 0) {
             if MetricsLook.on {
+                JourneyHomeRow(title: "Your goal", line: "How early you aim to pray", height: rowHeight) {
+                    Image(systemName: "target").font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
+                } value: {
+                    Text(goal.title)
+                } action: { showGoal = true }
                 // Your prayers as a row with the others (owner, 2026-10-20: "looks weird to have the upper right ring so busy
                 // on journey … you can get rid of it and make it a list item"); the page still zooms out of it.
                 JourneyHomeRow(title: "Your prayers",
