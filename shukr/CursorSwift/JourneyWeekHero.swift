@@ -113,6 +113,8 @@ struct JourneyWeekCard: View {
         let todayIndex: Int
     }
     @State private var model: Model?
+    /// The latest read (an older one landing after it is dropped).
+    @State private var readToken = 0
     /// The ring's place on screen (global), for the calendar's flight.
     @State private var ringFrame: CGRect = .zero
 
@@ -278,10 +280,12 @@ struct JourneyWeekCard: View {
     /// JourneyStore reads the log (Fable's check: Journey's open was a 71–80 ms trace already). The ring shows its empty
     /// track until it lands, the same size, so nothing moves.
     private func read() {
-        let log = log, excused = Excused.Days(), now = Date()
+        readToken += 1
+        let mine = readToken, log = log, excused = Excused.Days(), now = Date()
         Task.detached(priority: .userInitiated) {
             let next = Self.model(log: log, excused: excused, now: now)
             await MainActor.run {
+                guard mine == readToken else { return }
                 if next != model { model = next; reportFlight() }
             }
         }

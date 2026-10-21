@@ -385,6 +385,10 @@ struct PrayerScoresPage: View {
     #endif
 
     private static let rowHeight: CGFloat = 62
+    /// The prayer-metrics rethink (MetricsLook): each prayer's last 7 days, the page's counts instead of its scores.
+    private var recent: YourPrayersRecent { .shared }
+    /// "Your prayers" (MetricsLook) or "Prayer scores".
+    private var pageTitle: String { MetricsLook.on ? "Your prayers" : "Prayer scores" }
 
     var body: some View {
         let _ = JourneyPerf.body("scores")
@@ -409,7 +413,7 @@ struct PrayerScoresPage: View {
         .fontDesign(.rounded)
         // An open prayer takes the page's title: "Prayer scores" waits in the bar (owner, 2026-10-17: "maybe the title
         // prayer scores goes in the top bar").
-        .navigationTitle(shown != nil ? "Prayer scores" : "")
+        .navigationTitle(shown != nil ? pageTitle : "")
         .navigationBarTitleDisplayMode(.inline)
         // A prayer opens in place, not as a page: while one is open, ‹ closes it back to Prayer scores (owner,
         // 2026-10-17: "clicking the back chevron is kind of annoying because it takes us back to the card page instead
@@ -435,7 +439,7 @@ struct PrayerScoresPage: View {
                     Button { close() } label: {
                         Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold))
                     }
-                    .accessibilityLabel("Back to Prayer scores")
+                    .accessibilityLabel("Back to \(pageTitle)")
                 }
             }
         }
@@ -447,6 +451,10 @@ struct PrayerScoresPage: View {
             if let s = shown, let p = data.prayers[s] { PrayerScoresMap(name: s, pins: p.pins) }
         }
         .task { reload() }
+        .task(id: JourneyStore.shared.log?.version) { if MetricsLook.on { recent.read(JourneyStore.shared.log) } }
+        .onReceive(NotificationCenter.default.publisher(for: Excused.changed)) { _ in
+            if MetricsLook.on { recent.read(JourneyStore.shared.log, force: true) }
+        }
         .onChange(of: spanRaw) { switchSpan() }
         .onReceive(NotificationCenter.default.publisher(for: .journeyChanged)) { _ in reload() }
         // A goal or fresh-start change empties the kept spans (JourneyStore); the .journeyChanged after it reloads, once.
@@ -579,7 +587,8 @@ struct PrayerScoresPage: View {
     /// prayer to prayer"): ~0.3 s, never through the list. Mid-open, it waits for the open to land; a newer tap replaces an
     /// older one at every step.
     private func switchTo(_ name: String) {
-        guard data.prayers[name]?.prayedScore != nil else { return }
+        // MetricsLook: any prayer with data opens, as from all five (Frank's check).
+        guard MetricsLook.on ? data.prayers[name] != nil : data.prayers[name]?.prayedScore != nil else { return }
         guard !busy else { pendingSwitch = name; return }
         guard selected != nil, name != selected || swapping else { return }
         swapToken += 1
@@ -722,6 +731,14 @@ struct PrayerScoresPage: View {
         ZStack {
             NeuRaised(shape: Circle(), radius: 9, offset: 4.5)
                 .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
+            if MetricsLook.on {
+                // Each prayer's last 7 days (owner's pick A, 2026-10-20): no average, no 0–100. The same taps as DayRing's.
+                YourPrayersRing(recent: recent.byName, picked: ringShown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
+                    let name = DayRing.order[i]
+                    guard data.prayers[name] != nil else { return }
+                    if selected == nil { open(name) } else if name == selected && !swapping { close() } else { switchTo(name) }
+                }
+            } else {
             DayRing(day: ringPrayers, picked: ringShown.flatMap { DayRing.order.firstIndex(of: $0) }) { i in
                 let name = DayRing.order[i]
                 guard data.prayers[name]?.prayedScore != nil else { return }
@@ -729,15 +746,17 @@ struct PrayerScoresPage: View {
             }
             .id(data.span)   // a new span's fifths cross-fade in
             .transition(.opacity)
+            }
             VStack(spacing: 1) {
-                Text(ringScore.map { "\($0)" } ?? "–")
-                    .font(.system(size: 58, weight: .thin, design: .rounded)).monospacedDigit()
+                Text(MetricsLook.on ? ringCount : ringScore.map { "\($0)" } ?? "–")
+                    .font(.system(size: MetricsLook.on ? 46 : 58, weight: .thin, design: .rounded)).monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.7)
                     // Rolls to a new span's number; the prayer's own swaps while the words are faded out.
                     .contentTransition(.numericText(value: Double(ringScore ?? 0)))
                     .modifier(ScoresBackFade(part: .ringWords, rest: ringFaded ? 0 : 1, dial: backDial))
                 // What the number is (owner: "a little subtitle … saying like average lifetime score"); sized for the ring
                 // drawn at 70 % beside the title.
-                Text(data.ringLabel)
+                Text(MetricsLook.on ? (ringShown == nil ? "in their time\nlast 7 days" : "in its time\nlast 7 days") : data.ringLabel)
                     .contentTransition(.opacity)
                     .font(.system(size: 15, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -746,6 +765,12 @@ struct PrayerScoresPage: View {
             .allowsHitTesting(false)
         }
         .frame(width: CircleMotion.dayDiscDiameter, height: CircleMotion.dayDiscDiameter)
+    }
+
+    /// "29 of 35" (all five) or "4 of 7" (the open prayer): in their time, the last 7 days (MetricsLook).
+    private var ringCount: String {
+        if let name = ringShown, let r = recent.byName[name] { return "\(r.inTime) of \(r.asked)" }
+        return recent.byName.isEmpty ? "–" : "\(recent.inTime) of \(recent.asked)"
     }
 
     /// Each prayer as the day ring draws a day's: its average as the score, its usual place in its window (the middle of
@@ -815,7 +840,8 @@ struct PrayerScoresPage: View {
     private var usualLines: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let s = shown, let p = data.prayers[s] {
-                Text(p.usual.map { $0.replacingOccurrences(of: "Usually", with: "Lately, usually") }
+                Text(MetricsLook.on ? recent.usualWords(s) ?? "Not enough yet to say when you usually pray it."
+                     : p.usual.map { $0.replacingOccurrences(of: "Usually", with: "Lately, usually") }
                      ?? "Not enough yet to say when you usually pray it.")
                     .font(.system(size: 14, weight: .light, design: .rounded))
                     .contentTransition(.opacity)
@@ -824,7 +850,8 @@ struct PrayerScoresPage: View {
                     .font(.system(size: 13.5, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                     .contentTransition(.numericText())
             }
-            trendLine(shown ?? "all")
+            // A score's trend (↑3) is a 0–100 number: gone with the rethink (MetricsLook).
+            if !MetricsLook.on { trendLine(shown ?? "all") }
         }
         .multilineTextAlignment(.leading)
         .fixedSize(horizontal: false, vertical: true)
@@ -879,7 +906,7 @@ struct PrayerScoresPage: View {
                 // and back down on close. Its "% prayed" stays ("We also lose like the 98% prayed stat … We should keep
                 // that").
                 ZStack(alignment: .leading) {
-                    Text("Prayer scores")
+                    Text(pageTitle)
                         .font(.system(size: 34, weight: .light, design: .rounded))
                         .lineLimit(2).minimumScaleFactor(0.8)
                         .modifier(ScoresBackFade(part: .inLast, rest: selected == nil && !linesFaded ? 1 : 0, dial: backDial))
@@ -952,17 +979,26 @@ struct PrayerScoresPage: View {
 
     /// "98% prayed" (an open prayer's line under its name).
     private func prayedLine(_ name: String) -> String {
+        if MetricsLook.on { return recentLine(name) }
         guard let p = data.prayers[name], p.due > 0 else { return " " }
         return "\(Int((Double(p.prayed) / Double(p.due) * 100).rounded()))% prayed"
     }
 
     /// "97 · " (a row's line before its "% prayed"), or nothing without a score.
     private func scorePart(_ name: String) -> String {
-        data.prayers[name]?.prayedScore.map { "\($0) · " } ?? ""
+        if MetricsLook.on { return "" }
+        return data.prayers[name]?.prayedScore.map { "\($0) · " } ?? ""
+    }
+
+    /// "in its time 4 of 7" (MetricsLook: a row's line, and the open prayer's under its name).
+    private func recentLine(_ name: String) -> String {
+        guard let r = recent.byName[name], r.asked > 0 else { return "No record lately" }
+        return "in its time \(r.inTime) of \(r.asked)"
     }
 
     /// "97 · 98% prayed" (a row's line).
     private func statLine(_ name: String) -> String {
+        if MetricsLook.on { return recentLine(name) }
         guard let p = data.prayers[name] else { return " " }
         return p.prayedScore.map { "\($0) · \(Int((Double(p.prayed) / Double(max(1, p.due)) * 100).rounded()))% prayed" } ?? "Not enough yet"
     }
@@ -1040,7 +1076,7 @@ struct PrayerScoresPage: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint(picked ? "Back to all five prayers" : "Opens \(name)'s scores")
+        .accessibilityHint(picked ? "Back to all five prayers" : MetricsLook.on ? "Opens \(name)" : "Opens \(name)'s scores")
     }
 
     // MARK: One prayer

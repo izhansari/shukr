@@ -165,6 +165,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   as one picture (`JourneyYearSquares`, a Canvas: tile colors, unmarked hairline, future faint, today outlined; the picked
   ring drawn over it); a tap on a month (its name or squares) flies back into the expanded weeks with it focused; the
   squares' geometry is one set of statics on `JourneyYearSquares` (drawing, hit test, layout, the flight); ‹, the edge swipe and the toggle go back to the weeks (`JourneyFlightGeometry.yearBack`).
+- **Your prayers** (YourPrayers.swift; the rethink's phase 3, owner's pick A 2026-10-20; behind `MetricsLook.on`): Prayer
+  scores' page as built — its motion, rows, chart and back dial unchanged — with its title "Your prayers", its ring
+  `YourPrayersRing` (DayRing's fifths, places and taps; each fifth that prayer's last 7 days as seven slivers in their states),
+  the middle "29 of 35 · in their time, last 7 days" ("5 of 6 · in its time" open), the rows' line "in its time 5 of 6", an
+  open prayer's line "Usually by 6:38 AM · 11 min from your best month (Mar)"; no score trend. From `PrayerMetrics.recent`,
+  read off the main thread per log version (`YourPrayersRecent`).
 - Prayer scores (`PrayerScoresPage`, PrayerScores.swift): its title + the one-liner beside the day page's own ring at 70 %
   (`DayRing` on the raised disc: each prayer's fifth in its average grade, its dot at its usual place in the window; under the
   number "average lifetime score" / "… last 30 days"); All time · 30 days · 7 days under the header (`PrayerScores.build(span:)`,
