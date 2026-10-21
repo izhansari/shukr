@@ -88,7 +88,10 @@ enum PrayerMetrics {
         /// so above Prayed it already counts against the slack. A day without a record can still be filled in. The mid-week
         /// line reads this (owner, 2026-10-21: "they missed 5 already by wednesday … hey dont get upset").
         var stillPossible: Bool {
-            let lost = belowStep + (goal == .prayed ? 0 : notMarked)
+            // A day with no record can only be filled in as "in its window, no time" (NoRecordDays.fill), which is below
+            // the Middle and the Opening: there each of its prayers counts against the slack too.
+            let unrecorded = goal.meets(.inTimeNoClock) ? 0 : noRecordDays * 5
+            let lost = belowStep + (goal == .prayed ? 0 : notMarked) + unrecorded
             return asked > 0 && lost <= strongWeekSlack
         }
         /// The current week's words (Koo & Fishbach, plan-v3 §9): "12 done" early in the week, "4 left" late in it — done

@@ -598,14 +598,19 @@ struct JourneyWeekCard: View {
         }
         // Both asks when both are owed ("Make up 2 missed prayers and fill in 3 days…"): it named only the missed while
         // Sunday to Tuesday had no record (the week ring's hand-over).
+        // Made up, a missed prayer is below the goal (above Prayed): when that takes all the spare, every other prayer has
+        // to meet it — say so (Fable's critique, row 6; owner, 2026-10-21: "do 6"). Then "missed" alone keeps it to 3 lines.
+        let noSpare = !m.owed.isEmpty && slack(w) > 0 && w.belowStep + w.notMarked >= slack(w)
         let make = m.owed.first.map { first in
-            m.owed.count == 1 ? "make up \(possessive(first.day)) \(first.name)" : "make up \(m.owed.count) missed prayers"
+            m.owed.count == 1 ? "make up \(possessive(first.day)) \(first.name)"
+                : "make up \(m.owed.count) missed" + (noSpare ? "" : " prayers")
         }
         let fill = m.fillable.first.map { day in
             m.fillable.count == 1 ? "fill in \(dayName(day))" : "fill in \(m.fillable.count) days"
         }
         let ask = [make, fill].compactMap { $0 }.joined(separator: " and ")
-        if !ask.isEmpty { return ask.prefix(1).uppercased() + ask.dropFirst() + " for a strong week" }
+        let then = noSpare ? ", then pray the rest \(w.goal.countWords)" : ""
+        if !ask.isEmpty { return ask.prefix(1).uppercased() + ask.dropFirst() + then + " for a strong week" }
         if w.met >= target { return "A strong week, so far" }
         // The rule's own words (owner, 2026-10-21, on Your goal: "Don't miss a prayer, and keep nearly all at your goal:
         // that's a strong week"), with the hero's number; on Prayed "don't miss a prayer" is the whole of it.

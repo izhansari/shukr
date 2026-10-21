@@ -157,7 +157,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   reach now. You've still got 19 prayers left, so make them count." — owner: "account for the messaging for when they miss
   their strong week"); a missed prayer → "Make up today's Fajr for a strong week" (several: "Make up N missed prayers…");
   a no-record day → "Fill in Monday for a strong week"; both → "Make up 2 missed prayers and fill in 3 days for a
-  strong week"; enough already → "A strong week, so far"; else the rule in Your
+  strong week"; when making up would take all 3 spare (above Prayed a made-up prayer is below the goal): "Make up 3 missed
+  and fill in 3 days, then pray the rest in their windows for a strong week". Above In its window a day with no record
+  can only be filled in below the goal, so it counts against the spare (`Week.stillPossible`); enough already → "A strong week, so far"; else the rule in Your
   goal's words: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. " first; on
   Prayed just "Don't miss a prayer") (a fixed 3-line slot). The last two finished weeks banked
   ("Oct 4 – 10 · 34 of 35 · strong"; a complete week "35 of 35 · strong" — "complete" was never explained); a day with no record asked in their slot ("Yesterday has no record. Did
