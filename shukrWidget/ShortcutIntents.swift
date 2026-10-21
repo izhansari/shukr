@@ -677,7 +677,7 @@ struct PrayerCardSnippet: View {
     private var spoken: String {
         if let m = state.markedAt {
             let score = PrayerScoring.score(start: state.start, end: state.end, markedAt: m)
-            return "\(state.label), prayed \(shortTimePM(m)) \(PrayerScoring.grade(for: score).spokenWhen). Score: \(PrayerScoring.points(for: score))."
+            return "\(state.label), prayed \(shortTimePM(m)) \(PrayerScoring.grade(for: score).spokenWhen)."   // no "Score: N" (prayer-metrics phase 3)
         }
         return "\(state.label), \(TodaysTimesSnippet.left(until: state.end)), ends \(shortTimePM(state.end))"
     }

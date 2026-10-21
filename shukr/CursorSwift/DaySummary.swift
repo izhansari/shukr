@@ -251,6 +251,23 @@ struct DayCentre: View {
                 }
                 .transition(CircleMotion.dayPickSwap)
             }
+        } else if MetricsLook.on {
+            // The day as a count (prayer-metrics phase 3, plan-v3 §5): "4 of 5" with "in their time" under it — the prayers
+            // due that day, an excused one not asked. The rank only as words, and only when it's true: the best day yet.
+            let due = day.filter { !$0.excused }.count
+            VStack(spacing: 3) {
+                // A fully excused day asks nothing: no "0 of 0" (Fable's review).
+                Text(due == 0 ? "Excused" : "\(day.filter(\.inTime).count) of \(due)")
+                    .font(.system(size: 48, weight: .thin, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text(due == 0 ? (yesterday ? "yesterday · nothing asked" : "nothing asked")
+                     : showsRank && rank?.place == 1 && rank?.tiedWith == 0 ? "your best day yet"
+                     : yesterday ? "yesterday · in their time" : "in their time")
+                    .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .transition(CircleMotion.dayPickSwap)
         } else if showsRank, let rank {
             // The rank in the score's place, the same type: "5th" / "of 112 days" (the suffix small, raised).
             VStack(spacing: 3) {

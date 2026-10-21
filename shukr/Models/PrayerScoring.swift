@@ -90,13 +90,15 @@ enum PrayerScoring {
     }
 
     /// "Middle · 88"
+    /// What a mark says where its grade is shown: the word alone, "Middle" (prayer-metrics phase 3: no 0–100 on any screen;
+    /// was "Middle · 87"). `points` still orders and shades.
     static func summary(for score: Double) -> String {
-        "\(grade(for: score).rawValue) · \(points(for: score))"
+        grade(for: score).rawValue
     }
 
     /// "Asr marked as prayed during the Closing window. Score: 66." — Siri's answer and the Live Activity's VoiceOver.
     static func spokenMark(_ name: String, score: Double) -> String {
-        "\(name) marked as prayed \(grade(for: score).spokenWhen). Score: \(points(for: score))."
+        "\(name) marked as prayed \(grade(for: score).spokenWhen)."   // no "Score: N" (prayer-metrics phase 3)
     }
 
     /// Closing's colour, #C93B10 in both looks (owner, 2026-10-20: "both C93B10"; was system red): a red leaning orange.

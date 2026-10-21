@@ -190,12 +190,14 @@ struct JourneyYearView: View {
         }
     }
 
-    /// "9 days · score 83" (its average score) or "Away" for a month with nothing marked.
+    /// "9 days · 41 in time" (MetricsLook: prayers in their time; was "· score 83", its average score) or "Away" for a month
+    /// with nothing marked.
     static func line(_ m: JourneyLog.Month) -> String {
         guard m.activeDays > 0 else { return "Away" }
         let days = m.activeDays == 1 ? "1 day" : "\(m.activeDays) days"
         // The month's average score, the month page's own (owner, 2026-10-17: "change that to the month score … average
         // score of that month"; was the in-time %).
+        if MetricsLook.on { return "\(days) · \(m.inTime) in time" }   // no 0–100 (prayer-metrics phase 3)
         guard let score = m.averageScore else { return days }
         return "\(days) · score \(score)"
     }
