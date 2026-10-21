@@ -53,8 +53,9 @@ struct MorningMissLine: View {
             if let unrecorded {
                 filling = FillDay(day: unrecorded)
             } else {
-                JourneyPresenter.shared.makeUp = true
-                JourneyPresenter.shared.open = true
+                // To make up alone, in one push (Frank's cc01de66; it slid Journey in, then To make up on top — owner:
+                // "it double hops pages. fix that").
+                JourneyPresenter.shared.makeUpAsked = true
             }
         } label: {
             // One sentence a line (the plain wrap left "it up. ›" alone on the second), a chevron after it as the make-up
