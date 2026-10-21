@@ -201,6 +201,7 @@ struct JourneyDayPage: View {
             guard row.startTime <= Date() else { return }
             viewModel.markFromJourney(row, at: Date())
             JourneyChange.post()
+            if let container = row.modelContext?.container { MilestoneCelebration.shared.check(container: container) }
             return
         }
         let vm = viewModel
