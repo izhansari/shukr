@@ -345,7 +345,8 @@ struct JourneyWeekCard: View {
     /// - out of reach: the mid-week line (it names the goal; owner, 2026-10-21: "explain in regards to their goal");
     /// - something owed: what to make up, then what to fill in, to keep the week strong;
     /// - already enough: "A strong week, so far";
-    /// - Sunday: "A new week. 32 makes it a strong one."; else "32 makes a strong week".
+    /// - else the rule: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. …,
+    ///   and it's a strong one."; on Prayed only "Don't miss a prayer").
     static func line(_ m: Model) -> String {
         let w = m.week
         guard w.asked > 0 else { return "Excused prayers are left out" }
@@ -362,7 +363,10 @@ struct JourneyWeekCard: View {
                 : "Fill in \(m.fillable.count) days to keep the week strong"
         }
         if w.met >= target { return "A strong week, so far" }
-        return m.todayIndex == 0 ? "A new week. \(target) makes it a strong one." : "\(target) makes a strong week"
+        // The rule's own words (owner, 2026-10-21, on Your goal: "Don't miss a prayer, and keep nearly all at your goal:
+        // that's a strong week"), with the hero's number; on Prayed "don't miss a prayer" is the whole of it.
+        let rule = slack(w) == 0 ? "Don't miss a prayer" : "Don't miss a prayer, and keep \(target) at your goal"
+        return m.todayIndex == 0 ? "A new week. \(rule), and it's a strong one." : "\(rule): that's a strong week"
     }
 
     /// How many may miss the goal in a strong week: the slack above Prayed; on Prayed none (every prayer prayed — Fable's
