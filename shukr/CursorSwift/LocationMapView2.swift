@@ -574,7 +574,7 @@ final class LocationViewModel: ObservableObject {
 
     /// Pin colour for a completed prayer, same scale as the app's score colouring.
     static func markerColor(for prayer: PrayerModel) -> UIColor {
-        UIColor(PrayerScoring.color(for: prayer.numberScore))
+        UIColor(prayer.getColorForPrayerScore())   // a no-time mark in its own colour (MarkKind.inTimeColor)
     }
 }
 

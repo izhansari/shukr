@@ -14,6 +14,9 @@ import Foundation
 enum PrayerState: Equatable {
     /// Marked in its window, by PrayerScoring's grade (Perfect · Middle · Closing; the words change in phase 2).
     case opening, middle, closing
+    /// Prayed in its time, the clock not recorded (MarkKind.timeUnknown: "I don't remember the time", the late-mark
+    /// question's "In its time", a no-record day filled in). In its time, with no third claimed.
+    case inTimeNoClock
     /// Marked after its window ended (Qaza).
     case madeUp
     /// Its window ended and nothing was marked (not excused).
@@ -26,7 +29,8 @@ enum PrayerState: Equatable {
     /// The state of a prayer from its row's facts. `excused` = Excused Mode covers its window (`Excused.covers`); it only
     /// matters for an unmarked prayer — a marked one is what it was marked as. An unmarked prayer still open is to come,
     /// even while excused (the excused state wins: an excused prayer is never due).
-    static func of(isCompleted: Bool, score: Double?, end: Date, excused: Bool, now: Date) -> PrayerState {
+    static func of(isCompleted: Bool, score: Double?, end: Date, excused: Bool, now: Date, timeUnknown: Bool = false) -> PrayerState {
+        if isCompleted && timeUnknown { return .inTimeNoClock }
         if isCompleted {
             switch PrayerScoring.grade(for: score ?? 0) {
             case .perfect: return .opening
@@ -42,7 +46,7 @@ enum PrayerState: Equatable {
     /// Prayed, in its time or made up.
     var prayed: Bool { inTime || self == .madeUp }
     /// Prayed in its window.
-    var inTime: Bool { self == .opening || self == .middle || self == .closing }
+    var inTime: Bool { self == .opening || self == .middle || self == .closing || self == .inTimeNoClock }
     /// Owed: the one meaning of "missed" (To make up, the day page, the missed face, Journey).
     var notMarked: Bool { self == .notMarked }
 }
@@ -53,6 +57,6 @@ extension PrayerModel {
         PrayerState.of(isCompleted: isCompleted, score: numberScore, end: endTime,
                        excused: !isCompleted && !excusedRanges.isEmpty
                            && Excused.covers(start: startTime, end: endTime, in: excusedRanges),
-                       now: now)
+                       now: now, timeUnknown: timeUnknown)
     }
 }

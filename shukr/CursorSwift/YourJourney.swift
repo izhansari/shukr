@@ -793,7 +793,8 @@ struct JourneyDayFifths: View {
                     let arc = JourneyDayRing.fifth(i)
                     let mark = day.marks[i]
                     Circle().trim(from: arc.from, to: arc.to)
-                        .stroke(mark.done ? (colored ? PrayerScoring.color(for: mark.score) : Color.primary.opacity(0.72))
+                        .stroke(mark.done ? (colored ? (day.slots[i]?.noTime == true ? MarkKind.inTimeColor : PrayerScoring.color(for: mark.score))
+                                                 : Color.primary.opacity(0.72))
                                 : mark == .excused ? Color.primary.opacity(0.3) : Color.primary.opacity(0.12),
                                 style: StrokeStyle(lineWidth: JourneyDayRing.band * k * 1.15, lineCap: .round))
                         .rotationEffect(.degrees(-90))

@@ -10,10 +10,11 @@ extension DayPrayer {
     init(_ row: PrayerModel) {
         let key = PrayerPhotos.key(dayKey: row.dayKey, name: row.name)
         self.init(name: row.name, start: row.startTime, end: row.endTime,
-                  markedAt: row.isCompleted ? row.timeAtComplete : nil,
+                  markedAt: row.isCompleted ? row.markedTime : nil,
                   score: row.isCompleted ? row.numberScore : nil,
                   photoKey: row.isCompleted && PrayerPhotos.has(key) ? key : nil,
-                  excused: !row.isCompleted && Excused.covers(start: row.startTime, end: row.endTime))
+                  excused: !row.isCompleted && Excused.covers(start: row.startTime, end: row.endTime),
+                  noTime: row.isCompleted && row.timeUnknown)
     }
 }
 
@@ -153,7 +154,7 @@ struct DayRing: View, Animatable {
                 let on = picked == nil || picked == i
                 ZStack {
                     if let p, p.done {
-                        let color = PrayerScoring.color(for: p.score)
+                        let color = p.noTime ? MarkKind.inTimeColor : PrayerScoring.color(for: p.score)
                         Circle().trim(from: from, to: to)
                             .stroke(color.opacity(picked == i ? 1 : 0.72), style: style)
                         if let at = p.share {
@@ -235,13 +236,13 @@ struct DayCentre: View {
             } else {
                 VStack(spacing: 3) {
                     Text(name).font(.system(size: 30, weight: .light, design: .rounded))
-                    Text(p?.excused == true ? "excused"
+                    Text(p?.excused == true ? "excused" : p?.noTime == true ? "prayed in its time"
                          : p?.markedAt.map { "prayed \($0.formatted(date: .omitted, time: .shortened))" } ?? "not marked")
                         .font(.footnote).fontWeight(.thin).fontDesign(.rounded).foregroundStyle(.secondary)
                     if let s = p?.score {
-                        Text(PrayerScoring.summary(for: s))
+                        Text(p?.noTime == true ? MarkKind.inTimeWord : PrayerScoring.summary(for: s))
                             .font(.caption).fontDesign(.rounded)
-                            .foregroundStyle(PrayerScoring.color(for: s).opacity(0.9))
+                            .foregroundStyle((p?.noTime == true ? MarkKind.inTimeColor : PrayerScoring.color(for: s)).opacity(0.9))
                             .padding(.top, 2)
                     } else if let p, p.missed, let makeUpCount, makeUpCount > 0, let onMakeUp {
                         // Missed: "see the others you gotta make up" (owner); marking stays the list's dot.

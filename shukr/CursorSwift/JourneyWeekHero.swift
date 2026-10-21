@@ -33,6 +33,7 @@ extension PrayerState {
         case .opening: PrayerScoring.color(for: 1)
         case .middle: PrayerScoring.color(for: 0.9)
         case .closing: PrayerScoring.color(for: 0.7)
+        case .inTimeNoClock: MarkKind.inTimeColor
         case .madeUp: PrayerScoring.color(for: 0.4)
         default: nil
         }

@@ -11,10 +11,15 @@ struct DayPrayer {
     var photoKey: String? = nil
     /// Not prayed because excused (Excused.swift): the pause dot, "excused" when picked.
     var excused = false
+    /// Prayed in its time, the clock not recorded (MarkKind.timeUnknown): `markedAt` is nil, so it has no place in its
+    /// window (no hollow dot, no "minutes in").
+    var noTime = false
 
-    var done: Bool { markedAt != nil && score != nil }
+    var done: Bool { score != nil && (markedAt != nil || noTime) }
     /// What it is (PrayerState, the one place that decides it).
-    var state: PrayerState { PrayerState.of(isCompleted: done, score: score, end: end, excused: excused, now: Date()) }
+    var state: PrayerState {
+        PrayerState.of(isCompleted: done, score: score, end: end, excused: excused, now: Date(), timeUnknown: noTime)
+    }
     /// Its window over and nothing marked (not excused): the day page offers To make up.
     var missed: Bool { state.notMarked }
     /// In its window (Perfect, Middle or Closing) — not Qaza, not missed.

@@ -13,9 +13,10 @@ import Foundation
 
 extension JourneyLog.Mark {
     /// This mark as a PrayerState; nil = no row (the app wasn't opened that day).
-    func state(end: Date?, now: Date) -> PrayerState? {
+    func state(end: Date?, now: Date, noTime: Bool = false) -> PrayerState? {
         switch self {
-        case .done(let score): PrayerState.of(isCompleted: true, score: score, end: end ?? now, excused: false, now: now)
+        case .done(let score): PrayerState.of(isCompleted: true, score: score, end: end ?? now, excused: false, now: now,
+                                              timeUnknown: noTime)
         case .missed: .notMarked
         case .toCome: .toCome
         case .excused: .excused
@@ -95,7 +96,7 @@ enum PrayerMetrics {
         if !d.counted || (!d.active && excused.excludes(d.date)) {
             return Day(key: d.key, date: d.date, states: Array(repeating: .excused, count: 5))
         }
-        let states = (0..<5).map { i -> PrayerState? in d.marks[i].state(end: d.slots[i]?.end, now: now) }
+        let states = (0..<5).map { i -> PrayerState? in d.marks[i].state(end: d.slots[i]?.end, now: now, noTime: d.slots[i]?.noTime ?? false) }
         let recorded = d.active || d.key == todayKey || d.marks.contains(.excused)
         guard recorded else { return Day(key: d.key, date: d.date, states: nil) }
         // A recorded day with a row missing (the app never made it): unmarked and over, or still to come today.
@@ -217,7 +218,9 @@ extension PrayerMetrics {
         for d in log.days.values.sorted(by: { $0.date > $1.date }) where d.counted {
             guard let slot = d.slots[i] else { continue }
             if window == nil, d.date <= todayStart, slot.end > slot.start { window = DateInterval(start: slot.start, end: slot.end) }
-            guard let at = slot.markedAt, d.marks[i].state(end: slot.end, now: now)?.inTime == true, slot.end > slot.start else { continue }
+            // A no-time mark has no place in its window (its markedAt is nil): it never moves "your usual".
+            guard let at = slot.markedAt, !slot.noTime, d.marks[i].state(end: slot.end, now: now)?.inTime == true,
+                  slot.end > slot.start else { continue }
             marks.append((d.date, min(max(at.timeIntervalSince(slot.start) / slot.end.timeIntervalSince(slot.start), 0), 1)))
         }
         func median(_ v: [Double]) -> Double? { v.isEmpty ? nil : v.sorted()[v.count / 2] }
