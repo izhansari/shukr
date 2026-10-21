@@ -68,6 +68,10 @@ struct PrayerScores {
         /// something we can compare against with every one of the like prayer"; the clock time "doesn't mean anything about
         /// my performance because the times of prayers shift").
         var sinceStart: String?
+        /// Season-proof (owner, 2026-10-20: "Make the usual line season-proof (place in the window)"): the median place in its
+        /// window (0 as it begins, 1 as it ends) over the span's in-window marks — the same habit reads the same in a 2.5 h
+        /// winter Dhuhr and a 4 h summer one (Frank's note: minutes drift with the seasons). nil under 5 marks.
+        var usualShare: Double?
         var bestStreak = 0
         var masjid = 0
         var topMasjid: (name: String, count: Int)?
@@ -167,7 +171,7 @@ struct PrayerScores {
             var p = Prayer(name: name)
             var scores: [Double] = [], dueScores: [Double] = [], windows: [TimeInterval] = []
             var recent: [Double] = [], recentStarts: [TimeInterval] = [], recentEnds: [TimeInterval] = []
-            var inWindowStarts: [TimeInterval] = []
+            var inWindowStarts: [TimeInterval] = [], inWindowShares: [Double] = []
             var streak = 0
             var mosques: [String: Int] = [:]
             for day in days {
@@ -183,7 +187,7 @@ struct PrayerScores {
                         if let at = slot.markedAt, length > 0 {
                             let pos = at.timeIntervalSince(slot.start) / length
                             p.positions.append(min(max(pos, 0), 1.3))
-                            if pos <= 1 { inWindowStarts.append(at.timeIntervalSince(slot.start)) }
+                            if pos <= 1 { inWindowStarts.append(at.timeIntervalSince(slot.start)); inWindowShares.append(max(pos, 0)) }
                             if day.date >= recent30 {
                                 recent.append(pos)
                                 recentStarts.append(at.timeIntervalSince(slot.start))
@@ -220,6 +224,7 @@ struct PrayerScores {
             p.bands = (PrayerScoring.openingShare, 2 * PrayerScoring.openingShare)
             p.usual = usualLine(positions: recent, fromStart: recentStarts, toEnd: recentEnds)
             if inWindowStarts.count >= 5, let m = median(inWindowStarts) { p.sinceStart = "Usually \(elapsed(m)) after it starts" }
+            if inWindowShares.count >= 5 { p.usualShare = median(inWindowShares) }
             out.prayers[name] = p
             allScores += scores
             out.prayed += p.prayed
@@ -271,8 +276,17 @@ struct PrayerScores {
         return m == 1 ? "1 minute" : "\(m) minutes"
     }
 
+    /// "Usually 15% into its window · about 23 min in today": the place (season-proof), then what it is on today's window
+    /// (`today`: today's window length, nil when there isn't one).
+    static func placeLine(_ share: Double, today: TimeInterval?) -> String {
+        let pct = max(1, Int((share * 100).rounded()))
+        var line = "Usually \(pct)% into its window"
+        if let today, today > 0 { line += " · about \(elapsed(share * today)) in today" }
+        return line
+    }
+
     /// "28 minutes", "2 h 14 min" (Dhuhr's "134 minutes" read badly — Zoe's sim check).
-    private static func elapsed(_ seconds: TimeInterval) -> String {
+    static func elapsed(_ seconds: TimeInterval) -> String {
         let m = max(1, Int((seconds / 60).rounded()))
         if m < 60 { return m == 1 ? "1 minute" : "\(m) minutes" }
         return m % 60 == 0 ? "\(m / 60) h" : "\(m / 60) h \(m % 60) min"
@@ -856,7 +870,8 @@ struct PrayerScoresPage: View {
     private var usualLines: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let s = shown, let p = data.prayers[s] {
-                Text(MetricsLook.on ? p.sinceStart ?? "Not enough yet to say when you usually pray it."
+                Text(MetricsLook.on ? p.usualShare.map { PrayerScores.placeLine($0, today: recent.byName[s]?.window?.duration) }
+                        ?? "Not enough yet to say when you usually pray it."
                      : p.usual.map { $0.replacingOccurrences(of: "Usually", with: "Lately, usually") }
                      ?? "Not enough yet to say when you usually pray it.")
                     .font(.system(size: 14, weight: .light, design: .rounded))

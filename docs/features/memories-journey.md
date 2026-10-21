@@ -174,9 +174,10 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 - **Your prayers** (the rethink's phase 3; behind `MetricsLook.on`): Prayer scores' page as built — its motion, rows,
   chart, chips and back dial — titled "Your prayers", with no ring (owner, 2026-10-20: "get rid of the ring for the your
   prayers altogether. And the main thing can just be the histogram"): the title and its lines take the header. The rows'
-  and the open prayer's line "in its time 224 of 329" over the span the chips pick; the open prayer's "Usually 28 minutes
-  after it starts" (`Prayer.sinceStart`, the median time since its window began over the span's in-window marks; "2 h 14
-  min" past an hour) — never a clock time ("the times of prayers shift"); no score insight, no score trend.
+  and the open prayer's line "in its time 224 of 329" over the span the chips pick; the open prayer's "Usually 37% into its
+  window · about 26 minutes in today" (`Prayer.usualShare`, the median place in its window over the span's in-window
+  marks — season-proof, owner 2026-10-20; today's window from PrayerMetrics.recent; "1 h 41 min" past an hour) — never a
+  clock time ("the times of prayers shift"); no score insight, no score trend.
 - Prayer scores (`PrayerScoresPage`, PrayerScores.swift): its title + the one-liner beside the day page's own ring at 70 %
   (`DayRing` on the raised disc: each prayer's fifth in its average grade, its dot at its usual place in the window; under the
   number "average lifetime score" / "… last 30 days"); All time · 30 days · 7 days under the header (`PrayerScores.build(span:)`,
