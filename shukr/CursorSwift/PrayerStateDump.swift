@@ -36,6 +36,8 @@ enum PrayerStateDump {
         }
         let streak = PrayerMetrics.strongWeeks(in: log, excused: excused, now: now)
         weeks += "# goal \(log.goal.rawValue)\n"
+        let run = PrayerMetrics.strongRun(in: PrayerMetrics.weeks(in: log, excused: excused, now: now))
+        weeks += "# bestRun \(run.best) \(run.bestDays.map { "\(PrayerNotificationID.dayKey($0.lowerBound))..\(PrayerNotificationID.dayKey($0.upperBound))" } ?? "nil")\n"
         let all = PrayerMetrics.weeks(in: log, excused: excused, now: now)
         let offer = PrayerMetrics.offer(after: all, goal: log.goal)
         weeks += "# offer \(offer.map { o -> String in switch o { case .up(let g): "up\(g.rawValue)"; case .down(let g): "down\(g.rawValue)" } } ?? "nil")\n"

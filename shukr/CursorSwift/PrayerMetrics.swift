@@ -151,12 +151,30 @@ enum PrayerMetrics {
     /// Strong weeks in a row: the run ending with the last finished week (the current week never breaks it), and the best.
     /// A fully excused week is stepped over.
     static func strongWeeks(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> (current: Int, best: Int) {
-        var run = 0, best = 0
-        for w in weeks(in: log, excused: excused, now: now) where !w.isCurrent {
+        let r = strongRun(in: weeks(in: log, excused: excused, now: now))
+        return (r.current, r.best)
+    }
+
+    /// The strong-week streak from the weeks (oldest first): the run going now, the best, and the best run's first day to
+    /// its last week's last day (the latest of equal ones), for lighting it on Your weeks.
+    struct StrongRun: Equatable {
+        var current = 0, best = 0
+        var bestDays: ClosedRange<Date>?
+    }
+    static func strongRun(in all: [Week]) -> StrongRun {
+        var r = StrongRun()
+        var start: Date?
+        for w in all where !w.isCurrent {
             if w.excusedWeek { continue }
-            if w.strong { run += 1; best = max(best, run) } else { run = 0 }
+            guard w.strong else { r.current = 0; start = nil; continue }
+            if r.current == 0 { start = w.start }
+            r.current += 1
+            if r.current >= r.best, let start, let last = w.days.last?.date {
+                r.best = r.current
+                r.bestDays = start...last
+            }
         }
-        return (run, best)
+        return r
     }
 
     /// Your usual week: the median of your last 8 finished weeks' counts at your step, weeks without a gap in the record only
@@ -170,7 +188,10 @@ enum PrayerMetrics {
 
     /// "Your typical week": the median week at your step of your first 8 recorded weeks, and of your last 8 (nil until 16).
     static func typicalWeek(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> (then: Int, now: Int)? {
-        let list = weeks(in: log, excused: excused, now: now).filter { !$0.isCurrent && $0.noRecordDays == 0 && !$0.excusedWeek }
+        typicalWeek(in: weeks(in: log, excused: excused, now: now))
+    }
+    static func typicalWeek(in all: [Week]) -> (then: Int, now: Int)? {
+        let list = all.filter { !$0.isCurrent && $0.noRecordDays == 0 && !$0.excusedWeek }
         guard list.count >= 16 else { return nil }
         func median(_ w: ArraySlice<Week>) -> Int { let s = w.map(\.met).sorted(); return s[s.count / 2] }
         return (median(list.prefix(8)), median(list.suffix(8)))

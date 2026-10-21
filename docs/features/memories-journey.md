@@ -175,7 +175,11 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   "N days" / "score N" centred on its month's rows ("Feb ’25" outside this year). Focus only by a tap: a ring (picks its day
   too) or a name (its numbers at the top); a finger scroll lets both go. Hold 0.3 s and drag: picks across rows. Hold the
   names: the month rail, its month in focus as it goes (and after). Pinch in: the year (spread there: back). "best streak" at
-  the bottom lights its days and scrolls there (again: back), and under the numbers the legend Goal met · All five
+  the bottom lights its days and scrolls there (again: back). With MetricsLook (prayer-metrics rows 6 + 11) the line under
+  the count is the Salah bar's ("N strong weeks", or "N in their windows this week") and the three numbers are prayers
+  marked · "your typical week, then and now" (26 → 31; PrayerMetrics.typicalWeek, from 16 fully logged weeks) · the best
+  streak of strong weeks (its weeks lit), all from `YourJourneyStats.strongRun` / `typicalWeek` — no lifetime average,
+  and the same count as the bar. Under the numbers the legend Goal met · All five
   (not at Pray all five) · Incomplete lights only those days (`JourneyHighlight`); a scroll, ring, month, rail or the year lets either go. The
   tiles look (`setTiles`) is no longer reached (cleanup later). The toggle top right
   (square.grid.3x3 ↔ calendar) flies the focused / middle month into the year and a small month's name back. The old

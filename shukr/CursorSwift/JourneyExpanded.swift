@@ -147,7 +147,7 @@ struct JourneyExpandedPage: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1).minimumScaleFactor(0.8)
             }
-            Text(stats.currentStreak > 0 ? "\(stats.currentStreak)-day streak" : "0-day streak")
+            Text(streakLine)
                 .font(.system(size: 11, weight: .light, design: .rounded)).tracking(0.4)
                 .foregroundStyle(.secondary)
         }
@@ -164,7 +164,7 @@ struct JourneyExpandedPage: View {
                 ForEach(Array(stats.weeks.enumerated()), id: \.element.id) { i, week in
                     JourneyExpandedRow(week: week, index: i, log: log, today: today, cell: cell,
                                        labelMonth: labels[week.id]?.month, labelBetween: labels[week.id]?.between ?? false,
-                                       focus: focus, streak: streakShown ? stats.bestStreakDays : nil, lit: keyLit,
+                                       focus: focus, streak: streakShown ? bestSpan : nil, lit: keyLit,
                                        picked: picked.flatMap { p in week.days.contains { $0?.date == p } ? p : nil },
                                        onDay: { pick($0) }, onMonth: { focusMonth($0) },
                                        onHold: { state, p in held(state, p, fromRow: i) })
@@ -268,10 +268,17 @@ struct JourneyExpandedPage: View {
             } else {
                 HStack(alignment: .top, spacing: 0) {
                     figure("\(stats.prayersMarked)", "prayers marked").opacity(streakShown ? 0.35 : 1)
-                    figure(stats.goalRate.map { "\($0)%" } ?? "–", "of your marked days met your goal").opacity(streakShown ? 0.35 : 1)
+                    if MetricsLook.on {
+                        // Lifetime as totals and your typical week, never an average (plan-v3 §2; rows 6 + 11).
+                        figure(stats.typicalWeek.map { "\($0.then) → \($0.now)" } ?? "–",
+                               stats.typicalWeek == nil ? "your typical week, after 16 weeks" : "your typical week, then and now")
+                            .opacity(streakShown ? 0.35 : 1)
+                    } else {
+                        figure(stats.goalRate.map { "\($0)%" } ?? "–", "of your marked days met your goal").opacity(streakShown ? 0.35 : 1)
+                    }
                     Button { toggleStreak() } label: {
-                        figure(stats.bestStreak == 1 ? "1 day" : "\(stats.bestStreak) days",
-                               streakShown ? stats.bestStreakDays.map(JourneyHomeCard.streakSpan) ?? "best streak" : "best streak")
+                        figure(bestWords,
+                               streakShown ? bestSpan.map(JourneyHomeCard.streakSpan) ?? bestCaption : bestCaption)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -348,12 +355,28 @@ struct JourneyExpandedPage: View {
         .frame(maxWidth: .infinity)
     }
 
+    // MARK: The streak (weekly with MetricsLook: the Salah bar's, so the two can't disagree)
+
+    /// Under the header: strong weeks in a row, or this week's count while there's none — the bar's words.
+    private var streakLine: String {
+        guard MetricsLook.on else { return stats.currentStreak > 0 ? "\(stats.currentStreak)-day streak" : "0-day streak" }
+        let n = stats.strongRun.current
+        return n > 0 ? (n == 1 ? "1 strong week" : "\(n) strong weeks") : "\(stats.thisWeekMet) \(log.goal.countWords) this week"
+    }
+    /// The best streak's number and its days, lit on a tap.
+    private var bestWords: String {
+        let n = MetricsLook.on ? stats.strongRun.best : stats.bestStreak
+        return MetricsLook.on ? (n == 1 ? "1 week" : "\(n) weeks") : (n == 1 ? "1 day" : "\(n) days")
+    }
+    private var bestCaption: String { MetricsLook.on ? "best streak of strong weeks" : "best streak" }
+    private var bestSpan: ClosedRange<Date>? { MetricsLook.on ? stats.strongRun.bestDays : stats.bestStreakDays }
+
     // MARK: Picks
 
     /// A ring's tap: that day picked and its month in focus; again, both let go.
     /// The best streak lit or let go; on, its middle week in the middle (the weeks it was on kept for the way back).
     private func toggleStreak() {
-        guard let days = stats.bestStreakDays else { return }
+        guard let days = bestSpan else { return }
         triggerSomeVibration(type: .light)
         if streakShown {
             withAnimation(.easeOut(duration: CircleMotion.quick)) { streakShown = false }

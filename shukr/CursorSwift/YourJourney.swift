@@ -1249,6 +1249,14 @@ struct YourJourneyStats {
     /// The streak going now, the number the Salah page shows: streak days up to yesterday, plus today once it counts (today
     /// never breaks it; from the fresh start, as the Salah page).
     var currentStreak = 0
+    /// The weekly streak (MetricsLook; prayer-metrics rows 6 + 11): strong weeks in a row, the best and its days, from the
+    /// fresh start as the Salah bar counts them (PrayerMetrics) — so Your weeks and the bar can't disagree.
+    var strongRun = PrayerMetrics.StrongRun()
+    /// This week's count at your goal (the bar's words while there's no streak).
+    var thisWeekMet = 0
+    /// "Your typical week, then and now" (PrayerMetrics.typicalWeek: your first 8 fully logged weeks' median and your last
+    /// 8's; nil before 16).
+    var typicalWeek: (then: Int, now: Int)?
     /// A day on the card: its color and its line.
     struct GridDay: Equatable {
         let date: Date; let kind: Kind; let prayed: Int; let inTime: Int; let excused: Bool
@@ -1382,6 +1390,12 @@ struct YourJourneyStats {
             lifetime.best = all.best; lifetime.bestDays = all.bestDays
             fresh.best = fromFresh.best; fresh.bestDays = fromFresh.bestDays
             currentStreak = fromFresh.run
+            let now = Date()
+            let allWeeks = PrayerMetrics.weeks(in: log, excused: excused, now: now)
+            strongRun = PrayerMetrics.strongRun(in: allWeeks)
+            thisWeekMet = (allWeeks.last(where: \.isCurrent)
+                ?? PrayerMetrics.week(containing: PrayerDay.date(for: now), in: log, excused: excused, now: now)).met
+            typicalWeek = PrayerMetrics.typicalWeek(in: allWeeks)
         }
     }
 }
