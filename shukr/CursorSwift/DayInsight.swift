@@ -121,7 +121,7 @@ enum DayInsight {
         let week = [input.today] + history.prefix(6)
 
         // 1 · Something to act on: missed, then Qaza, then Closing — the worst prayer of today. Middle is never one.
-        let missed = today.filter { !$0.done && $0.end < Date() }
+        let missed = today.filter(\.missed)   // not an excused prayer (it read "Fajr was missed today" — metrics phase 1)
         let qaza = today.filter { $0.done && !$0.inTime }
         let late = today.filter { $0.inTime && !$0.perfect && ($0.score ?? 1) < 0.8 }
         if let p = missed.first ?? qaza.first ?? late.first {

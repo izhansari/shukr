@@ -562,7 +562,9 @@ struct JourneyMakeUpPage: View {
                         now: Date = Date()) -> (open: [Entry], madeUp: [Entry]) {
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>()) else { return ([], []) }
         var kept: [String: PrayerModel] = [:]
-        var active: Set<String> = []
+        // Today counts as a day you used shukr even before its first mark: the missed face's count (today's) and its
+        // total (this list) agreed only once something was marked today (metrics phase 1).
+        var active: Set<String> = [PrayerDay.key(for: now)]
         // A fresh start that cleared them: the list starts on its day, made up ones too (nothing is deleted; Undo brings
         // the rest back).
         let from = FreshStart.makeUpFromKey
