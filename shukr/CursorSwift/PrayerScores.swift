@@ -358,7 +358,7 @@ struct PrayerScores {
         switch goal {
         case .prayed: "Prayed, day after day you used shukr"
         case .inWindow: "In its window, day after day you used shukr"
-        case .onTime: "By the Middle, day after day you used shukr"
+        case .onTime: "Before Closing, day after day you used shukr"
         case .perfect: "In the Opening, day after day you used shukr"
         }
     }

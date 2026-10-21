@@ -37,12 +37,13 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
     var up: PrayerGoal? { PrayerGoal(rawValue: rawValue + 1) }
     var down: PrayerGoal? { PrayerGoal(rawValue: rawValue - 1) }
 
-    /// After "N of 35 …": the week's and a prayer's counts in the step's words ("12 of 35 in their windows").
+    /// After "N of 35 …": the week's and a prayer's counts in the step's words ("12 of 35 in their windows"). The Middle
+    /// step reads "before Closing" (owner, 2026-10-21: "by the middle" "seems like it means before middle starts").
     var countWords: String {
         switch self {
         case .prayed: "prayed"
         case .inWindow: "in their windows"
-        case .onTime: "by the Middle"
+        case .onTime: "before Closing"
         case .perfect: "in the Opening"
         }
     }
@@ -53,6 +54,17 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         case .inWindow: "In its window"
         case .onTime: "the Middle"
         case .perfect: "the Opening"
+        }
+    }
+
+    /// What the step asks, said whole, so a line about it reads as their goal, not a bare name (owner, 2026-10-21: "remind
+    /// them of their goal so they don't find this phrase arbitrary"): "Your goal is every prayer in its window."
+    var aim: String {
+        switch self {
+        case .prayed: "every prayer prayed, even if made up later"
+        case .inWindow: "every prayer in its window"
+        case .onTime: "every prayer before Closing"
+        case .perfect: "every prayer in its Opening"
         }
     }
 
@@ -112,7 +124,7 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         switch self {
         case .prayed: "All five prayed"
         case .inWindow: "All five in their windows"
-        case .onTime: "All five by the Middle"
+        case .onTime: "All five before Closing"
         case .perfect: "All five in the Opening"
         }
     }
@@ -122,7 +134,7 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         switch self {
         case .prayed: "all five prayed"
         case .inWindow: "all in their windows"
-        case .onTime: "all by the Middle"
+        case .onTime: "all before Closing"
         case .perfect: "all in the Opening"
         }
     }
@@ -131,7 +143,7 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         switch self {
         case .prayed: "prayed"
         case .inWindow: "prayed in their windows"
-        case .onTime: "prayed by the Middle"
+        case .onTime: "prayed before Closing"
         case .perfect: "in the Opening"
         }
     }

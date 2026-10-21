@@ -194,7 +194,7 @@ extension PrayerMetrics {
         let last7: [PrayerState?]
         /// The step the counts are at (Your goal).
         var goal: PrayerGoal = .inWindow
-        /// Met the step, of the days it was asked ("by the Middle 4 of 6" — `goal.countWords`).
+        /// Met the step, of the days it was asked ("before Closing 4 of 6" — `goal.countWords`).
         var met: Int { last7.compactMap { $0 }.filter(goal.meets).count }
         /// "in its time 4 of the last 7": in time, of the days it was asked (not excused, not still to come, on record).
         var inTime: Int { last7.compactMap { $0 }.filter(\.inTime).count }
@@ -296,18 +296,24 @@ extension PrayerMetrics {
     static func offerWords(_ offer: GoalOffer, from goal: PrayerGoal) -> (line: String, yes: String) {
         switch offer {
         case .up(let next):
-            ("You've met \(goal.stepName) \(stepUpWeeks) weeks running. Want to aim for \(next.stepName)?", "Try it")
+            // The aims, not the bare names: "aim for the Middle" read like praying in the Middle (owner, 2026-10-21, on "by the
+            // Middle"). Was "You've met In its window 3 weeks running. Want to aim for the Middle?"
+            ("You've met your goal, \(goal.aim), \(stepUpWeeks == 3 ? "three" : "\(stepUpWeeks)") weeks running. Want to aim for \(next.aim)?", "Try it")
         case .down(let next):
-            ("\(goal.stepName) has been a stretch lately. Want to make it \(next.stepName) for now, and work back up?", "Make it \(next.stepName)")
+            // Their goal said whole, so the step down doesn't read as arbitrary (owner, 2026-10-21; was "In its window has
+            // been a stretch lately").
+            ("Your goal is \(goal.aim). The last \(stepDownWeeks == 2 ? "two" : "\(stepDownWeeks)") weeks fell short of it. For now, want to aim for \(next.aim), and work back up?",
+             "Make it \(next.stepName)")
         }
     }
 
     /// The mid-week line, when this week can't be a strong one any more (encouragement only — the step never moves
-    /// mid-week; owner picked B). nil while it still can, and on a week that's over.
+    /// mid-week; owner picked B). nil while it still can, and on a week that's over. It names their goal (owner,
+    /// 2026-10-21: "explain in regards to their goal"; was "This week won't be a strong one").
     static func midweekLine(_ week: Week) -> String? {
         guard week.isCurrent, !week.stillPossible, week.toCome > 0 else { return nil }
         let n = week.toCome
-        return "This week won't be a strong one. You've got \(n) \(n == 1 ? "prayer" : "prayers") left, so make \(n == 1 ? "it" : "them") count."
+        return "Your goal this week, \(week.goal.aim), is out of reach now. You've still got \(n) \(n == 1 ? "prayer" : "prayers") left, so make \(n == 1 ? "it" : "them") count."
     }
 
     /// The line the morning after a missed prayer (owner's wording A, 2026-10-21): yesterday's unmarked prayers, then
