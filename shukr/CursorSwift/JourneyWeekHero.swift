@@ -262,7 +262,7 @@ struct JourneyWeekCard: View {
 
     var body: some View {
         let ringSide: CGFloat = compact ? 196 : (tight ? 216 : 232)
-        let lineWidth: CGFloat = compact ? 12 : 14
+        let lineWidth: CGFloat = compact ? 9.5 : 11   // owner, 2026-10-21: "a little bit thinner. They're really thick right now" (was 12 : 14)
         VStack(spacing: 0) {
             HStack {
                 Text(rangeLabel)
