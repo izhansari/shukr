@@ -9,7 +9,13 @@ enum PrayerStateDump {
     static func write(_ container: ModelContainer) {
         let context = ModelContext(container)
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>()) else { return }
-        let ranges = Excused.ranges, now = Date()
+        let ranges = Excused.ranges
+        // `-dumpNow YYYY-MM-DD`: count as of noon that day (replaying the past for the oracle); otherwise now.
+        var now = Date()
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-dumpNow"), i + 1 < ProcessInfo.processInfo.arguments.count,
+           let day = ISO8601DateFormatter.dayOnly.date(from: ProcessInfo.processInfo.arguments[i + 1]) {
+            now = Calendar.current.date(byAdding: .hour, value: 12, to: Calendar.current.startOfDay(for: day)) ?? now
+        }
         var out = "day\tname\tstart\tend\tmarked\tcompleted\tscore\tstate\tkind\n"
         for row in rows.sorted(by: { ($0.dayKey, $0.startTime) < ($1.dayKey, $1.startTime) }) {
             out += [row.dayKey, row.name, "\(row.startTime.timeIntervalSince1970)", "\(row.endTime.timeIntervalSince1970)",
@@ -25,15 +31,21 @@ enum PrayerStateDump {
         let excused = Excused.Days(ranges)
         var weeks = "start\tinTime\tmadeUp\tnotMarked\texcused\ttoCome\tnoRecordDays\tstrong\tcomplete\n"
         for w in PrayerMetrics.weeks(in: log, excused: excused, now: now) {
-            weeks += ["\(PrayerNotificationID.dayKey(w.start))", "\(w.inTime)", "\(w.madeUp)", "\(w.notMarked)", "\(w.excused)",
+            weeks += ["\(PrayerNotificationID.dayKey(w.start))", "\(w.met)", "\(w.madeUp)", "\(w.notMarked)", "\(w.excused)",
                       "\(w.toCome)", "\(w.noRecordDays)", w.strong ? "1" : "0", w.complete ? "1" : "0"].joined(separator: "\t") + "\n"
         }
         let streak = PrayerMetrics.strongWeeks(in: log, excused: excused, now: now)
+        weeks += "# goal \(log.goal.rawValue)\n"
+        let all = PrayerMetrics.weeks(in: log, excused: excused, now: now)
+        let offer = PrayerMetrics.offer(after: all, goal: log.goal)
+        weeks += "# offer \(offer.map { o -> String in switch o { case .up(let g): "up\(g.rawValue)"; case .down(let g): "down\(g.rawValue)" } } ?? "nil")\n"
+        if let current = all.last(where: \.isCurrent) { weeks += "# midweek \(PrayerMetrics.midweekLine(current) ?? "nil")\n" }
+        weeks += "# morning \(PrayerMetrics.morningLine(in: log, excused: excused, next: nil, now: now) ?? "nil")\n"
         weeks += "# strongWeeks current=\(streak.current) best=\(streak.best) usual=\(PrayerMetrics.usualWeek(in: log, excused: excused, now: now).map(String.init) ?? "nil")"
         weeks += " typical=\(PrayerMetrics.typicalWeek(in: log, excused: excused, now: now).map { "\($0.then)->\($0.now)" } ?? "nil")\n"
         for name in JourneyLog.names {
             let r = PrayerMetrics.recent(name, in: log, excused: excused, now: now)
-            weeks += "# recent \(name) inTime=\(r.inTime) asked=\(r.asked) usual=\(r.usualShare.map { String(format: "%.4f", $0) } ?? "nil")"
+            weeks += "# recent \(name) inTime=\(r.met) asked=\(r.asked) usual=\(r.usualShare.map { String(format: "%.4f", $0) } ?? "nil")"
             weeks += " best=\(r.bestMonth.map { "\(PrayerNotificationID.dayKey($0.start)):\(String(format: "%.4f", $0.share))" } ?? "nil")\n"
         }
         for m in JourneyMilestone.earned(log: log, today: PrayerDay.start(for: now), excused: excused).reversed() {
@@ -46,5 +58,14 @@ enum PrayerStateDump {
         try? weeks.write(to: weeksURL, atomically: true, encoding: .utf8)
         print("📋 prayer weeks → \(weeksURL.path)")
     }
+}
+extension ISO8601DateFormatter {
+    /// "2025-03-16" in the device's zone (the dump's `-dumpNow`).
+    static let dayOnly: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        f.timeZone = .current
+        return f
+    }()
 }
 #endif

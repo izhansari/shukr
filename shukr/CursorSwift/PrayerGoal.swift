@@ -16,8 +16,44 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
     static let key = "prayerStreakMode"
     var id: Int { rawValue }
 
+    /// The user's step. FirstRunSetup.migrateDefaults writes it on the first launch (new installs In its window, anyone
+    /// already here Prayed), so the fallback below only covers a read before that.
     static var current: PrayerGoal {
-        PrayerGoal(rawValue: UserDefaults.standard.object(forKey: key) as? Int ?? 1) ?? .prayed
+        PrayerGoal(rawValue: UserDefaults.standard.object(forKey: key) as? Int ?? 2) ?? .inWindow
+    }
+
+    /// A prayer in this state meets the step (PrayerState: the one place that decides what a prayer is). A no-time mark
+    /// is in its window but claims no third, so it meets Prayed and In its window, not Middle or the Opening.
+    func meets(_ state: PrayerState) -> Bool {
+        switch self {
+        case .prayed: state.prayed
+        case .inWindow: state.inTime
+        case .onTime: state == .opening || state == .middle
+        case .perfect: state == .opening
+        }
+    }
+
+    /// The step one up and one down the ladder (the Sunday offer; owner, 2026-10-21: "one step up instead of two steps").
+    var up: PrayerGoal? { PrayerGoal(rawValue: rawValue + 1) }
+    var down: PrayerGoal? { PrayerGoal(rawValue: rawValue - 1) }
+
+    /// After "N of 35 …": the week's and a prayer's counts in the step's words ("12 of 35 in their windows").
+    var countWords: String {
+        switch self {
+        case .prayed: "prayed"
+        case .inWindow: "in their windows"
+        case .onTime: "by the Middle"
+        case .perfect: "in the Opening"
+        }
+    }
+    /// The step's own name, as the ladder and the offer say it.
+    var stepName: String {
+        switch self {
+        case .prayed: "Prayed"
+        case .inWindow: "In its window"
+        case .onTime: "the Middle"
+        case .perfect: "the Opening"
+        }
     }
 
     /// The lowest score that meets it; nil: any mark (a Qaza too).
@@ -56,7 +92,7 @@ enum PrayerGoal: Int, CaseIterable, Identifiable {
         switch self {
         case .prayed: "Even made up later"
         case .inWindow: "Before it ends"
-        case .onTime: "By 15 minutes past midpoint"
+        case .onTime: "Before its last third"
         case .perfect: "In the first third of its time"
         }
     }

@@ -35,14 +35,18 @@ enum PrayerMetrics {
         let date: Date
         /// Fajr … Isha; nil when the day has no record.
         let states: [PrayerState]?
+        /// The step the day is judged by (Your goal; owner, 2026-10-21: the step sets the bar for everything).
+        var goal: PrayerGoal = .inWindow
         var noRecord: Bool { states == nil }
         func count(_ test: (PrayerState) -> Bool) -> Int { states?.filter(test).count ?? 0 }
         var inTime: Int { count(\.inTime) }
-        /// Every due prayer in its time (an excused one isn't due): a complete day. Not before its last prayer is due.
+        /// Prayers that met the step.
+        var met: Int { count(goal.meets) }
+        /// Every due prayer met the step (an excused one isn't due): a complete day. Not before its last prayer is due.
         var complete: Bool {
             guard let states, !states.contains(.toCome) else { return false }
             let due = states.filter { $0 != .excused }
-            return !due.isEmpty && due.allSatisfy(\.inTime)
+            return !due.isEmpty && due.allSatisfy(goal.meets)
         }
     }
 
@@ -52,8 +56,14 @@ enum PrayerMetrics {
         /// Seven days, first to last; days after today are `.toCome` throughout.
         let days: [Day]
         let isCurrent: Bool
+        /// The step the week is judged by (Your goal): "N of 35" counts prayers that met it, in its words.
+        var goal: PrayerGoal = .inWindow
 
         private func count(_ test: (PrayerState) -> Bool) -> Int { days.reduce(0) { $0 + $1.count(test) } }
+        /// Prayers that met the step ("12 of 35 in their windows" — `goal.countWords`).
+        var met: Int { count(goal.meets) }
+        /// Prayed, but below the step (made up, or under the step's third): what the strong week's slack covers.
+        var belowStep: Int { prayed - met }
         var inTime: Int { count(\.inTime) }
         var madeUp: Int { count { $0 == .madeUp } }
         var notMarked: Int { count { $0 == .notMarked } }
@@ -67,15 +77,22 @@ enum PrayerMetrics {
         /// Prayers due so far on days with a record.
         var due: Int { prayed + notMarked }
 
-        /// Nothing missing so far: no prayer left unmarked, no day without a record, at most the slack below the bar.
-        /// A finished week that is on track is strong.
-        var onTrack: Bool { notMarked == 0 && noRecordDays == 0 && madeUp <= strongWeekSlack && asked > 0 }
+        /// Nothing missing so far: no prayer left unmarked, no day without a record, at most the slack below the step.
+        /// A finished week that is on track is strong. (On Prayed every prayed one meets the step, so it's all prayed.)
+        var onTrack: Bool { notMarked == 0 && noRecordDays == 0 && belowStep <= strongWeekSlack && asked > 0 }
         var finished: Bool { !isCurrent && toCome == 0 }
         var strong: Bool { finished && onTrack }
-        var complete: Bool { strong && madeUp == 0 && inTime == asked }
-        /// The current week's words (Koo & Fishbach, plan-v3 §9): "12 done" early in the week, "4 left" late in it — what's
-        /// left is every prayer still to pray, an unmarked one included (it's made up to count).
-        var done: Int { prayed }
+        var complete: Bool { strong && met == asked }
+        /// Can this week still be strong? A prayer unmarked now can only be made up, which meets Prayed but no higher step,
+        /// so above Prayed it already counts against the slack. A day without a record can still be filled in. The mid-week
+        /// line reads this (owner, 2026-10-21: "they missed 5 already by wednesday … hey dont get upset").
+        var stillPossible: Bool {
+            let lost = belowStep + (goal == .prayed ? 0 : notMarked)
+            return asked > 0 && lost <= strongWeekSlack
+        }
+        /// The current week's words (Koo & Fishbach, plan-v3 §9): "12 done" early in the week, "4 left" late in it — done
+        /// is what met the step; left is every prayer still to pray, an unmarked one included (it's made up to count).
+        var done: Int { met }
         var left: Int { toCome + notMarked }
         /// A week the streak steps over: every prayer excused (or no record on a fully excused stretch).
         var excusedWeek: Bool { excused == days.count * 5 }
@@ -92,15 +109,15 @@ enum PrayerMetrics {
     static func day(_ date: Date, in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date) -> Day {
         let d = log.day(date)
         let (todayKey, todayStart) = today(now)
-        if d.date > todayStart { return Day(key: d.key, date: d.date, states: Array(repeating: .toCome, count: 5)) }
+        if d.date > todayStart { return Day(key: d.key, date: d.date, states: Array(repeating: .toCome, count: 5), goal: log.goal) }
         if !d.counted || (!d.active && excused.excludes(d.date)) {
-            return Day(key: d.key, date: d.date, states: Array(repeating: .excused, count: 5))
+            return Day(key: d.key, date: d.date, states: Array(repeating: .excused, count: 5), goal: log.goal)
         }
         let states = (0..<5).map { i -> PrayerState? in d.marks[i].state(end: d.slots[i]?.end, now: now, noTime: d.slots[i]?.noTime ?? false) }
         let recorded = d.active || d.key == todayKey || d.marks.contains(.excused)
-        guard recorded else { return Day(key: d.key, date: d.date, states: nil) }
+        guard recorded else { return Day(key: d.key, date: d.date, states: nil, goal: log.goal) }
         // A recorded day with a row missing (the app never made it): unmarked and over, or still to come today.
-        return Day(key: d.key, date: d.date, states: states.map { $0 ?? (d.key == todayKey ? .toCome : .notMarked) })
+        return Day(key: d.key, date: d.date, states: states.map { $0 ?? (d.key == todayKey ? .toCome : .notMarked) }, goal: log.goal)
     }
 
     /// The week holding `date`.
@@ -110,7 +127,7 @@ enum PrayerMetrics {
         let days = (0..<7).compactMap { cal.date(byAdding: .day, value: $0, to: start) }
             .map { day($0, in: log, excused: excused, now: now) }
         let current = cal.isDate(start, equalTo: today(now).start, toGranularity: .weekOfYear)
-        return Week(start: start, days: days, isCurrent: current)
+        return Week(start: start, days: days, isCurrent: current, goal: log.goal)
     }
 
     /// Every week from the log's first (or the fresh start's) to this one, oldest first.
@@ -139,20 +156,20 @@ enum PrayerMetrics {
         return (run, best)
     }
 
-    /// Your usual week: the median of your last 8 finished weeks' in-time counts, weeks without a gap in the record only
+    /// Your usual week: the median of your last 8 finished weeks' counts at your step, weeks without a gap in the record only
     /// (nil before there are 3). The comparison Journey shows instead of last week (Strava's card made normal weeks feel bad).
     static func usualWeek(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> Int? {
         let list = weeks(in: log, excused: excused, now: now).filter { !$0.isCurrent && $0.noRecordDays == 0 && !$0.excusedWeek }.suffix(8)
         guard list.count >= 3 else { return nil }
-        let sorted = list.map(\.inTime).sorted()
+        let sorted = list.map(\.met).sorted()
         return sorted[sorted.count / 2]
     }
 
-    /// "Your typical week": the median in-time week of your first 8 recorded weeks, and of your last 8 (nil until 16).
+    /// "Your typical week": the median week at your step of your first 8 recorded weeks, and of your last 8 (nil until 16).
     static func typicalWeek(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> (then: Int, now: Int)? {
         let list = weeks(in: log, excused: excused, now: now).filter { !$0.isCurrent && $0.noRecordDays == 0 && !$0.excusedWeek }
         guard list.count >= 16 else { return nil }
-        func median(_ w: ArraySlice<Week>) -> Int { let s = w.map(\.inTime).sorted(); return s[s.count / 2] }
+        func median(_ w: ArraySlice<Week>) -> Int { let s = w.map(\.met).sorted(); return s[s.count / 2] }
         return (median(list.prefix(8)), median(list.suffix(8)))
     }
 }
@@ -175,6 +192,10 @@ extension PrayerMetrics {
         let name: String
         /// The last 7 prayer days, oldest first, today last; nil = no record.
         let last7: [PrayerState?]
+        /// The step the counts are at (Your goal).
+        var goal: PrayerGoal = .inWindow
+        /// Met the step, of the days it was asked ("by the Middle 4 of 6" — `goal.countWords`).
+        var met: Int { last7.compactMap { $0 }.filter(goal.meets).count }
         /// "in its time 4 of the last 7": in time, of the days it was asked (not excused, not still to come, on record).
         var inTime: Int { last7.compactMap { $0 }.filter(\.inTime).count }
         var asked: Int { last7.compactMap { $0 }.filter { $0 != .excused && $0 != .toCome }.count }
@@ -206,7 +227,7 @@ extension PrayerMetrics {
 
     static func recent(_ name: String, in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> PrayerRecent {
         guard let i = JourneyLog.names.firstIndex(of: name) else {
-            return PrayerRecent(name: name, last7: [], usualShare: nil, bestMonth: nil, window: nil)
+            return PrayerRecent(name: name, last7: [], goal: log.goal, usualShare: nil, bestMonth: nil, window: nil)
         }
         let cal = Calendar.current
         let todayStart = today(now).start
@@ -231,6 +252,89 @@ extension PrayerMetrics {
         let best = byMonth.filter { $0.value.count >= bestMonthMinimum }
             .compactMap { k, v in median(v).map { BestMonth(start: k, share: $0) } }
             .min { ($0.share, $1.start) < ($1.share, $0.start) }   // the earliest; a tie goes to the later month
-        return PrayerRecent(name: name, last7: last7, usualShare: usual, bestMonth: best, window: window)
+        return PrayerRecent(name: name, last7: last7, goal: log.goal, usualShare: usual, bestMonth: best, window: window)
+    }
+}
+
+// MARK: - Nudges along the ladder (plan-v3 §16; owner, 2026-10-21)
+
+extension PrayerMetrics {
+    /// The Sunday card's offer: one step up after 3 strong weeks running at your step, one step down after 2 fully logged
+    /// weeks running that weren't (owner: "B but instead of 3 weeks make it two weeks maybe"). A week with a gap in its
+    /// record or fully excused says nothing either way (no record isn't missed). Never two steps, never on its own.
+    enum GoalOffer: Equatable {
+        case up(PrayerGoal), down(PrayerGoal)
+        var goal: PrayerGoal { switch self { case .up(let g), .down(let g): g } }
+    }
+    static let stepUpWeeks = 3
+    static let stepDownWeeks = 2
+
+    /// The offer for this week, if any: only on the week's first day, once per week (`GoalOffers.answered`).
+    static func goalOffer(in log: JourneyLog, excused: Excused.Days = Excused.Days(), now: Date = Date()) -> GoalOffer? {
+        let cal = Calendar.current
+        let todayStart = today(now).start
+        guard let weekStart = cal.dateInterval(of: .weekOfYear, for: todayStart)?.start,
+              cal.isDate(weekStart, inSameDayAs: todayStart),
+              !GoalOffers.answered(weekStart) else { return nil }
+        return offer(after: weeks(in: log, excused: excused, now: now), goal: log.goal)
+    }
+
+    /// The rule itself, from the weeks (any day of the week — the Sunday gate is `goalOffer`'s).
+    static func offer(after all: [Week], goal: PrayerGoal) -> GoalOffer? {
+        let finished = all.filter(\.finished).filter { !$0.excusedWeek }
+        if let up = goal.up, finished.count >= stepUpWeeks, finished.suffix(stepUpWeeks).allSatisfy(\.strong) {
+            return .up(up)
+        }
+        if let down = goal.down, finished.count >= stepDownWeeks,
+           finished.suffix(stepDownWeeks).allSatisfy({ !$0.strong && $0.noRecordDays == 0 }) {
+            return .down(down)
+        }
+        return nil
+    }
+
+    /// The card's words for an offer (the look and the placement are Zoe's).
+    static func offerWords(_ offer: GoalOffer, from goal: PrayerGoal) -> (line: String, yes: String) {
+        switch offer {
+        case .up(let next):
+            ("You've met \(goal.stepName) \(stepUpWeeks) weeks running. Want to aim for \(next.stepName)?", "Try it")
+        case .down(let next):
+            ("\(goal.stepName) has been a stretch lately. Want to make it \(next.stepName) for now, and work back up?", "Make it \(next.stepName)")
+        }
+    }
+
+    /// The mid-week line, when this week can't be a strong one any more (encouragement only — the step never moves
+    /// mid-week; owner picked B). nil while it still can, and on a week that's over.
+    static func midweekLine(_ week: Week) -> String? {
+        guard week.isCurrent, !week.stillPossible, week.toCome > 0 else { return nil }
+        let n = week.toCome
+        return "This week won't be a strong one. You've got \(n) \(n == 1 ? "prayer" : "prayers") left, so make \(n == 1 ? "it" : "them") count."
+    }
+
+    /// The line the morning after a missed prayer (owner's wording A, 2026-10-21): yesterday's unmarked prayers, then
+    /// today's next one. nil when yesterday had none, or had no record (that's the fill-in card's question, not a miss).
+    static func morningLine(in log: JourneyLog, excused: Excused.Days = Excused.Days(), next: (name: String, at: Date)?,
+                            now: Date = Date()) -> String? {
+        guard let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today(now).start),
+              let states = day(yesterday, in: log, excused: excused, now: now).states else { return nil }
+        let missed = (0..<5).filter { states[$0] == .notMarked }.map { JourneyLog.names[$0] }
+        guard !missed.isEmpty else { return nil }
+        let names = missed.count == 1 ? missed[0]
+            : missed.dropLast().joined(separator: ", ") + " and " + (missed.last ?? "")
+        var line = "You missed \(names) yesterday. You can still make \(missed.count == 1 ? "it" : "them") up."
+        if let next { line += " Today's \(next.name) is at \(next.at.formatted(date: .omitted, time: .shortened))." }
+        return line
+    }
+}
+
+/// Which weeks' Sunday offer was answered (either way), so it shows once.
+enum GoalOffers {
+    static let key = "goalOffers.answered"
+    static func answered(_ weekStart: Date) -> Bool {
+        (UserDefaults.standard.stringArray(forKey: key) ?? []).contains(PrayerNotificationID.dayKey(weekStart))
+    }
+    static func answer(_ weekStart: Date) {
+        var keys = UserDefaults.standard.stringArray(forKey: key) ?? []
+        keys.append(PrayerNotificationID.dayKey(weekStart))
+        UserDefaults.standard.set(Array(keys.suffix(26)), forKey: key)
     }
 }
