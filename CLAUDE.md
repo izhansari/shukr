@@ -195,7 +195,7 @@ a prayer checks `Excused.covers(start:end:)` (Excused.swift). Read `Excused.rang
 - Prayer rows: never `fetchLimit = 5`; one row per name via `onePerPrayer`, a completed row wins. Old rows store "Early" / "On time" / "Late": UI reads `gradeWord`; the grade words live only in `PrayerScoring.Grade` (+ the watch's `WatchScoring.word`).
 
 **Notifications & location**
-- Everything scheduled goes through `NotificationScheduler` (64 budget): diff, remove only owned ids, never `removeAllPending…`. Action handlers call `completionHandler` from inside `UNUserNotificationCenter.add`'s callback.
+- Everything scheduled goes through `NotificationScheduler` (64 budget): diff, remove only owned ids, never `removeAllPending…`. Action handlers call `completionHandler` after `UNUserNotificationCenter.add`'s callback, hopped to the main thread (that callback runs on a background queue; calling it there aborted shukr on every Nudge in 5 / 10 — 2026-10-22).
 - The chain (audit B, 2026-10-04): a fetch reloads `todaysPrayers` when rows changed or the day turned and re-plans the rollover timer; a still phone geocodes / re-plans at most every 10 min (500 m at once) and keeps its city on a failed lookup; the scheduler adds before it removes, under a background-task assertion; a time / zone change re-fetches (`resetSystemTimeZone` first). Every outside mark sets `markedDayKey` (the app rescores that day); a banner mark with the app in front posts `SharedStore.markedElsewhere`.
 - No hard gate on notifications or location (App Review 4.5.4 / 5.1.1); Always is opt-in; `EnvLocationManager` doesn't ask before setup is done. CLMonitor names: letters only, one monitor per name per process.
 

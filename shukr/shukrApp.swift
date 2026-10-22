@@ -816,7 +816,9 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             } else {
                 print("✅ Scheduled \(identifier): in \(seconds)s")
             }
-            done()
+            // On the main thread: this callback runs on a background queue, and iOS's completion handler there aborts
+            // shukr (a UIKit main-thread assertion — every Nudge in 5 / 10 crashed it in the background; Frank, 2026-10-22).
+            DispatchQueue.main.async { done() }
         }
     }
 }

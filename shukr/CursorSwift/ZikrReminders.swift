@@ -190,7 +190,9 @@ enum ZikrReminders {
             identifier: "\(laterPrefix)\(taskID).\(Int(Date().timeIntervalSince1970))",
             content: original,
             trigger: UNTimeIntervalNotificationTrigger(timeInterval: 30 * 60, repeats: false))
-        UNUserNotificationCenter.current().add(request) { _ in done() }
+        // On the main thread: add's callback runs on a background queue, and iOS's completion handler there aborts shukr
+        // (a UIKit main-thread assertion — Frank, 2026-10-22, the snooze crash).
+        UNUserNotificationCenter.current().add(request) { _ in DispatchQueue.main.async { done() } }
     }
 }
 
