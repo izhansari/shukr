@@ -194,6 +194,12 @@ struct WelcomeRing: Shape {
     /// The icon's tile and name gone, the ring and dot left (owner, 2026-10-22: "get rid of the app icon border before
     /// expanding the ring").
     var tileGone = false
+    /// The icon coming in, in order (owner, 2026-10-22: "start with blank screen and square app border flat. then lift
+    /// it / as we lift, animate in the ring / then the dot and shukr / then the grow"): the flat tile is `ringDrawn`, then
+    /// it lifts, the ring draws in as it does, then the dot and the name.
+    var lifted = false
+    var ringIn = false
+    var detailsIn = false
     /// The small ring grows into the circle.
     var grow = false
     /// Opening onto a page with no Salah circle: the ring opens out past the edges like a doorway.
@@ -227,7 +233,7 @@ struct WelcomeMark: View {
     /// The app icon as big as it is on the Home Screen (owner, 2026-10-22: "make the app icon look the same size as on my
     /// phone homescreen … and grow out"), its tile's outline there until it opens ("put a border on it to look like the app
     /// on homescreen and then fade out the border … then it looks like we actually 'opened' the app").
-    static let iconSize: CGFloat = 62
+    static let iconSize: CGFloat = 93   // 1.5× the Home Screen's 62 pt (owner: "make the app icon a little bigger (1.5x)")
     /// The icon's ring at that size, before it grows (the icon: a 1024 px tile, a 530 px ring, a 46 px band, a 66 px dot at
     /// about 40° past 12). The ring's size is its band's middle line.
     static let startSize: CGFloat = iconSize * (530 - 46) / 1024
@@ -251,33 +257,42 @@ struct WelcomeMark: View {
         // soft ring and its green dot, there from the first frame, so the launch picks up where iOS's zoom from the icon
         // leaves off. (Was a sage hairline drawing itself round the word.)
         let icon = !grow && !portal
-        let appeared = state.ringDrawn || state.startDrawn || reduceMotion || grow || portal
+        // Every step of the icon's entrance counts as done once it's handed off, growing, or under Reduce Motion.
+        let done = state.startDrawn || reduceMotion || grow || portal
+        let tileIn = state.ringDrawn || done, lifted = state.lifted || done
+        let ringIn = state.ringIn || done, detailsIn = state.detailsIn || done
         ZStack {
             // The icon's tile: its squircle's edge, as on the Home Screen, gone as it opens.
             RoundedRectangle(cornerRadius: Self.iconSize * 0.225, style: .continuous)
                 .fill(theme.surface)
-                .shadow(color: .black.opacity(0.14), radius: 5, y: 2)
+                // Flat on the page first, then lifted.
+                .shadow(color: .black.opacity(lifted ? 0.14 : 0), radius: lifted ? 8 : 0, y: lifted ? 3 : 0)
                 .overlay {
                     RoundedRectangle(cornerRadius: Self.iconSize * 0.225, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
                 }
                 .frame(width: Self.iconSize, height: Self.iconSize)
-                .opacity(icon && !state.tileGone && !reduceMotion ? 1 : 0)
+                .scaleEffect(lifted ? 1 : 0.97)
+                .opacity(icon && tileIn && !state.tileGone && !reduceMotion ? 1 : 0)
             // Its name under it, as on the Home Screen (owner, 2026-10-22: "maybe we can write “shukr” in at the bottom of
             // the app icon").
             Text("shukr")
-                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .font(.system(size: 15, weight: .regular, design: .rounded))
                 .foregroundStyle(.secondary)
-                .offset(y: Self.iconSize / 2 + 15)
-                .opacity(icon && !state.tileGone ? 1 : 0)
+                .offset(y: Self.iconSize / 2 + 18)
+                .opacity(icon && detailsIn && !state.tileGone ? 1 : 0)
             // The ring: the icon's raised band, grown into the circle's track (the soft band under the soft ring: its
             // width, surface and lift).
             WelcomeRing(width: icon ? Self.iconBand : (toDashes ? UpcomingTrack.style.lineWidth : track.width))
                 .fill(icon ? theme.surface : (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity) : track.fill))
-                .shadow(color: icon || track.lifted && grow ? theme.shade : .clear, radius: icon ? 1 : 4, x: icon ? 0.5 : 2, y: icon ? 0.5 : 2)
-                .shadow(color: icon || track.lifted && grow ? theme.light : .clear, radius: icon ? 1.5 : 6, x: icon ? -0.5 : -2, y: icon ? -0.5 : -2)
-                // Wide enough that the lift isn't clipped.
-                .mask { Circle().stroke(lineWidth: 44) }
+                .shadow(color: icon || track.lifted && grow ? theme.shade : .clear, radius: icon ? 1.5 : 4, x: icon ? 0.75 : 2, y: icon ? 0.75 : 2)
+                .shadow(color: icon || track.lifted && grow ? theme.light : .clear, radius: icon ? 2 : 6, x: icon ? -0.75 : -2, y: icon ? -0.75 : -2)
+                // Draws in clockwise from the top as the tile lifts; wide enough that the lift isn't clipped.
+                .mask {
+                    Circle().trim(from: 0, to: ringIn ? 1 : 0)
+                        .stroke(style: StrokeStyle(lineWidth: 44, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
                 // Starts as the icon round the word, grows to the circle (frame, not scale, so the band keeps its width).
                 .frame(width: size, height: size)
                 .opacity(reduceMotion || portal || (state.dashesIn && !track.dashesInBand) ? 0 : 1)
@@ -285,12 +300,13 @@ struct WelcomeMark: View {
             // the landing can be a dashed track, a missed prayer, the morning card or another page — owner).
             Circle()
                 .fill(Color.sage)
-                .shadow(color: Color.sage.opacity(0.5), radius: 1.5)
+                .shadow(color: Color.sage.opacity(0.5), radius: 2)
                 .frame(width: Self.iconDot, height: Self.iconDot)
                 .offset(x: Self.startSize / 2 * sin(Self.iconDotAngle), y: -Self.startSize / 2 * cos(Self.iconDotAngle))
                 // It goes with the tile, before the ring opens (owner, 2026-10-22: "the green dot should probably fade out
                 // with the border so we don't have the ring moving while that fades out in place").
-                .opacity(icon && !state.tileGone && !reduceMotion ? 1 : 0)
+                .scaleEffect(detailsIn ? 1 : 0.5)
+                .opacity(icon && detailsIn && !state.tileGone && !reduceMotion ? 1 : 0)
             // The dashed track, when that's what the circle is showing: once the ring is there, its dashes appear one by
             // one from the top (owner), as the circle's own do.
             DashedRing(drawn: state.dashesIn || reduceMotion ? 1 : 0)
@@ -302,9 +318,6 @@ struct WelcomeMark: View {
                 .blur(radius: grow || portal ? 4 : 0)
                 .opacity(grow || portal ? 0 : 1) }
         }
-        // The icon comes in softly (owner: the first cut was "kinda abrupt and not calm").
-        .opacity(appeared ? 1 : 0)
-        .scaleEffect(appeared || reduceMotion ? 1 : 0.94)
         .allowsHitTesting(false)
     }
 
@@ -450,8 +463,8 @@ struct WelcomeOverlay: View {
         typealias T = CircleMotion.Opening
         WelcomeTarget.landed = false
         if fromBlack { withAnimation(T.blackAway) { blackOn = false } }
-        withAnimation(T.ringDraw) { mark.ringDrawn = true }
         if WelcomeMark.showsWord {
+            withAnimation(T.ringDraw) { mark.ringDrawn = true }
             mark.lettersIn = true
             guard await CircleGate.pause(T.firstBeatDuration) else { return }
             soft.impactOccurred(intensity: 0.55)          // lub…
@@ -460,8 +473,15 @@ struct WelcomeOverlay: View {
             soft.impactOccurred(intensity: 1.0)           // …dub, as the ring closes
             guard await CircleGate.pause(T.holdDuration) else { return }
         } else {
-            // The icon, as on the Home Screen, for a beat; then it opens.
-            guard await CircleGate.pause(T.iconHoldDuration) else { return }
+            // The tile, flat; it lifts as the ring draws in; the dot and its name halfway up; a beat; then it opens.
+            withAnimation(T.tileIn) { mark.ringDrawn = true }
+            guard await CircleGate.pause(T.tileInDuration) else { return }
+            withAnimation(T.lift) { mark.lifted = true }
+            withAnimation(T.ringIn) { mark.ringIn = true }
+            // Halfway up, the dot and the name (owner: "bring the dot and shukr in halfway into lifting the ring up").
+            guard await CircleGate.pause(T.ringInDuration / 2) else { return }
+            withAnimation(T.detailsIn) { mark.detailsIn = true }
+            guard await CircleGate.pause(T.ringInDuration / 2 + T.iconHoldDuration) else { return }
             // The tile and its name go first; then the ring opens.
             withAnimation(T.iconAway) { mark.tileGone = true }
             guard await CircleGate.pause(T.tileAwayDuration) else { return }
@@ -538,7 +558,14 @@ extension CircleMotion {
         /// From the sleep curtain: the black lifts as the word writes in.
         static let blackAway = Animation.easeInOut(duration: 0.7)
         /// The app icon held, as on the Home Screen, before it opens into the circle.
-        static let iconHoldDuration: Double = 1.3
+        /// The icon's entrance: the flat tile fades in, lifts as the ring draws in, the dot and name halfway up; the hold.
+        static let tileIn = Animation.easeOut(duration: 0.45)
+        static let tileInDuration: Double = 0.45
+        static let lift = Animation.easeInOut(duration: 0.8)
+        static let ringIn = Animation.easeInOut(duration: 0.9)
+        static let ringInDuration: Double = 0.85
+        static let detailsIn = Animation.easeOut(duration: 0.45)
+        static let iconHoldDuration: Double = 1.0
         /// The tile, its name and the dot going, before the ring opens.
         static let iconAway = Animation.easeInOut(duration: 0.5)
         static let tileAwayDuration: Double = 0.45
