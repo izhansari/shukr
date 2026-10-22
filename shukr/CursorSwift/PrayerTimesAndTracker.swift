@@ -70,8 +70,9 @@ struct PrayerTimesView: View {
     // swipes flow the other way via onScrollPhaseChange once the scroll settles.
     typealias NavPage = SharedStateClass.HorizontalPage
     @State private var scrollPage: NavPage? = .main
-    /// Settings, pushed (Journey's gear and its other ways in — SettingsPresenter).
-    @State var showSettings = false
+    /// The pager's content is this many pages wide once laid out (four); the first reports, narrower, are ignored — acting on
+    /// them left the Salah page labelled Zikr.
+    static let laidOut: CGFloat = 3.5
     /// One widget / alarm / What's new open at a time: closing the covers, waiting for them to go, then going. A newer
     /// open replaces one still waiting (`clearCovers`).
     @State var pendingOpen: Task<Void, Never>?
@@ -216,7 +217,7 @@ struct PrayerTimesView: View {
     var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage
             || showZikrHistory
-            || showNamesPage || showMantraSheetFromHomePage || showSettings || JourneyPresenter.shared.makeUpOnly
+            || showNamesPage || showMantraSheetFromHomePage || JourneyPresenter.shared.makeUpOnly
             || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
 
@@ -224,7 +225,7 @@ struct PrayerTimesView: View {
         showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
         showZikrHistory = false
         showNamesPage = false
-        showMantraSheetFromHomePage = false; showSettings = false; JourneyPresenter.shared.makeUpOnly = false
+        showMantraSheetFromHomePage = false; JourneyPresenter.shared.makeUpOnly = false
         healthCard = nil
     }
 
@@ -265,7 +266,7 @@ struct PrayerTimesView: View {
     private func noteRestingPage(progress: CGFloat, phase: ScrollPhase) {
         let index = progress.rounded()
         let resting: NavPage? = phase == .idle && abs(progress - index) < 0.01
-            ? (index <= 0 ? .zikr : index >= 2 ? .journey : .main) : nil
+            ? NavPage.at(Int(index)) : nil
         if CircleStage.shared.restingPage != resting { CircleStage.shared.restingPage = resting }
     }
 
@@ -407,10 +408,10 @@ struct PrayerTimesView: View {
             // flashed the whole Salah page gray mid-swipe (owner, 2026-09-25).
             PagerBackdrop(live: live)
 
-            // MARK: - Pager: Zikr | Main | Journey
+            // MARK: - Pager: Zikr | Main | Journey | Settings
             // Native paging ScrollView: pages track the finger at UIKit speed, rubber-band at the
-            // ends, and settle with the system's velocity curve. All three stay mounted (plain
-            // HStack, not lazy) so the main circle's timers and Journey's state survive paging.
+            // ends, and settle with the system's velocity curve. All four stay mounted (plain
+            // HStack, not lazy) so the main circle's timers, Journey's and Settings' state survive paging.
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
                     // Each page is clipped: the center page hides its side menu by pushing it 200pt
@@ -436,6 +437,15 @@ struct PrayerTimesView: View {
                         .containerRelativeFrame(.horizontal)
                         .clipped()
                         .id(NavPage.journey)
+
+                    // Settings, one swipe past Journey (owner, 2026-10-22: "add a way for me to get to settings by swipe … don't
+                    // add anything to bottom bar"); Journey's gear pages here, its ‹ back to Journey.
+                    SettingsPage { sharedState.horizontalPage = .journey }
+                        .equatable()
+                        .environment(viewModel)
+                        .containerRelativeFrame(.horizontal)
+                        .clipped()
+                        .id(NavPage.settings)
                 }
                 .scrollTargetLayout()
                 .modifier(PagerStretch())
@@ -453,7 +463,7 @@ struct PrayerTimesView: View {
             // touch, takes horizontal ones for paging, and hands vertical ones to this gesture.
             // Nothing inside a page can block paging that way.
             .onScrollGeometryChange(for: CGSize.self) { geometry in
-                // Page position, live: 0 = Zikr, 1 = Salah, 2 = Journey (the chrome reads it),
+                // Page position, live: 0 = Zikr, 1 = Salah, 2 = Journey, 3 = Settings (the chrome reads it),
                 // plus the content width so the first, unlaid-out report can be ignored.
                 let width = geometry.containerSize.width
                 return CGSize(width: geometry.contentSize.width / max(width, 1),
@@ -461,20 +471,20 @@ struct PrayerTimesView: View {
             } action: { _, v in
                 let progress = v.height
                 live.scrollProgress = progress
-                if v.width >= 2.5 { noteRestingPage(progress: progress, phase: live.pagerPhase) }
+                if v.width >= Self.laidOut { noteRestingPage(progress: progress, phase: live.pagerPhase) }
                 // Commit the page at the detent — the moment the nearest page changes — not when
                 // the scroll lands. A slow drag commits as it crosses the midpoint; a flick a few
                 // frames into the coast. Landing then confirms a state that's already true, so
                 // the tick isn't late. (The old idle-time commit felt like it fired after arrival.)
                 // Content narrower than 2.5 pages = the first report before the three pages are
                 // laid out (midX at 0.5 → "Zikr"); acting on it left the Salah page labelled Zikr.
-                guard v.width >= 2.5 else { return }
+                guard v.width >= Self.laidOut else { return }
                 // Only the finger / its coast commits here. A programmatic scroll (tab, menu,
                 // deep link) already set horizontalPage; committing "nearest page" during its
                 // animation would flip it straight back to where it started.
                 guard live.pagerPhase == .interacting || live.pagerPhase == .decelerating else { return }
                 let index = Int(progress.rounded())
-                let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .journey : .main
+                let page = NavPage.at(index)
                 if sharedState.horizontalPage != page {
                     // This closure runs inside the scroll view's layout pass; a @Published change
                     // made there isn't delivered to every subscriber (the bottom bar kept the old
@@ -499,7 +509,8 @@ struct PrayerTimesView: View {
                    i + 1 < ProcessInfo.processInfo.arguments.count {
                     let page = ProcessInfo.processInfo.arguments[i + 1]
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        sharedState.horizontalPage = page == "zikr" ? .zikr : page == "journey" ? .journey : .main
+                        sharedState.horizontalPage = page == "zikr" ? .zikr : page == "journey" ? .journey
+                            : page == "settings" ? .settings : .main
                     }
                 }
                 if ProcessInfo.processInfo.arguments.contains("-perfToggleList") {
@@ -523,7 +534,7 @@ struct PrayerTimesView: View {
                 live.pagerPhase = phase
                 if FrameMonitor.on { FrameMonitor.shared.note("pager \(phase) · \(FrameMonitor.shared.context())") }
                 let geometry = context.geometry
-                if geometry.containerSize.width > 0, geometry.contentSize.width >= geometry.containerSize.width * 2.5 {
+                if geometry.containerSize.width > 0, geometry.contentSize.width >= geometry.containerSize.width * Self.laidOut {
                     noteRestingPage(progress: geometry.contentOffset.x / geometry.containerSize.width, phase: phase)
                 }
                 // Settled after a user scroll: bring the scrollPosition binding to the page we
@@ -532,9 +543,9 @@ struct PrayerTimesView: View {
                 // returning from the home screen snapped the pager back to Salah.
                 guard phase == .idle else { return }
                 let width = context.geometry.containerSize.width
-                guard width > 0, context.geometry.contentSize.width >= width * 2.5 else { return }
+                guard width > 0, context.geometry.contentSize.width >= width * Self.laidOut else { return }
                 let index = Int((context.geometry.visibleRect.midX / width).rounded(.down))
-                let landed: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .journey : .main
+                let landed = NavPage.at(index)
                 if scrollPage != landed {
                     var t = Transaction(); t.disablesAnimations = true
                     withTransaction(t) { scrollPage = landed }
@@ -853,23 +864,26 @@ struct PrayerTimesView: View {
 //                print("ResetTasbeehInputs cuz we dismissed DailyTasks.")
 //            }
 //        }
-        // Settings' ways in (Journey's gear, deep link "settings", the circle's "Alarm 4:45 AM", screenshots args) push it,
-        // whatever covers the Salah page closed first; a jump (the alarm row) once it has slid in. Its own refetch on
-        // leaving (SettingsView's onDisappear) catches a changed method or place.
+        // Settings' ways in (Journey's gear, deep link "settings", the circle's "Alarm 4:45 AM", screenshots args) page to it,
+        // whatever covers the Salah page closed first; a jump (the alarm row) once the page has come to rest.
         .onChange(of: SettingsPresenter.shared.open) { _, wanted in
             guard wanted else { return }
             SettingsPresenter.shared.open = false
             let jump = SettingsPresenter.shared.takeJump()
             clearCovers {
-                showSettings = true
-                guard let jump else { return }
+                Task { if await sharedState.navigate(to: .settings), let jump { SettingsJump.shared.request(jump) } }
+            }
+        }
+        .onChange(of: sharedState.horizontalPage) { left, now in
+            // Settings may have changed how times are worked out: refetch on leaving its page — once the pager has
+            // landed (run at the page's commit, mid-swipe, it stalled two frames: perf trace 2026-10-10).
+            if left == .settings, now != .settings {
                 Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(0.5))
-                    SettingsJump.shared.request(jump)
+                    _ = await CircleStage.shared.until(deadline: 2) { CircleStage.shared.restingPage != nil }
+                    viewModel.fetchPrayerTimes(cameFrom: "left the Settings page")
                 }
             }
         }
-        .navigationDestination(isPresented: $showSettings) { SettingsView(systemBar: true) }
         // Journey's ways in (☰, the day page's "Journey ›", To make up's pill, What's new) page to it now.
         .onChange(of: JourneyPresenter.shared.open) { _, wanted in
             guard wanted else { return }

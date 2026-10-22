@@ -171,7 +171,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
   No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes the same `PrayerGoalPage` as Settings' row (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"); Milestones now sits below the fold on a 17 Pro (the rows scroll).
 - Journey is the pager's right page (owner, 2026-10-22; `JourneyPagerPage`, built once the Salah page rests): ☰, the day
-  page's link, To make up's pill and What's new page to it; a gear at its top right pushes Settings. The week card's ↗ pushes
+  page's link, To make up's pill and What's new page to it; a gear at its top right pages on to Settings (the pager's fourth
+  page — "add a way for me to get to settings by swipe"), whose ‹ comes back. The week card's ↗ pushes
   Your weeks (`JourneyExpandedPushed`, no flight — "so that the pager works easier"); a day there pushes its page.
 - The card: the count ("631 days you marked a prayer"; a picked day takes its place), "THE LAST N WEEKS" (or the months in
   view) · the current streak ("N-day streak" / "Start a streak today"; it and "best streak" are the Salah page's streak at
