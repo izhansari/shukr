@@ -531,13 +531,8 @@ struct SettingsView: View {
                     }
                     .id("liveActivities")
 
-                    // Journey's own (owner, 2026-10-18): the fresh start (FreshStart.swift); the prayer goal joins it.
-                    Section {
-                        PrayerGoalSettingsRow()
-                        FreshStartSettingsRow()
-                    } header: {
-                        Text("Journey")
-                    }
+                    // (Journey's section — Your goal, Fresh start — moved to Journey's own list: owner, 2026-10-22, "get rid of your
+                    // goal from settings … throw it into journey as a list item".)
 
 
                     // (The Masjid section — duas when you arrive and leave — is parked: it didn't fire until the app was

@@ -409,6 +409,9 @@ struct JourneyPage: View {
     /// Your goal, pushed from its row (owner, 2026-10-21: "bring the your goal page into journey somewhere so its not tucked
     /// away in settings" → "Make it a list item for now"); Settings keeps its row too.
     @State private var showGoal = false
+    @State private var showFreshStart = false
+    /// The fresh start's day number (FreshStart.dayNumber), nil when it's off.
+    @State private var freshDay = FreshStart.dayNumber()
     @State private var goal = PrayerGoal.current
     /// The picked day's notes, photos, map and zikr, opened from the card's bottom — where the day page's back card opens
     /// them (owner, 2026-10-17: "we can use the same tap destinations as we do in the day ring's page for the flipped card").
@@ -475,6 +478,11 @@ struct JourneyPage: View {
         }
         .modifier(JourneyExtrasPresenter(tap: $extraTap))
         .navigationDestination(isPresented: $showGoal) { PrayerGoalPage() }
+        .navigationDestination(isPresented: $showFreshStart) { FreshStartPage() }
+        .onReceive(NotificationCenter.default.publisher(for: FreshStart.changed)) { _ in freshDay = FreshStart.dayNumber() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            freshDay = FreshStart.dayNumber()
+        }
         .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in goal = PrayerGoal.current }
         .navigationDestination(isPresented: $showMilestones) {
             JourneyMilestonesPage(milestones: stats?.milestones ?? [], firstDay: log.firstDay, opens: { opens($0) })
@@ -700,12 +708,14 @@ struct JourneyPage: View {
         let latest = s.milestones.first
         let recent = YourPrayersRecent.shared
         return VStack(spacing: 0) {
+            // Your goal and Fresh start live only here now (Settings' rows went — owner, 2026-10-22), so neither waits on
+            // MetricsLook: Release reaches them too.
+            JourneyHomeRow(title: "Your goal", line: "How early you aim to pray", height: rowHeight) {
+                Image(systemName: "target").font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
+            } value: {
+                Text(goal.title)
+            } action: { showGoal = true }
             if MetricsLook.on {
-                JourneyHomeRow(title: "Your goal", line: "How early you aim to pray", height: rowHeight) {
-                    Image(systemName: "target").font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
-                } value: {
-                    Text(goal.title)
-                } action: { showGoal = true }
                 // Your prayers as a row with the others (owner, 2026-10-20: "looks weird to have the upper right ring so busy
                 // on journey … you can get rid of it and make it a list item"); the page still zooms out of it.
                 JourneyHomeRow(title: "Your prayers",
@@ -727,6 +737,17 @@ struct JourneyPage: View {
             } value: {
                 Text("\(owed)")
             } action: { showMakeUp = true }
+            // The fresh start, moved from Settings with Your goal (owner, 2026-10-22: "do we still need fresh start? …
+            // if so, then throw it into journey as a list item for now"), under To make up: its "clear make up" is the one
+            // honest reset for that count (Fable's read: kept — a set fresh start with no row couldn't be seen or undone).
+            JourneyHomeRow(title: "Fresh start",
+                           line: FreshStart.start.map { "Since \($0.formatted(.dateTime.month(.abbreviated).day()))" }
+                               ?? "Count from today, nothing is deleted",
+                           height: rowHeight, quiet: freshDay == nil) {
+                Image(systemName: "leaf").font(.system(size: 19, weight: .light)).foregroundStyle(.secondary)
+            } value: {
+                Text(freshDay.map { "Day \($0)" } ?? "Off")
+            } action: { showFreshStart = true }
             JourneyHomeRow(title: "Moments",
                            line: photos == 0 ? "Your prayer photos will be here" : "Your prayer photos",
                            height: rowHeight, quiet: photos == 0) {

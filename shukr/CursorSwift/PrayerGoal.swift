@@ -175,24 +175,6 @@ enum PrayerStats {
     }
 }
 
-/// Settings' row (Journey section): the goal's name.
-struct PrayerGoalSettingsRow: View {
-    @State private var goal = PrayerGoal.current
-    var body: some View {
-        NavigationLink { PrayerGoalPage() } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "target").frame(width: 24)
-                Text("Your goal").lineLimit(1)
-                Spacer(minLength: 8)
-                Text(goal.title).foregroundStyle(.secondary).lineLimit(1)
-            }
-            .contentShape(Rectangle())
-        }
-        .onReceive(NotificationCenter.default.publisher(for: PrayerStats.rulesChanged)) { _ in goal = PrayerGoal.current }
-        .onAppear { goal = PrayerGoal.current }
-    }
-}
-
 /// Your goal (owner, 2026-10-21; spec board/mocks/your-goal-v2/spec.md, drawn by Zoe, canvas
 /// https://claude.ai/artifact/XWVw6Pz8pzbVUtBiMs9UDJ): the title and the rule in his words; the editor's dial with no
 /// clock (GoalHero.swift), its dot parked where the step tried stops counting — tap a step and it glides there, or drag the

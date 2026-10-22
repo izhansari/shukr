@@ -97,7 +97,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   YourJourney.swift); three rows (`JourneyHomeRow`): To make up · Moments · Milestones (→ `JourneyMilestonesPage`); This
   month went with the goal (owner 2026-10-18). The card's streak and best streak are the Salah page's rule (`PrayerGoal`).
 - **The goal and the fresh start** (PrayerGoal.swift, FreshStart.swift; owner 2026-10-18, his picks for
-  board/goal-reset-inventory.md): Your goal — Settings → Journey, or Journey's own row (Opening · Middle · In its window ·
+  board/goal-reset-inventory.md): Your goal — Journey's own row, the only way in since 2026-10-22 (owner: "get rid of your goal from settings"; Opening · Middle · In its window ·
   Prayed, `PrayerGoal.title`; under the old `prayerStreakMode` key; v2, owner 2026-10-21, spec
   board/mocks/your-goal-v2/spec.md + spec-pics/): the title and the rule, verbatim, the same for every step ("Set a goal for
   how early you aim to pray. Don't miss a prayer, and keep nearly all at your goal: that's a strong week"); the editor's
@@ -169,7 +169,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   the newest day's five, then the next asks; one Not now quiets them all for the week (Fable's item 7, A: it walked back a
   day per tap); it still steps aside after 3 visits; the dotted dots still open the fill-in (`NoRecordDays.all`). All from `PrayerMetrics`, off the main
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
-  No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes the same `PrayerGoalPage` as Settings' row (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"); Milestones now sits below the fold on a 17 Pro (the rows scroll).
+  No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes `PrayerGoalPage` (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"; Settings' row went 2026-10-22). Under To make up, "Fresh start" ("Count from today, nothing is deleted" · Off, or "Since Oct 12" · Day N) pushes `FreshStartPage` (owner, 2026-10-22: "do we still need fresh start? … if so, then throw it into journey as a list item"; kept — Fable and Frank: its "clear make up" is the one honest reset for To make up, and a set one with no row couldn't be seen or undone). Your goal and Fresh start show in Release too (no MetricsLook gate); Milestones now sits below the fold on a 17 Pro (the rows scroll).
 - Journey is the pager's right page (owner, 2026-10-22; `JourneyPagerPage`, built once the Salah page rests): ☰, the day
   page's link, To make up's pill and What's new page to it; a gear at its top right pages on to Settings (the pager's fourth
   page — "add a way for me to get to settings by swipe"), whose ‹ comes back. The week card's ↗ pushes

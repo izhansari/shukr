@@ -24,7 +24,7 @@ Whoever adds a view that needs a certain state adds its line here in the same co
 | Morning ask ("Nothing marked yesterday. Did you pray and forget to mark?"; a tap opens the pick sheet) | Fajr → Dhuhr, after a day with nothing marked, with the list open | "Morning ask: nothing marked yesterday" (its Save writes nothing) | "Show me the morning ask" · `-demoLand salah -demoMorningAsk`, then open the list |
 | Journey's week card in Excused Mode | Excused Mode on → Journey | — | "Show me Journey's week in Excused Mode" · `-demoLand journey -demoExcused 2`; `-demoExcusedOff` clears it |
 | Your goal: excused last week | Excused Mode covered part of last week → Your goal → the frosted "… excused ›" chip → its sheet | — | "Show me Your goal with an excused week" · `-demoLand journey -demoExcused 4` (excused from 4 days ago — pick N so it reaches back into last week), then Your goal; `-demoExcusedOff` clears it |
-| Journey counted at another goal | Your goal in Settings → Your goal | — (change your goal, then change it back) | "Show me Journey on Middle" · `-demoLand journey -prayerStreakMode "<integer>3</integer>"` (1 Prayed · 2 In its window · 3 Middle · 4 Opening; your saved goal untouched) |
+| Journey counted at another goal | Journey → Your goal | — (change your goal, then change it back) | "Show me Journey on Middle" · `-demoLand journey -prayerStreakMode "<integer>3</integer>"` (1 Prayed · 2 In its window · 3 Middle · 4 Opening; your saved goal untouched) |
 
 ## Marking and records (the Salah page, Journey)
 

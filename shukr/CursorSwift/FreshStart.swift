@@ -65,25 +65,6 @@ enum FreshStart {
     }
 }
 
-/// Settings' row: "Off", or the day it's on.
-struct FreshStartSettingsRow: View {
-    @State private var day: Int? = FreshStart.dayNumber()
-    var body: some View {
-        NavigationLink { FreshStartPage() } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "leaf").frame(width: 24)
-                Text("Fresh start").lineLimit(1)
-                Spacer(minLength: 8)
-                Text(day.map { "Day \($0)" } ?? "Off").foregroundStyle(.secondary).lineLimit(1)
-            }
-            .contentShape(Rectangle())
-        }
-        .onReceive(NotificationCenter.default.publisher(for: FreshStart.changed)) { _ in day = FreshStart.dayNumber() }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in day = FreshStart.dayNumber() }
-        .onAppear { day = FreshStart.dayNumber() }
-    }
-}
-
 /// The page (Design, direction A with the verse inside, owner 2026-10-19: "lets see what mixing A with the verse inside
 /// feels like instead of the leaf thing … better copy explaining it … better visual hierarchy"; canvas
 /// board/mocks/fresh-start-page). In the soft look: a light title over one grey line; the hero is a ring pressed into the
