@@ -314,10 +314,12 @@ enum WatchZikrSync {
             scheduleSend(); return
         }
         prayer.isCompleted = true
-        prayer.setPrayerLocation(with: SharedStore.lastKnownLocation())
-        // At one of your own masajid: a Friday Dhuhr is Jumu'ah at once, as when marked in the app.
-        if let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt {
-            prayer.mosqueName = MasjidDetector.favoriteMasjid(near: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        let place = SharedStore.lastKnownLocation()
+        prayer.setPrayerLocation(with: place)
+        // At one of your own masajid: a Friday Dhuhr is Jumu'ah at once, as when marked in the app — only from a spot within
+        // 100 m (the toggle's rule, audit B10); a coarser one is "checked, no search".
+        if let place {
+            prayer.mosqueName = place.horizontalAccuracy <= 100 ? MasjidDetector.favoriteMasjid(near: place.coordinate) : ""
         }
         prayer.setPrayerScore(atDate: tapped)
         prayer.cancelUpcomingNudges()
@@ -341,6 +343,10 @@ enum WatchZikrSync {
         MarkLog.$source.withValue("watch") {
             MarkLog.mark("marked", name: name, start: startDate, end: endDate, row: prayer, tap: tapped, location: MarkLog.lastAppFix(),
                          note: "reached the phone \(Int(Date().timeIntervalSince(tapped))) s after the tap")
+        }
+        // A fresh fix from the phone for it (outside-mark location A; the watch's own fix is Sami's D). Nothing waits.
+        Task { @MainActor in
+            MarkLog.$source.withValue("watch") { PrayerLiveActivities.freshFixAfterMark(name, start: startDate) }
         }
         if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, at] }
         UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)

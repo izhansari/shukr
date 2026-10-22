@@ -11,6 +11,16 @@ not), the time stored and its distance from the tap, the grade, and where the lo
 age · the app's last shared fix and age, no accuracy kept · none, and why). An entry point sets `MarkLog.$source` around its
 mark; the toggle, the store's mark and the watch's write the line. My Dev Stuff → Mark log shows it, a tally per source on
 top; `scripts/pull-feedback.sh` pulls marks.log and live-activities.log.
+**Where an outside mark was prayed** (2026-10-22, Frank-reviewed): every outside mark (widget ✓ / list, Siri, Control
+Center, cards, the Live Activity ✓, a notification's "I already prayed", the watch) goes through the app's path on every
+iOS (`PrayerWindowHooks.widgetMark` is set below 26 too) and saves the shared fix (`SharedStore.lastFix`: the app's last
+good fix ≤ 200 m with its accuracy, kept fresh while the app runs and stamped as it goes to the background; 30 min). Then
+`PrayerLiveActivities.freshFixAfterMark` tries one fresh fix (≤ 100 m, 8 s; only when location is already allowed and
+Precise; a While Using session held; on Always the older one-shot request too) and, if the mark is unchanged and the pin
+wasn't moved, puts it on the row and redoes the masjid / Jumu'ah check (`PrayerViewModel.applyLateFix`). Nothing waits
+for it. Apple's limit (WWDC24): While Using gets no background updates unless a Live Activity is in effect — so outside
+the app the fresh fix lands while a prayer card is up or with Always; otherwise the shared fix, if under 30 min; with
+Precise Location off, no place. The mark log says which, per source.
 
 **Widgets** (shukrWidget/, MoreWidgets.swift)
 - A marked row in the widget's times list → "Unmark …?" in the app: a UIKit alert in its own window over anything

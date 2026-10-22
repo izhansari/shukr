@@ -470,6 +470,27 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         }
     }
 
+    /// A fresh fix that landed after an outside mark (PrayerLiveActivities.freshFixAfterMark): where it was prayed, as a move
+    /// does (the masjid from the new spot, rescored, the day's score), but not a move of his — no recorded spot kept.
+    @MainActor func applyLateFix(_ fix: CLLocation, to prayer: PrayerModel) {
+        prayer.setPrayerLocation(with: fix)
+        prayer.mosqueName = MasjidDetector.favoriteMasjid(near: fix.coordinate)   // nil = search below
+        if prayer.isCompleted { prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? prayer.startTime) }
+        try? context.save()
+        calculateDayScore(for: prayer.dayStart)
+        calculatePrayerStreak()
+        pushCompletionsToWidget()
+        contentChanged()
+        guard prayer.mosqueName == nil else { return }
+        Task { @MainActor in
+            let days = await MasjidDetector.check([prayer], in: context)
+            guard !days.isEmpty else { return }
+            for day in days { calculateDayScore(for: day) }
+            pushCompletionsToWidget()
+            contentChanged()
+        }
+    }
+
     /// Back to the spot the app recorded (then it's unedited again).
     @MainActor func revertPrayerLocation(_ prayer: PrayerModel) {
         guard let recorded = prayer.recordedSpot else { return }

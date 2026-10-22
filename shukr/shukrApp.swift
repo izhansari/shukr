@@ -722,12 +722,23 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             if let name = userInfo["prayerName"] as? String,
                let start = userInfo["prayerStart"] as? TimeInterval,
                let end = userInfo["prayerEnd"] as? TimeInterval {
-                let done = MarkLog.$source.withValue("notification") {
-                    SharedStore.markPrayerComplete(named: name, start: Date(timeIntervalSince1970: start), end: Date(timeIntervalSince1970: end))
+                // Kept awake before iOS is told it's done (outside-mark location A, Frank): after completionHandler the app
+                // may be suspended before anything else starts. Marked through the app's own path (the list's toggle when
+                // it holds the row — the list shows it at once — else the store), then a fresh fix tried under its own task.
+                var task: UIBackgroundTaskIdentifier = .invalid
+                task = UIApplication.shared.beginBackgroundTask(withName: "notification mark") { UIApplication.shared.endBackgroundTask(task) }
+                Task { @MainActor in
+                    let done = MarkLog.$source.withValue("notification") {
+                        PrayerLiveActivities.outsideMark(name, start: Date(timeIntervalSince1970: start), end: Date(timeIntervalSince1970: end),
+                                                         from: "notification")
+                    }
+                    print(done ? "✅ \(name) marked complete from the notification" : "ℹ️ \(name) not marked (not started, already complete, or store unavailable)")
+                    // In front (audit B7): the page reconciles now — the list showed it unmarked until the next activation.
+                    if done { NotificationCenter.default.post(name: SharedStore.markedElsewhere, object: nil) }
+                    completionHandler()
+                    UIApplication.shared.endBackgroundTask(task)
                 }
-                print(done ? "✅ \(name) marked complete from the notification" : "ℹ️ \(name) not marked (not started, already complete, or store unavailable)")
-                // In front (audit B7): the page reconciles now — the list showed it unmarked until the next activation.
-                if done { DispatchQueue.main.async { NotificationCenter.default.post(name: SharedStore.markedElsewhere, object: nil) } }
+                return
             } else {
                 print("ℹ️ MARK_PRAYED_ACTION on a notification without prayer info (a test one?)")
                 MarkLog.add("notification · \"I already prayed\" → NOT marked: the notification had no prayer info")

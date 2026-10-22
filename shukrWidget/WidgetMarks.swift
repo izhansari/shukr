@@ -82,7 +82,11 @@ extension SharedStore {
 
         prayer.isCompleted = true
         prayer.setPrayerScore()                                        // scored now, at the tap
-        prayer.setPrayerLocation(with: lastKnownLocation())
+        let place = lastKnownLocation()
+        prayer.setPrayerLocation(with: place)
+        // A spot coarser than 100 m never decides a masjid (the toggle's rule, audit B10): "checked, no search". Within it,
+        // nil — the app's catch-up decides (your own masajid first).
+        if let place, place.horizontalAccuracy > 100 { prayer.mosqueName = "" }
         prayer.cancelUpcomingNudges()                                  // app repeats this on next open in case extensions can't
         do { try context.save() } catch {
             print("❌ markPrayerComplete(\(name)) save failed: \(error)")

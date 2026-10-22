@@ -127,7 +127,7 @@ enum PrayerLiveActivities {
         var st = a.content.state
         marking.insert(n)   // the toggle re-plans at once: this card isn't "prayed, end it" — it turns
         defer { marking.remove(n) }
-        _ = markPrayer(st.label, start: st.start, end: st.end, from: "card")
+        if markPrayer(st.label, start: st.start, end: st.end, from: "card") { freshFixAfterMark(st.label, start: st.start) }
         st.markedAt = Date()
         let t0 = Date()
         await a.update(ActivityContent(state: st, staleDate: nil))
@@ -219,7 +219,12 @@ enum PrayerLiveActivities {
             return false
         }
         if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) {
-            if !row.isCompleted { vm.togglePrayerCompletion(for: row) }   // saves, pushes to widgets / watch, re-plans
+            // Already marked: nothing new (no fresh fix for an old mark — outside-mark location A, found testing it).
+            if row.isCompleted {
+                MarkLog.mark("not marked: already marked", name: name, start: start, end: end, row: row)
+                return false
+            }
+            vm.togglePrayerCompletion(for: row)   // saves, pushes to widgets / watch, re-plans
             PrayerWindowLog.add("\(from) mark \(name) → \(row.isCompleted ? "marked" : "NOT marked") (the list's toggle)"
                                 + " · location \(row.latPrayedAt == nil ? "none" : "saved")")
             return row.isCompleted
@@ -240,70 +245,135 @@ enum PrayerLiveActivities {
         if PrayerViewModel.current == nil { plan(reason: "widget mark") }   // the VM's toggle re-plans by itself
         AutoTopUp.request("widget ✓")
         WidgetCenter.shared.reloadAllTimelines()
-        if marked && rowLocation(name, start) == nil {
-            // After this run returns (the widget redraws at once): kept alive by a background task, 10 s at most.
-            var task: UIBackgroundTaskIdentifier = .invalid
-            task = UIApplication.shared.beginBackgroundTask(withName: "widget mark location") {
-                UIApplication.shared.endBackgroundTask(task)
-            }
-            Task { @MainActor in
-                await freshLocation(for: name, start: start)
-                UIApplication.shared.endBackgroundTask(task)
-            }
+        if marked { freshFixAfterMark(name, start: start) }   // the widget redraws at once: nothing waits for it
+        return marked
+    }
+
+    /// A mark from outside the app that isn't a widget's (the notification's "I already prayed"): marked as the list does
+    /// when the app's list holds it — so the list shows it at once — else through the store; then a fresh fix tried.
+    @MainActor @discardableResult static func outsideMark(_ name: String, start: Date, end: Date, from: String) -> Bool {
+        let marked = markPrayer(name, start: start, end: end, from: from)
+        if marked {
+            if PrayerViewModel.current == nil { plan(reason: "\(from) mark") }
+            WidgetCenter.shared.reloadAllTimelines()
+            freshFixAfterMark(name, start: start)
         }
         return marked
     }
 
-    @MainActor private static func rowLocation(_ name: String, _ start: Date) -> (Double, Double)? {
-        if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) {
-            return row.latPrayedAt.flatMap { lat in row.longPrayedAt.map { (lat, $0) } }
+    // MARK: Where an outside mark was prayed (outside-mark location A, Frank-reviewed, 2026-10-22)
+
+    /// After a mark from outside the app (widget, Siri, Control Center, a card, the Live Activity, a notification, the
+    /// watch): one fresh fix tried for the row, whatever spot it got (the shared fix can be 30 min old). Nobody waits for
+    /// it: it runs after the mark returns, under its own background task (≤ 10 s). Apple's rule (WWDC24, "What's new in
+    /// location authorization"): While Using gets no updates in the background unless a Live Activity (or a background
+    /// session) is in effect — so on While Using it lands only while one of our prayer cards is up; with Always it should
+    /// land anywhere. The mark log says what happened for each source.
+    @MainActor static func freshFixAfterMark(_ name: String, start: Date) {
+        guard let row = outsideRow(name, start), row.isCompleted, row.recordedLat == nil else { return }
+        let markedAt = row.timeAtComplete
+        var task: UIBackgroundTaskIdentifier = .invalid
+        task = UIApplication.shared.beginBackgroundTask(withName: "outside mark location") { UIApplication.shared.endBackgroundTask(task) }
+        Task { @MainActor in
+            if let fix = await oneFreshFix(name) { applyLateFix(fix, name: name, start: start, markedAt: markedAt) }
+            UIApplication.shared.endBackgroundTask(task)
         }
-        guard let c = SharedStore.widgetContainer,
-              let row = SharedStore.fetchPrayer(named: name, on: start, in: ModelContext(c)) else { return nil }
-        return row.latPrayedAt.flatMap { lat in row.longPrayedAt.map { (lat, $0) } }
     }
 
-    /// One fix within 8 s (≤ 100 m, fresh), saved on the prayer; what iOS said is logged either way.
-    @MainActor private static func freshLocation(for name: String, start: Date) async {
+    /// The row an outside mark wrote: the list's when the app holds it, else the store's.
+    @MainActor private static func outsideRow(_ name: String, _ start: Date) -> PrayerModel? {
+        if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) { return row }
+        guard let c = SharedStore.widgetContainer else { return nil }
+        return SharedStore.fetchPrayer(named: name, on: start, in: ModelContext(c))
+    }
+
+    /// One fix within 8 s (≤ 100 m, fresh), or nil; what iOS said goes in the mark log either way. Only when location is
+    /// already allowed (a session with .notDetermined could raise the ask later, before the setup has explained it), with
+    /// a While Using session held for the attempt; on Always the older one-shot request too (the newer updates may need a
+    /// session started in the foreground — WWDC24).
+    @MainActor private static func oneFreshFix(_ name: String) async -> CLLocation? {
         let t0 = Date()
-        let auth = CLLocationManager().authorizationStatus
-        let authText = auth == .authorizedAlways ? "Always" : auth == .authorizedWhenInUse ? "While Using" : "status \(auth.rawValue)"
+        let probe = CLLocationManager()
+        let auth = probe.authorizationStatus
+        let authText = auth == .authorizedAlways ? "Always" : auth == .authorizedWhenInUse ? "While Using" : "not allowed (status \(auth.rawValue))"
+        guard auth == .authorizedAlways || auth == .authorizedWhenInUse else {
+            MarkLog.add("\(MarkLog.source) · \(name) → no fresh location: location \(authText)"); return nil
+        }
+        guard probe.accuracyAuthorization == .fullAccuracy else {
+            MarkLog.add("\(MarkLog.source) · \(name) → no fresh location: Precise Location is off (fixes are ~1–3 km, too rough to keep)")
+            return nil
+        }
+        let session = CLServiceSession(authorization: .whenInUse)
+        defer { session.invalidate() }
         var note = ""
-        let fix: CLLocation? = await withTaskGroup(of: CLLocation?.self) { group in
+        let oneShot = auth == .authorizedAlways ? OneShotFix() : nil
+        // Each attempt answers (timer: true only for the 8 s timer); the first fix wins, an attempt that gives up doesn't
+        // end the wait — only the timer does.
+        let fix: CLLocation? = await withTaskGroup(of: (timer: Bool, fix: CLLocation?).self) { group in
             group.addTask {
                 do {
                     for try await u in CLLocationUpdate.liveUpdates() {
                         if u.insufficientlyInUse { await MainActor.run { note = " · iOS: not in use" } }
                         if u.authorizationDenied || u.authorizationDeniedGlobally { await MainActor.run { note = " · iOS: denied" } }
                         if let l = u.location, l.horizontalAccuracy >= 0, l.horizontalAccuracy <= 100,
-                           l.timestamp > t0.addingTimeInterval(-5) { return l }
+                           l.timestamp > t0.addingTimeInterval(-5) { return (false, l) }
                     }
                 } catch {}
-                return nil
+                return (false, nil)
             }
-            group.addTask { try? await Task.sleep(for: .seconds(8)); return nil }
-            let first = await group.next() ?? nil
+            if let oneShot {
+                group.addTask {
+                    guard let l = await oneShot.get(), l.horizontalAccuracy >= 0, l.horizontalAccuracy <= 100,
+                          l.timestamp > t0.addingTimeInterval(-5) else { return (false, nil) }
+                    return (false, l)
+                }
+            }
+            group.addTask { try? await Task.sleep(for: .seconds(8)); return (true, nil) }
+            var first: CLLocation?
+            for await answer in group {
+                if let l = answer.fix { first = l; break }
+                if answer.timer { break }
+            }
             group.cancelAll()
             return first
         }
-        guard let fix else {
-            PrayerWindowLog.add("widget mark \(name): no fresh location within 8 s · \(authText)\(note)")
-            MarkLog.add("\(MarkLog.source) · \(name) → no fresh location within 8 s (\(authText)\(note)): it keeps none")
+        if let fix {
+            MarkLog.add(String(format: "\(MarkLog.source) · \(name) → fresh location ±%d m in %.1f s (\(authText))",
+                               Int(fix.horizontalAccuracy), Date().timeIntervalSince(t0)))
+        } else {
+            PrayerWindowLog.add("outside mark \(name): no fresh location within 8 s · \(authText)\(note)")
+            MarkLog.add("\(MarkLog.source) · \(name) → no fresh location within 8 s (\(authText)\(note)): it keeps the spot it had")
+        }
+        return fix
+    }
+
+    /// A late fix onto the row — only if it's still the same mark (marked, same time) and he hasn't moved its pin
+    /// (recordedLat). Then as a move does (movePrayer), minus keeping a recorded spot: the masjid from the new spot (a
+    /// mosque or Jumu'ah from the stale one would stick: MasjidDetector.catchUp only looks at rows with none), rescored,
+    /// the day's score.
+    @MainActor private static func applyLateFix(_ fix: CLLocation, name: String, start: Date, markedAt: Date?) {
+        let spot = fix.coordinate
+        if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) {
+            guard row.isCompleted, row.timeAtComplete == markedAt, row.recordedLat == nil else {
+                MarkLog.add("\(MarkLog.source) · \(name) → fresh location not saved: the mark changed meanwhile"); return
+            }
+            vm.applyLateFix(fix, to: row)
             return
         }
-        if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) {
-            vm.setLocation(fix, on: row)
-        } else if let c = SharedStore.widgetContainer {
-            let ctx = ModelContext(c)
-            if let row = SharedStore.fetchPrayer(named: name, on: start, in: ctx) {
-                row.setPrayerLocation(with: fix)
-                try? ctx.save()
-                g.set(true, forKey: SharedStore.widgetWroteStoreKey)
-            }
+        guard let c = SharedStore.widgetContainer else { return }
+        let ctx = ModelContext(c)
+        guard let row = SharedStore.fetchPrayer(named: name, on: start, in: ctx), row.isCompleted, row.timeAtComplete == markedAt,
+              row.recordedLat == nil else {
+            MarkLog.add("\(MarkLog.source) · \(name) → fresh location not saved: the mark changed meanwhile"); return
         }
-        PrayerWindowLog.add(String(format: "widget mark \(name): location ±%d m in %.1f s · \(authText)", Int(fix.horizontalAccuracy), Date().timeIntervalSince(t0)))
-        MarkLog.add(String(format: "\(MarkLog.source) · \(name) → fresh location saved after the mark: ±%d m in %.1f s (\(authText))",
-                           Int(fix.horizontalAccuracy), Date().timeIntervalSince(t0)))
+        row.setPrayerLocation(with: fix)
+        row.mosqueName = MasjidDetector.favoriteMasjid(near: spot)   // nil: the app's catch-up searches when it opens
+        row.setPrayerScore(atDate: row.timeAtComplete ?? row.startTime)
+        try? ctx.save()
+        // The app rescores that day when it opens (the reconcile), as after any outside write.
+        g.set(true, forKey: SharedStore.widgetWroteStoreKey)
+        g.set(PrayerDay.start(forRow: name, startingAt: start).timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     // MARK: The plan
@@ -592,4 +662,34 @@ enum PrayerLiveActivities {
         return true
     }
     #endif
+}
+
+/// The older one-shot location request (CLLocationManager.requestLocation), for Always in the background: the newer updates
+/// may need a session started in the foreground there (WWDC24). One answer, then done.
+@MainActor final class OneShotFix: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    private var waiting: CheckedContinuation<CLLocation?, Never>?
+    func get() async -> CLLocation? {
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { c in
+                waiting = c
+                manager.delegate = self
+                manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+                manager.requestLocation()
+            }
+        } onCancel: {
+            Task { @MainActor in self.finish(nil) }   // the wait is over: answer now, not when iOS gives up
+        }
+    }
+    private func finish(_ l: CLLocation?) {
+        manager.stopUpdatingLocation()
+        waiting?.resume(returning: l)
+        waiting = nil
+    }
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        MainActor.assumeIsolated { finish(locations.last) }
+    }
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        MainActor.assumeIsolated { finish(nil) }
+    }
 }
