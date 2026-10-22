@@ -60,6 +60,7 @@ keywords, "What's New" and screenshot captions.
   you've prayed there, and how far you moved.
 
 **Journey — your prayer log**
+- One swipe from the Salah page (Settings one swipe further); your goal and a fresh start live on it too.
 - Every prayer you've marked, a week a row on one card, and each month as a calendar of rings: a
   ring closes on a day you prayed all five, green when the day met your goal. Pinch out to the year.
 - Prayer scores: your average score for each prayer — all time, the last 30 days or the last week — which is strongest
