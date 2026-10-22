@@ -34,6 +34,10 @@ enum PrayerLiveActivities {
             try? await Task.sleep(for: .milliseconds(700))   // shukr in front first
             NotificationCenter.default.post(name: openPhoto, object: name)
         }
+        // A widget / Siri / Control Center / card mark runs the app's path on every iOS (B, Frank-reviewed 2026-10-22): below
+        // 26 it went straight to the store — no fresh location, and with the app alive the list stayed unmarked until the
+        // next activation (nothing posted markedElsewhere). plan() and the card calls inside it guard themselves for < 26.
+        PrayerWindowHooks.widgetMark = { name, start, end in await widgetMark(name, start, end) }
         guard #available(iOS 26.0, *) else { return }
         let state = UIApplication.shared.applicationState
         var line = "launch · " + (state == .background ? "background" : state == .active ? "active" : "inactive")
@@ -43,7 +47,6 @@ enum PrayerLiveActivities {
         PrayerWindowLog.add(line)
         PrayerWindowHooks.mark = { n in await mark(n) }
         PrayerWindowHooks.open = { n, what in await open(n, what) }
-        PrayerWindowHooks.widgetMark = { name, start, end in await widgetMark(name, start, end) }
         PrayerWindowHooks.refresh = { n in await refresh(n) }
         for activity in Activity<PrayerWindowAttributes>.activities { observe(activity) }
         Task { @MainActor in

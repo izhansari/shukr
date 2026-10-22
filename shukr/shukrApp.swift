@@ -93,6 +93,16 @@ struct shukrApp: App {
                     .first { !Excused.covers(start: $0.startTime, end: $0.endTime) }
                 if let late { SharedStore.markPrayerComplete(named: late.name, start: late.startTime, end: late.endTime) }
             }
+            // `-demoIntentMark`: 4 s in, the widget's own mark intent (MarkCompleteIntent) on the prayer on now, run in the
+            // app as iOS runs it — which path it took shows in the mark log ("marked" = the app's, "marked (store)" = the
+            // store's). For the widget hook on iOS 18–25 (B, 2026-10-22).
+            if ProcessInfo.processInfo.arguments.contains("-demoIntentMark") {
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(4))
+                    guard let c = PrayerMarkNow.target() else { MarkLog.add("demo · -demoIntentMark: no prayer on now"); return }
+                    _ = try? await MarkCompleteIntent(prayerName: c.name, prayerStart: c.start, prayerEnd: c.end).perform()
+                }
+            }
             // `-demoNextLabel on|off`: the "Next prayer" dev toggle, for screenshots.
             if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoNextLabel"),
                i + 1 < ProcessInfo.processInfo.arguments.count {
