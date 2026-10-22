@@ -513,6 +513,13 @@ struct JourneyWeekCard: View {
                         Text(initial(i))
                             .font(.system(size: 10.5, weight: i == model?.todayIndex ? .semibold : .regular, design: .rounded))
                             .foregroundStyle(i == model?.todayIndex ? Color.primary.opacity(0.85) : Color.secondary)
+                            // Today: a dot under its letter, the calendar's way (owner, 2026-10-22: "put a white dot under
+                            // the Letter indicating today"; white in dark, ink in light). An overlay: nothing moves.
+                            .overlay(alignment: .bottom) {
+                                if i == model?.todayIndex {
+                                    Circle().fill(Color.primary).frame(width: 4, height: 4).offset(y: 7)
+                                }
+                            }
                     }
                     .frame(width: 24, height: 40)
                     .contentShape(Rectangle())

@@ -150,7 +150,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   words ("in their windows"); a week that asks
   nothing "– · excused this week". Under it the seven days as dots: every prayer marked → the Salah list's filled light-grey
   done dot, any unmarked (to come, missed, partly) hollow (owner: "hollow gray for unmarked and filled light gray for
-  marked"), no record dotted, all excused frosted, today's initial in ink; a tap opens the day's page ("tapping those days
+  marked"), no record dotted, all excused frosted, today's initial in ink with a dot under it (white in dark); a tap opens the day's page ("tapping those days
   can just push the day ring page for now"; today only once all five are in), a dotted day its Pick sheet. One line under
   them, the first that's true: Excused Mode on → "Excused Mode is on. Your week picks up when it ends." (owner, 2026-10-21,
   A; no tick, no make-up / fill-in asks, a picked part keeps this line, no "Did you pray?"); out of reach → the mid-week line ("Your goal this week, every prayer in its window, is out of
