@@ -287,13 +287,18 @@ enum MarkLog {
         guard let raw else { return "none (no fix yet)" }
         return "none (the fix was ±\(Int(raw.horizontalAccuracy)) m, \(age(raw.timestamp)) old — too rough or too old)"
     }
-    /// The store path's location: the app's last fix, shared through the app group, if under 30 min old (no accuracy kept).
+    /// The store path's location: the app's last good fix, shared through the app group, if under 30 min old.
     static func lastAppFix() -> String {
-        let at = UserDefaults(suiteName: SharedStore.appGroup)?.double(forKey: SharedStore.lastFixAtKey) ?? 0
-        guard at > 0 else { return "none (the app has no fix saved)" }
-        let when = Date(timeIntervalSince1970: at)
-        return SharedStore.lastKnownLocation() == nil ? "none (the app's last fix is \(age(when)) old)"
-            : "the app's last fix, \(age(when)) old (its accuracy isn't kept)"
+        guard let fix = SharedStore.lastKnownLocation() else {
+            let store = UserDefaults(suiteName: SharedStore.appGroup)
+            if let f = store?.array(forKey: SharedStore.lastFixKey) as? [Double], f.count == 4 {
+                return "none (the app's last fix is \(age(Date(timeIntervalSince1970: f[3]))) old)"
+            }
+            let at = store?.double(forKey: SharedStore.lastFixAtKey) ?? 0
+            return at > 0 ? "none (the app's last fix is \(age(Date(timeIntervalSince1970: at))) old)" : "none (the app has no fix saved)"
+        }
+        return fix.horizontalAccuracy > 0 ? "the app's last fix ±\(Int(fix.horizontalAccuracy)) m, \(age(fix.timestamp)) old"
+            : "the app's last fix, \(age(fix.timestamp)) old (from before this build: no accuracy kept)"
     }
 
     private static func age(_ d: Date) -> String {

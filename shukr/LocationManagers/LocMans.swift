@@ -114,6 +114,12 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     /// Set by didBecomeActive (also at launch), so a background relaunch (travel updates) never
     /// starts the compass.
     private var appActive = false
+    /// The background stamp's evidence (SharedStore.stampFix): the last fix iOS handed over this visit — any accuracy, never
+    /// a cached one from before it (a launch can hand over a fix hours old) — so the stamp vouches only for a spot the
+    /// phone is still at (Frank's check of C: a rough fix 1 km away, or an old cached one, would have stamped home as now).
+    private var lastSeenThisVisit: CLLocation?
+    /// This visit's start (launch or return to the front).
+    private var visitStart = Date()
     private var watchdog: Timer?
     private var lastSampleAt = Date.distantPast
     private var lastMotionAt = Date.distantPast
@@ -152,6 +158,12 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         setQiblaOrigin(nil)
         // iOS suspends heading updates in the background; restart them on every return.
         let center = NotificationCenter.default
+        // A return to the front starts a new visit (not a cold launch: its first fix comes before it's active, and the
+        // visit started at init).
+        center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.visitStart = Date()
+            self?.lastSeenThisVisit = nil
+        }
         center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.setAppActive(true)
             // Fine updates again (they stop in the background — below).
@@ -162,6 +174,13 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         // a wake every 2–15 min overnight in his topups.log).
         center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
             self?.manager.stopUpdatingLocation()
+            // Updates ran while it was open: if the last fix this visit is within 50 m of the shared one (and none since,
+            // with the 50 m filter, means still there), the shared one is good as of now — the widget, a notification or
+            // the watch can use it for 30 min more (outside-mark location C). What it did goes in the mark log, so his
+            // week shows whether returns to the app stamp on a real phone (Frank: a resume delivered no fix on the sim).
+            guard let self, !self.hasManualLocation, self.isAuthorized else { return }
+            MarkLog.add("app · to the background → \(SharedStore.stampFix(lastSeen: self.lastSeenThisVisit))")
+            self.lastSeenThisVisit = nil
         }
         center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.setAppActive(false)
@@ -246,7 +265,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         group?.set(coordinate.longitude, forKey: "lastLongitude")
         group?.set(name, forKey: "lastCityName")
         group?.set(true, forKey: "manualLocation")
-        group?.removeObject(forKey: SharedStore.lastFixAtKey)   // a city's centre is not where a prayer was prayed (audit B10)
+        SharedStore.clearFix()   // a city's centre is not where a prayer was prayed (audit B10)
         hasManualLocation = true
         if !isAuthorized { useManualLocation() }
     }
@@ -320,6 +339,12 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         }
         #endif
         userLocation = locations.last
+        // The shared fix outside marks read (SharedStore.saveFix: ≤ 200 m, on change), never a picked city's.
+        if let fix = locations.last, !hasManualLocation {
+            SharedStore.saveFix(fix)
+            // In front, and taken this visit (not a cached one older than it; the launch's first fix comes before appActive).
+            if !Self.inBackground(), fix.timestamp >= visitStart.addingTimeInterval(-2) { lastSeenThisVisit = fix }
+        }
         locationUpdates.send(locations.last)
         // With Always, iOS wakes shukr for a big move: a moment to top everything up (the app sets this; AutoTopUp) —
         // once a minute at most (a wake delivered the same fix two or three times).

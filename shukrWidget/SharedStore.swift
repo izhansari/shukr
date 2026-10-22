@@ -491,10 +491,61 @@ enum SharedStore {
     /// Last location the app saved for the widget (it writes lastLatitude/lastLongitude).
     /// When the saved spot was last a real fix (`PrayerViewModel.handleLocationChange`; cleared by a picked city).
     static let lastFixAtKey = "lastFixAt"
+    /// The app's last good fix itself, [latitude, longitude, accuracy m, time] (outside-mark location C, Frank-reviewed,
+    /// 2026-10-22): saved on every fix ≤ 200 m the app gets (`saveFix`), and stamped again as it goes to the background
+    /// (`stampFix`). Its own key: lastLatitude / lastLongitude move only at a location pass (≥ 500 m or 10 min), so a time
+    /// written beside them alone would have called a spot up to 500 m old fresh.
+    static let lastFixKey = "lastFix"
+
+    /// A fix the app got (not a picked city): kept when it's ≤ 200 m, and written only on change — a 10 m move, a better
+    /// accuracy, or a minute on (every app-group write invalidates bound @AppStorage).
+    static func saveFix(_ l: CLLocation) {
+        guard l.horizontalAccuracy >= 0, l.horizontalAccuracy <= 200, let store = UserDefaults(suiteName: appGroup) else { return }
+        if let old = store.array(forKey: lastFixKey) as? [Double], old.count == 4 {
+            let moved = CLLocation(latitude: old[0], longitude: old[1]).distance(from: l)
+            if moved < 10, l.horizontalAccuracy >= old[2] - 5, l.timestamp.timeIntervalSince1970 - old[3] < 60 { return }
+        }
+        store.set([l.coordinate.latitude, l.coordinate.longitude, l.horizontalAccuracy, l.timestamp.timeIntervalSince1970],
+                  forKey: lastFixKey)
+    }
+
+    /// The app is going to the background with its fine updates running. `lastSeen`: the last fix iOS handed over this
+    /// visit (any accuracy), or nil. With a 50 m filter no newer fix means the phone was still within 50 m of it — so when
+    /// it's within 50 m of the saved fix, that one is good as of now (a phone sitting still gets no fixes at all). Says
+    /// what it did, for the mark log.
+    @discardableResult
+    static func stampFix(lastSeen: CLLocation?, now: Date = Date()) -> String {
+        guard let store = UserDefaults(suiteName: appGroup), var f = store.array(forKey: lastFixKey) as? [Double], f.count == 4 else {
+            return "shared fix not stamped: none saved yet"
+        }
+        guard let lastSeen else { return "shared fix not stamped: no fix this visit" }
+        let off = Int(CLLocation(latitude: f[0], longitude: f[1]).distance(from: lastSeen))
+        guard off <= 50 else {
+            return "shared fix not stamped: the phone was last seen \(off) m from it (±\(Int(lastSeen.horizontalAccuracy)) m)"
+        }
+        guard now.timeIntervalSince1970 - f[3] > 30 else { return "shared fix already fresh (±\(Int(f[2])) m)" }
+        f[3] = now.timeIntervalSince1970
+        store.set(f, forKey: lastFixKey)
+        return "shared fix stamped as now (±\(Int(f[2])) m; last seen \(off) m from it)"
+    }
+
+    /// A picked city: its centre is not where a prayer was prayed (audit B10).
+    static func clearFix() {
+        let store = UserDefaults(suiteName: appGroup)
+        store?.removeObject(forKey: lastFixKey)
+        store?.removeObject(forKey: lastFixAtKey)
+    }
+
     /// The last real fix, while it's recent (30 min; audit B10): a widget / watch mark records where it was prayed from
     /// this. A stale fix, or a picked city's centre, put prayers at a mosque they weren't near (a Friday Dhuhr became Jumu'ah).
     static func lastKnownLocation() -> CLLocation? {
         guard let store = UserDefaults(suiteName: appGroup) else { return nil }
+        if let f = store.array(forKey: lastFixKey) as? [Double], f.count == 4 {
+            guard Date().timeIntervalSince1970 - f[3] < 30 * 60 else { return nil }
+            return CLLocation(coordinate: CLLocationCoordinate2D(latitude: f[0], longitude: f[1]), altitude: 0,
+                              horizontalAccuracy: f[2], verticalAccuracy: -1, timestamp: Date(timeIntervalSince1970: f[3]))
+        }
+        // Before this build saved its first fix: the old keys (lastFixAt over lastLatitude / lastLongitude).
         let at = store.double(forKey: lastFixAtKey)
         guard at > 0, Date().timeIntervalSince1970 - at < 30 * 60 else { return nil }
         let lat = store.double(forKey: "lastLatitude"), lon = store.double(forKey: "lastLongitude")
