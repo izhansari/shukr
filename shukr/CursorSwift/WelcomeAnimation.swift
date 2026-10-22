@@ -221,8 +221,19 @@ struct WelcomeMark: View {
     private let word = Array("shukr")
     /// The Salah page's circle: 200 pt with a 12 pt track centred on it (mainCircle.swift).
     static let ringSize: CGFloat = 200
-    /// The ring's size round the word, before it grows.
-    static let startSize: CGFloat = 150
+    /// The app icon as big as it is on the Home Screen (owner, 2026-10-22: "make the app icon look the same size as on my
+    /// phone homescreen … and grow out"), its tile's outline there until it opens ("put a border on it to look like the app
+    /// on homescreen and then fade out the border … then it looks like we actually 'opened' the app").
+    static let iconSize: CGFloat = 62
+    /// The icon's ring at that size, before it grows (the icon: a 1024 px tile, a 530 px ring, a 46 px band, a 66 px dot at
+    /// about 40° past 12). The ring's size is its band's middle line.
+    static let startSize: CGFloat = iconSize * (530 - 46) / 1024
+    static let iconBand: CGFloat = iconSize * 46 / 1024
+    static let iconDot: CGFloat = iconSize * 66 / 1024
+    static let iconDotAngle: Double = 40 * .pi / 180
+    /// "shukr" inside the ring: off for now (owner, 2026-10-22: "forget the word shukr for now since it kinda ruins our
+    /// thing. we can worry ab it later").
+    static let showsWord = false
     /// Past every corner of the screen.
     private var portalSize: CGFloat { max(UIScreen.main.bounds.height, UIScreen.main.bounds.width) * 1.4 }
 
@@ -233,34 +244,55 @@ struct WelcomeMark: View {
         let toDashes = state.dashedTarget && !track.dashesInBand
         let grow = state.grow, portal = state.portal
         let size = portal ? portalSize : (grow ? Self.ringSize : Self.startSize)
+        // Before it grows it's the app icon (owner, 2026-10-22: "i just want it to originate from our app icon"): the raised
+        // soft ring and its green dot, there from the first frame, so the launch picks up where iOS's zoom from the icon
+        // leaves off. (Was a sage hairline drawing itself round the word.)
+        let icon = !grow && !portal
         ZStack {
-            // The ring: drawn as a hairline, then grown into the circle's track (the soft band under the soft ring: its
-            // width, surface and lift).
-            WelcomeRing(width: grow ? (toDashes ? UpcomingTrack.style.lineWidth : track.width) : 1.2)
-                .fill(grow ? (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity) : track.fill)
-                           : Color.sage.opacity(0.6))
-                .shadow(color: track.lifted && grow ? theme.shade : .clear, radius: 4, x: 2, y: 2)
-                .shadow(color: track.lifted && grow ? theme.light : .clear, radius: 6, x: -2, y: -2)
-                .mask {
-                    Circle()
-                        .trim(from: 0, to: state.ringDrawn || reduceMotion || state.startDrawn ? 1 : 0)
-                        .stroke(style: StrokeStyle(lineWidth: 16, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
+            // The icon's tile: its squircle's edge, as on the Home Screen, gone as it opens.
+            RoundedRectangle(cornerRadius: Self.iconSize * 0.225, style: .continuous)
+                .fill(theme.surface)
+                .shadow(color: .black.opacity(0.14), radius: 5, y: 2)
+                .overlay {
+                    RoundedRectangle(cornerRadius: Self.iconSize * 0.225, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
                 }
-                .shadow(color: Color.sage.opacity((state.ringDrawn || state.startDrawn) && !grow ? 0.45 : 0), radius: 8)
-                // Starts snug round the word, grows to the circle (frame, not scale, so the line keeps its own width).
+                .frame(width: Self.iconSize, height: Self.iconSize)
+                .scaleEffect(icon ? 1 : 1.6)
+                .opacity(icon && !reduceMotion ? 1 : 0)
+                // Gone in the grow's first moments, so no square shows inside the ring as it opens.
+                .animation(.easeOut(duration: 0.22), value: icon)
+            // The ring: the icon's raised band, grown into the circle's track (the soft band under the soft ring: its
+            // width, surface and lift).
+            WelcomeRing(width: icon ? Self.iconBand : (toDashes ? UpcomingTrack.style.lineWidth : track.width))
+                .fill(icon ? theme.surface : (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity) : track.fill))
+                .shadow(color: icon || track.lifted && grow ? theme.shade : .clear, radius: icon ? 1 : 4, x: icon ? 0.5 : 2, y: icon ? 0.5 : 2)
+                .shadow(color: icon || track.lifted && grow ? theme.light : .clear, radius: icon ? 1.5 : 6, x: icon ? -0.5 : -2, y: icon ? -0.5 : -2)
+                // Wide enough that the lift isn't clipped.
+                .mask { Circle().stroke(lineWidth: 44) }
+                // Starts as the icon round the word, grows to the circle (frame, not scale, so the band keeps its width).
                 .frame(width: size, height: size)
                 .opacity(reduceMotion || portal || (state.dashesIn && !track.dashesInBand) ? 0 : 1)
+            // The icon's dot, where it sits on the icon; it fades as the ring grows (not carried round to the prayer:
+            // the landing can be a dashed track, a missed prayer, the morning card or another page — owner).
+            Circle()
+                .fill(Color.sage)
+                .shadow(color: Color.sage.opacity(0.5), radius: 1.5)
+                .frame(width: Self.iconDot, height: Self.iconDot)
+                .offset(x: Self.startSize / 2 * sin(Self.iconDotAngle), y: -Self.startSize / 2 * cos(Self.iconDotAngle))
+                .scaleEffect(icon ? 1 : 0.6)
+                .opacity(icon && !reduceMotion ? 1 : 0)
+                .animation(.easeOut(duration: 0.22), value: icon)
             // The dashed track, when that's what the circle is showing: once the ring is there, its dashes appear one by
             // one from the top (owner), as the circle's own do.
             DashedRing(drawn: state.dashesIn || reduceMotion ? 1 : 0)
                 .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
                 .frame(width: Self.ringSize, height: Self.ringSize)
                 .opacity((state.dashesIn || reduceMotion && state.dashedTarget) && !portal ? 1 : 0)
-            wordmark
+            if Self.showsWord { wordmark
                 .scaleEffect(grow ? 0.9 : (portal ? 1.15 : 1))
                 .blur(radius: grow || portal ? 4 : 0)
-                .opacity(grow || portal ? 0 : 1)
+                .opacity(grow || portal ? 0 : 1) }
         }
         .allowsHitTesting(false)
     }
@@ -407,20 +439,27 @@ struct WelcomeOverlay: View {
         typealias T = CircleMotion.Opening
         WelcomeTarget.landed = false
         if fromBlack { withAnimation(T.blackAway) { blackOn = false } }
-        mark.lettersIn = true
         withAnimation(T.ringDraw) { mark.ringDrawn = true }
-
-        guard await CircleGate.pause(T.firstBeatDuration) else { return }
-        soft.impactOccurred(intensity: 0.55)          // lub…
-        withAnimation(T.shine) { mark.shine = true }
-        guard await CircleGate.pause(T.secondBeatDuration) else { return }
-        soft.impactOccurred(intensity: 1.0)           // …dub, as the ring closes
-
-        guard await CircleGate.pause(T.holdDuration) else { return }
+        if WelcomeMark.showsWord {
+            mark.lettersIn = true
+            guard await CircleGate.pause(T.firstBeatDuration) else { return }
+            soft.impactOccurred(intensity: 0.55)          // lub…
+            withAnimation(T.shine) { mark.shine = true }
+            guard await CircleGate.pause(T.secondBeatDuration) else { return }
+            soft.impactOccurred(intensity: 1.0)           // …dub, as the ring closes
+            guard await CircleGate.pause(T.holdDuration) else { return }
+        } else {
+            // The icon, as on the Home Screen, for a beat; then it opens.
+            guard await CircleGate.pause(T.iconHoldDuration) else { return }
+            soft.impactOccurred(intensity: 0.7)
+        }
+        var glided = false
         if !mark.inCircle, let c = circleCentre(), c != target {
             withAnimation(T.glide) { target = c }
+            glided = true
         }
-        guard await CircleGate.pause(T.beforeGrowDuration) else { return }
+        // With no word, the icon opens as soon as it's held (the wait was the word's).
+        guard await CircleGate.pause(WelcomeMark.showsWord || glided ? T.beforeGrowDuration : 0) else { return }
         if !WelcomeTarget.canLand {
             if mark.inCircle {
                 // Something came over the circle meanwhile (a widget's page): the circle is as it is under it (the
@@ -484,6 +523,8 @@ extension CircleMotion {
         static let inPlaceIn = Animation.easeOut(duration: CircleMotion.quick)
         /// From the sleep curtain: the black lifts as the word writes in.
         static let blackAway = Animation.easeInOut(duration: 0.7)
+        /// The app icon held, as on the Home Screen, before it opens into the circle.
+        static let iconHoldDuration: Double = 0.4
         /// "shukr" writing itself: each letter fades in, one step after the last.
         static let letter = Animation.easeOut(duration: 0.5)
         static let letterStepDuration: Double = 0.08

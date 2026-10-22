@@ -21,7 +21,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
 **Daily Ayah, 99 Names, welcome**
 - Ayah: tap to reveal once a day, share card in three looks, widget payload; the system top bar, see-through (back, the
   countdown, Share after the reveal) — a hidden bar switched off swipe-back (decision swipe-back-pages A). 99 Names: list (All / Learning / Known), page, flashcards, `namesKnown`.
-- Welcome (WelcomeAnimation.swift): cold launch only; the ring grows into the circle (`WelcomeTarget`).
+- Welcome (WelcomeAnimation.swift): cold launch only. It opens as the app icon at Home Screen size (62 pt tile, its edge and the raised ring + green dot, `WelcomeMark.iconSize`), held 0.4 s; then the tile and dot fade and the ring grows into the circle (`WelcomeTarget`; dashed track, portal, morning and the setup's hand-off land the same way). No word for now (`WelcomeMark.showsWord`, owner 2026-10-22). The launch screen is the page's grey (`LaunchSurface`), so no white flash.
 
 **Your Data + iCloud Backup** (YourDataPage.swift, YourDataDetails.swift, YourDataBackup.swift, YourDataICloud.swift; Settings → More → Your Data, the last row, with `YourDataBackupTag` trailing: "Backed up today" / "Backing up…" / orange "Check backup" / nothing when off)
 - A plain export page (owner: no drill-down pages, no soft look, no big buttons): hero, then each `DataKind` with its size — a check on the left, a sage ⓘ on the right → `DataKindSheet` (what it is, where it comes from, its files); Select All / Deselect All; Export = an outlined capsule in the list's footer with the .zip caption (CSVs + README + shukr-backup.json + photos/ + azkar-media/, via NSFileCoordinator .forUploading).

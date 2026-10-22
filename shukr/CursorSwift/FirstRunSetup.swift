@@ -1479,7 +1479,7 @@ private struct SetupOpening: View {
             circle
                 .frame(width: 200, height: 200)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { if !leaving { circleFrame = $0 } }
-                .scaleEffect(shrunk ? WelcomeMark.startSize / 200 : 1)
+                .scaleEffect(shrunk ? WelcomeMark.iconSize / 200 : 1)   // to the icon's size: the icon fades in over it
                 .offset(markOffset)
                 // At the end it stays (only its words go) until it has become the welcome's ring.
                 .opacity(stage >= 2 && !(leaving && !landsOnCircle) && !markShown ? 1 : 0)
