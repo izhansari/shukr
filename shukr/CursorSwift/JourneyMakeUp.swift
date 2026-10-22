@@ -21,7 +21,13 @@ struct JourneyMakeUpPage: View {
     /// Opened from Prayer scores' "N to make up ›": that prayer only, over all months (Frank's check: it opened on the
     /// month with "1 prayer" while the row said 103).
     var startOnly: String? = nil
+    /// Opened from the week ring's not-marked pill: this week only (owner, 2026-10-21: "its not a new Make Up page. its the
+    /// same page with a filter" — D, then the line under the title, 3).
+    var startWeek = false
     @State private var started = false
+    /// This week only, else every week: the line under the title says which, always (owner: "so that a user can easily
+    /// see if they're in all weeks or just this week"). The prayer tiles, the totals and the list all follow it.
+    @State private var weekOnly = false
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @Environment(PrayerViewModel.self) private var viewModel
@@ -82,7 +88,12 @@ struct JourneyMakeUpPage: View {
 
     /// Every month, always (owner, 2026-10-17: "Get rid of the switcher … and just always display all months").
     private let all = true
-    private func inScope(_ e: Entry) -> Bool { all || e.month == month }
+    private func inScope(_ e: Entry) -> Bool { (all || e.month == month) && (!weekOnly || e.dayStart >= Self.weekStart) }
+    /// This week's first prayer day (the calendar's first weekday), as the week ring counts it.
+    private static var weekStart: Date {
+        let today = PrayerDay.start()
+        return Calendar.current.dateInterval(of: .weekOfYear, for: today)?.start ?? today
+    }
     private func isSettling(_ e: Entry) -> Bool { settling[e.id] != nil }
 
     /// What the page shows, worked out in one pass per redraw: the months, their rows and totals, each prayer's count.
@@ -211,12 +222,13 @@ struct JourneyMakeUpPage: View {
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .principal) { JourneyMakeUpNavTitle(scroll: scroll) }
+            ToolbarItem(placement: .principal) { JourneyMakeUpNavTitle(scroll: scroll, weekOnly: weekOnly) }
         }
         .onAppear {
             guard !started else { return }
             started = true
             if let startOnly { only = startOnly }
+            if startWeek { weekOnly = true }
         }
         .task { await reload() }
     }
@@ -231,7 +243,8 @@ struct JourneyMakeUpPage: View {
     }
 
     private var caughtUpLine: String {
-        if let only { return "No \(only) left to make up." }
+        if let only { return weekOnly ? "No \(only) left from this week." : "No \(only) left to make up." }
+        if weekOnly { return "Nothing left from this week." }
         return all ? "Every prayer on the days you used shukr is marked." : "Nothing left from \(monthName(month))."
     }
 
@@ -247,8 +260,9 @@ struct JourneyMakeUpPage: View {
         let green = JourneyTileColor.of(.metGoal, dark: scheme == .dark)
         return VStack(alignment: .leading, spacing: 0) {
             JourneyMakeUpHead(missed: missed,
-                              words: missed == 1 ? "\(only ?? "prayer") missed" : "\(only.map { "\($0)s" } ?? "prayers") missed",
-                              scroll: scroll) { by in
+                              words: (missed == 1 ? "\(only ?? "prayer") missed" : "\(only.map { "\($0)s" } ?? "prayers") missed")
+                                + (weekOnly ? " this week" : ""),
+                              scroll: scroll, weekOnly: $weekOnly) { by in
                 if abs(by - foldBy) > 0.5 {
                     foldBy = by
                     scroll.foldDistance = by
@@ -641,6 +655,7 @@ private struct JourneyMakeUpHead: View {
     let missed: Int
     let words: String
     let scroll: JourneyMakeUpScroll
+    @Binding var weekOnly: Bool
     /// How far it folds, in points: the title block, what the number loses, and the gap above it.
     let folds: (_ by: CGFloat) -> Void
     @State private var titles: CGFloat?
@@ -659,10 +674,36 @@ private struct JourneyMakeUpHead: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("To make up").font(.system(size: 34, weight: .light, design: .rounded))
-                Text("Prayers left unmarked on days you used shukr.")
-                    .font(.system(size: 15, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
+                // The line under the title: which weeks, always shown (a grey capsule, Journey's plain pill — no sage), then
+                // what the page counts.
+                HStack(spacing: 8) {
+                    Menu {
+                        Button { pick(false) } label: {
+                            if weekOnly { Text("All weeks") } else { Label("All weeks", systemImage: "checkmark") }
+                        }
+                        Button { pick(true) } label: {
+                            if weekOnly { Label("This week", systemImage: "checkmark") } else { Text("This week") }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(weekOnly ? "This week" : "All weeks")
+                            Image(systemName: "chevron.down").font(.system(size: 9, weight: .medium))
+                        }
+                        .font(.system(size: 14, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 11).padding(.vertical, 5)
+                        .background(Capsule().fill(Color.primary.opacity(0.07)))
+                        .contentShape(Capsule())
+                    }
+                    .tint(.primary)   // a Menu tints its label with the accent; Journey's taps are ink
+                    .accessibilityLabel(weekOnly ? "This week" : "All weeks")
+                    .accessibilityHint("Shows this week only, or every week")
+                    Text("unmarked, on days you used shukr")
+                        .font(.system(size: 14, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                }
+                .padding(.top, 6)
             }
             .fixedSize(horizontal: false, vertical: true)
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { titles = $0; report() }
@@ -686,7 +727,13 @@ private struct JourneyMakeUpHead: View {
             .padding(.top, Self.gap - (Self.gap - Self.gapFolded) * f)
             .animation(.snappy, value: missed)
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)   // .combine swallowed the weeks menu for VoiceOver (Frank)
+    }
+
+    private func pick(_ week: Bool) {
+        guard week != weekOnly else { return }
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeInOut(duration: 0.25)) { weekOnly = week }
     }
 
     private func report() {
@@ -698,9 +745,11 @@ private struct JourneyMakeUpHead: View {
 /// The bar's small "To make up", coming in as the big title folds away.
 private struct JourneyMakeUpNavTitle: View {
     let scroll: JourneyMakeUpScroll
+    /// Folded, the title still says which weeks (the line under it has scrolled away).
+    var weekOnly = false
 
     var body: some View {
-        Text("To make up")
+        Text(weekOnly ? "To make up · This week" : "To make up")
             .font(.system(size: 17, weight: .regular, design: .rounded))
             .opacity(max(0, scroll.fold - 0.5) * 2)
             .accessibilityHidden(scroll.fold < 0.5)

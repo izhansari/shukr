@@ -394,6 +394,8 @@ struct JourneyPage: View {
     @State private var openMonth: JourneyMonthRoute?
     @State private var showMoments = false
     @State private var showMakeUp = false
+    /// To make up opens on This week (the week ring's "Make up ›"); every other way in opens on All weeks.
+    @State private var makeUpWeek = false
     @State private var showScores = false
     /// Prayer scores zooms out of the header's ring and back into it (iOS's zoom transition: the way back follows the finger).
     @Namespace private var scoresZoom
@@ -458,7 +460,10 @@ struct JourneyPage: View {
         // A month opens in place from the card (or This month), its days grow into the day page (JourneyTransitions.swift).
         .journeyMonthHost(month: $openMonth, log: log, stats: stats)
         .navigationDestination(isPresented: $showMoments) { MemoriesPage() }
-        .navigationDestination(isPresented: $showMakeUp) { JourneyMakeUpPage(month: JourneyLog.monthStart(today)) }
+        .navigationDestination(isPresented: $showMakeUp) {
+            JourneyMakeUpPage(month: JourneyLog.monthStart(today), startWeek: makeUpWeek)
+        }
+        .onChange(of: showMakeUp) { _, open in if !open { makeUpWeek = false } }
         .navigationDestination(isPresented: $showScores) {
             PrayerScoresPage().navigationTransition(.zoom(sourceID: "scores", in: scoresZoom))
         }
@@ -614,7 +619,8 @@ struct JourneyPage: View {
         if MetricsLook.on {
             JourneyWeekCard(log: log, compact: small, tight: tight,
                             onExpand: { openMonth = JourneyMonthRoute(month: $0, focus: false) },
-                            onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) })
+                            onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
+                            onMakeUp: { makeUpWeek = true; showMakeUp = true })
         } else {
             JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
                             onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },

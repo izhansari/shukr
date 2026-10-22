@@ -143,8 +143,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   Fable's critique: it read as "strong is halfway"). All of it sits in the Salah circle's raised band (11 pt, NeuRingTrack's
   surface, shade and light), the parts 6 pt inside it, the green with the Salah arc's glow (owner: "looks very similar to
   the Salah ring"). Days before the first mark ever are left off the ring. A tap on a pill or the tick
-  dims the rest; the centre says its count and words, and its line takes the line slot under the days ("17 · not marked" —
-  "Sun – Tue: fill them in. Today: make up 2."; the tick: "32 · for a strong week" — "Fill in Sun – Tue and make up 2
+  dims the rest; the centre says its count and words, and its line takes the line slot under the days; not marked with
+  prayers to make up shows "Sun – Tue: fill them in" over a grey "Make up 2 ›" pill → To make up on This week (owner:
+  "i have no door into making up prayers from the ring"); the tick: "32 · for a strong week" — "Fill in Sun – Tue and make up 2
   first…"); the same part or off a pill puts it back.
   No "up to 3" under below your goal (it read as if 3 were allowed with a prayer missed). Centre "15 of 35" over your goal's
   words ("in their windows"); a week that asks
@@ -278,7 +279,10 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   (The old Journey prayer sheet, 2026-10-15 — ring, window bar, wheel, map card, trash — was deleted.)
 - To make up (`JourneyMakeUpPage`): unmarked ended prayers on active days only, never excused; Made up = Qaza now. From
   Prayer scores (`startOnly:`) it opens with that prayer's tile on. Always all months (owner, 2026-10-17: no "<month> | All
-  months"). Top: the total missed, made up · % left, the bar, then five raised prayer tiles — Prayer scores' grade tiles,
+  months"). The line under the title is which weeks, always shown: a grey "All weeks ▾" / "This week ▾" capsule (a menu)
+  then "unmarked, on days you used shukr" (owner, 2026-10-21: "so that a user can easily see if they're in all weeks or
+  just this week"); This week scopes the total, the bar, the tiles and the list, the folded title says "To make up · This
+  week". The week ring's not-marked pill opens it on This week (`startWeek:`, "Make up N ›" in the card's line). Top: the total missed, made up · % left, the bar, then five raised prayer tiles — Prayer scores' grade tiles,
   each prayer's count over its name (a tap shows only it; the one on pressed in; none left faint); months newest first as pinned headings with "N left · N made up"; the month scrubber on the right edge is the
   Zikr wheel's dots (owner: not the soft look; > 3 months; the top month's dot bigger, a cleared month sage, a pill naming
   the month while dragging, a tick each). Made up keeps the row in place as "✓ Made up · Undo" for 3 s (`settling`; Undo = unmark; decision

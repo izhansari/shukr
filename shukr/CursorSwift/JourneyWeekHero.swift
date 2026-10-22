@@ -260,6 +260,9 @@ struct JourneyWeekCard: View {
     /// A day's dot tapped: its day page (owner, 2026-10-21: "tapping those days can just push the day ring page for now").
     var onDay: (Date) -> Void = { _ in }
     var opens: (Date) -> Bool = { _ in false }
+    /// The not-marked pill's "Make up ›": To make up on this week (owner, 2026-10-21: "i have no door into making up prayers
+    /// from the ring" — D, the same page on its This week line).
+    var onMakeUp: () -> Void = {}
     /// The most recent day with no record to ask about (NoRecordDays.next — Frank's flow), and the day the Pick sheet is
     /// open for. The question sits in the banked weeks' slot: the card never changes height for it.
     @State private var noRecord: [Date] = []
@@ -326,11 +329,39 @@ struct JourneyWeekCard: View {
             // One line: what keeps the week strong, or that it can't be now (owner, 2026-10-21: "you have to also account for
             // the messaging for when they miss their strong week"). Three lines' room always (the mid-week line's), centred:
             // nothing moves when it changes.
-            Text(lineNow ?? " ")
+            Group {
+                if let door = makeUpDoor {
+                    // The not-marked pill picked with prayers to make up: what to fill in (if any) over the way to make up,
+                    // the day page's grey capsule (DayMakeUpPill) in ink — Journey has no sage.
+                    VStack(spacing: 6) {
+                        if let fill = door.fill {
+                            Text(fill).lineLimit(1).minimumScaleFactor(0.8)
+                        }
+                        Button {
+                            triggerSomeVibration(type: .light)
+                            onMakeUp()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text("Make up \(door.count)")
+                                Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
+                            }
+                            .font(.system(size: 14, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Capsule().fill(Color.primary.opacity(0.07)))
+                            .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Make up \(door.count). Opens To make up on this week.")
+                    }
+                } else {
+                    Text(lineNow ?? " ")
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3).minimumScaleFactor(0.85)
+                }
+            }
                 .font(.system(size: 15, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(3).minimumScaleFactor(0.85)
                 .frame(height: 60)
                 .padding(.horizontal, 6)
                 .padding(.top, tight ? 8 : 12)
@@ -386,6 +417,14 @@ struct JourneyWeekCard: View {
     private var excusedNow: Bool { model?.excusedNow ?? false }
     /// The days the no-record question asks about, unless Excused Mode is on.
     private var asking: [Date] { excusedNow ? [] : noRecord }
+
+    /// The not-marked pill picked while this week has missed prayers: the way to make them up, with the days to fill in
+    /// (they aren't on To make up — no rows) said over it.
+    private var makeUpDoor: (count: Int, fill: String?)? {
+        guard picked == .notMarked, let m = model, !m.excusedNow, !m.owed.isEmpty else { return nil }
+        let days = m.week.days.filter(\.noRecord).map(\.date)
+        return (m.owed.count, days.isEmpty ? nil : "\(Self.dayList(days)): fill \(days.count == 1 ? "it" : "them") in")
+    }
 
     /// The line under the days: a picked part's own (when it has one), else the week's. While Excused Mode is on, the week's
     /// (a part's line would ask to make up or fill in).
