@@ -93,6 +93,10 @@ struct PrayerWindowMarkIntent: LiveActivityIntent {
     init(n: Int) { self.n = n }
     func perform() async throws -> some IntentResult {
         PrayerWindowLog.add("Mark prayed tapped on #\(n)")
+        await MarkLog.$source.withValue("live activity ✓") { await markCard() }
+        return .result()
+    }
+    private func markCard() async {
         if let mark = PrayerWindowHooks.mark {
             await mark(n)
         } else if let a = Activity<PrayerWindowAttributes>.activities.first(where: { $0.attributes.n == n }) {
@@ -101,8 +105,9 @@ struct PrayerWindowMarkIntent: LiveActivityIntent {
             let done = SharedStore.markPrayerComplete(named: st.label, start: st.start, end: st.end)
             await a.end(nil, dismissalPolicy: .immediate)
             PrayerWindowLog.add("Mark prayed #\(n) without the app's hooks: store mark \(done ? "done" : "not needed / failed"), card ended")
+        } else {
+            MarkLog.add("live activity ✓ · card #\(n) → NOT marked: the card wasn't found")
         }
-        return .result()
     }
 }
 

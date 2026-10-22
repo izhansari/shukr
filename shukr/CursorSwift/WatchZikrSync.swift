@@ -283,6 +283,7 @@ enum WatchZikrSync {
         let startDate = Date(timeIntervalSince1970: start), endDate = Date(timeIntervalSince1970: end)
         // Excused (Excused.swift): never marked; the watch hears back that it wasn't applied.
         if Excused.covers(start: startDate, end: endDate) {
+            MarkLog.$source.withValue("watch") { MarkLog.mark("not marked: excused", name: name, start: startDate, end: endDate) }
             if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, -1] }
             scheduleSend(); return
         }
@@ -296,6 +297,9 @@ enum WatchZikrSync {
         }()
         // Already prayed (on any of the day's rows for it): nothing to add.
         guard !rows.contains(where: \.isCompleted) else {
+            MarkLog.$source.withValue("watch") {
+                MarkLog.mark("not marked: already marked", name: name, start: startDate, end: endDate, row: rows.first(where: \.isCompleted))
+            }
             if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, -1] }   // not applied
             scheduleSend(); return
         }
@@ -303,6 +307,9 @@ enum WatchZikrSync {
         // after travel could mark a prayer that hasn't started here — scored Perfect before its time (Fable's review, gap 1).
         // Not applied, so the watch drops its local mark (as for an excused one).
         guard prayer.startTime <= tapped else {
+            MarkLog.$source.withValue("watch") {
+                MarkLog.mark("not marked: this row hadn't started at the tap (the watch's times differ)", name: name, start: startDate, end: endDate)
+            }
             if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, -1] }
             scheduleSend(); return
         }
@@ -320,6 +327,9 @@ enum WatchZikrSync {
             try context.save()
         } catch {
             print("⌚️ watch mark not saved: \(error)")
+            MarkLog.$source.withValue("watch") {
+                MarkLog.mark("NOT marked: save failed (\(error.localizedDescription))", name: name, start: startDate, end: endDate)
+            }
             // Tell the watch, so it stops showing it marked.
             let reply: [String: Any] = ["type": "markFailed", "name": name, "id": markID ?? "", "start": start]
             if WCSession.default.activationState == .activated {
@@ -327,6 +337,10 @@ enum WatchZikrSync {
                 if WCSession.default.isReachable { WCSession.default.sendMessage(reply, replyHandler: nil, errorHandler: nil) }
             }
             return
+        }
+        MarkLog.$source.withValue("watch") {
+            MarkLog.mark("marked", name: name, start: startDate, end: endDate, row: prayer, tap: tapped, location: MarkLog.lastAppFix(),
+                         note: "reached the phone \(Int(Date().timeIntervalSince(tapped))) s after the tap")
         }
         if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, at] }
         UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)

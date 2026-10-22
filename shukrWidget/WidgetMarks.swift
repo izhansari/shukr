@@ -33,10 +33,12 @@ struct MarkCompleteIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         let t0 = ContinuousClock.now
         WidgetPerf.log("mark \(prayerName) start")
-        if let hook = PrayerWindowHooks.widgetMark {
-            _ = await hook(prayerName, prayerStart, prayerEnd)
-        } else {
-            SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
+        await MarkLog.$source.withValue("widget ✓") {
+            if let hook = PrayerWindowHooks.widgetMark {
+                _ = await hook(prayerName, prayerStart, prayerEnd)
+            } else {
+                SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
+            }
         }
         WidgetPerf.log("mark \(prayerName) done \(WidgetPerf.ms(since: t0)) ms")
         return .result()
@@ -53,19 +55,30 @@ extension SharedStore {
     @discardableResult
     static func markPrayerComplete(named name: String, start: Date, end: Date) -> Bool {
         // Same rule as the app: a prayer that hasn't started can't be completed; nor one she's excused from.
-        guard start <= Date(), !Excused.covers(start: start, end: end), let container = widgetContainer else { return false }
+        guard start <= Date() else { MarkLog.mark("not marked: hasn't started", name: name, start: start, end: end); return false }
+        guard !Excused.covers(start: start, end: end) else { MarkLog.mark("not marked: excused", name: name, start: start, end: end); return false }
+        guard let container = widgetContainer else {
+            MarkLog.mark("NOT marked: the store couldn't open", name: name, start: start, end: end); return false
+        }
         let context = ModelContext(container)
+        var made = false
 
         // The app creates today's rows when it opens; if it hasn't opened today, make this one.
         let prayer = fetchPrayer(named: name, on: start, in: context) ?? {
-            let made = PrayerModel(name: name, startTime: start, endTime: end, dateAtMake: start)
-            context.insert(made)
-            return made
+            made = true
+            let row = PrayerModel(name: name, startTime: start, endTime: end, dateAtMake: start)
+            context.insert(row)
+            return row
         }()
-        guard !prayer.isCompleted else { return false }
+        guard !prayer.isCompleted else {
+            MarkLog.mark("not marked: already marked", name: name, start: start, end: end, row: prayer); return false
+        }
         // The row's own start, not the caller's: a widget or banner drawn at another place (or before a times change)
         // could mark a prayer that hasn't started here yet — scored Perfect before its time (mark audit #7).
-        guard prayer.startTime <= Date() else { return false }
+        guard prayer.startTime <= Date() else {
+            MarkLog.mark("not marked: this row starts \(prayer.startTime.formatted(date: .omitted, time: .shortened)) (the caller's times differ)",
+                         name: name, start: start, end: end); return false
+        }
 
         prayer.isCompleted = true
         prayer.setPrayerScore()                                        // scored now, at the tap
@@ -73,8 +86,10 @@ extension SharedStore {
         prayer.cancelUpcomingNudges()                                  // app repeats this on next open in case extensions can't
         do { try context.save() } catch {
             print("❌ markPrayerComplete(\(name)) save failed: \(error)")
-            return false
+            MarkLog.mark("NOT marked: save failed (\(error.localizedDescription))", name: name, start: start, end: end); return false
         }
+        MarkLog.mark("marked (store)", name: name, start: start, end: end, row: prayer, location: MarkLog.lastAppFix(),
+                     note: made ? "row made here (the app hadn't opened today)" : nil)
 
         let group = UserDefaults(suiteName: appGroup)
         group?.set(true, forKey: widgetWroteStoreKey)
@@ -114,11 +129,9 @@ struct MarkFromListIntent: LiveActivityIntent {   // in shukr's process, like Ma
         let store = UserDefaults(suiteName: SharedStore.appGroup)
         store?.set(true, forKey: WidgetListState.openKey)
         store?.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
-        let marked: Bool
-        if let hook = PrayerWindowHooks.widgetMark {
-            marked = await hook(prayerName, prayerStart, prayerEnd)
-        } else {
-            marked = SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
+        let marked: Bool = await MarkLog.$source.withValue("widget list") {
+            if let hook = PrayerWindowHooks.widgetMark { return await hook(prayerName, prayerStart, prayerEnd) }
+            return SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
         }
         if !marked {
             WidgetCenter.shared.reloadAllTimelines()   // nothing marked: still keep the list up
@@ -205,5 +218,90 @@ struct textToggleIntent: AppIntent {
             print("widgetTextToggle: \(store.bool(forKey: "widgetTextToggle"))")
         }
         return .result()
+    }
+}
+
+// MARK: - The mark log
+
+/// Every prayer mark and unmark, wherever it came from (owner, 2026-10-22: "can we tell from when something is marked what
+/// source it came from … are we able to get the time properly? Are we able to get the location properly? … put some logging
+/// on my phone, and then I'll go ahead and test it out throughout the week"): one line each in the app group's
+/// Library/Application Support/marks.log, from the app and the widget extension alike, the last ~3000 lines. DEBUG builds
+/// (his phones). Read in My Dev Stuff → Mark log; scripts/pull-feedback.sh pulls it.
+/// A line: when · process · where it came from · the prayer, its prayer day and window → what happened · the time stored
+/// (and how far from the tap) · its word · where the location came from.
+enum MarkLog {
+    /// Where the mark came from. Each entry point sets it around its mark (a task-local, so the shared paths underneath —
+    /// the app's toggle, the store's mark — know it); "app" when nothing did (the list, the circle, Journey).
+    @TaskLocal static var source = "app"
+
+    static var url: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: SharedStore.appGroup)?
+            .appendingPathComponent("Library/Application Support/marks.log", isDirectory: false)
+    }
+    private static let queue = DispatchQueue(label: "shukr.markLog")
+
+    /// One mark's line. `tap` is when the person tapped (the watch's own time; else now); `location` says where the saved
+    /// location came from (`fix(_:raw:)` / `lastAppFix()`).
+    static func mark(_ result: String, name: String, start: Date, end: Date, row: PrayerModel? = nil, tap: Date = Date(),
+                     location: String? = nil, note: String? = nil) {
+        var parts = ["\(source) · \(name) (day \(PrayerDay.key(forRow: name, startingAt: start)), \(clock(start))–\(clock(end))) → \(result)"]
+        if let row, row.isCompleted {
+            let stored = row.timeAtComplete.map { at -> String in
+                let off = Int(at.timeIntervalSince(tap).rounded())
+                return "stored \(clock(at, seconds: true))" + (abs(off) < 2 ? "" : " (\(off > 0 ? "+" : "")\(off) s from the tap)")
+            } ?? "no time stored"
+            parts.append(stored)
+            parts.append(row.gradeWord ?? "no grade")
+            if let kind = row.markKind { parts.append("kind \(kind)") }
+            if row.dayKey != PrayerDay.key(forRow: name, startingAt: start) { parts.append("⚠︎ row's day \(row.dayKey)") }
+        }
+        if let location { parts.append("location: \(location)") }
+        if let note { parts.append(note) }
+        add(parts.joined(separator: " · "))
+    }
+
+    /// A line of its own (a fresh location landing after the mark, an unmark).
+    static func add(_ line: String) {
+        #if DEBUG
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "MMM d HH:mm:ss"
+        let text = "\(f.string(from: Date()))  [\(Bundle.main.bundleURL.pathExtension == "appex" ? "ext" : "app")] \(line)\n"
+        print("📍 \(line)")
+        queue.sync {
+            guard let url else { return }
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() }
+            else { try? Data(text.utf8).write(to: url) }
+            // Weeks of it, never too big: the last ~3000 lines once it passes 600 KB.
+            if let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 600_000,
+               let all = try? String(contentsOf: url, encoding: .utf8) {
+                try? (all.split(separator: "\n").suffix(3000).joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
+            }
+        }
+        #endif
+    }
+
+    /// The app's own fix as saved (`raw` = what the location manager had, used or not).
+    static func fix(_ used: CLLocation?, raw: CLLocation?) -> String {
+        if let used { return "this phone's fix ±\(Int(used.horizontalAccuracy)) m, \(age(used.timestamp)) old" }
+        guard let raw else { return "none (no fix yet)" }
+        return "none (the fix was ±\(Int(raw.horizontalAccuracy)) m, \(age(raw.timestamp)) old — too rough or too old)"
+    }
+    /// The store path's location: the app's last fix, shared through the app group, if under 30 min old (no accuracy kept).
+    static func lastAppFix() -> String {
+        let at = UserDefaults(suiteName: SharedStore.appGroup)?.double(forKey: SharedStore.lastFixAtKey) ?? 0
+        guard at > 0 else { return "none (the app has no fix saved)" }
+        let when = Date(timeIntervalSince1970: at)
+        return SharedStore.lastKnownLocation() == nil ? "none (the app's last fix is \(age(when)) old)"
+            : "the app's last fix, \(age(when)) old (its accuracy isn't kept)"
+    }
+
+    private static func age(_ d: Date) -> String {
+        let s = max(Int(Date().timeIntervalSince(d)), 0)
+        return s < 90 ? "\(s) s" : s < 5400 ? "\(s / 60) min" : "\(s / 3600) h"
+    }
+    private static func clock(_ d: Date, seconds: Bool = false) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = seconds ? "h:mm:ss a" : "h:mm a"
+        return f.string(from: d)
     }
 }

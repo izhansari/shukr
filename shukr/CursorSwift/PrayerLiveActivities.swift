@@ -212,6 +212,7 @@ enum PrayerLiveActivities {
         // showed it marked (in memory, lost at the next launch) while the widget didn't (mark audit #4; owner, 2026-10-18).
         guard !StoreFallback.active else {
             PrayerWindowLog.add("\(from) mark \(name) → not marked (the store couldn't open)")
+            MarkLog.mark("NOT marked: the saved data couldn't open (StoreFallback)", name: name, start: start, end: end)
             return false
         }
         if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) {
@@ -284,6 +285,7 @@ enum PrayerLiveActivities {
         }
         guard let fix else {
             PrayerWindowLog.add("widget mark \(name): no fresh location within 8 s · \(authText)\(note)")
+            MarkLog.add("\(MarkLog.source) · \(name) → no fresh location within 8 s (\(authText)\(note)): it keeps none")
             return
         }
         if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) {
@@ -297,6 +299,8 @@ enum PrayerLiveActivities {
             }
         }
         PrayerWindowLog.add(String(format: "widget mark \(name): location ±%d m in %.1f s · \(authText)", Int(fix.horizontalAccuracy), Date().timeIntervalSince(t0)))
+        MarkLog.add(String(format: "\(MarkLog.source) · \(name) → fresh location saved after the mark: ±%d m in %.1f s (\(authText))",
+                           Int(fix.horizontalAccuracy), Date().timeIntervalSince(t0)))
     }
 
     // MARK: The plan

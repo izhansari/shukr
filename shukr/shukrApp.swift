@@ -712,12 +712,15 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             if let name = userInfo["prayerName"] as? String,
                let start = userInfo["prayerStart"] as? TimeInterval,
                let end = userInfo["prayerEnd"] as? TimeInterval {
-                let done = SharedStore.markPrayerComplete(named: name, start: Date(timeIntervalSince1970: start), end: Date(timeIntervalSince1970: end))
+                let done = MarkLog.$source.withValue("notification") {
+                    SharedStore.markPrayerComplete(named: name, start: Date(timeIntervalSince1970: start), end: Date(timeIntervalSince1970: end))
+                }
                 print(done ? "✅ \(name) marked complete from the notification" : "ℹ️ \(name) not marked (not started, already complete, or store unavailable)")
                 // In front (audit B7): the page reconciles now — the list showed it unmarked until the next activation.
                 if done { DispatchQueue.main.async { NotificationCenter.default.post(name: SharedStore.markedElsewhere, object: nil) } }
             } else {
                 print("ℹ️ MARK_PRAYED_ACTION on a notification without prayer info (a test one?)")
+                MarkLog.add("notification · \"I already prayed\" → NOT marked: the notification had no prayer info")
             }
             completionHandler()
 

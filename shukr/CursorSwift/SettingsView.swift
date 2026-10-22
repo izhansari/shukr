@@ -788,6 +788,9 @@ struct SettingsView: View {
                         .accentColor(Color.sage)   // the rows' icons take the accent, not the tint
 
                         Section {
+                            // Every mark from anywhere — source, time stored, location — for a week of testing on the phone
+                            // (owner, 2026-10-22: "which marking mediums work and which tend to have issues"). New: blue.
+                            NavigationLink { MarkLogPage() } label: { Label("Mark log", systemImage: "list.bullet.rectangle").foregroundStyle(.blue) }
                             // The Live Activity card's tuner (was under Live Activities on the page).
                             Button("Live Activity card tuner…") { showLATuner = true }
                             // Every notification shukr sends, to this phone 6 s apart (lock it to see).

@@ -526,6 +526,8 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         // never asks about it (LateMarks).
         if date > prayer.endTime { prayer.markKind = MarkKind.madeUp.rawValue }
         prayer.setPrayerScore(atDate: date)
+        MarkLog.mark("marked (Journey / a set time)", name: prayer.name, start: prayer.startTime, end: prayer.endTime, row: prayer,
+                     tap: date, location: "none (marked for a time already gone: no spot)")
         prayer.cancelUpcomingNudges()
         PrayerCompletionHaptics.play()
         calculateDayScore(for: prayer.dayStart)
@@ -565,6 +567,15 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
     /// (rescored in its window); otherwise it's kept as a make-up. Either way it's never asked again.
     @MainActor func answerLateMark(_ prayer: PrayerModel, _ reply: LateMarkAsk.Reply) {
         guard prayer.isCompleted, prayer.markKind == nil else { return }
+        defer {
+            let answer: String = switch reply {
+            case .madeUp: "made up"
+            case .noTime: "in its window, no time"
+            case .at(let date): "prayed at \(date.formatted(date: .omitted, time: .shortened))"
+            }
+            MarkLog.mark("late mark answered at the next open: \(answer)", name: prayer.name, start: prayer.startTime,
+                         end: prayer.endTime, row: prayer, tap: prayer.timeAtComplete ?? Date())
+        }
         switch reply {
         case .madeUp:
             prayer.markKind = MarkKind.madeUp.rawValue
@@ -629,6 +640,7 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         // still works).
         if !prayer.isCompleted, Excused.covers(start: prayer.startTime, end: prayer.endTime) {
             triggerSomeVibration(type: .light)
+            MarkLog.mark("not marked: excused (asked whether she's back)", name: prayer.name, start: prayer.startTime, end: prayer.endTime)
             // Ask whether she's back (owner: never a silent no); the Salah page shows the question.
             NotificationCenter.default.post(name: Excused.askResume, object: prayer)
             return
@@ -652,6 +664,8 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
                 }
                 prayer.setPrayerScore()
                 prayer.cancelUpcomingNudges()
+                MarkLog.mark("marked", name: prayer.name, start: prayer.startTime, end: prayer.endTime, row: prayer,
+                             location: MarkLog.fix(fix, raw: ENV_LocationManager.manager.location))
                 // The completion moment: haptic + flourish on the circle + the row's pop (PrayerCompletionFX).
                 PrayerCompletionHaptics.play()
                 let window = prayer.endTime.timeIntervalSince(prayer.startTime)
@@ -662,6 +676,7 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
             } else {
                 triggerSomeVibration(type: .medium)
                 prayer.resetPrayer()
+                MarkLog.mark("unmarked", name: prayer.name, start: prayer.startTime, end: prayer.endTime)
                 PrayerPhotos.discard(for: prayer)
                 // A day can hold two completed rows of one prayer (a store salvage, a legacy import): the others go
                 // too, or the next reload picks one and it's still prayed (mark audit #9; the widget's and the watch's
@@ -694,6 +709,8 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
                     }
                 }
             }
+        } else {
+            MarkLog.mark("not marked: hasn't started", name: prayer.name, start: prayer.startTime, end: prayer.endTime)
         }
     }
 

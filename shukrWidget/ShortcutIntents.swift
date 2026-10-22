@@ -926,7 +926,7 @@ struct MarkCurrentPrayerIntent: LiveActivityIntent {
             return .result(value: PrayerMarkNow.grade(c, at: at), dialog: "\(c.name) is already marked as prayed.", view: card(at))
         }
         let now = Date()
-        guard await PrayerMarkNow.mark(c) else { throw PrayerTimeUnavailable() }
+        guard await PrayerMarkNow.mark(c, from: "siri / shortcut") else { throw PrayerTimeUnavailable() }
         let at = SharedStore.markedTime(of: c.name, start: c.start) ?? now
         let grade = PrayerMarkNow.grade(c, at: at)   // graded at the stored time, as the iOS 26 one
         return .result(value: grade, dialog: "\(PrayerMarkNow.spoken(c, at: at))", view: card(at))
@@ -1188,7 +1188,7 @@ struct MarkPrayerFromControlIntent: LiveActivityIntent {
         if SharedStore.markedTime(of: c.name, start: c.start) != nil {
             return .result(dialog: "\(c.name) is already marked. Change it in shukr.")
         }
-        guard await PrayerMarkNow.mark(c) else { throw PrayerTimeUnavailable() }
+        guard await PrayerMarkNow.mark(c, from: "control center") else { throw PrayerTimeUnavailable() }
         let spoken = PrayerMarkNow.spoken(c, at: SharedStore.markedTime(of: c.name, start: c.start) ?? Date())
         return .result(dialog: "\(spoken)")
     }

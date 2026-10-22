@@ -137,6 +137,12 @@ PY
   if fetch Library/Caches/pinch.log "$dir/pinch.log"; then
     echo "  ⌚️ pinch log → $dir/pinch.log ($(wc -l < "$dir/pinch.log" | tr -d ' ') lines)"
   fi
+  # Every prayer mark from anywhere (MarkLog: source, time stored, location), and the Live Activities' own log.
+  for log in marks live-activities; do
+    if fetch "Library/Application Support/$log.log" "$dir/$log.log"; then
+      echo "  📍 $log log → $dir/$log.log ($(wc -l < "$dir/$log.log" | tr -d ' ') lines)"
+    fi
+  done
   mediaLine="  media: $copied copied, $had already mirrored"
   [[ $gone -gt 0 ]] && mediaLine="$mediaLine, $gone missing on the phone"
   echo "$mediaLine"

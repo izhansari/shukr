@@ -3,6 +3,15 @@
 Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines here: current behaviour only,
 ≤ ~15 lines a feature; the story goes in the commit message. History: docs/history/.
 
+**The mark log** (DEBUG; owner 2026-10-22: "which marking mediums work and which tend to have issues"): every mark and
+unmark from anywhere, one line each, in the app group's Library/Application Support/marks.log (`MarkLog`, WidgetMarks.swift;
+both processes; the last ~3000 lines): the source (widget ✓ · widget list · live activity ✓ · siri / shortcut · control
+center · shortcut card · notification · watch · app), the prayer, its prayer day and window, what happened (marked, or why
+not), the time stored and its distance from the tap, the grade, and where the location came from (this phone's fix ±m and
+age · the app's last shared fix and age, no accuracy kept · none, and why). An entry point sets `MarkLog.$source` around its
+mark; the toggle, the store's mark and the watch's write the line. My Dev Stuff → Mark log shows it, a tally per source on
+top; `scripts/pull-feedback.sh` pulls marks.log and live-activities.log.
+
 **Widgets** (shukrWidget/, MoreWidgets.swift)
 - A marked row in the widget's times list → "Unmark …?" in the app: a UIKit alert in its own window over anything
   (`OverlayAlert`); it waits through the setup / the opening, and a tasbeeh session is paused first

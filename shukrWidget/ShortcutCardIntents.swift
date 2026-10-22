@@ -25,10 +25,15 @@ enum PrayerMarkNow {
         return PrayerWindows.pick(.previous, now: now).flatMap { p in
             PrayerWindows.today(now).contains { $0.start == p.start } && !done.contains(p.name) ? p : nil }
     }
-    static func mark(_ c: PrayerWindows.Window) async -> Bool {
-        if Excused.covers(start: c.start, end: c.end) { return false }
-        if let hook = PrayerWindowHooks.widgetMark { return await hook(c.name, c.start, c.end) }
-        return SharedStore.markPrayerComplete(named: c.name, start: c.start, end: c.end)
+    /// `source`: who asked, for the mark log (MarkLog).
+    static func mark(_ c: PrayerWindows.Window, from source: String) async -> Bool {
+        await MarkLog.$source.withValue(source) {
+            if Excused.covers(start: c.start, end: c.end) {
+                MarkLog.mark("not marked: excused", name: c.name, start: c.start, end: c.end); return false
+            }
+            if let hook = PrayerWindowHooks.widgetMark { return await hook(c.name, c.start, c.end) }
+            return SharedStore.markPrayerComplete(named: c.name, start: c.start, end: c.end)
+        }
     }
     static func grade(_ c: PrayerWindows.Window, at: Date) -> String {
         PrayerScoring.grade(for: PrayerScoring.score(start: c.start, end: c.end, markedAt: at)).rawValue
@@ -64,7 +69,7 @@ struct MarkPrayerFromCardIntent: LiveActivityIntent {
     init(_ w: PrayerWindows.Window) { name = w.name; start = w.start; end = w.end }
     func perform() async throws -> some IntentResult {
         let w: PrayerWindows.Window? = if let name, let start, let end { .init(name: name, start: start, end: end) } else { PrayerMarkNow.target() }
-        if let w, SharedStore.markedTime(of: w.name, start: w.start) == nil { _ = await PrayerMarkNow.mark(w) }
+        if let w, SharedStore.markedTime(of: w.name, start: w.start) == nil { _ = await PrayerMarkNow.mark(w, from: "shortcut card") }
         return .result()
     }
 }
@@ -204,7 +209,7 @@ struct MarkPrayedNowIntent: LiveActivityIntent {
             return .init(value: PrayerMarkNow.grade(c, at: at), dialog: "\(c.name) is already marked as prayed.", card: PrayedCardIntent(c))
         }
         let now = Date()
-        let marked = await PrayerMarkNow.mark(c)
+        let marked = await PrayerMarkNow.mark(c, from: "siri / shortcut")
         let at = SharedStore.markedTime(of: c.name, start: c.start) ?? now
         let grade = PrayerMarkNow.grade(c, at: at)
         guard marked else {   // review: it said "marked" even when nothing was
