@@ -288,7 +288,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   each prayer's count over its name (a tap shows only it; the one on pressed in; none left faint); months newest first as pinned headings with "N left · N made up"; the month scrubber on the right edge is the
   Zikr wheel's dots (owner: not the soft look; > 3 months; the top month's dot bigger, a cleared month sage, a pill naming
   the month while dragging, a tick each). Made up keeps the row in place as "✓ Made up · Undo" for 3 s (`settling`; Undo = unmark; decision
-  makeup-made-feedback A), then it leaves the list (made up = marked on a later prayer day); a month with nothing left drops
+  makeup-made-feedback A), then it leaves the list (made up = PrayerState .madeUp, marked after its window — same prayer day too; was "a later prayer day", which lost same-day make-ups, 2026-10-22); a month with nothing left drops
   out; "✓ N made up · Show" under the total (`journey.showMadeUp`, Reminders' Show Completed — owner: not folded under each
   month) puts them back in their months, greyed, by date; an empty side shows "All caught up" (a check drawn in + a
   success buzz). A row opens its sheet (decision makeup-row-tap: kept).
