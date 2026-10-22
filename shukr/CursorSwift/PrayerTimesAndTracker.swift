@@ -454,7 +454,10 @@ struct PrayerTimesView: View {
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
             .scrollPosition(id: $scrollPage)
-            .defaultScrollAnchor(.center)
+            // Opens on the Salah page: a third of the way along four pages (content 4 widths, 3 to scroll). `.center` was right
+            // for three pages; with four it opened half on Salah, half on Journey, the opening drawn off to the side (owner,
+            // 2026-10-22: "opening animation is messed up btw now").
+            .defaultScrollAnchor(UnitPoint(x: 1.0 / 3, y: 0.5))
             .modifier(PagerLock(live: live))     // .scrollDisabled(live.pagerLocked), see PagerLiveState
             .environment(live)
             .ignoresSafeArea(edges: .bottom)
