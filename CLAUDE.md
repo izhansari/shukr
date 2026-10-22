@@ -4,7 +4,8 @@ iOS SwiftUI app (iOS 18.0+, SwiftData, WidgetKit extension, adhan-swift). Prayer
 tracker, qibla, tasbeeh/zikr counter, daily zikr tasks, duas, daily ayah. No CI, no tests
 beyond Xcode templates. Build/run happens in Xcode on the owner's machine. scripts/: install.sh (his phones), testflight.sh,
 asc.py, whatsnew.py, pull-feedback.sh, circle-check.sh, sim-sign.sh (team-signed sim build, for App Shortcuts),
-perf-paging.sh + perf-frames.py (swipe hitches on his phone); the team's board scripts live in shukrGit/board/. A local agent can build with
+perf-paging.sh + perf-frames.py (swipe hitches on his phone), disk-clean.sh (his "clean disk": dry run, then `--go`;
+only rebuildable stuff, nothing touched in the last hour); the team's board scripts live in shukrGit/board/. A local agent can build with
 `xcodebuild -project shukr.xcodeproj -scheme shukr -destination 'id=<your own sim's udid>'`.
 
 Layout: `shukr/` app target (most UI in `CursorSwift/` — `PrayerTimesAndTracker.swift` is the Salah page + pager's view, its parts beside it since 2026-10-20: Pager, PagerChrome,
