@@ -65,6 +65,9 @@ struct JourneyGoalRing: View, Animatable {
     /// The strong tick (off while Excused Mode is on: nothing is asked of the week then).
     var tickShown = true
     var onPick: (Part?) -> Void = { _ in }
+    /// Hold and drag round the ring: the part under the finger, set (not toggled) as it passes (owner, 2026-10-22: "make
+    /// it so we can hold and drag to select different pills … it keeps selecting strong" — the grid's hold, JourneyHoldPick).
+    var onScrub: (Part) -> Void = { _ in }
     var animatableData: AnimatableNumbers {
         get { values }
         set { values = newValue }
@@ -72,17 +75,23 @@ struct JourneyGoalRing: View, Animatable {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @State private var size: CGSize = .zero
+    /// The pager's pan, held off while the finger scrubs the ring (Journey is a pager page; the grid's hold did the same).
+    @Environment(PagerLiveState.self) private var pagerLive: PagerLiveState?
+    /// A hold is running (its release isn't a tap), and just ended (the tap that may follow the release is ignored).
+    @State private var scrubbing = false
+    @State private var scrubEnded = Date.distantPast
     /// The parts' own width inside the band (6 pt at the card's 11: the Salah arc's `AliveRingTuning.fine.band`).
     private var arcWidth: CGFloat { (lineWidth * 0.55).rounded() }
 
     init(counts: [Int], picked: Part?, slack: Int, lineWidth: CGFloat, tickShown: Bool = true,
-         onPick: @escaping (Part?) -> Void = { _ in }) {
+         onPick: @escaping (Part?) -> Void = { _ in }, onScrub: @escaping (Part) -> Void = { _ in }) {
         let alphas = Part.allCases.map { picked == nil || picked == $0 ? 1.0 : 0.22 }
         values = AnimatableNumbers(v: counts.map(Double.init) + alphas)
         self.slack = slack
         self.lineWidth = lineWidth
         self.tickShown = tickShown
         self.onPick = onPick
+        self.onScrub = onScrub
     }
 
     /// Room outside the band for the tick's word.
@@ -203,7 +212,11 @@ struct JourneyGoalRing: View, Animatable {
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
         .contentShape(Rectangle())
-        .gesture(SpatialTapGesture().onEnded { pick(at: $0.location) })
+        .gesture(SpatialTapGesture().onEnded { tap in
+            guard !scrubbing, Date().timeIntervalSince(scrubEnded) > 0.3 else { return }
+            onPick(hit(at: tap.location, scrub: false))
+        })
+        .gesture(JourneyHoldPick(hold: JourneyHomeCard.holdTime) { state, p, _ in held(state, p) })
         .padding(-Self.spill)
         .background { band }
         .accessibilityHidden(true)
@@ -226,10 +239,31 @@ struct JourneyGoalRing: View, Animatable {
         .allowsHitTesting(false)
     }
 
-    /// What's under a tap: the tick (within a finger of it; on a pill, only its word outside the band — a single missed prayer
-    /// is no wider than the tick's finger), a pill, the hairline — or nothing (inside or outside the band), which puts the
-    /// ring back.
-    private func pick(at point: CGPoint) {
+    /// The hold: the pager's pan off and the part under the finger picked; each new part as the finger passes it (a soft buzz);
+    /// let go, the pager back and the pick stays.
+    private func held(_ state: UIGestureRecognizer.State, _ p: CGPoint) {
+        switch state {
+        case .began:
+            scrubbing = true
+            if pagerLive?.pagerLocked == false { pagerLive?.pagerLocked = true }
+            triggerSomeVibration(type: .medium)
+            if let part = hit(at: p, scrub: true) { onScrub(part) }
+        case .changed:
+            guard scrubbing, let part = hit(at: p, scrub: true) else { return }
+            onScrub(part)
+        default:
+            guard scrubbing else { return }
+            scrubbing = false
+            scrubEnded = Date()
+            if pagerLive?.pagerLocked == true { pagerLive?.pagerLocked = false }
+        }
+    }
+
+    /// What's under the finger. The band is the parts' (owner, 2026-10-22: tapping the not-marked pill "keeps selecting
+    /// strong" — the tick took any touch within a finger of it, on the band too); the tick is only its word, outside the band.
+    /// A tap off the band and the word: nothing (the ring back). A scrub goes by the angle alone, however far the finger
+    /// drifts in or out, so it keeps tracking round the ring.
+    private func hit(at point: CGPoint, scrub: Bool) -> Part? {
         let r = Self.radius(size, lineWidth: lineWidth)
         let dx = point.x - size.width / 2, dy = point.y - size.height / 2
         let d = (dx * dx + dy * dy).squareRoot()
@@ -237,15 +271,15 @@ struct JourneyGoalRing: View, Animatable {
         if deg < 0 { deg += 360 }
         let L = Self.layout(count, slack: slack, tick: tickShown)
         let unit = 360 / L.total
-        if let t = L.tick, d > r - lineWidth / 2 - 16, d < r + lineWidth / 2 + 30 {
+        let outer = r + lineWidth / 2
+        if let t = L.tick, d > outer + 4, d < outer + 34 {
             var off = abs(deg - t * unit).truncatingRemainder(dividingBy: 360)
             off = min(off, 360 - off)
-            if off * .pi / 180 * r < 16, !L.tickOnPill || d > r + lineWidth / 2 { return onPick(.tick) }
+            if off * .pi / 180 * r < 22 { return .tick }
         }
-        guard abs(d - r) < lineWidth / 2 + 16 else { return onPick(nil) }
+        if !scrub, abs(d - r) > lineWidth / 2 + 14 { return nil }
         let u = deg / unit
-        let hit = L.runs.first { u >= $0.from && u < $0.to && $0.to - $0.from > 0.5 }
-        onPick(hit?.part)
+        return L.runs.first { u >= $0.from && u < $0.to && $0.to - $0.from > 0.5 }?.part
     }
 }
 
@@ -315,6 +349,10 @@ struct JourneyWeekCard: View {
                                 lineWidth: lineWidth, tickShown: !excusedNow) { part in
                     if part != nil || picked != nil { triggerSomeVibration(type: .light) }
                     picked = part == picked ? nil : part
+                } onScrub: { part in
+                    guard part != picked else { return }
+                    triggerSomeVibration(type: .soft)
+                    picked = part
                 }
                     .frame(width: ringSide, height: ringSide)
                     .animation(.smooth(duration: CircleMotion.quick), value: model?.week)

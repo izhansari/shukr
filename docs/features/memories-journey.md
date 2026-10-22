@@ -140,7 +140,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   goal (light grey), then one hollow pill, "not marked" — the missed prayers and the days with no record together (owner,
   option B: simpler, and it never calls a day with no record missed), past below. The "strong" tick is the finish line, fixed: 3 short
   of what the week asks (the top on Prayed: every prayer); it no longer moves onto the not-marked pill (owner, 2026-10-21,
-  Fable's critique: it read as "strong is halfway"). All of it sits in the Salah circle's raised band (11 pt, NeuRingTrack's
+  Fable's critique: it read as "strong is halfway"). A touch on the band is the part under it; the tick is picked by its word
+  only. Hold (0.3 s) and drag round the ring: each part as the finger passes, the pager's pan off while held (the grid's
+  JourneyHoldPick; owner, 2026-10-22: "hold and drag to select different pills … it keeps selecting strong"). All of it sits in the Salah circle's raised band (11 pt, NeuRingTrack's
   surface, shade and light), the parts 6 pt inside it, the green with the Salah arc's glow (owner: "looks very similar to
   the Salah ring"). Days before the first mark ever are left off the ring. A tap on a pill or the tick
   dims the rest; the centre says its count and words, and its line takes the line slot under the days; not marked with
