@@ -262,7 +262,7 @@ struct JourneyWeekCard: View {
     var opens: (Date) -> Bool = { _ in false }
     /// The most recent day with no record to ask about (NoRecordDays.next — Frank's flow), and the day the Pick sheet is
     /// open for. The question sits in the banked weeks' slot: the card never changes height for it.
-    @State private var noRecord: Date?
+    @State private var noRecord: [Date] = []
     /// This visit to Journey has been counted for the question's 3 (once per page, not per redraw).
     @State private var visitCounted = false
     @State private var filling: FillDay?
@@ -338,8 +338,8 @@ struct JourneyWeekCard: View {
                 .animation(.smooth(duration: CircleMotion.quick), value: lineNow)
                 .journeyFlightWords(.card)
             ZStack(alignment: .top) {
-                banked.opacity(asking == nil ? 1 : 0)
-                if let day = asking { noRecordQuestion(day).transition(.opacity) }
+                banked.opacity(asking.isEmpty ? 1 : 0)
+                if !asking.isEmpty { noRecordQuestion(asking).transition(.opacity) }
             }
             .animation(.smooth(duration: CircleMotion.quick), value: asking)
             .padding(.top, tight ? 6 : 10)
@@ -384,8 +384,8 @@ struct JourneyWeekCard: View {
     }
 
     private var excusedNow: Bool { model?.excusedNow ?? false }
-    /// The no-record question, unless Excused Mode is on.
-    private var asking: Date? { excusedNow ? nil : noRecord }
+    /// The days the no-record question asks about, unless Excused Mode is on.
+    private var asking: [Date] { excusedNow ? [] : noRecord }
 
     /// The line under the days: a picked part's own (when it has one), else the week's. While Excused Mode is on, the week's
     /// (a part's line would ask to make up or fill in).
@@ -585,7 +585,7 @@ struct JourneyWeekCard: View {
 
     /// The line under the days, the first that's true:
     /// - out of reach: the mid-week line (it names the goal; owner, 2026-10-21: "explain in regards to their goal");
-    /// - something owed: what to make up and what to fill in, for a strong week ("keep" read as already strong at 0 —
+    /// - something owed: what to make up, for a strong week (days with no record are the question's) ("keep" read as already strong at 0 —
     ///   Fable's critique, row 5);
     /// - already enough: "A strong week, so far";
     /// - else the rule: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. "
@@ -599,8 +599,6 @@ struct JourneyWeekCard: View {
         if !w.stillPossible {
             return PrayerMetrics.midweekLine(w) ?? "This one won't be a strong week. A new one starts Sunday."
         }
-        // Both asks when both are owed ("Make up 2 missed prayers and fill in 3 days…"): it named only the missed while
-        // Sunday to Tuesday had no record (the week ring's hand-over).
         // Made up, a missed prayer is below the goal (above Prayed): when that takes all the spare, every other prayer has
         // to meet it — say so (Fable's critique, row 6; owner, 2026-10-21: "do 6"). Then "missed" alone keeps it to 3 lines.
         let noSpare = !m.owed.isEmpty && slack(w) > 0 && w.belowStep + w.notMarked >= slack(w)
@@ -608,10 +606,9 @@ struct JourneyWeekCard: View {
             m.owed.count == 1 ? "make up \(possessive(first.day)) \(first.name)"
                 : "make up \(m.owed.count) missed" + (noSpare ? "" : " prayers")
         }
-        let fill = m.fillable.first.map { day in
-            m.fillable.count == 1 ? "fill in \(dayName(day))" : "fill in \(m.fillable.count) days"
-        }
-        let ask = [make, fill].compactMap { $0 }.joined(separator: " and ")
+        // Only the make-up ask: days with no record are the question's (one place each — Fable's item 7, A), and after its
+        // Not now nothing asks about them that week; their dotted dots still open the fill-in.
+        let ask = make ?? ""
         let then = noSpare ? ", then pray the rest \(w.goal.countWords)" : ""
         if !ask.isEmpty { return ask.prefix(1).uppercased() + ask.dropFirst() + then + " for a strong week" }
         if w.met >= target { return "A strong week, so far" }
@@ -632,20 +629,22 @@ struct JourneyWeekCard: View {
         if let y = cal.date(byAdding: .day, value: -1, to: today), cal.isDate(day, inSameDayAs: y) { return "yesterday's" }
         return day.formatted(.dateTime.weekday(.wide)) + "'s"
     }
-    private static func dayName(_ day: Date) -> String {
-        let cal = Calendar.current, today = PrayerDay.start()
-        if let y = cal.date(byAdding: .day, value: -1, to: today), cal.isDate(day, inSameDayAs: y) { return "yesterday" }
-        return day.formatted(.dateTime.weekday(.wide))
-    }
 
     /// The day to ask about, if any: NoRecordDays.next, but it steps aside after it's been shown on 3 visits to Journey without
     /// an answer (owner, 2026-10-20: "Let the no-record question step aside after 3 opens"), and stays quiet until a newer day
     /// has no record (that one gets its own 3). The day can still be filled from its dotted dot. Counted once per visit.
-    private func question() -> Date? {
-        guard let day = NoRecordDays.next(in: context) else { return nil }
+    private func question() -> [Date] {
+        // This week's days (the card is this week's); on a Sunday, yesterday's too, so Saturday still gets its ask — not
+        // "Fri, Sun, Mon, Tue" reaching into a banked week.
+        let all = NoRecordDays.all(in: context)
+        let today = PrayerDay.start()
+        let weekStart = Calendar.current.dateInterval(of: .weekOfYear, for: today)?.start ?? today
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today) ?? today
+        let days = all.filter { $0 >= weekStart || Calendar.current.isDate($0, inSameDayAs: yesterday) }
+        guard let day = days.first else { return [] }
         let d = UserDefaults.standard
         let key = PrayerNotificationID.dayKey(day)
-        if let quiet = d.string(forKey: Self.quietKey), key <= quiet { return nil }   // "YYYY-MM-DD" keys sort by date
+        if let quiet = d.string(forKey: Self.quietKey), key <= quiet { return [] }   // "YYYY-MM-DD" keys sort by date
         var shown = d.integer(forKey: Self.shownKey + key)
         if !visitCounted {
             visitCounted = true
@@ -654,40 +653,79 @@ struct JourneyWeekCard: View {
         }
         if shown > Self.visits {
             d.set(key, forKey: Self.quietKey)
-            return nil
+            return []
         }
-        return day
+        return days.reversed()   // oldest first, as the question names them
     }
     private static let visits = 3
     private static let shownKey = "noRecord.shown."
     private static let quietKey = "noRecord.quietThrough"
 
-    /// "Yesterday has no record. Did you pray?" (plan-v3 §3: a day with nothing logged is no record, never missed), in the
-    /// banked weeks' place. "Pick which" opens the day's five; "Not now" isn't asked again for that day.
-    private func noRecordQuestion(_ day: Date) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("\(NoRecordDays.name(of: day)) has no record. Did you pray?")
-                .font(.system(size: 15, weight: .regular, design: .rounded))
-                .lineLimit(2).minimumScaleFactor(0.85)
-            HStack(spacing: 18) {
-                Button {
-                    triggerSomeVibration(type: .light)
-                    filling = FillDay(day: day)
-                } label: {
-                    Text("Pick which").font(.system(size: 15, weight: .medium, design: .rounded)).foregroundStyle(.primary)
+    /// The week's days with no record, asked once (plan-v3 §3: a day with nothing logged is no record, never missed), in the
+    /// banked weeks' place: a well pressed into the card holding the dotted days, "Sun – Tue have no record", "Did you pray?",
+    /// Not now and a Fill in pill (owner, 2026-10-21, 3 of the asking pictures: the old two text lines had "no visual
+    /// hierarchy and it doesn't even look like anything calling the user"). Fill in opens the newest day's five (then the next
+    /// asks); Not now quiets them all for the week (Fable's item 7, A — it walked back a day per tap). Its own height, inside
+    /// the banked rows' slot, so nothing moves.
+    private func noRecordQuestion(_ days: [Date]) -> some View {
+        VStack(alignment: .leading, spacing: tight ? 6 : 8) {
+            HStack(spacing: 10) {
+                HStack(spacing: 3) {
+                    ForEach(0..<min(days.count, 3), id: \.self) { _ in
+                        Circle().inset(by: 0.7).stroke(Self.edge, style: StrokeStyle(lineWidth: 1.4, lineCap: .round, dash: [0.1, 3.2]))
+                            .frame(width: 12, height: 12)
+                    }
                 }
+                Text(Self.noRecordTitle(days))
+                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                    .lineLimit(1).minimumScaleFactor(0.8)
+            }
+            HStack(spacing: 14) {
+                Text("Did you pray?")
+                    .font(.system(size: 13, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
                 Button {
-                    NoRecordDays.dismiss(day)
+                    NoRecordDays.dismiss(days)
                     withAnimation(.smooth(duration: CircleMotion.quick)) { noRecord = question() }
                 } label: {
-                    Text("Not now").font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
+                    Text("Not now").font(.system(size: 13, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        .frame(minHeight: 30).contentShape(Rectangle())
+                }
+                Button {
+                    triggerSomeVibration(type: .light)
+                    if let newest = days.last { filling = FillDay(day: newest) }
+                } label: {
+                    // The day page's grey capsule (DayMakeUpPill), in ink: Journey has no sage.
+                    HStack(spacing: 4) {
+                        Text("Fill in")
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
+                    }
+                    .font(.system(size: 13.5, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Capsule().fill(Color.primary.opacity(0.07)))
+                    .contentShape(Capsule())
                 }
             }
             .buttonStyle(.plain)
         }
+        .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, tight ? 6 : 8)
-        .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5).offset(y: tight ? -6 : -8) }
+        .frame(height: tight ? 66 : 74)
+        .background(NeuPressed(shape: RoundedRectangle(cornerRadius: 18, style: .continuous)))
+        .accessibilityElement(children: .contain)
+    }
+
+    /// "Yesterday has no record", "Mon and Tue have no record", "Sun – Tue have no record" (three or more in a row).
+    private static func noRecordTitle(_ days: [Date]) -> String {
+        guard days.count > 1 else { return "\(days.first.map { NoRecordDays.name(of: $0) } ?? "") has no record" }
+        let cal = Calendar.current
+        let names = days.map { $0.formatted(.dateTime.weekday(.abbreviated)) }
+        let inRow = zip(days, days.dropFirst()).allSatisfy { cal.dateComponents([.day], from: $0, to: $1).day == 1 }
+        let list = days.count >= 3 && inRow ? "\(names[0]) – \(names[names.count - 1])"
+            : days.count == 2 ? "\(names[0]) and \(names[1])" : names.joined(separator: ", ")
+        return "\(list) have no record"
     }
 
     /// The last two finished weeks, newest first: past tense, quiet, "strong" only when it was (canvas row B, Sunday).

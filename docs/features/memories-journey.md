@@ -156,15 +156,17 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   A; no tick, no make-up / fill-in asks, a picked part keeps this line, no "Did you pray?"); out of reach → the mid-week line ("Your goal this week, every prayer in its window, is out of
   reach now. You've still got 19 prayers left, so make them count." — owner: "account for the messaging for when they miss
   their strong week"); a missed prayer → "Make up today's Fajr for a strong week" (several: "Make up N missed prayers…");
-  a no-record day → "Fill in Monday for a strong week"; both → "Make up 2 missed prayers and fill in 3 days for a
-  strong week"; when making up would take all 3 spare (above Prayed a made-up prayer is below the goal): "Make up 3 missed
-  and fill in 3 days, then pray the rest in their windows for a strong week". Above In its window a day with no record
+  days with no record are never the line's (the question's below); when making up would take all 3 spare (above Prayed a
+  made-up prayer is below the goal): "Make up 3 missed, then pray the rest in their windows for a strong week". Above In its window a day with no record
   can only be filled in below the goal, so it counts against the spare (`Week.stillPossible`); enough already → "A strong week, so far"; else the rule in Your
   goal's words: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. " first; on
   Prayed just "Don't miss a prayer") (a fixed 3-line slot). The header names the strong-week streak from 1 ("This week · Oct 11 – 17 · 1 strong week in a row"; nothing at 0;
   owner, 2026-10-21: "do item 9"). The last two finished weeks banked
-  ("Oct 4 – 10 · 34 of 35 · strong"; a complete week "35 of 35 · strong" — "complete" was never explained); a day with no record asked in their slot ("Yesterday has no record. Did
-  you pray?" · Pick which · Not now — steps aside after 3 visits; owner, 2026-10-20). All from `PrayerMetrics`, off the main
+  ("Oct 4 – 10 · 34 of 35 · strong"; a complete week "35 of 35 · strong" — "complete" was never explained); the week's days with no record asked once in their slot, in a
+  well pressed into the card (`NeuPressed`): the dotted days, "Sun – Tue have no record", "Did you pray?" · Not now · a grey
+  "Fill in ›" pill (owner, 2026-10-21, 3 of the asking pictures: the two text lines had "no visual hierarchy"). Fill in opens
+  the newest day's five, then the next asks; one Not now quiets them all for the week (Fable's item 7, A: it walked back a
+  day per tap); it still steps aside after 3 visits; the dotted dots still open the fill-in (`NoRecordDays.all`). All from `PrayerMetrics`, off the main
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
   No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes the same `PrayerGoalPage` as Settings' row (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"); Milestones now sits below the fold on a 17 Pro (the rows scroll).
 - Journey is pushed from ☰ (and the day page's link, To make up's pill, What's new) — owner 2026-10-19, after two days as the

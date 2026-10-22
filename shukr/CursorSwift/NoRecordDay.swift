@@ -23,32 +23,38 @@ import SwiftData
 
     /// The most recent prayer day before today with nothing marked: on or after the first day anything was ever marked
     /// (and the fresh start, if any), not touched by Excused Mode, not answered "Not now". nil = nothing to ask.
-    static func next(in context: ModelContext, now: Date = Date()) -> Date? {
+    static func next(in context: ModelContext, now: Date = Date()) -> Date? { all(in: context, now: now).first }
+
+    /// Every such day, newest first: what the week card asks about together (owner, 2026-10-21, A on the asking pictures:
+    /// one question for the week's days, one "Not now" quiets them all).
+    static func all(in context: ModelContext, now: Date = Date()) -> [Date] {
         let cal = Calendar.current
         let todayKey = PrayerDay.key(for: now)
-        guard let today = PrayerDay.start(ofKey: todayKey) else { return nil }
+        guard let today = PrayerDay.start(ofKey: todayKey) else { return [] }
         // The first mark ever: a new user's empty past isn't "no record".
         var first = FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted },
                                                  sortBy: [SortDescriptor(\.startTime, order: .forward)])
         first.fetchLimit = 1
-        guard let firstMark = (try? context.fetch(first))?.first?.dayStart else { return nil }
+        guard let firstMark = (try? context.fetch(first))?.first?.dayStart else { return [] }
         let from = max(firstMark, PrayerStats.countsFrom.map { cal.startOfDay(for: $0) } ?? .distantPast)
         let dismissed = Set(UserDefaults.standard.stringArray(forKey: dismissedKey) ?? [])
         let excused = Excused.Days()
+        var days: [Date] = []
         for back in 1...lookBack {
             guard let day = cal.date(byAdding: .day, value: -back, to: today), day >= from else { break }
             let key = PrayerNotificationID.dayKey(day)
             if dismissed.contains(key) || excused.excludes(day) { continue }
             let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: day)))) ?? []
-            if !rows.contains(where: \.isCompleted) { return day }
+            if !rows.contains(where: \.isCompleted) { days.append(day) }
         }
-        return nil
+        return days
     }
 
-    /// "Not now": this day isn't asked about again.
-    static func dismiss(_ day: Date) {
+    /// "Not now": these days aren't asked about again.
+    static func dismiss(_ day: Date) { dismiss([day]) }
+    static func dismiss(_ days: [Date]) {
         var keys = UserDefaults.standard.stringArray(forKey: dismissedKey) ?? []
-        keys.append(PrayerNotificationID.dayKey(day))
+        keys += days.map(PrayerNotificationID.dayKey)
         UserDefaults.standard.set(Array(keys.suffix(60)), forKey: dismissedKey)
     }
 
