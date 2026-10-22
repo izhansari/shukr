@@ -191,6 +191,9 @@ struct WelcomeRing: Shape {
     var lettersIn = false
     var ringDrawn = false
     var shine = false
+    /// The icon's tile and name gone, the ring and dot left (owner, 2026-10-22: "get rid of the app icon border before
+    /// expanding the ring").
+    var tileGone = false
     /// The small ring grows into the circle.
     var grow = false
     /// Opening onto a page with no Salah circle: the ring opens out past the edges like a doorway.
@@ -248,6 +251,7 @@ struct WelcomeMark: View {
         // soft ring and its green dot, there from the first frame, so the launch picks up where iOS's zoom from the icon
         // leaves off. (Was a sage hairline drawing itself round the word.)
         let icon = !grow && !portal
+        let appeared = state.ringDrawn || state.startDrawn || reduceMotion || grow || portal
         ZStack {
             // The icon's tile: its squircle's edge, as on the Home Screen, gone as it opens.
             RoundedRectangle(cornerRadius: Self.iconSize * 0.225, style: .continuous)
@@ -258,10 +262,14 @@ struct WelcomeMark: View {
                         .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
                 }
                 .frame(width: Self.iconSize, height: Self.iconSize)
-                .scaleEffect(icon ? 1 : 1.6)
-                .opacity(icon && !reduceMotion ? 1 : 0)
-                // Gone in the grow's first moments, so no square shows inside the ring as it opens.
-                .animation(.easeOut(duration: 0.22), value: icon)
+                .opacity(icon && !state.tileGone && !reduceMotion ? 1 : 0)
+            // Its name under it, as on the Home Screen (owner, 2026-10-22: "maybe we can write “shukr” in at the bottom of
+            // the app icon").
+            Text("shukr")
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .foregroundStyle(.secondary)
+                .offset(y: Self.iconSize / 2 + 15)
+                .opacity(icon && !state.tileGone ? 1 : 0)
             // The ring: the icon's raised band, grown into the circle's track (the soft band under the soft ring: its
             // width, surface and lift).
             WelcomeRing(width: icon ? Self.iconBand : (toDashes ? UpcomingTrack.style.lineWidth : track.width))
@@ -282,7 +290,7 @@ struct WelcomeMark: View {
                 .offset(x: Self.startSize / 2 * sin(Self.iconDotAngle), y: -Self.startSize / 2 * cos(Self.iconDotAngle))
                 .scaleEffect(icon ? 1 : 0.6)
                 .opacity(icon && !reduceMotion ? 1 : 0)
-                .animation(.easeOut(duration: 0.22), value: icon)
+                .animation(CircleMotion.Opening.iconAway, value: icon)
             // The dashed track, when that's what the circle is showing: once the ring is there, its dashes appear one by
             // one from the top (owner), as the circle's own do.
             DashedRing(drawn: state.dashesIn || reduceMotion ? 1 : 0)
@@ -294,6 +302,9 @@ struct WelcomeMark: View {
                 .blur(radius: grow || portal ? 4 : 0)
                 .opacity(grow || portal ? 0 : 1) }
         }
+        // The icon comes in softly (owner: the first cut was "kinda abrupt and not calm").
+        .opacity(appeared ? 1 : 0)
+        .scaleEffect(appeared || reduceMotion ? 1 : 0.94)
         .allowsHitTesting(false)
     }
 
@@ -451,6 +462,9 @@ struct WelcomeOverlay: View {
         } else {
             // The icon, as on the Home Screen, for a beat; then it opens.
             guard await CircleGate.pause(T.iconHoldDuration) else { return }
+            // The tile and its name go first; then the ring opens.
+            withAnimation(T.iconAway) { mark.tileGone = true }
+            guard await CircleGate.pause(T.tileAwayDuration) else { return }
             soft.impactOccurred(intensity: 0.7)
         }
         var glided = false
@@ -524,12 +538,15 @@ extension CircleMotion {
         /// From the sleep curtain: the black lifts as the word writes in.
         static let blackAway = Animation.easeInOut(duration: 0.7)
         /// The app icon held, as on the Home Screen, before it opens into the circle.
-        static let iconHoldDuration: Double = 0.4
+        static let iconHoldDuration: Double = 1.3
+        /// The tile and its name going, before the ring opens; the dot goes as it opens.
+        static let iconAway = Animation.easeInOut(duration: 0.5)
+        static let tileAwayDuration: Double = 0.45
         /// "shukr" writing itself: each letter fades in, one step after the last.
         static let letter = Animation.easeOut(duration: 0.5)
         static let letterStepDuration: Double = 0.08
         /// The ring drawing itself round the word, just after the letters start.
-        static let ringDraw = Animation.easeInOut(duration: 0.9).delay(0.1)
+        static let ringDraw = Animation.easeOut(duration: 0.8).delay(0.05)
         /// The heartbeat: lub…
         static let firstBeatDuration: Double = 0.56
         /// …the ring shining as it closes…
@@ -546,9 +563,9 @@ extension CircleMotion {
         static let portalPage = Animation.easeInOut(duration: 0.6).delay(0.15)
         static let portalDuration: Double = 0.76
         /// The landing: the ring grows out into the circle's track…
-        static let grow = Animation.spring(response: 0.75, dampingFraction: 0.9)
+        static let grow = Animation.spring(response: 1.1, dampingFraction: 1)   // calm: no bounce (was 0.75 / 0.9)
         /// …into the band…
-        static let toBandDuration: Double = 0.65
+        static let toBandDuration: Double = 0.7
         /// …or, for a prayer that hasn't started, its edge first, then the dashes.
         static let toDashesDuration: Double = 0.56
         static let dashes = CircleMotion.dashesDraw   // the dashes appear one by one (the circle's own draw)
