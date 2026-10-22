@@ -288,9 +288,9 @@ struct WelcomeMark: View {
                 .shadow(color: Color.sage.opacity(0.5), radius: 1.5)
                 .frame(width: Self.iconDot, height: Self.iconDot)
                 .offset(x: Self.startSize / 2 * sin(Self.iconDotAngle), y: -Self.startSize / 2 * cos(Self.iconDotAngle))
-                .scaleEffect(icon ? 1 : 0.6)
-                .opacity(icon && !reduceMotion ? 1 : 0)
-                .animation(CircleMotion.Opening.iconAway, value: icon)
+                // It goes with the tile, before the ring opens (owner, 2026-10-22: "the green dot should probably fade out
+                // with the border so we don't have the ring moving while that fades out in place").
+                .opacity(icon && !state.tileGone && !reduceMotion ? 1 : 0)
             // The dashed track, when that's what the circle is showing: once the ring is there, its dashes appear one by
             // one from the top (owner), as the circle's own do.
             DashedRing(drawn: state.dashesIn || reduceMotion ? 1 : 0)
@@ -539,7 +539,7 @@ extension CircleMotion {
         static let blackAway = Animation.easeInOut(duration: 0.7)
         /// The app icon held, as on the Home Screen, before it opens into the circle.
         static let iconHoldDuration: Double = 1.3
-        /// The tile and its name going, before the ring opens; the dot goes as it opens.
+        /// The tile, its name and the dot going, before the ring opens.
         static let iconAway = Animation.easeInOut(duration: 0.5)
         static let tileAwayDuration: Double = 0.45
         /// "shukr" writing itself: each letter fades in, one step after the last.
