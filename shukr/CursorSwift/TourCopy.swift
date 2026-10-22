@@ -43,11 +43,9 @@ enum TourCopy {
         static var chapters: [String] { TourFlow.v2 ? [
             "Prayer Circle|what’s on now, and which way to face",
             "Prayer List|your whole day",
-            "Settings|make it yours",
         ] : [
             "Prayer Circle|the prayer that matters now",
             "Prayer List|your whole day",
-            "Settings|make it yours",
         ] }
         static var footnote: String { TourFlow.v2 ? "It’s a practice day — nothing here is kept." : "A quick look at each, then you try it. It’s a practice day — nothing here is kept." }
         static let button = "Let’s begin"

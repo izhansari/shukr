@@ -692,21 +692,21 @@ extension PrayerTimesView {
                         
                         Spacer()
 
-                        // Settings, the right page (back, owner 2026-10-19; it was Journey 2026-10-17 → 19).
+                        // Journey, the right page (owner, 2026-10-22; Settings is its gear — it was this tab 2026-10-19 → 22).
                         Button(action: {
-                            sharedState.horizontalPage = .settings
+                            sharedState.horizontalPage = .journey
                         }) {
                             VStack(spacing: 6) {
-                                Image(systemName: "gear")
+                                Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
                                     .font(.system(size: 20))
-                                Text("Settings")
+                                Text("Journey")
                                     .font(.system(size: 12))
                                     .fontWeight(.light)
                                     .fontDesign(.rounded)
                             }
-                            .foregroundColor(sharedState.horizontalPage == .settings ? .green : .gray)
+                            .foregroundColor(sharedState.horizontalPage == .journey ? .green : .gray)
                             .frame(width: 100)
-                            // The tour's last step taps this (audit J: the bar is taught as well as the swipe).
+                            // The tour's last step swipes toward it (audit J: the bar is taught as well as the swipe).
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("settingsTab", $0) }
                         }
                     }

@@ -375,6 +375,9 @@ extension JourneyLog.Day {
 }
 
 struct JourneyPage: View {
+    /// In the pager (JourneyPagerPage): whether it's the page showing. It stays built there, so appearing doesn't say it; nil
+    /// when pushed.
+    var visible: Bool? = nil
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     /// Journey's numbers live in JourneyStore (the log, the card's stats, the header ring, To make up's count).
@@ -392,6 +395,9 @@ struct JourneyPage: View {
     @State private var dirty = false
     @State private var openDay: JourneyDayRoute?
     @State private var openMonth: JourneyMonthRoute?
+    /// The week card's ↗: Your weeks pushed (owner, 2026-10-22: "make expanding the top right button of the card just be a
+    /// push page instead, so that the pager works easier" — it grew out of the card in place).
+    @State private var expanded: JourneyMonthRoute?
     @State private var showMoments = false
     @State private var showMakeUp = false
     /// To make up opens on This week (the week ring's "Make up ›"); every other way in opens on All weeks.
@@ -479,6 +485,10 @@ struct JourneyPage: View {
             arrive()
         }
         .onDisappear { appeared = false; onScreen = false }
+        .onChange(of: visible) { _, _ in arrive() }
+        .navigationDestination(item: $expanded) { route in
+            JourneyExpandedPushed(log: log, stats: stats ?? YourJourneyStats(log: JourneyLog(), today: today), month: route.month)
+        }
         .task {
             reload(first: true)   // read at once, even built ahead of a swipe, so it's ready when it's shown
             takeMakeUp()
@@ -547,7 +557,7 @@ struct JourneyPage: View {
 
     /// On screen now (appeared): what waited reloads.
     private func arrive() {
-        onScreen = appeared
+        onScreen = appeared && visible != false
         guard onScreen else { return }
         JourneyPerf.began("journey appears")
         if dirty { reload() }
@@ -618,7 +628,7 @@ struct JourneyPage: View {
     @ViewBuilder private func card(_ s: YourJourneyStats, tight: Bool) -> some View {
         if MetricsLook.on {
             JourneyWeekCard(log: log, compact: small, tight: tight,
-                            onExpand: { openMonth = JourneyMonthRoute(month: $0, focus: false) },
+                            onExpand: { expanded = JourneyMonthRoute(month: $0, focus: false) },
                             onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
                             onMakeUp: { makeUpWeek = true; showMakeUp = true })
         } else {
@@ -896,3 +906,64 @@ enum JourneySeed {
     }
 }
 #endif
+
+/// Your weeks pushed from the week card's ↗ (no flight): a day opens its page on top.
+struct JourneyExpandedPushed: View {
+    let log: JourneyLog
+    let stats: YourJourneyStats
+    let month: Date
+    @State private var openDay: JourneyDayRoute?
+    private static let openerID = UUID()
+
+    var body: some View {
+        JourneyExpandedPage(log: log, stats: stats, opened: month, focusOnOpen: false)
+            .environment(\.journeyDayOpener, JourneyDayOpener(id: Self.openerID, open: { openDay = JourneyDayRoute(date: $0) }))
+            .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
+    }
+}
+
+/// Journey as the pager's right page (owner, 2026-10-22: "put this onto the right-hand side of the pager, and then put a door
+/// into the settings page, into the top right of the journey page with a gear SF symbol"). Built once the Salah page has
+/// rested after the opening, or at once when asked for, so the launch never pays for it; a 44 pt row on top, where a pushed
+/// page's bar is, holds the gear (toolbar items don't draw on the root's hidden bar).
+struct JourneyPagerPage: View {
+    @Environment(SharedStateClass.self) private var sharedState
+    @Environment(\.circleTheme) private var theme
+    @State private var built = false
+
+    var body: some View {
+        Group {
+            if built {
+                JourneyPage(visible: sharedState.horizontalPage == .journey)
+            } else {
+                theme.surface.ignoresSafeArea()
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HStack {
+                Spacer()
+                Button {
+                    triggerSomeVibration(type: .light)
+                    SettingsPresenter.shared.show()
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .frame(width: 44, height: 44)
+                        .barGlass(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("journeyGear", $0) }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+        }
+        .task {
+            _ = await CircleStage.shared.until(deadline: 8) { CircleStage.shared.restingPage != nil }
+            try? await Task.sleep(for: .seconds(1.5))
+            built = true
+        }
+        .onChange(of: sharedState.horizontalPage) { _, page in if page == .journey { built = true } }
+    }
+}

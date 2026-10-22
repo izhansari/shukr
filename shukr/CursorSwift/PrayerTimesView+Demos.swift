@@ -43,11 +43,11 @@ extension PrayerTimesView {
             try? await Task.sleep(for: .seconds(1))   // the pager up (sooner, the change was lost)
             sharedState.go(to: .zikr, animated: false)
         case "journey":
-            try? await Task.sleep(for: .seconds(1))   // the root up: Journey's push
-            JourneyPresenter.shared.open = true
-        case "settings":
             try? await Task.sleep(for: .seconds(1))   // the pager up (sooner, the change was lost)
-            sharedState.go(to: .settings, animated: false)
+            sharedState.go(to: .journey, animated: false)
+        case "settings":
+            try? await Task.sleep(for: .seconds(1))   // the root up: Settings' push
+            SettingsPresenter.shared.show()
         default: break   // salah: the launch page
         }
     }
