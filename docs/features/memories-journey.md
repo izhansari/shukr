@@ -161,7 +161,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   and fill in 3 days, then pray the rest in their windows for a strong week". Above In its window a day with no record
   can only be filled in below the goal, so it counts against the spare (`Week.stillPossible`); enough already → "A strong week, so far"; else the rule in Your
   goal's words: "Don't miss a prayer, and keep 32 at your goal: that's a strong week" (Sunday: "A new week. " first; on
-  Prayed just "Don't miss a prayer") (a fixed 3-line slot). The last two finished weeks banked
+  Prayed just "Don't miss a prayer") (a fixed 3-line slot). The header names the strong-week streak from 1 ("This week · Oct 11 – 17 · 1 strong week in a row"; nothing at 0;
+  owner, 2026-10-21: "do item 9"). The last two finished weeks banked
   ("Oct 4 – 10 · 34 of 35 · strong"; a complete week "35 of 35 · strong" — "complete" was never explained); a day with no record asked in their slot ("Yesterday has no record. Did
   you pray?" · Pick which · Not now — steps aside after 3 visits; owner, 2026-10-20). All from `PrayerMetrics`, off the main
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).

@@ -282,6 +282,8 @@ struct JourneyWeekCard: View {
         /// Excused Mode is on now: the week asks nothing until it ends (owner, 2026-10-21, A) — no tick, no make-up or
         /// fill-in asks, no "Did you pray?".
         var excusedNow = false
+        /// Strong weeks in a row (PrayerMetrics.strongRun, the Salah bar's count): the header names it from 1.
+        var streak = 0
         struct Owed: Equatable { let day: Date; let name: String }
     }
     @State private var model: Model?
@@ -298,7 +300,8 @@ struct JourneyWeekCard: View {
         VStack(spacing: 0) {
             HStack {
                 Text(rangeLabel)
-                Spacer()
+                    .lineLimit(1).minimumScaleFactor(0.85)
+                Spacer(minLength: 36)   // clear of the ↗
             }
             .font(.system(size: 13, weight: .light, design: .rounded))
             .foregroundStyle(.secondary)
@@ -731,9 +734,12 @@ struct JourneyWeekCard: View {
         return "\(a) – \(sameMonth ? end.formatted(.dateTime.day()) : end.formatted(.dateTime.month(.abbreviated).day()))"
     }
 
+    /// "This week · Oct 18 – 24", and from one strong week in a row, "· 3 strong weeks in a row" (Fable's critique, row 9;
+    /// owner, 2026-10-21: "do item 9") — Journey, the home of your history, shows the streak the Salah bar counts. Nothing at 0.
     private var rangeLabel: String {
-        guard let w = model?.week else { return "This week" }
-        return "This week · \(Self.range(w.start))"
+        guard let m = model else { return "This week" }
+        let streak = m.streak == 0 ? "" : m.streak == 1 ? " · 1 strong week in a row" : " · \(m.streak) strong weeks in a row"
+        return "This week · \(Self.range(m.week.start))" + streak
     }
 
     /// This week's days as the calendar's flight takes them (JourneyFlightGeometry.ringTiles): each day's dot, flying to the
@@ -782,6 +788,6 @@ struct JourneyWeekCard: View {
             day.states == nil && day.date < todayStart && (log.firstDay.map { day.date >= $0 } ?? false)
         }.map(\.date)
         return Model(week: week, banked: Array(finished.suffix(2).reversed()), todayIndex: min(max(today, 0), 6),
-                     owed: owed, fillable: fillable)
+                     owed: owed, fillable: fillable, streak: PrayerMetrics.strongRun(in: all).current)
     }
 }
