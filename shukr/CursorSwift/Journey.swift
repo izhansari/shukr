@@ -578,6 +578,17 @@ struct JourneyPage: View {
         Task { @MainActor in
             for _ in 0..<30 where !onScreen { try? await Task.sleep(for: .milliseconds(50)) }
             try? await Task.sleep(for: .seconds(0.05))
+            openMakeUp()
+        }
+    }
+
+    /// To make up, its list read first (off the main thread), so it slides in full — pushed empty it rolled "0 · None made
+    /// up yet" up to its count as it came in (owner, 2026-10-22: "looks sloppy"; the Salah page's way in already did this).
+    private func openMakeUp(week: Bool = false) {
+        let container = context.container
+        Task { @MainActor in
+            JourneyStore.shared.makeUp = await JourneyMakeUpPage.entries(container: container)
+            makeUpWeek = week
             showMakeUp = true
         }
     }
@@ -638,7 +649,7 @@ struct JourneyPage: View {
             JourneyWeekCard(log: log, compact: small, tight: tight,
                             onExpand: { expanded = JourneyMonthRoute(month: $0, focus: false) },
                             onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
-                            onMakeUp: { makeUpWeek = true; showMakeUp = true })
+                            onMakeUp: { openMakeUp(week: true) })
         } else {
             JourneyHomeCard(stats: s, log: log, compact: small, tight: tight,
                             onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
@@ -736,7 +747,7 @@ struct JourneyPage: View {
                 Image(systemName: "clock").font(.system(size: 21, weight: .light)).foregroundStyle(.secondary)
             } value: {
                 Text("\(owed)")
-            } action: { showMakeUp = true }
+            } action: { openMakeUp() }
             // The fresh start, moved from Settings with Your goal (owner, 2026-10-22: "do we still need fresh start? …
             // if so, then throw it into journey as a list item for now"), under To make up: its "clear make up" is the one
             // honest reset for that count (Fable's read: kept — a set fresh start with no row couldn't be seen or undone).

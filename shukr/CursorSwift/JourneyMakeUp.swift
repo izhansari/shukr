@@ -24,10 +24,9 @@ struct JourneyMakeUpPage: View {
     /// Opened from the week ring's not-marked pill: this week only (owner, 2026-10-21: "its not a new Make Up page. its the
     /// same page with a filter" — D, then the line under the title, 3).
     var startWeek = false
-    @State private var started = false
     /// This week only, else every week: the line under the title says which, always (owner: "so that a user can easily
     /// see if they're in all weeks or just this week"). The prayer tiles, the totals and the list all follow it.
-    @State private var weekOnly = false
+    @State private var weekOnly: Bool
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @Environment(PrayerViewModel.self) private var viewModel
@@ -35,6 +34,16 @@ struct JourneyMakeUpPage: View {
     @State private var madeUp: [Entry] = JourneyStore.shared.makeUp?.madeUp ?? []
     /// One prayer only (a tap on its count).
     @State private var only: String?
+
+    /// Its filters set from the first frame, so it slides in already on them (owner, 2026-10-22: "fix the way the page does
+    /// this when it appears. looks sloppy" — set on appear, it rolled 489 down to 1 and swapped its rows as it slid in).
+    init(month: Date, startOnly: String? = nil, startWeek: Bool = false) {
+        self.month = month
+        self.startOnly = startOnly
+        self.startWeek = startWeek
+        _weekOnly = State(initialValue: startWeek)
+        _only = State(initialValue: startOnly)
+    }
     /// The top's folded height and how far it folds (JourneyMakeUpHead measures it): the list's top margin and the
     /// empty room at its start.
     @State private var topFolded: CGFloat = 0
@@ -223,12 +232,6 @@ struct JourneyMakeUpPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) { JourneyMakeUpNavTitle(scroll: scroll, weekOnly: weekOnly) }
-        }
-        .onAppear {
-            guard !started else { return }
-            started = true
-            if let startOnly { only = startOnly }
-            if startWeek { weekOnly = true }
         }
         .task { await reload() }
     }
@@ -598,10 +601,12 @@ struct JourneyMakeUpPage: View {
             .map(entry)
         let madeUp = kept.values
             .filter { row in
-                // A no-time mark is in its time, never a make-up, whenever it was filled in.
-                guard row.isCompleted, !row.timeUnknown, !keeping.contains(row.persistentModelID), let at = row.timeAtComplete
-                else { return false }
-                return PrayerNotificationID.dayKey(PrayerDay.start(for: at)) > row.dayKey
+                // Made up = PrayerState's: marked after its window ended (a no-time mark is in its time, never a make-up).
+                // Not "marked on a later prayer day": a Fajr made up the same prayer day (at noon, or at 2 AM before the next
+                // Fajr) fell out of both lists — "0 missed this week" with nothing made up (owner, 2026-10-22: "i made up
+                // today's fajr using this page … it seems contradictory").
+                guard row.isCompleted, !keeping.contains(row.persistentModelID) else { return false }
+                return row.state(excusedRanges: ranges, now: now) == .madeUp
             }
             .sorted { ($0.timeAtComplete ?? .distantPast) > ($1.timeAtComplete ?? .distantPast) }
             .map(entry)
