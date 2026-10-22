@@ -373,21 +373,11 @@ struct FreshStartPage: View {
         .padding(.top, 8).padding(.bottom, 8)
     }
 
-    /// Sage light rising from the bottom of the page, as the Live Activity glows when a prayer is marked (LAWash): faint at
-    /// rest, growing with the hold, blooming when it completes (owner, 2026-10-19: "a green glow curving and reaching out
-    /// from bottom slightly"). Its strength rides `held`, so it follows the hold's own animation and winds back with it.
+    /// The page's glow (SageGlow): faint at rest, growing with the hold, blooming when it completes (owner, 2026-10-19: "a
+    /// green glow curving and reaching out from bottom slightly"). It rides `held`, so it follows the hold's own animation and
+    /// winds back with it.
     private var glow: some View {
-        let strength = justBegan ? 1.0 : 0.25 + 0.45 * held
-        return GeometryReader { g in
-            EllipticalGradient(colors: [Color.sage.opacity(0.45), Color.sage.opacity(0)], center: .center,
-                               startRadiusFraction: 0, endRadiusFraction: 0.5)
-                .frame(width: g.size.width * 1.8, height: 520)
-                .position(x: g.size.width / 2, y: g.size.height + 80)
-                .scaleEffect(justBegan ? 1.08 : 1, anchor: .bottom)
-        }
-        .opacity(strength)
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
+        SageGlow(strength: justBegan ? 1.0 : 0.25 + 0.45 * held, bloom: justBegan)
     }
 
     private func pillLabel(_ title: String) -> some View {
@@ -468,5 +458,26 @@ private struct FreshStartHint: View {
                     .allowsHitTesting(false)
                 }
             }
+    }
+}
+
+/// Sage light rising from the bottom of a page, as the Live Activity glows when a prayer is marked (LAWash): Fresh start's
+/// hold, and Your goal's "Aim for" (owner, 2026-10-22: "make it so that the button causes the same bottom glow we use on
+/// fresh start"). `strength` is its opacity (0 = gone); `bloom` swells it a little from the bottom.
+struct SageGlow: View {
+    var strength: Double
+    var bloom = false
+
+    var body: some View {
+        GeometryReader { g in
+            EllipticalGradient(colors: [Color.sage.opacity(0.45), Color.sage.opacity(0)], center: .center,
+                               startRadiusFraction: 0, endRadiusFraction: 0.5)
+                .frame(width: g.size.width * 1.8, height: 520)
+                .position(x: g.size.width / 2, y: g.size.height + 80)
+                .scaleEffect(bloom ? 1.08 : 1, anchor: .bottom)
+        }
+        .opacity(strength)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

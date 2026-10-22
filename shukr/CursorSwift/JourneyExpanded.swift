@@ -271,7 +271,7 @@ struct JourneyExpandedPage: View {
                     if MetricsLook.on {
                         // Lifetime as totals and your typical week, never an average (plan-v3 §2; rows 6 + 11).
                         figure(stats.typicalWeek.map { "\($0.then) → \($0.now)" } ?? "–",
-                               stats.typicalWeek == nil ? "your typical week, after 16 weeks" : "your typical week, then and now")
+                               stats.typicalWeek == nil ? "typical week (needs 16 weeks)" : "your typical week, then and now")
                             .opacity(streakShown ? 0.35 : 1)
                     } else {
                         figure(stats.goalRate.map { "\($0)%" } ?? "–", "of your marked days met your goal").opacity(streakShown ? 0.35 : 1)

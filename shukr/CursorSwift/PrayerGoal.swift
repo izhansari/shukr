@@ -196,6 +196,9 @@ struct PrayerGoalPage: View {
     @State private var excusedOpen = false
     /// The button's moment is playing: nothing takes a tap.
     @State private var saving = false
+    /// Fresh start's bottom glow, blooming as "Aim for" is pressed and fading as the moment ends (owner, 2026-10-22: "make it
+    /// so that the button causes the same bottom glow we use on fresh start").
+    @State private var glow = 0.0
     @State private var checkDrawn: CGFloat = 0
     @State private var savedTick = 0
     /// The back button and swipe are off during the moment (NavPopGuard) — the button stays where it is: hiding it collapsed
@@ -248,7 +251,13 @@ struct PrayerGoalPage: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .safeAreaInset(edge: .bottom) { saveBar }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .background {
+            ZStack {
+                Color(.systemGroupedBackground)
+                SageGlow(strength: glow, bloom: glow > 0.5)
+            }
+            .ignoresSafeArea()
+        }
         .navigationBarTitleDisplayMode(.inline)
         // Back never saves; during the moment nothing is touched, the back button and swipe included.
         .background { NavPopGuard(locked: navLocked) }
@@ -327,7 +336,8 @@ struct PrayerGoalPage: View {
         .padding(.horizontal, 24)
         .padding(.top, 8)
         .padding(.bottom, 12)
-        .background(Color(.systemGroupedBackground))
+        // Clear while the glow is up, so it rises behind the button as on Fresh start (the bar's own page colour cut it off).
+        .background(Color(.systemGroupedBackground).opacity(1 - glow))
     }
 
     /// The moment (about 1.2 s): a success buzz, the check draws in, "Saved"; then the button fades back off on your new
@@ -339,12 +349,14 @@ struct PrayerGoalPage: View {
         current = goal
         savedTick += 1
         saving = true
+        withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .easeOut(duration: 0.35)) { glow = 1 }
         // The check draws in once "Saved" has come in.
         withAnimation(.easeOut(duration: 0.3).delay(0.14)) { checkDrawn = 1 }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.2))
             navLocked = false
             saving = false
+            withAnimation(.easeInOut(duration: 0.8)) { glow = 0 }
             try? await Task.sleep(for: .seconds(0.15))
             checkDrawn = 0
         }
