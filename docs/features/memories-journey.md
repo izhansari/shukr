@@ -176,9 +176,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   the pager's top bar and bottom bar stay over Journey (they fade only toward Settings — `ChromeLeaves` from page 2 → 3); the top bar
   shows ☰ · "Journey" (`JourneyPageTitle`, pushed in like Zikr's) · the gear (→ Settings). The page (`JourneyPage.ringPage`): its ring's centre on the Salah circle's resting centre (`WelcomeTarget.circleFrame`, read while the Salah list is closed), 226 pt; the week
   ring out of its card (`JourneyWeekCard(bare:)`: no card, no range line, no ↗), its days, the week's line, the goal pill "Aiming for
-  <step> ›" (→ `PrayerGoalPage` in a sheet), "Last week · N of M ›" (→ Your weeks; the no-record question takes its slot), a ^. A swipe up
-  or the ^ brings the rows in a sheet (medium / large): the since-line (the fresh start's ⇄) over Your prayers · To make up · Fresh
-  start · Moments · Milestones; a row closes the sheet, then pushes. No big "Journey" title; Your goal is no longer a row.
+  <step> ›" (pushes `PrayerGoalPage`), "Last week · N of M ›" (→ Your weeks; the no-record question takes its slot), a ^. A swipe up
+  or the ^ pulls the rows up as the Salah list does (`rowsUp`): the ring rises to the top (an offset — layout never moves), the line,
+  pill and last week fade, a raised card (NeuRaised) comes up over the bottom bar with the since-line (the fresh start's ⇄) over Your
+  prayers · To make up · Fresh start · Moments · Milestones; a row pushes; a swipe down or the ⌄ puts it away; paging away closes it.
+  In the pager the page has no background of its own (the pager's backdrop): an opaque one drew its edge over the Salah page as it
+  faded in place. No big "Journey" title; Your goal is no longer a row.
 - Journey is the pager's right page (owner, 2026-10-22; `JourneyPagerPage`, built once the Salah page rests): ☰, the day
   page's link, To make up's pill and What's new page to it; a gear at its top right pages on to Settings (the pager's fourth
   page — "add a way for me to get to settings by swipe"), whose ‹ comes back. The week card's ↗ pushes

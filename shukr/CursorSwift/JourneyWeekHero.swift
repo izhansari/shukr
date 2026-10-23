@@ -309,6 +309,8 @@ struct JourneyWeekCard: View {
     /// The goal pill under the line (bare only): its name, and what a tap does (the goal dial).
     var goal: PrayerGoal? = nil
     var onGoal: () -> Void = {}
+    /// Bare, with the rows pulled up over it: only the ring and its days stay (the rest fades under the rows' card).
+    var quiet = false
     /// The most recent day with no record to ask about (NoRecordDays.next — Frank's flow), and the day the Pick sheet is
     /// open for. The question sits in the banked weeks' slot: the card never changes height for it.
     @State private var noRecord: [Date] = []
@@ -423,6 +425,7 @@ struct JourneyWeekCard: View {
                 .padding(.top, tight ? 8 : 12)
                 .contentTransition(.opacity)
                 .animation(.smooth(duration: CircleMotion.quick), value: lineNow)
+                .opacity(quiet ? 0 : 1)
                 .journeyFlightWords(.card)
             if bare, let goal {
                 // The goal, a pill you can tap to change it (owner, 2026-10-23: "the year goal thing should be like an
@@ -445,12 +448,16 @@ struct JourneyWeekCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Your goal: \(goal.title). Change it.")
                 .padding(.top, 4)
+                .opacity(quiet ? 0 : 1)
+                .allowsHitTesting(!quiet)
                 .journeyFlightWords(.card)
             }
             ZStack(alignment: .top) {
                 Group { if bare { lastWeek } else { banked } }.opacity(asking.isEmpty ? 1 : 0)
                 if !asking.isEmpty { noRecordQuestion(asking).transition(.opacity) }
             }
+            .opacity(quiet ? 0 : 1)
+            .allowsHitTesting(!quiet)
             .animation(.smooth(duration: CircleMotion.quick), value: asking)
             .padding(.top, tight ? 6 : 10)
             .journeyFlightWords(.card)

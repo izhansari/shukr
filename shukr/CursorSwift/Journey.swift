@@ -414,8 +414,9 @@ struct JourneyPage: View {
     /// The page laid out like the Salah page (owner, 2026-10-23: "It just doesn't match the other two pages, the Salah and
     /// the Zikr. And I would kind of like it to"; canvas https://claude.ai/artifact/Na7xUVdesGnhZYRkSsyQgA): the rows live
     /// in a pull-up, the goal is the pill under the ring.
-    @State private var showRows = false
-    @State private var showGoalSheet = false
+    /// The rows pulled up (owner, 2026-10-23: "not a fan of the bottom sheet of list items. let's make it pull up a list like
+    /// our salah list maybe"): the ring rises, a raised card of rows comes up under it.
+    @State private var rowsUp = false
     /// The fresh start's day number (FreshStart.dayNumber), nil when it's off.
     @State private var freshDay = FreshStart.dayNumber()
     @State private var goal = PrayerGoal.current
@@ -474,12 +475,9 @@ struct JourneyPage: View {
                     .onChange(of: typeSize) { _, _ in refit() }
             }
         }
-        .background(theme.surface.ignoresSafeArea())
-        .sheet(isPresented: $showRows) { rowsSheet }
-        .sheet(isPresented: $showGoalSheet) {
-            NavigationStack { PrayerGoalPage() }
-                .presentationDragIndicator(.visible)
-        }
+        // In the pager the pager's own backdrop is the page (an opaque one here drew its edge over the Salah page as it faded
+        // in place — owner, 2026-10-23: "this happens falsely on journey side with page edge covering over"); pushed, its own.
+        .background { if visible == nil { theme.surface.ignoresSafeArea() } }
         .fontDesign(.rounded)
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $openDay) { JourneyDayPage(date: $0.date, firstDay: log.firstDay) }
@@ -625,46 +623,77 @@ struct JourneyPage: View {
     /// the week's line, the goal pill, last week; the rows under a pull-up (a swipe up or the ^, as the Salah list).
     private var ringPage: some View {
         // The ring's centre where the Salah circle's is (owner, 2026-10-23: "ring needs to be centered like the other pages"),
-        // read from the circle's own frame; the screen's middle until it has reported. At its size too (compact: 196 pt).
+        // read from the circle's own frame; the screen's middle until it has reported.
         let screen = UIScreen.main.bounds
         let salahMid = Self.salahRestMid(screen, listClosed: sharedState.navPosition == .main)
+        // Pulled up, as the Salah list: the ring rises to the top, the rows' card comes up under it.
+        let upMid = screen.minY + (small ? 190 : 230)
+        let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
         return ZStack(alignment: Alignment(horizontal: .center, vertical: .journeyRing)) {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .alignmentGuide(.journeyRing) { $0[VerticalAlignment.center] + (salahMid - screen.midY) }
+            // The ring's centre on the screen's middle by the guide, then moved by an offset (layout never changes: shifting it
+            // with the guide grew the page and moved the top bar 4 pt with the rows up).
             JourneyWeekCard(log: log, compact: true,
                             onExpand: { expanded = JourneyMonthRoute(month: $0, focus: false) },
                             onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
                             onMakeUp: { openMakeUp(week: true) },
-                            bare: true, goal: goal, onGoal: { showGoalSheet = true })
+                            bare: true, goal: goal, onGoal: { showGoal = true }, quiet: rowsUp)
                 .padding(.horizontal, 20)
+                .offset(y: (rowsUp ? upMid : salahMid) - screen.midY)
         }
         .ignoresSafeArea()
         .overlay(alignment: .bottom) {
-            Button {
-                triggerSomeVibration(type: .light)
-                showRows = true
-            } label: {
-                Image(systemName: "chevron.up")
-                    .font(.title3)
-                    .foregroundStyle(Color(.secondarySystemFill))
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
+            VStack(spacing: 0) {
+                Button {
+                    triggerSomeVibration(type: .light)
+                    setRows(!rowsUp)
+                } label: {
+                    Image(systemName: "chevron.up")
+                        .font(.title3)
+                        .rotationEffect(.degrees(rowsUp ? 180 : 0))
+                        .foregroundStyle(Color(.secondarySystemFill))
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(rowsUp ? "Close the list" : "More: your prayers, to make up, moments, milestones, fresh start")
+                // The rows' card, the Salah list's raised look; off the bottom until pulled up.
+                VStack(alignment: .leading, spacing: 0) {
+                    sinceLine.padding(.top, 14).padding(.bottom, 4).padding(.horizontal, 4)
+                    rows(s, height: small ? 50 : 56, inSheet: true)
+                }
+                .padding(.horizontal, 16).padding(.bottom, 6)
+                .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
+                .padding(.horizontal, 20)
+                .frame(height: rowsUp ? nil : 0, alignment: .top)
+                .opacity(rowsUp ? 1 : 0)
+                .allowsHitTesting(rowsUp)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("More: your prayers, to make up, moments, milestones, fresh start")
             // Clear of the pager's bottom bar.
             .padding(.bottom, small ? 66 : 82)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        // A swipe up brings the rows (never minimumDistance 0 in the pager — CLAUDE.md); sideways stays the pager's.
+        // A swipe up brings the rows, a swipe down puts them away (never minimumDistance 0 in the pager — CLAUDE.md);
+        // sideways stays the pager's.
         .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { v in
-            guard v.translation.height < -50, abs(v.translation.height) > abs(v.translation.width) * 1.5 else { return }
+            guard abs(v.translation.height) > 50, abs(v.translation.height) > abs(v.translation.width) * 1.5 else { return }
+            let up = v.translation.height < 0
+            guard up != rowsUp else { return }
             triggerSomeVibration(type: .light)
-            showRows = true
+            setRows(up)
         })
+        .onChange(of: visible) { _, shown in if shown == false, rowsUp { setRows(false, animated: false) } }
+    }
+
+    private func setRows(_ up: Bool, animated: Bool = true) {
+        if animated {
+            withAnimation(CircleMotion.movement(CircleMotion.page, reduced: UIAccessibility.isReduceMotionEnabled)) { rowsUp = up }
+        } else {
+            rowsUp = up
+        }
     }
 
     /// The Salah circle's centre at rest (its list closed: the list lifts the circle), remembered from its frame.
@@ -674,35 +703,6 @@ struct JourneyPage: View {
             salahMid = f.midY
         }
         return salahMid ?? screen.midY
-    }
-
-    /// The rows, pulled up: the since-line (the fresh start's ⇄ lives here now) over Your prayers · To make up · Fresh start ·
-    /// Moments · Milestones. A row closes the sheet, then pushes its page on Journey.
-    private var rowsSheet: some View {
-        let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
-        return VStack(alignment: .leading, spacing: 0) {
-            sinceLine
-                .padding(.top, 24).padding(.bottom, 8)
-            ScrollView(.vertical, showsIndicators: false) {
-                rows(s, height: small ? 52 : 58, inSheet: true)
-            }
-            .scrollBounceBehavior(.basedOnSize)
-        }
-        .padding(.horizontal, 20)
-        .fontDesign(.rounded)
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        .presentationBackground(theme.surface)
-    }
-
-    /// From the pull-up: the sheet goes, then the page pushes on Journey.
-    private func fromSheet(_ go: @escaping () -> Void) {
-        guard showRows else { go(); return }
-        showRows = false
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.35))
-            go()
-        }
     }
 
     // MARK: Home
@@ -850,7 +850,7 @@ struct JourneyPage: View {
                     Image(systemName: "chart.bar").font(.system(size: 19, weight: .light)).foregroundStyle(.secondary)
                 } value: {
                     EmptyView()
-                } action: { fromSheet { showScores = true } }
+                } action: { showScores = true }
                 .matchedTransitionSource(id: "scores", in: scoresZoom)
             }
             // The This month row went with the goal (owner, 2026-10-18: "I only kept it so i could toggle to see my stats.
@@ -861,7 +861,7 @@ struct JourneyPage: View {
                 Image(systemName: "clock").font(.system(size: 21, weight: .light)).foregroundStyle(.secondary)
             } value: {
                 Text("\(owed)")
-            } action: { fromSheet { openMakeUp() } }
+            } action: { openMakeUp() }
             // The fresh start, moved from Settings with Your goal (owner, 2026-10-22: "do we still need fresh start? …
             // if so, then throw it into journey as a list item for now"), under To make up: its "clear make up" is the one
             // honest reset for that count (Fable's read: kept — a set fresh start with no row couldn't be seen or undone).
@@ -872,14 +872,14 @@ struct JourneyPage: View {
                 Image(systemName: "leaf").font(.system(size: 19, weight: .light)).foregroundStyle(.secondary)
             } value: {
                 Text(freshDay.map { "Day \($0)" } ?? "Off")
-            } action: { fromSheet { showFreshStart = true } }
+            } action: { showFreshStart = true }
             JourneyHomeRow(title: "Moments",
                            line: photos == 0 ? "Your prayer photos will be here" : "Your prayer photos",
                            height: rowHeight, quiet: photos == 0) {
                 MomentsTileStack().scaleEffect(0.6, anchor: .leading).frame(width: 30, height: 26, alignment: .leading)
             } value: {
                 Text("\(photos)")
-            } action: { fromSheet { showMoments = true } }
+            } action: { showMoments = true }
             JourneyHomeRow(title: "Milestones",
                            line: latest.map { "Latest: \($0.text), \($0.date.formatted(.dateTime.month(.abbreviated).day()))" }
                                ?? "Your first comes with your first prayer",
@@ -887,7 +887,7 @@ struct JourneyPage: View {
                 Image(systemName: "star").font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
             } value: {
                 EmptyView()
-            } action: { fromSheet { showMilestones = true } }
+            } action: { showMilestones = true }
         }
         .journeyFlightWords(.page)
     }
@@ -1082,7 +1082,7 @@ struct JourneyPagerPage: View {
             if built {
                 JourneyPage(visible: sharedState.horizontalPage == .journey)
             } else {
-                theme.surface.ignoresSafeArea()
+                Color.clear   // the pager's backdrop is the page
             }
         }
         // The pager's top bar sits over this room now (its gear is the bar's — owner, 2026-10-23).
