@@ -868,6 +868,8 @@ struct JourneyPage: View {
             // The fresh start, moved from Settings with Your goal (owner, 2026-10-22: "do we still need fresh start? …
             // if so, then throw it into journey as a list item for now"), under To make up: its "clear make up" is the one
             // honest reset for that count (Fable's read: kept — a set fresh start with no row couldn't be seen or undone).
+            // Fresh start: on To make up's top right now (owner, 2026-10-23); the old layout keeps its row.
+            if !inSheet {
             JourneyHomeRow(title: "Fresh start",
                            line: FreshStart.start.map { "Since \($0.formatted(.dateTime.month(.abbreviated).day()))" }
                                ?? "Count from today, nothing is deleted",
@@ -876,6 +878,7 @@ struct JourneyPage: View {
             } value: {
                 Text(freshDay.map { "Day \($0)" } ?? "Off")
             } action: { showFreshStart = true }
+            }
             JourneyHomeRow(title: "Moments",
                            line: photos == 0 ? "Your prayer photos will be here" : "Your prayer photos",
                            height: rowHeight, quiet: photos == 0) {

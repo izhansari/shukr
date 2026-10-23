@@ -30,6 +30,7 @@ struct JourneyMakeUpPage: View {
     @Environment(\.modelContext) private var context
     @Environment(\.circleTheme) private var theme
     @Environment(PrayerViewModel.self) private var viewModel
+    @State private var showFreshStart = false
     @State private var open: [Entry] = JourneyStore.shared.makeUp?.open ?? []
     @State private var madeUp: [Entry] = JourneyStore.shared.makeUp?.madeUp ?? []
     /// One prayer only (a tap on its count).
@@ -232,7 +233,21 @@ struct JourneyMakeUpPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) { JourneyMakeUpNavTitle(scroll: scroll, weekOnly: weekOnly) }
+            // Fresh start lives here now (owner, 2026-10-23: "fresh start only applies for the to make up page and the your
+            // prayers page. just throw it in the to make up page for now. as a top right button … maybe even fresh start lives
+            // there too"): a glass bar button, filled while one is on.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    triggerSomeVibration(type: .light)
+                    showFreshStart = true
+                } label: {
+                    Image(systemName: FreshStart.start == nil ? "leaf" : "leaf.fill")
+                }
+                .accessibilityLabel("Fresh start")
+            }
         }
+        .navigationDestination(isPresented: $showFreshStart) { FreshStartPage() }
+        .onReceive(NotificationCenter.default.publisher(for: FreshStart.changed)) { _ in Task { await reload() } }
         .task { await reload() }
     }
 
