@@ -228,7 +228,7 @@ struct WelcomeMark: View {
     /// The app icon as big as it is on the Home Screen (owner, 2026-10-22: "make the app icon look the same size as on my
     /// phone homescreen … and grow out"), its tile's outline there until it opens ("put a border on it to look like the app
     /// on homescreen and then fade out the border … then it looks like we actually 'opened' the app").
-    static let iconSize: CGFloat = 93   // 1.5× the Home Screen's 62 pt (owner: "make the app icon a little bigger (1.5x)")
+    static let iconSize: CGFloat = 140   // 2.25× the Home Screen's 62 pt (owner: "1.5x", then "do this with a larger app icon")
     /// The icon's ring at that size, before it grows (the icon: a 1024 px tile, a 530 px ring, a 46 px band, a 66 px dot at
     /// about 40° past 12). The ring's size is its band's middle line.
     static let startSize: CGFloat = iconSize * (530 - 46) / 1024
@@ -267,7 +267,7 @@ struct WelcomeMark: View {
             // Its name under it, as on the Home Screen; the square grows over it as it opens (owner: "or the box and just
             // grow over the shukr text to hide it").
             Text("shukr")
-                .font(.system(size: 15, weight: .regular, design: .rounded))
+                .font(.system(size: 17, weight: .regular, design: .rounded))
                 .foregroundStyle(.secondary)
                 .offset(y: (Self.showsTile ? Self.iconSize : Self.startSize) / 2 + 18)
                 .opacity(icon && raised && !state.nameGone ? 1 : 0)
@@ -556,7 +556,7 @@ extension CircleMotion {
         /// The icon rising out of the page (square, ring, dot and name together, their shadows coming up).
         static let raise = Animation.easeOut(duration: 0.9)
         static let raiseDuration: Double = 0.8
-        static let iconHoldDuration: Double = 0.4
+        static let iconHoldDuration: Double = 0.9   // owner: "hold it for a beat longer" (was 0.4)
         /// The square and the dot fading as they grow with the ring.
         static let iconAway = Animation.easeOut(duration: 0.55)
         /// The name and the dot going before the ring grows.
