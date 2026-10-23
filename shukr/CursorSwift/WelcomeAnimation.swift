@@ -238,9 +238,9 @@ struct WelcomeMark: View {
     /// "shukr" inside the ring: off for now (owner, 2026-10-22: "forget the word shukr for now since it kinda ruins our
     /// thing. we can worry ab it later").
     static let showsWord = false
-    /// The icon's squircle: off (owner, 2026-10-22, after it grew with the ring: "nah this ain't it… get rid of the squircle
-    /// box maybe") — the ring, the dot and the name rise on their own.
-    static let showsTile = false
+    /// The icon's squircle: on (owner, 2026-10-22: off after "get rid of the squircle box maybe", back on with "i said put
+    /// the squircle back tho…").
+    static let showsTile = true
     /// Past every corner of the screen.
     private var portalSize: CGFloat { max(UIScreen.main.bounds.height, UIScreen.main.bounds.width) * 1.4 }
 
@@ -280,9 +280,9 @@ struct WelcomeMark: View {
                         .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
                 }
                 .frame(width: Self.iconSize, height: Self.iconSize)
-                .scaleEffect(grow ? spread : (raised ? 1 : 0.96))
                 .opacity(Self.showsTile && icon && raised && !reduceMotion ? 1 : 0)
-                .animation(CircleMotion.Opening.iconAway, value: icon)
+                .animation(CircleMotion.Opening.iconAway, value: icon)   // its fade only: it grows on the ring's own timing
+                .scaleEffect(grow ? spread : (raised ? 1 : 0.96))
             // The ring: the icon's raised band, grown into the circle's track (the soft band under the soft ring: its
             // width, surface and lift).
             WelcomeRing(width: icon ? Self.iconBand : (toDashes ? UpcomingTrack.style.lineWidth : track.width))
