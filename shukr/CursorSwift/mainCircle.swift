@@ -407,9 +407,13 @@ struct MainCircleView: View {
             // The opening on a Salah landing (step 4): the welcome's ring and word, drawn here — it grows into this
             // track, then fades as the track and words come back (one ring).
             if let opening = CircleStage.shared.opening, opening.inCircle {
+                // On a launch the circle's track comes back at once as the mark lands, so the mark goes in the same frame:
+                // the two are one ring in one place, and fading the mark over the track doubled the soft shadows — the ring
+                // went dark for a moment (owner, 2026-10-23: "it like gets dark at one point for a split sec"). ▶︎ Opening
+                // in place keeps its fade (the track fades back in there).
                 WelcomeMark(state: opening)
                     .opacity(opening.landed ? 0 : 1)
-                    .animation(.easeOut(duration: CircleMotion.openingMarkOutDuration), value: opening.landed)
+                    .animation(opening.inPlace ? .easeOut(duration: CircleMotion.openingMarkOutDuration) : nil, value: opening.landed)
             }
 
             // The lost page's title above the circle and what sharing location gives below (step 3b): the circle's own,
