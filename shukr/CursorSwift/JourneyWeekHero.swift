@@ -297,6 +297,12 @@ struct JourneyWeekCard: View {
     /// The not-marked pill's "Make up ›": To make up on this week (owner, 2026-10-21: "i have no door into making up prayers
     /// from the ring" — D, the same page on its This week line).
     var onMakeUp: () -> Void = {}
+    /// On the page, not in a card (owner, 2026-10-23: Journey laid out like the Salah page — one ring, the goal as a pill,
+    /// past weeks as one line): no raised card, no range line, no ↗ (the "Last week ›" line opens Your weeks).
+    var bare = false
+    /// The goal pill under the line (bare only): its name, and what a tap does (the goal dial).
+    var goal: PrayerGoal? = nil
+    var onGoal: () -> Void = {}
     /// The most recent day with no record to ask about (NoRecordDays.next — Frank's flow), and the day the Pick sheet is
     /// open for. The question sits in the banked weeks' slot: the card never changes height for it.
     @State private var noRecord: [Date] = []
@@ -335,6 +341,7 @@ struct JourneyWeekCard: View {
         let ringSide: CGFloat = compact ? 196 : (tight ? 216 : 232)
         let lineWidth: CGFloat = compact ? 9.5 : 11   // owner, 2026-10-21: "a little bit thinner. They're really thick right now" (was 12 : 14)
         VStack(spacing: 0) {
+            if !bare {
             HStack {
                 Text(rangeLabel)
                     .lineLimit(1).minimumScaleFactor(0.85)
@@ -343,6 +350,7 @@ struct JourneyWeekCard: View {
             .font(.system(size: 13, weight: .light, design: .rounded))
             .foregroundStyle(.secondary)
             .journeyFlightWords(.card)
+            }
             ZStack {
                 let w = model?.week
                 JourneyGoalRing(counts: ringCounts(w), picked: picked, slack: w.map(Self.slack) ?? PrayerMetrics.strongWeekSlack,
@@ -406,16 +414,40 @@ struct JourneyWeekCard: View {
                 .contentTransition(.opacity)
                 .animation(.smooth(duration: CircleMotion.quick), value: lineNow)
                 .journeyFlightWords(.card)
+            if bare, let goal {
+                // The goal, a pill you can tap to change it (owner, 2026-10-23: "the year goal thing should be like an
+                // indicator somewhere that allows us to, you know, tweak the goal instead of being like a list item") —
+                // where the Zikr page's "Pick a zikr" sits.
+                Button {
+                    triggerSomeVibration(type: .light)
+                    onGoal()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Aiming for \(goal.stepLabel)")
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .medium))
+                    }
+                    .font(.system(size: 15, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 16).padding(.vertical, 8)
+                    .background(Capsule().fill(Color.primary.opacity(0.07)))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Your goal: \(goal.title). Change it.")
+                .padding(.top, 4)
+                .journeyFlightWords(.card)
+            }
             ZStack(alignment: .top) {
-                banked.opacity(asking.isEmpty ? 1 : 0)
+                Group { if bare { lastWeek } else { banked } }.opacity(asking.isEmpty ? 1 : 0)
                 if !asking.isEmpty { noRecordQuestion(asking).transition(.opacity) }
             }
             .animation(.smooth(duration: CircleMotion.quick), value: asking)
             .padding(.top, tight ? 6 : 10)
             .journeyFlightWords(.card)
         }
-        .padding(.top, tight ? 14 : 18).padding(.horizontal, 18).padding(.bottom, tight ? 8 : 10)
+        .padding(.top, bare ? 0 : (tight ? 14 : 18)).padding(.horizontal, 18).padding(.bottom, tight ? 8 : 10)
         .overlay(alignment: .topTrailing) {
+            if !bare {
             Button {
                 triggerSomeVibration(type: .light)
                 onExpand(JourneyLog.monthStart(PrayerDay.start()))
@@ -430,8 +462,11 @@ struct JourneyWeekCard: View {
             .padding(.top, tight ? 4 : 8).padding(.trailing, 8)
             .accessibilityLabel("Open your weeks")
             .journeyFlightWords(.card)
+            }
         }
-        .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)).journeyFlightCardSurface())
+        .background {
+            if !bare { NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)).journeyFlightCardSurface() }
+        }
         .journeyFlightCard()
         .onAppear {
             JourneyFlightGeometry.shared.cardShow = nil   // no grid here to scroll back to after the calendar
@@ -813,6 +848,33 @@ struct JourneyWeekCard: View {
     }
 
     /// The last two finished weeks, newest first: past tense, quiet, "strong" only when it was (canvas row B, Sunday).
+    /// Bare: the last finished week as one quiet line, the way into Your weeks (the card's ↗ was).
+    private var lastWeek: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            onExpand(JourneyLog.monthStart(PrayerDay.start()))
+        } label: {
+            HStack(spacing: 4) {
+                if let w = model?.banked.first {
+                    Text("Last week · \(bankedWords(w))")
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
+                } else {
+                    Text(model == nil ? " " : "Your weeks")
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
+                }
+            }
+            .font(.system(size: 14, weight: .light, design: .rounded))
+            .foregroundStyle(.secondary)
+            .lineLimit(1).minimumScaleFactor(0.85)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open your weeks")
+        // The question's room (it takes this slot): no layout shift when it comes.
+        .frame(maxWidth: .infinity, minHeight: (tight ? 34 : 38) * 2, alignment: .top)
+    }
+
     private var banked: some View {
         VStack(spacing: 0) {
             if let m = model, m.banked.isEmpty {

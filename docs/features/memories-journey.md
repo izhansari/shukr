@@ -172,6 +172,13 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   day per tap); it still steps aside after 3 visits; the dotted dots still open the fill-in (`NoRecordDays.all`). All from `PrayerMetrics`, off the main
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
   No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes `PrayerGoalPage` (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"; Settings' row went 2026-10-22). Under To make up, "Fresh start" ("Count from today, nothing is deleted" · Off, or "Since Oct 12" · Day N) pushes `FreshStartPage` (owner, 2026-10-22: "do we still need fresh start? … if so, then throw it into journey as a list item"; kept — Fable and Frank: its "clear make up" is the one honest reset for To make up, and a set one with no row couldn't be seen or undone). Your goal and Fresh start show in Release too (no MetricsLook gate); Milestones now sits below the fold on a 17 Pro (the rows scroll).
+- **Laid out like Salah** (owner, 2026-10-23, behind `MetricsLook.on` like the week card; canvas https://claude.ai/artifact/Na7xUVdesGnhZYRkSsyQgA):
+  the pager's top bar and bottom bar stay over Journey (they fade only toward Settings — `ChromeLeaves` from page 2 → 3); the top bar
+  shows ☰ · "Journey" (`JourneyPageTitle`, pushed in like Zikr's) · the gear (→ Settings). The page (`JourneyPage.ringPage`): the week
+  ring out of its card (`JourneyWeekCard(bare:)`: no card, no range line, no ↗), its days, the week's line, the goal pill "Aiming for
+  <step> ›" (→ `PrayerGoalPage` in a sheet), "Last week · N of M ›" (→ Your weeks; the no-record question takes its slot), a ^. A swipe up
+  or the ^ brings the rows in a sheet (medium / large): the since-line (the fresh start's ⇄) over Your prayers · To make up · Fresh
+  start · Moments · Milestones; a row closes the sheet, then pushes. No big "Journey" title; Your goal is no longer a row.
 - Journey is the pager's right page (owner, 2026-10-22; `JourneyPagerPage`, built once the Salah page rests): ☰, the day
   page's link, To make up's pill and What's new page to it; a gear at its top right pages on to Settings (the pager's fourth
   page — "add a way for me to get to settings by swipe"), whose ‹ comes back. The week card's ↗ pushes

@@ -131,6 +131,8 @@ extension PrayerTimesView {
                             .modifier(follow(.salah(push: Self.titlePush)))
                         ZikrPageTitle()
                             .modifier(follow(.zikr(push: Self.titlePush)))
+                        JourneyPageTitle()
+                            .modifier(follow(.journey(push: Self.titlePush)))
                     }
 
                     // Menu button: a native Menu instead of the hand-rolled drawer, which
@@ -245,7 +247,7 @@ extension PrayerTimesView {
                             showCalibration = true
                         }
                         #endif
-                        .modifier(follow(.salah(push: 0)))
+                        .modifier(follow(.salahAndJourney))
                         }
                         Spacer()
                         ZStack(alignment: .trailing) {
@@ -261,6 +263,12 @@ extension PrayerTimesView {
                             .padding(.trailing, 8)
                             .modifier(follow(.salah(push: 0)))
                         }
+                        // Journey, top right: the door to Settings (the pager's fourth page — owner, 2026-10-22), in the bar
+                        // now that Journey keeps the top bar (owner, 2026-10-23: "we should probably use the top bar and the
+                        // bottom bar").
+                        ZikrDoor(title: "Settings", symbol: "gearshape") { SettingsPresenter.shared.show() }
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("journeyGear", $0) }
+                            .modifier(follow(.journey(push: 0)))
                         }
                     }
                 }
@@ -431,8 +439,12 @@ extension PrayerTimesView {
             case chevron(sheetOpen: Bool)
             /// The soft looks' "N done": Salah with the sheet open.
             case doneFooter(sheetOpen: Bool)
-            /// The bottom bar: Salah with the sheet open, and always on Zikr.
+            /// The bottom bar: Salah with the sheet open, and always on Zikr and Journey.
             case bottomBar(sheetOpen: Bool)
+            /// Journey's chrome: in from the right by `push`.
+            case journey(push: CGFloat)
+            /// On Salah and Journey both (☰): gone toward Zikr only.
+            case salahAndJourney
         }
         let live: PagerLiveState
         let role: Role
@@ -446,12 +458,18 @@ extension PrayerTimesView {
         func body(content: Content) -> some View {
             /// How far onto the Zikr page we are, 0...1, live from the scroll offset.
             let zikr = min(max(1 - live.scrollProgress, 0), 1)
+            /// How far onto Journey (the page right of Salah), 0...1. Past it, toward Settings, the whole chrome fades
+            /// (ChromeLeaves).
+            let journey = min(max(live.scrollProgress - 1, 0), 1)
+            let salah = (1 - zikr) * (1 - journey)
             let (opacity, push, taps): (CGFloat, CGFloat, Bool) = switch role {
-            case .salah(let push): (1 - zikr, zikr * push, zikr < 0.5)
+            case .salah(let push): (salah, zikr * push - journey * push, salah > 0.5)
             case .zikr(let push): (zikr, -(1 - zikr) * push, zikr > 0.5)
-            case .chevron(let open): ((1 - sheet(open)) * (1 - zikr), 0, sheet(open) < 0.5 && zikr < 0.5)
-            case .doneFooter(let open): (sheet(open) * (1 - zikr), 0, sheet(open) >= 0.5 && zikr < 0.5)
-            case .bottomBar(let open): (max(sheet(open), zikr), 0, sheet(open) >= 0.5 || zikr > 0.5)
+            case .journey(let push): (journey, (1 - journey) * push, journey > 0.5)
+            case .salahAndJourney: (1 - zikr, 0, zikr < 0.5)
+            case .chevron(let open): ((1 - sheet(open)) * salah, 0, sheet(open) < 0.5 && salah > 0.5)
+            case .doneFooter(let open): (sheet(open) * salah, 0, sheet(open) >= 0.5 && salah > 0.5)
+            case .bottomBar(let open): (max(sheet(open), zikr, journey), 0, sheet(open) >= 0.5 || zikr > 0.5 || journey > 0.5)
             }
             // "N done" rides up under the list while a finger brings the sheet (its fixed spot is the open rest).
             let rise: CGFloat = if case .doneFooter = role, sheetFollows {
@@ -471,7 +489,8 @@ extension PrayerTimesView {
     private struct ChromeLeaves: ViewModifier {
         let live: PagerLiveState
         func body(content: Content) -> some View {
-            let settings = min(max(live.scrollProgress - 1, 0), 1)
+            // Journey keeps the bars (owner, 2026-10-23); they go on the way from Journey to Settings.
+            let settings = min(max(live.scrollProgress - 2, 0), 1)
             content
                 .allowsHitTesting(settings < 0.5)
                 .opacity(Double(max(0, 1 - settings / SalahPageAnchor.goneAt)))
@@ -606,6 +625,23 @@ extension PrayerTimesView {
                     Text("Zikr")
                 }
             }
+        }
+    }
+    /// Journey's title in the fixed top bar, in the Zikr title's type (owner, 2026-10-23: "having journey written at the top
+    /// doesn't really make sense here. We should probably use the top bar").
+    struct JourneyPageTitle: View {
+        var body: some View {
+            HStack {
+                Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
+                    .foregroundColor(.secondary)
+                Text("Journey")
+            }
+            .padding()
+            .frame(height: 24, alignment: .center)
+            .font(.caption)
+            .fontDesign(.rounded)
+            .fontWeight(.thin)
+            .padding()
         }
     }
     /// The Salah sheet's list (the old Salah | Zikr tab under the circle is gone: the Zikr page has its own wheel).
