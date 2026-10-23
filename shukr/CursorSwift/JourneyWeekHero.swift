@@ -285,6 +285,12 @@ struct JourneyGoalRing: View, Animatable {
 
 /// Journey's card as this week (MetricsLook): the ring toward a strong week, its count in your goal's words, one line, the
 /// seven days, the last finished weeks banked.
+extension VerticalAlignment {
+    /// The week ring's centre (bare): Journey lines it up with the Salah circle's centre.
+    private enum JourneyRing: AlignmentID { static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] } }
+    static let journeyRing = VerticalAlignment(JourneyRing.self)
+}
+
 struct JourneyWeekCard: View {
     let log: JourneyLog
     var compact = false
@@ -338,7 +344,9 @@ struct JourneyWeekCard: View {
     @State private var picked: JourneyGoalRing.Part?
 
     var body: some View {
-        let ringSide: CGFloat = compact ? 196 : (tight ? 216 : 232)
+        // Bare, on the page: near the Salah circle's size (its centre is lined up with it; any bigger and the words under it
+        // run into the bottom bar).
+        let ringSide: CGFloat = bare ? 226 : (compact ? 196 : (tight ? 216 : 232))
         let lineWidth: CGFloat = compact ? 9.5 : 11   // owner, 2026-10-21: "a little bit thinner. They're really thick right now" (was 12 : 14)
         VStack(spacing: 0) {
             if !bare {
@@ -368,6 +376,8 @@ struct JourneyWeekCard: View {
                 centre
             }
             .padding(.top, tight ? 2 : 6)
+            // On the page: the ring's centre is what the page lines up with the Salah circle's (JourneyPage.ringPage).
+            .alignmentGuide(.journeyRing) { $0[VerticalAlignment.center] }
             .journeyFlightWords(.card)
             dots
                 .padding(.top, tight ? 4 : 8)

@@ -375,6 +375,7 @@ extension JourneyLog.Day {
 }
 
 struct JourneyPage: View {
+    @Environment(SharedStateClass.self) private var sharedState
     /// In the pager (JourneyPagerPage): whether it's the page showing. It stays built there, so appearing doesn't say it; nil
     /// when pushed.
     var visible: Bool? = nil
@@ -623,15 +624,23 @@ struct JourneyPage: View {
     /// One ring on the page, as on Salah and Zikr (the top and bottom bars are the pager's): this week's ring with its days,
     /// the week's line, the goal pill, last week; the rows under a pull-up (a swipe up or the ^, as the Salah list).
     private var ringPage: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            JourneyWeekCard(log: log, compact: small,
+        // The ring's centre where the Salah circle's is (owner, 2026-10-23: "ring needs to be centered like the other pages"),
+        // read from the circle's own frame; the screen's middle until it has reported. At its size too (compact: 196 pt).
+        let screen = UIScreen.main.bounds
+        let salahMid = Self.salahRestMid(screen, listClosed: sharedState.navPosition == .main)
+        return ZStack(alignment: Alignment(horizontal: .center, vertical: .journeyRing)) {
+            Color.clear
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .alignmentGuide(.journeyRing) { $0[VerticalAlignment.center] + (salahMid - screen.midY) }
+            JourneyWeekCard(log: log, compact: true,
                             onExpand: { expanded = JourneyMonthRoute(month: $0, focus: false) },
                             onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
                             onMakeUp: { openMakeUp(week: true) },
                             bare: true, goal: goal, onGoal: { showGoalSheet = true })
                 .padding(.horizontal, 20)
-            Spacer(minLength: 0)
+        }
+        .ignoresSafeArea()
+        .overlay(alignment: .bottom) {
             Button {
                 triggerSomeVibration(type: .light)
                 showRows = true
@@ -645,9 +654,9 @@ struct JourneyPage: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("More: your prayers, to make up, moments, milestones, fresh start")
+            // Clear of the pager's bottom bar.
+            .padding(.bottom, small ? 66 : 82)
         }
-        // Clear of the pager's bottom bar.
-        .padding(.bottom, small ? 70 : 88)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         // A swipe up brings the rows (never minimumDistance 0 in the pager — CLAUDE.md); sideways stays the pager's.
@@ -656,6 +665,15 @@ struct JourneyPage: View {
             triggerSomeVibration(type: .light)
             showRows = true
         })
+    }
+
+    /// The Salah circle's centre at rest (its list closed: the list lifts the circle), remembered from its frame.
+    @MainActor private static var salahMid: CGFloat?
+    @MainActor private static func salahRestMid(_ screen: CGRect, listClosed: Bool) -> CGFloat {
+        if listClosed, let f = WelcomeTarget.circleFrame, f.width > 100 {
+            salahMid = f.midY
+        }
+        return salahMid ?? screen.midY
     }
 
     /// The rows, pulled up: the since-line (the fresh start's ⇄ lives here now) over Your prayers · To make up · Fresh start ·
