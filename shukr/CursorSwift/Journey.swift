@@ -962,6 +962,7 @@ struct JourneyPagerPage: View {
     @Environment(SharedStateClass.self) private var sharedState
     @Environment(\.circleTheme) private var theme
     @State private var built = false
+    private static var barDrop: CGFloat { if #available(iOS 26.0, *) { 8 } else { 0 } }
 
     var body: some View {
         Group {
@@ -990,6 +991,9 @@ struct JourneyPagerPage: View {
             }
             .padding(.horizontal, 16)
             .frame(height: 44)
+            // Level with Settings' ‹ (owner, 2026-10-23: "higher than most buttons are for the top bar"): iOS 26's bar
+            // centres its buttons 30 pt under the safe area, this row 22. An offset, so the title under it doesn't move.
+            .offset(y: Self.barDrop)
         }
         .task {
             _ = await CircleStage.shared.until(deadline: 8) { CircleStage.shared.restingPage != nil }
