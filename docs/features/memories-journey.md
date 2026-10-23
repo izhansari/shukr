@@ -178,8 +178,9 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   ring out of its card (`JourneyWeekCard(bare:)`: no card, no range line, no ↗), its days, the week's line, the goal pill "Aiming for
   <step> ›" (pushes `PrayerGoalPage`), "Last week · N of M ›" (→ Your weeks; the no-record question takes its slot), a ^. A swipe up
   or the ^ pulls the rows up as the Salah list does (`rowsUp`): the ring rises to the top (an offset — layout never moves), the line,
-  pill and last week fade, a raised card (NeuRaised) comes up over the bottom bar with the since-line (the fresh start's ⇄) over Your
-  prayers · To make up · Fresh start · Moments · Milestones; a row pushes; a swipe down or the ⌄ puts it away; paging away closes it.
+  pill and last week fade, a raised card (NeuRaised) comes up over the bottom bar: Your prayers (its total marked on the right; a plain push,
+  no zoom) · To make up · Fresh start · Moments · Milestones (no since-line); a row pushes; the swipe is the pager's own vertical drag,
+  the Salah list's (5 pt start, axis lock, 30 pt line → `JourneyPage.rowsDrag`); ^ / ⌄ too; paging away closes it.
   In the pager the page has no background of its own (the pager's backdrop): an opaque one drew its edge over the Salah page as it
   faded in place. No big "Journey" title; Your goal is no longer a row.
 - Journey is the pager's right page (owner, 2026-10-22; `JourneyPagerPage`, built once the Salah page rests): ☰, the day

@@ -489,7 +489,8 @@ struct JourneyPage: View {
         }
         .onChange(of: showMakeUp) { _, open in if !open { makeUpWeek = false } }
         .navigationDestination(isPresented: $showScores) {
-            PrayerScoresPage().navigationTransition(.zoom(sourceID: "scores", in: scoresZoom))
+            // A plain push (owner, 2026-10-23: "make your prayers come up as a pushed page"; it zoomed out of the row).
+            PrayerScoresPage()
         }
         .modifier(JourneyExtrasPresenter(tap: $extraTap))
         .navigationDestination(isPresented: $showGoal) { PrayerGoalPage() }
@@ -661,8 +662,8 @@ struct JourneyPage: View {
                 .accessibilityLabel(rowsUp ? "Close the list" : "More: your prayers, to make up, moments, milestones, fresh start")
                 // The rows' card, the Salah list's raised look; off the bottom until pulled up.
                 VStack(alignment: .leading, spacing: 0) {
-                    sinceLine.padding(.top, 14).padding(.bottom, 4).padding(.horizontal, 4)
-                    rows(s, height: small ? 50 : 56, inSheet: true)
+                    // No since-line on top (owner, 2026-10-23: "the list is annoying at the top with the “since” thing").
+                    rows(s, height: small ? 50 : 56, inSheet: true).padding(.top, 4)
                 }
                 .padding(.horizontal, 16).padding(.bottom, 6)
                 .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
@@ -678,15 +679,17 @@ struct JourneyPage: View {
         .contentShape(Rectangle())
         // A swipe up brings the rows, a swipe down puts them away (never minimumDistance 0 in the pager — CLAUDE.md);
         // sideways stays the pager's.
-        .simultaneousGesture(DragGesture(minimumDistance: 24).onEnded { v in
-            guard abs(v.translation.height) > 50, abs(v.translation.height) > abs(v.translation.width) * 1.5 else { return }
-            let up = v.translation.height < 0
-            guard up != rowsUp else { return }
-            triggerSomeVibration(type: .light)
+        // The pager's own vertical drag, as the Salah list's (owner, 2026-10-23: "make the list gesture in the same feel as the
+        // salah list way"): the same 5 pt start, axis lock and 30 pt line (PrayerTimesView.abstractedDragGesture).
+        .onReceive(NotificationCenter.default.publisher(for: Self.rowsDrag)) { note in
+            guard let up = note.object as? Bool, up != rowsUp else { return }
             setRows(up)
-        })
+        }
         .onChange(of: visible) { _, shown in if shown == false, rowsUp { setRows(false, animated: false) } }
     }
+
+    /// A vertical swipe on Journey in the pager (object: true = up).
+    static let rowsDrag = Notification.Name("journeyRowsDrag")
 
     private func setRows(_ up: Bool, animated: Bool = true) {
         if animated {
@@ -844,14 +847,14 @@ struct JourneyPage: View {
                 // Your prayers as a row with the others (owner, 2026-10-20: "looks weird to have the upper right ring so busy
                 // on journey … you can get rid of it and make it a list item"); the page still zooms out of it.
                 JourneyHomeRow(title: "Your prayers",
-                               line: recent.asked > 0 ? "\(recent.inTime) of \(recent.asked) in their windows · last 7 days"
+                               line: recent.asked > 0 ? "\(recent.inTime) of \(recent.asked) in their windows · 7 days"
                                    : "Each prayer, lately",
                                height: rowHeight, quiet: recent.asked == 0) {
                     Image(systemName: "chart.bar").font(.system(size: 19, weight: .light)).foregroundStyle(.secondary)
                 } value: {
-                    EmptyView()
+                    // Every prayer marked (owner, 2026-10-23: "write total number of prayers marked at end of list item").
+                    Text(s.prayersMarked.formatted())
                 } action: { showScores = true }
-                .matchedTransitionSource(id: "scores", in: scoresZoom)
             }
             // The This month row went with the goal (owner, 2026-10-18: "I only kept it so i could toggle to see my stats.
             // I never used it for actually opening the month ever since we fixed the compact card").

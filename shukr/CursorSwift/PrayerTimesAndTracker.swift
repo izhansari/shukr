@@ -348,6 +348,11 @@ struct PrayerTimesView: View {
                 // The sheet's own move is the page's and the chrome's implicit animation (rule 6); this one is the
                 // chevron's nudge settling.
                 live.refreshReach = 0
+                // Journey's rows pull up the Salah list's way (JourneyPage.rowsDrag): the same line, a pop.
+                if vertical, sharedState.horizontalPage == .journey, abs(value.translation.height) > threshold {
+                    triggerSomeVibration(type: .light)
+                    NotificationCenter.default.post(name: JourneyPage.rowsDrag, object: value.translation.height < 0)
+                }
                 withAnimation(CircleMotion.page) {
                     live.pull = 0
                     // The tour holds the list where its step needs it (audit E17); only its list step opens it.
