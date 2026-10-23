@@ -191,15 +191,8 @@ struct WelcomeRing: Shape {
     var lettersIn = false
     var ringDrawn = false
     var shine = false
-    /// The icon's tile and name gone, the ring and dot left (owner, 2026-10-22: "get rid of the app icon border before
-    /// expanding the ring").
-    var tileGone = false
-    /// The icon coming in, in order (owner, 2026-10-22: "start with blank screen and square app border flat. then lift
-    /// it / as we lift, animate in the ring / then the dot and shukr / then the grow"): the flat tile is `ringDrawn`, then
-    /// it lifts, the ring draws in as it does, then the dot and the name.
+    /// The icon has risen out of the page (square, ring, dot and name together).
     var lifted = false
-    var ringIn = false
-    var detailsIn = false
     /// The small ring grows into the circle.
     var grow = false
     /// Opening onto a page with no Salah circle: the ring opens out past the edges like a doorway.
@@ -257,56 +250,58 @@ struct WelcomeMark: View {
         // soft ring and its green dot, there from the first frame, so the launch picks up where iOS's zoom from the icon
         // leaves off. (Was a sage hairline drawing itself round the word.)
         let icon = !grow && !portal
-        // Every step of the icon's entrance counts as done once it's handed off, growing, or under Reduce Motion.
-        let done = state.startDrawn || reduceMotion || grow || portal
-        let tileIn = state.ringDrawn || done, lifted = state.lifted || done
-        let ringIn = state.ringIn || done, detailsIn = state.detailsIn || done
+        // The icon rises out of the page as one piece — the square, its ring, the dot and the name together, a soft
+        // shadow coming up under them (owner, 2026-10-22: "the ring shouldn't sweep. it should just soft raise together
+        // out of the screen with the square raising with basic shadow. and the shukr text fading in with it"). Done at once
+        // once handed off (the setup's frost), growing, or under Reduce Motion.
+        let raised = state.lifted || state.startDrawn || reduceMotion || grow || portal
+        // The square and the dot grow with the ring and fade on the way ("maybe we grow the ring and box with it. with the
+        // box fading out during the grow").
+        let spread = size / Self.startSize
         ZStack {
-            // The icon's tile: its squircle's edge, as on the Home Screen, gone as it opens.
+            // Its name under it, as on the Home Screen; the square grows over it as it opens (owner: "or the box and just
+            // grow over the shukr text to hide it").
+            Text("shukr")
+                .font(.system(size: 15, weight: .regular, design: .rounded))
+                .foregroundStyle(.secondary)
+                .offset(y: Self.iconSize / 2 + 18)
+                .opacity(icon && raised ? 1 : 0)
+                .animation(CircleMotion.Opening.iconAway, value: icon)
             RoundedRectangle(cornerRadius: Self.iconSize * 0.225, style: .continuous)
                 .fill(theme.surface)
-                // Flat on the page first, then lifted.
-                .shadow(color: .black.opacity(lifted ? 0.14 : 0), radius: lifted ? 8 : 0, y: lifted ? 3 : 0)
+                .shadow(color: .black.opacity(raised ? 0.16 : 0), radius: raised ? 10 : 0, y: raised ? 4 : 0)
                 .overlay {
                     RoundedRectangle(cornerRadius: Self.iconSize * 0.225, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5)
                 }
                 .frame(width: Self.iconSize, height: Self.iconSize)
-                .scaleEffect(lifted ? 1 : 0.97)
-                .opacity(icon && tileIn && !state.tileGone && !reduceMotion ? 1 : 0)
-            // Its name under it, as on the Home Screen (owner, 2026-10-22: "maybe we can write “shukr” in at the bottom of
-            // the app icon").
-            Text("shukr")
-                .font(.system(size: 15, weight: .regular, design: .rounded))
-                .foregroundStyle(.secondary)
-                .offset(y: Self.iconSize / 2 + 18)
-                .opacity(icon && detailsIn && !state.tileGone ? 1 : 0)
+                .scaleEffect(grow ? spread : (raised ? 1 : 0.96))
+                .opacity(icon && raised && !reduceMotion ? 1 : 0)
+                .animation(CircleMotion.Opening.iconAway, value: icon)
             // The ring: the icon's raised band, grown into the circle's track (the soft band under the soft ring: its
             // width, surface and lift).
             WelcomeRing(width: icon ? Self.iconBand : (toDashes ? UpcomingTrack.style.lineWidth : track.width))
                 .fill(icon ? theme.surface : (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity) : track.fill))
-                .shadow(color: icon || track.lifted && grow ? theme.shade : .clear, radius: icon ? 1.5 : 4, x: icon ? 0.75 : 2, y: icon ? 0.75 : 2)
-                .shadow(color: icon || track.lifted && grow ? theme.light : .clear, radius: icon ? 2 : 6, x: icon ? -0.75 : -2, y: icon ? -0.75 : -2)
-                // Draws in clockwise from the top as the tile lifts; wide enough that the lift isn't clipped.
-                .mask {
-                    Circle().trim(from: 0, to: ringIn ? 1 : 0)
-                        .stroke(style: StrokeStyle(lineWidth: 44, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                }
-                // Starts as the icon round the word, grows to the circle (frame, not scale, so the band keeps its width).
+                .shadow(color: (icon || track.lifted && grow ? theme.shade : .clear).opacity(raised ? 1 : 0),
+                        radius: icon ? 1.5 : 4, x: icon ? 0.75 : 2, y: icon ? 0.75 : 2)
+                .shadow(color: (icon || track.lifted && grow ? theme.light : .clear).opacity(raised ? 1 : 0),
+                        radius: icon ? 2 : 6, x: icon ? -0.75 : -2, y: icon ? -0.75 : -2)
+                // Wide enough that the lift isn't clipped.
+                .mask { Circle().stroke(lineWidth: 44) }
+                // Grows to the circle by its frame, not a scale, so the band keeps its own width.
                 .frame(width: size, height: size)
-                .opacity(reduceMotion || portal || (state.dashesIn && !track.dashesInBand) ? 0 : 1)
-            // The icon's dot, where it sits on the icon; it fades as the ring grows (not carried round to the prayer:
+                .scaleEffect(raised ? 1 : 0.96)
+                .opacity(reduceMotion || portal || !raised || (state.dashesIn && !track.dashesInBand) ? 0 : 1)
+            // The icon's dot: rides the ring out as it grows and fades with the square (not carried round to the prayer:
             // the landing can be a dashed track, a missed prayer, the morning card or another page — owner).
             Circle()
                 .fill(Color.sage)
                 .shadow(color: Color.sage.opacity(0.5), radius: 2)
                 .frame(width: Self.iconDot, height: Self.iconDot)
-                .offset(x: Self.startSize / 2 * sin(Self.iconDotAngle), y: -Self.startSize / 2 * cos(Self.iconDotAngle))
-                // It goes with the tile, before the ring opens (owner, 2026-10-22: "the green dot should probably fade out
-                // with the border so we don't have the ring moving while that fades out in place").
-                .scaleEffect(detailsIn ? 1 : 0.5)
-                .opacity(icon && detailsIn && !state.tileGone && !reduceMotion ? 1 : 0)
+                .offset(x: size / 2 * sin(Self.iconDotAngle), y: -size / 2 * cos(Self.iconDotAngle))
+                .scaleEffect(raised ? 1 : 0.96)
+                .opacity(icon && raised && !reduceMotion ? 1 : 0)
+                .animation(CircleMotion.Opening.iconAway, value: icon)
             // The dashed track, when that's what the circle is showing: once the ring is there, its dashes appear one by
             // one from the top (owner), as the circle's own do.
             DashedRing(drawn: state.dashesIn || reduceMotion ? 1 : 0)
@@ -473,18 +468,9 @@ struct WelcomeOverlay: View {
             soft.impactOccurred(intensity: 1.0)           // …dub, as the ring closes
             guard await CircleGate.pause(T.holdDuration) else { return }
         } else {
-            // The tile, flat; it lifts as the ring draws in; the dot and its name halfway up; a beat; then it opens.
-            withAnimation(T.tileIn) { mark.ringDrawn = true }
-            guard await CircleGate.pause(T.tileInDuration) else { return }
-            withAnimation(T.lift) { mark.lifted = true }
-            withAnimation(T.ringIn) { mark.ringIn = true }
-            // Halfway up, the dot and the name (owner: "bring the dot and shukr in halfway into lifting the ring up").
-            guard await CircleGate.pause(T.ringInDuration / 2) else { return }
-            withAnimation(T.detailsIn) { mark.detailsIn = true }
-            guard await CircleGate.pause(T.ringInDuration / 2 + T.iconHoldDuration) else { return }
-            // The tile and its name go first; then the ring opens.
-            withAnimation(T.iconAway) { mark.tileGone = true }
-            guard await CircleGate.pause(T.tileAwayDuration) else { return }
+            // The icon rises out of the page as one piece; a beat; then it opens.
+            withAnimation(T.raise) { mark.lifted = true }
+            guard await CircleGate.pause(T.raiseDuration + T.iconHoldDuration) else { return }
             soft.impactOccurred(intensity: 0.7)
         }
         var glided = false
@@ -558,17 +544,12 @@ extension CircleMotion {
         /// From the sleep curtain: the black lifts as the word writes in.
         static let blackAway = Animation.easeInOut(duration: 0.7)
         /// The app icon held, as on the Home Screen, before it opens into the circle.
-        /// The icon's entrance: the flat tile fades in, lifts as the ring draws in, the dot and name halfway up; the hold.
-        static let tileIn = Animation.easeOut(duration: 0.45)
-        static let tileInDuration: Double = 0.45
-        static let lift = Animation.easeInOut(duration: 0.8)
-        static let ringIn = Animation.easeInOut(duration: 0.9)
-        static let ringInDuration: Double = 0.85
-        static let detailsIn = Animation.easeOut(duration: 0.45)
-        static let iconHoldDuration: Double = 1.0
-        /// The tile, its name and the dot going, before the ring opens.
-        static let iconAway = Animation.easeInOut(duration: 0.5)
-        static let tileAwayDuration: Double = 0.45
+        /// The icon rising out of the page (square, ring, dot and name together, their shadows coming up).
+        static let raise = Animation.easeOut(duration: 0.9)
+        static let raiseDuration: Double = 0.8
+        static let iconHoldDuration: Double = 0.4
+        /// The square, the dot and the name (under the square) fading as the square grows with the ring.
+        static let iconAway = Animation.easeOut(duration: 0.55)
         /// "shukr" writing itself: each letter fades in, one step after the last.
         static let letter = Animation.easeOut(duration: 0.5)
         static let letterStepDuration: Double = 0.08
@@ -592,7 +573,7 @@ extension CircleMotion {
         /// The landing: the ring grows out into the circle's track…
         static let grow = Animation.spring(response: 1.1, dampingFraction: 1)   // calm: no bounce (was 0.75 / 0.9)
         /// …into the band…
-        static let toBandDuration: Double = 0.7
+        static let toBandDuration: Double = 0.55   // the page comes in as the ring lands, not after
         /// …or, for a prayer that hasn't started, its edge first, then the dashes.
         static let toDashesDuration: Double = 0.56
         static let dashes = CircleMotion.dashesDraw   // the dashes appear one by one (the circle's own draw)

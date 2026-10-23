@@ -1574,10 +1574,8 @@ private struct SetupOpening: View {
                 await CircleMotion.animate(T.landShrink) { shrunk = true }
                 await CircleMotion.animate(T.landToRing) { markShown = true }
                 guard await CircleGate.pause(max(T.landDrainDuration - 0.55 - 0.45, 0) + T.landHoldDuration) else { return }
-                // 2. The icon's tile and name go, as on a launch (owner: "get rid of the app icon border before expanding
-                // the ring"); then the ring grows out to the Salah circle, thickening into its band.
-                withAnimation(O.iconAway) { mark.tileGone = true }
-                guard await CircleGate.pause(O.tileAwayDuration) else { return }
+                // 2. The ring grows out to the Salah circle, thickening into its band; the square and dot grow with it and
+                // fade, as on a launch.
                 withAnimation(O.grow) { mark.grow = true }
                 guard await CircleGate.pause(O.toBandDuration) else { return }
                 // 3. The ring and the real track are the same shape in the same place: only the page appears.
