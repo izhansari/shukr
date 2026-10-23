@@ -191,6 +191,8 @@ struct WelcomeRing: Shape {
     var lettersIn = false
     var ringDrawn = false
     var shine = false
+    /// The name and the dot gone, before the ring grows (owner, 2026-10-22: "name gotta be wiped out before the ring grows").
+    var nameGone = false
     /// The icon has risen out of the page (square, ring, dot and name together).
     var lifted = false
     /// The small ring grows into the circle.
@@ -236,6 +238,9 @@ struct WelcomeMark: View {
     /// "shukr" inside the ring: off for now (owner, 2026-10-22: "forget the word shukr for now since it kinda ruins our
     /// thing. we can worry ab it later").
     static let showsWord = false
+    /// The icon's squircle: off (owner, 2026-10-22, after it grew with the ring: "nah this ain't it… get rid of the squircle
+    /// box maybe") — the ring, the dot and the name rise on their own.
+    static let showsTile = false
     /// Past every corner of the screen.
     private var portalSize: CGFloat { max(UIScreen.main.bounds.height, UIScreen.main.bounds.width) * 1.4 }
 
@@ -264,8 +269,8 @@ struct WelcomeMark: View {
             Text("shukr")
                 .font(.system(size: 15, weight: .regular, design: .rounded))
                 .foregroundStyle(.secondary)
-                .offset(y: Self.iconSize / 2 + 18)
-                .opacity(icon && raised ? 1 : 0)
+                .offset(y: (Self.showsTile ? Self.iconSize : Self.startSize) / 2 + 18)
+                .opacity(icon && raised && !state.nameGone ? 1 : 0)
                 .animation(CircleMotion.Opening.iconAway, value: icon)
             RoundedRectangle(cornerRadius: Self.iconSize * 0.225, style: .continuous)
                 .fill(theme.surface)
@@ -276,7 +281,7 @@ struct WelcomeMark: View {
                 }
                 .frame(width: Self.iconSize, height: Self.iconSize)
                 .scaleEffect(grow ? spread : (raised ? 1 : 0.96))
-                .opacity(icon && raised && !reduceMotion ? 1 : 0)
+                .opacity(Self.showsTile && icon && raised && !reduceMotion ? 1 : 0)
                 .animation(CircleMotion.Opening.iconAway, value: icon)
             // The ring: the icon's raised band, grown into the circle's track (the soft band under the soft ring: its
             // width, surface and lift).
@@ -292,16 +297,18 @@ struct WelcomeMark: View {
                 .frame(width: size, height: size)
                 .scaleEffect(raised ? 1 : 0.96)
                 .opacity(reduceMotion || portal || !raised || (state.dashesIn && !track.dashesInBand) ? 0 : 1)
-            // The icon's dot: rides the ring out as it grows and fades with the square (not carried round to the prayer:
+            // The icon's dot (not carried round to the prayer:
             // the landing can be a dashed track, a missed prayer, the morning card or another page — owner).
             Circle()
                 .fill(Color.sage)
                 .shadow(color: Color.sage.opacity(0.5), radius: 2)
                 .frame(width: Self.iconDot, height: Self.iconDot)
-                .offset(x: size / 2 * sin(Self.iconDotAngle), y: -size / 2 * cos(Self.iconDotAngle))
+                // It goes with the name, before the ring grows (owner: "the green dot should probably fade out with the
+                // border so we don't have the ring moving while that fades out in place"). Tried: riding the ring out as
+                // it grows — it ran ahead of the ring.
+                .opacity(icon && raised && !state.nameGone && !reduceMotion ? 1 : 0)
+                .offset(x: Self.startSize / 2 * sin(Self.iconDotAngle), y: -Self.startSize / 2 * cos(Self.iconDotAngle))
                 .scaleEffect(raised ? 1 : 0.96)
-                .opacity(icon && raised && !reduceMotion ? 1 : 0)
-                .animation(CircleMotion.Opening.iconAway, value: icon)
             // The dashed track, when that's what the circle is showing: once the ring is there, its dashes appear one by
             // one from the top (owner), as the circle's own do.
             DashedRing(drawn: state.dashesIn || reduceMotion ? 1 : 0)
@@ -471,6 +478,8 @@ struct WelcomeOverlay: View {
             // The icon rises out of the page as one piece; a beat; then it opens.
             withAnimation(T.raise) { mark.lifted = true }
             guard await CircleGate.pause(T.raiseDuration + T.iconHoldDuration) else { return }
+            withAnimation(T.nameAway) { mark.nameGone = true }
+            guard await CircleGate.pause(T.nameAwayDuration) else { return }
             soft.impactOccurred(intensity: 0.7)
         }
         var glided = false
@@ -548,8 +557,11 @@ extension CircleMotion {
         static let raise = Animation.easeOut(duration: 0.9)
         static let raiseDuration: Double = 0.8
         static let iconHoldDuration: Double = 0.4
-        /// The square, the dot and the name (under the square) fading as the square grows with the ring.
+        /// The square and the dot fading as they grow with the ring.
         static let iconAway = Animation.easeOut(duration: 0.55)
+        /// The name and the dot going before the ring grows.
+        static let nameAway = Animation.easeInOut(duration: 0.4)
+        static let nameAwayDuration: Double = 0.4
         /// "shukr" writing itself: each letter fades in, one step after the last.
         static let letter = Animation.easeOut(duration: 0.5)
         static let letterStepDuration: Double = 0.08
@@ -571,9 +583,10 @@ extension CircleMotion {
         static let portalPage = Animation.easeInOut(duration: 0.6).delay(0.15)
         static let portalDuration: Double = 0.76
         /// The landing: the ring grows out into the circle's track…
-        static let grow = Animation.spring(response: 1.1, dampingFraction: 1)   // calm: no bounce (was 0.75 / 0.9)
+        /// Calm (owner: "maybe even grow the ring calmly"): a long ease that settles softly, no spring (was a spring 1.1 / 1).
+        static let grow = Animation.timingCurve(0.45, 0, 0.2, 1, duration: 1.5)
         /// …into the band…
-        static let toBandDuration: Double = 0.55   // the page comes in as the ring lands, not after
+        static let toBandDuration: Double = 1.0   // the page comes in as the ring lands, not after
         /// …or, for a prayer that hasn't started, its edge first, then the dashes.
         static let toDashesDuration: Double = 0.56
         static let dashes = CircleMotion.dashesDraw   // the dashes appear one by one (the circle's own draw)

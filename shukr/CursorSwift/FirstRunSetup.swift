@@ -1576,6 +1576,8 @@ private struct SetupOpening: View {
                 guard await CircleGate.pause(max(T.landDrainDuration - 0.55 - 0.45, 0) + T.landHoldDuration) else { return }
                 // 2. The ring grows out to the Salah circle, thickening into its band; the square and dot grow with it and
                 // fade, as on a launch.
+                withAnimation(O.nameAway) { mark.nameGone = true }
+                guard await CircleGate.pause(O.nameAwayDuration) else { return }
                 withAnimation(O.grow) { mark.grow = true }
                 guard await CircleGate.pause(O.toBandDuration) else { return }
                 // 3. The ring and the real track are the same shape in the same place: only the page appears.
