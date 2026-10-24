@@ -46,6 +46,15 @@ import UIKit
     var sheetProgress: CGFloat { min(max(sheetOffset / max(sheetTravel, 1), 0), 1) }
     /// The following sheet's finger and landing (SalahSheetDrag.swift, round 5).
     @ObservationIgnored lazy var sheetSpring = SheetSpring(live: self)
+    /// Journey's rows, the same way (owner, 2026-10-23: "drags up with a live drag and drives down with a live drag too"):
+    /// points the rows have come up (0 … `journeyRun`), the run between their rests (JourneyPage measures it), and the phase.
+    var journeyOffset: CGFloat = 0
+    var journeyRun: CGFloat = 1
+    var journeyPhase: ScrollPhase = .idle
+    /// 0 closed … 1 open.
+    var journeyProgress: CGFloat { journeyOffset / max(journeyRun, 1) }
+    @ObservationIgnored lazy var journeySpring = SheetSpring(live: self, offset: \.journeyOffset, run: \.journeyRun,
+                                                             phase: \.journeyPhase, name: "journey")
 }
 
 
@@ -151,7 +160,7 @@ struct PagerPanLock: UIViewRepresentable {
         // the pager: that reached every scroll view in the pages, and Journey's grid and calendar wouldn't scroll with no
         // location (sim, 2026-10-18).
         view.locked = live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating
-            || CircleStage.shared.lost != nil
+            || live.journeyPhase == .interacting || CircleStage.shared.lost != nil
     }
 
     /// Sits in the pager's content: the nearest UIScrollView above it is the pager.

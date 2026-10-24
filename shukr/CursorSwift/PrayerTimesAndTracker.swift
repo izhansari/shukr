@@ -309,6 +309,14 @@ struct PrayerTimesView: View {
                     }
                 }
                 if dragAxis.vertical == true {
+                    // Journey's rows follow the finger the Salah list's way (owner, 2026-10-23: "drags up with a live drag
+                    // and drives down with a live drag too"): their own spring, the same tuning.
+                    if sharedState.horizontalPage == .journey, sheetFollows, !dragAxis.swallowed {
+                        let spring = live.journeySpring
+                        if !spring.dragging { spring.begin() }
+                        spring.drag(value.translation.height)
+                        return
+                    }
                     guard sharedState.horizontalPage == .main, !dragAxis.swallowed else { return }
                     if sheetFollows {
                         // Vertical live dragging (round 5): the list and ring follow the finger.
@@ -345,10 +353,16 @@ struct PrayerTimesView: View {
                     live.refreshReach = 0
                     return
                 }
+                if live.journeySpring.dragging {
+                    let spring = live.journeySpring
+                    let wasOpen = !spring.startedClosed
+                    if spring.release(velocityY: value.velocity.height) != wasOpen { triggerSomeVibration(type: .light) }
+                    return
+                }
                 // The sheet's own move is the page's and the chrome's implicit animation (rule 6); this one is the
                 // chevron's nudge settling.
                 live.refreshReach = 0
-                // Journey's rows pull up the Salah list's way (JourneyPage.rowsDrag): the same line, a pop.
+                // Live dragging off (the palette menu): Journey's rows pop, as the Salah list does (JourneyPage.rowsDrag).
                 if vertical, sharedState.horizontalPage == .journey, abs(value.translation.height) > threshold {
                     triggerSomeVibration(type: .light)
                     NotificationCenter.default.post(name: JourneyPage.rowsDrag, object: value.translation.height < 0)
@@ -384,6 +398,7 @@ struct PrayerTimesView: View {
         dragAxis.vertical = nil
         dragAxis.swallowed = false
         if live.sheetSpring.dragging { live.sheetSpring.release(velocityY: 0) }   // a cancelled drag lands where it was
+        if live.journeySpring.dragging { live.journeySpring.release(velocityY: 0) }
         if live.pagerLocked { live.pagerLocked = false }
         if live.pull != 0 { withAnimation(CircleMotion.page) { live.pull = 0 } }
         if live.refreshReach != 0 { live.refreshReach = 0 }

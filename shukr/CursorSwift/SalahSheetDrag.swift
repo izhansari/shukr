@@ -114,15 +114,30 @@ final class SheetSpring: NSObject {
     private var link: CADisplayLink?
     private var last: CFTimeInterval = 0
 
-    init(live: PagerLiveState) { self.live = live }
+    /// Which of the live values it drives: the Salah sheet's by default; Journey's rows have their own (owner, 2026-10-23:
+    /// "the list at the bottom doesn't flow or feel under our finger the same way as the list in the Salah tab").
+    private let offsetKey: ReferenceWritableKeyPath<PagerLiveState, CGFloat>
+    private let runKey: KeyPath<PagerLiveState, CGFloat>
+    private let phaseKey: ReferenceWritableKeyPath<PagerLiveState, ScrollPhase>
+    private let name: String
 
-    private var run: Double { Double(max(live?.sheetRun ?? 1, 1)) }
+    init(live: PagerLiveState, offset: ReferenceWritableKeyPath<PagerLiveState, CGFloat> = \.sheetOffset,
+         run: KeyPath<PagerLiveState, CGFloat> = \.sheetRun,
+         phase: ReferenceWritableKeyPath<PagerLiveState, ScrollPhase> = \.sheetPhase, name: String = "salah") {
+        self.live = live
+        offsetKey = offset
+        runKey = run
+        phaseKey = phase
+        self.name = name
+    }
+
+    private var run: Double { Double(max(live?[keyPath: runKey] ?? 1, 1)) }
     /// 0 closed … 1 open; past either end while stretched.
     var progress: Double {
-        get { Double(live?.sheetOffset ?? 0) / run }
+        get { Double(live?[keyPath: offsetKey] ?? 0) / run }
         set {
             let points = CGFloat(newValue * run)
-            if let live, abs(live.sheetOffset - points) > 0.01 { live.sheetOffset = points }
+            if let live, abs(live[keyPath: offsetKey] - points) > 0.01 { live[keyPath: offsetKey] = points }
         }
     }
     var isMoving: Bool { link != nil }
@@ -136,10 +151,10 @@ final class SheetSpring: NSObject {
         dragging = true
         start = progress
         velocity = 0
-        live?.sheetPhase = .interacting
+        live?[keyPath: phaseKey] = .interacting
         startLink()
         #if DEBUG
-        meterBegin("salah drag")
+        meterBegin("\(name) drag")
         #endif
     }
 
@@ -168,10 +183,10 @@ final class SheetSpring: NSObject {
             land()
             return
         }
-        live?.sheetPhase = .animating
+        live?[keyPath: phaseKey] = .animating
         startLink()
         #if DEBUG
-        meterBegin("salah spring")
+        meterBegin("\(name) spring")
         #endif
     }
 
@@ -181,7 +196,7 @@ final class SheetSpring: NSObject {
         dragging = false
         target = open ? 1 : 0
         progress = target
-        live?.sheetPhase = .idle
+        live?[keyPath: phaseKey] = .idle
     }
 
     private static func rubber(_ x: Double, openGive: Double) -> Double {
@@ -230,7 +245,7 @@ final class SheetSpring: NSObject {
         #if DEBUG
         meterEnd()
         #endif
-        live?.sheetPhase = .idle
+        live?[keyPath: phaseKey] = .idle
         onRest?(target >= 0.5)
     }
 

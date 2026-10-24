@@ -344,6 +344,10 @@ struct JourneyWeekCard: View {
     @State private var dotFrames: [Int: CGRect] = [:]
     /// The ring's part last tapped: the centre says what it counts until it's tapped again (or the ring off a pill).
     @State private var picked: JourneyGoalRing.Part?
+    /// The ring's centre and the days' bottom, in the card's own space (bare: JourneyRowsLayout.daysBelowRing).
+    @State private var ringMidY: CGFloat = 0
+    @State private var daysMaxY: CGFloat = 0
+    private static let space = "journeyWeekHero"
 
     var body: some View {
         // Bare, on the page: near the Salah circle's size (its centre is lined up with it; any bigger and the words under it
@@ -380,9 +384,12 @@ struct JourneyWeekCard: View {
             .padding(.top, tight ? 2 : 6)
             // On the page: the ring's centre is what the page lines up with the Salah circle's (JourneyPage.ringPage).
             .alignmentGuide(.journeyRing) { $0[VerticalAlignment.center] }
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.space)).midY } action: { ringMidY = $0 }
             .journeyFlightWords(.card)
             dots
                 .padding(.top, tight ? 4 : 8)
+                // Bare: how far the days' bottom is under the ring's centre — Journey's rows come up to just under it.
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.space)).maxY } action: { daysMaxY = $0 }
                 .journeyFlightWords(.card)
             // One line: what keeps the week strong, or that it can't be now (owner, 2026-10-21: "you have to also account for
             // the messaging for when they miss their strong week"). Three lines' room always (the mid-week line's), centred:
@@ -463,6 +470,10 @@ struct JourneyWeekCard: View {
             .journeyFlightWords(.card)
         }
         .padding(.top, bare ? 0 : (tight ? 14 : 18)).padding(.horizontal, 18).padding(.bottom, tight ? 8 : 10)
+        .coordinateSpace(name: Self.space)
+        .onChange(of: daysMaxY - ringMidY) { _, below in
+            if bare, below > 0, abs(JourneyRowsLayout.shared.daysBelowRing - below) > 0.5 { JourneyRowsLayout.shared.daysBelowRing = below }
+        }
         .overlay(alignment: .topTrailing) {
             if !bare {
             Button {

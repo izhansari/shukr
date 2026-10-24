@@ -177,10 +177,15 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   shows ☰ · "Journey" (`JourneyPageTitle`, pushed in like Zikr's) · the gear (→ Settings). The page (`JourneyPage.ringPage`): its ring's centre on the Salah circle's resting centre (`WelcomeTarget.circleFrame`, read while the Salah list is closed), 226 pt; the week
   ring out of its card (`JourneyWeekCard(bare:)`: no card, no range line, no ↗), its days, the week's line, the goal pill "Aiming for
   <step> ›" (pushes `PrayerGoalPage`), "Last week · N of M ›" (→ Your weeks; the no-record question takes its slot), a ^. A swipe up
-  or the ^ pulls the rows up as the Salah list does (`rowsUp`): the ring rises to the top (an offset — layout never moves), the line,
-  pill and last week fade, a raised card (NeuRaised) comes up over the bottom bar: Your prayers (its total marked on the right; a plain push,
+  or the ^ pulls the rows up as the Salah list does — vertical live dragging (owner 2026-10-23: "drags up with a live drag and drives
+  down with a live drag too"): `live.journeySpring`, a second SheetSpring on the pager's drag, moves the ring and the card with the finger
+  (`JourneyRowsRide` / `JourneyRowsFade`) and lands them with its speed; `rowsUp` is where they rest. The ring rises to the top (an
+  offset — layout never moves), the line, pill and last week fade from the first move (`rowsQuiet`), and a raised card (NeuRaised, square
+  at the bottom) comes up to just under the days (`JourneyRowsLayout.daysBelowRing`, measured by the card) and runs down under the
+  bottom bar (owner: "a bunch of empty space"; "straight on those edges"): Your prayers (its total marked on the right; a plain push,
   no zoom) · To make up · Moments · Milestones (no since-line; Fresh start is To make up's top-right glass button now — leaf, filled while on — owner 2026-10-23; the lifetime ⇄ has no home on this layout); a row pushes; the swipe is the pager's own vertical drag,
-  the Salah list's (5 pt start, axis lock, 30 pt line → `JourneyPage.rowsDrag`); ^ / ⌄ too; paging away closes it.
+  the Salah list's (5 pt start, axis lock; with the palette's live drag off, a 30 pt line pops it → `JourneyPage.rowsDrag`); ^ / ⌄ too;
+  paging away closes it.
   In the pager the page has no background of its own (the pager's backdrop): an opaque one drew its edge over the Salah page as it
   faded in place. No big "Journey" title; Your goal is no longer a row.
 - Journey is the pager's right page (owner, 2026-10-22; `JourneyPagerPage`, built once the Salah page rests): ☰, the day
