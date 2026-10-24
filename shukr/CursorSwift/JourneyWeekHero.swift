@@ -207,7 +207,9 @@ struct JourneyGoalRing: View, Animatable {
                 let word = ctx.resolve(Text("strong").font(.system(size: 10, weight: .light, design: .rounded))
                     .foregroundStyle(ink.opacity(0.5 * a)))
                 // Its inner edge faces the band, whichever way the tick points.
-                ctx.draw(word, at: p(r + lineWidth / 2 + 5), anchor: UnitPoint(x: 0.5 - 0.5 * cos(at), y: 0.5 - 0.5 * sin(at)))
+                // Clear of the tick's end (owner, 2026-10-24: "move the text “strong” a little further out so its not exactly
+                // touching the line"; was + 5, the tick reaching + 3).
+                ctx.draw(word, at: p(r + lineWidth / 2 + 9), anchor: UnitPoint(x: 0.5 - 0.5 * cos(at), y: 0.5 - 0.5 * sin(at)))
             }
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
@@ -311,6 +313,8 @@ struct JourneyWeekCard: View {
     var onGoal: () -> Void = {}
     /// Bare, with the rows pulled up over it: only the ring and its days stay (the rest fades under the rows' card).
     var quiet = false
+    /// In the pager: the line, pill and last week fade with the rows' drag instead (Journey's `live.journeySpring`).
+    var quietLive: PagerLiveState? = nil
     /// The most recent day with no record to ask about (NoRecordDays.next — Frank's flow), and the day the Pick sheet is
     /// open for. The question sits in the banked weeks' slot: the card never changes height for it.
     @State private var noRecord: [Date] = []
@@ -432,7 +436,7 @@ struct JourneyWeekCard: View {
                 .padding(.top, tight ? 8 : 12)
                 .contentTransition(.opacity)
                 .animation(.smooth(duration: CircleMotion.quick), value: lineNow)
-                .opacity(quiet ? 0 : 1)
+                .modifier(JourneyQuiet(live: quietLive, quiet: quiet))
                 .journeyFlightWords(.card)
             if bare, let goal {
                 // The goal, a pill you can tap to change it (owner, 2026-10-23: "the year goal thing should be like an
@@ -455,16 +459,14 @@ struct JourneyWeekCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Your goal: \(goal.title). Change it.")
                 .padding(.top, 4)
-                .opacity(quiet ? 0 : 1)
-                .allowsHitTesting(!quiet)
+                .modifier(JourneyQuiet(live: quietLive, quiet: quiet))
                 .journeyFlightWords(.card)
             }
             ZStack(alignment: .top) {
                 Group { if bare { lastWeek } else { banked } }.opacity(asking.isEmpty ? 1 : 0)
                 if !asking.isEmpty { noRecordQuestion(asking).transition(.opacity) }
             }
-            .opacity(quiet ? 0 : 1)
-            .allowsHitTesting(!quiet)
+            .modifier(JourneyQuiet(live: quietLive, quiet: quiet))
             .animation(.smooth(duration: CircleMotion.quick), value: asking)
             .padding(.top, tight ? 6 : 10)
             .journeyFlightWords(.card)
@@ -1001,5 +1003,17 @@ struct JourneyWeekCard: View {
         }.map(\.date)
         return Model(week: week, banked: Array(finished.suffix(2).reversed()), todayIndex: min(max(today, 0), 6),
                      owed: owed, fillable: fillable, streak: PrayerMetrics.strongRun(in: all).current)
+    }
+}
+
+/// The week's line, goal pill and last week stepping aside for Journey's rows: with the finger in the pager (gone by a third of
+/// the way up, back as they come down — owner, 2026-10-24: "the text and stuff just disappears and appears abruptly"), by the
+/// rest elsewhere. Its own modifier, so a frame re-renders only it.
+struct JourneyQuiet: ViewModifier {
+    let live: PagerLiveState?
+    let quiet: Bool
+    func body(content: Content) -> some View {
+        let shown = quiet ? 0 : live.map { 1 - SheetListRide.fade(min(max($0.journeyProgress, 0) * 2, 1)) } ?? 1
+        content.opacity(shown).allowsHitTesting(shown > 0.5)
     }
 }

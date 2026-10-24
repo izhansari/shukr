@@ -108,6 +108,11 @@ final class SheetSpring: NSObject {
     /// Landed: true = open. The page sets navPosition from it.
     var onRest: ((Bool) -> Void)?
     private(set) var dragging = false
+    /// When the last drag let go (the row-tap guard: `justMoved`).
+    private var releasedAt: CFTimeInterval = 0
+    /// A finger is on it, or let go of it a moment ago: a row under the finger mustn't open on that lift (owner, 2026-10-24:
+    /// "if my finger is over a list item, it opens it when i lift my finger off the drag").
+    var justMoved: Bool { dragging || CACurrentMediaTime() - releasedAt < 0.35 }
     private var start = 0.0
     private var velocity = 0.0
     private var target = 0.0
@@ -167,6 +172,7 @@ final class SheetSpring: NSObject {
     @discardableResult func release(velocityY vy: CGFloat) -> Bool {
         guard dragging else { return heading }
         dragging = false
+        releasedAt = CACurrentMediaTime()
         let speed = -Double(vy) * Self.ratio / run
         let open: Bool = abs(vy) > Self.flick ? vy < 0 : progress + speed * Self.throwTime > 0.5
         go(open: open, velocity: min(max(speed, -Self.maxCarry), Self.maxCarry))

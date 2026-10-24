@@ -157,9 +157,8 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   marked"), no record dotted, all excused frosted, today's initial in ink with a dot under it (white in dark); a tap opens the day's page ("tapping those days
   can just push the day ring page for now"; today only once all five are in), a dotted day its Pick sheet. One line under
   them, the first that's true: Excused Mode on → "Excused Mode is on. Your week picks up when it ends." (owner, 2026-10-21,
-  A; no tick, no make-up / fill-in asks, a picked part keeps this line, no "Did you pray?"); out of reach → the mid-week line ("Your goal this week, every prayer in its window, is out of
-  reach now. You've still got 19 prayers left, so make them count." — owner: "account for the messaging for when they miss
-  their strong week"); a missed prayer → "Make up today's Fajr for a strong week" (several: "Make up N missed prayers…");
+  A; no tick, no make-up / fill-in asks, a picked part keeps this line, no "Did you pray?"); out of reach → the mid-week line ("You missed your goal by 2 prayers. You've still got 5 prayers
+  left this week, so make them count." — owner 2026-10-24, his words; N = `Week.missedBy`, past the 3 the strong week allows); a missed prayer → "Make up today's Fajr for a strong week" (several: "Make up N missed prayers…");
   days with no record are never the line's (the question's below); when making up would take all 3 spare (above Prayed a
   made-up prayer is below the goal): "Make up 3 missed, then pray the rest in their windows for a strong week". Above In its window a day with no record
   can only be filled in below the goal, so it counts against the spare (`Week.stillPossible`); enough already → "A strong week, so far"; else the rule in Your
@@ -180,11 +179,12 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   <step> ›" (pushes `PrayerGoalPage`), "Last week · N of M ›" (→ Your weeks; the no-record question takes its slot), a ^. A swipe up
   or the ^ pulls the rows up as the Salah list does — vertical live dragging (owner 2026-10-23: "drags up with a live drag and drives
   down with a live drag too"): `live.journeySpring`, a second SheetSpring on the pager's drag, moves the ring and the card with the finger
-  (`JourneyRowsRide` / `JourneyRowsFade`) and lands them with its speed; `rowsUp` is where they rest. The ring rises to the top (an
-  offset — layout never moves), the line, pill and last week fade from the first move (`rowsQuiet`), and a raised card (NeuRaised, square
-  at the bottom) comes up to just under the days (`JourneyRowsLayout.daysBelowRing`, measured by the card) and runs down under the
-  bottom bar (owner: "a bunch of empty space"; "straight on those edges"): Your prayers (its total marked on the right; a plain push,
-  no zoom) · To make up · Moments · Milestones (no since-line; Fresh start is To make up's top-right glass button now — leaf, filled while on — owner 2026-10-23; the lifetime ⇄ has no home on this layout); a row pushes; the swipe is the pager's own vertical drag,
+  (`JourneyRowsRide` / `JourneyRowsFade`; the ^ turns with it, `JourneyRowsTurn`) and lands them with its speed; `rowsUp` is where
+  they rest. The ring rises (an offset — layout never moves), the line, pill and last week fade with the finger (`JourneyQuiet`, gone
+  by a third of the way), and a raised card (NeuRaised, the rows' own height, rounded) comes up just under the ⌄ under the days
+  (`JourneyRowsLayout.daysBelowRing`, measured by the card): ring, days, ⌄ and card one block centred between the bars (owner,
+  2026-10-24: "dont need all that for the list"). A drag's lift never opens the row under it (`SheetSpring.justMoved`): Your prayers
+  ("Patterns in how you pray"; its total marked on the right; a plain push, no zoom) · To make up · Moments · Milestones (no since-line; Fresh start is To make up's top-right glass button now — leaf, filled while on — owner 2026-10-23; the lifetime ⇄ has no home on this layout); a row pushes; the swipe is the pager's own vertical drag,
   the Salah list's (5 pt start, axis lock; with the palette's live drag off, a 30 pt line pops it → `JourneyPage.rowsDrag`); ^ / ⌄ too;
   paging away closes it.
   In the pager the page has no background of its own (the pager's backdrop): an opaque one drew its edge over the Salah page as it

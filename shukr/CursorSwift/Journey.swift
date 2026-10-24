@@ -417,8 +417,11 @@ struct JourneyPage: View {
     /// The rows pulled up (owner, 2026-10-23: "not a fan of the bottom sheet of list items. let's make it pull up a list like
     /// our salah list maybe"): the ring rises, a raised card of rows comes up under it.
     @State private var rowsUp = false
-    /// The week's line, pill and last week out of the way: from the rows' first move up (rowsUp is where they rest).
+    /// Pushed (no pager): the week's line, pill and last week out of the way with the rows (in the pager they fade with the
+    /// finger — JourneyQuiet). Also the ⌄'s turn there.
     @State private var rowsQuiet = false
+    /// The rows' card, measured: the block (ring, days, ⌄, card) is centred by it.
+    @State private var rowsCardHeight: CGFloat = 0
     @Environment(PagerLiveState.self) private var pagerLive: PagerLiveState?
     /// The fresh start's day number (FreshStart.dayNumber), nil when it's off.
     @State private var freshDay = FreshStart.dayNumber()
@@ -636,10 +639,16 @@ struct JourneyPage: View {
         // The pager's bottom bar, and the ^ / ⌄ above the card.
         let bar: CGFloat = small ? 66 : 82
         let chevron: CGFloat = 44
-        // Up, the ⌄ sits just under the days and the card runs from it down under the bottom bar (owner, 2026-10-23:
-        // "there's a bunch of empty space, which we don't need" — it rode at the bottom, under the week's faded line and last
-        // week); down, the ^ sits on the bar and the card is under the page's edge.
-        let openTop = upMid + JourneyRowsLayout.shared.daysBelowRing
+        // Up: the ring, its days, the ⌄ and a card just the rows' height, one block centred between the top bar and the
+        // bottom one (owner, 2026-10-23: "there's a bunch of empty space, which we don't need" — under the days; 2026-10-24:
+        // "lotta empty and unnecessary space at bottom. dont need all that for the list" — the card ran down under the bar).
+        // Down, the ^ sits on the bar and the card is under the page's edge.
+        let below = JourneyRowsLayout.shared.daysBelowRing
+        let ringHalf: CGFloat = 113   // the bare ring, 226 pt
+        let room = (screen.maxY - bar - 12) - (upMid - ringHalf)
+        let block = ringHalf + below + chevron + rowsCardHeight
+        let openMid = upMid + (rowsCardHeight > 0 ? max(room - block, 0) / 2 : 0)
+        let openTop = openMid + below
         let closedTop = screen.maxY - bar - chevron
         let run = max(closedTop - openTop, 1)
         // In the pager the rows follow the finger (the pager's drag, `live.journeySpring`); pushed, they pop.
@@ -653,9 +662,10 @@ struct JourneyPage: View {
                             onExpand: { expanded = JourneyMonthRoute(month: $0, focus: false) },
                             onDay: { openDay = JourneyDayRoute(date: $0) }, opens: { opens($0) },
                             onMakeUp: { openMakeUp(week: true) },
-                            bare: true, goal: goal, onGoal: { showGoal = true }, quiet: rowsQuiet)
+                            bare: true, goal: goal, onGoal: { showGoal = true },
+                            quiet: live == nil && rowsQuiet, quietLive: live)
                 .padding(.horizontal, 20)
-                .modifier(JourneyRowsRide(live: live, up: rowsUp, closed: salahMid - screen.midY, open: upMid - screen.midY))
+                .modifier(JourneyRowsRide(live: live, up: rowsUp, closed: salahMid - screen.midY, open: openMid - screen.midY))
         }
         .ignoresSafeArea()
         .overlay(alignment: .top) {
@@ -666,7 +676,7 @@ struct JourneyPage: View {
                 } label: {
                     Image(systemName: "chevron.up")
                         .font(.title3)
-                        .rotationEffect(.degrees(rowsQuiet ? 180 : 0))
+                        .modifier(JourneyRowsTurn(live: live, up: rowsQuiet))
                         .foregroundStyle(Color(.secondarySystemFill))
                         .frame(maxWidth: .infinity)
                         .frame(height: chevron)
@@ -674,17 +684,16 @@ struct JourneyPage: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(rowsUp ? "Close the list" : "More: your prayers, to make up, moments, milestones, fresh start")
-                // The rows' card, the Salah list's raised look, square at the bottom where it runs under the bar (owner,
-                // 2026-10-23: "at the corners, you can see the rounded list. We don't need that").
+                // The rows' card, the Salah list's raised look, just its rows' height and clear of the bar — the Salah list's
+                // card (it ran under the bar, square at its foot: 2026-10-23 → 24).
                 VStack(alignment: .leading, spacing: 0) {
                     // No since-line on top (owner, 2026-10-23: "the list is annoying at the top with the “since” thing").
                     rows(s, height: small ? 50 : 56, inSheet: true).padding(.top, 4)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, bar + 6)   // the last row clear of the bottom bar
-                .frame(maxWidth: .infinity, minHeight: screen.maxY - openTop - chevron, alignment: .top)
-                .background(NeuRaised(shape: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26,
-                                                                     style: .continuous)))
+                .padding(.horizontal, 16).padding(.bottom, 6)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 26, style: .continuous)))
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if abs(rowsCardHeight - $0) > 0.5 { rowsCardHeight = $0 } }
                 .padding(.horizontal, 20)
                 .modifier(JourneyRowsFade(live: live, up: rowsUp))
                 .allowsHitTesting(rowsUp)
@@ -694,10 +703,6 @@ struct JourneyPage: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .background {
-            // The week's line, pill and last week step aside as soon as the rows start up (and back as they go).
-            if let live { JourneyRowsWatch(live: live, quiet: $rowsQuiet) }
-        }
         .onChange(of: run, initial: true) { _, r in
             guard let live, abs(live.journeyRun - r) > 0.5 else { return }
             live.journeyRun = r
@@ -710,6 +715,13 @@ struct JourneyPage: View {
             setRows(up)
         }
         .onChange(of: visible) { _, shown in if shown == false, rowsUp { setRows(false, animated: false) } }
+    }
+
+    /// A row's tap, unless the finger was just dragging the rows: the row under it opened on the lift (owner, 2026-10-24:
+    /// "dragging on the list is annoying cuz if my finger is over a list item, it opens it when i lift my finger off the drag").
+    private func rowTap(_ open: () -> Void) {
+        if visible != nil, pagerLive?.journeySpring.justMoved == true { return }
+        open()
     }
 
     /// A vertical swipe on Journey in the pager (object: true = up).
@@ -881,14 +893,16 @@ struct JourneyPage: View {
                 // Your prayers as a row with the others (owner, 2026-10-20: "looks weird to have the upper right ring so busy
                 // on journey … you can get rid of it and make it a list item"); the page still zooms out of it.
                 JourneyHomeRow(title: "Your prayers",
-                               line: recent.asked > 0 ? "\(recent.inTime) of \(recent.asked) in their windows · 7 days"
-                                   : "Each prayer, lately",
+                               // Not the last 7 days again: the week ring and Your weeks say those (owner, 2026-10-24:
+                               // "change Your Prayers grey line to say something else … maybe something like “Gain insight
+                               // into your praying patterns” or something better").
+                               line: "Patterns in how you pray",
                                height: rowHeight, quiet: recent.asked == 0) {
                     Image(systemName: "chart.bar").font(.system(size: 19, weight: .light)).foregroundStyle(.secondary)
                 } value: {
                     // Every prayer marked (owner, 2026-10-23: "write total number of prayers marked at end of list item").
                     Text(s.prayersMarked.formatted())
-                } action: { showScores = true }
+                } action: { rowTap { showScores = true } }
             }
             // The This month row went with the goal (owner, 2026-10-18: "I only kept it so i could toggle to see my stats.
             // I never used it for actually opening the month ever since we fixed the compact card").
@@ -898,7 +912,7 @@ struct JourneyPage: View {
                 Image(systemName: "clock").font(.system(size: 21, weight: .light)).foregroundStyle(.secondary)
             } value: {
                 Text("\(owed)")
-            } action: { openMakeUp() }
+            } action: { rowTap { openMakeUp() } }
             // The fresh start, moved from Settings with Your goal (owner, 2026-10-22: "do we still need fresh start? …
             // if so, then throw it into journey as a list item for now"), under To make up: its "clear make up" is the one
             // honest reset for that count (Fable's read: kept — a set fresh start with no row couldn't be seen or undone).
@@ -919,7 +933,7 @@ struct JourneyPage: View {
                 MomentsTileStack().scaleEffect(0.6, anchor: .leading).frame(width: 30, height: 26, alignment: .leading)
             } value: {
                 Text("\(photos)")
-            } action: { showMoments = true }
+            } action: { rowTap { showMoments = true } }
             JourneyHomeRow(title: "Milestones",
                            line: latest.map { "Latest: \($0.text), \($0.date.formatted(.dateTime.month(.abbreviated).day()))" }
                                ?? "Your first comes with your first prayer",
@@ -927,7 +941,7 @@ struct JourneyPage: View {
                 Image(systemName: "star").font(.system(size: 20, weight: .light)).foregroundStyle(.secondary)
             } value: {
                 EmptyView()
-            } action: { showMilestones = true }
+            } action: { rowTap { showMilestones = true } }
         }
         .journeyFlightWords(.page)
     }
@@ -1167,18 +1181,11 @@ struct JourneyRowsFade: ViewModifier {
     }
 }
 
-/// Turns the week's quiet on from the rows' first move up (and off once they're nearly down): re-renders alone per frame.
-struct JourneyRowsWatch: View {
-    let live: PagerLiveState
-    @Binding var quiet: Bool
-    var body: some View {
-        let q = live.journeyProgress > (quiet ? 0.05 : 0.1)
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onChange(of: q, initial: true) { _, v in
-                guard quiet != v else { return }
-                // Quick: the rows land in ~0.3 s, and with the circle's quick fade they slid over the line still half there.
-                withAnimation(.easeOut(duration: 0.12)) { quiet = v }
-            }
+/// The ^ turning into a ⌄ with the rows (in the pager with the finger; pushed, by the rest).
+struct JourneyRowsTurn: ViewModifier {
+    let live: PagerLiveState?
+    let up: Bool
+    func body(content: Content) -> some View {
+        content.rotationEffect(.degrees(180 * (live.map { min(max($0.journeyProgress, 0), 1) } ?? (up ? 1 : 0))))
     }
 }

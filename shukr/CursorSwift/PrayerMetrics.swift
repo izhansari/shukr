@@ -87,13 +87,16 @@ enum PrayerMetrics {
         /// Can this week still be strong? A prayer unmarked now can only be made up, which meets Prayed but no higher step,
         /// so above Prayed it already counts against the slack. A day without a record can still be filled in. The mid-week
         /// line reads this (owner, 2026-10-21: "they missed 5 already by wednesday … hey dont get upset").
-        var stillPossible: Bool {
-            // A day with no record can only be filled in as "in its window, no time" (NoRecordDays.fill), which is below
-            // the Middle and the Opening: there each of its prayers counts against the slack too.
+        var stillPossible: Bool { asked > 0 && lost <= strongWeekSlack }
+        /// Prayers already short of the step that can't come back: below it, unmarked (made up meets only Prayed), or on a
+        /// day with no record — a day with no record can only be filled in as "in its window, no time" (NoRecordDays.fill),
+        /// which is below the Middle and the Opening: there each of its prayers counts against the slack too.
+        var lost: Int {
             let unrecorded = goal.meets(.inTimeNoClock) ? 0 : noRecordDays * 5
-            let lost = belowStep + (goal == .prayed ? 0 : notMarked) + unrecorded
-            return asked > 0 && lost <= strongWeekSlack
+            return belowStep + (goal == .prayed ? 0 : notMarked) + unrecorded
         }
+        /// How far past the strong week's slack it is: what the mid-week line says it missed by.
+        var missedBy: Int { max(lost - strongWeekSlack, 0) }
         /// The current week's words (Koo & Fishbach, plan-v3 §9): "12 done" early in the week, "4 left" late in it — done
         /// is what met the step; left is every prayer still to pray, an unmarked one included (it's made up to count).
         var done: Int { met }
@@ -335,12 +338,14 @@ extension PrayerMetrics {
     }
 
     /// The mid-week line, when this week can't be a strong one any more (encouragement only — the step never moves
-    /// mid-week; owner picked B). nil while it still can, and on a week that's over. It names their goal (owner,
-    /// 2026-10-21: "explain in regards to their goal"; was "This week won't be a strong one").
+    /// mid-week; owner picked B). nil while it still can, and on a week that's over. Was "Your goal this week, <aim>, is out
+    /// of reach now…" (2026-10-21) and before that "This week won't be a strong one".
     static func midweekLine(_ week: Week) -> String? {
         guard week.isCurrent, !week.stillPossible, week.toCome > 0 else { return nil }
-        let n = week.toCome
-        return "Your goal this week, \(week.goal.aim), is out of reach now. You've still got \(n) \(n == 1 ? "prayer" : "prayers") left, so make \(n == 1 ? "it" : "them") count."
+        let n = week.toCome, m = week.missedBy
+        // Owner, 2026-10-24: "I hate the copy of “Your goal this week, every prayer in its window, is out of reach now …”" →
+        // his words, the count from the strong week's rule.
+        return "You missed your goal by \(m) \(m == 1 ? "prayer" : "prayers"). You've still got \(n) \(n == 1 ? "prayer" : "prayers") left this week, so make \(n == 1 ? "it" : "them") count."
     }
 
     /// The line the morning after a missed prayer: yesterday's unmarked prayers — one by name, more as a count (owner,
