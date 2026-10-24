@@ -81,6 +81,8 @@ struct PrayerTimesView: View {
     // Menu destinations (native Menu on the hamburger; pushes on the root NavigationStack)
     @State private var showMapPage = false
     @State var showDailyAyahPage = false
+    /// Give to Causes, from the bottom of ☰ (owner, 2026-10-24: "move give to causes out of setting and into bottom of hamburger menu").
+    @State var showGivePage = false
     @State var showMantrasPage = false
     @State var showZikrHistory = false
     /// A session sleep mode ended: shown round the Salah circle the next time the page is up.
@@ -216,14 +218,14 @@ struct PrayerTimesView: View {
     // (CircleCover's closers: the stage, CircleMoments.swift.)
     var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage
-            || showZikrHistory
+            || showZikrHistory || showGivePage
             || showNamesPage || showMantraSheetFromHomePage || JourneyPresenter.shared.makeUpOnly
             || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
 
     private func dismissCovers() {
         showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
-        showZikrHistory = false
+        showZikrHistory = false; showGivePage = false
         showNamesPage = false
         showMantraSheetFromHomePage = false; JourneyPresenter.shared.makeUpOnly = false
         healthCard = nil
@@ -609,7 +611,7 @@ struct PrayerTimesView: View {
                 live: live,
                 showMapPage: $showMapPage, showDailyAyahPage: $showDailyAyahPage,
                 showMantrasPage: $showMantrasPage, showZikrHistory: $showZikrHistory,
-                showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage
+                showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage, showGivePage: $showGivePage
             )
             // The locked Zikr page's narration is the whole app for a moment: the bars step away (ZikrLock.focus).
             .opacity(ZikrLock.shared.focus ? 0 : 1)
@@ -917,6 +919,7 @@ struct PrayerTimesView: View {
             LocationMapContentView()
         }
         .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
+        .navigationDestination(isPresented: $showGivePage) { SadaqahPage() }
         .navigationDestination(isPresented: $showMantrasPage) { ZikrAreaPage(start: .azkar) }
         .navigationDestination(isPresented: $showZikrHistory) { ZikrAreaPage(start: .history) }
         .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }

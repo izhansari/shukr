@@ -24,6 +24,7 @@ extension PrayerTimesView {
         @Binding var showZikrHistory: Bool
         @Binding var showNamesPage: Bool
         @Binding var showTasbeehPage: Bool
+        @Binding var showGivePage: Bool
 
         @State private var showMenu = false
         @State private var pendingMenuAction: (() -> Void)? = nil
@@ -193,6 +194,9 @@ extension PrayerTimesView {
                                     pendingMenuAction = { NotificationCenter.default.post(name: TourRuntime.start, object: nil) }
                                     showMenu = false
                                 }
+                                // Give to Causes (Sadaqah.swift), last (owner, 2026-10-24: "move give to causes out of setting and
+                                // into bottom of hamburger menu"; it was in Settings, not ☰, since 2026-10-13).
+                                menuRow("Give to Causes", "gift") { showGivePage = true }
                                 // (No "Zikr Tour" row any more: the Zikr page's lock is its way in — owner, 2026-10-08.)
                                 // Which build this is (BuildInfo): when it was built + the commit.
                                 // Tap → What's new (DEBUG / TestFlight).
