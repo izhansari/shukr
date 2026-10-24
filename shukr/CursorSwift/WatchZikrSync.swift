@@ -45,6 +45,17 @@ enum WatchZikrSync {
     /// sessions (they never go to the watch as confirmed sessions). A negative "received at" is an
     /// undo that arrived before its mark: that mark is then ignored.
     private static let marksKey = "watchZikr.receivedMarks"
+    /// The watch's own fixes for its marks, by the mark's id, once handled (the watch's outbox sends them again for a day).
+    private static let fixesKey = "watchZikr.receivedFixes"
+    private static var receivedFixes: [String: Double] {
+        get { UserDefaults.standard.dictionary(forKey: fixesKey) as? [String: Double] ?? [:] }
+        set {
+            let cutoff = Date().addingTimeInterval(-7 * 86_400).timeIntervalSince1970
+            UserDefaults.standard.set(newValue.filter { $0.value > cutoff }, forKey: fixesKey)
+        }
+    }
+    /// A fix that arrived before its mark: handled once the mark is in.
+    private static var earlyFixes: [String: [String: Any]] = [:]
     private static var receivedMarks: [String: [Double]] {
         get { UserDefaults.standard.dictionary(forKey: marksKey) as? [String: [Double]] ?? [:] }
         set {
@@ -208,6 +219,7 @@ enum WatchZikrSync {
             case "memoRequest": if let id = info["mantraID"] as? String { sendMemo(mantraID: id) }
             case "prayerMarked": markPrayer(info)
             case "prayerUnmarked": unmarkPrayer(info)
+            case "prayerMarkFix": markFix(info)
             default: break
             }
         }
@@ -314,7 +326,10 @@ enum WatchZikrSync {
             scheduleSend(); return
         }
         prayer.isCompleted = true
-        let place = SharedStore.lastKnownLocation()
+        // The watch's own fix, when it had a fresh one at the tap (watch location D, owner 2026-10-24: "use the watch's
+        // location when it's already allowed … fall back to the phone's otherwise"); else the phone's last known spot.
+        let watchFix = watchLocation(info)
+        let place = watchFix ?? SharedStore.lastKnownLocation()
         prayer.setPrayerLocation(with: place)
         // At one of your own masajid: a Friday Dhuhr is Jumu'ah at once, as when marked in the app — only from a spot within
         // 100 m (the toggle's rule, audit B10); a coarser one is "checked, no search".
@@ -341,14 +356,20 @@ enum WatchZikrSync {
             return
         }
         MarkLog.$source.withValue("watch") {
-            MarkLog.mark("marked", name: name, start: startDate, end: endDate, row: prayer, tap: tapped, location: MarkLog.lastAppFix(),
-                         note: "reached the phone \(Int(Date().timeIntervalSince(tapped))) s after the tap")
+            MarkLog.mark("marked", name: name, start: startDate, end: endDate, row: prayer, tap: tapped,
+                         location: watchFix.map { fixText($0, tap: tapped) } ?? MarkLog.lastAppFix(),
+                         note: "reached the phone \(Int(Date().timeIntervalSince(tapped))) s after the tap"
+                            + ((info["watchNoFix"] as? String).map { "; no watch location: \($0)" } ?? ""))
         }
-        // A fresh fix from the phone for it (outside-mark location A; the watch's own fix is Sami's D). Nothing waits.
-        Task { @MainActor in
-            MarkLog.$source.withValue("watch") { PrayerLiveActivities.freshFixAfterMark(name, start: startDate) }
+        // A fresh fix from the phone for it (outside-mark location A), unless the watch had its own or is sending one
+        // (`fixComing`: then its prayerMarkFix decides, and asks the phone only if it got none). Nothing waits.
+        if watchFix == nil, info["fixComing"] as? Bool != true {
+            Task { @MainActor in
+                MarkLog.$source.withValue("watch") { PrayerLiveActivities.freshFixAfterMark(name, start: startDate) }
+            }
         }
         if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, at] }
+        if let markID, let early = earlyFixes.removeValue(forKey: markID) { markFix(early) }
         UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
         // No completion moment on the phone for a watch mark: it was made elsewhere, so the circle just moves on, as for
         // a widget or notification mark (owner, 2026-10-17, the mark's fold into the day ring).
@@ -359,6 +380,44 @@ enum WatchZikrSync {
         PrayerLiveActivities.plan(reason: "a prayer marked on the watch")
         scheduleSend()
         print("⌚️ \(name) marked from the watch")
+    }
+
+    /// The watch's fix in a message ("lat", "lon", "acc" in m, "fixAt"), or nil.
+    private static func watchLocation(_ info: [String: Any]) -> CLLocation? {
+        guard let lat = info["lat"] as? Double, let lon = info["lon"] as? Double, let acc = info["acc"] as? Double,
+              let fixAt = info["fixAt"] as? Double, acc >= 0 else { return nil }
+        return CLLocation(coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon), altitude: 0,
+                          horizontalAccuracy: acc, verticalAccuracy: -1, timestamp: Date(timeIntervalSince1970: fixAt))
+    }
+
+    /// "the watch's fix ±12 m, 3 s after the tap" (the mark log's location line).
+    private static func fixText(_ fix: CLLocation, tap: Date) -> String {
+        let off = Int(fix.timestamp.timeIntervalSince(tap).rounded())
+        return "the watch's fix ±\(Int(fix.horizontalAccuracy)) m, " + (off >= 0 ? "\(off) s after the tap" : "\(-off) s old at the tap")
+    }
+
+    /// The watch's fix for a mark it sent with `fixComing` (≤ 5 s after the tap): onto the row as any late fix is
+    /// (PrayerLiveActivities.applyLateFix: same mark, pin not moved, the masjid from it, rescored). None (not allowed,
+    /// Precise Location off, nothing within 5 s): the phone tries its own, as for any outside mark.
+    private static func markFix(_ info: [String: Any]) {
+        guard let markID = info["id"] as? String, let name = info["name"] as? String,
+              let start = info["start"] as? Double, receivedFixes[markID] == nil else { return }
+        guard let mark = receivedMarks[markID] else { earlyFixes[markID] = info; return }   // its mark isn't in yet
+        receivedFixes[markID] = Date().timeIntervalSince1970
+        // Not applied (excused, already marked, not started) or undone first: nothing to place.
+        guard (mark.first ?? 0) > 0, mark.count > 2, mark[2] > 0 else { return }
+        let startDate = Date(timeIntervalSince1970: start), tapped = Date(timeIntervalSince1970: mark[2])
+        MarkLog.$source.withValue("watch") {
+            // ≤ 100 m only: applyLateFix takes the masjid from whatever it gets (a rough fix could make a Friday Dhuhr
+            // Jumu'ah — Fable). The watch sends nothing coarser; this keeps it so.
+            if let fix = watchLocation(info), fix.horizontalAccuracy <= 100 {
+                MarkLog.add("\(MarkLog.source) · \(name) → location: \(fixText(fix, tap: tapped))")
+                PrayerLiveActivities.applyLateFix(fix, name: name, start: startDate, markedAt: tapped)
+            } else {
+                MarkLog.add("\(MarkLog.source) · \(name) → no watch location: \(info["watchNoFix"] as? String ?? "none sent"); the phone tries its own")
+                PrayerLiveActivities.freshFixAfterMark(name, start: startDate)
+            }
+        }
     }
 
     /// Undo on the watch, within seconds of a mark: that mark (by id) comes off again, and its day

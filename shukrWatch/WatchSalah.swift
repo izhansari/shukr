@@ -34,9 +34,12 @@ enum WatchPrayerMarker {
         WatchStore.addLocalMark(prayer.name, dayStart: day.prayers[0].start, score: score, at: date, id: id)
         WatchStore.clearLocalUnmark(prayer.name)
         WKInterfaceDevice.current().play(.success)
-        send(["type": "prayerMarked", "id": id, "name": prayer.name,
-              "start": prayer.start.timeIntervalSince1970, "end": prayer.end.timeIntervalSince1970,
-              "at": date.timeIntervalSince1970])
+        var info: [String: Any] = ["type": "prayerMarked", "id": id, "name": prayer.name,
+                                   "start": prayer.start.timeIntervalSince1970, "end": prayer.end.timeIntervalSince1970,
+                                   "at": date.timeIntervalSince1970]
+        // Where it was prayed, from the watch itself when location is allowed (WatchMarkFix): the mark never waits for it.
+        info.merge(WatchMarkFix.shared.forMark(id: id, name: prayer.name, start: prayer.start, at: date)) { a, _ in a }
+        send(info)
         WidgetCenter.shared.reloadAllTimelines()
         WatchSession.shared.refresh()
         WatchNotifications.cancelNudges(for: prayer.name)
@@ -155,6 +158,9 @@ enum WatchPrayerMarker {
     #endif
 
     /// A mark the phone couldn't save isn't retried behind the user's back.
+    /// The watch's fix for a mark sent with `fixComing` (or why there's none), after it.
+    static func sendFix(_ info: [String: Any]) { send(info) }
+
     static func drop(markID: String) {
         outbox = outbox.filter { ($0.value["id"] as? String) != markID }
     }
@@ -395,6 +401,75 @@ final class WatchCompass: NSObject, ObservableObject, CLLocationManagerDelegate 
     }
 }
 
+
+/// Where a prayer marked on the watch was prayed (watch location D; owner, 2026-10-24: "use the watch's location when it's
+/// already allowed (the qibla ask), fall back to the phone's otherwise"). The phone is woken in the background for a watch
+/// mark, and on While Using iOS gives it no fresh fix there; the watch is in front at the tap, so its own fix is fresh.
+/// Never asks for permission (the qibla's "Allow location" does). With a fresh enough fix at hand it rides in the mark;
+/// otherwise the mark says `fixComing` and one fix (≤ 100 m, ≤ 5 s) follows in "prayerMarkFix", or why there's none —
+/// then the phone tries its own, as for any outside mark.
+final class WatchMarkFix: NSObject, CLLocationManagerDelegate {
+    static let shared = WatchMarkFix()
+    static let maxAccuracy: CLLocationAccuracy = 100
+    static let wait: TimeInterval = 5
+    private let manager = CLLocationManager()
+    /// Marks waiting for a fix: id → (name, start, tap).
+    private var waiting: [String: (name: String, start: Date, at: Date)] = [:]
+    private var timer: Timer?
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+    }
+
+    /// The fields the mark carries: the fix itself, `fixComing`, or `watchNoFix` (why not, for the phone's mark log).
+    func forMark(id: String, name: String, start: Date, at: Date) -> [String: Any] {
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways: break
+        default: return ["watchNoFix": "location isn't allowed on the watch"]
+        }
+        guard manager.accuracyAuthorization == .fullAccuracy else {
+            return ["watchNoFix": "Precise Location is off on the watch"]
+        }
+        if let l = manager.location, good(l, after: at.addingTimeInterval(-15)) { return fields(l) }
+        waiting[id] = (name, start, at)
+        manager.startUpdatingLocation()
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: Self.wait, repeats: false) { [weak self] _ in self?.finish(nil) }
+        return ["fixComing": true]
+    }
+
+    private func good(_ l: CLLocation, after: Date) -> Bool {
+        l.horizontalAccuracy >= 0 && l.horizontalAccuracy <= Self.maxAccuracy && l.timestamp >= after
+    }
+
+    private func fields(_ l: CLLocation) -> [String: Any] {
+        ["lat": l.coordinate.latitude, "lon": l.coordinate.longitude, "acc": l.horizontalAccuracy,
+         "fixAt": l.timestamp.timeIntervalSince1970]
+    }
+
+    /// Every waiting mark gets this fix (or none: "no fix within 5 s"), then the updates stop.
+    private func finish(_ fix: CLLocation?) {
+        timer?.invalidate(); timer = nil
+        manager.stopUpdatingLocation()
+        let marks = waiting
+        waiting = [:]
+        for (id, mark) in marks {
+            var info: [String: Any] = ["type": "prayerMarkFix", "id": id, "name": mark.name, "start": mark.start.timeIntervalSince1970]
+            if let fix { info.merge(fields(fix)) { a, _ in a } } else { info["watchNoFix"] = "no fix within \(Int(Self.wait)) s" }
+            WatchPrayerMarker.sendFix(info)
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard !waiting.isEmpty, let earliest = waiting.values.map(\.at).min(),
+              let l = locations.last(where: { good($0, after: earliest.addingTimeInterval(-5)) }) else { return }
+        finish(l)
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+}
 
 /// The phone's qibla arrow on the circle: a chevron that points at the Kaaba, turned by the
 /// compass; green, upright, with a dot on the ring and a tap once you're facing it.

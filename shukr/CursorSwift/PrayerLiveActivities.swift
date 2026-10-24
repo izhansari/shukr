@@ -351,7 +351,7 @@ enum PrayerLiveActivities {
     /// (recordedLat). Then as a move does (movePrayer), minus keeping a recorded spot: the masjid from the new spot (a
     /// mosque or Jumu'ah from the stale one would stick: MasjidDetector.catchUp only looks at rows with none), rescored,
     /// the day's score.
-    @MainActor private static func applyLateFix(_ fix: CLLocation, name: String, start: Date, markedAt: Date?) {
+    @MainActor static func applyLateFix(_ fix: CLLocation, name: String, start: Date, markedAt: Date?) {
         let spot = fix.coordinate
         if let vm = PrayerViewModel.current, let row = vm.todaysRow(named: name, startingAt: start) {
             guard row.isCompleted, row.timeAtComplete == markedAt, row.recordedLat == nil else {
