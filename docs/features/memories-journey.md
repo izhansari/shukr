@@ -183,8 +183,11 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   rows come up (`JourneyChevronFade`), down again by a swipe (owner 2026-10-24: "work the same way it does in salah tab"); `rowsUp` is where
   they rest. The ring rises (an offset — layout never moves), the line, pill and last week fade with the finger (`JourneyQuiet`, gone
   by a third of the way), and a raised card (NeuRaised, the rows' own height, rounded) comes up 16 pt under the days
-  (`JourneyRowsLayout.daysBelowRing`, measured by the card): ring, days and card one block centred between the bars (owner,
-  2026-10-24: "dont need all that for the list"). A drag's lift never opens the row under it (`SheetSpring.justMoved`): Prayer insights
+  (`JourneyRowsLayout.daysBelowRing`, measured by the card): ring, days and card one block with the card just over the bar, as the
+  Salah list sits — the spare room above the ring (owner, 2026-10-24: "dont need all that for the list"; centred, half of it fell
+  under the card on a tall phone). A hold on the ring (its hold-and-drag picks) never moves the rows (`live.ringHeld`). The slot
+  under the days (the line, or the not-marked pill's "Make up N ›") changes out, then in (`OutThenIn`): a cross-fade drew two
+  sentences over each other. A drag's lift never opens the row under it (`SheetSpring.justMoved`): Prayer insights
   (owner 2026-10-24, was Your prayers — its page too; "Patterns in how you pray"; its total marked on the right; a plain push, no zoom) · To make up · Moments · Milestones (no since-line; Fresh start is To make up's top-right glass button now — leaf, filled while on — owner 2026-10-23; the lifetime ⇄ has no home on this layout); a row pushes; the swipe is the pager's own vertical drag,
   the Salah list's (5 pt start, axis lock; with the palette's live drag off, a 30 pt line pops it → `JourneyPage.rowsDrag`); ^ / ⌄ too;
   paging away closes it.

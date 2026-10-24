@@ -639,19 +639,21 @@ struct JourneyPage: View {
         // Pulled up, as the Salah list: the ring rises to the top, the rows' card comes up under it.
         let upMid = screen.minY + (small ? 190 : 230)
         let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
-        // The pager's bottom bar, and the ^ / ⌄ above the card.
+        // The pager's bottom bar, and the ^ over it.
         let bar: CGFloat = small ? 66 : 82
         let chevron: CGFloat = 44
-        // Up: the ring, its days, the ⌄ and a card just the rows' height, one block centred between the top bar and the
-        // bottom one (owner, 2026-10-23: "there's a bunch of empty space, which we don't need" — under the days; 2026-10-24:
-        // "lotta empty and unnecessary space at bottom. dont need all that for the list" — the card ran down under the bar).
-        // Down, the ^ sits on the bar and the card is under the page's edge.
+        // Up: the ring, its days and a card just the rows' height, one block (owner, 2026-10-23: "there's a bunch of empty
+        // space, which we don't need" — under the days; 2026-10-24: "lotta empty and unnecessary space at bottom. dont need
+        // all that for the list" — the card ran down under the bar). Down, the card is under the page's edge.
         let below = JourneyRowsLayout.shared.daysBelowRing
         let ringHalf: CGFloat = 113   // the bare ring, 226 pt
         let room = (screen.maxY - bar - 12) - (upMid - ringHalf)
         let gap: CGFloat = 16
         let block = ringHalf + below + gap + rowsCardHeight
-        let openMid = upMid + (rowsCardHeight > 0 ? max(room - block, 0) / 2 : 0)
+        // The card just over the bar, as the Salah list sits, the days and ring right above it — the spare room above the
+        // ring, not under the card (owner, 2026-10-24: "the journey list still has a bunch of empty space at bottom"; it
+        // was centred, so half the room fell under it on a tall phone).
+        let openMid = upMid + (rowsCardHeight > 0 ? max(room - block, 0) : 0)
         let openTop = openMid + below + gap
         let closedTop = screen.maxY - bar
         let run = max(closedTop - openTop, 1)

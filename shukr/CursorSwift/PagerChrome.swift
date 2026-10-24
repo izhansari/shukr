@@ -181,6 +181,9 @@ extension PrayerTimesView {
                                 // journey from hamburger menu").
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
+                                // Give to Causes (Sadaqah.swift) under 99 Names (owner, 2026-10-24: "oh move under 99 names
+                                // instead"; at the bottom of ☰ first, in Settings 2026-10-13 → 24).
+                                menuRow("Give to Causes", "gift") { showGivePage = true }
                                 // While excused only (owner): quick to manage or end (Excused.swift).
                                 if CircleStage.shared.excused != nil {
                                     menuRow("Excused Mode", "pause.circle", dot: ExcusedMenuBadge.ink) { NotificationCenter.default.post(name: Excused.openSheet, object: nil) }
@@ -194,9 +197,6 @@ extension PrayerTimesView {
                                     pendingMenuAction = { NotificationCenter.default.post(name: TourRuntime.start, object: nil) }
                                     showMenu = false
                                 }
-                                // Give to Causes (Sadaqah.swift), last (owner, 2026-10-24: "move give to causes out of setting and
-                                // into bottom of hamburger menu"; it was in Settings, not ☰, since 2026-10-13).
-                                menuRow("Give to Causes", "gift") { showGivePage = true }
                                 // (No "Zikr Tour" row any more: the Zikr page's lock is its way in — owner, 2026-10-08.)
                                 // Which build this is (BuildInfo): when it was built + the commit.
                                 // Tap → What's new (DEBUG / TestFlight).

@@ -246,7 +246,10 @@ struct JourneyGoalRing: View, Animatable {
     private func held(_ state: UIGestureRecognizer.State, _ p: CGPoint) {
         switch state {
         case .began:
+            // Already dragging the rows: that's the drag, not a hold.
+            guard pagerLive?.journeySpring.dragging != true else { return }
             scrubbing = true
+            pagerLive?.ringHeld = true
             if pagerLive?.pagerLocked == false { pagerLive?.pagerLocked = true }
             triggerSomeVibration(type: .medium)
             if let part = hit(at: p, scrub: true) { onScrub(part) }
@@ -257,6 +260,7 @@ struct JourneyGoalRing: View, Animatable {
             guard scrubbing else { return }
             scrubbing = false
             scrubEnded = Date()
+            pagerLive?.ringHeld = false
             if pagerLive?.pagerLocked == true { pagerLive?.pagerLocked = false }
         }
     }
@@ -398,12 +402,16 @@ struct JourneyWeekCard: View {
             // One line: what keeps the week strong, or that it can't be now (owner, 2026-10-21: "you have to also account for
             // the messaging for when they miss their strong week"). Three lines' room always (the mid-week line's), centred:
             // nothing moves when it changes.
-            Group {
-                if let door = makeUpDoor {
+            // Out, then in, whatever replaces what (owner, 2026-10-24: "the text under the ring transitions very poorly from copy
+            // to copy" — a cross-fade drew two sentences of different lengths over each other, and the line ↔ "Make up N ›"
+            // swap had no fade at all).
+            OutThenIn(value: slotNow) { slot in
+                switch slot {
+                case .door(let count, let fill):
                     // The not-marked pill picked with prayers to make up: what to fill in (if any) over the way to make up,
                     // the day page's grey capsule (DayMakeUpPill) in ink — Journey has no sage.
                     VStack(spacing: 6) {
-                        if let fill = door.fill {
+                        if let fill {
                             Text(fill).lineLimit(1).minimumScaleFactor(0.8)
                         }
                         Button {
@@ -411,7 +419,7 @@ struct JourneyWeekCard: View {
                             onMakeUp()
                         } label: {
                             HStack(spacing: 4) {
-                                Text("Make up \(door.count)")
+                                Text("Make up \(count)")
                                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .medium))
                             }
                             .font(.system(size: 14, design: .rounded))
@@ -421,10 +429,10 @@ struct JourneyWeekCard: View {
                             .contentShape(Capsule())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Make up \(door.count). Opens To make up on this week.")
+                        .accessibilityLabel("Make up \(count). Opens To make up on this week.")
                     }
-                } else {
-                    Text(lineNow ?? " ")
+                case .line(let line):
+                    Text(line)
                         .multilineTextAlignment(.center)
                         .lineLimit(3).minimumScaleFactor(0.85)
                 }
@@ -434,8 +442,6 @@ struct JourneyWeekCard: View {
                 .frame(height: 60)
                 .padding(.horizontal, 6)
                 .padding(.top, tight ? 8 : 12)
-                .contentTransition(.opacity)
-                .animation(.smooth(duration: CircleMotion.quick), value: lineNow)
                 .modifier(JourneyQuiet(live: quietLive, quiet: quiet))
                 .journeyFlightWords(.card)
             if bare, let goal {
@@ -523,6 +529,12 @@ struct JourneyWeekCard: View {
 
     /// The not-marked pill picked while this week has missed prayers: the way to make them up, with the days to fill in
     /// (they aren't on To make up — no rows) said over it.
+    /// What the slot under the days shows: the line, or the not-marked pill's way to make up.
+    private enum Slot: Equatable { case line(String), door(count: Int, fill: String?) }
+    private var slotNow: Slot {
+        if let door = makeUpDoor { return .door(count: door.count, fill: door.fill) }
+        return .line(lineNow ?? " ")
+    }
     private var makeUpDoor: (count: Int, fill: String?)? {
         guard picked == .notMarked, let m = model, !m.excusedNow, !m.owed.isEmpty else { return nil }
         let days = m.week.days.filter(\.noRecord).map(\.date)

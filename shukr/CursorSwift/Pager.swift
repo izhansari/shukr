@@ -51,6 +51,9 @@ import UIKit
     var journeyOffset: CGFloat = 0
     var journeyRun: CGFloat = 1
     var journeyPhase: ScrollPhase = .idle
+    /// A finger is holding the week ring (its hold-and-drag picks parts): the rows don't follow it (owner, 2026-10-24:
+    /// "dragging to select the journey circle isnt great cuz it moves the pager instead").
+    @ObservationIgnored var ringHeld = false
     /// 0 closed … 1 open.
     var journeyProgress: CGFloat { journeyOffset / max(journeyRun, 1) }
     @ObservationIgnored lazy var journeySpring = SheetSpring(live: self, offset: \.journeyOffset, run: \.journeyRun,

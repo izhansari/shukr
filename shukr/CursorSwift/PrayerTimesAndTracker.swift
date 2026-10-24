@@ -314,6 +314,7 @@ struct PrayerTimesView: View {
                     // Journey's rows follow the finger the Salah list's way (owner, 2026-10-23: "drags up with a live drag
                     // and drives down with a live drag too"): their own spring, the same tuning.
                     if sharedState.horizontalPage == .journey, sheetFollows, !dragAxis.swallowed {
+                        guard !live.ringHeld else { return }   // the ring's hold-and-drag has this finger
                         let spring = live.journeySpring
                         if !spring.dragging { spring.begin() }
                         spring.drag(value.translation.height)
