@@ -24,6 +24,16 @@ enum FreshStart {
     /// A prayer day before the fresh start: set aside on To make up (shown again by its "Show all").
     static func setsAside(_ dayKey: String) -> Bool { makeUpFromKey.map { dayKey < $0 } ?? false }
 
+    /// Once, on the first launch of the build where it only sets aside To make up: a fresh start set before then counted
+    /// every stat from its day, and the best streak and the kept counts only recount on a rule change ("Max N days" stayed
+    /// short — Frank's check, 2026-10-23). One silent recount over every day (PrayerStats.changed: no hearts).
+    static let makeUpOnlyKey = "freshStart.makeUpOnly.v1"
+    @MainActor static func recountOnceForMakeUpOnly() {
+        guard dayKey != nil, !UserDefaults.standard.bool(forKey: makeUpOnlyKey) else { return }
+        UserDefaults.standard.set(true, forKey: makeUpOnlyKey)
+        PrayerStats.changed()
+    }
+
     /// Day 1 on the fresh start's own day, by the prayer day.
     static func dayNumber(now: Date = Date()) -> Int? {
         guard let start else { return nil }

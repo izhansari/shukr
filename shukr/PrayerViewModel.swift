@@ -44,6 +44,8 @@ class PrayerViewModel { //letsgoooo i removed the CLLocationManager stuff from h
         self.scheduleDailyRefresh() //this will only run once on initialization. but will not run again if app is kept open in appswitcher.
         self.subscribeToChanges()
         PrayerViewModel.current = self
+        // A fresh start from before it only set aside To make up: its counts recounted once over every day.
+        DispatchQueue.main.async { MainActor.assumeIsolated { FreshStart.recountOnceForMakeUpOnly() } }
         #if DEBUG
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-demoStreakExcused") {
