@@ -429,51 +429,48 @@ struct tasbeehView: View {
                 GeometryReader { geometry in
                     VStack {
                         ZStack {
-                            Color("bgColor").opacity(0.001) // Simulate clear color
-                                .frame(width: geometry.size.width, height: geometry.size.height) // Fill the entire geometry
-                                .onTapGesture {
-                                    //                                            print("Tap gesture detected")
+                            // One finger only (CounterTouchSurface): a second finger used to stop the stroke mid-drag
+                            // (owner, 2026-10-24). The stroke rule below is the drag's, unchanged.
+                            CounterTouchSurface(onChanged: { dy in
+                                // Track drag distance
+                                offsetY = dy
+
+                                // Update highest and lowest points during drag
+                                if offsetY < highestPoint {
+                                    highestPoint = offsetY
+                                }
+                                if offsetY > lowestPoint {
+                                    lowestPoint = offsetY
+                                }
+
+                                // Check if dragged down from highest point by a value of incrementThreshold
+                                if dragToIncrementBool && offsetY - highestPoint > incrementThreshold {
+                                    dragToIncrementBool = false
+                                    incrementTasbeeh()
+                                    strokesThisTouch += 1
+                                    CountTips.shared.counted(byDrag: true, inTouch: strokesThisTouch)
+                                    lowestPoint = dy // need to set it otherwise it will always be the lowest point of the entire drag sesh
+                                    // Check if dragged up from lowest point by a value of incrementThreshold/2
+                                } else if !dragToIncrementBool && lowestPoint - offsetY > incrementThreshold/2 {
+                                    dragToIncrementBool = true
+                                    highestPoint = dy
+                                }
+                            }, onEnded: { tap in
+                                // A tap (barely moved, however long held) counts once, as onTapGesture did; never with a
+                                // stroke from the same touch.
+                                if tap && strokesThisTouch == 0 {
                                     incrementTasbeeh() // Increment on tap
                                     CountTips.shared.counted(byDrag: false)
                                 }
-                                .gesture(
-                                    DragGesture(minimumDistance: 0) // Set to 0 for immediate tracking
-                                        .onChanged { value in
-                                            
-                                            // Track drag distance
-                                            offsetY = value.translation.height
-                                            
-                                            // Update highest and lowest points during drag
-                                            if offsetY < highestPoint {
-                                                highestPoint = offsetY
-                                            }
-                                            if offsetY > lowestPoint {
-                                                lowestPoint = offsetY
-                                            }
-                                            
-                                            // Check if dragged down from highest point by a value of incrementThreshold
-                                            if dragToIncrementBool && offsetY - highestPoint > incrementThreshold {
-                                                dragToIncrementBool = false
-                                                incrementTasbeeh()
-                                                strokesThisTouch += 1
-                                                CountTips.shared.counted(byDrag: true, inTouch: strokesThisTouch)
-                                                lowestPoint = value.translation.height // need to set it otherwise it will always be the lowest point of the entire drag sesh
-                                                // Check if dragged up from lowest point by a value of incrementThreshold/2
-                                            } else if !dragToIncrementBool && lowestPoint - offsetY > incrementThreshold/2 {
-                                                dragToIncrementBool = true
-                                                highestPoint = value.translation.height
-                                            }
-                                        }
-                                        .onEnded { _ in
-                                            CountTips.shared.dragEnded(strokes: strokesThisTouch)   // the session tour
-                                            strokesThisTouch = 0
-                                            // Reset offsets after drag ends
-                                            dragToIncrementBool = true
-                                            offsetY = 0
-                                            highestPoint = 0
-                                            lowestPoint = 0
-                                        }
-                                )
+                                CountTips.shared.dragEnded(strokes: strokesThisTouch)   // the session tour
+                                strokesThisTouch = 0
+                                // Reset offsets after the touch ends — or is cancelled (the SwiftUI drag skipped this then)
+                                dragToIncrementBool = true
+                                offsetY = 0
+                                highestPoint = 0
+                                lowestPoint = 0
+                            })
+                            .frame(width: geometry.size.width, height: geometry.size.height) // Fill the entire geometry
                         }
                     }
                 }
