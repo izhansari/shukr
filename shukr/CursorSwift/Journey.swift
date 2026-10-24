@@ -632,7 +632,10 @@ struct JourneyPage: View {
         // The ring's centre where the Salah circle's is (owner, 2026-10-23: "ring needs to be centered like the other pages"),
         // read from the circle's own frame; the screen's middle until it has reported.
         let screen = UIScreen.main.bounds
-        let salahMid = Self.salahRestMid(screen, listClosed: sharedState.navPosition == .main)
+        // The circle keeps its own resting centre (WelcomeTarget.restMidY): read here from its live frame while the list
+        // "was closed", Journey caught it mid-drag and its ring stayed up (owner, 2026-10-24: "if salah list is open, then
+        // the journeys circle stays up"); and every Salah drag re-rendered this page.
+        let salahMid = WelcomeTarget.restMidY ?? screen.midY
         // Pulled up, as the Salah list: the ring rises to the top, the rows' card comes up under it.
         let upMid = screen.minY + (small ? 190 : 230)
         let s = stats ?? YourJourneyStats(log: JourneyLog(), today: today)
@@ -646,10 +649,11 @@ struct JourneyPage: View {
         let below = JourneyRowsLayout.shared.daysBelowRing
         let ringHalf: CGFloat = 113   // the bare ring, 226 pt
         let room = (screen.maxY - bar - 12) - (upMid - ringHalf)
-        let block = ringHalf + below + chevron + rowsCardHeight
+        let gap: CGFloat = 16
+        let block = ringHalf + below + gap + rowsCardHeight
         let openMid = upMid + (rowsCardHeight > 0 ? max(room - block, 0) / 2 : 0)
-        let openTop = openMid + below
-        let closedTop = screen.maxY - bar - chevron
+        let openTop = openMid + below + gap
+        let closedTop = screen.maxY - bar
         let run = max(closedTop - openTop, 1)
         // In the pager the rows follow the finger (the pager's drag, `live.journeySpring`); pushed, they pop.
         let live = visible == nil ? nil : pagerLive
@@ -670,20 +674,6 @@ struct JourneyPage: View {
         .ignoresSafeArea()
         .overlay(alignment: .top) {
             VStack(spacing: 0) {
-                Button {
-                    triggerSomeVibration(type: .light)
-                    setRows(!rowsUp)
-                } label: {
-                    Image(systemName: "chevron.up")
-                        .font(.title3)
-                        .modifier(JourneyRowsTurn(live: live, up: rowsQuiet))
-                        .foregroundStyle(Color(.secondarySystemFill))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: chevron)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(rowsUp ? "Close the list" : "More: your prayers, to make up, moments, milestones, fresh start")
                 // The rows' card, the Salah list's raised look, just its rows' height and clear of the bar — the Salah list's
                 // card (it ran under the bar, square at its foot: 2026-10-23 → 24).
                 VStack(alignment: .leading, spacing: 0) {
@@ -699,6 +689,28 @@ struct JourneyPage: View {
                 .allowsHitTesting(rowsUp)
             }
             .modifier(JourneyRowsRide(live: live, up: rowsUp, closed: closedTop, open: openTop))
+            .ignoresSafeArea()
+        }
+        .overlay(alignment: .bottom) {
+            // The ^ the Salah page's way (owner, 2026-10-24: "i want it to work the same way it does in salah tab"): fixed
+            // just over the bar, fading as the rows come up; down again by a swipe. (It rode up under the days and turned
+            // into a ⌄.) Pushed, with no pager to swipe, it stays and turns.
+            Button {
+                triggerSomeVibration(type: .light)
+                setRows(!rowsUp)
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.title3)
+                    .rotationEffect(.degrees(live == nil && rowsUp ? 180 : 0))
+                    .foregroundStyle(Color(.secondarySystemFill))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: chevron)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(rowsUp ? "Close the list" : "More: prayer insights, to make up, moments, milestones")
+            .modifier(JourneyChevronFade(live: live))
+            .padding(.bottom, bar)
             .ignoresSafeArea()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -743,15 +755,6 @@ struct JourneyPage: View {
             rowsUp = up
             rowsQuiet = up
         }
-    }
-
-    /// The Salah circle's centre at rest (its list closed: the list lifts the circle), remembered from its frame.
-    @MainActor private static var salahMid: CGFloat?
-    @MainActor private static func salahRestMid(_ screen: CGRect, listClosed: Bool) -> CGFloat {
-        if listClosed, let f = WelcomeTarget.circleFrame, f.width > 100 {
-            salahMid = f.midY
-        }
-        return salahMid ?? screen.midY
     }
 
     // MARK: Home
@@ -892,7 +895,7 @@ struct JourneyPage: View {
             if MetricsLook.on {
                 // Your prayers as a row with the others (owner, 2026-10-20: "looks weird to have the upper right ring so busy
                 // on journey … you can get rid of it and make it a list item"); the page still zooms out of it.
-                JourneyHomeRow(title: "Your prayers",
+                JourneyHomeRow(title: "Prayer insights",   // owner, 2026-10-24: "Change your prayers -> Prayer insights"
                                // Not the last 7 days again: the week ring and Your weeks say those (owner, 2026-10-24:
                                // "change Your Prayers grey line to say something else … maybe something like “Gain insight
                                // into your praying patterns” or something better").
@@ -1181,11 +1184,11 @@ struct JourneyRowsFade: ViewModifier {
     }
 }
 
-/// The ^ turning into a ⌄ with the rows (in the pager with the finger; pushed, by the rest).
-struct JourneyRowsTurn: ViewModifier {
+/// The ^ fading as the rows come up, as the Salah page's does (PagerChrome's chevron role); pushed, it stays.
+struct JourneyChevronFade: ViewModifier {
     let live: PagerLiveState?
-    let up: Bool
     func body(content: Content) -> some View {
-        content.rotationEffect(.degrees(180 * (live.map { min(max($0.journeyProgress, 0), 1) } ?? (up ? 1 : 0))))
+        let p = live.map { min(max($0.journeyProgress, 0), 1) } ?? 0
+        content.opacity(Double(1 - p)).allowsHitTesting(p < 0.5)
     }
 }

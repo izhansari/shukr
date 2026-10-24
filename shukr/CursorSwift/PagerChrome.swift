@@ -176,9 +176,8 @@ extension PrayerTimesView {
                                     .padding(.top, 18)
                                     .padding(.bottom, 10)
                                 Divider()
-                                // Journey (Journey.swift): Insights and Moments in one place (owner, 2026-10-15); Moments is
-                                // its tile.
-                                menuRow("Journey", "point.bottomleft.forward.to.point.topright.scurvepath") { JourneyPresenter.shared.open = true }
+                                // No Journey row: it's a page of the pager and a tab of the bottom bar (owner, 2026-10-24: "get rid of
+                                // journey from hamburger menu").
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 // While excused only (owner): quick to manage or end (Excused.swift).

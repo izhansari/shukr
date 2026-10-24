@@ -88,7 +88,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   (never returns, starving the task pool so even JPEGs stop loading), so `encoded` writes JPEG there; phones decode it in ~30 ms.
 
 **Journey** (Journey.swift, JourneyDay.swift, JourneyMakeUp.swift; spec + phases board/mocks/journey/spec.md, mock-ups v5; Bradley builds it)
-- ☰ → Journey (`JourneyPresenter.open`, pushed on the root stack) replaces Insights and the Moments row; the day page's pill
+- Journey replaces Insights and the Moments row (no ☰ row since 2026-10-24 — it's a pager page and a bottom-bar tab); the day page's pill
   (`MemoriesFooterLink`) reads "Journey ›" (still "N photos to develop ›" → Moments while one waits); deep link / What's new
   link "journey" ("insights" too). The old Insights pages are gone (2026-10-21). iOS 26's back button shows no page name.
 - Journey on one screen (owner 2026-10-16, board/mocks/journey-v6/build-plan.md): `JourneyPage` doesn't scroll — "Journey"
@@ -174,22 +174,23 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes `PrayerGoalPage` (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"; Settings' row went 2026-10-22). Under To make up (the old layout only), "Fresh start" ("Set aside what's to make up" · Off, or "To make up since Oct 12" · On) pushes `FreshStartPage` (owner, 2026-10-22: "do we still need fresh start? … if so, then throw it into journey as a list item"; kept — Fable and Frank: its "clear make up" is the one honest reset for To make up, and a set one with no row couldn't be seen or undone). Your goal and Fresh start show in Release too (no MetricsLook gate); Milestones now sits below the fold on a 17 Pro (the rows scroll).
 - **Laid out like Salah** (owner, 2026-10-23, behind `MetricsLook.on` like the week card; canvas https://claude.ai/artifact/Na7xUVdesGnhZYRkSsyQgA):
   the pager's top bar and bottom bar stay over Journey (they fade only toward Settings — `ChromeLeaves` from page 2 → 3); the top bar
-  shows ☰ · "Journey" (`JourneyPageTitle`, pushed in like Zikr's) · the gear (→ Settings). The page (`JourneyPage.ringPage`): its ring's centre on the Salah circle's resting centre (`WelcomeTarget.circleFrame`, read while the Salah list is closed), 226 pt; the week
+  shows ☰ · "Journey" (`JourneyPageTitle`, pushed in like Zikr's) · the gear (→ Settings). The page (`JourneyPage.ringPage`): its ring's centre on the Salah circle's resting centre (`WelcomeTarget.restMidY`, which the circle writes only with its list closed and still — read from the live frame, a Salah list left open kept Journey's ring up, owner 2026-10-24), 226 pt; the week
   ring out of its card (`JourneyWeekCard(bare:)`: no card, no range line, no ↗), its days, the week's line, the goal pill "Aiming for
   <step> ›" (pushes `PrayerGoalPage`), "Last week · N of M ›" (→ Your weeks; the no-record question takes its slot), a ^. A swipe up
   or the ^ pulls the rows up as the Salah list does — vertical live dragging (owner 2026-10-23: "drags up with a live drag and drives
   down with a live drag too"): `live.journeySpring`, a second SheetSpring on the pager's drag, moves the ring and the card with the finger
-  (`JourneyRowsRide` / `JourneyRowsFade`; the ^ turns with it, `JourneyRowsTurn`) and lands them with its speed; `rowsUp` is where
+  (`JourneyRowsRide` / `JourneyRowsFade`) and lands them with its speed; the ^ is the Salah page's: fixed over the bar, fading as the
+  rows come up (`JourneyChevronFade`), down again by a swipe (owner 2026-10-24: "work the same way it does in salah tab"); `rowsUp` is where
   they rest. The ring rises (an offset — layout never moves), the line, pill and last week fade with the finger (`JourneyQuiet`, gone
-  by a third of the way), and a raised card (NeuRaised, the rows' own height, rounded) comes up just under the ⌄ under the days
-  (`JourneyRowsLayout.daysBelowRing`, measured by the card): ring, days, ⌄ and card one block centred between the bars (owner,
-  2026-10-24: "dont need all that for the list"). A drag's lift never opens the row under it (`SheetSpring.justMoved`): Your prayers
-  ("Patterns in how you pray"; its total marked on the right; a plain push, no zoom) · To make up · Moments · Milestones (no since-line; Fresh start is To make up's top-right glass button now — leaf, filled while on — owner 2026-10-23; the lifetime ⇄ has no home on this layout); a row pushes; the swipe is the pager's own vertical drag,
+  by a third of the way), and a raised card (NeuRaised, the rows' own height, rounded) comes up 16 pt under the days
+  (`JourneyRowsLayout.daysBelowRing`, measured by the card): ring, days and card one block centred between the bars (owner,
+  2026-10-24: "dont need all that for the list"). A drag's lift never opens the row under it (`SheetSpring.justMoved`): Prayer insights
+  (owner 2026-10-24, was Your prayers — its page too; "Patterns in how you pray"; its total marked on the right; a plain push, no zoom) · To make up · Moments · Milestones (no since-line; Fresh start is To make up's top-right glass button now — leaf, filled while on — owner 2026-10-23; the lifetime ⇄ has no home on this layout); a row pushes; the swipe is the pager's own vertical drag,
   the Salah list's (5 pt start, axis lock; with the palette's live drag off, a 30 pt line pops it → `JourneyPage.rowsDrag`); ^ / ⌄ too;
   paging away closes it.
   In the pager the page has no background of its own (the pager's backdrop): an opaque one drew its edge over the Salah page as it
   faded in place. No big "Journey" title; Your goal is no longer a row.
-- Journey is the pager's right page (owner, 2026-10-22; `JourneyPagerPage`, built once the Salah page rests): ☰, the day
+- Journey is the pager's right page (owner, 2026-10-22; `JourneyPagerPage`, built once the Salah page rests): the day
   page's link, To make up's pill and What's new page to it; a gear at its top right pages on to Settings (the pager's fourth
   page — "add a way for me to get to settings by swipe"), whose ‹ comes back. The week card's ↗ pushes
   Your weeks (`JourneyExpandedPushed`, no flight — "so that the pager works easier"); a day there pushes its page.

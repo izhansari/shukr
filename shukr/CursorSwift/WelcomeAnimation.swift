@@ -32,6 +32,13 @@ extension View {
         get { state.circleFrame }
         set { if state.circleFrame != newValue { state.circleFrame = newValue } }
     }
+    /// The Salah circle's centre at rest — its list closed and still (not mid-drag, not landing). Journey's ring lines up with
+    /// it (owner, 2026-10-24: "if salah list is open, then the journeys circle stays up" — read from the live frame, it
+    /// caught the circle on its way up).
+    static var restMidY: CGFloat? {
+        get { state.restMidY }
+        set { if state.restMidY != newValue { state.restMidY = newValue } }
+    }
     static var canLand: Bool {
         get { state.canLand }
         set { if state.canLand != newValue { state.canLand = newValue } }
@@ -60,6 +67,7 @@ extension View {
 
 @MainActor @Observable final class WelcomeTargetState {
     fileprivate(set) var circleFrame: CGRect?
+    fileprivate(set) var restMidY: CGFloat?
     fileprivate(set) var canLand = true
     fileprivate(set) var trackDashed = false
     fileprivate(set) var playing = false

@@ -457,8 +457,8 @@ struct PrayerScoresPage: View {
     private static let rowHeight: CGFloat = 62
     /// The prayer-metrics rethink (MetricsLook): each prayer's last 7 days, the page's counts instead of its scores.
     private var recent: YourPrayersRecent { .shared }
-    /// "Your prayers" (MetricsLook) or "Prayer scores".
-    private var pageTitle: String { MetricsLook.on ? "Your prayers" : "Prayer scores" }
+    /// "Prayer insights" (MetricsLook; was "Your prayers" — its row's name, owner 2026-10-24) or "Prayer scores".
+    private var pageTitle: String { MetricsLook.on ? "Prayer insights" : "Prayer scores" }
 
     var body: some View {
         let _ = JourneyPerf.body("scores")

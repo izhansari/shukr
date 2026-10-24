@@ -220,6 +220,11 @@ struct MainCircleView: View {
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                     WelcomeTarget.circleFrame = $0   // only this circle writes it
+                    // Closed and still: the list down, no drag or landing riding the circle (Journey lines up with it).
+                    if sharedState.navPosition == .main, live.map({ $0.sheetOffset < 0.5 && $0.sheetPhase == .idle }) ?? true,
+                       $0.width > 100 {
+                        WelcomeTarget.restMidY = $0.midY
+                    }
                     TourTargets.shared.circleMoved($0)   // the tour's, settled (Tour.swift)
                 }
             
