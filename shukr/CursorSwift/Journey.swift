@@ -1177,7 +1177,8 @@ struct JourneyRowsWatch: View {
             .frame(width: 0, height: 0)
             .onChange(of: q, initial: true) { _, v in
                 guard quiet != v else { return }
-                withAnimation(.easeOut(duration: CircleMotion.quick)) { quiet = v }
+                // Quick: the rows land in ~0.3 s, and with the circle's quick fade they slid over the line still half there.
+                withAnimation(.easeOut(duration: 0.12)) { quiet = v }
             }
     }
 }
