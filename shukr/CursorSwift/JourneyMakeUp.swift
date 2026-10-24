@@ -35,6 +35,9 @@ struct JourneyMakeUpPage: View {
     @State private var madeUp: [Entry] = JourneyStore.shared.makeUp?.madeUp ?? []
     /// One prayer only (a tap on its count).
     @State private var only: String?
+    /// The ones from before a fresh start too (owner, 2026-10-23: "with still a toggle to see all of them on the screen if
+    /// someone chooses"): off on every visit.
+    @State private var showAll = false
 
     /// Its filters set from the first frame, so it slides in already on them (owner, 2026-10-22: "fix the way the page does
     /// this when it appears. looks sloppy" — set on appear, it rolled 489 down to 1 and swapped its rows as it slid in).
@@ -98,7 +101,9 @@ struct JourneyMakeUpPage: View {
 
     /// Every month, always (owner, 2026-10-17: "Get rid of the switcher … and just always display all months").
     private let all = true
-    private func inScope(_ e: Entry) -> Bool { (all || e.month == month) && (!weekOnly || e.dayStart >= Self.weekStart) }
+    private func inScope(_ e: Entry) -> Bool { inRange(e) && (showAll || !FreshStart.setsAside(e.dayKey)) }
+    /// The month and week filters, before the fresh start's.
+    private func inRange(_ e: Entry) -> Bool { (all || e.month == month) && (!weekOnly || e.dayStart >= Self.weekStart) }
     /// This week's first prayer day (the calendar's first weekday), as the week ring counts it.
     private static var weekStart: Date {
         let today = PrayerDay.start()
@@ -123,13 +128,19 @@ struct JourneyMakeUpPage: View {
         var left = 0
         var made = 0
         var anySettling = false
+        /// Left under the chip that's on from before the fresh start: what "Show all" adds (counted whether it's on or not).
+        var setAside = 0
     }
 
     private func shown() -> Shown {
         var s = Shown()
         var perPrayer: [String: Int] = [:]
-        for e in open where inScope(e) {
+        for e in open where inRange(e) {
             let justMade = isSettling(e)
+            if FreshStart.setsAside(e.dayKey) {
+                if !justMade && (only == nil || e.name == only) { s.setAside += 1 }
+                if !showAll { continue }
+            }
             if !justMade { perPrayer[e.name, default: 0] += 1 }
             guard only == nil || e.name == only else { continue }
             s.rows[e.month, default: []].append(e)
@@ -147,6 +158,24 @@ struct JourneyMakeUpPage: View {
         s.months = s.rows.keys.sorted(by: >)
         s.counts = JourneyLog.names.compactMap { name in perPrayer[name].map { (name, $0) } }
         return s
+    }
+
+    /// The list's first row while a fresh start sets some aside: a switch that shows them too (a flat row, as Settings' own).
+    private func showAllRow(_ count: Int) -> some View {
+        let since = (FreshStart.start ?? Date()).formatted(.dateTime.month(.abbreviated).day())
+        return HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Show all").font(.body)
+                Text(count == 1 ? "1 from before your fresh start on \(since)" : "\(count) from before your fresh start on \(since)")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .contentTransition(.numericText(value: Double(count)))
+            }
+            Spacer(minLength: 0)
+            Toggle("Show all", isOn: $showAll.animation(.snappy(duration: 0.3)))
+                .labelsHidden()
+                .tint(Color.sage)
+        }
+        .padding(.top, 16).padding(.bottom, 4)
     }
 
     /// The made-up section's id (for "N made up" to scroll to).
@@ -167,6 +196,11 @@ struct JourneyMakeUpPage: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     Color.clear.frame(height: foldBy)
+                    // First in the list, so turning it on only adds rows under it: it never moves (at the bottom it went
+                    // under 500 rows, and off was a long scroll away).
+                    if FreshStart.start != nil, shown.setAside > 0 || showAll {
+                        showAllRow(shown.setAside)
+                    }
                     if shown.left == 0 && !shown.anySettling {
                         JourneyCaughtUp(cleared: cleared, line: caughtUpLine)
                             .frame(maxWidth: .infinity)
@@ -582,13 +616,13 @@ struct JourneyMakeUpPage: View {
         }.value
     }
 
-    /// How many are owed (the day page's "N to make up" pill), read off the main thread.
+    /// How many are owed (the day page's "N to make up" pill), read off the main thread: none a fresh start set aside.
     nonisolated static func openCount(container: ModelContainer) async -> Int {
-        await entries(container: container).open.count
+        await entries(container: container).open.filter { !FreshStart.setsAside($0.dayKey) }.count
     }
 
     /// Open: unmarked prayers whose window has ended, on active days only, never an excused one — plus `keeping`, just made
-    /// up and still shown in place. Made up: marked on a later prayer day than its own (the Made up button, or the sheet's
+    /// up and still shown in place. Before a fresh start too (the page sets those aside; counts filter `FreshStart.setsAside`). Made up: marked on a later prayer day than its own (the Made up button, or the sheet's
     /// default) — newest made up first.
     nonisolated static func entries(in context: ModelContext, keeping: Set<PersistentIdentifier> = [], ranges: [ExcusedRange],
                         now: Date = Date()) -> (open: [Entry], madeUp: [Entry]) {
@@ -597,10 +631,7 @@ struct JourneyMakeUpPage: View {
         // Today counts as a day you used shukr even before its first mark: the missed face's count (today's) and its
         // total (this list) agreed only once something was marked today (metrics phase 1).
         var active: Set<String> = [PrayerDay.key(for: now)]
-        // A fresh start that cleared them: the list starts on its day, made up ones too (nothing is deleted; Undo brings
-        // the rest back).
-        let from = FreshStart.makeUpFromKey
-        for row in rows where JourneyLog.names.contains(row.name) && from.map({ row.dayKey >= $0 }) ?? true {
+        for row in rows where JourneyLog.names.contains(row.name) {
             let id = row.dayKey + row.name
             if row.isCompleted { active.insert(row.dayKey) }
             if let k = kept[id], k.isCompleted, !row.isCompleted { continue }

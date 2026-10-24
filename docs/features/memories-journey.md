@@ -113,23 +113,24 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   only off your goal) → success buzz, "✓ Saved", the page stays; the back button off during it; Back never saves.
   Words, verdicts and the button swap out, then in (`OutThenIn`). Tried and dropped: v7's Prayer circle card over a radio
   list with the streak in the ring (round 1); three rings over a list; "you'd have had 25 of 35". New installs start on
-  In its window, existing users keep what an unset goal meant — FirstRunSetup.migrateDefaults) and Fresh start (one prayer day; the page,
-  Design 2026-10-19: soft look, 30 pt title; Az-Zumar 39:53 centred in a pressed 256 pt ring that is itself held 1.5 s,
-  "Hold the ring" a caption low in it with a light sweeping over it; a sage glow from the bottom, growing with the hold;
-  then the ring rises (NeuLiftCard) and holds Day N, the facts give way to "One prayer at a time." + Bukhari 6464,
-  Done · Undo; four flat lines on what changes and stays, one a "Reset prayers to make up" toggle (`freshStartClearsMakeUp`, off by default; Start fresh = To make up
-  and Prayer scores' "to make up" count from its day, made up ones too; nothing deleted); swaps are `.blurReplace` in
-  fixed slots. Every later visit looks like the first (owner 2026-10-19): its hold starts again today (Undo right after
-  brings back the one it replaced), "Counting since your fresh start on <date>" at the bottom, "Undo fresh start" →
-  an alert). `PrayerGoal.meets` is
-  the one rule (gradingCriteria, streakDay, `Day.metGoal`); `PrayerStats.countsFrom` the one date; either change posts
-  `PrayerStats.rulesChanged` → a silent recount (no hearts, milestones recorded as seen), Max recounted from rows. From
-  the date: the whole card (days and prayers marked, the rate "N% of days met your goal" after 3 finished days, best),
-  the streak, rank, runs, Prayer scores' All time (the line under its chart "since Oct 17"; the chip stays "All time") and trends, Journey's ring; the header line
-  "Since your fresh start, Oct 17 ⇄" flips the card to lifetime and back (`JourneyStore.lifetime`); lifetime always: month lines,
-  firsts; kept: Moments, and To make up unless Start fresh. Days before it draw at
-  0.35 everywhere (`JourneyTileColor.beforeFreshStart`); a quiet "Fresh start" milestone (never celebrated). Both travel
-  in Your Data's copy. Not built: "Show earlier" (the calendar still scrolls back).
+  In its window, existing users keep what an unset goal meant — FirstRunSetup.migrateDefaults) and Fresh start. `PrayerGoal.meets` is
+  the one rule (gradingCriteria, streakDay, `Day.metGoal`); a goal change posts `PrayerStats.rulesChanged` → a silent
+  recount (no hearts, milestones recorded as seen), Max recounted from rows. Every stat counts every day
+  (`PrayerStats.countsFrom` is nil — the start-date plumbing stays dormant).
+- **Fresh start** (FreshStart.swift; To make up's top-right leaf, filled while on; owner 2026-10-23: "lets change fresh
+  start to only affect the make up prayers. just hides them. with still a toggle to see all of them on the screen if
+  someone chooses"): one prayer day; To make up, its counts (Journey's row, the day page's pill, Prayer scores' and Your
+  prayers' "to make up", "All made up") start from it (`FreshStart.setsAside(dayKey)`); nothing else changes, nothing is
+  deleted. To make up's first row while some are set aside: "Show all · N from before your fresh start on <date>" (a
+  switch, off every visit; first in the list so turning it on only adds rows under it). The page (Design 2026-10-19):
+  soft look, 30 pt title; Az-Zumar 39:53 centred in a pressed 256 pt ring held 1.5 s ("Hold the ring", a light sweeping
+  over it; a sage glow growing with the hold); then the ring rises with the verse still in it, the facts give way to "One
+  prayer at a time." + Bukhari 6464, Done · Undo; four flat lines (To make up starts from today · Your stats don't
+  change · Nothing is deleted · See them any time); swaps `.blurReplace` in fixed slots. A later visit looks like the
+  first (its hold starts again today; Undo right after brings back the one it replaced), "To make up starts from <date>",
+  "Undo fresh start" → an alert. Travels in Your Data's copy. Tried and dropped (2026-10-18 → 23): every stat counted
+  from it (card, streak, rank, Prayer scores, Journey's ring, dimmed days before it, "Since … ⇄", Day N, a quiet "Fresh
+  start" milestone), with clearing To make up a toggle on its page.
   One layout of four (`JourneyPage.fits`: the loosest whose content fits the room, measured from a `Color.clear`; rows
   scroll under a 12-week card only where nothing else fits) — never four built copies (perf #2).
 - **The week card** (JourneyWeekHero.swift; behind `MetricsLook.on` — DEBUG on, Release off until he OKs the look): this week as
@@ -171,7 +172,7 @@ Read with CLAUDE.md (rules, traps). When a feature changes, replace its lines he
   the newest day's five, then the next asks; one Not now quiets them all for the week (Fable's item 7, A: it walked back a
   day per tap); it still steps aside after 3 visits; the dotted dots still open the fill-in (`NoRecordDays.all`). All from `PrayerMetrics`, off the main
   thread on `log.version`. Its ↗ opens the calendar; the day dots fly into it and back (`JourneyFlightGeometry.ringTiles`).
-  No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes `PrayerGoalPage` (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"; Settings' row went 2026-10-22). Under To make up, "Fresh start" ("Count from today, nothing is deleted" · Off, or "Since Oct 12" · Day N) pushes `FreshStartPage` (owner, 2026-10-22: "do we still need fresh start? … if so, then throw it into journey as a list item"; kept — Fable and Frank: its "clear make up" is the one honest reset for To make up, and a set one with no row couldn't be seen or undone). Your goal and Fresh start show in Release too (no MetricsLook gate); Milestones now sits below the fold on a 17 Pro (the rows scroll).
+  No header ring (owner: "looks weird to have the upper right ring so busy … make it a list item"): "Your prayers" is a row ("35 of 35 in their time · last 7 days"), the page zooming out of it. Above it, "Your goal" ("How early you aim to pray", the goal's name on the right) pushes `PrayerGoalPage` (owner, 2026-10-21: "so its not tucked away in settings" → "Make it a list item for now"; Settings' row went 2026-10-22). Under To make up (the old layout only), "Fresh start" ("Set aside what's to make up" · Off, or "To make up since Oct 12" · On) pushes `FreshStartPage` (owner, 2026-10-22: "do we still need fresh start? … if so, then throw it into journey as a list item"; kept — Fable and Frank: its "clear make up" is the one honest reset for To make up, and a set one with no row couldn't be seen or undone). Your goal and Fresh start show in Release too (no MetricsLook gate); Milestones now sits below the fold on a 17 Pro (the rows scroll).
 - **Laid out like Salah** (owner, 2026-10-23, behind `MetricsLook.on` like the week card; canvas https://claude.ai/artifact/Na7xUVdesGnhZYRkSsyQgA):
   the pager's top bar and bottom bar stay over Journey (they fade only toward Settings — `ChromeLeaves` from page 2 → 3); the top bar
   shows ☰ · "Journey" (`JourneyPageTitle`, pushed in like Zikr's) · the gear (→ Settings). The page (`JourneyPage.ringPage`): its ring's centre on the Salah circle's resting centre (`WelcomeTarget.circleFrame`, read while the Salah list is closed), 226 pt; the week

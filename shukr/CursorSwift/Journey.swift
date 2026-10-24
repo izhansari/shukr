@@ -905,12 +905,12 @@ struct JourneyPage: View {
             // Fresh start: on To make up's top right now (owner, 2026-10-23); the old layout keeps its row.
             if !inSheet {
             JourneyHomeRow(title: "Fresh start",
-                           line: FreshStart.start.map { "Since \($0.formatted(.dateTime.month(.abbreviated).day()))" }
-                               ?? "Count from today, nothing is deleted",
+                           line: FreshStart.start.map { "To make up since \($0.formatted(.dateTime.month(.abbreviated).day()))" }
+                               ?? "Set aside what's to make up",
                            height: rowHeight, quiet: freshDay == nil) {
                 Image(systemName: "leaf").font(.system(size: 19, weight: .light)).foregroundStyle(.secondary)
             } value: {
-                Text(freshDay.map { "Day \($0)" } ?? "Off")
+                Text(freshDay == nil ? "Off" : "On")
             } action: { showFreshStart = true }
             }
             JourneyHomeRow(title: "Moments",

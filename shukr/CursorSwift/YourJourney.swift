@@ -1493,7 +1493,7 @@ struct JourneyMilestone: Identifiable, Equatable {
         var gap = 0
         var masjidDone = false, jumuahDone = false, completeDayDone = false, madeUpDone = false
         var lastMadeUp: (date: Date, how: String)?
-        /// Where To make up starts (a fresh start that cleared it): only make-ups since then date "All made up".
+        /// Where To make up starts (the fresh start): only make-ups since then date "All made up".
         let makeUpFrom = FreshStart.makeUpFromKey
 
         var date = cal.startOfDay(for: firstDay)
@@ -1608,7 +1608,7 @@ struct JourneyMilestone: Identifiable, Equatable {
             }
         }
         // All made up: nothing left on To make up, after there was (dated by the last make-up since its start). To make up's
-        // own rule: from where it starts (a fresh start that cleared it), on days you used shukr — today included even
+        // own rule: from where it starts (the fresh start), on days you used shukr — today included even
         // before its first mark (metrics phase 1).
         if let last = lastMadeUp {
             let todayKey = PrayerDay.key(for: now)

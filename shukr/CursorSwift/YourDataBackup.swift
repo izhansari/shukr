@@ -29,12 +29,10 @@ struct ShukrBackup: Codable {
     /// Mosques not to recommend (MosqueHiding's ids: name|lat|lon).
     var hiddenMosques: [String]? = nil
     var bests: Bests? = nil
-    /// The prayer goal (PrayerGoal's raw value) and the fresh start's prayer day: every count reads them, so a restore
+    /// The prayer goal (PrayerGoal's raw value) and the fresh start's prayer day (To make up starts there), so a restore
     /// onto an iPhone that has neither set brings them back (nil in copies from before 2026-10-18).
     var prayerGoal: Int? = nil
     var freshStartDay: String? = nil
-    /// The fresh start cleared the prayers to make up too (FreshStart.makeUpKey).
-    var freshStartClearsMakeUp: Bool? = nil
     /// The settings as words, for the record (a restore never changes this iPhone's settings).
     var settings: [String: String]? = nil
 
@@ -120,7 +118,6 @@ extension DataExport {
                         inTimeStreak: 0)
         b.prayerGoal = PrayerGoal.current.rawValue
         b.freshStartDay = FreshStart.dayKey
-        b.freshStartClearsMakeUp = FreshStart.clearsMakeUp ? true : nil
         b.settings = Dictionary(DataSettings.rows(), uniquingKeysWith: { a, _ in a })
         return (b, files)
     }
@@ -394,7 +391,6 @@ enum DataRestore {
         }
         if write, FreshStart.dayKey == nil, let day = b.freshStartDay {
             d.set(day, forKey: FreshStart.key)
-            d.set(b.freshStartClearsMakeUp ?? false, forKey: FreshStart.makeUpKey)
         }
         // The bests aren't taken from the copy: the day streak's is recounted from the rows after (apply).
         return plan

@@ -165,8 +165,9 @@ enum PrayerStats {
     static let changedDayKey = "prayerStats.changedDay"
     static var changedToday: Bool { UserDefaults.standard.string(forKey: changedDayKey) == PrayerDay.key() }
 
-    /// The first prayer day that counts: the fresh start's, or nil (all of them).
-    static var countsFrom: Date? { FreshStart.start }
+    /// The first prayer day that counts, or nil (all of them). Always nil since 2026-10-23: a fresh start only sets aside
+    /// the prayers to make up (FreshStart.swift); every stat counts every day. Kept as the one place a start date would go.
+    static var countsFrom: Date? { nil }
 
     /// A prayer day (its start) counts toward streaks, rates, ranks and runs.
     static func counts(_ dayStart: Date) -> Bool {

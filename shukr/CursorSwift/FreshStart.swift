@@ -1,11 +1,12 @@
 import SwiftUI
 
-// A fresh start (owner, 2026-10-18): a clean slate for stats that might put someone off coming back — "Journey page may be
-// something they look at and get turned off and they think theres no way they can come back from such a low %age". One
-// prayer day, kept in Settings; nothing is deleted and an undo brings the whole history back. "A big deal - not a nilly
+// A fresh start (owner, 2026-10-18): a clean slate for someone who might be put off coming back. Since 2026-10-23 it only
+// sets aside the prayers to make up (owner: "lets change fresh start to only affect the make up prayers. just hides them.
+// with still a toggle to see all of them on the screen if someone chooses"): To make up, its counts and "All made up"
+// start from its day; every stat counts every day as before (PrayerStats.countsFrom). One prayer day, kept in Settings;
+// nothing is deleted, To make up's "Show all" shows the rest, and an undo brings them all back. "A big deal - not a nilly
 // willy feature to the user. With an emotional moment before they commit": a page that says what changes and a hold to
-// begin. Owed prayers stay ("keep qaza forsure"). Every count reads it through PrayerStats (PrayerGoal.swift); what counts
-// from it and what stays lifetime: board/goal-reset-inventory.md, his picks 2026-10-18 ("your pick for all").
+// begin. Tried and dropped: counting every stat from it (2026-10-18 → 23), with clearing To make up an option.
 
 /// The fresh start: one prayer day ("YYYY-MM-DD", the day turns at Fajr), or none.
 enum FreshStart {
@@ -17,15 +18,11 @@ enum FreshStart {
     /// Midnight at the start of its day.
     static var start: Date? { dayKey.flatMap(PrayerDay.start(ofKey:)) }
 
-    /// Whether it cleared the prayers to make up too (owner, 2026-10-19: "lets give them option to keep or start fresh with
-    /// their made up prayers too … it says i have like 400 to make up but its not accurate for me"). Off by default — owed
-    /// prayers stay ("keep qaza forsure", 2026-10-18). Nothing is deleted: To make up and Prayer scores' count just read
-    /// from the fresh start's day; Undo brings them all back.
-    static let makeUpKey = "freshStartClearsMakeUp"
-    static var clearsMakeUp: Bool { dayKey != nil && UserDefaults.standard.bool(forKey: makeUpKey) }
-    /// The prayer day ("YYYY-MM-DD") owed prayers count from, or nil for all of them.
-    static var makeUpFromKey: String? { clearsMakeUp ? dayKey : nil }
-    static var makeUpFrom: Date? { clearsMakeUp ? start : nil }
+    /// The prayer day ("YYYY-MM-DD") To make up counts from, or nil for all of them.
+    static var makeUpFromKey: String? { dayKey }
+    static var makeUpFrom: Date? { start }
+    /// A prayer day before the fresh start: set aside on To make up (shown again by its "Show all").
+    static func setsAside(_ dayKey: String) -> Bool { makeUpFromKey.map { dayKey < $0 } ?? false }
 
     /// Day 1 on the fresh start's own day, by the prayer day.
     static func dayNumber(now: Date = Date()) -> Int? {
@@ -37,20 +34,18 @@ enum FreshStart {
     /// From today's prayer day — or, between midnight and Fajr, the one that starts at Fajr: the prayer day still showing
     /// then is yesterday's and already over (Isha ended at 11:59 PM), and starting it would put its record (a missed Isha)
     /// inside the fresh start (Fable's audit #3). Day 1 until Fajr, then Day 1 again.
-    @MainActor static func begin(clearMakeUp: Bool = false, now: Date = Date()) {
+    @MainActor static func begin(now: Date = Date()) {
         let calendarDay = Calendar.current.startOfDay(for: now)
         let key = calendarDay > PrayerDay.start(for: now) ? PrayerNotificationID.dayKey(calendarDay) : PrayerDay.key(for: now)
         UserDefaults.standard.set(key, forKey: Self.key)
-        UserDefaults.standard.set(clearMakeUp, forKey: makeUpKey)
         JourneyStore.shared.makeUp = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
         NotificationCenter.default.post(name: changed, object: nil)
         PrayerStats.changed()
     }
 
     /// Back to an earlier fresh start: Undo right after starting again on a later visit (owner, 2026-10-19).
-    @MainActor static func restore(dayKey: String, clearsMakeUp: Bool) {
+    @MainActor static func restore(dayKey: String) {
         UserDefaults.standard.set(dayKey, forKey: Self.key)
-        UserDefaults.standard.set(clearsMakeUp, forKey: makeUpKey)
         JourneyStore.shared.makeUp = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
         NotificationCenter.default.post(name: changed, object: nil)
         PrayerStats.changed()
@@ -58,7 +53,6 @@ enum FreshStart {
 
     @MainActor static func undo() {
         UserDefaults.standard.removeObject(forKey: key)
-        UserDefaults.standard.removeObject(forKey: makeUpKey)
         JourneyStore.shared.makeUp = nil   // To make up opens on fresh entries, not the list from before (a flash of the old count)
         NotificationCenter.default.post(name: changed, object: nil)
         PrayerStats.changed()
@@ -82,18 +76,13 @@ struct FreshStartPage: View {
     @State private var day: Int? = FreshStart.dayNumber()
     @State private var justBegan = false
     /// The fresh start this visit replaced (a later visit's hold starts again today): Undo brings it back.
-    @State private var replaced: (key: String, clears: Bool)?
+    @State private var replaced: String?
     /// The hold, 0…1: the arc.
     @State private var held: CGFloat = 0
     @State private var holding = false
     @State private var ticks: Task<Void, Never>?
     @State private var askUndo = false
     @State private var pageHeight: CGFloat = 0
-    /// Keep or start fresh with the prayers to make up — chosen before the hold, applied when it completes.
-    @State private var clearMakeUp = FreshStart.clearsMakeUp
-    /// How many are owed now (shown while choosing, the first time).
-    @State private var owed: Int?
-    @Environment(\.modelContext) private var context
 
     /// How long the ring is held to begin.
     static let holdTime = 1.5
@@ -137,7 +126,7 @@ struct FreshStartPage: View {
         let (title, line): (String, String) =
             // No date on the day itself: before Fajr the prayer day is still yesterday's date, which reads wrong as "today".
             if justBegan { ("Bismillah", "Your fresh start begins today.") }
-            else { ("A fresh start", "Your past doesn't define you. Start counting again from today.") }
+            else { ("A fresh start", "Your past doesn't define you. Start your prayers to make up again from today.") }
         return VStack(spacing: 8) {
             ZStack {   // the old and new words overlap while they swap, never side by side
                 // The app's page title (Give to Causes, Kinds of giving): 30 pt light rounded (owner, 2026-10-19: "match it").
@@ -157,7 +146,7 @@ struct FreshStartPage: View {
     }
 
     /// The hero: a ring pressed into the page, the verse inside it, held to begin. The arc draws with the hold; done, the
-    /// ring rises off the page and holds Day N.
+    /// ring rises off the page, the verse still in it (Day N went with the stats, 2026-10-23).
     private var ring: some View {
         let on = justBegan
         let size = Self.ringSize
@@ -169,19 +158,7 @@ struct FreshStartPage: View {
                 .stroke(Color.sage, style: StrokeStyle(lineWidth: 10, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .opacity(held > 0.001 || on ? 1 : 0)
-            ZStack {
-                if on, let day {
-                    VStack(spacing: 0) {
-                        Text("Day").font(.subheadline).foregroundStyle(.secondary)
-                        Text("\(day)").font(.system(size: 64, weight: .light, design: .rounded)).monospacedDigit()
-                            .contentTransition(.numericText(value: Double(day)))
-                    }
-                    .transition(swap)
-                } else {
-                    verse.transition(swap)
-                }
-            }
-            .frame(width: size - 92)
+            verse.frame(width: size - 92)
             // What to do, in the ring you do it to — quiet, low in the ring, outside the verse's centring (owner,
             // 2026-10-19: "Center all the ayah stuff in center of the ring. and hold the ring make it look clearly secondary
             // and calmly animate it with something sleek").
@@ -209,7 +186,7 @@ struct FreshStartPage: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(on ? "Fresh start, day \(day ?? 1)" : "Fresh start. Despair not of the Mercy of Allah.")
+        .accessibilityLabel(on ? "Fresh start, begun today" : "Fresh start. Despair not of the Mercy of Allah.")
         .accessibilityHint(canHold ? (day == nil ? "Hold to begin your fresh start today" : "Hold to start again today") : "")
         .accessibilityAddTraits(canHold ? .isButton : [])
         .accessibilityAction { if canHold { begin() } }
@@ -264,65 +241,27 @@ struct FreshStartPage: View {
     /// and a quieter line under it.
     private var facts: some View {
         VStack(spacing: 0) {
-            row("chart.bar", "Your stats start from today", "Your streak and scores count from here.")
+            row("hourglass", "To make up starts from today", "Prayers missed before today are set aside.")
+            Divider().padding(.leading, 40)
+            row("chart.bar", "Your stats don't change", "Your streak and scores still count every day.")
             Divider().padding(.leading, 40)
             row("photo.on.rectangle.angled", "Nothing is deleted", "Your prayers, photos and places stay.")
             Divider().padding(.leading, 40)
-            makeUpRow
-            Divider().padding(.leading, 40)
-            row("arrow.uturn.backward", "See it all any time", "Look back, or undo to bring it all back.")
+            row("arrow.uturn.backward", "See them any time", "Show all on To make up, or undo.")
         }
         .padding(.horizontal, 24)
     }
 
-    /// Prayers to make up: kept by default; before the hold, a toggle to reset them too (owner, 2026-10-19: "the switch looks
-    /// weak and out of place. maybe a toggle button?"). Its line reads the count once: "Your 412 stay on your list" /
-    /// "start again from zero". After, what was chosen. Laid out as every other row, so the hourglass never moves.
-    @ViewBuilder private var makeUpRow: some View {
-        if canHold {
-            row("hourglass", "Reset prayers to make up", makeUpChoiceLine, detailID: clearMakeUp) {
-                Toggle("Reset prayers to make up", isOn: $clearMakeUp.animation(.snappy(duration: 0.25)))
-                    .labelsHidden()
-                    .tint(Color.sage)
-            }
-            .task(id: day == nil) {
-                guard day == nil else { return }
-                owed = await JourneyMakeUpPage.openCount(container: context.container)
-            }
-        } else if FreshStart.clearsMakeUp {
-            row("hourglass", "Prayers to make up start fresh", "Only ones from today on count.")
-        } else {
-            row("hourglass", "Prayers to make up stay", "It doesn't clear what you owe.")
-        }
-    }
-
-    private var makeUpChoiceLine: String {
-        let yours = day == nil ? owed.flatMap { $0 > 0 ? "Your \($0)" : nil } : nil
-        return clearMakeUp ? "\(yours ?? "They") start again from zero." : "\(yours ?? "They") stay on your list."
-    }
-
+    /// One row: the symbol on the lead's first line, a lead and a quieter line.
     private func row(_ icon: String, _ lead: String, _ detail: String) -> some View {
-        row(icon, lead, detail, detailID: false) { EmptyView() }
-    }
-
-    /// One row: the symbol on the lead's first line, a lead and a quieter line, and an optional control at the end,
-    /// centred on both lines (it never moves the symbol or the words).
-    private func row<Trailing: View>(_ icon: String, _ lead: String, _ detail: String, detailID: Bool,
-                                     @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                Image(systemName: icon).font(.body).foregroundStyle(.secondary).frame(width: 26)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(lead).font(.body)
-                    ZStack(alignment: .leading) {
-                        Text(detail).font(.subheadline).foregroundStyle(.secondary)
-                            .id(detailID).transition(swap)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
+            Image(systemName: icon).font(.body).foregroundStyle(.secondary).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(lead).font(.body)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
             }
+            .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
-            trailing()
         }
         .padding(.vertical, 8)
     }
@@ -338,7 +277,7 @@ struct FreshStartPage: View {
                         .transition(swap)
                 } else if day != nil {
                     // A later visit: the fresh start it counts from now — not all time (owner, 2026-10-19).
-                    Text("Counting since your fresh start on \(startWords)")
+                    Text("To make up starts from \(startWords)")
                         .font(.subheadline).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .transition(swap)
@@ -363,11 +302,11 @@ struct FreshStartPage: View {
             .buttonStyle(.plain)
             // An alert, not a confirmation dialog: iOS 26 drew the dialog as a popover over the Done pill, and a tap on
             // "Bring it back" reached Done under it — the page closed and nothing was undone (Design, 2026-10-19).
-            .alert("Bring back your whole history?", isPresented: $askUndo) {
-                Button("Bring it back") { undo() }
+            .alert("Bring back every prayer to make up?", isPresented: $askUndo) {
+                Button("Bring them back") { undo() }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Your Journey will count from your first prayer again.")
+                Text("To make up will show every missed prayer again.")
             }
         }
         .padding(.top, 8).padding(.bottom, 8)
@@ -404,8 +343,8 @@ struct FreshStartPage: View {
 
     private func begin() {
         ticks?.cancel()
-        replaced = FreshStart.dayKey.map { ($0, FreshStart.clearsMakeUp) }
-        FreshStart.begin(clearMakeUp: clearMakeUp)
+        replaced = FreshStart.dayKey
+        FreshStart.begin()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         withAnimation(.smooth(duration: 0.55)) {
             holding = false
@@ -418,12 +357,11 @@ struct FreshStartPage: View {
     /// Right after a hold that started again: back to the fresh start it replaced. Otherwise none.
     private func undo() {
         if justBegan, let replaced {
-            FreshStart.restore(dayKey: replaced.key, clearsMakeUp: replaced.clears)
+            FreshStart.restore(dayKey: replaced)
         } else {
             FreshStart.undo()
         }
         replaced = nil
-        clearMakeUp = FreshStart.clearsMakeUp
         withAnimation(.smooth(duration: 0.45)) {
             justBegan = false
             day = FreshStart.dayNumber()

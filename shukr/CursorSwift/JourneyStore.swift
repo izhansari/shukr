@@ -85,7 +85,8 @@ import SwiftData
                 // At the log's own goal and fresh start (the header ring then reads since it, as Prayer scores does).
                 let s = PrayerScores.build(log: built, context: context, now: now, countsFrom: built.countsFrom, goal: built.goal)
                 let all = built.countsFrom == nil ? nil : PrayerScores.build(log: built, context: context, now: now, countsFrom: nil, goal: built.goal)
-                return (s, all, JourneyMakeUpPage.entries(in: context, ranges: ranges, now: now).open.count)
+                return (s, all, JourneyMakeUpPage.entries(in: context, ranges: ranges, now: now).open
+                    .filter { !FreshStart.setsAside($0.dayKey) }.count)
             }
             let builtStats = await statsTask.value
             JourneyPerf.took("stats.load", since: t2)
